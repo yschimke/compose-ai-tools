@@ -44,6 +44,16 @@ dependencies {
   compileOnly(libs.wear)
   testImplementation(libs.wear)
 
+  // `androidx.wear.compose.foundation.AmbientMode` / `AmbientModeManager` /
+  // `LocalAmbientModeManager` — the new androidx ambient API surface (mirrors
+  // `androidx.wear.compose.foundation.samples.AmbientModeBasicSample`). The
+  // extension installs `LocalAmbientModeManager` so consumers reading it via
+  // `rememberAmbientModeManager()` style code observe the override without
+  // touching the on-device Wear Services SDK. `compileOnly` because consumers
+  // (e.g. `:samples:wear`) already pull wear-compose at runtime.
+  compileOnly(libs.wear.compose.foundation)
+  testImplementation(libs.wear.compose.foundation)
+
   // Robolectric — the shadow uses `@Implements` / `@Implementation` annotations + `RealObject`.
   // `compileOnly` because the shadow only runs inside a Robolectric sandbox; non-test consumers
   // never instantiate it directly. Daemon's runtime classpath already includes Robolectric.

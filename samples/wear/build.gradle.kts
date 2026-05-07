@@ -48,6 +48,15 @@ dependencies {
   implementation(libs.compose.ui.tooling.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
 
+  // `:data-ambient-connector` — the Wear OS ambient-mode data extension. The
+  // connector's `AmbientOverrideExtension` (an `AroundComposableExtension` planned
+  // by `AmbientPreviewOverrideExtension` from `renderNow.overrides.ambient`)
+  // installs the `LocalAmbientModeManager` composition local that
+  // `AmbientStatusBody` reads from. Static `@Preview` rendering doesn't run the
+  // daemon-side extension chain, so previews fall back to `AmbientMode.Interactive`;
+  // daemon-driven renders with `overrides.ambient` see `Ambient(...)` end-to-end.
+  implementation(project(":data-ambient-connector"))
+
   // Wear Tiles — for the `@androidx.wear.tiles.tooling.preview.Preview` sample
   // rendered via TilePreviewRenderer in renderer-android. `wear.tiles.renderer`
   // is deliberately NOT declared here — the plugin injects it when the

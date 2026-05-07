@@ -1,6 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.wear.ambient.AmbientLifecycleObserver
+import androidx.wear.compose.foundation.AmbientMode
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import java.util.concurrent.CopyOnWriteArrayList
@@ -40,6 +44,17 @@ object AmbientStateController {
 
   @Volatile private var currentState: AmbientStateOverride = AmbientStateOverride.INACTIVE
 
+  /**
+   * Snapshot-state mirror of [currentState] in the form `AmbientMode` consumes — drives the
+   * [androidx.wear.compose.foundation.LocalAmbientModeManager] composition local installed by
+   * [AmbientOverrideExtension] so consumer code reading
+   * `LocalAmbientModeManager.current?.currentAmbientMode` recomposes when the controller flips.
+   * INACTIVE collapses to [AmbientMode.Interactive] — `AmbientMode` has no Inactive value.
+   */
+  private val _modeState: MutableState<AmbientMode> = mutableStateOf(AmbientMode.Interactive)
+  val modeState: State<AmbientMode>
+    get() = _modeState
+
   private val scheduler: ScheduledExecutorService =
     Executors.newSingleThreadScheduledExecutor { r ->
       Thread(r, "compose-ai-daemon-ambient-idle").apply { isDaemon = true }
@@ -67,6 +82,7 @@ object AmbientStateController {
       val target = override?.state ?: AmbientStateOverride.INACTIVE
       transition = computeTransition(currentState, target)
       currentState = target
+      _modeState.value = ambientModeFor(target, override)
     }
     fireTransition(transition)
   }
@@ -121,6 +137,7 @@ object AmbientStateController {
       idleRestore = null
       transitionToInteractive = computeTransition(currentState, AmbientStateOverride.INTERACTIVE)
       currentState = AmbientStateOverride.INTERACTIVE
+      _modeState.value = AmbientMode.Interactive
     }
     fireTransition(transitionToInteractive)
     val timeoutMs = activeOverride.idleTimeoutMs ?: DEFAULT_IDLE_TIMEOUT_MS
@@ -136,6 +153,7 @@ object AmbientStateController {
             if (override !== activeOverride) return@schedule
             transition = computeTransition(currentState, target)
             currentState = target
+            _modeState.value = ambientModeFor(target, activeOverride)
             idleRestore = null
           }
           transition?.let { fireTransition(it) }
@@ -152,8 +170,20 @@ object AmbientStateController {
       idleRestore = null
       override = null
       currentState = AmbientStateOverride.INACTIVE
+      _modeState.value = AmbientMode.Interactive
     }
   }
+
+  private fun ambientModeFor(state: AmbientStateOverride, override: AmbientOverride?): AmbientMode =
+    when (state) {
+      AmbientStateOverride.AMBIENT ->
+        AmbientMode.Ambient(
+          isBurnInProtectionRequired = override?.burnInProtectionRequired ?: false,
+          isLowBitAmbientSupported = override?.deviceHasLowBitAmbient ?: false,
+        )
+      AmbientStateOverride.INTERACTIVE,
+      AmbientStateOverride.INACTIVE -> AmbientMode.Interactive
+    }
 
   private data class StateTransition(
     val from: AmbientStateOverride,

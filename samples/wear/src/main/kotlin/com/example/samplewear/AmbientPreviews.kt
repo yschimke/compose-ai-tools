@@ -29,14 +29,20 @@ import androidx.wear.tooling.preview.devices.WearDevices
 /**
  * Body for the ambient-aware demo. Reads its state from
  * [LocalAmbientModeManager] — the same composition-local seam
- * `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` uses — so a real activity wires
- * the live manager via `rememberAmbientModeManager()` and `@Preview` paths inject a deterministic
- * [AmbientMode] through [AmbientOverrideExtension] without touching the Wear Services SDK.
+ * `androidx.wear.compose.foundation.samples.AmbientModeBasicSample` consumes via
+ * `rememberAmbientModeManager()`. The `:data-ambient-connector`'s
+ * `AmbientOverrideExtension` (an `AroundComposable` data extension planned from
+ * `renderNow.overrides.ambient`) installs the manager backed by
+ * `AmbientStateController`, so daemon-driven renders see the override and a real
+ * activity runs `rememberAmbientModeManager()` against the on-device Wear Services
+ * SDK; preview rendering without an in-flight override falls back to
+ * [AmbientMode.Interactive].
  *
- * Visual treatment for the ambient state — desaturated greyscale with a 0.9× scale — is borrowed
- * from horologist's `AmbientAwareActivity` sample
- * (`com.google.android.horologist.ambient.ambientGray`), reimplemented here as a local
- * [Modifier.ambientGray] so this module doesn't pull in horologist just for the styling.
+ * Visual treatment for the ambient state — desaturated greyscale with a 0.9× scale —
+ * is borrowed from horologist's `AmbientAwareActivity` sample
+ * (`com.google.android.horologist.ambient.ambientGray`), reimplemented here as a
+ * local [Modifier.ambientGray] so this module doesn't pull in horologist just for
+ * the styling.
  */
 @Composable
 fun AmbientStatusBody(now: () -> Long = System::currentTimeMillis) {
@@ -82,10 +88,6 @@ private val grayscalePaint =
     isAntiAlias = false
   }
 
-/**
- * Apply horologist's ambient visual treatment: desaturate to greyscale and scale to 0.9× when
- * [ambientMode] is [AmbientMode.Ambient]. Pass-through when interactive.
- */
 private fun Modifier.ambientGray(ambientMode: AmbientMode): Modifier =
   if (ambientMode is AmbientMode.Ambient) {
     graphicsLayer {
@@ -101,20 +103,8 @@ private fun Modifier.ambientGray(ambientMode: AmbientMode): Modifier =
     this
   }
 
-@Preview(name = "Ambient body — interactive", device = WearDevices.LARGE_ROUND, showBackground = true)
+@Preview(name = "Ambient body", device = WearDevices.LARGE_ROUND, showBackground = true)
 @Composable
-fun AmbientStatusInteractivePreview() {
-  AmbientOverrideExtension(initial = AmbientMode.Interactive) { _ ->
-    AmbientStatusBody(now = { 1_700_000_000_000L })
-  }
-}
-
-@Preview(name = "Ambient body — ambient", device = WearDevices.LARGE_ROUND, showBackground = true)
-@Composable
-fun AmbientStatusAmbientPreview() {
-  AmbientOverrideExtension(
-    initial = AmbientMode.Ambient(isBurnInProtectionRequired = true, isLowBitAmbientSupported = false)
-  ) { _ ->
-    AmbientStatusBody(now = { 1_700_000_000_000L })
-  }
+fun AmbientStatusPreview() {
+  AmbientStatusBody(now = { 1_700_000_000_000L })
 }
