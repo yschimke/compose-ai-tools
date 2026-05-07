@@ -25,6 +25,24 @@ android {
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
+// Pixel-test wiring. `FocusedPreviewPixelTest` reads PNGs under
+// `build/compose-previews/renders/` produced by `renderAllPreviews`, so chain
+// the AGP unit-test tasks behind `renderAllPreviews` — same pattern as
+// `:samples:android`'s `ScrollPreviewPixelTest`. Targeting by name avoids
+// pulling the plugin's own `renderPreviews` Test task into a circular
+// `dependsOn` graph; `tasks.matching { ... }.configureEach { ... }` is the
+// Isolated-Projects-safe lazy form.
+val pixelTestUnitTestTasks = setOf("testDebugUnitTest", "testReleaseUnitTest")
+
+tasks
+  .matching { it.name in pixelTestUnitTestTasks }
+  .configureEach { dependsOn("renderAllPreviews") }
+
+dependencies {
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
+}
+
 dependencies {
   // Pinning material3 directly: the inset-focus-ring APIs
   // (RippleThemeConfiguration, LocalRippleThemeConfiguration,
