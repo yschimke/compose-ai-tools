@@ -19,6 +19,7 @@
 // reach into closure.
 
 import type { VsCodeApi } from "../shared/vscode";
+import { applyStaleBadge } from "./staleBadgeDom";
 
 export class StaleBadgeController {
     constructor(private readonly vscode: VsCodeApi<unknown>) {}
@@ -41,28 +42,7 @@ export class StaleBadgeController {
      * matches the DOM.
      */
     apply(card: HTMLElement, isStale: boolean): void {
-        const titleRow = card.querySelector(".card-title-row");
-        if (!titleRow) return;
-        const existing = card.querySelector(".card-stale-btn");
-        if (isStale && !existing) {
-            const btn = document.createElement("button");
-            btn.className = "icon-button card-stale-btn";
-            btn.title =
-                "Stale heavy capture — click to keep fresh while focused";
-            btn.setAttribute("aria-label", "Keep stale capture fresh");
-            btn.innerHTML =
-                '<i class="codicon codicon-warning" aria-hidden="true"></i>';
-            btn.addEventListener("click", (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                this.requestHeavyRefresh(card);
-            });
-            titleRow.appendChild(btn);
-            card.classList.add("is-stale");
-        } else if (!isStale && existing) {
-            existing.remove();
-            card.classList.remove("is-stale");
-        }
+        applyStaleBadge(card, isStale, () => this.requestHeavyRefresh(card));
     }
 
     /**
