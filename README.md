@@ -46,6 +46,17 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TruncatedMaxLinesEllipsisPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview.png" width="150" /> |
 | `TruncatedWidthNoWrapPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedWidthNoWrapPreview.png" width="150" /> |
 
+## samples:android-alpha
+
+| Preview | Image |
+|---------|-------|
+| `InsetFocusRingAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingAnimatedPreview_Inset_Focus_Ring_moving.gif" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_0.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_1.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_2.png" width="150" /> |
+| `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_3.png" width="150" /> |
+| `OpacityVsInsetRingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/OpacityVsInsetRingPreview_Opacity_vs_Inset_Ring.png" width="150" /> |
+
 ## samples:android-daemon-bench
 
 | Preview | Image |
