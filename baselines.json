@@ -1,4 +1,60 @@
 {
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay": {
+    "captureLabel": "",
+    "functionName": "FocusOverlayPreview",
+    "renderBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
+    "sha256": "01817469a1b6cc837d2550a121db07b437b3e86c8bd14d8708efb3e933be208b",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#1": {
+    "captureLabel": "",
+    "functionName": "FocusOverlayPreview",
+    "renderBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_1.png",
+    "sha256": "8f84a804b822405c113f624d5e5fb5636eb8007ad6260811a04a8fabf4da6925",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#2": {
+    "captureLabel": "",
+    "functionName": "FocusOverlayPreview",
+    "renderBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_2.png",
+    "sha256": "642786fcbdf0763349c7fb2423fc0a59f644d7477ae98536d4e95eb1acf07d16",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay#3": {
+    "captureLabel": "",
+    "functionName": "FocusOverlayPreview",
+    "renderBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_3.png",
+    "sha256": "54c7b98e74203331f79fd2569ee348928e6ad2dfb4e1e26c88b221619b6d7d10",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal": {
+    "captureLabel": "",
+    "functionName": "FocusTraversalPreview",
+    "renderBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.png",
+    "sha256": "c2223bc7d6ec0a9c2fb21800787ec40ed492d42dea5645f43e6635bbab41016a",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#1": {
+    "captureLabel": "",
+    "functionName": "FocusTraversalPreview",
+    "renderBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step2_Next.png",
+    "sha256": "bf00fb5b6ab05136601bbc03a21666e11aa027e37c2c507e1b6c64f1dc2eb89b",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#2": {
+    "captureLabel": "",
+    "functionName": "FocusTraversalPreview",
+    "renderBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step3_Previous.png",
+    "sha256": "c2223bc7d6ec0a9c2fb21800787ec40ed492d42dea5645f43e6635bbab41016a",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal#3": {
+    "captureLabel": "",
+    "functionName": "FocusTraversalPreview",
+    "renderBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step4_Next.png",
+    "sha256": "bf00fb5b6ab05136601bbc03a21666e11aa027e37c2c507e1b6c64f1dc2eb89b",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingAnimatedPreview_Inset Focus Ring \u2014 moving": {
     "captureLabel": "",
     "functionName": "InsetFocusRingAnimatedPreview",
