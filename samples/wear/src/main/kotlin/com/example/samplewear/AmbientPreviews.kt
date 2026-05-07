@@ -25,6 +25,8 @@ import androidx.wear.compose.foundation.LocalAmbientModeManager
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.tooling.preview.devices.WearDevices
+import ee.schimke.composeai.preview.AmbientPreview
+import ee.schimke.composeai.preview.AmbientPreviewState
 
 /**
  * Body for the ambient-aware demo. Reads its state from
@@ -103,8 +105,24 @@ private fun Modifier.ambientGray(ambientMode: AmbientMode): Modifier =
     this
   }
 
-@Preview(name = "Ambient body", device = WearDevices.LARGE_ROUND, showBackground = true)
+@Preview(name = "Ambient body — interactive", device = WearDevices.LARGE_ROUND, showBackground = true)
 @Composable
-fun AmbientStatusPreview() {
+fun AmbientStatusInteractivePreview() {
+  AmbientStatusBody(now = { 1_700_000_000_000L })
+}
+
+/**
+ * Renders the body under `AmbientMode.Ambient(burnInProtectionRequired = true)`. The
+ * `@AmbientPreview` annotation drives the renderer to wrap the composition with
+ * `:data-ambient-connector`'s `AmbientOverrideExtension`, which installs `LocalAmbientModeManager`
+ * — the same composition-local seam `androidx.wear.compose.foundation.samples.AmbientModeBasicSample`
+ * reads from `rememberAmbientModeManager()`. Daemon-driven `renderNow.overrides.ambient` lands at
+ * the same extension via the `AmbientPreviewOverrideExtension` planner registered in
+ * `RobolectricHost`.
+ */
+@Preview(name = "Ambient body — ambient", device = WearDevices.LARGE_ROUND, showBackground = true)
+@AmbientPreview(state = AmbientPreviewState.Ambient, burnInProtectionRequired = true)
+@Composable
+fun AmbientStatusAmbientPreview() {
   AmbientStatusBody(now = { 1_700_000_000_000L })
 }

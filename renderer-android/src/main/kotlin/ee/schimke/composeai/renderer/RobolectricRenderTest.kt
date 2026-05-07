@@ -27,9 +27,12 @@ import com.github.takahirom.roborazzi.inspectionMode
 import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
+import ee.schimke.composeai.daemon.AmbientOverrideExtension
 import ee.schimke.composeai.daemon.FocusController
 import ee.schimke.composeai.daemon.FocusOverlay
 import ee.schimke.composeai.daemon.FocusOverrideExtension
+import ee.schimke.composeai.daemon.protocol.AmbientOverride
+import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.data.render.PreviewAnimationContext
@@ -676,6 +679,17 @@ abstract class RobolectricRenderTestBase(
                 val anyFocusCapture = preview.captures.any { it.focus != null }
                 val focusExtension =
                     if (anyFocusCapture) FocusOverrideExtension() else null
+                // `@AmbientPreview` discovery stamps the same `AmbientCapture` onto every capture
+                // of an annotated function (single-shot per function — one preview produces one
+                // ambient state). Wrap the composition with `AmbientOverrideExtension` from
+                // `:data-ambient-connector` when present so consumer code reading
+                // `LocalAmbientModeManager.current?.currentAmbientMode` observes the override.
+                // Daemon-driven `renderNow.overrides.ambient` lands at the same extension via the
+                // `AmbientPreviewOverrideExtension` planner registered in `RobolectricHost`.
+                val ambientExtension =
+                    preview.captures.firstNotNullOfOrNull { it.ambient }?.let {
+                        AmbientOverrideExtension(it.toAmbientOverride())
+                    }
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
                     if (scrollCaptureProvidable != null) {
@@ -730,10 +744,17 @@ abstract class RobolectricRenderTestBase(
                                 previewBody()
                             }
                         }
-                        if (focusExtension != null) {
-                            focusExtension.AroundComposable { curveOrPlain() }
+                        val focusOrPlain: @Composable () -> Unit = {
+                            if (focusExtension != null) {
+                                focusExtension.AroundComposable { curveOrPlain() }
+                            } else {
+                                curveOrPlain()
+                            }
+                        }
+                        if (ambientExtension != null) {
+                            ambientExtension.AroundComposable { focusOrPlain() }
                         } else {
-                            curveOrPlain()
+                            focusOrPlain()
                         }
                     }
                 }
@@ -1798,6 +1819,21 @@ private fun FocusDirection.toProtocol(): ProtocolFocusDirection =
         FocusDirection.Left -> ProtocolFocusDirection.Left
         FocusDirection.Right -> ProtocolFocusDirection.Right
     }
+
+/** Maps the renderer-side [AmbientCapture] (read from `previews.json`) onto the connector's
+ *  `protocol.AmbientOverride` wire shape. Discovery emits `Interactive` / `Ambient` only; the
+ *  daemon's `AmbientStateOverride.INACTIVE` value is reserved for the controller's "no override"
+ *  state and never round-trips through `@AmbientPreview`. */
+private fun AmbientCapture.toAmbientOverride(): AmbientOverride =
+    AmbientOverride(
+        state =
+            when (state) {
+                AmbientCaptureState.Interactive -> AmbientStateOverride.INTERACTIVE
+                AmbientCaptureState.Ambient -> AmbientStateOverride.AMBIENT
+            },
+        burnInProtectionRequired = burnInProtectionRequired,
+        deviceHasLowBitAmbient = deviceHasLowBitAmbient,
+    )
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes

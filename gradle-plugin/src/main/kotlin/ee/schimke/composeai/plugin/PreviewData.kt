@@ -126,6 +126,40 @@ data class FocusCapture(
 )
 
 /**
+ * Wear OS ambient-mode capture state sourced from `@AmbientPreview`. Carried as its own field on
+ * [Capture] — orthogonal to [Capture.scroll] / [Capture.animation] / [Capture.focus] — so the
+ * renderer can switch on its presence to wrap the preview composition with the
+ * `AmbientOverrideExtension` from `:data-ambient-connector`. The extension installs
+ * `LocalAmbientModeManager` so consumer code reading `currentAmbientMode` observes the requested
+ * state — same seam the daemon-driven `renderNow.overrides.ambient` planner uses.
+ */
+@Serializable
+data class AmbientCapture(
+  /**
+   * Active state. Mirrors `androidx.wear.compose.foundation.AmbientMode` — only `Interactive` /
+   * `Ambient` round-trip through `@AmbientPreview` (no `Inactive` value in the new API surface).
+   */
+  val state: AmbientCaptureState = AmbientCaptureState.Ambient,
+  /**
+   * Mirrors `AmbientMode.Ambient.isBurnInProtectionRequired`. Only meaningful when [state] is
+   * [AmbientCaptureState.Ambient].
+   */
+  val burnInProtectionRequired: Boolean = false,
+  /**
+   * Mirrors `AmbientMode.Ambient.isLowBitAmbientSupported`. Only meaningful when [state] is
+   * [AmbientCaptureState.Ambient].
+   */
+  val deviceHasLowBitAmbient: Boolean = false,
+)
+
+/** Mirror of `androidx.wear.compose.foundation.AmbientMode`'s active states. */
+@Serializable
+enum class AmbientCaptureState {
+  Interactive,
+  Ambient,
+}
+
+/**
  * Cost catalogue, normalised so a static `@Preview` (single compose pass + one screenshot) is
  * `1.0`. The discovery task stamps the right value onto each [Capture]; tooling reads them back to
  * throttle interactive renders.
@@ -232,6 +266,12 @@ data class Capture(
   val animation: AnimationCapture? = null,
   /** `null` → no focus drive. Set when the preview carries a `@FocusedPreview` annotation. */
   val focus: FocusCapture? = null,
+  /**
+   * `null` → no Wear OS ambient-mode override. Set when the preview carries an `@AmbientPreview`
+   * annotation. Renderer wraps the composition with `:data-ambient-connector`'s
+   * `AmbientOverrideExtension` when present.
+   */
+  val ambient: AmbientCapture? = null,
   /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
   val renderOutput: String = "",
   /**
