@@ -76,11 +76,11 @@ fun main(args: Array<String>) {
   // The plugin has exposed `composeai.daemon.warmSpare=true` by default since the daemon launch
   // descriptor was introduced, but the Android daemon previously ignored it and came up with a
   // single sandbox unless the experimental sandbox-count property was set manually. Held
-  // interactive sessions need slot 1 pinned while slot 0 continues normal renders, so default the
-  // pool to two sandboxes when warmSpare is on. Explicit `composeai.daemon.sandboxCount` still
-  // wins.
+  // interactive sessions need slot 1 pinned while slot 0 continues normal renders, and a typical
+  // preview grid wants extra slots for parallel renders, so default the pool to five sandboxes
+  // when warmSpare is on. Explicit `composeai.daemon.sandboxCount` still wins.
   val warmSpareEnabled = System.getProperty(WARM_SPARE_PROP)?.toBooleanStrictOrNull() ?: true
-  val defaultSandboxCount = if (warmSpareEnabled) 2 else 1
+  val defaultSandboxCount = if (warmSpareEnabled) 5 else 1
 
   // SANDBOX-POOL.md (Layer 3) — read the supervisor-supplied sandbox-count knob. When unset, use
   // the warm-spare-derived default above so production Android daemons have the second sandbox

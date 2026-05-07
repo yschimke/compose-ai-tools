@@ -14,8 +14,8 @@ All three layers landed.
   `composeai.daemon.sandboxCount = 1 + replicasPerDaemon` on the launch
   descriptor instead of spawning N+1 JVM subprocesses. Public surface
   (`SupervisedDaemon.client`, `allClients`, `clientForRender`) is
-  unchanged. **Default `replicasPerDaemon = 3`** — every daemon comes up
-  with 4 in-JVM sandboxes. Set `0` to opt out.
+  unchanged. **Default `replicasPerDaemon = 4`** — every daemon comes up
+  with 5 in-JVM sandboxes. Set `0` to opt out.
 
 ## Memory math
 
@@ -132,8 +132,8 @@ Attribution against the subprocess model:
 |------------------:|----------------:|----------:|----:|
 | 0 (1 sandbox)     | ~1 GB           | ~1 GB     | 0   |
 | 2 (3 sandboxes)   | ~3 GB           | ~1.15 GB  | ~1.85 GB |
-| 3 (4 sandboxes, default) | ~4 GB    | ~1.23 GB  | ~2.77 GB |
-| 4 (5 sandboxes)   | ~5 GB           | ~1.30 GB  | ~3.70 GB |
+| 3 (4 sandboxes)   | ~4 GB           | ~1.23 GB  | ~2.77 GB |
+| 4 (5 sandboxes, default) | ~5 GB    | ~1.30 GB  | ~3.70 GB |
 
 Bench prints to JUnit's `<system-out>` so CI logs preserve the numbers;
 rerun and update the table on Robolectric / JDK / framework upgrades.
