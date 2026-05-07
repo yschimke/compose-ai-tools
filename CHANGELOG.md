@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.10.0](https://github.com/yschimke/compose-ai-tools/compare/v0.9.3...v0.10.0) (2026-05-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **daemon:** gate history/diff behind experimental sysprop for 1.0 ([#875](https://github.com/yschimke/compose-ai-tools/issues/875))
+* **vscode:** remove composePreview.streaming.enabled setting ([#889](https://github.com/yschimke/compose-ai-tools/issues/889))
+* **vscode:** remove composePreview.daemon.enabled setting ([#878](https://github.com/yschimke/compose-ai-tools/issues/878))
+
+### Features
+
+* **daemon:** add composestream/1 live-frame streaming protocol ([#847](https://github.com/yschimke/compose-ai-tools/issues/847)) ([524b566](https://github.com/yschimke/compose-ai-tools/commit/524b56663873b9426bb99977e8fd9db61f1cfbed))
+* **daemon:** add Wear OS ambient-mode preview override ([#891](https://github.com/yschimke/compose-ai-tools/issues/891)) ([9ba0fbe](https://github.com/yschimke/compose-ai-tools/commit/9ba0fbee5a80e6a1370265969913b854ebe084c7))
+* **daemon:** default daemon to no extensions, opt-in via extensions/enable ([#854](https://github.com/yschimke/compose-ai-tools/issues/854)) ([afc5066](https://github.com/yschimke/compose-ai-tools/commit/afc50664d330646b926a25581166bc66faa187ec))
+* **daemon:** gate history/diff behind experimental sysprop for 1.0 ([#875](https://github.com/yschimke/compose-ai-tools/issues/875)) ([6d97728](https://github.com/yschimke/compose-ai-tools/commit/6d97728c95a990029e9f1eae98982bb7b207bfc0))
+* **data/uiautomator:** Compose SemanticsNode support + JSON wire format ([#864](https://github.com/yschimke/compose-ai-tools/issues/864)) ([9040556](https://github.com/yschimke/compose-ai-tools/commit/9040556120e991248b035e158e148ce941b97dfc))
+* **data/uiautomator:** end-to-end uia.* dispatch through record_preview ([#872](https://github.com/yschimke/compose-ai-tools/issues/872)) ([8f5e8c6](https://github.com/yschimke/compose-ai-tools/commit/8f5e8c60065b2d5e3e8c8587ab9942592c5f614a))
+* **data/uiautomator:** prototype UIAutomator-shaped query/action API ([#832](https://github.com/yschimke/compose-ai-tools/issues/832)) ([ec18a23](https://github.com/yschimke/compose-ai-tools/commit/ec18a23dea45aafbdbff6f09a02dcd2bde54d768))
+* index preview targets and surface them in VS Code ([#821](https://github.com/yschimke/compose-ai-tools/issues/821)) ([967bca4](https://github.com/yschimke/compose-ai-tools/commit/967bca4a6c8371c239cee2408cdb8ce584b572ac))
+* **mcp:** close the source-freshness gaps agents see as stale renders ([#826](https://github.com/yschimke/compose-ai-tools/issues/826)) ([7def542](https://github.com/yschimke/compose-ai-tools/commit/7def5428c007b07640fd33f2ef710b2a57c76ff0))
+* **mcp:** mcp doctor verdicts + skill guidance to stop spurious reinstalls ([#827](https://github.com/yschimke/compose-ai-tools/issues/827)) ([7b1aa57](https://github.com/yschimke/compose-ai-tools/commit/7b1aa57eb4e0c71504c8ef4ca13c61b0612a6554))
+* **samples:** add inset focus ring demo in :samples:android-alpha ([#895](https://github.com/yschimke/compose-ai-tools/issues/895)) ([8079a1b](https://github.com/yschimke/compose-ai-tools/commit/8079a1b22184c64777ff5fea300978ca133ff742))
+* **strings:** surface text truncation in text/strings v2 ([#844](https://github.com/yschimke/compose-ai-tools/issues/844)) ([da388de](https://github.com/yschimke/compose-ai-tools/commit/da388de2b0bbd011ad33c78303d4d1a35012c2bf))
+* **vscode:** drop static base capture when scroll image data product exists ([#893](https://github.com/yschimke/compose-ai-tools/issues/893)) ([5d2e9b5](https://github.com/yschimke/compose-ai-tools/commit/5d2e9b514403cf666935232642bf13c1ba99ac40))
+* **vscode:** mirror PROTOCOL v2 and enable all advertised extensions on connect ([#866](https://github.com/yschimke/compose-ai-tools/issues/866)) ([1422362](https://github.com/yschimke/compose-ai-tools/commit/14223625085d8bfad1d5974675c53f84dc8844ac))
+* **vscode:** remove composePreview.daemon.enabled setting ([#878](https://github.com/yschimke/compose-ai-tools/issues/878)) ([13ea62e](https://github.com/yschimke/compose-ai-tools/commit/13ea62ec96cbf3610876d6fb1f875a45b8881e2f))
+* **vscode:** remove composePreview.streaming.enabled setting ([#889](https://github.com/yschimke/compose-ai-tools/issues/889)) ([3b40a1d](https://github.com/yschimke/compose-ai-tools/commit/3b40a1d8f4282e3d1ce9e3ef40034891622293eb))
+* **vscode:** restore composePreview.daemon.enabled as deprecated no-op ([#890](https://github.com/yschimke/compose-ai-tools/issues/890)) ([e637116](https://github.com/yschimke/compose-ai-tools/commit/e6371165c9d5f3ebf9ea22de7f79f9f9779ec242))
+
+
+### Bug Fixes
+
+* **daemon:** break live-frame loop when interactive session auto-closes ([#892](https://github.com/yschimke/compose-ai-tools/issues/892)) ([31085fc](https://github.com/yschimke/compose-ai-tools/commit/31085fc97d71d22ac56be8d837fcc61b6c787884))
+* **deps:** update gradle minor/patch ([#793](https://github.com/yschimke/compose-ai-tools/issues/793)) ([1a61966](https://github.com/yschimke/compose-ai-tools/commit/1a6196659715db3ed38bd314027c71b6fb57d745))
+* **install:** require --yes/--upgrade so agents can't silently download ([#803](https://github.com/yschimke/compose-ai-tools/issues/803)) ([d27a409](https://github.com/yschimke/compose-ai-tools/commit/d27a40941ff45cf84032e4831679277a399b4bc3))
+* **mcp:** notify on every bootstrap-to-full tool catalog transition ([#837](https://github.com/yschimke/compose-ai-tools/issues/837)) ([4387cdc](https://github.com/yschimke/compose-ai-tools/commit/4387cdcb6ff6d54e5eb2e36cd51e1b239d9f71d2))
+* **mcp:** re-import previews.json when discoverPreviews rewrites it ([#843](https://github.com/yschimke/compose-ai-tools/issues/843)) ([1c402bc](https://github.com/yschimke/compose-ai-tools/commit/1c402bc0ce2a3bee732ebfa8a13c62c1bcc036d3))
+* **plugin:** pin androidx.core:core 1.16 floor for renderer test APK ([#811](https://github.com/yschimke/compose-ai-tools/issues/811)) ([9b17fe9](https://github.com/yschimke/compose-ai-tools/commit/9b17fe9eb616fc1c10e12cd4233b46aa3272cb9d))
+* **streaming:** plug stream/stop teardown leaks + decode-order race ([#861](https://github.com/yschimke/compose-ai-tools/issues/861)) ([7f013f3](https://github.com/yschimke/compose-ai-tools/commit/7f013f39a161c4c68394ae9353bdf16b05001a98))
+* **vscode:** coalesce live pointerMove sends to rAF cadence ([#885](https://github.com/yschimke/compose-ai-tools/issues/885)) ([7bdc2ad](https://github.com/yschimke/compose-ai-tools/commit/7bdc2ad6b4e2aa8a4608a5c47622b6e140c85350))
+* **vscode:** exempt composePreviewDaemonStart from refresh cancel ([#840](https://github.com/yschimke/compose-ai-tools/issues/840)) ([92b9ce6](https://github.com/yschimke/compose-ai-tools/commit/92b9ce6e07b22c9379ecbdb232865304e978ebcf))
+* **vscode:** forward live pointer events through the streaming canvas ([#882](https://github.com/yschimke/compose-ai-tools/issues/882)) ([8ee7368](https://github.com/yschimke/compose-ai-tools/commit/8ee7368396332bf6044d750c1ad4dbae209d3d95))
+* **vscode:** forward live wheel events through the streaming canvas ([#880](https://github.com/yschimke/compose-ai-tools/issues/880)) ([2dac098](https://github.com/yschimke/compose-ai-tools/commit/2dac098e4d73aaeb67037db47a5755c663ae0d74))
+
 ## [0.9.3](https://github.com/yschimke/compose-ai-tools/compare/v0.9.2...v0.9.3) (2026-05-05)
 
 
