@@ -79,6 +79,23 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    */
   val manageDependencies: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
+  /**
+   * When `true`, the plugin wires the AGP `testDebugUnitTest` / `testReleaseUnitTest` tasks to
+   * depend on `renderAllPreviews`, so a consumer's pixel-test class (e.g. one that reads the PNGs
+   * under `build/compose-previews/renders/`) sees a fully-rendered output directory by the time its
+   * assertions run. Mirror of the boilerplate `:samples:android` / `:samples:wear` /
+   * `:samples:android-alpha` previously each carried in their own `build.gradle.kts`. Default
+   * `false` so consumers without pixel tests don't pay the `renderAllPreviews` cost on every
+   * `:check`.
+   *
+   * Targets the AGP unit-test tasks by name rather than `tasks.withType<Test>()` because the
+   * plugin's own `renderPreviews` Test task is what `renderAllPreviews` already depends on —
+   * matching it here would create a cycle. No-op on Compose Multiplatform / Desktop modules where
+   * those task names don't exist.
+   */
+  val renderBeforeUnitTests: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
   /** Generic selector for preview extensions that produce data alongside preview PNGs. */
   val previewExtensions: PreviewExtensionsExtension =
     objects.newInstance(PreviewExtensionsExtension::class.java)
