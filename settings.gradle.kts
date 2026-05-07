@@ -26,6 +26,8 @@ include(":preview-annotations")
 
 include(":samples:android")
 
+include(":samples:android-alpha")
+
 include(":samples:android-library")
 
 include(":samples:android-screenshot-test")

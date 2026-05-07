@@ -11,6 +11,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
@@ -650,6 +653,25 @@ abstract class RobolectricRenderTestBase(
                     }?.let { SlotTreeCapture() }
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
+                    // Robolectric never receives real key input, so the host
+                    // [InputModeManager] reports [InputMode.Touch]. Compose's
+                    // `Modifier.clickable` registers its focusable with
+                    // [Focusability.SystemDefined], which short-circuits in
+                    // touch mode — meaning Button-shaped components silently
+                    // refuse focus and a preview that calls
+                    // `FocusRequester.requestFocus()` produces an
+                    // unfocused-looking capture. Modules that exercise focus
+                    // visualisation set `composeai.focus.inputMode=keyboard`
+                    // on the `renderPreviews` task; the renderer then hands
+                    // Compose a Keyboard-mode manager, the same state that
+                    // holds on a real device after the user has Tabbed to
+                    // the component. Off by default to keep components that
+                    // change appearance based on input mode (e.g. Wear's
+                    // EdgeButton) byte-identical.
+                    if (System.getProperty("composeai.focus.inputMode")
+                            ?.equals("keyboard", ignoreCase = true) == true) {
+                        add(LocalInputModeManager provides KeyboardInputModeManager)
+                    }
                     if (scrollCaptureProvidable != null) {
                         add(scrollCaptureProvidable provides scrollCaptureInProgress)
                     }
@@ -1690,6 +1712,19 @@ private const val AUTO_DURATION_TAIL_MS = 200L
  */
 private const val HOLD_START_ANIM_MS = 500
 private const val HOLD_END_ANIM_MS = 1000
+
+/**
+ * [InputModeManager] that always reports [InputMode.Keyboard] — provided
+ * via [LocalInputModeManager] so previews that call
+ * `FocusRequester.requestFocus()` actually receive focus. See the call
+ * site in [renderDefault]'s `providedValues` block for the full
+ * rationale.
+ */
+private object KeyboardInputModeManager : InputModeManager {
+    override val inputMode: InputMode = InputMode.Keyboard
+
+    override fun requestInputMode(inputMode: InputMode): Boolean = false
+}
 
 /**
  * Adds Robolectric's `+round` qualifier so `Configuration.isScreenRound` becomes
