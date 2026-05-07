@@ -741,6 +741,7 @@ internal object ComposePreviewTasks {
         if (rel in expectedRelPaths) return@forEach
         if (paramStems.any { it.matches(rel, f.name) }) return@forEach
         if (isA11ySiblingOfExpected(rel, expectedRelPaths)) return@forEach
+        if (isRawSiblingOfExpected(rel, expectedRelPaths)) return@forEach
         if (!f.delete()) {
           logger.warn("compose-preview: couldn't delete stale render $f")
         }
@@ -755,6 +756,19 @@ internal object ComposePreviewTasks {
   internal fun isA11ySiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
     if (!rel.endsWith(".a11y.png")) return false
     val cleanSibling = rel.removeSuffix(".a11y.png") + ".png"
+    return cleanSibling in expectedRelPaths
+  }
+
+  /**
+   * `<stem>.raw.png` lives next to a clean `<stem>.png` registered in the manifest. Produced by
+   * `@FocusedPreview(overlay = true)` — the renderer copies the unmarked capture aside before
+   * applying the focus-rect overlay to the main file. Same preservation shape as
+   * [isA11ySiblingOfExpected] — match by mechanical suffix-strip, not by re-checking the manifest's
+   * overlay flag, so a `.raw.png` whose clean sibling has been removed is still garbage.
+   */
+  internal fun isRawSiblingOfExpected(rel: String, expectedRelPaths: Set<String>): Boolean {
+    if (!rel.endsWith(".raw.png")) return false
+    val cleanSibling = rel.removeSuffix(".raw.png") + ".png"
     return cleanSibling in expectedRelPaths
   }
 

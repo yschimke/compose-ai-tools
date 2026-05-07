@@ -78,19 +78,51 @@ data class AnimationCapture(
 )
 
 /**
+ * Mirrors `ee.schimke.composeai.preview.FocusDirection` from the `preview-annotations` artifact.
+ * Duplicated here so the Gradle plugin can serialize the value into `previews.json` without pulling
+ * the annotation artifact (and Compose) onto the plugin's compile classpath.
+ */
+enum class FocusDirection {
+  Next,
+  Previous,
+  Up,
+  Down,
+  Left,
+  Right,
+}
+
+/**
  * Focus capture state sourced from `@FocusedPreview`. Carried as its own field on [Capture] —
  * orthogonal to [Capture.scroll] / [Capture.animation] — so the renderer can switch on its presence
  * to (a) provide an `InputMode.Keyboard` `LocalInputModeManager` (Compose's `Modifier.clickable`
  * focusable refuses focus under touch mode, which Robolectric is permanently in) and (b) walk the
- * focus owner to [tabIndex] before capture.
+ * focus owner to the requested target before capture.
  */
 @Serializable
 data class FocusCapture(
   /**
-   * Zero-based focus index in tab order. Capture 0 issues `moveFocus(Enter)`; later captures issue
-   * `moveFocus(Next)` to walk forward to the requested index.
+   * Zero-based focus index in tab order, in indexed-mode captures. `null` in traversal-mode
+   * captures (use [direction] instead). Capture 0 issues `moveFocus(Enter)` + Next steps to land on
+   * `tabIndex`; later captures issue `moveFocus(Next)` deltas.
    */
-  val tabIndex: Int
+  val tabIndex: Int? = null,
+  /**
+   * Direction to apply before this capture, in traversal-mode captures. `null` in indexed-mode
+   * captures (use [tabIndex] instead). The renderer issues `moveFocus(Enter)` once on the first
+   * traversal step, then `moveFocus(direction)` per capture.
+   */
+  val direction: FocusDirection? = null,
+  /**
+   * 1-based step number within a `traverse = [...]` array. Carried separately from [direction] so
+   * the renderer's overlay can label captures (`step 2`) even when several steps share a direction.
+   * `null` in indexed-mode captures.
+   */
+  val step: Int? = null,
+  /**
+   * When `true`, the renderer post-applies a stroke + label overlay to the captured PNG. The
+   * pre-overlay capture is kept alongside as `<basename>.raw.png`.
+   */
+  val overlay: Boolean = false,
 )
 
 /**

@@ -7,10 +7,20 @@ package ee.schimke.composeai.preview
  * [ScrollingPreview] / [AnimatedPreview] split: consumers that want to use the annotation in their
  * own code depend on `ee.schimke.composeai:preview-annotations`.
  *
- * The renderer fans out one capture per entry in [indices], driving the Compose focus owner across
- * the focusables in tab order via `FocusManager.moveFocus(...)` — no `FocusRequester` needed in the
- * preview body. Each frame is captured at its assigned focus position with a `_FOCUS_<index>`
- * filename suffix.
+ * Two driving modes — pick one:
+ *
+ * * **Indexed** ([indices]): fan out one capture per requested tab-order index. The renderer issues
+ *   `moveFocus(Enter)` once on the first capture, then `moveFocus(Next)` to walk forward to each
+ *   subsequent index. Filename suffix `_FOCUS_<index>`. Default mode (`indices = [0]`).
+ *
+ * * **Traversal** ([traverse]): one capture per direction in the array. The renderer issues
+ *   `moveFocus(Enter)` once before the first step, then `moveFocus(direction)` per entry. Filename
+ *   suffix `_FOCUS_step<n>_<direction>`. Useful for asserting Tab / Shift-Tab / D-pad traversal
+ *   order in PR diffs — each step is a separate PNG so reviewers see exactly which focusable each
+ *   move lands on.
+ *
+ * `traverse` takes precedence when both are set; mixing them in a single annotation isn't
+ * meaningful.
  *
  * Compose's `Modifier.clickable` registers its focusable with `Focusability.SystemDefined`, which
  * refuses focus while the host `LocalInputModeManager.inputMode == InputMode.Touch`. Robolectric's
@@ -18,7 +28,7 @@ package ee.schimke.composeai.preview
  * annotation also flips `LocalInputModeManager` to Keyboard mode for the duration of its captures —
  * matching the state a real device is in after the user Tabs to a component.
  *
- * Example — a row of buttons, ring on each in turn:
+ * Example — indexed:
  * ```
  * @Preview
  * @FocusedPreview(indices = [0, 1, 2, 3])
@@ -31,6 +41,18 @@ package ee.schimke.composeai.preview
  *     }
  * }
  * ```
+ *
+ * Example — traversal:
+ * ```
+ * @Preview
+ * @FocusedPreview(traverse = [FocusDirection.Next, FocusDirection.Next, FocusDirection.Previous])
+ * @Composable
+ * fun MyButtonRow() { ... }
+ * ```
+ *
+ * When [overlay] is `true`, the renderer draws a stroke + index label over the captured PNG showing
+ * the bounds of the currently-focused element. Useful when the component's own focus indicator is
+ * subtle and you want an unambiguous review-time marker.
  */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.FUNCTION)
@@ -41,7 +63,35 @@ annotation class FocusedPreview(
    * then `moveFocus(Next)` to walk forward to each subsequent index. Indices must be non-negative
    * and strictly increasing — backward traversal isn't supported because Compose's focus search
    * doesn't expose a "go to absolute index" entry point. Defaults to `[0]` (a single capture with
-   * focus on the first focusable).
+   * focus on the first focusable). Ignored when [traverse] is non-empty.
    */
-  val indices: IntArray = [0]
+  val indices: IntArray = [0],
+  /**
+   * Directions to apply, one capture per entry. Each capture is taken *after* applying that step's
+   * direction; the renderer issues a single `moveFocus(Enter)` before step 1 so the first move
+   * lands on a real focusable rather than no-op'ing on an inactive root. Empty (the default) → use
+   * [indices].
+   */
+  val traverse: Array<FocusDirection> = [],
+  /**
+   * When `true`, the renderer overlays a stroke + step / index label on each captured PNG showing
+   * the currently-focused element's bounds. The overlay is post-applied to the output file, so the
+   * pre-overlay capture is preserved alongside (`<basename>.raw.png`). Off by default to keep
+   * captures byte-identical to a no-overlay run when reviewers don't want the marker.
+   */
+  val overlay: Boolean = false,
 )
+
+/**
+ * Mirrors the Compose `androidx.compose.ui.focus.FocusDirection` value class as a discoverable
+ * enum. The Gradle plugin can't load Compose at discovery time, so we duplicate the relevant set
+ * here and let the renderer translate at render time.
+ */
+enum class FocusDirection {
+  Next,
+  Previous,
+  Up,
+  Down,
+  Left,
+  Right,
+}
