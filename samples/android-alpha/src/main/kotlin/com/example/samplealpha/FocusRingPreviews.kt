@@ -1,6 +1,5 @@
 package com.example.samplealpha
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,36 +18,27 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
 import ee.schimke.composeai.preview.AnimatedPreview
+import ee.schimke.composeai.preview.FocusedPreview
 import kotlinx.coroutines.delay
 
 private val LABELS = listOf("Save", "Edit", "Share", "Delete")
 
 @Composable
-private fun ButtonRow(focusedIndex: Int) {
-    val frs = remember { List(LABELS.size) { FocusRequester() } }
-    LaunchedEffect(focusedIndex) { frs[focusedIndex].requestFocus() }
+private fun ButtonRow() {
     Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        LABELS.forEachIndexed { i, label ->
+        LABELS.forEach { label ->
             Button(
                 onClick = {},
-                modifier = Modifier.padding(end = 8.dp).focusRequester(frs[i]),
+                modifier = Modifier.padding(end = 8.dp),
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Text(label)
             }
         }
     }
-}
-
-class FocusIndexProvider : PreviewParameterProvider<Int> {
-    override val values: Sequence<Int> = (0 until LABELS.size).asSequence()
 }
 
 @Composable
@@ -62,12 +52,11 @@ private fun WithRippleConfig(config: RippleThemeConfiguration, content: @Composa
     heightDp = 96,
     showBackground = true,
 )
+@FocusedPreview(indices = [0, 1, 2, 3])
 @Composable
-fun InsetFocusRingFanOutPreview(@PreviewParameter(FocusIndexProvider::class) focusedIndex: Int) {
+fun InsetFocusRingFanOutPreview() {
     MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) {
-            ButtonRow(focusedIndex)
-        }
+        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
     }
 }
 
@@ -88,26 +77,59 @@ fun InsetFocusRingAnimatedPreview() {
         }
     }
     MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow(idx) }
+        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) {
+            // The animated preview drives focus via in-composition state
+            // rather than the @FocusedPreview annotation: the GIF needs
+            // one row composable that re-renders its focus state across
+            // 16 frames, not 16 separate preview captures.
+            FocusRingRowAnimated(idx)
+        }
     }
 }
 
-@Preview(
-    name = "Opacity vs Inset Ring",
-    widthDp = 480,
-    heightDp = 192,
-    showBackground = true,
-)
 @Composable
-fun OpacityVsInsetRingPreview() {
-    MaterialTheme {
-        Column {
-            WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) {
-                ButtonRow(focusedIndex = 1)
-            }
-            WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) {
-                ButtonRow(focusedIndex = 1)
+private fun FocusRingRowAnimated(focusedIndex: Int) {
+    val sources =
+        remember {
+            List(LABELS.size) {
+                androidx.compose.foundation.interaction.MutableInteractionSource()
             }
         }
+    LaunchedEffect(focusedIndex) {
+        sources[focusedIndex].emit(
+            androidx.compose.foundation.interaction.FocusInteraction.Focus()
+        )
+    }
+    Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+        LABELS.forEachIndexed { i, label ->
+            Button(
+                onClick = {},
+                modifier = Modifier.padding(end = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                interactionSource = sources[i],
+            ) {
+                Text(label)
+            }
+        }
+    }
+}
+
+/**
+ * Opacity-focus baseline: the same row drawn under
+ * `RippleDefaults.OpacityFocusRippleThemeConfiguration`. Pair-render with
+ * the inset-ring fan-out to see the visual delta between the two
+ * focus-indication strategies.
+ */
+@Preview(
+    name = "Opacity Focus",
+    widthDp = 480,
+    heightDp = 96,
+    showBackground = true,
+)
+@FocusedPreview(indices = [1])
+@Composable
+fun OpacityFocusPreview() {
+    MaterialTheme {
+        WithRippleConfig(RippleDefaults.OpacityFocusRippleThemeConfiguration) { ButtonRow() }
     }
 }

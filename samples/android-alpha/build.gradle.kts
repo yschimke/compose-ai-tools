@@ -25,19 +25,6 @@ android {
   testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
 }
 
-// The focus-ring previews call `FocusRequester.requestFocus()` to drive
-// real focus into a Material Button. Compose's clickable focusable is
-// `Focusability.SystemDefined` and refuses focus while the host
-// [InputModeManager] reports [InputMode.Touch] — Robolectric's default
-// for the renderer environment. This system property tells the renderer
-// to provide an [InputModeManager] reporting [InputMode.Keyboard],
-// matching the state a real device is in after the user Tabs to a
-// component. Scoped to this module's `renderPreviews` only; other
-// samples (wear EdgeButton in particular) keep the touch-mode default.
-tasks
-  .matching { it.name == "renderPreviews" }
-  .configureEach { (this as? Test)?.systemProperty("composeai.focus.inputMode", "keyboard") }
-
 dependencies {
   // Pinning material3 directly: the inset-focus-ring APIs
   // (RippleThemeConfiguration, LocalRippleThemeConfiguration,
@@ -50,8 +37,8 @@ dependencies {
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)
-  // `@AnimatedPreview` lives here — source-retained metadata read by
-  // `DiscoverPreviewsTask` at FQN.
+  // `@AnimatedPreview` and `@FocusedPreview` live here — source-retained
+  // metadata read by `DiscoverPreviewsTask` at FQN.
   implementation(project(":preview-annotations"))
   debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -50,6 +50,12 @@ data class AnimationCapture(
     val showCurves: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `FocusCapture`. */
+@Serializable
+data class FocusCapture(
+    val tabIndex: Int,
+)
+
 /**
  * Heavy/fast threshold for [RenderPreviewCapture.cost]. Mirrors the plugin's
  * `HEAVY_COST_THRESHOLD` — anything strictly greater is considered "heavy"
@@ -110,6 +116,7 @@ data class RenderPreviewCapture(
     val advanceTimeMillis: Long? = null,
     val scroll: ScrollCapture? = null,
     val animation: AnimationCapture? = null,
+    val focus: FocusCapture? = null,
     val renderOutput: String = "",
     /**
      * Estimated render cost normalised so a static `@Preview` is `1.0`. See
