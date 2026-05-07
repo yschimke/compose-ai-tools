@@ -16,11 +16,8 @@ import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
     applyRelativeSizing,
-    buildPreviewCard,
     type CardBuilderConfig,
     renderPreviews as renderPreviewsImpl,
-    updateCardMetadata,
-    updateImage,
 } from "./cardBuilder";
 import { FilterToolbar } from "./components/FilterToolbar";
 import { MessageBanner, type MessageOwner } from "./components/MessageBanner";
@@ -591,11 +588,13 @@ export class PreviewApp extends LitElement {
         // `<filter-toolbar>`'s reactive state retains `fnValue` / `grpValue`
         // when only `fnOptions` / `grpOptions` change.
 
-        // Card lifecycle lives in `./cardBuilder.ts` — see `buildPreviewCard`,
-        // `updateCardMetadata`, `applyRelativeSizing`, `updateImage`,
-        // `applyA11yUpdate`. The eventual `<preview-card>` Lit component will
-        // fold all five into a single reactive `render()` and consume the same
-        // `CardBuilderConfig` shape for its collaborator surface.
+        // Card lifecycle: initial DOM build in `./cardBuilder.ts`
+        // (`buildPreviewCard` / `populatePreviewCard`); reactive metadata
+        // refresh + per-frame image paint live behind `<preview-card>`'s
+        // `updated()` hook + `paintCapture` method (delegating to
+        // `./cardMetadata.refreshCardMetadata` and `./cardImage.paintCardCapture`).
+        // `applyA11yUpdate` and `applyRelativeSizing` still flow through
+        // `cardBuilderConfig` for now.
         const cardBuilderConfig: CardBuilderConfig = {
             vscode,
             grid,
@@ -665,13 +664,6 @@ export class PreviewApp extends LitElement {
             saveFilterState,
             restoreFilterState,
             ensureNotBlank,
-            updateImage: (previewId, captureIndex, imageData) =>
-                updateImage(
-                    previewId,
-                    captureIndex,
-                    imageData,
-                    cardBuilderConfig,
-                ),
             applyA11yUpdate: (previewId, findings, nodes) =>
                 applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig),
             focusOnCard,

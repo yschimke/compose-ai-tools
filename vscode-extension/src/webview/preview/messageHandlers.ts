@@ -16,8 +16,11 @@
 // state still owned imperatively by `behavior.ts` — `allPreviews`,
 // `moduleDir`, `lastScopedPreviewId`, `a11yOverlayPreviewId` — and the
 // orchestration callbacks (`renderPreviews`, `applyLayout`,
-// `applyFilters`, `updateImage`, `applyA11yUpdate`, `focusOnCard`, etc.)
-// that should fold into a future `<preview-card>` Lit component. The
+// `applyFilters`, `applyA11yUpdate`, `focusOnCard`, etc.) that should
+// fold into a future `<preview-card>` Lit component. (`updateImage`
+// already has — the dispatcher resolves the card by id and calls
+// `card.paintCapture(...)` directly; no `ctx.updateImage` callback.)
+// The
 // per-preview Maps (`cardCaptures`, `cardA11yFindings`, `cardA11yNodes`)
 // now live on `previewStore` and are reached through the helpers in
 // `previewStore.ts`. The per-module availability Maps (`moduleDaemonReady`,
@@ -40,6 +43,7 @@ import type {
 import type { VsCodeApi } from "../shared/vscode";
 import { safeArrayIndex } from "../shared/safeIndex";
 import { sanitizeId } from "./cardData";
+import { PreviewCard } from "./components/PreviewCard";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { buildErrorPanel } from "./errorPanel";
 import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
@@ -93,11 +97,6 @@ export interface PreviewMessageContext {
     saveFilterState(): void;
     restoreFilterState(): void;
     ensureNotBlank(): void;
-    updateImage(
-        previewId: string,
-        captureIndex: number,
-        imageData: string,
-    ): void;
     applyA11yUpdate(
         previewId: string,
         findings: readonly AccessibilityFinding[] | null | undefined,
@@ -127,13 +126,22 @@ export function handleExtensionMessage(
             return;
         case "clearAll":
             return handleClearAll(ctx);
-        case "updateImage":
-            ctx.updateImage(
-                msg.previewId,
-                safeArrayIndex(msg.captureIndex),
-                msg.imageData,
+        case "updateImage": {
+            // Resolve the card and delegate to its `paintCapture`
+            // method — `<preview-card>` owns the per-frame paint
+            // path, so the dispatcher hands off the captureIndex /
+            // imageData straight to the component.
+            const card = document.getElementById(
+                "preview-" + sanitizeId(msg.previewId),
             );
+            if (card instanceof PreviewCard) {
+                card.paintCapture(
+                    safeArrayIndex(msg.captureIndex),
+                    msg.imageData,
+                );
+            }
             return;
+        }
         case "updateA11y":
             ctx.applyA11yUpdate(msg.previewId, msg.findings, msg.nodes);
             return;

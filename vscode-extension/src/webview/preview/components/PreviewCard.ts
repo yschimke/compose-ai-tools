@@ -2,31 +2,34 @@
 // imperative `buildPreviewCard` previously built directly on a
 // `<div class="preview-card">`.
 //
-// Step 2 of #857. The shell is intentionally minimal: it carries the
-// `preview` (PreviewInfo) and `config` (CardBuilderConfig) the host
-// hands in, and on `firstUpdated()` runs the imperative population
-// logic against `this`. Step 3 (#857) lifts the metadata refresh into
-// reactive `@state`; step 4 (this file) wires a `StoreController`
-// against `previewStore.mapsRevision` so the per-preview a11y caches
-// drive overlay repaints from the component itself instead of from
-// `applyA11yUpdate`.
+// Step 3 of #857: the metadata refresh and per-frame image paint now
+// live behind narrow-deps helpers (`refreshCardMetadata` in
+// `../cardMetadata`, `paintCardCapture` in `../cardImage`) and the
+// component owns the call sites. The host's old free-function
+// `updateImage` shim is gone — the message dispatcher resolves the
+// card by id and calls `card.paintCapture(captureIndex, imageData)`
+// here, which delegates to `paintCardCapture` against `this`.
 //
-// The `<img>` paint itself stays in `updateImage` (it owns the
-// `img.src` swap, the live-frame class, and the interactive-input
-// rebind). The on-image-load a11y repaint, however, lives here:
-// when a `mapsRevision` bump arrives but the `<img>` has not yet
-// resolved its `naturalWidth`, this component attaches a one-time
-// `load` listener instead of bailing. Combined with `updateImage`
-// bumping `mapsRevision` AFTER assigning the new `src`, the
-// component's StoreController fires with the right image element
-// and the load listener attaches against the new src.
+// `firstUpdated` still runs the imperative `populatePreviewCard`
+// logic to build initial DOM — that one stays in `cardBuilder.ts`
+// for now since it touches collaborator hooks (`enterFocus`,
+// `observeForViewport`) that aren't on the narrow-deps surface.
+// Folding that one in is a follow-up step.
+//
+// `_mapsRevision` (`StoreController`) drives a11y-overlay repaints
+// from the per-preview cache: `paintCardCapture` bumps
+// `previewStore.mapsRevision` AFTER assigning the new `<img>.src`, so
+// the component re-runs `_repaintA11yOverlaysFromCache` with the new
+// image in place. When the `<img>` hasn't yet resolved its natural
+// dimensions, the repaint attaches a one-time `load` listener and
+// paints when the bytes land.
 //
 // We pass `preview` as a `@property` rather than just a `previewId`
-// because `populatePreviewCard` needs the full `PreviewInfo` (function
-// name, params, captures, a11yFindings, …). Resolving from
-// `previewStore.allPreviews` would work but adds an indirection that
-// step 3 will need to undo when it switches to a reactive selection
-// against the store.
+// because `populatePreviewCard` and `refreshCardMetadata` need the
+// full `PreviewInfo` (function name, params, captures, a11yFindings,
+// …). Resolving from `previewStore.allPreviews` would work but adds
+// an indirection a later step can undo when it switches to a reactive
+// selection against the store.
 //
 // Light DOM only — `media/preview.css` selectors target
 // `.preview-card .card-header .card-title-row` etc. and would not
@@ -42,7 +45,9 @@ import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { applyHierarchyOverlay, buildA11yOverlay } from "../a11yOverlay";
 import type { CardBuilderConfig } from "../cardBuilder";
-import { populatePreviewCard, updateCardMetadata } from "../cardBuilder";
+import { populatePreviewCard } from "../cardBuilder";
+import { paintCardCapture } from "../cardImage";
+import { refreshCardMetadata } from "../cardMetadata";
 import { previewStore, type PreviewState } from "../previewStore";
 import { StoreController } from "../../shared/storeController";
 import type { PreviewInfo } from "../../shared/types";
@@ -120,10 +125,27 @@ export class PreviewCard extends LitElement {
             const preview = this.preview;
             const config = this.config;
             if (preview && config) {
-                updateCardMetadata(this, preview, config);
+                refreshCardMetadata(this, preview, config);
             }
         }
         this._repaintA11yOverlaysFromCache();
+    }
+
+    /** Per-frame image paint — invoked by the message dispatcher
+     *  after resolving the card by id. Delegates to
+     *  `paintCardCapture` against `this`; the helper handles cache
+     *  mutation, currently-displayed-vs-arriving capture comparison,
+     *  `<img>` swap, interactive-input rebind, and the
+     *  `mapsRevision` bump that drives the overlay repaint. No-op
+     *  when `config` hasn't been set (the card is mid-construction
+     *  and `firstUpdated` hasn't run yet — shouldn't happen in
+     *  practice since the dispatcher only finds cards already
+     *  attached to the grid). */
+    paintCapture(captureIndex: number, imageData: string): void {
+        const preview = this.preview;
+        const config = this.config;
+        if (!preview || !config) return;
+        paintCardCapture(this, preview.id, captureIndex, imageData, config);
     }
 
     /** Re-paint the a11y findings / hierarchy overlays from the latest
