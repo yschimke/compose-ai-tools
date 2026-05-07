@@ -580,10 +580,17 @@
     "sha256": "9340c279d321d58e4646637d6e1fa5334cba2241c02ffd519766043ad501f3bc",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
-  "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusPreview_Ambient body": {
+  "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {
     "captureLabel": "",
-    "functionName": "AmbientStatusPreview",
-    "renderBasename": "AmbientPreviewsKt.AmbientStatusPreview_Ambient_body.png",
+    "functionName": "AmbientStatusAmbientPreview",
+    "renderBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+    "sha256": "7262d3bb10ad2a44b7ab0098bcafe843eff43f4294893332ceb6d68d8a5f169c",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient body \u2014 interactive": {
+    "captureLabel": "",
+    "functionName": "AmbientStatusInteractivePreview",
+    "renderBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
     "sha256": "ed6647819acf1e7f0327b2d971dbf9cebc4a9cbc6539497033c082d329762509",
     "sourceFile": "src/main/kotlin/com/example/samplewear/AmbientPreviews.kt"
   },
@@ -640,7 +647,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
