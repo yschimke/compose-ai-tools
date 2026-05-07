@@ -76,10 +76,16 @@ dependencies {
   // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
   // UiAutomator.findObject(rule, selector, useUnmergedTree).
   implementation(project(":data-uiautomator-core"))
-  // `uia.*` script-event descriptors — DaemonMain registers an Extension(id="uiautomator", ...)
-  // carrying these descriptors; AndroidRecordingSession registers a handler per id that routes
-  // to dispatchUiAutomator.
+  // `uia.*` script-event descriptors + `UiAutomatorDataProducer` / `UiAutomatorDataProductRegistry`
+  // (#874). DaemonMain registers an Extension(id="uiautomator", ...) carrying these descriptors
+  // and the registry; AndroidRecordingSession registers a handler per id that routes to
+  // dispatchUiAutomator; RenderEngine.kt calls the producer's `writeArtifacts(...)` post-capture.
   implementation(project(":data-uiautomator-connector"))
+
+  // Android-platform-specific UIAutomator hierarchy producer — `RenderEngine.kt` installs
+  // `UiAutomatorHierarchyExtension` and runs the typed extension contract to compute the
+  // `UiAutomatorHierarchyPayload` before handing it to `UiAutomatorDataProducer`.
+  implementation(project(":data-uiautomator-hierarchy-android"))
 
   // Inherit the renderer's Compose/Roborazzi helpers (GoogleFontInterceptor,
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,

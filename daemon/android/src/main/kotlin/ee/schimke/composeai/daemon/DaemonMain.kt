@@ -404,13 +404,15 @@ fun main(args: Array<String>) {
               )
             )
           }
-          // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.). Always
-          // wired on the Android backend — the dispatch path lives in RobolectricHost and
-          // doesn't depend on the a11y opt-in.
+          // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.) plus the
+          // `uia/hierarchy` data product (#874). Always wired on the Android backend — the
+          // dispatch path lives in RobolectricHost and the hierarchy producer ride along on
+          // the same render pass; neither depends on the a11y opt-in.
           add(
             Extension(
               id = UiAutomatorRecordingScriptEvents.EXTENSION_ID,
               displayName = "UIAutomator script actions",
+              dataProductRegistry = UiAutomatorDataProductRegistry(rootDir = dataRoot),
               dataExtensionDescriptors = UiAutomatorRecordingScriptEvents.descriptors,
             )
           )

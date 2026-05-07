@@ -25,16 +25,27 @@ import com.vanniktech.maven.publish.SourcesJar
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
+  alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.tapmoc)
 }
 
 android { namespace = "ee.schimke.composeai.data.uiautomator.connector" }
 
 dependencies {
+  // Typed payload + `UiAutomatorDataProducts.Hierarchy` key — the producer/registry below
+  // serialise / advertise this kind. Re-exported via `api` so `:daemon:android` can refer to
+  // `UiAutomatorHierarchyPayload` without adding a second `project` dep.
+  api(project(":data-uiautomator-core"))
+
+  // `DataProductRegistry` interface, `DataProductCapability` / `DataProductAttachment` wire
+  // types — re-exported via `api` for the same reason `:data-a11y-connector` does.
+  api(project(":daemon:core"))
+
   // `RecordingScriptEventDescriptor` + `DataExtensionDescriptor` types.
   api(project(":data-render-core"))
 
   testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.serialization.json)
 }
 
 mavenPublishing {
