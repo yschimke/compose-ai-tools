@@ -152,6 +152,14 @@ include(":data-ambient-connector")
 
 project(":data-ambient-connector").projectDir = file("data/ambient/connector")
 
+include(":data-focus-core")
+
+project(":data-focus-core").projectDir = file("data/focus/core")
+
+include(":data-focus-connector")
+
+project(":data-focus-connector").projectDir = file("data/focus/connector")
+
 include(":data-recomposition-core")
 
 project(":data-recomposition-core").projectDir = file("data/recomposition/core")

@@ -66,6 +66,12 @@ dependencies {
   // `AmbientStateController`, the `AroundComposable` extension that primes it, and the
   // `AmbientInputDispatchObserver` that wakes on activating gestures during recording.
   implementation(project(":data-ambient-connector"))
+  // Focus / keyboard-traversal connector — `FocusController`, the `AroundComposable` extension
+  // that installs `LocalInputModeManager provides KeyboardInputModeManager` and drives the focus
+  // walk from a `LaunchedEffect`, the `FocusPreviewOverrideExtension` planner consuming
+  // `renderNow.overrides.focus`, and the post-capture `FocusOverlay`. The renderer-android plugin
+  // path consumes the same connector — see `:renderer-android`'s `implementation` line.
+  implementation(project(":data-focus-connector"))
   // UIAutomator-shaped Selector + UiObject — RobolectricHost.performUiAutomatorAction decodes
   // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
   // UiAutomator.findObject(rule, selector, useUnmergedTree).

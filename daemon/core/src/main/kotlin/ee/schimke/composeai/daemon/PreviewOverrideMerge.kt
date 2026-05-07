@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
+import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -28,6 +29,7 @@ data class PreviewOverrideBaseSpec(
   val material3Theme: Material3ThemeOverrides? = null,
   val wallpaper: WallpaperOverride? = null,
   val ambient: AmbientOverride? = null,
+  val focus: FocusOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -43,6 +45,7 @@ data class MergedPreviewOverrides(
   val material3Theme: Material3ThemeOverrides?,
   val wallpaper: WallpaperOverride?,
   val ambient: AmbientOverride?,
+  val focus: FocusOverride?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries
@@ -51,11 +54,12 @@ data class MergedPreviewOverrides(
    * data-extension pipeline entirely.
    */
   fun toExtensionOverrides(): PreviewOverrides? {
-    if (material3Theme == null && wallpaper == null && ambient == null) return null
+    if (material3Theme == null && wallpaper == null && ambient == null && focus == null) return null
     return PreviewOverrides(
       material3Theme = material3Theme,
       wallpaper = wallpaper,
       ambient = ambient,
+      focus = focus,
     )
   }
 }
@@ -86,6 +90,7 @@ fun mergePreviewOverrides(
       material3Theme = base.material3Theme,
       wallpaper = base.wallpaper,
       ambient = base.ambient,
+      focus = base.focus,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -110,5 +115,6 @@ fun mergePreviewOverrides(
     material3Theme = overrides.material3Theme ?: base.material3Theme,
     wallpaper = overrides.wallpaper ?: base.wallpaper,
     ambient = overrides.ambient ?: base.ambient,
+    focus = overrides.focus ?: base.focus,
   )
 }
