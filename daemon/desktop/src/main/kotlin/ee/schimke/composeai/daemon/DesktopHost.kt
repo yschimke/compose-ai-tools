@@ -269,6 +269,7 @@ open class DesktopHost(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
+    onSessionClosed: (() -> Unit)?,
   ): InteractiveSession {
     val resolver =
       previewSpecResolver
@@ -289,6 +290,7 @@ open class DesktopHost(
         engine = engine,
         state = state,
         sandboxStats = sandboxStats,
+        onCloseHook = onSessionClosed,
       )
     val listener = interactiveSessionListener
     if (listener == null) {
@@ -322,6 +324,9 @@ open class DesktopHost(
   ) : InteractiveSession {
 
     @Volatile private var closed = false
+
+    override val isClosed: Boolean
+      get() = closed || delegate.isClosed
 
     override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) =
       delegate.dispatch(input)

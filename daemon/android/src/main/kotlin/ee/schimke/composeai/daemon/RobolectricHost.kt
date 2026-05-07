@@ -742,6 +742,7 @@ open class RobolectricHost(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
+    onSessionClosed: (() -> Unit)?,
   ): InteractiveSession {
     if (sandboxCount < 2) {
       throw UnsupportedOperationException(
@@ -766,6 +767,7 @@ open class RobolectricHost(
       previewId = previewId,
       spec = spec,
       inspectionMode = inspectionMode,
+      onSessionClosed = onSessionClosed,
     )
   }
 
@@ -773,6 +775,7 @@ open class RobolectricHost(
     previewId: String,
     spec: RenderSpec,
     inspectionMode: Boolean? = spec.inspectionMode,
+    onSessionClosed: (() -> Unit)? = null,
   ): AndroidInteractiveSession {
     val streamId = "android-stream-${nextStreamCounter.getAndIncrement()}"
     if (!activeInteractiveStreamId.compareAndSet(null, streamId)) {
@@ -856,7 +859,23 @@ open class RobolectricHost(
         slot = slot,
         activeStreamRef = activeInteractiveStreamId,
         idleLeaseMs = interactiveIdleLeaseMs,
-        onCloseHook = { activeInteractiveSession.compareAndSet(sessionBox[0], null) },
+        onCloseHook = {
+          activeInteractiveSession.compareAndSet(sessionBox[0], null)
+          // JsonRpcServer-side cleanup wired through the public acquire API. Wrapped in
+          // try/catch because a misbehaving caller hook shouldn't strand the host's own state
+          // mutation above (e.g. leaving activeInteractiveSession pinned after the watchdog
+          // ran). The hook itself runs on whatever thread fired the close — see RenderHost.
+          if (onSessionClosed != null) {
+            try {
+              onSessionClosed()
+            } catch (t: Throwable) {
+              System.err.println(
+                "compose-ai-daemon: RobolectricHost: onSessionClosed threw " +
+                  "(${t.javaClass.simpleName}: ${t.message}); continuing"
+              )
+            }
+          }
+        },
       )
     sessionBox[0] = session
     activeInteractiveSession.set(session)

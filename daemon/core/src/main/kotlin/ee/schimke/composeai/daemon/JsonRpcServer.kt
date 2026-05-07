@@ -2050,7 +2050,12 @@ class JsonRpcServer(
           host.userClassloaderHolder?.currentChildLoader()
             ?: this::class.java.classLoader
             ?: ClassLoader.getSystemClassLoader()
-        host.acquireInteractiveSession(params.previewId, classLoader, params.inspectionMode)
+        host.acquireInteractiveSession(
+          previewId = params.previewId,
+          classLoader = classLoader,
+          inspectionMode = params.inspectionMode,
+          onSessionClosed = { cleanupClosedInteractiveSession(streamId) },
+        )
       } catch (t: UnsupportedOperationException) {
         fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
         null
@@ -2159,7 +2164,12 @@ class JsonRpcServer(
           host.userClassloaderHolder?.currentChildLoader()
             ?: this::class.java.classLoader
             ?: ClassLoader.getSystemClassLoader()
-        host.acquireInteractiveSession(params.previewId, classLoader, params.inspectionMode)
+        host.acquireInteractiveSession(
+          previewId = params.previewId,
+          classLoader = classLoader,
+          inspectionMode = params.inspectionMode,
+          onSessionClosed = { cleanupClosedInteractiveSession(streamId) },
+        )
       } catch (t: UnsupportedOperationException) {
         fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
         null
@@ -2317,6 +2327,43 @@ class JsonRpcServer(
     interactiveFrameLoops.remove(streamId)?.interrupt()
   }
 
+  /**
+   * Tear down server-side state for the held session attached to [streamId] when it has closed,
+   * while leaving the wire-level [streamId] valid so subsequent `interactive/input` notifications
+   * from a client that hasn't noticed the close yet route through the v1 stateless dispatch path
+   * (and produce a render) rather than dispatching into a dead session and getting silently
+   * dropped. Called from the `onSessionClosed` hook the server passes into
+   * [RenderHost.acquireInteractiveSession] — fires from whatever thread the host's session ran its
+   * close on (typically the watchdog's scheduled-executor thread for an idle-lease auto-close, the
+   * JSON-RPC read thread for explicit `interactive/stop`, or the JVM shutdown thread for
+   * `cleanShutdown`).
+   *
+   * Critically does NOT touch [interactiveTargets]: that map is what [handleInteractiveInput]'s
+   * lookup keys against to decide between v2 (held session) and v1 (stateless) paths. Keeping the
+   * entry means a post-auto-close click still produces pixels. The matching wire entry is finally
+   * cleared by [handleInteractiveStop] (when the client eventually hits stop) or by
+   * [cleanShutdown].
+   *
+   * Idempotent against concurrent / repeat close paths: every map operation is a `remove` on a
+   * `ConcurrentHashMap`, every registry call is documented as no-op-when-absent, and
+   * [stopInteractiveFrameLoop] interrupts at most one running thread. Safe to call from the
+   * server-internal handlers (`handleInteractiveStop`, `handleStreamStop`) AFTER they've already
+   * removed their entries — the second pass is a no-op. Without this proactive sweep the watchdog
+   * auto-close path on Android (idleLeaseMs default 5 min) would leave
+   * `interactiveSessions[streamId]` pointing at a dead session until the next render or input tried
+   * to use it; the live-frame loop's reactive sweep in [submitInteractiveRenderAsync] eventually
+   * catches it but only after one final failed render-then-cleanup round-trip per stream — and
+   * during that window any user click is dispatched into the dead session and lost.
+   */
+  private fun cleanupClosedInteractiveSession(streamId: String) {
+    interactiveSessions.remove(streamId)
+    pendingInteractiveInputs.remove(streamId)
+    interactiveRenderInFlight.remove(streamId)
+    streamSessions.remove(streamId)
+    streamRegistry.unregister(streamId)
+    stopInteractiveFrameLoop(streamId)
+  }
+
   private fun requestInteractiveRender(
     streamId: String,
     previewId: String,
@@ -2422,10 +2469,12 @@ class JsonRpcServer(
             // matches the `interactive/stop` contract — stale inputs against a stopped stream
             // are silently discarded.
             if (session.isClosed) {
-              interactiveSessions.remove(streamId, session)
-              interactiveTargets.remove(streamId)
-              pendingInteractiveInputs.remove(streamId)
-              stopInteractiveFrameLoop(streamId)
+              // Defensive sweep — typically the host's `onSessionClosed` hook (wired in
+              // [handleInteractiveStart]) has already done this synchronously when the session
+              // closed, but call again so hosts that don't wire the hook (older test fakes, the
+              // default RenderHost interface body) still get cleaned up before the loop's next
+              // tick. Idempotent.
+              cleanupClosedInteractiveSession(streamId)
             } else {
               val pending = pendingInteractiveInputs[streamId]
               if (

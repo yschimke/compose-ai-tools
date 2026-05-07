@@ -1505,6 +1505,7 @@ private class DisconnectFakeHost : RenderHost {
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
+    onSessionClosed: (() -> Unit)?,
   ): InteractiveSession {
     acquireCount.incrementAndGet()
     val session = RecordingDisconnectSession(previewId)

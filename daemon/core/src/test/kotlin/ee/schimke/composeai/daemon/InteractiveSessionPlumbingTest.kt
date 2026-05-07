@@ -342,6 +342,72 @@ class InteractiveSessionPlumbingTest {
   }
 
   @Test(timeout = 30_000)
+  fun watchdog_autoclose_routes_next_input_through_v1_fallback() {
+    // Proactive cleanup: when the host's onSessionClosed hook fires (mirroring the Android
+    // watchdog auto-close path), the server must synchronously yank the session out of
+    // interactiveSessions so the very next interactive/input lands on the v1 stateless
+    // dispatch path instead of routing into the dead session and dropping the user's click.
+    val tmp = Files.createTempDirectory("interactive-session-autoclose-fallback").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = SessionAwareFakeHost(pngFile)
+
+    // No live-frame loop — we want to prove the cleanup happens at close-time, not at
+    // next-render-time. With the loop disabled, the only path that could discover the closed
+    // session reactively is interactive/input → submitInteractiveRenderAsync → render-throws,
+    // which would dispatch the click into the dead session first (no-op) and drop it.
+    val (_, serverThread, clientToServerOut, received, exitLatch) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":10,"method":"interactive/start","params":{"previewId":"preview-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 10 }
+    val streamId =
+      startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    val session = host.lastSession()!!
+    assertNotNull("server should have wired an onSessionClosed hook", host.lastOnSessionClosed)
+
+    // Fire the auto-close. RecordingSession.markClosed() flips isClosed and invokes the captured
+    // hook synchronously — same shape as AndroidInteractiveSession.checkIdleLease() →
+    // close() → onCloseHook() in production.
+    session.markClosed()
+    val dispatchAtAutoClose = session.dispatchCount.get()
+    val submitAtAutoClose = host.submitCalls.get()
+
+    // Now fire an input. With the proactive sweep done, interactiveSessions[streamId] is null,
+    // handleInteractiveInput falls through to the v1 stateless path (host.submit), and
+    // session.dispatch is NOT called.
+    writeFrame(
+      clientToServerOut,
+      """
+      {"jsonrpc":"2.0","method":"interactive/input","params":{
+        "frameStreamId":"$streamId","kind":"click","pixelX":7,"pixelY":7
+      }}
+      """
+        .trimIndent(),
+    )
+
+    val finished =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+    assertNotNull("post-autoclose input should still produce a v1 renderFinished", finished)
+    assertEquals(
+      "post-autoclose input must NOT dispatch into the closed session " +
+        "(would drop the click — the bug this hook prevents)",
+      dispatchAtAutoClose,
+      session.dispatchCount.get(),
+    )
+    assertTrue(
+      "post-autoclose input must take the v1 fallback path (host.submit fires)",
+      host.submitCalls.get() > submitAtAutoClose,
+    )
+
+    teardownServer(clientToServerOut, received, serverThread, exitLatch)
+  }
+
+  @Test(timeout = 30_000)
   fun cleanShutdown_closes_all_open_sessions() {
     val tmp = Files.createTempDirectory("interactive-session-shutdown").toFile()
     val aPng = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -492,6 +558,7 @@ private class SessionAwareFakeHost(
 ) : RenderHost {
 
   val acquireCalls = AtomicInteger(0)
+  val submitCalls = AtomicInteger(0)
   @Volatile var lastInspectionMode: Boolean? = null
   private val sessions = ConcurrentHashMap<Long, RecordingSession>()
   private val nextSessionKey = AtomicLong(1)
@@ -500,6 +567,7 @@ private class SessionAwareFakeHost(
 
   override fun submit(request: RenderRequest, timeoutMs: Long): RenderResult {
     require(request is RenderRequest.Render)
+    submitCalls.incrementAndGet()
     return RenderResult(
       id = request.id,
       classLoaderHashCode = 0,
@@ -514,15 +582,25 @@ private class SessionAwareFakeHost(
   override val supportsInteractive: Boolean
     get() = true
 
+  /**
+   * Captured hook the server passed at acquire time. Tests use [simulateAutoClose] to fire it,
+   * mirroring [AndroidInteractiveSession]'s idle-lease watchdog path without needing a real
+   * watchdog timer.
+   */
+  @Volatile var lastOnSessionClosed: (() -> Unit)? = null
+
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
+    onSessionClosed: (() -> Unit)?,
   ): InteractiveSession {
     acquireCalls.incrementAndGet()
     lastInspectionMode = inspectionMode
+    lastOnSessionClosed = onSessionClosed
     val pngFile = perPreview[previewId] ?: defaultPng
-    val session = RecordingSession(previewId = previewId, pngFile = pngFile)
+    val session =
+      RecordingSession(previewId = previewId, pngFile = pngFile, onSessionClosed = onSessionClosed)
     sessions[nextSessionKey.getAndIncrement()] = session
     return session
   }
@@ -532,8 +610,11 @@ private class SessionAwareFakeHost(
   fun allSessions(): List<RecordingSession> = sessions.entries.sortedBy { it.key }.map { it.value }
 }
 
-private class RecordingSession(override val previewId: String, private val pngFile: File) :
-  InteractiveSession {
+private class RecordingSession(
+  override val previewId: String,
+  private val pngFile: File,
+  private val onSessionClosed: (() -> Unit)? = null,
+) : InteractiveSession {
 
   val dispatchCount = AtomicInteger(0)
   val renderCount = AtomicInteger(0)
@@ -550,10 +631,14 @@ private class RecordingSession(override val previewId: String, private val pngFi
    * watchdog (e.g. [AndroidInteractiveSession]'s idle-lease watchdog) that closes the session out
    * from under the JsonRpcServer's tracking maps. Subsequent [render] calls throw the same
    * `IllegalStateException` the production session emits, and [isClosed] flips so the live-frame
-   * loop's exit check fires.
+   * loop's exit check fires. Also fires the [onSessionClosed] hook the host wired at acquire time,
+   * mirroring what `AndroidInteractiveSession.checkIdleLease() → close() → onCloseHook()` does in
+   * production.
    */
   fun markClosed() {
+    if (closedFlag) return
     closedFlag = true
+    onSessionClosed?.invoke()
   }
 
   override val isClosed: Boolean
@@ -579,8 +664,12 @@ private class RecordingSession(override val previewId: String, private val pngFi
   }
 
   override fun close() {
+    val firstClose = !closedFlag
     closedFlag = true
     closeCount.incrementAndGet()
+    if (firstClose) {
+      onSessionClosed?.invoke()
+    }
   }
 }
 
@@ -632,6 +721,7 @@ private class FailingSessionHost(private val defaultPng: File) : RenderHost {
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
+    onSessionClosed: (() -> Unit)?,
   ): InteractiveSession {
     throw IllegalStateException("boom")
   }
