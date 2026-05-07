@@ -188,6 +188,13 @@
     "sha256": "06361724a0330d4ec6aba520a73caea4e3a783bde320821b471a0be7e4f38d28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AnimatedPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview_NavHost \u2014 Home": {
+    "captureLabel": "",
+    "functionName": "NavHostHomePreview",
+    "renderBasename": "NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png",
+    "sha256": "1039b7c66c1842d47792ef337155a5f578ba75bf46386b0d5d539f61dec8ea76",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NavHostPreview.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
     "captureLabel": "",
     "functionName": "BodyTextPreview",
