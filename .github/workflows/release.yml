@@ -52,9 +52,13 @@ env:
 
 jobs:
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
-  # published Maven Central artifact if the VSIX, CLI, or MCP build fails —
-  # Central refuses to overwrite an already-published release version, so a
-  # half-released version can't be quietly rebuilt.
+  # published Maven Central artifact if the VSIX, CLI, MCP, or skill build
+  # fails — Central refuses to overwrite an already-published release
+  # version, so a half-released version can't be quietly rebuilt. Gating
+  # on `build-skills` here also serves as the coordination point for the
+  # `release` job: `release` only `needs` this job, so adding a builder
+  # here transitively guarantees its artifacts are uploaded before
+  # `release` downloads them.
   # `renderer-android` is published alongside the plugin so external consumers
   # that apply the plugin via Maven Central also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
@@ -66,7 +70,7 @@ jobs:
   # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
   # captureToImage fallback if Roborazzi's API ever does break binary compat.
   publish-gradle-plugin:
-    needs: [build-applications, build-vscode-extension]
+    needs: [build-applications, build-skills, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
