@@ -23,6 +23,7 @@
         "src/webview/preview/cardMetadata.ts",
         "src/webview/preview/errorPanel.ts",
         "src/webview/preview/focusToolbar.ts",
+        "src/webview/preview/frameCarouselDom.ts",
         "src/webview/preview/interactiveInput.ts",
         "src/webview/preview/liveBadge.ts",
         "src/webview/preview/liveTransitions.ts",
