@@ -1319,6 +1319,35 @@ class DaemonMcpServer(
           ),
       ),
       ToolDef(
+        name = "enable_extensions",
+        description =
+          "Activate the named daemon extensions on every spawned daemon for the matching " +
+            "(workspace, module). Daemons start with every extension inactive (PROTOCOL.md § 3a) — " +
+            "this tool routes through the daemon's `extensions/enable` JSON-RPC and updates the MCP " +
+            "supervisor's cached `dataProductCapabilities` / `dataExtensionDescriptors` so " +
+            "subsequent `list_data_products` reflects the new public surface without a follow-up " +
+            "`extensions/list` round-trip. Returns one entry per (workspace, module) carrying " +
+            "`newlyEnabled`, `pulledIn` (deps activated as a side-effect), `alreadyEnabled`, and " +
+            "`unknown` (ids not registered on this daemon). Idempotent — re-issuing with the same " +
+            "ids reports them under `alreadyEnabled`. Pass `workspaceId` and/or `module` to scope; " +
+            "omit both to fan out across every spawned daemon.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "ids":{"type":"array","items":{"type":"string"},"description":"Extension ids to activate (e.g. \"text/strings\", \"resources/used\", \"a11y\"). Use list_data_products afterwards to confirm the resulting public surface."},
+                "workspaceId":{"type":"string","description":"Optional. Restrict the enable to one workspace."},
+                "module":{"type":"string","description":"Optional Gradle module path; requires workspaceId."}
+              },
+              "required":["ids"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
         name = "run_extension_command",
         description =
           "Run a preview-extension command by id. This keeps high-level shortcuts discoverable " +
@@ -1579,6 +1608,7 @@ class DaemonMcpServer(
       "history_list" -> toolHistoryList(args)
       "history_diff" -> toolHistoryDiff(args)
       "list_data_products" -> toolListDataProducts(args)
+      "enable_extensions" -> toolEnableExtensions(args)
       "list_extension_commands" -> toolListExtensionCommands(args)
       "run_extension_command" -> toolRunExtensionCommand(args)
       "get_preview_data" -> toolGetPreviewData(args)
@@ -2302,6 +2332,106 @@ class DaemonMcpServer(
         }
       }
     }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * Routes `tools/call enable_extensions` to the daemon's `extensions/enable` JSON-RPC method for
+   * every (workspace, module) matching the optional filters, and refreshes the supervisor's cached
+   * capability snapshots so the new public surface is visible to downstream tools (e.g.
+   * `list_data_products`, `get_preview_data`) without a follow-up `extensions/list` round-trip.
+   *
+   * Background: PROTOCOL.md § 3a — daemons start with every extension registered as inactive so
+   * `initialize.capabilities.dataProducts` is empty; clients must opt in. The supervisor exposes a
+   * constructor-time `defaultExtensions` knob for embedders, but the standalone `compose-preview
+   * mcp serve` entry point doesn't populate it (lean default), and there's no MCP tool agents can
+   * call to enable extensions on a running daemon. This tool fills that gap and also unblocks
+   * `run-agent-audit-samples.py` from hitting `DataProductUnknown: text/strings` the moment it asks
+   * for any data-product kind.
+   */
+  private fun toolEnableExtensions(args: JsonObject): CallToolResult {
+    val rawIds: JsonArray? = (args["ids"] as? JsonArray)
+    if (rawIds == null || rawIds.size == 0) {
+      return errorCallToolResult("enable_extensions: missing or empty 'ids'")
+    }
+    val ids: List<String> =
+      rawIds
+        .mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        .filter { it.isNotBlank() }
+        .distinct()
+    if (ids.isEmpty()) {
+      return errorCallToolResult("enable_extensions: 'ids' must contain at least one extension id")
+    }
+    val ws = args["workspaceId"]?.jsonPrimitive?.contentOrNull
+    val module = args["module"]?.jsonPrimitive?.contentOrNull
+    if (module != null && ws == null) {
+      return errorCallToolResult("enable_extensions: 'module' requires 'workspaceId'")
+    }
+    val workspaceFilter = ws?.let(::WorkspaceId)
+    if (workspaceFilter != null && supervisor.project(workspaceFilter) == null) {
+      return errorCallToolResult("enable_extensions: workspace '$ws' not registered")
+    }
+    val perDaemon = mutableListOf<JsonObject>()
+    var anyMatched = false
+    for (project in supervisor.listProjects()) {
+      if (workspaceFilter != null && project.workspaceId != workspaceFilter) continue
+      for ((mp, daemon) in project.daemons) {
+        if (module != null && mp != module) continue
+        anyMatched = true
+        val outcome =
+          runCatching { daemon.client.extensionsEnable(ids) }
+            .onSuccess {
+              daemon.dataProductCapabilities = it.dataProducts
+              daemon.dataExtensionDescriptors = it.dataExtensions
+            }
+        perDaemon.add(
+          buildJsonObject {
+            put("workspaceId", project.workspaceId.value)
+            put("module", mp)
+            outcome.fold(
+              onSuccess = { result ->
+                putJsonArray("newlyEnabled") {
+                  result.newlyEnabled.forEach { add(JsonPrimitive(it)) }
+                }
+                putJsonArray("pulledIn") { result.pulledIn.forEach { add(JsonPrimitive(it)) } }
+                putJsonArray("alreadyEnabled") {
+                  result.alreadyEnabled.forEach { add(JsonPrimitive(it)) }
+                }
+                putJsonArray("unknown") { result.unknown.forEach { add(JsonPrimitive(it)) } }
+                putJsonArray("dataProducts") {
+                  result.dataProducts.forEach { cap ->
+                    add(
+                      buildJsonObject {
+                        put("kind", cap.kind)
+                        put("schemaVersion", cap.schemaVersion)
+                        put("transport", cap.transport.name.lowercase())
+                        put("attachable", cap.attachable)
+                        put("fetchable", cap.fetchable)
+                        put("requiresRerender", cap.requiresRerender)
+                      }
+                    )
+                  }
+                }
+              },
+              onFailure = { e -> put("error", e.message ?: e::class.java.simpleName) },
+            )
+          }
+        )
+      }
+    }
+    if (!anyMatched) {
+      val scope =
+        when {
+          ws != null && module != null -> "workspace '$ws' module '$module'"
+          ws != null -> "workspace '$ws'"
+          else -> "any workspace"
+        }
+      return errorCallToolResult(
+        "enable_extensions: no spawned daemon matched $scope — register the project + render at " +
+          "least once to spawn a daemon before enabling extensions"
+      )
+    }
+    val payload = buildJsonObject { putJsonArray("daemons") { perDaemon.forEach { add(it) } } }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
   }
 
