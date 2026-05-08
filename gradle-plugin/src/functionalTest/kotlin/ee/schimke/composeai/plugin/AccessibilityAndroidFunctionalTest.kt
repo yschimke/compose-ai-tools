@@ -9,7 +9,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Assume.assumeTrue
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -17,8 +16,10 @@ import org.junit.rules.TemporaryFolder
 /**
  * End-to-end functional coverage for the **standard** accessibility pipeline on the
  * `com.android.library` path: synthetic project + AGP + Robolectric + the plugin's auto-injected
- * `ee.schimke.composeai:renderer-android:<plugin-version>` AAR (resolved from `~/.m2/repository`
- * after the host build's `:renderer-android:publishToMavenLocal` pre-step).
+ * `ee.schimke.composeai:renderer-android:<plugin-version>` AAR (both the AAR closure and the plugin
+ * itself are resolved from `~/.m2/repository` after the parent build's `functionalTestWithAndroid`
+ * task runs `:renderer-android:publishToMavenLocal` and `:gradle-plugin:publishToMavenLocal` as
+ * pre-steps).
  *
  * Issue #733. Companion to [AccessibilityFunctionalTest], which pins the CMP-side manifest wiring
  * without booting Robolectric.
@@ -35,21 +36,24 @@ import org.junit.rules.TemporaryFolder
  * `AccessibilityChecker.writePerPreviewReport` instead. Daemon-mode coverage is a separate
  * follow-up — needs daemon JVM + stdio JSON-RPC + lifecycle scaffolding.
  *
- * Skipped (`Assume.assumeTrue`) when no Android SDK is reachable via `ANDROID_HOME` /
- * `ANDROID_SDK_ROOT` / host `local.properties` — keeps dev environments without an Android SDK
- * green.
+ * Skipped (`Assume.assumeTrue`) when:
+ * - no Android SDK is reachable via `ANDROID_HOME` / `ANDROID_SDK_ROOT` / host `local.properties`,
+ *   or
+ * - the matching `:gradle-plugin:publishToMavenLocal` / `:renderer-android:publishToMavenLocal`
+ *   pre-step hasn't run for this version.
  *
- * **`@Ignore`d in the initial commit.** The infrastructure (`agpForFunctionalTest` config piped
- * into `pluginUnderTestMetadata.pluginClasspath`, `functionalTestWithAndroid` aggregator task that
- * pre-publishes the AAR closure to mavenLocal, `assumeTrue` guards) is in place, but the plugin
- * itself fails to apply under TestKit because `withPluginClasspath()` and the synthetic project's
- * `id("com.android.library")` end up loading AGP twice on different classloaders.
- * `extensions.getByType(AndroidComponentsExtension::class.java)` then can't see the
- * `LibraryAndroidComponentsExtension` the synthetic project registered — same FQN, two `Class`
- * objects. Resolving that needs publishing the plugin itself to mavenLocal and dropping
- * `withPluginClasspath()` so both plugins share one classloader hierarchy. Tracked in issue #733.
+ * Keeps dev environments without an Android SDK green and lets `./gradlew
+ * :gradle-plugin:functionalTest` stay fast — the Android-flavour coverage is gated behind
+ * `./gradlew functionalTestWithAndroid` from the parent build, which pre-publishes both the
+ * renderer AAR closure and the plugin itself.
+ *
+ * Deliberately does **not** call `GradleRunner.withPluginClasspath()`. The synthetic project
+ * resolves both AGP (`id("com.android.library")`) and our plugin
+ * (`id("ee.schimke.composeai.preview") version "<v>"`) through its own `plugins { ... }` block via
+ * `pluginManagement.repositories.mavenLocal()`, so AGP and the plugin land on a single classloader
+ * hierarchy. The earlier `withPluginClasspath()` path loaded both twice on different loaders and
+ * made `AndroidComponentsExtension` identity checks fail (same FQN, two `Class` objects).
  */
-@Ignore("Requires plugin-classloader-split fix; see kdoc above + #733")
 class AccessibilityAndroidFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
@@ -105,7 +109,11 @@ class AccessibilityAndroidFunctionalTest {
             // `org.jetbrains.kotlin.android` plugin is gone (and applying it now hard-errors).
             id("com.android.library") version "9.2.0"
             id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
-            id("ee.schimke.composeai.preview")
+            // Resolved through the synthetic project's `pluginManagement.repositories.mavenLocal()`
+            // — the plugin itself is published there by the parent build's `functionalTestWithAndroid`
+            // task. Pinning the version (rather than relying on `withPluginClasspath()`) keeps AGP and
+            // our plugin on one classloader so `AndroidComponentsExtension` identity checks succeed.
+            id("ee.schimke.composeai.preview") version "$pluginVersion"
         }
 
         android {
@@ -191,7 +199,8 @@ class AccessibilityAndroidFunctionalTest {
   private fun runner(projectDir: File): GradleRunner =
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withPluginClasspath()
+      // No `withPluginClasspath()` — see class-level kdoc. The synthetic project resolves the
+      // plugin from mavenLocal so AGP and our plugin share one classloader.
       // No `withArguments()` here — call sites add task names + flags. The shared bits go
       // through `commonArgs`.
       .forwardOutput()
@@ -219,7 +228,7 @@ class AccessibilityAndroidFunctionalTest {
       androidSdkDir.isNotBlank() && File(androidSdkDir).isDirectory,
     )
     // Sanity: the host build must have published the matching renderer-android AAR before this
-    // test starts (functionalTestTask `dependsOn(":renderer-android:publishToMavenLocal")`).
+    // test starts (parent `functionalTestWithAndroid` task wires that pre-step).
     val rendererAar =
       File(mavenLocal, "ee/schimke/composeai/renderer-android/$pluginVersion")
         .listFiles { f -> f.extension == "aar" }
@@ -228,6 +237,20 @@ class AccessibilityAndroidFunctionalTest {
       "Skipping: renderer-android-$pluginVersion.aar not in mavenLocal " +
         "(did `:renderer-android:publishToMavenLocal` run?)",
       rendererAar != null,
+    )
+
+    // The synthetic project resolves `id("ee.schimke.composeai.preview") version "<v>"` from
+    // mavenLocal, so the plugin marker artifact must already be there. Skip cleanly when it's
+    // not — the parent `functionalTestWithAndroid` task wires this pre-step too.
+    val pluginMarker =
+      File(
+        mavenLocal,
+        "ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/$pluginVersion",
+      )
+    assumeTrue(
+      "Skipping: ee.schimke.composeai.preview-$pluginVersion plugin marker not in mavenLocal " +
+        "(did `:gradle-plugin:publishToMavenLocal` run?)",
+      pluginMarker.isDirectory,
     )
 
     val projectDir = createTestProject()
