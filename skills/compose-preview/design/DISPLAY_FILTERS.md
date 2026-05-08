@@ -29,16 +29,20 @@ here.
 
 ## Enabling
 
-System property, comma-separated filter ids:
+Gradle property on the direct render path (the plugin forwards it to
+the renderer subprocess as the `composeai.displayfilter.filters`
+sysprop):
 
 ```sh
 ./gradlew :samples:cmp:renderAllPreviews \
-    -Dcomposeai.displayfilter.filters=grayscale,deuteranopia
+    -PcomposePreview.displayFilter.filters=grayscale,deuteranopia
 ```
 
-Empty / unset disables the feature entirely — the daemon doesn't
-register the extension, so `extensions/list` won't show it. Unknown
-ids are dropped with a warning. Duplicates collapse.
+For daemon-mode use the matching JVM flag directly:
+`-Dcomposeai.displayfilter.filters=grayscale,deuteranopia`. Empty /
+unset disables the feature entirely — the daemon doesn't register the
+extension, so `extensions/list` won't show it. Unknown ids are dropped
+with a warning. Duplicates collapse.
 
 ## Output
 
@@ -66,12 +70,6 @@ variant. Two failure shapes worth flagging:
 
 ## Caveats
 
-- Wired in the **daemon** render path today (Android + Desktop). The
-  Gradle-plugin direct path (`./gradlew :samples:cmp:renderAllPreviews`)
-  uses a separate renderer subprocess and does not yet emit variants —
-  agents driving the daemon (VS Code, MCP, the CLI's daemon mode) get
-  the variants automatically; CLI users on the direct-renderer path
-  don't yet.
 - Purely **post-process** — no Compose state changes, so things like
   high-contrast text outlines or bold text aren't covered here. Those
   belong on the a11y side (re-render with the OS flag set).

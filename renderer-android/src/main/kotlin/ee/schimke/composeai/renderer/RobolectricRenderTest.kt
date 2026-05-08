@@ -33,6 +33,8 @@ import ee.schimke.composeai.daemon.FocusOverlay
 import ee.schimke.composeai.daemon.FocusOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
+import ee.schimke.composeai.daemon.DisplayFilterConfig
+import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.data.render.PreviewAnimationContext
@@ -1004,6 +1006,33 @@ abstract class RobolectricRenderTestBase(
                                 (preview.params.showSystemUi ||
                                     preview.params.kind == PreviewKind.TILE),
                         )
+                    }
+
+                    // Display filters — post-capture colour-matrix variants. Gated on
+                    // `composeai.displayfilter.filters` being non-empty; the gradle plugin
+                    // forwards it from the `composePreview.displayFilter.filters` Gradle
+                    // property. Wrapped in try/catch so a filter failure never invalidates the
+                    // just-captured PNG. Data dir mirrors the daemon convention
+                    // (`<renders>/../data/<previewId>/`) so consumers see the same on-disk
+                    // layout whether a render came through the daemon or the gradle plugin.
+                    if (job is CaptureRenderJob) {
+                        val displayFilters = DisplayFilterConfig.fromSystemProperties()
+                        if (displayFilters.isNotEmpty()) {
+                            try {
+                                val dfDataDir = (outputDir.parentFile ?: outputDir).resolve("data")
+                                DisplayFilterDataProducer.writeArtifacts(
+                                    rootDir = dfDataDir,
+                                    previewId = preview.id,
+                                    pngFile = outputFile,
+                                    filters = displayFilters,
+                                )
+                            } catch (t: Throwable) {
+                                System.err.println(
+                                    "RobolectricRenderTest: displayfilter write failed for " +
+                                        "${preview.id}: ${t.javaClass.simpleName}: ${t.message}",
+                                )
+                            }
+                        }
                     }
                     if (job is CaptureRenderJob) captureIndex++
                 }

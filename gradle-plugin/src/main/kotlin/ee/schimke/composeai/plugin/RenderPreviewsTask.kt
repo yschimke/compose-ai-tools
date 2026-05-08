@@ -36,6 +36,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val tier: Property<String>
 
+  /**
+   * Comma-separated `composeai.displayfilter.filters` value forwarded as a system property to the
+   * desktop renderer subprocess. Empty / unset disables display filters. See
+   * [AndroidPreviewSupport.resolveDisplayFilterFilters] for the canonical resolver shared with the
+   * Android Test task. Marked `@Input` so a filter-list change drives re-render.
+   */
+  @get:Input abstract val displayFilterFilters: Property<String>
+
   @get:Classpath abstract val renderClasspath: ConfigurableFileCollection
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
@@ -138,6 +146,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
       execOperations.javaexec {
         classpath = renderClasspath
         this.mainClass.set(mainClass)
+        // Forward the display-filter selection so DesktopRendererMain can call
+        // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
+        // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
+        systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
         args =
           listOf(
             preview.className,

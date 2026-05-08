@@ -127,6 +127,7 @@ internal object ComposePreviewTasks {
           renderBackend.set("desktop")
           useComposeRenderer.set(true)
           tier.set(tierProperty(project))
+          displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
           renderClasspath.from(sourceClassDirs)
           project.configurations.findByName(resolveDependencyConfigName())?.let {
             renderClasspath.from(it)
@@ -503,6 +504,9 @@ internal object ComposePreviewTasks {
         renderBackend.set("stub")
         useComposeRenderer.set(false)
         tier.set(tierProperty(project))
+        // Stub backend doesn't run any renderer, so display filters are a no-op here — but the
+        // input is required by the task type, so wire the same resolver for consistency.
+        displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         renderClasspath.from(sourceClassDirs)
         project.configurations.findByName(dependencyConfigName())?.let { renderClasspath.from(it) }
         group = "compose preview"

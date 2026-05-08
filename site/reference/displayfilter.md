@@ -27,7 +27,7 @@ deficiencies.
 | Token usage | ~10 tok inline (manifest is tiny — `{filter, path}` per variant); +~1.5 k per filtered PNG read. |
 | Transport | inline (JSON manifest) · variant PNGs ride as `extras` |
 | Platforms | Android, Desktop |
-| Status | Daemon-mode renders (Android Robolectric + Desktop) write variants and the manifest after each capture. The Gradle-plugin direct path (`:samples:cmp:renderAllPreviews`) goes through a separate renderer subprocess and does **not** yet emit display-filter variants — wire it through `RobolectricRenderTest` / `DesktopRendererMain` if you need it there. |
+| Status | Wired across both render paths — the daemon (VS Code, MCP, CLI daemon mode) and the Gradle-plugin direct path (`:samples:cmp:renderAllPreviews`) both emit variants and the manifest after each capture. |
 
 ## What it answers
 
@@ -88,14 +88,25 @@ without a follow-up fetch.
 
 ## Enabling
 
-`-Dcomposeai.displayfilter.filters=` controls which filters apply. Empty
-or unset disables the feature entirely; the daemon doesn't even register
-the extension.
+A comma-separated list of filter ids enables the feature. Empty / unset
+disables it entirely (no manifest, no variant PNGs, no extension
+registration).
+
+**Gradle plugin / direct render path.** Pass the Gradle property
+(matches the rest of the `composePreview.*` flag namespace):
 
 ```sh
 ./gradlew :samples:cmp:renderAllPreviews \
-    -Dcomposeai.displayfilter.filters=grayscale,deuteranopia
+    -PcomposePreview.displayFilter.filters=grayscale,deuteranopia
 ```
+
+The plugin forwards the value to the spawned renderer JVMs as
+`-Dcomposeai.displayfilter.filters=...`, where `RobolectricRenderTest`
+(Android) and `DesktopRendererMain` (CMP Desktop) read it after each
+PNG capture and run `DisplayFilterDataProducer.writeArtifacts(...)`.
+
+**Daemon path.** Same sysprop, set on the daemon JVM directly:
+`-Dcomposeai.displayfilter.filters=...`.
 
 Unknown filter ids are dropped with a warning so a typo doesn't strand
 the rest. Duplicates collapse — `grayscale,invert,grayscale` runs each

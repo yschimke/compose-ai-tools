@@ -56,6 +56,11 @@ dependencies {
   // focus / ambient: no hardcoded pseudolocale logic in this module — extend the connector
   // instead.
   implementation(project(":data-pseudolocale-connector"))
+  // Display-filter connector — RobolectricRenderTest reads `composeai.displayfilter.filters` after
+  // each successful PNG capture and calls `DisplayFilterDataProducer.writeArtifacts(...)` to emit
+  // per-filter variants alongside the base capture. Same dep on the daemon side; the producer is
+  // renderer-agnostic (BufferedImage / ImageIO).
+  implementation(project(":data-displayfilter-connector"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)

@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import ee.schimke.composeai.daemon.DisplayFilterConfig
+import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -159,6 +161,28 @@ fun main(args: Array<String>) {
         previewArgs,
         localeTag,
       )
+      // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
+      // simulations). Gated on `composeai.displayfilter.filters` being non-empty; the gradle plugin
+      // forwards it from the `composePreview.displayFilter.filters` Gradle property. Wrapped in
+      // try/catch so a filter failure does not invalidate the just-rendered PNG. Data dir mirrors
+      // the daemon's convention: `<renders-dir>/../data/<previewId>/`.
+      val displayFilters = DisplayFilterConfig.fromSystemProperties()
+      if (displayFilters.isNotEmpty()) {
+        try {
+          val dataDir = (targetFile.parentFile?.parentFile ?: targetFile.parentFile).resolve("data")
+          DisplayFilterDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = targetFile.nameWithoutExtension,
+            pngFile = targetFile,
+            filters = displayFilters,
+          )
+        } catch (t: Throwable) {
+          System.err.println(
+            "DesktopRendererMain: displayfilter write failed for ${targetFile.name}: " +
+              "${t.javaClass.simpleName}: ${t.message}"
+          )
+        }
+      }
     } catch (e: Throwable) {
       // Catch Throwable, not Exception — preview functions can throw
       // Errors (e.g. AssertionError from a misused require) and the user
