@@ -576,7 +576,7 @@ export function productsFromDaemonCapabilities(
             label: p.displayName || prettifyKind(p.kind),
             icon: iconForBucket(bucketOf(p.kind)),
             hint: p.transport === "path" ? "On-disk artifact" : undefined,
-            cost: costOf(p.kind),
+            cost: costOf(p.kind, { requiresRerender: p.requiresRerender }),
             daemonBacked: true,
         });
     }

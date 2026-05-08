@@ -120,18 +120,32 @@ export function bucketOf(kind: string): ProductBucket {
 }
 
 /**
- * Cheapness classifier. Conservative: a kind is `cheap` only if it's
- * an inspection of already-captured render output (theme tokens,
- * strings, fonts, resource references) or static layout tree. Anything
- * that requires re-rendering, instruments the composition, or captures
- * a trace is `expensive`.
+ * Cheapness classifier. Two-tier:
  *
- * This deliberately doesn't read `DataProductCapability.requiresRerender`
- * — we want the cheap set to be a small, audited allowlist, not "every
- * kind the daemon claims is fast." Adding to the allowlist is a
- * deliberate change.
+ *   1. **Allowlist** (highest authority) — a small set of kinds we
+ *      know first-hand are inspections of already-captured render
+ *      output (theme tokens, strings, fonts, resources, static layout
+ *      tree). Always returns `cheap` for these regardless of any
+ *      daemon hint. A daemon misadvertising one of these as expensive
+ *      doesn't make us refuse to auto-enable; a daemon misadvertising
+ *      something else as cheap can't slip into this list.
+ *
+ *   2. **Daemon hint fallback** — for kinds outside the allowlist,
+ *      trust the daemon's `requiresRerender` flag from
+ *      `DataProductCapability`. `requiresRerender === false` means
+ *      "fetching this won't pay a render cost," which lines up with
+ *      the auto-enable contract (no surprise spikes). When the hint is
+ *      missing or `true`, default to `expensive`.
+ *
+ * Built-in placeholder products stamp their `cost` directly on the
+ * descriptor and never call this function; only the daemon-product
+ * translation in `productsFromDaemonCapabilities` exercises the hint
+ * path.
  */
-export function costOf(kind: string): "cheap" | "expensive" {
+export function costOf(
+    kind: string,
+    hint?: { requiresRerender?: boolean },
+): "cheap" | "expensive" {
     if (
         kind === "compose/theme" ||
         kind.startsWith("text/") ||
@@ -139,6 +153,9 @@ export function costOf(kind: string): "cheap" | "expensive" {
         kind.startsWith("resources/") ||
         kind === "layout/tree"
     ) {
+        return "cheap";
+    }
+    if (hint && hint.requiresRerender === false) {
         return "cheap";
     }
     return "expensive";

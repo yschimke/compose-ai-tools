@@ -59,6 +59,16 @@ interface PersistedState {
     filters?: { fn?: string; group?: string };
     layout?: "grid" | "flow" | "column" | "focus";
     diffMode?: DiffMode;
+    /**
+     * Per-scope MRU of focus-inspector data-product `kind` strings —
+     * scope is the active module dir today (see `getScope` in
+     * `FocusInspectorConfig`). Most-recent-first within each list,
+     * trimmed to taxonomy `bumpMru`'s default cap. Used as a
+     * tiebreaker for in-bucket sorting and as a topup signal in
+     * `suggestFor`. Persists across webview reload (panel hide/show)
+     * but not extension reload — same lifecycle as `filters` / `layout`.
+     */
+    focusMruByScope?: Record<string, string[]>;
 }
 
 @customElement("preview-app")
@@ -398,6 +408,19 @@ export class PreviewApp extends LitElement {
             onRequestLaunchOnDevice: () =>
                 focusController.requestLaunchOnDevice(),
             getScope: () => previewStore.getState().moduleDir,
+            loadMru: (scope) => state.focusMruByScope?.[scope] ?? [],
+            saveMru: (scope, mru) => {
+                // Persist to vscode workspace state. Same shape as the
+                // existing filter/layout fields — survives webview
+                // hide/show but not extension reload, which matches
+                // the lifetime users intuit for "ranked layers."
+                const existing = state.focusMruByScope ?? {};
+                state.focusMruByScope = {
+                    ...existing,
+                    [scope]: [...mru],
+                };
+                vscode.setState(state);
+            },
         });
 
         // Config for the interactive-input pointer machine. The predicate

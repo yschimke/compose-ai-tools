@@ -75,6 +75,20 @@ export interface FocusInspectorConfig {
      * is a valid sentinel (treated as a single shared scope).
      */
     getScope(): string;
+    /**
+     * Read previously-persisted MRU for [scope]. Called once per scope
+     * the first time the inspector renders for it; the controller
+     * caches the result in memory and only writes back on changes.
+     * Implementations should return an empty array for unknown scopes.
+     */
+    loadMru(scope: string): readonly string[];
+    /**
+     * Persist the in-memory MRU for [scope]. Called from `toggleProduct`
+     * after `bumpMru`. Implementations are expected to debounce / batch
+     * if the underlying store is expensive — the inspector calls this
+     * synchronously on every toggle.
+     */
+    saveMru(scope: string, mru: readonly string[]): void;
 }
 
 export class FocusInspectorController {
@@ -139,7 +153,7 @@ export class FocusInspectorController {
         const suggestions = suggestFor({
             preview,
             findingsCount: findings.length,
-            mru: this.mruByScope.get(scope) ?? [],
+            mru: this.getMru(scope),
             available: new Set(productByKind.keys()),
         });
 
@@ -250,9 +264,25 @@ export class FocusInspectorController {
             this.enabled.add(kind);
         }
         const scope = this.config.getScope();
-        const cur = this.mruByScope.get(scope) ?? [];
-        this.mruByScope.set(scope, bumpMru(cur, kind));
+        const cur = this.getMru(scope);
+        const next = bumpMru(cur, kind);
+        this.mruByScope.set(scope, next);
+        this.config.saveMru(scope, next);
         if (this.lastCard) this.render(this.lastCard);
+    }
+
+    /**
+     * Lazy hydrate-and-cache: first read for a scope pulls from the
+     * persisted store via `config.loadMru`, subsequent reads stay in
+     * memory. Returns the live array reference so callers can pass it
+     * into `bumpMru` without copying.
+     */
+    private getMru(scope: string): readonly string[] {
+        const cached = this.mruByScope.get(scope);
+        if (cached) return cached;
+        const persisted = [...this.config.loadMru(scope)];
+        this.mruByScope.set(scope, persisted);
+        return persisted;
     }
 
     private renderSuggestionRow(
@@ -433,7 +463,7 @@ export class FocusInspectorController {
         }
         // Sort within bucket by MRU rank then label, so familiar
         // layers float to the top without changing the bucket itself.
-        const mru = this.mruByScope.get(this.config.getScope()) ?? [];
+        const mru = this.getMru(this.config.getScope());
         const mruRank = (kind: string): number => {
             const idx = mru.indexOf(kind);
             return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;

@@ -111,6 +111,32 @@ describe("focusProductTaxonomy.costOf", () => {
     it("treats unknown kinds as expensive (safe default)", () => {
         assert.strictEqual(costOf("future/widget"), "expensive");
     });
+
+    it("trusts the daemon hint for unknown kinds", () => {
+        assert.strictEqual(
+            costOf("future/widget", { requiresRerender: false }),
+            "cheap",
+        );
+        assert.strictEqual(
+            costOf("future/widget", { requiresRerender: true }),
+            "expensive",
+        );
+    });
+
+    it("ignores the daemon hint when the kind is in the cheap allowlist", () => {
+        assert.strictEqual(
+            costOf("compose/theme", { requiresRerender: true }),
+            "cheap",
+        );
+    });
+
+    it("treats absent or undefined hint as no signal", () => {
+        assert.strictEqual(
+            costOf("future/widget", { requiresRerender: undefined }),
+            "expensive",
+        );
+        assert.strictEqual(costOf("future/widget", {}), "expensive");
+    });
 });
 
 describe("focusProductTaxonomy.isWearDevice", () => {
