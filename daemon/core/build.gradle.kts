@@ -55,8 +55,6 @@ val generateDaemonVersionResource by tasks.registering {
 
 sourceSets.main.get().resources.srcDir(generateDaemonVersionResource)
 
-// GitHub Packages mirror — same shape as `:renderer-android` and `:preview-annotations`.
-
 composeAiMavenPublishing {
   coordinates(
     artifactId = "daemon-core",

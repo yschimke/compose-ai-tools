@@ -143,8 +143,6 @@ afterEvaluate {
     }
 }
 
-// GitHub Packages mirror — same shape as `:renderer-android` and `:preview-annotations`.
-
 composeAiMavenPublishing {
   coordinates(
     artifactId = "daemon-desktop",

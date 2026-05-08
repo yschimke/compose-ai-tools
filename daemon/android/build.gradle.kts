@@ -297,8 +297,6 @@ val daemonHarnessClasspathFile by configurations.creating {
   }
 }
 
-// GitHub Packages mirror — same shape as `:renderer-android`.
-
 // Use the new (non-deprecated) AndroidSingleVariantLibrary constructor — takes typed JavadocJar /
 // SourcesJar instead of booleans. `JavadocJar.Empty()` ships an empty javadoc jar (Maven Central
 // requires the file to exist) without invoking javadoc/Dokka. javadoc 17 fails on AndroidX

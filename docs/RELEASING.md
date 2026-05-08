@@ -37,7 +37,7 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 
 ### What the `release.yml` workflow does
 
-1. Publishes to **Maven Central** via the Central Portal (and mirrors to GitHub Packages):
+1. Publishes to **Maven Central** via the Central Portal:
    - **Gradle plugin** — `ee.schimke.composeai:compose-preview-plugin`
    - **Android renderer AAR** — `ee.schimke.composeai:renderer-android`
    - **Preview annotations** — `ee.schimke.composeai:preview-annotations`
@@ -45,9 +45,12 @@ Both fallbacks share the same concurrency group as the primary path, so they can
    - **Daemon desktop** (pre-1.0) — `ee.schimke.composeai:daemon-desktop` — Compose Multiplatform desktop backend (DesktopHost + DaemonMain)
    - **Daemon android** (pre-1.0) — `ee.schimke.composeai:daemon-android` — Robolectric backend; Compose / Roborazzi / UI-test stay `compileOnly`, consumer supplies runtime versions
    - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
-2. Builds the **CLI** as `.zip` and `.tar.gz` distributions.
-3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Uploads the CLI + VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+
+   Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
+2. Builds the **CLI** and the standalone **MCP server** as `.zip` and `.tar.gz` distributions (`compose-preview-<ver>.{zip,tar.gz}` and `compose-preview-mcp-<ver>.{zip,tar.gz}`). The CLI tarball already implementation-bundles `:mcp`, so the MCP archive is for consumers who want to wire the server into an MCP client without dragging the CLI in.
+3. Packs each `skills/<name>/` directory into `<name>-skill-<ver>.tar.gz`.
+4. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
+5. Uploads the CLI, MCP, skill, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 The `daemon-*` artifacts are **pre-1.0**; their public API is not yet stable. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
 
@@ -62,7 +65,7 @@ Required secrets on the repository:
 | `VSCE_PAT` | Azure DevOps PAT for the `yuri-schimke` VS Code Marketplace publisher (scope: Marketplace → Manage, all accessible orgs) |
 | `OVSX_PAT` | Open VSX PAT for the `yuri-schimke` namespace (https://open-vsx.org/user-settings/tokens) |
 
-`GITHUB_TOKEN` is provided automatically and is used for the GH Packages mirror.
+`GITHUB_TOKEN` is provided automatically and is used by the `release` job to upload assets onto the GitHub Release.
 
 Marketplace publishes are idempotent on re-runs: if the version is already published (e.g. on a `workflow_dispatch` retry for an existing tag), the step logs the "already published" message and exits 0 rather than failing.
 
@@ -161,13 +164,6 @@ plugins {
 }
 ```
 
-### Gradle plugin (GitHub Packages — fallback)
-
-The release workflow also publishes to GitHub Packages for users who
-prefer it. This path requires a PAT with `read:packages` scope; see git
-history for the repository+credentials setup if you need it. Maven
-Central is the supported default.
-
 ### CLI
 
 Download from the [Releases page](https://github.com/yschimke/compose-ai-tools/releases):
@@ -178,6 +174,21 @@ curl -L -o compose-preview.tar.gz \
     https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-0.10.1.tar.gz
 tar xzf compose-preview.tar.gz
 ./compose-preview-0.10.1/bin/compose-preview list
+```
+<!-- x-release-please-end -->
+
+### MCP server (standalone)
+
+The CLI tarball already bundles the MCP server (`compose-preview mcp serve`).
+A standalone tarball is also attached to each Release for consumers who only
+want the server binary:
+
+<!-- x-release-please-start-version -->
+```bash
+curl -L -o compose-preview-mcp.tar.gz \
+    https://github.com/yschimke/compose-ai-tools/releases/latest/download/compose-preview-mcp-0.10.1.tar.gz
+tar xzf compose-preview-mcp.tar.gz
+./compose-preview-mcp-0.10.1/bin/compose-preview-mcp
 ```
 <!-- x-release-please-end -->
 
