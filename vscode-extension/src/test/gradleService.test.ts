@@ -559,6 +559,45 @@ describe("GradleService", () => {
                 ]);
             }),
         );
+
+        it(
+            "follows symlinked subdirectories during the walk (androidx-mini layout)",
+            withTempDir((dir, api) => {
+                // The AndroidX-mini workspace layout symlinks the upstream
+                // androidx checkout under the workspace root and reassigns
+                // each project's projectDir into that tree. `withFileTypes`
+                // reports the symlink itself, not its target, so without
+                // explicit symlink handling the walk stops at the symlink
+                // entry and never sees the markers underneath.
+                const target = fs.mkdtempSync(
+                    path.join(os.tmpdir(), "compose-preview-symlink-target-"),
+                );
+                try {
+                    const moduleProjectDir = path.join(target, "wear", "app");
+                    const markerDir = path.join(
+                        moduleProjectDir,
+                        "build",
+                        "compose-previews",
+                    );
+                    fs.mkdirSync(markerDir, { recursive: true });
+                    fs.writeFileSync(
+                        path.join(markerDir, "applied.json"),
+                        '{"schema":"compose-preview-applied/v1","modulePath":":wear:app","moduleName":"app","pluginVersion":"0.10.6"}',
+                    );
+                    fs.symlinkSync(target, path.join(dir, "androidx"), "dir");
+
+                    const service = new GradleService(dir, api);
+                    assert.deepStrictEqual(service.findPreviewModules(), [
+                        {
+                            projectDir: "androidx/wear/app",
+                            modulePath: ":wear:app",
+                        },
+                    ]);
+                } finally {
+                    fs.rmSync(target, { recursive: true, force: true });
+                }
+            }),
+        );
     });
 
     describe("resolveModule", () => {
