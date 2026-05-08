@@ -381,6 +381,24 @@ function handleErrorMessage(
     if (caps && cur !== captureIndex) return;
 
     errCard.classList.add("has-error");
+    // Stamp the error onto the card's dataset so the focus inspector's
+    // implicit `local/render/error` presenter can surface it as a top-
+    // level banner (focusPresentation.ts:renderErrorPresenter). Cleared
+    // by the next successful `updateImage` paint via the matching
+    // delete in cardImage / paintCapture (see follow-up — currently
+    // the dataset persists until the card is rebuilt; acceptable since
+    // the banner rebuilds on every inspector render and an updated
+    // `has-error` removal driven by paintCapture would also trigger a
+    // re-render of the inspector through the live-state path).
+    errCard.dataset.renderError = msg.message;
+    if (renderError) {
+        const detail = [renderError.exception, renderError.message]
+            .filter(Boolean)
+            .join(": ");
+        if (detail) {
+            errCard.dataset.renderErrorDetail = detail;
+        }
+    }
     container.querySelector(".error-message")?.remove();
     container.querySelector(".loading-overlay")?.remove();
     const skeleton = container.querySelector(".skeleton");
