@@ -43,6 +43,13 @@ vscode-extension/media/webview/
 __pycache__/
 *.pyc
 
+# Jekyll site (built artefacts under site/)
+site/_site/
+site/.jekyll-cache/
+site/.jekyll-metadata
+site/Gemfile.lock
+site/vendor/
+
 # Daemon preview-history archive — written by the daemon's `HistoryManager` when running
 # (sysprop `composeai.daemon.historyDir`). Each module gets its own archive at
 # `<moduleDir>/.compose-preview-history/`. Ignore at any depth.

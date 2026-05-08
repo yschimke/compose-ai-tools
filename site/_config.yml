@@ -1,0 +1,42 @@
+title: compose-ai-tools
+description: >-
+  Render @Preview composables to PNG outside Android Studio, plus per-render
+  structured data products (a11y, layout, theme, recomposition…) so AI coding
+  agents can see and reason about the UI they're changing.
+url: https://yschimke.github.io
+baseurl: /compose-ai-tools
+
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+
+aux_links:
+  GitHub: https://github.com/yschimke/compose-ai-tools
+  Maven Central: https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin
+  VS Code Marketplace: https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview
+
+footer_content: >-
+  Apache 2.0 licensed. Source on
+  <a href="https://github.com/yschimke/compose-ai-tools">GitHub</a>.
+
+callouts:
+  warning:
+    title: Note
+    color: yellow
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - README.md
