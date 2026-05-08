@@ -106,6 +106,46 @@ describe("findPluginAppliedAncestor", () => {
     );
 
     it(
+        "finds an ancestor that applies the plugin via Groovy build.gradle",
+        withTempDir((dir) => {
+            fs.mkdirSync(path.join(dir, "app", "src"), { recursive: true });
+            fs.writeFileSync(
+                path.join(dir, "app", "build.gradle"),
+                "plugins { id 'ee.schimke.composeai.preview' }",
+            );
+            assert.strictEqual(
+                findPluginAppliedAncestor(
+                    path.join(dir, "app", "src", "Foo.kt"),
+                ),
+                path.join(dir, "app"),
+            );
+        }),
+    );
+
+    it(
+        "prefers build.gradle.kts when both exist in the same directory",
+        withTempDir((dir) => {
+            fs.mkdirSync(path.join(dir, "app", "src"), { recursive: true });
+            fs.writeFileSync(
+                path.join(dir, "app", "build.gradle.kts"),
+                'id("ee.schimke.composeai.preview")',
+            );
+            // Groovy script in the same directory does NOT apply — but the
+            // .kts one does, so the ancestor should still be reported.
+            fs.writeFileSync(
+                path.join(dir, "app", "build.gradle"),
+                "plugins { id 'org.jetbrains.kotlin.jvm' }",
+            );
+            assert.strictEqual(
+                findPluginAppliedAncestor(
+                    path.join(dir, "app", "src", "Foo.kt"),
+                ),
+                path.join(dir, "app"),
+            );
+        }),
+    );
+
+    it(
         "skips literal applications trailing `apply false`",
         withTempDir((dir) => {
             fs.mkdirSync(path.join(dir, "wearApp", "src"), { recursive: true });

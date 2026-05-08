@@ -35,7 +35,8 @@
     ],
     "activationEvents": [
         "onLanguage:kotlin",
-        "workspaceContains:**/build.gradle.kts"
+        "workspaceContains:**/build.gradle.kts",
+        "workspaceContains:**/build.gradle"
     ],
     "extensionDependencies": [
         "vscjava.vscode-gradle"

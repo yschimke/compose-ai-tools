@@ -5,7 +5,10 @@ import * as crypto from "crypto";
 import { GradleService, GradleApi, TaskCancelledError } from "./gradleService";
 import { JdkImageError } from "./jdkImageErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
-import { findPluginAppliedAncestor } from "./pluginDetection";
+import {
+    BUILD_SCRIPT_NAMES,
+    findPluginAppliedAncestor,
+} from "./pluginDetection";
 import { PreviewPanel } from "./previewPanel";
 import { PreviewRegistry } from "./previewRegistry";
 import { PreviewGutterDecorations } from "./previewGutterDecorations";
@@ -4705,7 +4708,7 @@ function emptyStateMessage(activeFile: string | undefined): string {
     if (previewModules.length === 0) {
         return (
             "The Compose Preview Gradle plugin isn't applied in this workspace. " +
-            'Add id("ee.schimke.composeai.preview") to a module\'s build.gradle.kts to enable previews.'
+            'Add id("ee.schimke.composeai.preview") to a module\'s build script (build.gradle.kts or build.gradle) to enable previews.'
         );
     }
     if (fileHasPreviewAnnotation(activeFile)) {
@@ -4764,7 +4767,7 @@ function maybeShowSetupPrompt(activeFile: string): void {
     const message = missingAnywhere
         ? "Compose Preview: the Gradle plugin isn't applied in this workspace yet."
         : "Compose Preview: this module doesn't apply the Gradle plugin, but the file uses @Preview.";
-    const OPEN = "Open build.gradle.kts";
+    const OPEN = "Open build script";
     const DOCS = "View setup docs";
     const NEVER = "Don't show again";
     void vscode.window
@@ -4784,11 +4787,12 @@ function maybeShowSetupPrompt(activeFile: string): void {
 }
 
 /**
- * Opens the nearest ancestor `build.gradle.kts` of the given file — the
- * likely target for adding `id("ee.schimke.composeai.preview")`. Walks up
- * from the file's directory; if nothing is found before the workspace root,
- * falls back to the root's own build script. This handles both top-level
- * modules (the only kind findPreviewModules scans for) and nested layouts.
+ * Opens the nearest ancestor module build script (`build.gradle.kts` or
+ * `build.gradle`) of the given file — the likely target for adding
+ * `id("ee.schimke.composeai.preview")`. Walks up from the file's directory;
+ * if nothing is found before the workspace root, falls back to the root's
+ * own build script. This handles both top-level modules (the only kind
+ * findPreviewModules scans for) and nested layouts, and both DSLs.
  */
 async function openModuleBuildFile(
     workspaceRoot: string,
@@ -4803,11 +4807,13 @@ async function openModuleBuildFile(
     let dir = target === workspaceRoot ? workspaceRoot : path.dirname(target);
     const root = path.resolve(workspaceRoot);
     while (path.resolve(dir).startsWith(root)) {
-        const candidate = path.join(dir, "build.gradle.kts");
-        if (fs.existsSync(candidate)) {
-            const doc = await vscode.workspace.openTextDocument(candidate);
-            await vscode.window.showTextDocument(doc);
-            return;
+        for (const name of BUILD_SCRIPT_NAMES) {
+            const candidate = path.join(dir, name);
+            if (fs.existsSync(candidate)) {
+                const doc = await vscode.workspace.openTextDocument(candidate);
+                await vscode.window.showTextDocument(doc);
+                return;
+            }
         }
         const parent = path.dirname(dir);
         if (parent === dir) {
@@ -4816,7 +4822,7 @@ async function openModuleBuildFile(
         dir = parent;
     }
     vscode.window.showWarningMessage(
-        "No build.gradle.kts found for this file.",
+        "No build.gradle.kts or build.gradle found for this file.",
     );
 }
 

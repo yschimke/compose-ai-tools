@@ -342,6 +342,26 @@ describe("GradleService", () => {
         );
 
         it(
+            "finds modules with the plugin applied via Groovy build.gradle",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle"),
+                    "plugins { id 'ee.schimke.composeai.preview' }",
+                );
+
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle"),
+                    "plugins { id 'org.jetbrains.kotlin.jvm' }",
+                );
+
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+            }),
+        );
+
+        it(
             "returns empty for workspace with no modules",
             withTempDir((dir, api) => {
                 const service = new GradleService(dir, api);
