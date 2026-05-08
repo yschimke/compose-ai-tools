@@ -72,6 +72,11 @@ dependencies {
   // `renderNow.overrides.focus`, and the post-capture `FocusOverlay`. The renderer-android plugin
   // path consumes the same connector — see `:renderer-android`'s `implementation` line.
   implementation(project(":data-focus-connector"))
+  // Pseudolocale connector — `Pseudolocalizer` (en-XA / ar-XB transforms), `PseudolocaleResources`
+  // / `PseudolocaleContext` runtime resource interception, and the
+  // `PseudolocalePreviewOverrideExtension` planner mapped to `localeTag` in {en-XA, ar-XB}. No
+  // build-time `pseudoLocalesEnabled` / `resConfigs` requirement on the consumer.
+  implementation(project(":data-pseudolocale-connector"))
   // UIAutomator-shaped Selector + UiObject — RobolectricHost.performUiAutomatorAction decodes
   // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
   // UiAutomator.findObject(rule, selector, useUnmergedTree).

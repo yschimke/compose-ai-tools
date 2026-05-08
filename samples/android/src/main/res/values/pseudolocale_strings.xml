@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="pseudo_greeting">Hello, world!</string>
+  <string name="pseudo_settings_title">Settings</string>
+  <string name="pseudo_settings_subtitle">Tap a row to edit</string>
+</resources>

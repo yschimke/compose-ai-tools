@@ -1,7 +1,7 @@
 ---
 title: Strings & i18n
 parent: Reference
-nav_order: 11
+nav_order: 12
 permalink: /reference/strings/
 ---
 
@@ -31,7 +31,7 @@ locale coverage from `values*/strings.xml` (`i18n/translations`).
 ## What it does NOT answer
 
 - It does not score copy quality (clarity, brand voice, jargon) — that is a manual review.
-- It does not measure RTL correctness — pair with a render at `locale=ar` and compare bounds.
+- It does not measure RTL correctness — pair with a render at `locale=ar` and compare bounds, or use the [pseudolocale](./pseudolocale) `ar-XB` runtime override to surface RTL bugs without translating to a real RTL language.
 - `i18n/translations` does not include Compose Multiplatform string resources (different resolution path, Android-specific for now).
 
 ## Use cases

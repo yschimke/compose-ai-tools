@@ -1,7 +1,7 @@
 ---
 title: UIAutomator hierarchy
 parent: Reference
-nav_order: 13
+nav_order: 14
 permalink: /reference/uiautomator/
 ---
 

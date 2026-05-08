@@ -610,8 +610,17 @@ class RenderEngine(
     uiMode: RenderSpec.SpecUiMode?,
     orientation: RenderSpec.SpecOrientation?,
   ) {
+    // Pseudolocales (`en-XA`, `ar-XB`) aren't first-class Android locales — they have no
+    // `values-en-rXA/` resources to load. Substitute the base locale (`en`) before emitting the
+    // qualifier so the framework still finds default-locale strings, and append `ldrtl` for
+    // `ar-XB` so the Configuration reports an RTL layout direction. The pseudolocalisation of the
+    // strings themselves happens in the around-composable `PseudolocaleOverrideExtension`
+    // registered in `RobolectricHost`.
+    val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
+    val effectiveLocaleTag = if (pseudo != null) pseudo.baseTag else localeTag
     val qualifiers = buildList {
-      if (!localeTag.isNullOrBlank()) add(localeTagToQualifier(localeTag))
+      if (!effectiveLocaleTag.isNullOrBlank()) add(localeTagToQualifier(effectiveLocaleTag))
+      if (pseudo?.isRtl == true) add("ldrtl")
       if (widthDp > 0) add("w${widthDp}dp")
       if (heightDp > 0) add("h${heightDp}dp")
       if (isRound) add("round")

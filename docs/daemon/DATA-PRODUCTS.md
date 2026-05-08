@@ -280,6 +280,7 @@ A `data/fetch` that needs a re-render:
 | `resources/used` | default | low | `R.*` references resolved during render. |
 | `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds, plus per-entry `truncated` / `overflow` / `lineCount` / `maxLines` / `didOverflowWidth/Height` from the Compose `TextLayoutResult`. |
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
+| _(pseudolocale, no kind)_ | default | low | Triggered by `localeTag` in `{en-XA, ar-XB}` on a `@Preview` or `renderNow.overrides`. Visual-only — wraps `LocalContext.resources` to pseudolocalise `getString*` returns and (for `ar-XB`) provides `LayoutDirection.Rtl`. No build-time `pseudoLocalesEnabled` / `resConfigs` required. Modules: `:data-pseudolocale-core`, `:data-pseudolocale-connector`. Android only. |
 | `render/composeAiTrace` | default/live | low | Render pipeline trace as Perfetto-importable Chrome trace JSON. |
 | `render/trace` | default | low | Phase breakdown from render metrics. |
 | `fonts/used` | default | low | Font families with weight/style fallback chain. |
@@ -354,6 +355,7 @@ Compose runtime, daemon, or AndroidX:
 | `history/diff/regions` | `:data-history-core` | `HistoryDiffPayload`, `HistoryDiffRegion` |
 | `i18n/translations` | `:data-strings-core` | `I18nTranslationsPayload`, `I18nVisibleString` |
 | `layout/inspector` | `:data-layoutinspector-core` | `LayoutInspectorPayload`, `LayoutInspectorNode` |
+| _(pseudolocale, no payload)_ | `:data-pseudolocale-core` | `Pseudolocale`, `Pseudolocalizer` |
 | `resources/used` | `:data-resources-core` | `ResourcesUsedPayload`, `ResourceUsedReference` |
 | `text/strings` | `:data-strings-core` | `TextStringsPayload`, `TextStringEntry` |
 

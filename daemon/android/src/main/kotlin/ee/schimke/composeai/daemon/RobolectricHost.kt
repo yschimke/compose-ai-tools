@@ -1209,6 +1209,12 @@ open class RobolectricHost(
                 WallpaperPreviewOverrideExtension(),
                 Material3ThemePreviewOverrideExtension(),
                 FocusPreviewOverrideExtension(),
+                // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
+                // with a Resources subclass that pseudolocalises `getString*` returns. The
+                // planner returns null for any other tag, so non-pseudo locales keep going through
+                // the standard Robolectric qualifier path untouched. The qualifier emission side
+                // (rewrite to base locale + ldrtl for bidi) is in `applyPreviewQualifiers` below.
+                PseudolocalePreviewOverrideExtension(),
               )
           ),
         dataArtifactExtensions =

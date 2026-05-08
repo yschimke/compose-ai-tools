@@ -1,7 +1,7 @@
 ---
 title: Resources
 parent: Reference
-nav_order: 9
+nav_order: 10
 permalink: /reference/resources/
 ---
 

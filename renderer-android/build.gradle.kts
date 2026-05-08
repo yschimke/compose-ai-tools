@@ -51,6 +51,11 @@ dependencies {
   // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
   // this module — extend the connector instead.**
   implementation(project(":data-ambient-connector"))
+  // Pseudolocale connector — `Pseudolocale.fromTag(...)` for the qualifier-rewrite branch and
+  // `PseudolocaleOverrideExtension` for the around-composable wrap. Same architectural rule as
+  // focus / ambient: no hardcoded pseudolocale logic in this module — extend the connector
+  // instead.
+  implementation(project(":data-pseudolocale-connector"))
 
   implementation(libs.robolectric)
   implementation(libs.junit)
