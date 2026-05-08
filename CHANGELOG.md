@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.2](https://github.com/yschimke/compose-ai-tools/compare/v0.10.1...v0.10.2) (2026-05-08)
+
+
+### Features
+
+* add `force` escape hatch to render_preview + CLI to replace `rm -rf build/classes/` ([#927](https://github.com/yschimke/compose-ai-tools/issues/927)) ([9aa5690](https://github.com/yschimke/compose-ai-tools/commit/9aa569016e4f066a3a66183b3e9ac6c20a7f6a7c))
+
+
+### Bug Fixes
+
+* **daemon:** gate Wear ambient connector on consumer classpath presence ([#933](https://github.com/yschimke/compose-ai-tools/issues/933)) ([e3a68c8](https://github.com/yschimke/compose-ai-tools/commit/e3a68c889959da1ddebc72f832c3973b51ad480a))
+* **plugin:** pin ui-test-manifest / ui-test-junit4 to renderer floor for tile-only consumers ([#934](https://github.com/yschimke/compose-ai-tools/issues/934)) ([69dc703](https://github.com/yschimke/compose-ai-tools/commit/69dc703df875fc43ba9bae79df55c9087977d1d3))
+
 ## [0.10.1](https://github.com/yschimke/compose-ai-tools/compare/v0.10.0...v0.10.1) (2026-05-08)
 
 
