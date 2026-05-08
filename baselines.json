@@ -356,6 +356,27 @@
     "sha256": "f9c3376703cc046ab7db01a412e4167c1f8bcd89569f0ab4a238d48e126cd7ee",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt"
   },
+  "samples:android/com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent": {
+    "captureLabel": "",
+    "functionName": "PseudoSampleAccent",
+    "renderBasename": "PseudolocalePreviewsKt.PseudoSampleAccent_accent.png",
+    "sha256": "674995df318823d7b34ff56447445367fa01ccbf03c9e5c68d397a6260c03a9b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleBidi_bidi": {
+    "captureLabel": "",
+    "functionName": "PseudoSampleBidi",
+    "renderBasename": "PseudolocalePreviewsKt.PseudoSampleBidi_bidi.png",
+    "sha256": "009cd15774e03738fc56a47e57ba1e5996f77eb5a99d7f6ab1ec1ab8f1f5b426",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleDefault_default": {
+    "captureLabel": "",
+    "functionName": "PseudoSampleDefault",
+    "renderBasename": "PseudolocalePreviewsKt.PseudoSampleDefault_default.png",
+    "sha256": "31f75b1fadb4bd5212ac12334ae24ea740b84e2641510bf0d9af4489af76ffc3",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif": {
     "captureLabel": "scroll end",
     "functionName": "RedToBlueEndThenGifPreview",
