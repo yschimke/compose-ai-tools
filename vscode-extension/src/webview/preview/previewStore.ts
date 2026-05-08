@@ -41,6 +41,16 @@ export interface PreviewState {
     earlyFeaturesEnabled: boolean;
 
     /**
+     * Reflects `composePreview.autoEnableCheap.enabled`. When `true`,
+     * the focus inspector auto-enables cheap, suggestion-matched
+     * data products on first sight per scope. Default `false` — the
+     * feature is opt-in so users don't see toggles flip without their
+     * input. Updated at runtime by the `setAutoEnableCheap` extension
+     * message.
+     */
+    autoEnableCheapEnabled: boolean;
+
+    /**
      * `previewId` of the card whose accessibility overlay subscription
      * is currently active, or `null` when no card is subscribed. Set by
      * `toggleA11yOverlay` and cleared on focus navigation, daemon
@@ -135,6 +145,7 @@ export interface PreviewState {
 
 const initialState: PreviewState = {
     earlyFeaturesEnabled: false,
+    autoEnableCheapEnabled: false,
     a11yOverlayPreviewId: null,
     focusedPreviewId: null,
     allPreviews: [],

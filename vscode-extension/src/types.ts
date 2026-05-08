@@ -562,7 +562,58 @@ export type ExtensionToWebview =
           heldSession: boolean;
       }
     | { command: "streamStopped"; previewId: string }
-    | { command: "setEarlyFeatures"; enabled: boolean };
+    | { command: "setEarlyFeatures"; enabled: boolean }
+    /**
+     * Reflects `composePreview.autoEnableCheap.enabled` from settings.
+     * When `true` the focus inspector auto-flips on cheap, suggestion-
+     * matched data products (theme tokens, fonts, strings, layout tree)
+     * the first time it sees a preview in a given scope; expensive
+     * kinds (recomposition, render trace, a11y) stay click-to-enable.
+     * Sent at panel boot from `composePreview.autoEnableCheap.enabled`
+     * and again on settings change.
+     */
+    | { command: "setAutoEnableCheap"; enabled: boolean }
+    /**
+     * Daemon capabilities for the active module — the kinds the daemon
+     * can produce (`dataProducts`) and the data extensions registered
+     * (`dataExtensions`). The focus inspector groups these into its
+     * five stable buckets and uses them as the source of truth for
+     * "what's actually available on this backend." Empty / absent
+     * lists mean the daemon hasn't reported (yet); the inspector
+     * falls back to its built-in placeholder set.
+     *
+     * `dataProducts` are wire-shape `DataProductCapability` records;
+     * `dataExtensions` are descriptors. Both are forwarded as JSON-
+     * serialisable objects rather than re-importing the daemon
+     * protocol types webview-side — keeps the webview build free of
+     * the host-only `daemon/` tree.
+     */
+    | {
+          command: "setDaemonCapabilities";
+          moduleId: string;
+          dataProducts: DaemonDataProductCapability[];
+          dataExtensions: DaemonDataExtensionDescriptor[];
+      };
+
+/**
+ * Webview-facing slice of the daemon's `DataProductCapability`. Only
+ * the fields the inspector actually renders; we deliberately keep this
+ * decoupled from the daemon protocol module so the webview build
+ * doesn't pull in `daemon/`.
+ */
+export interface DaemonDataProductCapability {
+    kind: string;
+    schemaVersion?: number;
+    transport?: "inline" | "path" | "both";
+    requiresRerender?: boolean;
+    displayName?: string;
+}
+
+/** Webview-facing slice of `DataExtensionDescriptor`. */
+export interface DaemonDataExtensionDescriptor {
+    id: string;
+    displayName?: string;
+}
 
 /** Messages from webview to extension */
 export type WebviewToExtension =

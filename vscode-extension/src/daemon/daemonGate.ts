@@ -196,6 +196,49 @@ export class DaemonGate {
         );
     }
 
+    /**
+     * Snapshot of the daemon's advertised data-product / data-extension
+     * capabilities for [moduleId]. Used by the live panel to populate
+     * the focus-mode inspector with the kinds the daemon can actually
+     * produce, instead of the panel's built-in placeholder set. Returns
+     * `null` when no daemon is up — caller can fall back to placeholders.
+     *
+     * The returned slice is intentionally narrow: only the fields the
+     * webview actually renders (kind, displayName, transport,
+     * requiresRerender; extension id + displayName). The full
+     * `DataProductCapability` carries schema bookkeeping the inspector
+     * doesn't need to see.
+     */
+    getCapabilitiesSnapshot(moduleId: string): {
+        dataProducts: {
+            kind: string;
+            schemaVersion: number;
+            transport: "inline" | "path" | "both";
+            requiresRerender: boolean;
+            displayName?: string;
+        }[];
+        dataExtensions: { id: string; displayName?: string }[];
+    } | null {
+        const existing = this.daemons.get(moduleId);
+        if (existing == null || existing.client.isClosed()) {
+            return null;
+        }
+        const caps = existing.spawned.initializeResult.capabilities;
+        return {
+            dataProducts: (caps.dataProducts ?? []).map((p) => ({
+                kind: p.kind,
+                schemaVersion: p.schemaVersion,
+                transport: p.transport,
+                requiresRerender: p.requiresRerender,
+                displayName: p.displayName,
+            })),
+            dataExtensions: (caps.dataExtensions ?? []).map((e) => ({
+                id: e.id,
+                displayName: e.displayName,
+            })),
+        };
+    }
+
     async dispose(): Promise<void> {
         this.disposed = true;
         const entries = [...this.daemons.values()];

@@ -59,6 +59,16 @@ interface PersistedState {
     filters?: { fn?: string; group?: string };
     layout?: "grid" | "flow" | "column" | "focus";
     diffMode?: DiffMode;
+    /**
+     * Per-scope MRU of focus-inspector data-product `kind` strings —
+     * scope is the active module dir today (see `getScope` in
+     * `FocusInspectorConfig`). Most-recent-first within each list,
+     * trimmed to taxonomy `bumpMru`'s default cap. Used as a
+     * tiebreaker for in-bucket sorting and as a topup signal in
+     * `suggestFor`. Persists across webview reload (panel hide/show)
+     * but not extension reload — same lifecycle as `filters` / `layout`.
+     */
+    focusMruByScope?: Record<string, string[]>;
 }
 
 @customElement("preview-app")
@@ -243,6 +253,7 @@ export class PreviewApp extends LitElement {
     protected firstUpdated(): void {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
+        const initialAutoEnableCheap = this.dataset.autoEnableCheap === "true";
         const vscode = getVsCodeApi<PersistedState>();
         const state: PersistedState = vscode.getState() ?? { filters: {} };
         // `earlyFeaturesEnabled` lives in `previewStore` so future
@@ -251,6 +262,7 @@ export class PreviewApp extends LitElement {
         // terseness; writes go straight to `previewStore.setState`.
         previewStore.setState({
             earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
+            autoEnableCheapEnabled: initialAutoEnableCheap,
         });
         const earlyFeatures = (): boolean =>
             previewStore.getState().earlyFeaturesEnabled;
@@ -366,6 +378,8 @@ export class PreviewApp extends LitElement {
         inspector = new FocusInspectorController({
             el: focusInspector,
             earlyFeatures,
+            autoEnableCheap: () =>
+                previewStore.getState().autoEnableCheapEnabled,
             getPreview: (id) =>
                 previewStore.getState().allPreviews.find((p) => p.id === id),
             getA11yFindings: (id) => {
@@ -393,6 +407,20 @@ export class PreviewApp extends LitElement {
                 focusController.requestFocusedDiff(against),
             onRequestLaunchOnDevice: () =>
                 focusController.requestLaunchOnDevice(),
+            getScope: () => previewStore.getState().moduleDir,
+            loadMru: (scope) => state.focusMruByScope?.[scope] ?? [],
+            saveMru: (scope, mru) => {
+                // Persist to vscode workspace state. Same shape as the
+                // existing filter/layout fields — survives webview
+                // hide/show but not extension reload, which matches
+                // the lifetime users intuit for "ranked layers."
+                const existing = state.focusMruByScope ?? {};
+                state.focusMruByScope = {
+                    ...existing,
+                    [scope]: [...mru],
+                };
+                vscode.setState(state);
+            },
         });
 
         // Config for the interactive-input pointer machine. The predicate

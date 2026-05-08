@@ -637,6 +637,406 @@ body {
     font-size: calc(var(--vscode-font-size) - 2px);
 }
 
+/* -- Suggestion chip row + bucketed picker ---------------------------- */
+
+.focus-suggestions {
+    border-top: 1px solid var(--card-border);
+    background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.focus-suggestions-summary {
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    list-style: none;
+}
+
+.focus-suggestions-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-suggestions[open] .focus-summary-chevron {
+    transform: rotate(180deg);
+}
+
+.focus-suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 8px 8px;
+}
+
+.focus-suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--card-border);
+    background: var(--vscode-editor-background);
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    cursor: pointer;
+}
+
+.focus-suggestion-chip:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-suggestion-chip:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.focus-suggestion-chip[data-state="on"] {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder) 25%,
+        var(--vscode-editor-background)
+    );
+    border-color: var(--vscode-focusBorder);
+}
+
+.focus-suggestion-chip[data-cost="expensive"]::after {
+    content: "$";
+    font-size: calc(var(--vscode-font-size) - 4px);
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
+
+.focus-suggestion-chip-hint {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-suggestion-empty {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    padding: 0 0 4px;
+}
+
+.focus-buckets {
+    border-top: 1px solid var(--card-border);
+}
+
+.focus-bucket {
+    border-top: 1px solid
+        color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-bucket:first-child {
+    border-top: none;
+}
+
+.focus-bucket-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.focus-bucket-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-bucket-summary:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-bucket-label {
+    flex: 1;
+}
+
+.focus-bucket-count {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-bucket[open] .focus-summary-chevron {
+    transform: rotate(180deg);
+}
+
+.focus-bucket-body {
+    padding: 0 0 4px;
+}
+
+.focus-bucket-empty {
+    padding: 4px 8px 8px 30px;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-product-option[data-cost="expensive"] > .focus-product-text::after {
+    content: "$";
+    color: var(--text-secondary);
+    margin-left: auto;
+    padding-left: 6px;
+}
+
+/* -- Presenter surfaces (errors / legends / reports / overlay) -------- */
+
+.focus-error-panel {
+    border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+    background: color-mix(
+        in srgb,
+        var(--vscode-inputValidation-errorBackground, #5a1d1d) 50%,
+        var(--vscode-editor-background)
+    );
+}
+
+.focus-error-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 6px 8px;
+}
+
+.focus-error-row + .focus-error-row {
+    border-top: 1px solid
+        color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-error-row > .codicon {
+    color: var(
+        --vscode-inputValidation-errorForeground,
+        var(--vscode-errorForeground)
+    );
+    margin-top: 2px;
+}
+
+.focus-error-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.focus-error-title {
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    font-weight: 600;
+}
+
+.focus-error-message,
+.focus-error-detail {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    margin-top: 2px;
+    word-break: break-word;
+}
+
+.focus-legends-panel {
+    padding: 0 0 4px;
+}
+
+.focus-legend-block + .focus-legend-block {
+    border-top: 1px solid
+        color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-legend-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 8px 2px;
+}
+
+.focus-legend-title {
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 1px);
+    font-weight: 600;
+}
+
+.focus-legend-summary {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-legend-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.focus-legend-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 4px 8px 4px 22px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-legend-row:hover,
+.focus-legend-row:focus-visible {
+    background: var(--toolbar-hover);
+    outline: none;
+}
+
+.focus-legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--text-secondary);
+    margin-top: 5px;
+    flex: 0 0 8px;
+}
+
+.focus-legend-row[data-level="error"] .focus-legend-dot {
+    background: var(--vscode-errorForeground, #f48771);
+}
+
+.focus-legend-row[data-level="warning"] .focus-legend-dot {
+    background: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.focus-legend-row[data-level="info"] .focus-legend-dot {
+    background: var(--vscode-editorInfo-foreground, #4f9cd9);
+}
+
+.focus-legend-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.focus-legend-label {
+    color: var(--text-primary);
+}
+
+.focus-legend-detail {
+    color: var(--text-secondary);
+    margin-top: 1px;
+    overflow-wrap: anywhere;
+}
+
+.focus-reports-panel {
+    padding: 0 0 4px;
+}
+
+.focus-report {
+    border-top: 1px solid
+        color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-report:first-child {
+    border-top: none;
+}
+
+.focus-report-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.focus-report-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-report[open] .focus-summary-chevron {
+    transform: rotate(180deg);
+}
+
+.focus-report-title {
+    flex: 1;
+}
+
+.focus-report-summary-hint {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-report-body {
+    padding: 0 8px 8px 22px;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-report-empty {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.focus-report-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.focus-report-list > li[data-legend-id] {
+    cursor: pointer;
+}
+
+.focus-report-list > li[data-legend-id]:hover {
+    color: var(--text-primary);
+}
+
+/* Card overlay stack — sized to the image's intrinsic pixel space so
+   bound coordinates from the renderer (left,top,right,bottom in
+   source-bitmap pixels) line up. The image-container is
+   position:relative; we layer on top with pointer-events: none so the
+   normal click-to-focus flow keeps working underneath. */
+
+.focus-overlay-stack {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.focus-presentation-overlay {
+    position: absolute;
+    inset: 0;
+}
+
+.focus-overlay-box {
+    position: absolute;
+    border: 1px solid
+        color-mix(in srgb, var(--vscode-focusBorder) 80%, transparent);
+    background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+    transition:
+        background 80ms ease-out,
+        border-color 80ms ease-out;
+}
+
+.focus-overlay-box[data-level="warning"] {
+    border-color: color-mix(
+        in srgb,
+        var(--vscode-editorWarning-foreground, #cca700) 80%,
+        transparent
+    );
+}
+
+.focus-overlay-box[data-level="info"] {
+    border-color: color-mix(
+        in srgb,
+        var(--vscode-editorInfo-foreground, #4f9cd9) 80%,
+        transparent
+    );
+}
+
+.focus-overlay-box.legend-active {
+    background: color-mix(in srgb, var(--vscode-focusBorder) 30%, transparent);
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+#focus-legend-arrow {
+    color: var(--vscode-focusBorder);
+}
+
 /* -- Preview card ----------------------------------------------------- */
 
 .preview-card {

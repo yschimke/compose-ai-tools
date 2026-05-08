@@ -240,6 +240,12 @@ function earlyFeaturesEnabled(): boolean {
         .get<boolean>("earlyFeatures.enabled", false);
 }
 
+function autoEnableCheapEnabled(): boolean {
+    return vscode.workspace
+        .getConfiguration("composePreview")
+        .get<boolean>("autoEnableCheap.enabled", false);
+}
+
 /**
  * Show the remediation notification for a detected JdkImageError. The offered
  * "Open JDK setting" action reveals `java.import.gradle.java.home` — the
@@ -685,8 +691,12 @@ export async function activate(
               handleWebviewMessage(msg);
           }
         : handleWebviewMessage;
-    panel = new PreviewPanel(context.extensionUri, onMessage, () =>
-        earlyFeaturesEnabled(),
+    panel = new PreviewPanel(
+        context.extensionUri,
+        onMessage,
+        () => earlyFeaturesEnabled(),
+        undefined,
+        () => autoEnableCheapEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -990,6 +1000,16 @@ export async function activate(
                 panel?.postMessage({
                     command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),
+                });
+            }
+            if (
+                event.affectsConfiguration(
+                    "composePreview.autoEnableCheap.enabled",
+                )
+            ) {
+                panel?.postMessage({
+                    command: "setAutoEnableCheap",
+                    enabled: autoEnableCheapEnabled(),
                 });
             }
         }),
@@ -4718,6 +4738,29 @@ function publishInteractiveAvailability(moduleId: string): void {
         ready,
         interactiveSupported:
             ready && (daemonGate?.isInteractiveSupported(moduleId) ?? false),
+    });
+    publishDaemonCapabilities(moduleId);
+}
+
+/**
+ * Push the daemon's advertised data-product / data-extension catalogue
+ * for [moduleId] to the live panel. The focus-mode inspector groups
+ * these into stable buckets (`focusProductTaxonomy.bucketOf`) and
+ * surfaces them as user-toggleable layers. When the daemon is down /
+ * not yet up, an empty payload is sent so the inspector falls back to
+ * its built-in placeholder set rather than holding stale capabilities
+ * from a previous daemon lifetime.
+ */
+function publishDaemonCapabilities(moduleId: string): void {
+    if (!panel) {
+        return;
+    }
+    const snap = daemonGate?.getCapabilitiesSnapshot(moduleId) ?? null;
+    panel.postMessage({
+        command: "setDaemonCapabilities",
+        moduleId,
+        dataProducts: snap?.dataProducts ?? [],
+        dataExtensions: snap?.dataExtensions ?? [],
     });
 }
 
