@@ -280,7 +280,7 @@ A `data/fetch` that needs a re-render:
 | `resources/used` | default | low | `R.*` references resolved during render. |
 | `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds, plus per-entry `truncated` / `overflow` / `lineCount` / `maxLines` / `didOverflowWidth/Height` from the Compose `TextLayoutResult`. |
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
-| _(pseudolocale, no kind)_ | default | low | Triggered by `localeTag` in `{en-XA, ar-XB}` on a `@Preview` or `renderNow.overrides`. Visual-only — wraps `LocalContext.resources` to pseudolocalise `getString*` returns and (for `ar-XB`) provides `LayoutDirection.Rtl`. No build-time `pseudoLocalesEnabled` / `resConfigs` required. Modules: `:data-pseudolocale-core`, `:data-pseudolocale-connector`. Android only. |
+| _(pseudolocale, no kind)_ | default | low | Triggered by `localeTag` in `{en-XA, ar-XB}` on a `@Preview` or `renderNow.overrides`. Visual-only — Android wraps `LocalContext.resources` to pseudolocalise `getString*` returns and (for `ar-XB`) provides `LayoutDirection.Rtl`; CMP Desktop provides `LayoutDirection.Rtl` only (string-resource interception not viable through `compose.components.resources`). No build-time `pseudoLocalesEnabled` / `resConfigs` required. Modules: `:data-pseudolocale-core`, `:data-pseudolocale-connector` (Android), `:data-pseudolocale-connector-desktop` (CMP Desktop). |
 | `render/composeAiTrace` | default/live | low | Render pipeline trace as Perfetto-importable Chrome trace JSON. |
 | `render/trace` | default | low | Phase breakdown from render metrics. |
 | `fonts/used` | default | low | Font families with weight/style fallback chain. |

@@ -51,6 +51,10 @@ dependencies {
   implementation(project(":data-history-connector"))
   implementation(project(":data-theme-connector"))
   implementation(project(":data-wallpaper-connector"))
+  // Pseudolocale (desktop): `LayoutDirection.Rtl` for `ar-XB` and the planner that maps
+  // `localeTag` → `PseudolocaleOverrideExtensionDesktop`. The locale-list rewrite
+  // (`en-XA` → `en`, `ar-XB` → `ar`) lives in `RenderEngine.localeProviders`.
+  implementation(project(":data-pseudolocale-connector-desktop"))
   implementation(project(":data-recomposition-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body

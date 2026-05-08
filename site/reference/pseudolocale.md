@@ -24,7 +24,7 @@ pseudolocalises every `stringResource(...)` lookup on the fly.
 | Cost | low |
 | Token usage | n/a — visual-only effect, no JSON payload. |
 | Transport | n/a |
-| Platforms | Android (Compose Multiplatform follow-up). |
+| Platforms | Android (full) · CMP Desktop (layout-direction only) |
 
 ## What it answers
 
@@ -35,7 +35,7 @@ pseudolocalises every `stringResource(...)` lookup on the fly.
 ## What it does NOT answer
 
 - It does not pseudolocalise hard-coded Kotlin string literals (`Text("Hi")`) — same limitation Android Studio's pseudolocale dropdown has. Use the gap as a checklist of strings that need extracting to `strings.xml`.
-- It does not pseudolocalise CMP Desktop `compose.components.resources` lookups — that resolution path doesn't go through `LocalContext.resources`. Tracked as a follow-up.
+- It does not pseudolocalise text content on CMP Desktop. `org.jetbrains.compose.resources.stringResource(Res.string.foo)` doesn't walk `LocalContext.resources`, so the Android Resources-subclass interception doesn't apply there. The desktop path supplies the layout-direction half (`ar-XB` flips `LocalLayoutDirection` to RTL); `en-XA` is a visual no-op on desktop.
 - It does not score copy expansion against a per-language budget. Pair with the `text/strings` data product's `didOverflowWidth` / `truncated` fields if you want a CI gate.
 
 ## Use cases
@@ -83,38 +83,52 @@ The same planner runs in the daemon path. Drop the override, render
 again, and you're back to the default locale. The daemon doesn't need
 to be restarted between locales.
 
-### Sample
+### Samples
 
-[`samples/android/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/android/src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt)
-ships three previews — `default`, `accent`, `bidi` — driven from the
-same body. Run `./gradlew :samples:android:renderAllPreviews` and
-compare the three PNGs in `samples/android/build/compose-previews/renders/`.
+- **Android** — [`samples/android/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/android/src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt)
+  ships three previews — `default`, `accent`, `bidi` — driven from the
+  same body. Run `./gradlew :samples:android:renderAllPreviews` and
+  compare the three PNGs in `samples/android/build/compose-previews/renders/`.
+- **CMP Desktop** — [`samples/cmp/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/cmp/src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt)
+  ships `default` and `bidi` previews. Run `./gradlew :samples:cmp:renderAllPreviews`
+  and compare — the `bidi` PNG flips the row layout, but text content stays
+  the same.
 
 ## How it works
 
 The override mechanism reuses `localeTag` rather than a new field, so
-it slots into Studio's locale dropdown convention. Two pieces:
+it slots into Studio's locale dropdown convention. Two pieces on
+Android, one piece on Desktop:
 
-1. **Qualifier rewrite.** When `localeTag` matches `en-XA` or `ar-XB`,
-   the renderer emits the Robolectric resource qualifier for the
-   *base* locale (`en`) so the framework still finds `values/`
-   strings, plus `ldrtl` for `ar-XB` so `Configuration` reports an
-   RTL layout direction. Lives in
-   `RenderEngine.applyPreviewQualifiers` (daemon) and
-   `RobolectricRenderTest.applyPreviewQualifiers` (plugin path).
-2. **Around-composable wrap.** A
-   `PreviewOverrideExtension` planner in
-   [`:data-pseudolocale-connector`](https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector)
-   maps the same `localeTag` value to a `PseudolocaleOverrideExtension`
-   that:
-   - Wraps `LocalContext` with a `ContextWrapper` whose `getResources()`
-     returns a `Resources` subclass that pseudolocalises return values
-     from `getText(int)` / `getQuantityText(int, int)`.
-     `androidx.compose.ui.res.stringResource` walks
-     `LocalContext.current.resources.getString(id)`, which routes
-     through `getText(int)` — so every `stringResource(R.string.foo)`
-     callsite picks up the wrapped path automatically.
-   - Provides `LocalLayoutDirection = Rtl` for `ar-XB`.
+1. **Qualifier / locale-list rewrite.** Pseudolocale tags aren't real
+   BCP-47 locales — `values-en-rXA/` doesn't exist, and
+   `LocaleList("en-XA")` either throws or silently degrades depending
+   on the JVM's ICU build. Both renderers detect the pseudo tag,
+   substitute the base locale (`en` / `ar`), and pass that along:
+   - **Android** — emits `values-en/` resources via the Robolectric
+     resource qualifier, plus `ldrtl` for `ar-XB` so `Configuration`
+     reports an RTL layout direction. Lives in
+     `RenderEngine.applyPreviewQualifiers` (daemon) and
+     `RobolectricRenderTest.applyPreviewQualifiers` (plugin path).
+   - **Desktop** — emits the rewritten tag through the `LocaleList`
+     `CompositionLocal`. Lives in `RenderEngine.localeProviders`
+     (daemon) and `DesktopRendererMain` (plugin path).
+2. **Around-composable wrap.** Each platform has a
+   `PreviewOverrideExtension` planner that maps `localeTag` to an
+   around-composable:
+   - **Android** ([`:data-pseudolocale-connector`](https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector))
+     — wraps `LocalContext` with a `ContextWrapper` whose
+     `getResources()` returns a `Resources` subclass that
+     pseudolocalises return values from `getText(int)` /
+     `getQuantityText(int, int)`. `androidx.compose.ui.res.stringResource`
+     walks `LocalContext.current.resources.getString(id)`, which
+     routes through `getText(int)` — every `stringResource(R.string.foo)`
+     callsite picks up the wrapped path automatically. Also provides
+     `LocalLayoutDirection = Rtl` for `ar-XB`.
+   - **Desktop** ([`:data-pseudolocale-connector-desktop`](https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector-desktop))
+     — provides `LocalLayoutDirection = Rtl` for `ar-XB`. Doesn't
+     intercept resources because CMP's `stringResource` path doesn't
+     go through `LocalContext`.
 
 Pure transform code (`Pseudolocalizer.accent`, `Pseudolocalizer.bidi`)
 lives in `:data-pseudolocale-core` with no Android or Compose
@@ -122,6 +136,16 @@ dependency, so it can be unit-tested directly and reused by other
 tooling. The transform follows AAPT2's `Pseudolocalizer.cpp`:
 ASCII-letter accent map, ~30 % bracket-padded expansion, placeholder
 preservation (`%1$s`, `{name}`, `<b>…</b>`).
+
+### Platform support matrix
+
+| | Android | CMP Desktop |
+|---|---|---|
+| `localeTag` rewrite to base locale | ✅ | ✅ |
+| `LayoutDirection.Rtl` for `ar-XB` | ✅ | ✅ |
+| `[Ĥêļļö ···]` accent transform of `stringResource(...)` | ✅ | ❌ |
+| RLO / PDF bidi wrap of `stringResource(...)` | ✅ | ❌ |
+| Hard-coded literal strings (`Text("Hi")`) | n/a — never pseudolocalised | n/a |
 
 ## Comparison to AGP `pseudoLocalesEnabled`
 

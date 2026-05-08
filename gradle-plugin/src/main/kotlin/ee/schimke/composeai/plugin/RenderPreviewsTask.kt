@@ -164,6 +164,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
             // has everything on its classpath.
             preview.params.previewParameterProviderClassName.orEmpty(),
             preview.params.previewParameterLimit.toString(),
+            // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
+            // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
+            // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
+            // string resources via the `:data-pseudolocale-connector` Resources subclass).
+            preview.params.locale.orEmpty(),
           )
       }
     }
