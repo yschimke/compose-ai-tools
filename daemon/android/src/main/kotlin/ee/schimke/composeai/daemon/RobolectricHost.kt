@@ -946,8 +946,16 @@ open class RobolectricHost(
       encodedDir = encodedDir,
       // Side-band observers fired before every script-event dispatch. Today only the ambient
       // connector ships one — wakes [AmbientStateController] on activating gestures so a
-      // recording can exercise the ambient ↔ interactive flip mid-script.
-      dispatchObservers = listOf(AmbientInputDispatchObserver()),
+      // recording can exercise the ambient ↔ interactive flip mid-script. Gated on wear-ambient
+      // availability for the same reason as the override extension above (loading
+      // `AmbientInputDispatchObserver` triggers `AmbientStateController` static init, which pulls
+      // in `AmbientLifecycleObserver` types not present on plain-Android consumers).
+      dispatchObservers =
+        if (isWearAmbientAvailable(javaClass.classLoader)) {
+          listOf(AmbientInputDispatchObserver())
+        } else {
+          emptyList()
+        },
     )
   }
 
@@ -1160,8 +1168,13 @@ open class RobolectricHost(
    * is only available under NATIVE graphics mode. The B1.3-era stub render
    * didn't need it but the annotation is harmless when the body is a stub.
    */
+  // The Wear ambient shadow ([ShadowAmbientLifecycleObserver]) is registered conditionally
+  // through [SandboxHoldingRunner.getExtraShadows] — putting it directly on `@Config(shadows=…)`
+  // forces Robolectric to resolve `androidx.wear.ambient.AmbientLifecycleObserver` via the
+  // shadow's `@Implements` annotation during sandbox bootstrap, which fails on non-Wear consumers
+  // whose classpath doesn't ship the Wear AAR. See [SandboxHoldingRunner.getExtraShadows].
   @RunWith(SandboxHoldingRunner::class)
-  @Config(sdk = [ANDROID_SDK], shadows = [ShadowAmbientLifecycleObserver::class])
+  @Config(sdk = [ANDROID_SDK])
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   class SandboxRunner {
 
@@ -1176,15 +1189,27 @@ open class RobolectricHost(
      * cross-classloader contract clean.
      */
     private val engine: RenderEngine by lazy {
+      // [AmbientPreviewOverrideExtension] (and its companion [AmbientInputDispatchObserver]
+      // registered alongside [acquireRecordingSession]) reach `LocalAmbientModeManager` /
+      // `AmbientMode` from `androidx.wear.compose.foundation` and `AmbientLifecycleObserver` from
+      // `androidx.wear:wear`. Instantiating them on a non-Wear consumer classpath raises
+      // `NoClassDefFoundError` at the lazy init line. Skip registration when the wear AAR isn't
+      // loadable so plain-Android consumers can still drive renders.
+      val ambientOverrides =
+        if (isWearAmbientAvailable(javaClass.classLoader)) {
+          listOf(AmbientPreviewOverrideExtension())
+        } else {
+          emptyList()
+        }
       RenderEngine(
         previewOverrideExtensions =
           PreviewOverrideExtensions(
-            listOf(
-              AmbientPreviewOverrideExtension(),
-              WallpaperPreviewOverrideExtension(),
-              Material3ThemePreviewOverrideExtension(),
-              FocusPreviewOverrideExtension(),
-            )
+            ambientOverrides +
+              listOf(
+                WallpaperPreviewOverrideExtension(),
+                Material3ThemePreviewOverrideExtension(),
+                FocusPreviewOverrideExtension(),
+              )
           ),
         dataArtifactExtensions =
           RenderDataArtifactExtensions(

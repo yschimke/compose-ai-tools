@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import org.junit.runners.model.FrameworkMethod
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.internal.bytecode.InstrumentationConfiguration
 
@@ -83,6 +84,46 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
         .forEach { builder.doNotAcquirePackage(it) }
     }
     return builder.build()
+  }
+
+  /**
+   * Conditionally registers [ShadowAmbientLifecycleObserver]. The shadow's
+   * `@Implements(AmbientLifecycleObserver::class)` value forces Robolectric's
+   * [org.robolectric.internal.bytecode.ShadowMap.obtainShadowInfo] to resolve
+   * `androidx.wear.ambient.AmbientLifecycleObserver` via reflection during sandbox bootstrap; on
+   * non-Wear consumers (e.g. `:samples:android`, plain Android apps) that class isn't on the
+   * runtime classpath and the resolution throws `TypeNotPresentException`, killing the daemon
+   * before any render runs (issue: PR #891 regression hit by run-agent-audit-samples.py).
+   *
+   * Returning the shadow only when wear-ambient is loadable keeps the existing wear path intact
+   * while leaving non-wear consumers untouched. The same gate is mirrored on the engine side in
+   * [ee.schimke.composeai.daemon.RobolectricHost] for `AmbientPreviewOverrideExtension` /
+   * `AmbientInputDispatchObserver` instantiation.
+   */
+  override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> =
+    if (isWearAmbientAvailable(javaClass.classLoader)) {
+      arrayOf(ShadowAmbientLifecycleObserver::class.java)
+    } else {
+      emptyArray()
+    }
+}
+
+/**
+ * Returns `true` when `androidx.wear.ambient.AmbientLifecycleObserver` is on the supplied
+ * classloader. Used by [SandboxHoldingRunner] (host loader) and the daemon's `SandboxRunner`
+ * (sandbox loader) to gate ambient connector registration on the consumer's classpath shape, so a
+ * plain Android consumer doesn't pull `:data-ambient-connector` classes through reflection paths
+ * that need the wear AAR.
+ */
+internal fun isWearAmbientAvailable(loader: ClassLoader?): Boolean {
+  val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
+  return try {
+    Class.forName("androidx.wear.ambient.AmbientLifecycleObserver", false, effective)
+    true
+  } catch (_: ClassNotFoundException) {
+    false
+  } catch (_: NoClassDefFoundError) {
+    false
   }
 }
 
