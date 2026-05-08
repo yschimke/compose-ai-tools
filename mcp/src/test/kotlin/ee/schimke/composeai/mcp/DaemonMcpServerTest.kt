@@ -1419,14 +1419,34 @@ class DaemonMcpServerTest {
 
   @Test
   fun `record_preview rejects extension events advertised but not yet implemented`() {
-    // The daemon advertises `state.save` in `dataExtensions[].recordingScriptEvents` with
+    // The daemon advertises a script event in `dataExtensions[].recordingScriptEvents` with
     // `supported = false` to signal a planned-but-unwired roadmap item. MCP rejects up front so the
     // agent doesn't watch a quiet `unsupported` evidence trail come back from a recording that
     // otherwise looks healthy. The daemon-side fallback (returning `unsupported` evidence) stays as
     // defense-in-depth for direct daemon clients.
+    //
+    // Constructed inline rather than read from `RecordingScriptDataExtensions.roadmapDescriptors`
+    // because that list went empty once `state.{save,restore}` shipped real handlers (#749). The
+    // rejection branch in `DaemonMcpServer.validateRecordingEvents` still needs coverage —
+    // synthesise a descriptor with `supported = false` to exercise it independent of which
+    // wire-name happens to be the current roadmap pick.
     factory.daemonConfigurer = { d ->
       d.advertisedDataExtensions =
-        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors
+        listOf(
+          ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor(
+            id = ee.schimke.composeai.data.render.extensions.DataExtensionId("state-roadmap"),
+            displayName = "State (roadmap)",
+            recordingScriptEvents =
+              listOf(
+                ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescriptor(
+                  id = "state.save",
+                  displayName = "State save (planned)",
+                  summary = "Planned state-save script event.",
+                  supported = false,
+                )
+              ),
+          )
+        )
     }
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
