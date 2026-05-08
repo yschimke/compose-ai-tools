@@ -427,6 +427,20 @@ fun main(args: Array<String>) {
               dataExtensionDescriptors = NavigationRecordingScriptEvents.descriptors,
             )
           )
+          // Display filters — post-capture color-matrix variants (grayscale/bedtime, invert,
+          // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty
+          // so an `extensions/list` doesn't surface a phantom kind that has nothing on disk yet.
+          // The same prop drives the host's writeArtifacts call site (when wired up); keeping
+          // both reads in DisplayFilterConfig avoids drift between "registered" and "produced".
+          if (DisplayFilterConfig.fromSystemProperties().isNotEmpty()) {
+            add(
+              Extension(
+                id = "displayfilter",
+                displayName = "Display filter variants",
+                dataProductRegistry = DisplayFilterDataProductRegistry(rootDir = dataRoot),
+              )
+            )
+          }
         }
         // host-wired recording-script extensions + renderer-agnostic roadmap descriptors. The
         // host's contribution flips supported flags as new handlers land in its session registry.

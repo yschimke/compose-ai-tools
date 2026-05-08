@@ -21,7 +21,7 @@ deliberately does not), use cases, payload shape, and how to enable it.
 
 A data product is `(kind, schemaVersion, payload)`:
 
-- **kind** — namespaced string (`a11y/atf`, `compose/recomposition`, …). Reserved namespaces: `a11y/*`, `layout/*`, `compose/*`, `resources/*`, `text/*`, `render/*`, `fonts/*`, `test/*`, `i18n/*`, `history/*`, `uia/*`.
+- **kind** — namespaced string (`a11y/atf`, `compose/recomposition`, …). Reserved namespaces: `a11y/*`, `layout/*`, `compose/*`, `resources/*`, `text/*`, `render/*`, `fonts/*`, `test/*`, `i18n/*`, `history/*`, `uia/*`, `displayfilter/*`.
 - **schemaVersion** — positive integer, owned by the kind. Bumped only on incompatible payload changes; additive fields don't bump.
 - **payload** — JSON. Inline for small payloads (~64 KB), or a path to a sibling file the renderer wrote (lifecycle matches the PNG).
 
@@ -37,6 +37,7 @@ the Compose runtime, daemon, or AndroidX. The matching
 |---|---|---|---|
 | [Accessibility](./a11y) | `a11y/atf`, `a11y/hierarchy`, `a11y/overlay`, `a11y/touchTargets` | a11y | ATF findings, semantic tree, annotated overlay, 48 dp targets. |
 | [Ambient (Wear)](./ambient) | `compose/ambient` | default | Drive `AmbientMode` overrides for Wear ambient previews. |
+| [Display filters](./displayfilter) | `displayfilter/variants` | default | Post-process colour-matrix variants — bedtime grayscale, invert, daltonizer simulations. |
 | [Focus](./focus) | `compose/focus` | default | Focused-node snapshot + directional traversal overrides. |
 | [Fonts](./fonts) | `fonts/used` | default | Font families with weight/style fallback chain. |
 | [History diff](./history) | `history/diff/regions` | default | Per-pixel bounding boxes of changed regions vs. another history entry. |

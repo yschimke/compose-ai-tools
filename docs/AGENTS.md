@@ -16,6 +16,7 @@ Two audiences, two doc trees. Don't conflate them:
   - [`STATE_HOISTING.md`](../skills/compose-preview/design/STATE_HOISTING.md) — making composables previewable
   - [`CAPTURE_MODES.md`](../skills/compose-preview/design/CAPTURE_MODES.md) — multi-preview annotations, paused-clock animations, `@ScrollingPreview`
   - [`A11Y.md`](../skills/compose-preview/design/A11Y.md) — ATF accessibility checks
+  - [`DISPLAY_FILTERS.md`](../skills/compose-preview/design/DISPLAY_FILTERS.md) — post-process colour-matrix variants (bedtime grayscale, invert, daltonizer simulations)
   - [`CLAUDE_CLOUD.md`](../skills/compose-preview/design/CLAUDE_CLOUD.md) — running in Claude Code on the web (network allowlist, Setup script with `install.sh --android-sdk`, JVM-proxy gotcha)
   - [`CMP_SHARED.md`](../skills/compose-preview/design/CMP_SHARED.md) — applying the plugin to a CMP `:shared` (`com.android.kotlin.multiplatform.library`) module: previews go in `commonMain`, JVM target gives the Desktop renderer something to attach to (issue #248)
   - [`WEAR_UI.md`](../skills/compose-preview/design/WEAR_UI.md) — Material 3 Expressive design language for Wear OS
