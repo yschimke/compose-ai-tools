@@ -41,6 +41,7 @@
 // and re-posting would race the flush.
 
 import { liveToggleCommand } from "../../daemon/liveCommand";
+import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
@@ -272,11 +273,13 @@ export class LiveStateController {
      * navigation until the user explicitly toggles them off.
      */
     enforceSingleTargetFollowFocus(focusedCard: HTMLElement | null): void {
-        if (this.interactivePreviewIds.size !== 1) return;
-        const lone = this.interactivePreviewIds.values().next().value;
-        if (lone === undefined) return;
-        if (focusedCard && focusedCard.dataset.previewId === lone) return;
-        this.postLiveCommand(lone, false);
+        const focusedPreviewId = focusedCard?.dataset.previewId ?? null;
+        const plan = planFollowFocusTeardown(
+            this.interactivePreviewIds,
+            focusedPreviewId,
+        );
+        if (!plan) return;
+        this.postLiveCommand(plan.teardownId, false);
         this.interactivePreviewIds.clear();
         this.applyLiveBadge();
     }
