@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.6](https://github.com/yschimke/compose-ai-tools/compare/v0.10.5...v0.10.6) (2026-05-08)
+
+
+### Features
+
+* emit display-filter variants from the gradle-plugin direct render path ([#958](https://github.com/yschimke/compose-ai-tools/issues/958)) ([901d58d](https://github.com/yschimke/compose-ai-tools/commit/901d58db8919b79fca5462f29e73eec7b0a2e649))
+* **pseudolocale:** CMP Desktop layout-direction support ([#949](https://github.com/yschimke/compose-ai-tools/issues/949)) ([e98ff95](https://github.com/yschimke/compose-ai-tools/commit/e98ff95b7ffd308e59ca58d00f36680030c20752))
+
+
+### Bug Fixes
+
+* **gradle-plugin:** stop resolving runtime classpath at configuration time ([#952](https://github.com/yschimke/compose-ai-tools/issues/952)) ([e69cd31](https://github.com/yschimke/compose-ai-tools/commit/e69cd31e540004f5e6d01918b3d20aec287708d6))
+* **pseudolocale:** preserve spans + plan locale-only overrides ([#953](https://github.com/yschimke/compose-ai-tools/issues/953)) ([35dba92](https://github.com/yschimke/compose-ai-tools/commit/35dba92ccb62e56087bfe20c2956efe43bafddf7))
+* **pseudolocale:** snap paragraph-span boundaries when reattaching ([#955](https://github.com/yschimke/compose-ai-tools/issues/955)) ([06ad3cd](https://github.com/yschimke/compose-ai-tools/commit/06ad3cda534c0df84fa18124216cf6aebdfedfa9))
+* **vscode:** detect plugin in Groovy build.gradle, not just .kts ([#944](https://github.com/yschimke/compose-ai-tools/issues/944)) ([24072a3](https://github.com/yschimke/compose-ai-tools/commit/24072a37e66f73ce613134df32907f7c37d132cb))
+* **vscode:** follow symlinked subdirectories when walking for preview modules ([#951](https://github.com/yschimke/compose-ai-tools/issues/951)) ([0d89ab5](https://github.com/yschimke/compose-ai-tools/commit/0d89ab5a8f8340a25c5fa6b76ae4ea9113a9b07d))
+* **vscode:** support modules whose projectDir != Gradle modulePath ([#948](https://github.com/yschimke/compose-ai-tools/issues/948)) ([fee3153](https://github.com/yschimke/compose-ai-tools/commit/fee3153045875d88cc739c794ace96a9ec8eb342))
+
 ## [0.10.5](https://github.com/yschimke/compose-ai-tools/compare/v0.10.4...v0.10.5) (2026-05-08)
 
 
