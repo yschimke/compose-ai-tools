@@ -494,6 +494,29 @@ internal object AndroidPreviewSupport {
       // >= 1.16 via their own deps (compose-bom 2026.x, etc.), so it's
       // non-destructive for the common case.
       project.dependencies.add("${variantName}Implementation", "androidx.core:core:1.16.0")
+      // Pin `androidx.customview:customview-poolingcontainer` for the same
+      // reason as `androidx.core:core` above. compose-ui's
+      // `ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool`
+      // reads `androidx.customview.poolingcontainer.R.id.*` from
+      // `PoolingContainer.<clinit>`, so the merged unit-test resource APK
+      // needs that R class. Tile-only consumers without compose-ui in main
+      // (e.g. WearTilesKotlin) carry no transitive customview-poolingcontainer
+      // on the main variant, so the field lookup crashes Robolectric the
+      // moment `AbstractComposeView.<init>` installs the strategy:
+      //
+      //   `NoClassDefFoundError: Could not initialize class
+      //   androidx.customview.poolingcontainer.PoolingContainer`
+      //   caused by `NoClassDefFoundError:
+      //   androidx/customview/poolingcontainer/R$id`
+      //
+      // 1.0.0 is the only published version (compose-ui 1.9.x → 1.11.x all
+      // depend on it unchanged); the floor here is a no-op for Compose-app
+      // consumers that already get it transitively, and a fix for tile-only
+      // consumers that don't.
+      project.dependencies.add(
+        "${variantName}Implementation",
+        "androidx.customview:customview-poolingcontainer:1.0.0",
+      )
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -521,6 +544,15 @@ internal object AndroidPreviewSupport {
         reason =
           "compose-ui 1.10+ on the renderer test classpath reads R.id.tag_compat_insets_dispatch (added in core 1.16); merged test APK needs the field",
       )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.customview:customview-poolingcontainer:1.0.0",
+        configuration = "${variantName}Implementation",
+        outcome = "APPLIED",
+        reason =
+          "compose-ui's ViewCompositionStrategy reads androidx.customview.poolingcontainer.R.id.* from PoolingContainer.<clinit>; merged test APK needs the R class",
+      )
     } else {
       recordInjectedDependency(
         project,
@@ -546,6 +578,15 @@ internal object AndroidPreviewSupport {
         outcome = "SKIPPED_BY_CONFIG",
         reason =
           "manageDependencies=false; consumer must ensure androidx.core:core >= 1.16.0 on the main variant so the merged test APK includes R.id.tag_compat_insets_dispatch",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.customview:customview-poolingcontainer:1.0.0",
+        configuration = "${variantName}Implementation",
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; consumer must ensure androidx.customview:customview-poolingcontainer is on the main variant so the merged test APK includes its R class (referenced by compose-ui's PoolingContainer)",
       )
     }
 
@@ -1769,6 +1810,16 @@ internal object AndroidPreviewSupport {
     }
     if (!hasCoord("${variantName}Implementation", "androidx.core", "core")) {
       missing += "${variantName}Implementation(\"androidx.core:core:1.16.0\")"
+    }
+    if (
+      !hasCoord(
+        "${variantName}Implementation",
+        "androidx.customview",
+        "customview-poolingcontainer",
+      )
+    ) {
+      missing +=
+        "${variantName}Implementation(\"androidx.customview:customview-poolingcontainer:1.0.0\")"
     }
     if (
       tilesRendererRequired &&
