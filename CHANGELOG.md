@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.4](https://github.com/yschimke/compose-ai-tools/compare/v0.10.3...v0.10.4) (2026-05-08)
+
+
+### Bug Fixes
+
+* trigger release ([#938](https://github.com/yschimke/compose-ai-tools/issues/938)) ([40b4f9c](https://github.com/yschimke/compose-ai-tools/commit/40b4f9c963074cd54c7d0f5f5586c70bd54aabf2))
+
 ## [0.10.3](https://github.com/yschimke/compose-ai-tools/compare/v0.10.2...v0.10.3) (2026-05-08)
 
 
