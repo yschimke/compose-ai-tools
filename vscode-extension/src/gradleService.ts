@@ -771,14 +771,33 @@ export class GradleService {
                 return;
             }
             for (const entry of entries) {
-                if (!entry.isDirectory()) {
-                    continue;
-                }
                 if (entry.name.startsWith(".")) {
                     continue;
                 }
                 if (SCAN_SKIP_DIRS.has(entry.name)) {
                     continue;
+                }
+                if (!entry.isDirectory()) {
+                    // `withFileTypes` reports the entry's own type, so a
+                    // symlink-to-directory comes through as
+                    // `isSymbolicLink: true, isDirectory: false`. Follow it
+                    // via stat() — workspaces like the AndroidX-mini
+                    // checkout symlink the upstream source tree under their
+                    // workspace root.
+                    if (!entry.isSymbolicLink()) {
+                        continue;
+                    }
+                    try {
+                        if (
+                            !fs
+                                .statSync(path.join(absDir, entry.name))
+                                .isDirectory()
+                        ) {
+                            continue;
+                        }
+                    } catch {
+                        continue;
+                    }
                 }
                 const childRel = relDir
                     ? `${relDir}/${entry.name}`
