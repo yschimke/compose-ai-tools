@@ -1157,6 +1157,13 @@ internal object AndroidPreviewSupport {
             debug = project.providers.gradleProperty("composeai.a11y.debug").orElse("false"),
           )
         )
+        // Display filters — same lazy-input pattern as a11y so `-PcomposePreview.displayFilter
+        // .filters=grayscale,invert` toggles don't invalidate the configuration cache.
+        // RobolectricRenderTest reads `composeai.displayfilter.filters` after each capture and
+        // calls DisplayFilterDataProducer.writeArtifacts when non-empty.
+        jvmArgumentProviders.add(
+          DisplayFilterSystemPropsProvider(filters = resolveDisplayFilterFilters(project))
+        )
         // Render-tier filter — fed via the same lazy `@Input` provider
         // pattern so VS Code can flip `-PcomposePreview.tier=fast` on
         // every save without paying a config-cache reconfigure. Renderer
@@ -1521,6 +1528,32 @@ internal object AndroidPreviewSupport {
         "-Dcomposeai.a11y.debug=${debug.get()}",
       )
   }
+
+  /**
+   * Forwards the `composePreview.displayFilter.filters` Gradle property as the
+   * `composeai.displayfilter.filters` system property on the spawned renderer JVM. Same
+   * `CommandLineArgumentProvider` shape as [AccessibilitySystemPropsProvider] so toggling filters
+   * on the command line (`-PcomposePreview.displayFilter.filters=grayscale,invert`) doesn't
+   * invalidate the configuration cache. Empty / unset is forwarded as an empty string;
+   * `DisplayFilterConfig.fromSystemProperties()` treats blank input as "feature disabled".
+   */
+  internal class DisplayFilterSystemPropsProvider(
+    @get:org.gradle.api.tasks.Input val filters: org.gradle.api.provider.Provider<String>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> =
+      listOf("-Dcomposeai.displayfilter.filters=${filters.get()}")
+  }
+
+  /**
+   * Lazy `Provider<String>` for the comma-separated display-filter list. Reads
+   * `-PcomposePreview.displayFilter.filters=...`; defaults to empty (feature off) so existing
+   * builds don't change behaviour. Same Provider-not-String discipline as [resolveA11yEnabled] for
+   * configuration-cache friendliness.
+   */
+  internal fun resolveDisplayFilterFilters(
+    project: org.gradle.api.Project
+  ): org.gradle.api.provider.Provider<String> =
+    project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
 
   /**
    * Returns a lazy `Provider<Boolean>` for the effective a11y data-product selection. The

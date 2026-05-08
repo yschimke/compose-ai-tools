@@ -18,6 +18,11 @@ dependencies {
   // tags. Renderer applies the around-composable inline (LocalLayoutDirection.Rtl for ar-XB) and
   // rewrites the locale tag before it reaches `LocaleList`.
   implementation(project(":data-pseudolocale-core"))
+  // Display-filter connector — DesktopRendererMain reads `composeai.displayfilter.filters` after
+  // each successful PNG render and calls `DisplayFilterDataProducer.writeArtifacts(...)` to emit
+  // per-filter variants alongside the base capture. Same dep on the daemon side; the producer is
+  // renderer-agnostic (BufferedImage / ImageIO).
+  implementation(project(":data-displayfilter-connector"))
 
   testImplementation(libs.junit)
 }
