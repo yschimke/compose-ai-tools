@@ -28,6 +28,7 @@
         "src/webview/preview/interactiveInput.ts",
         "src/webview/preview/liveBadge.ts",
         "src/webview/preview/liveTransitions.ts",
+        "src/webview/preview/liveViewportThrottle.ts",
         "src/webview/preview/loadingOverlay.ts",
         "src/webview/preview/moduleReadiness.ts",
         "src/webview/preview/pointerGeometry.ts",
