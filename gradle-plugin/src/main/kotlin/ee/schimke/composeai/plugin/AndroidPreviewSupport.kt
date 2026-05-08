@@ -5,6 +5,7 @@ import com.android.build.api.dsl.CommonExtension
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.Variant
 import org.gradle.api.Project
+import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.tasks.compile.JavaCompile
@@ -155,104 +156,66 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when any declarative dep bucket (`implementation` / `api` / `runtimeOnly`, including their
-   * `<name>Implementation` variants) declares a coord in [previewArtifactSignals], OR when the
-   * resolved runtime classpath transitively includes one. The CMP-Android canonical layout has
-   * Compose UI behind a `project(":shared")` reference and only surfaces preview tooling
-   * transitively — see issue #241 — so direct-only inspection wrongly rejects `:composeApp`-style
-   * shells. Direct check first (cheap, no resolution); the transitive walk only fires when the
-   * cheap check fails.
+   * True when this module — or any project it depends on transitively, via declared
+   * `project(":foo")` references — declares a coord in [previewArtifactSignals] in its
+   * `implementation` / `api` / `runtimeOnly` (or `<name>Implementation` / `<name>Api` /
+   * `<name>RuntimeOnly`) buckets.
+   *
+   * The CMP-Android canonical layout (issue #241) has the consumer apply `com.android.application`
+   * and depend on `:shared` via `project(":shared")`, with `:shared` declaring the preview tooling
+   * on `api`. Following declared project dependencies catches that case without resolving any
+   * classpath — keeping the check off the Gradle resolution path so we don't trip the
+   * "Configuration was resolved during configuration time" warning. The previous implementation
+   * walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but pulled
+   * resolution into the configuration phase.
+   *
+   * Scope of the trade-off: a preview-tooling coord that arrives purely through a Maven transitive
+   * (e.g. another AAR's POM declares it on `runtime`) won't match here — declared intent in
+   * `allDependencies` is what we look for. In practice preview tooling is declared explicitly in
+   * the surface that uses it, and the doctor task surfaces the alternative path with a clearer
+   * error than this gate.
+   *
+   * The `variantName` argument is unused now but kept on the public signature for test-fixture
+   * compatibility; renaming would churn callers without value.
    */
-  internal fun hasPreviewDependency(project: Project, variantName: String): Boolean =
-    hasDirectPreviewDependency(project) || hasTransitivePreviewDependency(project, variantName)
+  internal fun hasPreviewDependency(
+    project: Project,
+    @Suppress("UNUSED_PARAMETER") variantName: String,
+  ): Boolean = hasPreviewDependencyDeep(project, mutableSetOf())
 
-  private fun hasDirectPreviewDependency(project: Project): Boolean =
-    project.configurations
-      .asSequence()
-      .filter { c ->
-        val n = c.name
-        n == "implementation" ||
-          n.endsWith("Implementation") ||
-          n == "api" ||
-          n.endsWith("Api") ||
-          n == "runtimeOnly" ||
-          n.endsWith("RuntimeOnly")
-      }
-      .any { c ->
-        c.allDependencies.any { dep ->
-          val g = dep.group ?: return@any false
-          previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }
+  private fun hasPreviewDependencyDeep(project: Project, visited: MutableSet<String>): Boolean {
+    if (!visited.add(project.path)) return false
+    for (config in declarableBucketsOf(project)) {
+      for (dep in config.allDependencies) {
+        val g = dep.group
+        if (g != null && previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }) {
+          return true
         }
-      }
-
-  /**
-   * Walks the resolved `${variantName}RuntimeClasspath` dep graph looking for any
-   * [previewArtifactSignals] match. Resolves the dependency *graph* (no artifact downloads), and is
-   * Isolated-Projects safe — the resolution result is the consumer module's own view of its
-   * classpath, not a reach into another project's model.
-   *
-   * Walks both selected components ([ResolvedDependencyResult]) and unresolved-but-requested
-   * coords. Treating a requested-but-unresolved signal as "yes, this module wants the preview
-   * tooling" matches the doctor task's "declared intent" semantics — an offline cache miss or a
-   * one-time metadata 503 shouldn't push the user back into the "no @Preview dependency declared"
-   * skip-and-confuse path.
-   *
-   * Resolves a `copyRecursive()` rather than the original configuration. Resolving the original
-   * `${variantName}RuntimeClasspath` marks its `extendsFrom` parents —
-   * `${variantName}Implementation`, `implementation`, `runtimeOnly`, etc. — as observed, which then
-   * forbids the `dependencies.add( "testImplementation", …)` / `${variantName}Implementation` calls
-   * below in [registerAndroidTasks] (and its `afterEvaluate` block) when another plugin like
-   * tapmoc's `checkDependencies` has already pulled the test runtime classpath into resolution
-   * earlier in the lifecycle. The recursive copy flattens the parent chain into a detached
-   * configuration, so resolving it exercises the same dep graph without observing any of the
-   * consumer's declarable buckets — see issue #244 (cadence) for the original repro.
-   *
-   * Returns false when the variant runtime classpath isn't present (non-Android modules / variants
-   * that don't synthesise one) or when traversing the resolution result throws (corrupt graph
-   * during early configuration). The caller treats both as "no signal found" and logs the standard
-   * "no known @Preview dependency declared" message.
-   */
-  private fun hasTransitivePreviewDependency(project: Project, variantName: String): Boolean {
-    val runtime =
-      project.configurations.findByName("${variantName}RuntimeClasspath") ?: return false
-    val probe = runCatching { runtime.copyRecursive() }.getOrNull() ?: return false
-    val root = runCatching { probe.incoming.resolutionResult.root }.getOrNull() ?: return false
-    val seen = HashSet<org.gradle.api.artifacts.result.ResolvedComponentResult>()
-    val stack = ArrayDeque<org.gradle.api.artifacts.result.ResolvedComponentResult>()
-    stack.addLast(root)
-    while (stack.isNotEmpty()) {
-      val node = stack.removeLast()
-      if (!seen.add(node)) continue
-      val id = node.id
-      if (id is org.gradle.api.artifacts.component.ModuleComponentIdentifier) {
-        if (previewArtifactSignals.any { (g, n) -> id.group == g && id.module == n }) return true
-      }
-      for (dep in node.dependencies) {
-        // ResolvedDependencyResult — the happy path. Walk the selected component.
-        // UnresolvedDependencyResult — resolution failed (offline, missing
-        // artifact, etc.) but the consumer DID request a coord; check that
-        // `requested` selector against the signal list so a missing transitive
-        // doesn't mask the intent. Same reasoning the doctor task uses for
-        // its dep audit: declared intent counts even when resolution slipped.
-        when (dep) {
-          is org.gradle.api.artifacts.result.ResolvedDependencyResult -> stack.addLast(dep.selected)
-          else -> {
-            val requested = dep.requested
-            if (requested is org.gradle.api.artifacts.component.ModuleComponentSelector) {
-              if (
-                previewArtifactSignals.any { (g, n) ->
-                  requested.group == g && requested.module == n
-                }
-              ) {
-                return true
-              }
-            }
-          }
+        if (dep is ProjectDependency) {
+          // `ProjectDependency.path` is the resolution-free way to identify the
+          // depended-on project. `findProject(...)` returns null silently when
+          // the project isn't part of this build (composite builds, missing
+          // `include(...)`) — treat that as "no signal" and continue.
+          val sub = runCatching { project.rootProject.findProject(dep.path) }.getOrNull()
+          if (sub != null && hasPreviewDependencyDeep(sub, visited)) return true
         }
       }
     }
     return false
   }
+
+  private fun declarableBucketsOf(
+    project: Project
+  ): Sequence<org.gradle.api.artifacts.Configuration> =
+    project.configurations.asSequence().filter { c ->
+      val n = c.name
+      n == "implementation" ||
+        n.endsWith("Implementation") ||
+        n == "api" ||
+        n.endsWith("Api") ||
+        n == "runtimeOnly" ||
+        n.endsWith("RuntimeOnly")
+    }
 
   private fun registerAndroidTasks(
     project: Project,

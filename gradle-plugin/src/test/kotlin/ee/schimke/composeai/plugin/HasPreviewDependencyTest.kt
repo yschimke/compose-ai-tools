@@ -9,23 +9,20 @@ import org.junit.rules.TemporaryFolder
 /**
  * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency].
  *
- * Two paths matter:
- * 1. The cheap declared-deps walk over `*Implementation` / `*Api` / `*RuntimeOnly` buckets — what
- *    plain `com.android.application` / `com.android.library` consumers hit. Doesn't resolve any
- *    classpath.
- * 2. The transitive walk over the resolved `${variant}RuntimeClasspath` graph — added for
- *    issue #241. The CMP-Android canonical layout (`:composeApp` applies `com.android.application`
- *    and depends on `:shared` via `project(":shared")`) only has the Compose preview tooling on the
- *    runtime classpath transitively; declared-only inspection rejected those modules with a "no
- *    known @Preview dependency declared" log line, even though the tooling was right there in the
- *    resolved graph.
+ * The check has two layers, both walking *declared* dependencies — neither resolves any
+ * configuration, so the call is safe at AGP `onVariants` time without tripping the "Configuration
+ * was resolved during configuration time" warning:
+ * 1. The local declared-deps walk over `*Implementation` / `*Api` / `*RuntimeOnly` buckets — what
+ *    plain `com.android.application` / `com.android.library` consumers hit.
+ * 2. The same walk repeated across `project(":foo")` boundaries — added for issue #241. The
+ *    CMP-Android canonical layout (`:composeApp` applies `com.android.application` and depends on
+ *    `:shared` via `project(":shared")`) only has the Compose preview tooling declared on
+ *    `:shared`; following project deps recursively catches it without resolving classpaths.
  *
- * The tests stay AGP-free on purpose: ProjectBuilder gives us enough to build a
- * `${variant}RuntimeClasspath`-shaped resolvable configuration and a multi-project graph through
- * the standard `java-library` + `java` plugins. The transitive case asserts on a `requested` but
- * unresolved coord — the walker treats declared intent as a signal even when the artifact didn't
- * download (offline cache miss, transient 503), which keeps the regression locked in without making
- * the test depend on real network access to an AAR's Maven metadata.
+ * The tests stay AGP-free on purpose: ProjectBuilder gives us enough to build a multi-project graph
+ * through the standard `java-library` + `java` plugins. The transitive case asserts on a declared
+ * coord on the depended-on project — declared intent is the only signal we look at, so a
+ * Maven-transitive-only preview-tooling coord (rare in practice) won't match.
  */
 class HasPreviewDependencyTest {
 
@@ -198,5 +195,39 @@ class HasPreviewDependencyTest {
     // child configuration ':app:debugRuntimeClasspath' was resolved.`
     app.dependencies.add("debugImplementation", "androidx.wear.tiles:tiles-renderer:1.0.0")
     app.dependencies.add("implementation", "androidx.appcompat:appcompat:1.6.1")
+  }
+
+  @Test
+  fun `project-dependency cycle does not stack-overflow`() {
+    // The recursive walk has to bound itself by visited project paths — without it,
+    // a `:a` -> `:b` -> `:a` cycle (legal in plain Gradle, exotic but possible) would
+    // recurse forever. Pin the bound here so a future change can't reintroduce it.
+    val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
+    val a =
+      ProjectBuilder.builder()
+        .withName("a")
+        .withProjectDir(tmp.newFolder("a"))
+        .withParent(rootProject)
+        .build()
+    val b =
+      ProjectBuilder.builder()
+        .withName("b")
+        .withProjectDir(tmp.newFolder("b"))
+        .withParent(rootProject)
+        .build()
+    a.plugins.apply("java-library")
+    b.plugins.apply("java-library")
+    a.configurations
+      .getByName("implementation")
+      .dependencies
+      .add(a.dependencies.project(mapOf("path" to ":b")))
+    b.configurations
+      .getByName("implementation")
+      .dependencies
+      .add(b.dependencies.project(mapOf("path" to ":a")))
+
+    // No preview signal anywhere in the cycle — answer is false but we must
+    // *return*, not loop forever.
+    assertThat(AndroidPreviewSupport.hasPreviewDependency(a, "debug")).isFalse()
   }
 }
