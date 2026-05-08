@@ -44,6 +44,7 @@ import { liveToggleCommand } from "../../daemon/liveCommand";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
+import { ensureLiveCardControls } from "./liveCardControls";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
 import type { VsCodeApi } from "../shared/vscode";
@@ -362,23 +363,13 @@ export class LiveStateController {
     }
 
     private ensureLiveCardControls(card: HTMLElement): void {
-        const container = card.querySelector(".image-container");
-        if (!container) return;
-        if (!container.querySelector(".card-live-stop-btn")) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "icon-button card-live-stop-btn";
-            btn.title = "Stop live preview";
-            btn.setAttribute("aria-label", "Stop live preview");
-            btn.innerHTML =
-                '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>';
-            btn.addEventListener("click", (evt) => {
-                evt.preventDefault();
-                evt.stopPropagation();
-                this.stopInteractiveForCard(card);
-            });
-            container.appendChild(btn);
-        }
+        // Button DOM lives in `./liveCardControls.ts` so the mutation
+        // is testable under happy-dom without dragging this controller's
+        // wider transitive imports into the host tsconfig. The pointer
+        // / wheel input wiring stays here — `attachInteractiveInputHandlers`
+        // pulls in the broader interactive-input surface that the narrow
+        // helper deliberately avoids.
+        ensureLiveCardControls(card, (c) => this.stopInteractiveForCard(c));
         attachInteractiveInputHandlers(card, this.cfg.interactiveInputConfig);
     }
 }

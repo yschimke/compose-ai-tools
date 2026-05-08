@@ -27,6 +27,7 @@
         "src/webview/preview/frameCarouselDom.ts",
         "src/webview/preview/interactiveInput.ts",
         "src/webview/preview/liveBadge.ts",
+        "src/webview/preview/liveCardControls.ts",
         "src/webview/preview/liveTransitions.ts",
         "src/webview/preview/liveViewportThrottle.ts",
         "src/webview/preview/loadingOverlay.ts",
