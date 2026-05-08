@@ -380,6 +380,26 @@ def setup_mcp() -> tuple[McpClient, str]:
         },
         timeout=300,
     )
+    # PROTOCOL.md § 3a — daemons start with every extension inactive; clients opt in via the
+    # daemon's `extensions/enable` JSON-RPC, which the MCP server proxies through this tool. The
+    # script exercises the data-product surface end-to-end (text/strings, resources/used,
+    # render/deviceClip, test/failure) plus the recording-script dispatch path, so we enable each
+    # of those producers up front. `unknown` ids in the response are tolerated (older daemons may
+    # not register every id), but the four below are mandatory for the assertions that follow.
+    client.call_tool(
+        "enable_extensions",
+        {
+            "workspaceId": workspace_id,
+            "module": ":samples:android",
+            "ids": [
+                "text/strings",
+                "resources/used",
+                "device/clip",
+                "render/test-failure",
+                "recording/script",
+            ],
+        },
+    )
     return client, workspace_id
 
 
