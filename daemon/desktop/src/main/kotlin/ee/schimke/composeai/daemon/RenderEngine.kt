@@ -467,7 +467,15 @@ class RenderEngine(
     private fun localeProviders(localeTag: String?): Array<ProvidedValue<*>> {
       val tag = localeTag?.takeIf { it.isNotBlank() } ?: return emptyArray()
       val local = localProvidableLocaleListOrNull() ?: return emptyArray()
-      return arrayOf(local provides LocaleList(tag))
+      // Pseudolocales (`en-XA`, `ar-XB`) aren't real BCP-47 locales — `LocaleList("en-XA")` either
+      // throws or silently degrades depending on the JVM's ICU build. Substitute the base locale
+      // (`en` / `ar`) so locale-sensitive Compose text rendering resolves cleanly. The visual
+      // pseudolocalisation knob (LayoutDirection.Rtl for ar-XB) is provided by
+      // `PseudolocaleOverrideExtensionDesktop`'s around-composable; text-content
+      // pseudolocalisation is Android-only — see `site/reference/pseudolocale.md`.
+      val effectiveTag =
+        ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(tag)?.baseTag ?: tag
+      return arrayOf(local provides LocaleList(effectiveTag))
     }
   }
 }

@@ -245,6 +245,13 @@ fun main(args: Array<String>) {
         )
         add(
           Extension(
+            id = "data/pseudolocale",
+            displayName = "Pseudolocale (desktop)",
+            previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
+          )
+        )
+        add(
+          Extension(
             id = "data/recomposition",
             displayName = "Recomposition counters",
             dataProductRegistry = recompositionRegistry,

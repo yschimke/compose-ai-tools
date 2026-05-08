@@ -168,6 +168,11 @@ include(":data-pseudolocale-connector")
 
 project(":data-pseudolocale-connector").projectDir = file("data/pseudolocale/connector")
 
+include(":data-pseudolocale-connector-desktop")
+
+project(":data-pseudolocale-connector-desktop").projectDir =
+  file("data/pseudolocale/connector-desktop")
+
 include(":data-recomposition-core")
 
 project(":data-recomposition-core").projectDir = file("data/recomposition/core")

@@ -84,6 +84,7 @@ fun main(args: Array<String>) {
   val wrapHeight = args.getOrNull(10)?.toBoolean() ?: false
   val previewParameterProviderFqn = args.getOrNull(11)?.takeIf { it.isNotBlank() }
   val previewParameterLimit = args.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: Int.MAX_VALUE
+  val localeTag = args.getOrNull(13)?.takeIf { it.isNotBlank() }
 
   // Provider enumeration is fatal to the whole subprocess — we can't
   // render anything if values can't be loaded. Per-value render failures
@@ -156,6 +157,7 @@ fun main(args: Array<String>) {
         wrapWidth,
         wrapHeight,
         previewArgs,
+        localeTag,
       )
     } catch (e: Throwable) {
       // Catch Throwable, not Exception — preview functions can throw
@@ -348,6 +350,7 @@ private fun renderPreview(
   wrapWidth: Boolean,
   wrapHeight: Boolean,
   previewArgs: List<Any?>,
+  localeTag: String?,
 ) {
   val clazz = Class.forName(className)
   val composableMethod =
@@ -363,8 +366,27 @@ private fun renderPreview(
   // onGloballyPositioned. Only read when at least one axis wraps.
   var measured: IntSize? = null
 
+  // Pseudolocale (`en-XA`, `ar-XB`): ar-XB flips `LocalLayoutDirection` to RTL so the captured
+  // PNG mirrors layout. en-XA is a no-op visually on desktop — CMP's
+  // `org.jetbrains.compose.resources.stringResource` doesn't go through `LocalContext.resources`,
+  // so the Resources-subclass trick the Android connector uses doesn't apply here. See the
+  // platform-support note in `site/reference/pseudolocale.md`.
+  val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
   scene.setContent {
-    CompositionLocalProvider(LocalInspectionMode provides true) {
+    val baseProviders: @Composable (@Composable () -> Unit) -> Unit = { inner ->
+      if (pseudolocale?.isRtl == true) {
+        CompositionLocalProvider(
+          LocalInspectionMode provides true,
+          androidx.compose.ui.platform.LocalLayoutDirection provides
+            androidx.compose.ui.unit.LayoutDirection.Rtl,
+        ) {
+          inner()
+        }
+      } else {
+        CompositionLocalProvider(LocalInspectionMode provides true) { inner() }
+      }
+    }
+    baseProviders {
       val bgColor =
         when {
           backgroundColor != 0L -> Color(backgroundColor.toInt())
