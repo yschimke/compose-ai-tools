@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.10.1](https://github.com/yschimke/compose-ai-tools/compare/v0.10.0...v0.10.1) (2026-05-08)
+
+
+### Features
+
+* **daemon:** add navigation script-event extension (deep link, back, predictive back) ([#901](https://github.com/yschimke/compose-ai-tools/issues/901)) ([2c0585b](https://github.com/yschimke/compose-ai-tools/commit/2c0585b4c5f19a81c86b923b32df62117db248c5))
+* **plugin:** move pixel-test wiring out of samples into composePreview { renderBeforeUnitTests } ([#904](https://github.com/yschimke/compose-ai-tools/issues/904)) ([37f2b95](https://github.com/yschimke/compose-ai-tools/commit/37f2b95a869d5c43608facdf08c00fb0ecbf48bc))
+* **preview-annotations:** add @AmbientPreview to drive Wear ambient state in previews ([#914](https://github.com/yschimke/compose-ai-tools/issues/914)) ([9021ca6](https://github.com/yschimke/compose-ai-tools/commit/9021ca6f0c7cef4a481b1e232c1aba552b415ca4))
+* **preview-annotations:** add @FocusedPreview to drive focus in previews ([#897](https://github.com/yschimke/compose-ai-tools/issues/897)) ([962ec74](https://github.com/yschimke/compose-ai-tools/commit/962ec747633f5a99c3ca5ed53ab804dc871a61e4))
+* **preview-annotations:** add traverse + overlay to @FocusedPreview ([#899](https://github.com/yschimke/compose-ai-tools/issues/899)) ([cf69a4a](https://github.com/yschimke/compose-ai-tools/commit/cf69a4a025a7a3a7a1c5b384a8032bf6f73fdd3e))
+* **uia:** typed unsupported-reason evidence for uia.* dispatches ([#874](https://github.com/yschimke/compose-ai-tools/issues/874)) ([#916](https://github.com/yschimke/compose-ai-tools/issues/916)) ([b4a8157](https://github.com/yschimke/compose-ai-tools/commit/b4a81576f26b2e32500510e871d23d7091639ab7))
+* **vscode:** log edit→preview-update journey time ([#902](https://github.com/yschimke/compose-ai-tools/issues/902)) ([d564fe5](https://github.com/yschimke/compose-ai-tools/commit/d564fe520c37fd012b7693c6a088e332ae182b39))
+
+
+### Bug Fixes
+
+* **daemon:** propagate session-closed hook for proactive interactive cleanup ([#896](https://github.com/yschimke/compose-ai-tools/issues/896)) ([8a13f8b](https://github.com/yschimke/compose-ai-tools/commit/8a13f8b41a7b6090c6feef3aa3ca6287927525cb))
+* **samples:** drive wear ambient previews via androidx AmbientMode ([#907](https://github.com/yschimke/compose-ai-tools/issues/907)) ([01860b6](https://github.com/yschimke/compose-ai-tools/commit/01860b6574260d683d1bc29d8d8cbd0451c12be0))
+
 ## [0.10.0](https://github.com/yschimke/compose-ai-tools/compare/v0.9.3...v0.10.0) (2026-05-07)
 
 
