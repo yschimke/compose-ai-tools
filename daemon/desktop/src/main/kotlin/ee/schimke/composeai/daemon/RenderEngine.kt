@@ -336,6 +336,29 @@ class RenderEngine(
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") { state.outputFile.writeBytes(pngData.bytes) }
 
+    // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
+    // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty so the
+    // default render path stays free. Wrapped in try/catch so a filter failure does not strand
+    // the PNG.
+    val displayFilters = DisplayFilterConfig.fromSystemProperties()
+    if (displayFilters.isNotEmpty()) {
+      try {
+        trace.section("displayfilter:variants") {
+          DisplayFilterDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = state.spec.outputBaseName,
+            pngFile = state.outputFile,
+            filters = displayFilters,
+          )
+        }
+      } catch (t: Throwable) {
+        System.err.println(
+          "RenderEngine: displayfilter write failed for ${state.spec.outputBaseName}: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
+
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     val metrics = SandboxMeasurement.collect(sandboxStats, tookMs = tookMs)
     trace.write(dataDir)

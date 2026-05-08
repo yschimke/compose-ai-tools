@@ -66,6 +66,12 @@ dependencies {
   // `AmbientStateController`, the `AroundComposable` extension that primes it, and the
   // `AmbientInputDispatchObserver` that wakes on activating gestures during recording.
   implementation(project(":data-ambient-connector"))
+  // Display-filter connector — DisplayFilterDataProductRegistry + DisplayFilterDataProducer.
+  // DaemonMain reads `composeai.displayfilter.filters` via `DisplayFilterConfig` to decide
+  // whether to register the extension; the host's render pipeline reads the same prop and
+  // calls `DisplayFilterDataProducer.writeArtifacts(...)` post-capture (RenderEngine wiring
+  // lands in a follow-up).
+  implementation(project(":data-displayfilter-connector"))
   // Focus / keyboard-traversal connector — `FocusController`, the `AroundComposable` extension
   // that installs `LocalInputModeManager provides KeyboardInputModeManager` and drives the focus
   // walk from a `LaunchedEffect`, the `FocusPreviewOverrideExtension` planner consuming

@@ -181,6 +181,14 @@ include(":data-recomposition-connector")
 
 project(":data-recomposition-connector").projectDir = file("data/recomposition/connector")
 
+include(":data-displayfilter-core")
+
+project(":data-displayfilter-core").projectDir = file("data/displayfilter/core")
+
+include(":data-displayfilter-connector")
+
+project(":data-displayfilter-connector").projectDir = file("data/displayfilter/connector")
+
 // UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
 // the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
 // `record_preview`'s `uia.*` script events.

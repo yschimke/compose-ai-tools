@@ -486,6 +486,32 @@ class RenderEngine(
                 )
               }
             }
+
+            // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
+            // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty
+            // so the default render path stays free; the same prop drives the DaemonMain
+            // registration gate so "extension registered" and "filters produced" stay in sync.
+            // Wrapped in try/catch so a filter failure does not strand the PNG.
+            if (dataDir != null) {
+              val filters = DisplayFilterConfig.fromSystemProperties()
+              if (filters.isNotEmpty()) {
+                try {
+                  trace.section("displayfilter:variants") {
+                    DisplayFilterDataProducer.writeArtifacts(
+                      rootDir = dataDir,
+                      previewId = spec.outputBaseName,
+                      pngFile = outputFile,
+                      filters = filters,
+                    )
+                  }
+                } catch (t: Throwable) {
+                  System.err.println(
+                    "RenderEngine: displayfilter write failed for ${spec.outputBaseName}: " +
+                      "${t.javaClass.simpleName}: ${t.message}"
+                  )
+                }
+              }
+            }
           } finally {
             // DESIGN § 9 + § 10 cleanup epilogue. The Compose test rule does not allow a second
             // `setContent` on the same `ComponentActivity`, so we can't drive the
