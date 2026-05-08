@@ -107,6 +107,14 @@ jobs:
   # The CLI tarball already implementation-bundles `:mcp`, so the standalone
   # MCP archive is for consumers who only want `compose-preview-mcp` on its
   # own (e.g. wiring it into an MCP client without dragging the CLI in).
+  #
+  # Each dist is uploaded as its own artifact so `actions/upload-artifact`'s
+  # lowest-common-ancestor logic collapses to the single `*/build/distributions/`
+  # dir, leaving the artifact contents flat. A previous attempt that listed
+  # both `cli/build/distributions/...` and `mcp/build/distributions/...` under
+  # one artifact pushed the LCA back to the workspace root, so the files
+  # landed nested inside the artifact and silently fell off the shallow
+  # upload glob in the `release` job (zero assets shipped on v0.10.2–v0.10.5).
   build-applications:
     runs-on: ubuntu-latest
     steps:
@@ -123,10 +131,15 @@ jobs:
         run: ./gradlew :cli:distZip :cli:distTar :mcp:distZip :mcp:distTar
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: app-dist
+          name: cli-dist
           path: |
             cli/build/distributions/compose-preview-*.zip
             cli/build/distributions/compose-preview-*.tar.gz
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mcp-dist
+          path: |
             mcp/build/distributions/compose-preview-mcp-*.zip
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
           retention-days: 1
@@ -255,26 +268,15 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Collect release assets
-        # `actions/upload-artifact` preserves the lowest-common-ancestor of the
-        # paths it was given. `build-applications` ships files from both
-        # `cli/build/distributions/` and `mcp/build/distributions/`, so its LCA
-        # is the workspace root — meaning the CLI/MCP zips and tarballs land at
-        # `artifacts/cli/build/distributions/…` and `artifacts/mcp/build/…`,
-        # not directly under `artifacts/`. A shallow `artifacts/*.zip` glob
-        # therefore matched nothing on 0.10.4 and `gh release upload` exited 1
-        # with the literal pattern. Recurse with `find` so we pick up assets at
-        # any depth, then feed an explicit file list to `gh`.
-        run: |
-          mapfile -t assets < <(find artifacts -type f \
-            \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.vsix' \) | sort)
-          if [[ ${#assets[@]} -eq 0 ]]; then
-            echo "No release assets found under artifacts/" >&2
-            exit 1
-          fi
-          printf 'asset: %s\n' "${assets[@]}"
-          printf '%s\n' "${assets[@]}" > "$RUNNER_TEMP/release-assets.txt"
       - name: Upload or create GitHub Release
+        # Each upstream upload-artifact step has a single common parent
+        # directory in its `path:` list, so its LCA collapses to that dir and
+        # the artifact contents are flat. After `merge-multiple: true`, every
+        # CLI / MCP / skill / VSIX file lands directly under `artifacts/`, so
+        # the shallow glob below is sufficient. If you ever expand the dist
+        # set across two parents within a single artifact, switch back to a
+        # `find artifacts -type f …` collector first.
+        #
         # $TAG_NAME is read from env (not templated into the script), so the
         # tag name — attacker-influenceable through git or the dispatch input
         # — can't break out of the quotation and inject extra args.
@@ -287,14 +289,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          mapfile -t assets < "$RUNNER_TEMP/release-assets.txt"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME exists — uploading assets."
-            gh release upload "$TAG_NAME" --clobber "${assets[@]}"
+            gh release upload "$TAG_NAME" \
+              --clobber \
+              artifacts/*.zip \
+              artifacts/*.tar.gz \
+              artifacts/*.vsix
           else
             echo "Release $TAG_NAME does not exist — creating."
             gh release create "$TAG_NAME" \
               --title "compose-ai-tools ${TAG_NAME#v}" \
               --generate-notes \
-              "${assets[@]}"
+              artifacts/*.zip \
+              artifacts/*.tar.gz \
+              artifacts/*.vsix
           fi
