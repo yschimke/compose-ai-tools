@@ -146,6 +146,12 @@ let panel: PreviewPanel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
+// Args of the most recent `[refresh] start` line we emitted. Used to suppress
+// the start log when a superseding refresh is invoked with identical args
+// (typical at startup, when activation, panel restore, and editor-focus paths
+// can each schedule the same refresh in quick succession). The Gradle task
+// itself still gets aborted + restarted; we only quiet the duplicate log.
+let pendingRefreshKey: string | null = null;
 let hasPreviewsLoaded = false;
 let lastLoadedModules: string[] = [];
 /**
@@ -2773,9 +2779,15 @@ async function refresh(
     }
 
     // Cancel any in-flight refresh
+    const wasInFlight = pendingRefresh !== null;
+    const previousRefreshKey = pendingRefreshKey;
     pendingRefresh?.abort();
     const abort = new AbortController();
     pendingRefresh = abort;
+    // Cleared until we resolve the scope and reach the start-log gate;
+    // early-return paths (no-module, gated) leave it null so a later
+    // refresh with the same args still gets a start log.
+    pendingRefreshKey = null;
 
     // The panel is always scoped to exactly one Kotlin source file. If no
     // suitable file is available (webview has focus → activeTextEditor is
@@ -2811,9 +2823,14 @@ async function refresh(
     if (currentScopeFile && currentScopeFile !== activeFile) {
         clearHeavyRefreshOptIns();
     }
-    logLine(
-        `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module.modulePath}`,
-    );
+    const refreshKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
+    const sameAsInFlight = wasInFlight && previousRefreshKey === refreshKey;
+    pendingRefreshKey = refreshKey;
+    if (!sameAsInFlight) {
+        logLine(
+            `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module.modulePath}`,
+        );
+    }
 
     // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
     // user is mid-typo-fix — the active file's diagnostics already tell us
@@ -3319,6 +3336,7 @@ async function refresh(
         tracker.abort();
         if (pendingRefresh === abort) {
             pendingRefresh = null;
+            pendingRefreshKey = null;
         }
     }
 }

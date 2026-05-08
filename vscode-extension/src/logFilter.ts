@@ -116,6 +116,12 @@ export class LogFilter {
     private warnedOnce = new Set<string>();
     private inConfigureBlock = false;
     private inRoborazziBlock = false;
+    // Tracks whether the last line we emitted from filterGradleChunk was blank,
+    // so that dropping interstitial content between blanks doesn't accumulate
+    // multiple consecutive blank lines in the output channel. Persists across
+    // chunks since Gradle's tooling-API splits a single FAILURE block over
+    // several stdout chunks.
+    private prevEmittedBlank = false;
 
     constructor(
         private readonly levelProvider: () => LogLevel = () => "normal",
@@ -143,7 +149,17 @@ export class LogFilter {
             const isLast = i === lines.length - 1;
             const decision = this.classifyGradleLine(line);
             if (decision === "keep") {
+                const isBlank = line.trimEnd().length === 0;
+                if (isBlank && this.prevEmittedBlank) {
+                    if (isLast) {
+                        out.push("");
+                    }
+                    continue;
+                }
                 out.push(line);
+                if (!isLast) {
+                    this.prevEmittedBlank = isBlank;
+                }
                 continue;
             }
             if (decision === "drop") {
@@ -328,5 +344,6 @@ export class LogFilter {
         this.warnedOnce.clear();
         this.inConfigureBlock = false;
         this.inRoborazziBlock = false;
+        this.prevEmittedBlank = false;
     }
 }

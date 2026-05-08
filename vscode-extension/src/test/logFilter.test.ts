@@ -173,6 +173,39 @@ describe("LogFilter", () => {
                 "e: Incremental compilation failed: foo.bin (No such file)\nw: Some warning\n",
             );
         });
+
+        it("collapses consecutive blank lines left behind by dropped sections", () => {
+            const f = withLevel("quiet");
+            const out = f.filterGradleChunk(
+                "FAILURE: Build failed with an exception.\n" +
+                    "\n" +
+                    "* What went wrong:\n" +
+                    "A problem occurred configuring project ':gradle-plugin'.\n" +
+                    "> Build cancelled.\n" +
+                    "\n" +
+                    "* Try:\n" +
+                    "> Run with --stacktrace option to get the stack trace.\n" +
+                    "> Run with --info or --debug option to get more log output.\n" +
+                    "\n" +
+                    "BUILD FAILED in 19s\n",
+            );
+            assert.strictEqual(
+                out,
+                "FAILURE: Build failed with an exception.\n" +
+                    "\n" +
+                    "* What went wrong:\n" +
+                    "\n" +
+                    "BUILD FAILED in 19s\n",
+            );
+        });
+
+        it("collapses blank lines across chunk boundaries", () => {
+            const f = withLevel("quiet");
+            // Two adjacent blank lines split across separate Gradle stdout
+            // chunks should still collapse to a single blank in the output.
+            assert.strictEqual(f.filterGradleChunk("\n"), "\n");
+            assert.strictEqual(f.filterGradleChunk("\n"), "");
+        });
     });
 
     describe("filterGradleChunk at verbose", () => {

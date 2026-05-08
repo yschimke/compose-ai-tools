@@ -1019,17 +1019,21 @@ export class GradleService {
                         this.logger.appendLine(`> ${task} cancelled`);
                         throw new TaskCancelledError(task);
                     }
-                    this.logger.appendLine(`> ${task} FAILED: ${message}`);
                     detector.end();
                     kotlinDetector.end();
                     const finding = detector.getFinding();
                     if (finding) {
+                        // Caller logs a JDK-specific failure line; the generic
+                        // gRPC "Could not execute build" message would just be
+                        // noise next to it.
                         throw new JdkImageError(finding, task);
                     }
                     const kotlinErrors = kotlinDetector.getErrors();
                     if (kotlinErrors.length > 0) {
+                        // Same here: caller logs a typed Kotlin error summary.
                         throw new KotlinCompileError(kotlinErrors, task);
                     }
+                    this.logger.appendLine(`> ${task} FAILED: ${message}`);
                     throw new Error(
                         `Gradle task ${task} failed. See Output > Compose Preview.`,
                     );
