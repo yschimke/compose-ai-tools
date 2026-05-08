@@ -55,13 +55,43 @@ internal class PseudolocaleResources(
     val sb = SpannableStringBuilder(transformed.text)
     val map = transformed.indexMap
     val length = raw.length
+    val outText = transformed.text
     for (span in raw.getSpans(0, length, Any::class.java)) {
       val srcStart = raw.getSpanStart(span).coerceIn(0, length)
       val srcEnd = raw.getSpanEnd(span).coerceIn(srcStart, length)
       val flags = raw.getSpanFlags(span)
-      sb.setSpan(span, map[srcStart], map[srcEnd], flags)
+      var dstStart = map[srcStart]
+      var dstEnd = map[srcEnd]
+      // SPAN_PARAGRAPH spans (BulletSpan, LeadingMarginSpan, …) must start at 0 or right after a
+      // `\n`, and end at length or right after a `\n`. The transform prepends marker characters
+      // (`[` in accent mode, RLO in bidi) which would shift a span starting at input 0 to output
+      // position 1 and trip SpannableStringBuilder.setSpan's paragraph-boundary check at runtime.
+      // Snap each end to the nearest valid paragraph boundary before re-attaching; drop the span
+      // entirely if snapping produces a degenerate range.
+      if ((flags and Spanned.SPAN_PARAGRAPH) == Spanned.SPAN_PARAGRAPH) {
+        dstStart = snapToParagraphStart(outText, dstStart)
+        dstEnd = snapToParagraphEnd(outText, dstEnd)
+        if (dstStart >= dstEnd) continue
+      }
+      sb.setSpan(span, dstStart, dstEnd, flags)
     }
     return sb
+  }
+
+  private fun snapToParagraphStart(text: String, pos: Int): Int {
+    if (pos <= 0) return 0
+    for (i in pos - 1 downTo 0) {
+      if (text[i] == '\n') return i + 1
+    }
+    return 0
+  }
+
+  private fun snapToParagraphEnd(text: String, pos: Int): Int {
+    if (pos >= text.length) return text.length
+    for (i in pos until text.length) {
+      if (text[i] == '\n') return i + 1
+    }
+    return text.length
   }
 }
 
