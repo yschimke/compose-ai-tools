@@ -9,7 +9,7 @@ import {
     PreviewRenderError,
     ResourceManifest,
 } from "./types";
-import { appliesPlugin } from "./pluginDetection";
+import { appliesPlugin, BUILD_SCRIPT_NAMES } from "./pluginDetection";
 import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
 import {
     KotlinCompileError,
@@ -677,9 +677,11 @@ export class GradleService {
      *      marker written by the `composePreviewApplied` Gradle task. Covers
      *      every apply mechanism (literal `id`, version-catalog alias,
      *      convention plugin, buildSrc) because Gradle itself wrote it.
-     *   2. `<module>/build.gradle.kts` matching literal
-     *      `id("ee.schimke.composeai.preview")`. Pre-Gradle-run fallback so
-     *      trivially-configured workspaces aren't empty on first open.
+     *   2. `<module>/build.gradle.kts` or `<module>/build.gradle` matching
+     *      literal `id("ee.schimke.composeai.preview")` (Kotlin DSL) or
+     *      `id 'ee.schimke.composeai.preview'` (Groovy DSL). Pre-Gradle-run
+     *      fallback so trivially-configured workspaces aren't empty on
+     *      first open.
      *
      * Returning the union means running Gradle on one module doesn't cause
      * others (applied but not yet built) to disappear from the list.
@@ -728,18 +730,21 @@ export class GradleService {
                 if (fs.existsSync(marker)) {
                     found.add(childRel);
                 } else {
-                    const buildFile = path.join(
-                        this.workspaceRoot,
-                        childRel,
-                        "build.gradle.kts",
-                    );
-                    try {
-                        const content = fs.readFileSync(buildFile, "utf-8");
-                        if (appliesPlugin(content)) {
-                            found.add(childRel);
+                    for (const name of BUILD_SCRIPT_NAMES) {
+                        const buildFile = path.join(
+                            this.workspaceRoot,
+                            childRel,
+                            name,
+                        );
+                        try {
+                            const content = fs.readFileSync(buildFile, "utf-8");
+                            if (appliesPlugin(content)) {
+                                found.add(childRel);
+                                break;
+                            }
+                        } catch {
+                            /* try the next build-script name */
                         }
-                    } catch {
-                        /* skip */
                     }
                 }
                 walk(childRel, depth + 1);

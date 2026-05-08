@@ -20,6 +20,15 @@ import * as path from "path";
 
 export const PLUGIN_ID = "ee.schimke.composeai.preview";
 
+/**
+ * Module build-script filenames we scan, in preference order. Kotlin DSL
+ * (`build.gradle.kts`) is checked first because that's what every sample in
+ * this repo uses, but Groovy DSL (`build.gradle`) is still common in
+ * AGP-bootstrapped consumer projects and must not produce a false-negative
+ * "plugin not applied" signal.
+ */
+export const BUILD_SCRIPT_NAMES = ["build.gradle.kts", "build.gradle"] as const;
+
 // Matches the plugin being *applied* literally (`id("ee.schimke.composeai.preview")`
 // or `id "ee.schimke.composeai.preview"`), not the plugin's own declaration in
 // gradle-plugin/build.gradle.kts (`id = "ee.schimke.composeai.preview"`). The
@@ -60,9 +69,9 @@ export function appliesPlugin(content: string): boolean {
 
 /**
  * Walks up from `filePath`'s directory looking for an ancestor containing a
- * `build.gradle.kts` that literally applies the plugin. Returns that
- * directory, or null if no such ancestor exists before hitting the
- * filesystem root.
+ * module build script (`build.gradle.kts` or `build.gradle`) that literally
+ * applies the plugin. Returns that directory, or null if no such ancestor
+ * exists before hitting the filesystem root.
  *
  * This is intentionally workspace-agnostic — unlike `GradleService.resolveModule`,
  * it doesn't care whether the match is a direct child of the VS Code workspace
@@ -72,22 +81,25 @@ export function appliesPlugin(content: string): boolean {
  * setup-prompt logic to avoid nagging users whose file is clearly already
  * plugin-enabled somewhere in its own project tree.
  *
- * Only matches the literal `id("…")` application form. Projects that apply
- * via a version catalog are picked up via the `applied.json` marker path in
- * [GradleService.findPreviewModules] once Gradle has run — this helper is a
- * purely static file-walk fallback, used where we don't have a marker.
+ * Only matches the literal `id("…")` / `id "…"` application form. Projects
+ * that apply via a version catalog are picked up via the `applied.json`
+ * marker path in [GradleService.findPreviewModules] once Gradle has run —
+ * this helper is a purely static file-walk fallback, used where we don't
+ * have a marker.
  */
 export function findPluginAppliedAncestor(filePath: string): string | null {
     let dir = path.dirname(filePath);
     while (true) {
-        const candidate = path.join(dir, "build.gradle.kts");
-        try {
-            const content = fs.readFileSync(candidate, "utf-8");
-            if (appliesPlugin(content)) {
-                return dir;
+        for (const name of BUILD_SCRIPT_NAMES) {
+            const candidate = path.join(dir, name);
+            try {
+                const content = fs.readFileSync(candidate, "utf-8");
+                if (appliesPlugin(content)) {
+                    return dir;
+                }
+            } catch {
+                /* no build file here, try the next name */
             }
-        } catch {
-            /* no build file here, keep walking */
         }
         const parent = path.dirname(dir);
         if (parent === dir) {
