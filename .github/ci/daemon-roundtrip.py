@@ -399,7 +399,7 @@ def main() -> int:
         init_result = driver.request(
             "initialize",
             {
-                "protocolVersion": 1,
+                "protocolVersion": 2,
                 "clientVersion": "ci-roundtrip-0.1",
                 "workspaceRoot": str(workspace),
                 "moduleId": args.module_id,
@@ -409,8 +409,8 @@ def main() -> int:
             timeout_s=120.0,
         )
         proto = init_result.get("protocolVersion")
-        if proto != 1:
-            raise RuntimeError(f"daemon protocolVersion={proto}, expected 1")
+        if proto != 2:
+            raise RuntimeError(f"daemon protocolVersion={proto}, expected 2")
         print(f"[daemon-roundtrip] initialize OK (daemonVersion={init_result.get('daemonVersion')})")
         driver.notify("initialized")
 
