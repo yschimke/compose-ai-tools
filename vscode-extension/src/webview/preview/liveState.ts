@@ -40,14 +40,12 @@
 // triggered after the extension or daemon has already torn the streams down,
 // and re-posting would race the flush.
 
-import {
-    liveToggleCommand,
-    liveViewportCommand,
-} from "../../daemon/liveCommand";
+import { liveToggleCommand } from "../../daemon/liveCommand";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
+import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
 import type { VsCodeApi } from "../shared/vscode";
 
 export interface LiveStateConfig {
@@ -293,8 +291,11 @@ export class LiveStateController {
      * LIVE badge survives the throttle.
      */
     onCardLeftViewport(previewId: string): void {
-        if (!this.interactivePreviewIds.has(previewId)) return;
-        this.cfg.vscode.postMessage(liveViewportCommand(previewId, false));
+        throttleLiveOnViewportLeave(
+            previewId,
+            this.interactivePreviewIds,
+            (msg) => this.cfg.vscode.postMessage(msg),
+        );
     }
 
     /** Drop live previewIds that are gone from a fresh setPreviews manifest.
