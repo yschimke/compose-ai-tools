@@ -545,6 +545,20 @@
     "sha256": "ab868686741c27a0025eb51fe1f221b74b778509745c94584fc8a59deeeccf8d",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt"
   },
+  "samples:cmp/com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoBidi_bidi": {
+    "captureLabel": "",
+    "functionName": "CmpPseudoBidi",
+    "renderBasename": "PseudolocalePreviewsKt.CmpPseudoBidi_bidi.png",
+    "sha256": "bcf5ce45ee0d3cac58544431e0a6f7802fd2f78f8841d4654f7d00284777a371",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default": {
+    "captureLabel": "",
+    "functionName": "CmpPseudoDefault",
+    "renderBasename": "PseudolocalePreviewsKt.CmpPseudoDefault_default.png",
+    "sha256": "6635005c9f4f146edb46a44124d849243794628adeef4c8c6cf2ab8d3d5979d8",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt"
+  },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
     "captureLabel": "",
     "functionName": "BlueLabelPreview",
@@ -668,7 +682,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
