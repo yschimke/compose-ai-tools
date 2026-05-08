@@ -113,6 +113,12 @@ export function paintCardCapture(
     container.querySelector(".loading-overlay")?.remove();
     container.querySelector(".error-message")?.remove();
     card.classList.remove("has-error");
+    // Clear the render-error stamp set by handleErrorMessage so the
+    // focus inspector's render-error presenter stops surfacing the
+    // stale banner. Paired write/clear keeps the banner state aligned
+    // with the visible image state.
+    delete card.dataset.renderError;
+    delete card.dataset.renderErrorDetail;
 
     const ro = capture ? capture.renderOutput : "";
     const newSrc = "data:" + mimeFor(ro) + ";base64," + imageData;
