@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -36,11 +37,13 @@ import org.junit.rules.TemporaryFolder
  * `AccessibilityChecker.writePerPreviewReport` instead. Daemon-mode coverage is a separate
  * follow-up — needs daemon JVM + stdio JSON-RPC + lifecycle scaffolding.
  *
- * Skipped (`Assume.assumeTrue`) when:
- * - no Android SDK is reachable via `ANDROID_HOME` / `ANDROID_SDK_ROOT` / host `local.properties`,
- *   or
- * - the matching `:gradle-plugin:publishToMavenLocal` / `:renderer-android:publishToMavenLocal`
- *   pre-step hasn't run for this version.
+ * Skipped (`Assume.assumeTrue`) only when no Android SDK is reachable via `ANDROID_HOME` /
+ * `ANDROID_SDK_ROOT` / host `local.properties`. Past the SDK gate the caller is committed to
+ * Android coverage and the AAR / plugin-marker checks become **hard assertions**: skipping there
+ * would silently green the test if a sibling-task race in the parent's task graph put this test
+ * ahead of the renderer-android publishes (Gradle does not enforce sibling `dependsOn` order, and
+ * the cross-build boundary blocks real ordering edges between the parent's publishes and this
+ * included-build test). A loud failure surfaces the race; a skip would hide it.
  *
  * Keeps dev environments without an Android SDK green and lets `./gradlew
  * :gradle-plugin:functionalTest` stay fast — the Android-flavour coverage is gated behind
@@ -227,31 +230,44 @@ class AccessibilityAndroidFunctionalTest {
       "Skipping: no Android SDK reachable via ANDROID_HOME / local.properties",
       androidSdkDir.isNotBlank() && File(androidSdkDir).isDirectory,
     )
-    // Sanity: the host build must have published the matching renderer-android AAR before this
-    // test starts (parent `functionalTestWithAndroid` task wires that pre-step).
+
+    // Past the SDK gate the caller is committed to Android coverage — the only valid invocation
+    // path that gets here is `./gradlew functionalTestWithAndroid`, which depends on the
+    // renderer-android AAR closure + plugin-marker `publishToMavenLocal` tasks. Treat missing
+    // prerequisites as **hard failures** rather than `assumeTrue` skips: an `assumeTrue` here
+    // would silently green the test if a sibling-task race in the parent's task graph
+    // (publishes vs. this test) put the test ahead of the publishes — Gradle does not enforce
+    // ordering between sibling `dependsOn` entries, and the cross-build boundary makes
+    // expressing real ordering between the parent's publishes and this included-build test
+    // impossible from either side. A loud failure surfaces the race; a skip would hide it.
     val rendererAar =
       File(mavenLocal, "ee/schimke/composeai/renderer-android/$pluginVersion")
         .listFiles { f -> f.extension == "aar" }
         ?.firstOrNull()
-    assumeTrue(
-      "Skipping: renderer-android-$pluginVersion.aar not in mavenLocal " +
-        "(did `:renderer-android:publishToMavenLocal` run?)",
-      rendererAar != null,
-    )
+    assertWithMessage(
+        "renderer-android-$pluginVersion.aar in mavenLocal " +
+          "(did `:renderer-android:publishToMavenLocal` run? Use `./gradlew functionalTestWithAndroid`)"
+      )
+      .that(rendererAar)
+      .isNotNull()
 
     // The synthetic project resolves `id("ee.schimke.composeai.preview") version "<v>"` from
-    // mavenLocal, so the plugin marker artifact must already be there. Skip cleanly when it's
-    // not — the parent `functionalTestWithAndroid` task wires this pre-step too.
+    // mavenLocal, so the plugin marker artifact must already be there. Same hard-failure
+    // semantics as the AAR check above — though the within-included-build `mustRunAfter`
+    // ordering on `:gradle-plugin:functionalTest` makes this race-free in practice when
+    // invoked via `functionalTestWithAndroid`, the assertion is the right shape if anyone
+    // rewires the parent task later.
     val pluginMarker =
       File(
         mavenLocal,
         "ee/schimke/composeai/preview/ee.schimke.composeai.preview.gradle.plugin/$pluginVersion",
       )
-    assumeTrue(
-      "Skipping: ee.schimke.composeai.preview-$pluginVersion plugin marker not in mavenLocal " +
-        "(did `:gradle-plugin:publishToMavenLocal` run?)",
-      pluginMarker.isDirectory,
-    )
+    assertWithMessage(
+        "ee.schimke.composeai.preview-$pluginVersion plugin marker in mavenLocal " +
+          "(did `:gradle-plugin:publishToMavenLocal` run? Use `./gradlew functionalTestWithAndroid`)"
+      )
+      .that(pluginMarker.isDirectory)
+      .isTrue()
 
     val projectDir = createTestProject()
 
