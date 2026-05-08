@@ -7,7 +7,6 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
-import org.gradle.api.publish.PublishingExtension
 import org.gradle.kotlin.dsl.configure
 
 abstract class ComposeAiMavenPublishingExtension
@@ -43,23 +42,6 @@ class ComposeAiMavenPublishingPlugin : Plugin<Project> {
     project.version =
       project.providers.environmentVariable("PLUGIN_VERSION").orNull
         ?: project.nextPatchSnapshotVersion()
-
-    project.extensions.configure<PublishingExtension> {
-      repositories.maven {
-        name = "GitHubPackages"
-        url =
-          project.uri(
-            project.providers
-              .environmentVariable("GITHUB_REPOSITORY")
-              .map { "https://maven.pkg.github.com/$it" }
-              .orElse("https://maven.pkg.github.com/yschimke/compose-ai-tools")
-          )
-        credentials {
-          username = project.providers.environmentVariable("GITHUB_ACTOR").orNull
-          password = project.providers.environmentVariable("GITHUB_TOKEN").orNull
-        }
-      }
-    }
 
     project.afterEvaluate {
       val artifactId =

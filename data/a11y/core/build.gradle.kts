@@ -50,7 +50,6 @@ dependencies {
   testImplementation(libs.robolectric)
 }
 
-// GitHub Packages repo kept alongside Maven Central for internal/CI convenience.
 // Vanniktech's `AndroidSingleVariantLibrary` creates the release publication
 // (with sources + javadoc jar) — do not create one manually; it clashes.
 

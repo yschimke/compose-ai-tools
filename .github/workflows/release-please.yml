@@ -55,4 +55,3 @@ jobs:
     secrets: inherit
     permissions:
       contents: write   # needed by the called workflow's `release` job
-      packages: write   # needed by the called workflow's GH Packages publish

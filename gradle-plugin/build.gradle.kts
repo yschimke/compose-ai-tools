@@ -26,9 +26,9 @@ gradlePlugin {
   }
 }
 
-// Publish to both GitHub Packages (legacy / CI convenience) and Maven Central
-// via the new Central Portal. Snapshots (version ending in `-SNAPSHOT`) route
-// automatically to `https://central.sonatype.com/repository/maven-snapshots/`.
+// Publish to Maven Central via the Central Portal. Snapshots (version
+// ending in `-SNAPSHOT`) route automatically to
+// `https://central.sonatype.com/repository/maven-snapshots/`.
 
 dependencies {
   implementation(libs.classgraph)
@@ -131,7 +131,7 @@ fun resolveAndroidSdk(rootDir: java.io.File): String {
 
 // Bake the plugin's own version into a resource so it can resolve a matching
 // `renderer-android` AAR at runtime for external consumers (who apply the
-// plugin via GitHub Packages rather than includeBuild).
+// plugin via Maven Central rather than includeBuild).
 val generatePluginVersionResource by tasks.registering {
   val outputDir = layout.buildDirectory.dir("generated/plugin-version-resource")
   val pluginVersion = project.version.toString()

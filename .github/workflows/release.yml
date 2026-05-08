@@ -1,8 +1,10 @@
 name: Release
 
-# Builds and publishes the CLI, VS Code extension, and Gradle plugin +
-# renderer-android for a given tag. Uploads the CLI/VSIX assets onto the
-# GitHub Release (creating it if it doesn't exist yet).
+# Builds and publishes the CLI, MCP server, VS Code extension, skills, and
+# Gradle plugin + renderer-android for a given tag. Uploads the CLI / MCP /
+# VSIX / skill assets onto the GitHub Release (creating it if it doesn't
+# exist yet). Maven coordinates ship to Maven Central only — we do not
+# mirror to GitHub Packages, since Central is the supported consumer path.
 #
 # Entry points:
 #   - workflow_call: called from release-please.yml after release-please
@@ -31,7 +33,6 @@ on:
       - 'v*'
 
 # Workflow-level default is read-only. Each job widens only what it needs:
-# - publish-gradle-plugin: packages: write (for GH Packages)
 # - release: contents: write (creates/updates the GitHub Release, uploads assets)
 permissions:
   contents: read
@@ -51,10 +52,11 @@ env:
 
 jobs:
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
-  # published Maven artifact if the VSIX or CLI build fails (GitHub Packages
-  # refuses to overwrite an already-published release version — see #409).
+  # published Maven Central artifact if the VSIX, CLI, or MCP build fails —
+  # Central refuses to overwrite an already-published release version, so a
+  # half-released version can't be quietly rebuilt.
   # `renderer-android` is published alongside the plugin so external consumers
-  # that apply the plugin via GitHub Packages also get the Robolectric-based
+  # that apply the plugin via Maven Central also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
   # `preview-annotations` ships the `@ScrollingPreview` marker that Compose
   # apps add to their compileOnly classpath, so it must publish in lockstep.
@@ -64,16 +66,11 @@ jobs:
   # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
   # captureToImage fallback if Roborazzi's API ever does break binary compat.
   publish-gradle-plugin:
-    needs: [build-cli, build-vscode-extension]
+    needs: [build-applications, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write   # push to GitHub Packages
     env:
-      # Signing creds are shared by both publish steps. vanniktech's
-      # `signAllPublications()` wires the `sign*` tasks as dependencies of
-      # every publish task — including the GH Packages publication — so
-      # "no configured signatory" errors out either publish without them.
       ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
       ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
       ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
@@ -89,18 +86,6 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin, renderer-android, data-*, preview-annotations, daemon-* to GitHub Packages
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          # See the comment in snapshot.yml's publish step: root-level abbreviation fans out
-          # to every subproject applying `composeai.maven-publishing`; `:gradle-plugin` is an
-          # includeBuild and needs an explicit address.
-          ./gradlew \
-            :gradle-plugin:publishAllPublicationsToGitHubPackagesRepository \
-            publishAllPublicationsToGitHubPackagesRepository
       - name: Publish plugin, renderer-android, data-*, preview-annotations, daemon-* to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -113,7 +98,12 @@ jobs:
             :gradle-plugin:publishAndReleaseToMavenCentral \
             publishAndReleaseToMavenCentral
 
-  build-cli:
+  # Build the runnable applications shipped on each GitHub Release: the CLI
+  # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).
+  # The CLI tarball already implementation-bundles `:mcp`, so the standalone
+  # MCP archive is for consumers who only want `compose-preview-mcp` on its
+  # own (e.g. wiring it into an MCP client without dragging the CLI in).
+  build-applications:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -125,14 +115,16 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Build CLI distribution
-        run: ./gradlew :cli:distZip :cli:distTar
+      - name: Build CLI and MCP distributions
+        run: ./gradlew :cli:distZip :cli:distTar :mcp:distZip :mcp:distTar
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cli-dist
+          name: app-dist
           path: |
             cli/build/distributions/compose-preview-*.zip
             cli/build/distributions/compose-preview-*.tar.gz
+            mcp/build/distributions/compose-preview-mcp-*.zip
+            mcp/build/distributions/compose-preview-mcp-*.tar.gz
           retention-days: 1
 
   # Pack each `skills/<name>/` directory into its own `<name>-skill-<ver>.tar.gz`
