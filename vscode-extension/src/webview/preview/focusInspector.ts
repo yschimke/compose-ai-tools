@@ -40,6 +40,15 @@ import {
     groupByBucket,
     suggestFor,
 } from "./focusProductTaxonomy";
+import {
+    type PresenterContext,
+    type PresentationError,
+    type PresentationLegend,
+    type PresentationReport,
+    type ProductPresentation,
+    getPresenter,
+} from "./focusPresentation";
+import { LegendArrowController } from "./legendArrow";
 
 export interface FocusInspectorConfig {
     /** The `<div id="focus-inspector">` element rendered by `<preview-app>`. */
@@ -112,6 +121,9 @@ export class FocusInspectorController {
     /** Last card we rendered. Held so `toggleProduct` can re-render
      *  the panel on the same card after flipping a checkbox. */
     private lastCard: HTMLElement | null = null;
+    /** Hover-arrow correlator. Re-attached on every render so it
+     *  rebinds against fresh legend rows. */
+    private readonly arrows = new LegendArrowController();
 
     constructor(private readonly config: FocusInspectorConfig) {}
 
@@ -225,9 +237,36 @@ export class FocusInspectorController {
             ),
         );
         controls.appendChild(toolActions);
+
+        // Presenter pipeline. Iterate every enabled kind, call its
+        // registered presenter (if any), and slot the contributions
+        // into the four surfaces: errors banner, card overlay layer,
+        // legends section, reports section. Always re-iterate from
+        // scratch — presenters are pure factories.
+        const presentations = this.collectPresentations(
+            card,
+            preview,
+            previewId,
+            findings,
+        );
+        const errorBanner = this.renderErrors(presentations);
+        const legendsSection = this.renderLegends(presentations);
+        const reportsSection = this.renderReports(presentations);
+        const overlayLayer = this.applyOverlays(card, presentations);
+
+        if (errorBanner) el.appendChild(errorBanner);
         el.appendChild(inspect);
+        if (legendsSection) el.appendChild(legendsSection);
+        if (reportsSection) el.appendChild(reportsSection);
         el.appendChild(this.historyPanel());
         el.appendChild(controls);
+
+        // Wire legend ↔ overlay correlation last so DOM is settled.
+        if (legendsSection) {
+            this.arrows.attach(legendsSection, overlayLayer);
+        } else {
+            this.arrows.detach();
+        }
     }
 
     /**
@@ -516,6 +555,245 @@ export class FocusInspectorController {
         option.appendChild(text);
         void preview;
         return option;
+    }
+
+    /**
+     * Walk the enabled set, call each kind's registered presenter,
+     * and return a flat list of `{kind, presentation}`. Presenters
+     * that aren't registered or return `null` are skipped.
+     *
+     * Special-cased a11y/recomposition toggles: the existing
+     * `local/a11y/overlay` and `compose/recomposition` rows route
+     * through dedicated controllers (focus toolbar / live state) and
+     * don't have presenters of their own. The presenter layer
+     * complements them rather than replacing them.
+     */
+    private collectPresentations(
+        card: HTMLElement,
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): { kind: string; presentation: ProductPresentation }[] {
+        const nodes = this.config.getA11yNodes(previewId);
+        const ctx: PresenterContext = { card, preview, findings, nodes };
+        const out: { kind: string; presentation: ProductPresentation }[] = [];
+        // The error presenter is implicit: we always invoke it so a
+        // render error surfaces even when the user hasn't enabled
+        // anything. Other kinds only run when explicitly enabled.
+        const errorPresenter = getPresenter("local/render/error");
+        if (errorPresenter) {
+            const presentation = errorPresenter(ctx);
+            if (presentation) {
+                out.push({ kind: "local/render/error", presentation });
+            }
+        }
+        for (const kind of this.enabled) {
+            const presenter = getPresenter(kind);
+            if (!presenter) continue;
+            const presentation = presenter(ctx);
+            if (!presentation) continue;
+            out.push({ kind, presentation });
+        }
+        return out;
+    }
+
+    private renderErrors(
+        presentations: readonly {
+            kind: string;
+            presentation: ProductPresentation;
+        }[],
+    ): HTMLElement | null {
+        const errors: { kind: string; error: PresentationError }[] = [];
+        for (const { kind, presentation } of presentations) {
+            if (presentation.error) {
+                errors.push({ kind, error: presentation.error });
+            }
+        }
+        if (errors.length === 0) return null;
+        const banner = document.createElement("section");
+        banner.className = "focus-panel focus-error-panel";
+        banner.setAttribute("role", "alert");
+        for (const { kind, error } of errors) {
+            const row = document.createElement("div");
+            row.className = "focus-error-row";
+            row.dataset.kind = kind;
+            const icon = document.createElement("i");
+            icon.className = "codicon codicon-error";
+            icon.setAttribute("aria-hidden", "true");
+            row.appendChild(icon);
+            const body = document.createElement("div");
+            body.className = "focus-error-body";
+            const title = document.createElement("div");
+            title.className = "focus-error-title";
+            title.textContent = error.title;
+            const message = document.createElement("div");
+            message.className = "focus-error-message";
+            message.textContent = error.message;
+            body.appendChild(title);
+            body.appendChild(message);
+            if (error.detail) {
+                const detail = document.createElement("div");
+                detail.className = "focus-error-detail";
+                detail.textContent = error.detail;
+                body.appendChild(detail);
+            }
+            row.appendChild(body);
+            banner.appendChild(row);
+        }
+        return banner;
+    }
+
+    private renderLegends(
+        presentations: readonly {
+            kind: string;
+            presentation: ProductPresentation;
+        }[],
+    ): HTMLElement | null {
+        const legends: { kind: string; legend: PresentationLegend }[] = [];
+        for (const { kind, presentation } of presentations) {
+            if (presentation.legend && presentation.legend.entries.length > 0) {
+                legends.push({ kind, legend: presentation.legend });
+            }
+        }
+        if (legends.length === 0) return null;
+        const section = document.createElement("section");
+        section.className = "focus-panel focus-legends-panel";
+        section.appendChild(sectionHeader("symbol-key", "Legends"));
+        for (const { kind, legend } of legends) {
+            const block = document.createElement("div");
+            block.className = "focus-legend-block";
+            block.dataset.kind = kind;
+            const head = document.createElement("div");
+            head.className = "focus-legend-head";
+            const heading = document.createElement("span");
+            heading.className = "focus-legend-title";
+            heading.textContent = legend.title;
+            head.appendChild(heading);
+            if (legend.summary) {
+                const sum = document.createElement("span");
+                sum.className = "focus-legend-summary";
+                sum.textContent = legend.summary;
+                head.appendChild(sum);
+            }
+            block.appendChild(head);
+            const list = document.createElement("ul");
+            list.className = "focus-legend-list";
+            for (const entry of legend.entries) {
+                const li = document.createElement("li");
+                li.className = "focus-legend-row";
+                li.dataset.legendId = entry.id;
+                if (entry.level) li.dataset.level = entry.level;
+                // tabIndex so keyboard users can step through entries
+                // and trigger the same focus → arrow path as hover.
+                li.tabIndex = 0;
+                const dot = document.createElement("span");
+                dot.className = "focus-legend-dot";
+                li.appendChild(dot);
+                const text = document.createElement("div");
+                text.className = "focus-legend-text";
+                const lab = document.createElement("div");
+                lab.className = "focus-legend-label";
+                lab.textContent = entry.label;
+                text.appendChild(lab);
+                if (entry.detail) {
+                    const det = document.createElement("div");
+                    det.className = "focus-legend-detail";
+                    det.textContent = entry.detail;
+                    text.appendChild(det);
+                }
+                li.appendChild(text);
+                list.appendChild(li);
+            }
+            block.appendChild(list);
+            section.appendChild(block);
+        }
+        return section;
+    }
+
+    private renderReports(
+        presentations: readonly {
+            kind: string;
+            presentation: ProductPresentation;
+        }[],
+    ): HTMLElement | null {
+        const reports: { kind: string; report: PresentationReport }[] = [];
+        for (const { kind, presentation } of presentations) {
+            if (presentation.report) {
+                reports.push({ kind, report: presentation.report });
+            }
+        }
+        if (reports.length === 0) return null;
+        const section = document.createElement("section");
+        section.className = "focus-panel focus-reports-panel";
+        section.appendChild(sectionHeader("output", "Data"));
+        for (const { kind, report } of reports) {
+            const details = document.createElement("details");
+            details.className = "focus-report";
+            details.dataset.kind = kind;
+            const summary = document.createElement("summary");
+            summary.className = "focus-report-summary";
+            const title = document.createElement("span");
+            title.className = "focus-report-title";
+            title.textContent = report.title;
+            summary.appendChild(title);
+            if (report.summary) {
+                const sum = document.createElement("span");
+                sum.className = "focus-report-summary-hint";
+                sum.textContent = report.summary;
+                summary.appendChild(sum);
+            }
+            const chevron = document.createElement("i");
+            chevron.className =
+                "codicon codicon-chevron-down focus-summary-chevron";
+            chevron.setAttribute("aria-hidden", "true");
+            summary.appendChild(chevron);
+            details.appendChild(summary);
+            const body = document.createElement("div");
+            body.className = "focus-report-body";
+            body.appendChild(report.body);
+            details.appendChild(body);
+            section.appendChild(details);
+        }
+        return section;
+    }
+
+    /**
+     * Stamp every presentation's `overlay` into a stack on the focused
+     * card. Existing per-card overlays (`.a11y-overlay`,
+     * `.a11y-hierarchy-overlay`) keep painting through their own paths
+     * — this layer sits above them so presentation overlays can
+     * coexist without z-fighting.
+     */
+    private applyOverlays(
+        card: HTMLElement,
+        presentations: readonly {
+            kind: string;
+            presentation: ProductPresentation;
+        }[],
+    ): HTMLElement | null {
+        const container = card.querySelector<HTMLElement>(".image-container");
+        if (!container) return null;
+        let stack = container.querySelector<HTMLElement>(
+            ".focus-overlay-stack",
+        );
+        if (!stack) {
+            stack = document.createElement("div");
+            stack.className = "focus-overlay-stack";
+            container.appendChild(stack);
+        }
+        stack.innerHTML = "";
+        let painted = 0;
+        for (const { kind, presentation } of presentations) {
+            if (!presentation.overlay) continue;
+            presentation.overlay.dataset.kind = kind;
+            stack.appendChild(presentation.overlay);
+            painted += 1;
+        }
+        if (painted === 0) {
+            stack.remove();
+            return null;
+        }
+        return stack;
     }
 
     private historyPanel(): HTMLElement {
