@@ -31,7 +31,10 @@ how much confidence it supports.
 
 - Prefer combinations over single-product conclusions. For example, pair
   `a11y/atf` with `a11y/overlay`, `compose/semantics`, and `text/strings`;
-  pair `i18n/translations` with `resources/used` and a locale screenshot.
+  pair `i18n/translations` with `resources/used` and a locale screenshot. For
+  layout-expansion / RTL bug review, render the same preview at
+  `locale = "en-XA"` and `locale = "ar-XB"` (runtime pseudolocale, no consumer
+  build config required) and diff the PNGs.
 - Distinguish visible output from semantic output. Screenshots and
   `text/strings` describe what the user sees; `compose/semantics` and
   `a11y/hierarchy` describe assistive-technology intent.

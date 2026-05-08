@@ -160,6 +160,14 @@ include(":data-focus-connector")
 
 project(":data-focus-connector").projectDir = file("data/focus/connector")
 
+include(":data-pseudolocale-core")
+
+project(":data-pseudolocale-core").projectDir = file("data/pseudolocale/core")
+
+include(":data-pseudolocale-connector")
+
+project(":data-pseudolocale-connector").projectDir = file("data/pseudolocale/connector")
+
 include(":data-recomposition-core")
 
 project(":data-recomposition-core").projectDir = file("data/recomposition/core")

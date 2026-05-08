@@ -1,7 +1,7 @@
 ---
 title: Wallpaper
 parent: Reference
-nav_order: 14
+nav_order: 15
 permalink: /reference/wallpaper/
 ---
 

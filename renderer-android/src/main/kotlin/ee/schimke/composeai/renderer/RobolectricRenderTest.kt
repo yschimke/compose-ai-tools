@@ -690,6 +690,15 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.firstNotNullOfOrNull { it.ambient }?.let {
                         AmbientOverrideExtension(it.toAmbientOverride())
                     }
+                // Pseudolocale: when `@Preview(locale = "en-XA" | "ar-XB")`, wrap composition with
+                // `PseudolocaleOverrideExtension` so `LocalContext.current.resources.getString(...)`
+                // — the path `androidx.compose.ui.res.stringResource` walks — returns the
+                // pseudolocalised template. The base-locale qualifier rewrite happens in
+                // `applyPreviewQualifiers` above. Mirrors the daemon path's
+                // `PseudolocalePreviewOverrideExtension` planner registered in `RobolectricHost`.
+                val pseudolocaleExtension =
+                    ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(params.locale)
+                        ?.let { ee.schimke.composeai.daemon.PseudolocaleOverrideExtension(it) }
                 val providedValues = buildList {
                     add(LocalInspectionMode provides !a11yEnabled)
                     if (scrollCaptureProvidable != null) {
@@ -751,10 +760,17 @@ abstract class RobolectricRenderTestBase(
                                 curveOrPlain()
                             }
                         }
-                        if (ambientExtension != null) {
-                            ambientExtension.AroundComposable { focusOrPlain() }
+                        val ambientOrPlain: @Composable () -> Unit = {
+                            if (ambientExtension != null) {
+                                ambientExtension.AroundComposable { focusOrPlain() }
+                            } else {
+                                focusOrPlain()
+                            }
+                        }
+                        if (pseudolocaleExtension != null) {
+                            pseudolocaleExtension.AroundComposable { ambientOrPlain() }
                         } else {
-                            focusOrPlain()
+                            ambientOrPlain()
                         }
                     }
                 }
@@ -1028,8 +1044,17 @@ abstract class RobolectricRenderTestBase(
         uiMode: Int,
         density: Float?,
     ) {
+        // Pseudolocales (`en-XA`, `ar-XB`) aren't first-class Android locales — they have no
+        // `values-en-rXA/` resources to load. Substitute the base locale (`en`) before emitting
+        // the qualifier so the framework still finds default-locale strings, and append `ldrtl`
+        // for `ar-XB` so the resource framework reports an RTL configuration. The
+        // pseudolocalisation of the strings themselves happens in the around-composable
+        // `PseudolocaleOverrideExtension` wrapped in `setContent` above.
+        val pseudo = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(locale)
+        val effectiveLocale = if (pseudo != null) pseudo.baseTag else locale
         val qualifiers = buildList {
-            if (!locale.isNullOrBlank()) add(locale)
+            if (!effectiveLocale.isNullOrBlank()) add(effectiveLocale)
+            if (pseudo?.isRtl == true) add("ldrtl")
             if (widthDp > 0) add("w${widthDp}dp")
             if (heightDp > 0) add("h${heightDp}dp")
             if (isRound) add("round")
