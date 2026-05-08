@@ -27,7 +27,7 @@ deficiencies.
 | Token usage | ~10 tok inline (manifest is tiny — `{filter, path}` per variant); +~1.5 k per filtered PNG read. |
 | Transport | inline (JSON manifest) · variant PNGs ride as `extras` |
 | Platforms | Android, Desktop |
-| Status | **Experimental.** The data product, registry, and producer are wired; per-render invocation from `RenderEngine` lands in a follow-up. The producer is callable from any host today. |
+| Status | Daemon-mode renders (Android Robolectric + Desktop) write variants and the manifest after each capture. The Gradle-plugin direct path (`:samples:cmp:renderAllPreviews`) goes through a separate renderer subprocess and does **not** yet emit display-filter variants — wire it through `RobolectricRenderTest` / `DesktopRendererMain` if you need it there. |
 
 ## What it answers
 

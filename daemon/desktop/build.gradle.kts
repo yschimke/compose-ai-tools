@@ -52,6 +52,10 @@ dependencies {
   implementation(project(":data-theme-connector"))
   implementation(project(":data-wallpaper-connector"))
   implementation(project(":data-recomposition-connector"))
+  // Display-filter connector — `DisplayFilterDataProducer.writeArtifacts` runs the post-capture
+  // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each
+  // PNG capture. Same dep on the Android side; the producer is renderer-agnostic (BufferedImage).
+  implementation(project(":data-displayfilter-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
