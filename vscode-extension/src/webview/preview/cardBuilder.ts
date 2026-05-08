@@ -18,7 +18,11 @@
 // it touches — the shared interface is the single source of truth for
 // the card's collaborator surface.
 
-import { buildA11yLegend, ensureHierarchyOverlay } from "./a11yOverlay";
+import { buildA11yLegend } from "./a11yOverlay";
+import {
+    applyA11yUpdate as applyA11yUpdateImpl,
+    type A11yUpdateConfig as A11yUpdateConfigBase,
+} from "./applyA11yUpdate";
 import {
     buildTooltip,
     buildVariantLabel,
@@ -327,11 +331,20 @@ export { applyRelativeSizing } from "./relativeSizing";
 
 /** Subset `applyA11yUpdate` reaches for. The a11y caches themselves
  *  live in `previewStore` and are written via the `setCardA11y…` /
- *  `deleteCardA11y…` helpers. */
+ *  `deleteCardA11y…` helpers — the cardBuilder-level facade binds those
+ *  mutators automatically so callers only need this slimmer surface. */
 export type A11yUpdateConfig = Pick<
     CardBuilderConfig,
     "getAllPreviews" | "inspector" | "earlyFeatures" | "inFocus" | "focusedCard"
 >;
+
+// Re-export the underlying narrow helper (and its bag-with-mutators
+// config type) so test code that wants to stub the cache writes can
+// drive it directly without going through the cardBuilder facade.
+export {
+    applyA11yUpdate as applyA11yUpdateNarrow,
+    type A11yUpdateConfig as A11yUpdateNarrowConfig,
+} from "./applyA11yUpdate";
 
 /**
  * D2 — handles `updateA11y` from the extension (daemon-attached a11y data
@@ -341,6 +354,12 @@ export type A11yUpdateConfig = Pick<
  * may be omitted to leave that side untouched. Gated on `earlyFeatures()`
  * so daemon-attached a11y data is dropped silently when the user has not
  * opted into the accessibility-overlay feature surface.
+ *
+ * Thin facade over the narrow helper in `./applyA11yUpdate.ts` — this
+ * file binds the per-preview cache mutators (`setCardA11yFindings`,
+ * etc.) from `previewStore` so callers don't have to thread them through
+ * `CardBuilderConfig`. The helper itself is testable in isolation under
+ * happy-dom; see `vscode-extension/src/test/applyA11yUpdate.test.ts`.
  */
 export function applyA11yUpdate(
     previewId: string,
@@ -348,60 +367,18 @@ export function applyA11yUpdate(
     nodes: readonly AccessibilityNode[] | null | undefined,
     config: A11yUpdateConfig,
 ): void {
-    if (!config.earlyFeatures()) return;
-    const card = document.getElementById("preview-" + sanitizeId(previewId));
-    if (!card) return;
-    const container = card.querySelector(".image-container");
-    const img = container?.querySelector<HTMLImageElement>("img") ?? null;
-    if (findings !== undefined) {
-        if (findings && findings.length > 0) {
-            // Ensure the empty `.a11y-overlay` container exists before
-            // bumping the store — `<preview-card>`'s mapsRevision
-            // subscription will paint into it once the per-id Map
-            // write below fires the rebroadcast.
-            if (container && !container.querySelector(".a11y-overlay")) {
-                const overlay = document.createElement("div");
-                overlay.className = "a11y-overlay";
-                overlay.setAttribute("aria-hidden", "true");
-                container.appendChild(overlay);
-            }
-            const existingLegend = card.querySelector(".a11y-legend");
-            if (existingLegend) existingLegend.remove();
-            const p = config.getAllPreviews().find((pp) => pp.id === previewId);
-            if (p) {
-                p.a11yFindings = [...findings];
-                card.appendChild(buildA11yLegend(card, p));
-            }
-            // Store write last — the `mapsRevision` bump triggers the
-            // component's `_repaintA11yOverlaysFromCache()` which runs
-            // `buildA11yOverlay` against the fresh findings. The
-            // component gates on `img.complete && img.naturalWidth > 0`
-            // exactly as the previous imperative branch did.
-            setCardA11yFindings(previewId, findings);
-        } else {
-            deleteCardA11yFindings(previewId);
-            const overlay = card.querySelector(".a11y-overlay");
-            if (overlay) overlay.remove();
-            const legend = card.querySelector(".a11y-legend");
-            if (legend) legend.remove();
-        }
-    }
-    if (nodes !== undefined) {
-        if (nodes && nodes.length > 0) {
-            ensureHierarchyOverlay(container);
-            // Same pattern as findings above: store write fires the
-            // mapsRevision bump, the component re-paints the layer
-            // via `applyHierarchyOverlay`.
-            setCardA11yNodes(previewId, nodes);
-        } else {
-            deleteCardA11yNodes(previewId);
-            const layer = card.querySelector(".a11y-hierarchy-overlay");
-            if (layer) layer.remove();
-        }
-    }
-    if (config.inFocus() && config.focusedCard() === card) {
-        config.inspector.render(card);
-    }
+    const narrow: A11yUpdateConfigBase = {
+        getAllPreviews: config.getAllPreviews,
+        inspector: config.inspector,
+        earlyFeatures: config.earlyFeatures,
+        inFocus: config.inFocus,
+        focusedCard: config.focusedCard,
+        setCardA11yFindings,
+        deleteCardA11yFindings,
+        setCardA11yNodes,
+        deleteCardA11yNodes,
+    };
+    applyA11yUpdateImpl(previewId, findings, nodes, narrow);
 }
 
 /** Subset `renderPreviews` reaches for — initial-build + metadata-refresh
