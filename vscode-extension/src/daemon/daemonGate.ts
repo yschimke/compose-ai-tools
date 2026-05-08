@@ -1,4 +1,4 @@
-import { GradleService } from "../gradleService";
+import { GradleService, ModuleInfo } from "../gradleService";
 import { LogFilter } from "../logFilter";
 import {
     DaemonClient,
@@ -42,42 +42,43 @@ export class DaemonGate {
      * Returns null when the descriptor's `enabled: false` (user didn't opt in at the build level).
      */
     async getOrSpawn(
-        moduleId: string,
+        module: ModuleInfo,
         events: DaemonClientEvents,
     ): Promise<DaemonClient | null> {
         if (this.disposed) {
             return null;
         }
 
-        const existing = this.daemons.get(moduleId);
+        const key = module.modulePath;
+        const existing = this.daemons.get(key);
         if (existing && !existing.client.isClosed()) {
             return existing.client;
         }
         if (existing && existing.client.isClosed()) {
-            this.daemons.delete(moduleId);
+            this.daemons.delete(key);
         }
-        const inFlight = this.spawns.get(moduleId);
+        const inFlight = this.spawns.get(key);
         if (inFlight) {
             return inFlight;
         }
 
         const descriptor = readLaunchDescriptor(
             this.workspaceRoot,
-            moduleId,
+            module,
             this.logger,
         );
         if (!descriptor) {
             const message =
-                `[daemon] no launch descriptor for ${moduleId}; ` +
-                `run :${moduleId.replace(/\//g, ":")}:composePreviewDaemonStart first`;
+                `[daemon] no launch descriptor for ${module.modulePath}; ` +
+                `run ${module.modulePath}:composePreviewDaemonStart first`;
             this.logger.appendLine(message);
             throw new Error(message);
         }
         if (!descriptor.enabled) {
-            if (!this.warnedBuildDisabled.has(moduleId)) {
-                this.warnedBuildDisabled.add(moduleId);
+            if (!this.warnedBuildDisabled.has(key)) {
+                this.warnedBuildDisabled.add(key);
                 this.logger.appendLine(
-                    `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
+                    `[daemon] WARNING: descriptor for ${module.modulePath} has enabled=false; ` +
                         "using the Gradle render path for now. The daemon will become required by " +
                         "the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.",
                 );
@@ -86,29 +87,30 @@ export class DaemonGate {
         }
 
         try {
-            const spawn = this.spawn(moduleId, descriptor, events).finally(() =>
-                this.spawns.delete(moduleId),
+            const spawn = this.spawn(module, descriptor, events).finally(() =>
+                this.spawns.delete(key),
             );
-            this.spawns.set(moduleId, spawn);
+            this.spawns.set(key, spawn);
             return await spawn;
         } catch (err) {
-            const message = `[daemon] spawn failed for ${moduleId}: ${(err as Error).message}`;
+            const message = `[daemon] spawn failed for ${module.modulePath}: ${(err as Error).message}`;
             this.logger.appendLine(message);
             throw new Error(message);
         }
     }
 
-    isBuildDisabled(moduleId: string): boolean {
+    isBuildDisabled(module: ModuleInfo): boolean {
         const descriptor = readLaunchDescriptor(
             this.workspaceRoot,
-            moduleId,
+            module,
             this.logger,
         );
+        const key = module.modulePath;
         if (descriptor?.enabled === false) {
-            if (!this.warnedBuildDisabled.has(moduleId)) {
-                this.warnedBuildDisabled.add(moduleId);
+            if (!this.warnedBuildDisabled.has(key)) {
+                this.warnedBuildDisabled.add(key);
                 this.logger.appendLine(
-                    `[daemon] WARNING: descriptor for ${moduleId} has enabled=false; ` +
+                    `[daemon] WARNING: descriptor for ${module.modulePath} has enabled=false; ` +
                         "using the Gradle render path for now. The daemon will become required by " +
                         "the VS Code extension in a future release. Configure composePreview { daemon { enabled = true } }.",
                 );
@@ -119,15 +121,16 @@ export class DaemonGate {
     }
 
     private async spawn(
-        moduleId: string,
+        module: ModuleInfo,
         descriptor: DaemonLaunchDescriptor,
         events: DaemonClientEvents,
     ): Promise<DaemonClient> {
+        const key = module.modulePath;
         const composed = composeEvents(events, () => {
             // On channel close drop the entry so the next caller spawns a
             // fresh JVM. Avoid awaiting `exited` here — events fires as
             // soon as the stream ends, exit code may lag by a tick.
-            this.daemons.delete(moduleId);
+            this.daemons.delete(key);
         });
         const spawned = await spawnDaemon({
             workspaceRoot: this.workspaceRoot,
@@ -137,9 +140,9 @@ export class DaemonGate {
             logger: this.logger,
             logFilter: this.logFilter,
         });
-        this.daemons.set(moduleId, { spawned, client: spawned.client });
+        this.daemons.set(key, { spawned, client: spawned.client });
         const readyLine =
-            `[daemon] ready for ${moduleId} ` +
+            `[daemon] ready for ${module.modulePath} ` +
             `(daemonVersion=${spawned.initializeResult.daemonVersion}, ` +
             `pid=${spawned.initializeResult.pid}, ` +
             `previews=${spawned.initializeResult.manifest.previewCount})`;
@@ -156,15 +159,15 @@ export class DaemonGate {
      */
     async bootstrap(
         gradleService: GradleService,
-        moduleId: string,
+        module: ModuleInfo,
     ): Promise<void> {
-        await gradleService.runDaemonBootstrap(moduleId);
+        await gradleService.runDaemonBootstrap(module);
     }
 
     /** True iff a healthy daemon is already up for this module — warm path
-     *  short-circuit. */
-    isDaemonReady(moduleId: string): boolean {
-        const existing = this.daemons.get(moduleId);
+     *  short-circuit. Lookups only need the canonical modulePath. */
+    isDaemonReady(modulePath: string): boolean {
+        const existing = this.daemons.get(modulePath);
         return existing != null && !existing.client.isClosed();
     }
 
@@ -183,8 +186,8 @@ export class DaemonGate {
      * hint instead of silently leaving the user wondering why clicks don't
      * mutate state.
      */
-    isInteractiveSupported(moduleId: string): boolean {
-        const existing = this.daemons.get(moduleId);
+    isInteractiveSupported(modulePath: string): boolean {
+        const existing = this.daemons.get(modulePath);
         if (existing == null || existing.client.isClosed()) {
             return false;
         }

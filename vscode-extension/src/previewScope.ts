@@ -1,5 +1,6 @@
 import { PreviewInfo } from "./types";
 import { previewSourceMatches } from "./sourcePath";
+import { ModuleInfo } from "./gradleService";
 
 /**
  * Splits a module's previews into two buckets relative to [filePath]:
@@ -20,7 +21,7 @@ import { previewSourceMatches } from "./sourcePath";
 export function partitionPreviewsForFile(
     previews: PreviewInfo[],
     workspaceRoot: string,
-    module: string,
+    module: ModuleInfo,
     filePath: string,
 ): { primary: PreviewInfo[]; referenced: PreviewInfo[] } {
     const primary: PreviewInfo[] = [];
@@ -64,7 +65,7 @@ export function partitionPreviewsForFile(
 export function visiblePreviewsForFile(
     previews: PreviewInfo[],
     workspaceRoot: string,
-    module: string,
+    module: ModuleInfo,
     filePath: string,
 ): PreviewInfo[] {
     const { primary, referenced } = partitionPreviewsForFile(

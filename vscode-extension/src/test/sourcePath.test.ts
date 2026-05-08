@@ -5,16 +5,20 @@ import * as path from "path";
 import { moduleRelativeSourcePath, previewSourceMatches } from "../sourcePath";
 
 function withTempSource(
-    fn: (workspaceRoot: string, module: string, filePath: string) => void,
+    fn: (
+        workspaceRoot: string,
+        module: { projectDir: string; modulePath: string },
+        filePath: string,
+    ) => void,
 ): void {
     const workspaceRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "compose-preview-source-path-"),
     );
     try {
-        const module = "wear";
+        const module = { projectDir: "wear", modulePath: ":wear" };
         const filePath = path.join(
             workspaceRoot,
-            module,
+            module.projectDir,
             "src",
             "main",
             "kotlin",

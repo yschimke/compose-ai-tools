@@ -59,7 +59,7 @@ export class AndroidManifestCodeLensProvider
             }
             const pngPath = path.join(
                 this.gradleService.workspaceRoot,
-                module,
+                module.projectDir,
                 "build",
                 "compose-previews",
                 firstCapture.renderOutput,

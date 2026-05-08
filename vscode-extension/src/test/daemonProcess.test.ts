@@ -53,7 +53,10 @@ describe("readLaunchDescriptor", () => {
     it(
         "returns null when the descriptor file does not exist",
         withTempWorkspace((dir) => {
-            const result = readLaunchDescriptor(dir, "samples/android");
+            const result = readLaunchDescriptor(dir, {
+                projectDir: "samples/android",
+                modulePath: ":samples:android",
+            });
             assert.strictEqual(result, null);
         }),
     );
@@ -63,7 +66,10 @@ describe("readLaunchDescriptor", () => {
         withTempWorkspace((dir) => {
             const descriptor = validDescriptor();
             writeDescriptor(dir, "samples/android", descriptor);
-            const result = readLaunchDescriptor(dir, "samples/android");
+            const result = readLaunchDescriptor(dir, {
+                projectDir: "samples/android",
+                modulePath: ":samples:android",
+            });
             assert.notStrictEqual(result, null);
             assert.strictEqual(result!.modulePath, ":samples:android");
             assert.strictEqual(result!.enabled, true);
@@ -77,9 +83,14 @@ describe("readLaunchDescriptor", () => {
             const logs: string[] = [];
             const descriptor = { ...validDescriptor(), schemaVersion: 999 };
             writeDescriptor(dir, "samples/android", descriptor);
-            const result = readLaunchDescriptor(dir, "samples/android", {
-                appendLine: (s) => logs.push(s),
-            });
+            const result = readLaunchDescriptor(
+                dir,
+                {
+                    projectDir: "samples/android",
+                    modulePath: ":samples:android",
+                },
+                { appendLine: (s) => logs.push(s) },
+            );
             assert.strictEqual(result, null);
             assert.ok(
                 logs.some((l) => l.includes("schema mismatch")),
@@ -103,9 +114,14 @@ describe("readLaunchDescriptor", () => {
                 path.join(descriptorDir, "daemon-launch.json"),
                 "{ not json",
             );
-            const result = readLaunchDescriptor(dir, "samples/android", {
-                appendLine: (s) => logs.push(s),
-            });
+            const result = readLaunchDescriptor(
+                dir,
+                {
+                    projectDir: "samples/android",
+                    modulePath: ":samples:android",
+                },
+                { appendLine: (s) => logs.push(s) },
+            );
             assert.strictEqual(result, null);
             assert.ok(
                 logs.some((l) => l.includes("failed to read")),
@@ -121,7 +137,10 @@ describe("readLaunchDescriptor", () => {
             // Reader must return the descriptor honestly; the gate decides what to do with it.
             const descriptor = { ...validDescriptor(), enabled: false };
             writeDescriptor(dir, "samples/android", descriptor);
-            const result = readLaunchDescriptor(dir, "samples/android");
+            const result = readLaunchDescriptor(dir, {
+                projectDir: "samples/android",
+                modulePath: ":samples:android",
+            });
             assert.strictEqual(result?.enabled, false);
         }),
     );
@@ -131,7 +150,10 @@ describe("readLaunchDescriptor", () => {
         withTempWorkspace((dir) => {
             const descriptor = { ...validDescriptor(), javaLauncher: null };
             writeDescriptor(dir, "samples/android", descriptor);
-            const result = readLaunchDescriptor(dir, "samples/android");
+            const result = readLaunchDescriptor(dir, {
+                projectDir: "samples/android",
+                modulePath: ":samples:android",
+            });
             assert.strictEqual(result?.javaLauncher, null);
         }),
     );

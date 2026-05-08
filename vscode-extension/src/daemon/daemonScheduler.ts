@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
-import { GradleService } from "../gradleService";
+import { GradleService, ModuleInfo } from "../gradleService";
 import { DaemonGate } from "./daemonGate";
 import {
     DataProductAttachment,
@@ -157,10 +157,10 @@ export class DaemonScheduler {
      * available (caller can use the daemon path); false means the daemon was explicitly disabled.
      * Enabled-but-broken daemon failures throw so callers do not silently fall back to Gradle.
      */
-    async ensureModule(moduleId: string): Promise<boolean> {
+    async ensureModule(module: ModuleInfo): Promise<boolean> {
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(module.modulePath),
         );
         return client !== null;
     }
@@ -180,42 +180,42 @@ export class DaemonScheduler {
      */
     async warmModule(
         gradleService: GradleService,
-        moduleId: string,
+        module: ModuleInfo,
         progress?: WarmProgress,
     ): Promise<boolean> {
-        if (this.gate.isDaemonReady(moduleId)) {
+        if (this.gate.isDaemonReady(module.modulePath)) {
             progress?.("ready");
             return true;
         }
         progress?.("spawning");
         try {
-            const ok = await this.ensureModule(moduleId);
+            const ok = await this.ensureModule(module);
             if (ok) {
                 progress?.("ready");
                 return true;
             }
         } catch (err) {
             this.logger.appendLine(
-                `[daemon] cached launch failed for ${moduleId}: ${(err as Error).message}; ` +
+                `[daemon] cached launch failed for ${module.modulePath}: ${(err as Error).message}; ` +
                     "running composePreviewDaemonStart",
             );
         }
         try {
             progress?.("bootstrapping");
-            await gradleService.runDaemonBootstrap(moduleId);
+            await gradleService.runDaemonBootstrap(module);
         } catch (err) {
             this.logger.appendLine(
-                `[daemon] bootstrap task failed for ${moduleId}: ${(err as Error).message}`,
+                `[daemon] bootstrap task failed for ${module.modulePath}: ${(err as Error).message}`,
             );
             throw err;
         }
         progress?.("spawning");
         let ok = false;
         try {
-            ok = await this.ensureModule(moduleId);
+            ok = await this.ensureModule(module);
         } catch (err) {
             this.logger.appendLine(
-                `[daemon] warm failed for ${moduleId}: ${(err as Error).message}`,
+                `[daemon] warm failed for ${module.modulePath}: ${(err as Error).message}`,
             );
             throw err;
         }
@@ -228,13 +228,13 @@ export class DaemonScheduler {
      * file internally per PROTOCOL.md § 4; we send a hint based on the path.
      */
     async fileChanged(
-        moduleId: string,
+        module: ModuleInfo,
         absPath: string,
         changeType: FileChangeType = "modified",
     ): Promise<void> {
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(module.modulePath),
         );
         if (!client) {
             return;
@@ -250,14 +250,15 @@ export class DaemonScheduler {
      * The user moved focus to (or saved a file scoped to) a set of preview
      * IDs. These are rendered first when the queue drains.
      */
-    async setFocus(moduleId: string, previewIds: string[]): Promise<void> {
-        if (sameSet(this.lastFocus.get(moduleId), previewIds)) {
+    async setFocus(module: ModuleInfo, previewIds: string[]): Promise<void> {
+        const key = module.modulePath;
+        if (sameSet(this.lastFocus.get(key), previewIds)) {
             return;
         }
-        this.lastFocus.set(moduleId, [...previewIds]);
+        this.lastFocus.set(key, [...previewIds]);
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(key),
         );
         if (!client) {
             return;
@@ -273,20 +274,21 @@ export class DaemonScheduler {
      * off for them up to [SPECULATIVE_BUDGET].
      */
     async setVisible(
-        moduleId: string,
+        module: ModuleInfo,
         visible: string[],
         predicted: string[] = [],
     ): Promise<void> {
+        const moduleKey = module.modulePath;
         if (
-            sameSet(this.lastVisible.get(moduleId), visible) &&
+            sameSet(this.lastVisible.get(moduleKey), visible) &&
             predicted.length === 0
         ) {
             return;
         }
-        this.lastVisible.set(moduleId, [...visible]);
+        this.lastVisible.set(moduleKey, [...visible]);
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(moduleKey),
         );
         if (!client) {
             return;
@@ -299,7 +301,7 @@ export class DaemonScheduler {
         // [setDataProductSubscription]; the panel calls in when the user toggles the
         // a11y overlay in focus mode.
         const visibleSetForSub = new Set(visible);
-        const modulePrefix = `${moduleId}::`;
+        const modulePrefix = `${moduleKey}::`;
         for (const key of [...this.subscribedPairs]) {
             if (!key.startsWith(modulePrefix)) {
                 continue;
@@ -321,13 +323,13 @@ export class DaemonScheduler {
         const visibleSet = new Set(visible);
         const fresh = predicted
             .filter((id) => !visibleSet.has(id))
-            .filter((id) => !this.speculated.has(specKey(moduleId, id)))
+            .filter((id) => !this.speculated.has(specKey(moduleKey, id)))
             .slice(0, SPECULATIVE_BUDGET);
         if (fresh.length === 0) {
             return;
         }
         for (const id of fresh) {
-            this.speculated.add(specKey(moduleId, id));
+            this.speculated.add(specKey(moduleKey, id));
         }
         try {
             await client.renderNow({
@@ -337,7 +339,7 @@ export class DaemonScheduler {
             });
         } catch (err) {
             this.logger.appendLine(
-                `[daemon] scroll-ahead renderNow failed for ${moduleId}: ${(err as Error).message}`,
+                `[daemon] scroll-ahead renderNow failed for ${moduleKey}: ${(err as Error).message}`,
             );
         }
     }
@@ -353,20 +355,20 @@ export class DaemonScheduler {
      * opt-in.
      */
     async setDataProductSubscription(
-        moduleId: string,
+        module: ModuleInfo,
         previewId: string,
         kinds: readonly string[],
         enabled: boolean,
     ): Promise<void> {
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(module.modulePath),
         );
         if (!client) {
             return;
         }
         for (const kind of kinds) {
-            const subKey = `${moduleId}::${previewId}::${kind}`;
+            const subKey = `${module.modulePath}::${previewId}::${kind}`;
             const already = this.subscribedPairs.has(subKey);
             if (enabled === already) {
                 continue;
@@ -403,14 +405,14 @@ export class DaemonScheduler {
      * via `onPreviewImageReady`.
      */
     async renderNow(
-        moduleId: string,
+        module: ModuleInfo,
         previewIds: string[],
         tier: RenderTier = "fast",
         reason?: string,
     ): Promise<boolean> {
         const client = await this.gate.getOrSpawn(
-            moduleId,
-            this.daemonEvents(moduleId),
+            module,
+            this.daemonEvents(module.modulePath),
         );
         if (!client) {
             return false;
@@ -429,7 +431,7 @@ export class DaemonScheduler {
             return true;
         } catch (err) {
             this.logger.appendLine(
-                `[daemon] renderNow failed for ${moduleId}: ${(err as Error).message}`,
+                `[daemon] renderNow failed for ${module.modulePath}: ${(err as Error).message}`,
             );
             return false;
         }

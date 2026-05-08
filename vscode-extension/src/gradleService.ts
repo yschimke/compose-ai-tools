@@ -130,13 +130,66 @@ function taskFromKey(key: string): string {
     return sep < 0 ? key : key.slice(sep + 1);
 }
 
-// Module identifiers are stored as forward-slash relative paths from the
-// workspace root (e.g. `samples/wear`) so the same string serves both as a
-// Gradle project segment and a filesystem path through `path.join`. Gradle
-// task names take the colon-separated form (`:samples:wear:foo`) — convert
-// at task-name construction sites only.
-function gradleProjectPath(module: string): string {
-    return ":" + module.split("/").join(":");
+/**
+ * Identifies a Gradle module the extension knows about.
+ *
+ * `projectDir` and `modulePath` are usually trivially related (`a/b` ↔
+ * `:a:b`), but they can diverge when `settings.gradle.kts` reassigns a
+ * project's `projectDir` (the Android-X mini-checkout layout, for example).
+ * Keeping both lets us locate the build outputs on disk via `projectDir`
+ * while still naming the right Gradle task via `modulePath`.
+ */
+export interface ModuleInfo {
+    /** Workspace-relative filesystem path, forward-slash separated, no
+     *  leading slash (e.g. `samples/wear`). Used to build
+     *  `path.join(workspaceRoot, projectDir, "build", ...)`. */
+    readonly projectDir: string;
+    /** Canonical Gradle project path, beginning with ':' (e.g.
+     *  `:samples:wear`). Used as the prefix for every gradle task name and
+     *  as the cache / lookup key. */
+    readonly modulePath: string;
+}
+
+/** Synthesises a Gradle project path from a workspace-relative directory.
+ *  Used as a fallback when no `applied.json` has been written yet — the
+ *  marker, once present, supplies the authoritative `modulePath`. */
+function modulePathFromProjectDir(projectDir: string): string {
+    return ":" + projectDir.split("/").join(":");
+}
+
+const APPLIED_MARKER_SCHEMA = "compose-preview-applied/v1";
+
+interface AppliedMarker {
+    readonly schema: string;
+    readonly modulePath: string;
+}
+
+/**
+ * Reads a `build/compose-previews/applied.json` marker and returns the
+ * canonical `modulePath` recorded there, or `null` if the file is missing,
+ * malformed, or has an unrecognised schema. Callers fall back to the
+ * projectDir-derived path on `null`.
+ */
+function readAppliedMarker(file: string): AppliedMarker | null {
+    let raw: string;
+    try {
+        raw = fs.readFileSync(file, "utf-8");
+    } catch {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(raw) as Partial<AppliedMarker>;
+        if (
+            parsed.schema === APPLIED_MARKER_SCHEMA &&
+            typeof parsed.modulePath === "string" &&
+            parsed.modulePath.startsWith(":")
+        ) {
+            return { schema: parsed.schema, modulePath: parsed.modulePath };
+        }
+    } catch {
+        /* fall through */
+    }
+    return null;
 }
 
 const SCAN_SKIP_DIRS = new Set([
@@ -148,7 +201,13 @@ const SCAN_SKIP_DIRS = new Set([
     "dist",
     ".compose-preview-history",
 ]);
-const SCAN_MAX_DEPTH = 4;
+/**
+ * Defensive cap on directory-walk depth. The walk is already pruned by
+ * [SCAN_SKIP_DIRS] (skips `build`, `src`, etc.), so legitimate Gradle
+ * layouts can't push past this — the cap exists only to bound the worst
+ * case if a workspace has runaway symlink loops.
+ */
+const SCAN_MAX_DEPTH = 12;
 
 export interface Logger {
     appendLine(value: string): void;
@@ -209,6 +268,7 @@ export class GradleService {
     private gradleApi: GradleApi;
     private argsProvider: () => string[];
     private logFilter: LogFilter;
+    /** Keyed by `ModuleInfo.modulePath` — the canonical, stable identifier. */
     private manifestCache = new Map<
         string,
         { manifest: PreviewManifest; timestamp: number }
@@ -231,21 +291,20 @@ export class GradleService {
     }
 
     async discoverPreviews(
-        module: string,
+        module: ModuleInfo,
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
-        const cached = this.manifestCache.get(module);
+        const cached = this.manifestCache.get(module.modulePath);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
             return cached.manifest;
         }
-        await this.runTask(
-            `${gradleProjectPath(module)}:discoverPreviews`,
-            [],
-            opts,
-        );
+        await this.runTask(`${module.modulePath}:discoverPreviews`, [], opts);
         const manifest = this.readManifest(module);
         if (manifest) {
-            this.manifestCache.set(module, { manifest, timestamp: Date.now() });
+            this.manifestCache.set(module.modulePath, {
+                manifest,
+                timestamp: Date.now(),
+            });
         }
         return manifest;
     }
@@ -263,10 +322,10 @@ export class GradleService {
      * the on-disk `previews.json`. A subsequent gradle-mode save (daemon disabled or unhealthy)
      * will repopulate the cache through `discoverPreviews`.
      */
-    async compileOnly(module: string, opts?: TaskOptions): Promise<void> {
-        this.manifestCache.delete(module);
+    async compileOnly(module: ModuleInfo, opts?: TaskOptions): Promise<void> {
+        this.manifestCache.delete(module.modulePath);
         await this.runTask(
-            `${gradleProjectPath(module)}:composePreviewCompile`,
+            `${module.modulePath}:composePreviewCompile`,
             [],
             opts,
         );
@@ -290,19 +349,22 @@ export class GradleService {
      * burning a config-cache reconfigure (see `TierSystemPropProvider`).
      */
     async renderPreviews(
-        module: string,
+        module: ModuleInfo,
         tier: "fast" | "full" = "full",
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
-        this.manifestCache.delete(module);
+        this.manifestCache.delete(module.modulePath);
         await this.runTask(
-            `${gradleProjectPath(module)}:renderAllPreviews`,
+            `${module.modulePath}:renderAllPreviews`,
             [`-PcomposePreview.tier=${tier}`],
             opts,
         );
         const manifest = this.readManifest(module);
         if (manifest) {
-            this.manifestCache.set(module, { manifest, timestamp: Date.now() });
+            this.manifestCache.set(module.modulePath, {
+                manifest,
+                timestamp: Date.now(),
+            });
         }
         return manifest;
     }
@@ -314,12 +376,8 @@ export class GradleService {
      * separately. Throws on failure (e.g. no device, build error) so the
      * caller can surface the message to the user.
      */
-    async installDebug(module: string, opts?: TaskOptions): Promise<void> {
-        await this.runTask(
-            `${gradleProjectPath(module)}:installDebug`,
-            [],
-            opts,
-        );
+    async installDebug(module: ModuleInfo, opts?: TaskOptions): Promise<void> {
+        await this.runTask(`${module.modulePath}:installDebug`, [], opts);
     }
 
     /**
@@ -332,8 +390,8 @@ export class GradleService {
      * wasn't produced. Callers should treat null as "skip doctor
      * diagnostics for this module", not as an empty finding set.
      */
-    async runDoctor(module: string): Promise<DoctorModuleReport | null> {
-        const task = `${gradleProjectPath(module)}:composePreviewDoctor`;
+    async runDoctor(module: ModuleInfo): Promise<DoctorModuleReport | null> {
+        const task = `${module.modulePath}:composePreviewDoctor`;
         try {
             await this.runTask(task);
         } catch (e) {
@@ -344,7 +402,7 @@ export class GradleService {
         }
         const reportPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             "doctor.json",
@@ -372,9 +430,9 @@ export class GradleService {
         }
     }
 
-    invalidateCache(module?: string): void {
+    invalidateCache(module?: ModuleInfo): void {
         if (module) {
-            this.manifestCache.delete(module);
+            this.manifestCache.delete(module.modulePath);
         } else {
             this.manifestCache.clear();
         }
@@ -391,10 +449,10 @@ export class GradleService {
      * sidecar to merge in. Downstream consumers (CodeLens, the upcoming resource webview tab)
      * use the raw shape directly.
      */
-    readResourceManifest(module: string): ResourceManifest | null {
+    readResourceManifest(module: ModuleInfo): ResourceManifest | null {
         const manifestPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             "resources.json",
@@ -425,10 +483,10 @@ export class GradleService {
         }
     }
 
-    readManifest(module: string): PreviewManifest | null {
+    readManifest(module: ModuleInfo): PreviewManifest | null {
         const manifestPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             "previews.json",
@@ -453,7 +511,7 @@ export class GradleService {
             // read the template path (which never exists).
             const rendersDir = path.join(
                 this.workspaceRoot,
-                module,
+                module.projectDir,
                 "build",
                 "compose-previews",
                 "renders",
@@ -515,7 +573,7 @@ export class GradleService {
      * the overlay wasn't generated — e.g. the preview had no findings).
      */
     private readA11yById(
-        module: string,
+        module: ModuleInfo,
         relativePath: string,
     ): Record<
         string,
@@ -523,7 +581,7 @@ export class GradleService {
     > {
         const reportPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             relativePath,
@@ -562,12 +620,12 @@ export class GradleService {
     }
 
     async readPreviewImage(
-        module: string,
+        module: ModuleInfo,
         renderOutput: string,
     ): Promise<string | null> {
         const pngPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             renderOutput,
@@ -593,12 +651,12 @@ export class GradleService {
      * manifest's existing `renderOutput` path.
      */
     async readPreviewRenderError(
-        module: string,
+        module: ModuleInfo,
         renderOutput: string,
     ): Promise<PreviewRenderError | null> {
         const sidecarPath = path.join(
             this.workspaceRoot,
-            module,
+            module.projectDir,
             "build",
             "compose-previews",
             `${renderOutput}.error.json`,
@@ -691,9 +749,14 @@ export class GradleService {
      * Recursion continues past a matched directory because Gradle allows
      * modules to nest (`:foo:bar` inside `:foo`). [SCAN_SKIP_DIRS] prunes
      * source / output trees that can't contain a module root.
+     *
+     * The returned [ModuleInfo.modulePath] comes from `applied.json` when
+     * present (so layouts that reassign `projectDir` in `settings.gradle.kts`
+     * end up with the correct gradle task prefix), and is synthesised from
+     * `projectDir` otherwise.
      */
-    findPreviewModules(): string[] {
-        const found = new Set<string>();
+    findPreviewModules(): ModuleInfo[] {
+        const found = new Map<string, ModuleInfo>();
         const walk = (relDir: string, depth: number): void => {
             if (depth > SCAN_MAX_DEPTH) {
                 return;
@@ -727,9 +790,18 @@ export class GradleService {
                     "compose-previews",
                     "applied.json",
                 );
+                let recorded = false;
                 if (fs.existsSync(marker)) {
-                    found.add(childRel);
-                } else {
+                    const parsed = readAppliedMarker(marker);
+                    found.set(childRel, {
+                        projectDir: childRel,
+                        modulePath:
+                            parsed?.modulePath ??
+                            modulePathFromProjectDir(childRel),
+                    });
+                    recorded = true;
+                }
+                if (!recorded) {
                     for (const name of BUILD_SCRIPT_NAMES) {
                         const buildFile = path.join(
                             this.workspaceRoot,
@@ -739,7 +811,11 @@ export class GradleService {
                         try {
                             const content = fs.readFileSync(buildFile, "utf-8");
                             if (appliesPlugin(content)) {
-                                found.add(childRel);
+                                found.set(childRel, {
+                                    projectDir: childRel,
+                                    modulePath:
+                                        modulePathFromProjectDir(childRel),
+                                });
                                 break;
                             }
                         } catch {
@@ -751,7 +827,9 @@ export class GradleService {
             }
         };
         walk("", 0);
-        return [...found].sort();
+        return [...found.values()].sort((a, b) =>
+            a.projectDir.localeCompare(b.projectDir),
+        );
     }
 
     /**
@@ -782,13 +860,26 @@ export class GradleService {
      * descriptor (`build/compose-previews/daemon-launch.json`) is up to date.
      * Cheap and cacheable — emits a small JSON. The caller (DaemonGate) handles errors.
      */
-    async runDaemonBootstrap(module: string): Promise<void> {
-        await this.runTask(
-            `${gradleProjectPath(module)}:composePreviewDaemonStart`,
-        );
+    async runDaemonBootstrap(module: ModuleInfo): Promise<void> {
+        await this.runTask(`${module.modulePath}:composePreviewDaemonStart`);
     }
 
-    resolveModule(filePath: string): string | null {
+    /**
+     * Looks up the discovered module whose canonical Gradle path is
+     * [modulePath]. Returns null when the module isn't on the discovered
+     * list — e.g. the workspace was reloaded and the marker hasn't been
+     * re-read yet, or the modulePath is stale.
+     */
+    findModuleByPath(modulePath: string): ModuleInfo | null {
+        for (const m of this.findPreviewModules()) {
+            if (m.modulePath === modulePath) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    resolveModule(filePath: string): ModuleInfo | null {
         const relative = path.relative(this.workspaceRoot, filePath);
         if (
             !relative ||
@@ -804,14 +895,18 @@ export class GradleService {
         if (segments.length < 2) {
             return null;
         }
-        const modules = new Set(this.findPreviewModules());
+        const byProjectDir = new Map<string, ModuleInfo>();
+        for (const m of this.findPreviewModules()) {
+            byProjectDir.set(m.projectDir, m);
+        }
         // Longest-prefix match: walk from deepest possible module path to
         // shallowest. With nested modules (e.g. `:foo:bar` inside `:foo`)
         // we prefer the more specific match.
         for (let n = segments.length - 1; n >= 1; n--) {
             const candidate = segments.slice(0, n).join("/");
-            if (modules.has(candidate)) {
-                return candidate;
+            const hit = byProjectDir.get(candidate);
+            if (hit) {
+                return hit;
             }
         }
         return null;

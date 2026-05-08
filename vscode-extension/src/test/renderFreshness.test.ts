@@ -52,15 +52,15 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 describe("renderFreshness", () => {
     it("treats a stamped render as fresh even when PNG mtimes are older than the source", async () => {
         await withTempDir(async (dir) => {
-            const module = "app";
+            const module = { projectDir: "app", modulePath: ":app" };
             const source = path.join(
                 dir,
-                module,
+                module.projectDir,
                 "src/main/kotlin/com/example/Previews.kt",
             );
             const png = path.join(
                 dir,
-                module,
+                module.projectDir,
                 "build/compose-previews/renders/p1.png",
             );
             fs.mkdirSync(path.dirname(source), { recursive: true });
@@ -83,10 +83,10 @@ describe("renderFreshness", () => {
 
     it("marks the render stale when the source changes after the stamp", async () => {
         await withTempDir(async (dir) => {
-            const module = "app";
+            const module = { projectDir: "app", modulePath: ":app" };
             const source = path.join(
                 dir,
-                module,
+                module.projectDir,
                 "src/main/kotlin/com/example/Previews.kt",
             );
             fs.mkdirSync(path.dirname(source), { recursive: true });
@@ -107,10 +107,10 @@ describe("renderFreshness", () => {
 
     it("marks the render stale when the visible preview set is not covered by the stamp", async () => {
         await withTempDir(async (dir) => {
-            const module = "app";
+            const module = { projectDir: "app", modulePath: ":app" };
             const source = path.join(
                 dir,
-                module,
+                module.projectDir,
                 "src/main/kotlin/com/example/Previews.kt",
             );
             fs.mkdirSync(path.dirname(source), { recursive: true });
@@ -133,7 +133,7 @@ describe("renderFreshness", () => {
         await withTempDir(async (dir) => {
             const stampPath = renderFreshnessStampPath(
                 dir,
-                "app",
+                { projectDir: "app", modulePath: ":app" },
                 path.join(dir, "app/src/Previews.kt"),
             );
             assert.ok(

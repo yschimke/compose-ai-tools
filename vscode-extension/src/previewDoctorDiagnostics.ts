@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { GradleService } from "./gradleService";
+import { GradleService, ModuleInfo } from "./gradleService";
 import { DoctorFinding } from "./types";
 
 /**
@@ -37,7 +37,7 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
      * Atomically swaps the DiagnosticCollection so stale findings from a
      * module that got its issue fixed disappear on the next refresh.
      */
-    async refresh(modules: ReadonlyArray<string>): Promise<void> {
+    async refresh(modules: ReadonlyArray<ModuleInfo>): Promise<void> {
         const next = new Map<string, vscode.Diagnostic[]>();
         for (const module of modules) {
             const report = await this.gradleService.runDoctor(module);
@@ -68,7 +68,7 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
     }
 
     private toDiagnostic(
-        module: string,
+        module: ModuleInfo,
         finding: DoctorFinding,
     ): vscode.Diagnostic {
         const severity =
@@ -96,14 +96,18 @@ export class PreviewDoctorDiagnostics implements vscode.Disposable {
         const range = new vscode.Range(0, 0, 0, 0);
         const diag = new vscode.Diagnostic(range, parts.join("\n"), severity);
         diag.source = "compose-preview-doctor";
-        diag.code = `${module}:${finding.id}`;
+        diag.code = `${module.modulePath}:${finding.id}`;
         return diag;
     }
 
     /** Locate the module's build.gradle[.kts] relative to the workspace root. */
-    private resolveBuildFile(module: string): string | undefined {
+    private resolveBuildFile(module: ModuleInfo): string | undefined {
         for (const name of ["build.gradle.kts", "build.gradle"]) {
-            const candidate = path.join(this.workspaceRoot, module, name);
+            const candidate = path.join(
+                this.workspaceRoot,
+                module.projectDir,
+                name,
+            );
             if (fs.existsSync(candidate)) {
                 return candidate;
             }
