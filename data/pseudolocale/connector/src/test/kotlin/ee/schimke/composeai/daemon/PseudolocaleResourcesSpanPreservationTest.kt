@@ -51,6 +51,28 @@ class PseudolocaleResourcesSpanPreservationTest {
   }
 
   @Test
+  fun `paragraph spans are snapped to valid boundaries instead of throwing`() {
+    val styled = SpannableString("Battery low")
+    val bullet = android.text.style.BulletSpan()
+    // Whole-string paragraph span. Without the snap, the remap would put `start = 1` (right after
+    // the accent `[` prefix), which `SpannableStringBuilder.setSpan` rejects with
+    // `RuntimeException: PARAGRAPH span must start at paragraph boundary`.
+    styled.setSpan(bullet, 0, styled.length, Spanned.SPAN_PARAGRAPH)
+
+    val result = withSpannedGetText(styled).pseudolocaliseForTest(Pseudolocale.ACCENT)
+
+    val out = result as Spanned
+    val spans = out.getSpans(0, out.length, android.text.style.BulletSpan::class.java)
+    assertEquals(1, spans.size)
+    assertEquals("paragraph span must start at 0", 0, out.getSpanStart(spans[0]))
+    assertEquals(
+      "paragraph span must end at length",
+      out.length,
+      out.getSpanEnd(spans[0]),
+    )
+  }
+
+  @Test
   fun `plain CharSequence input takes the fast path and is not Spanned`() {
     val plain = "Battery low: charge soon."
     val result = withSpannedGetText(plain).pseudolocaliseForTest(Pseudolocale.ACCENT)
