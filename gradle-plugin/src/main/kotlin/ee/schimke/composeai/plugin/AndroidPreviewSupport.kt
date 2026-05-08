@@ -21,6 +21,18 @@ import org.gradle.api.tasks.testing.Test
  */
 internal object AndroidPreviewSupport {
   /**
+   * Floor version pinned on every plugin-injected `androidx.compose.*` coordinate that doesn't have
+   * its own version source (`ui-test-manifest`, `ui-test-junit4`). Matches the Compose line that
+   * `:renderer-android` compiles against (`compose-bom-compat` 2025.11.01 → Compose 1.9.5); the
+   * renderer's bytecode references `ui-test` entry points at this surface, so injecting the
+   * matching version guarantees the test classpath has methods the renderer calls. Consumers with a
+   * higher Compose BOM in their `implementation` still get their aligned version through Gradle's
+   * max-version conflict resolution. Bump in lockstep with `compose-bom-compat` in
+   * `gradle/libs.versions.toml`.
+   */
+  internal const val RENDERER_COMPOSE_FLOOR_VERSION: String = "1.9.5"
+
+  /**
    * Modules within `androidx.wear.tiles` whose presence in a consumer's declared deps signals "this
    * project writes Tile previews." When any match, [configure] injects `wear.tiles:tiles-renderer`
    * into the consumer's variant `implementation` so AGP generates R classes for
@@ -427,14 +439,40 @@ internal object AndroidPreviewSupport {
     // ClassNotFoundException from Robolectric at render time.
     val manageDependencies = extension.manageDependencies.get()
 
-    // No version: relies on the consumer's Compose BOM (or direct Compose
-    // dep) to resolve these artifacts. Projects using
-    // `implementation(platform(libs.compose.bom.stable))` pick up the aligned
-    // version automatically; projects without a BOM need to add one (a
-    // reasonable ask — the plugin is for Compose apps).
+    // Pin to the renderer-android compile floor (`compose-bom-compat` 2025.11.01 → Compose
+    // [RENDERER_COMPOSE_FLOOR_VERSION]) rather than emitting an unversioned coordinate. Two
+    // consumer shapes need the explicit version:
+    //
+    //  * Tile-only / non-Compose-UI Android apps that still go through `renderPreviews` (e.g.
+    //    wear-os-samples WearTilesKotlin, where the only `androidx.compose.ui:*` artifact in main
+    //    is `ui-tooling`). Those projects ship no Compose BOM and no `ui-test-*` artifact ever
+    //    appears on the dependency graph, so an unversioned `androidx.compose.ui:ui-test-manifest`
+    //    fails resolution with `Could not find androidx.compose.ui:ui-test-manifest:.` — and
+    //    config-cache serialization then surfaces it as a wrapping `ConfigurationCacheError` on
+    //    `:app:compileDebugUnitTestKotlin` instead of the underlying coordinate. Renderer rendering
+    //    even for `kind=TILE` previews still wraps the tile composable in
+    //    `createAndroidComposeRule<ComponentActivity>()`, so these artifacts ARE reached at test
+    //    time — skipping the injection isn't an option.
+    //
+    //  * Compose-app consumers with a BOM declared in `implementation(platform(...))` rely on the
+    //    BOM to align ui-test-manifest / ui-test-junit4 to their Compose line. Gradle's default
+    //    conflict resolution picks the maximum among declared sources, so our floor pin is
+    //    overridden by any consumer-BOM-aligned higher version automatically — we don't need a
+    //    separate BOM-detection branch.
+    //
+    // Picking 1.9.x specifically: it's the version surface renderer-android compiles against
+    // (`compose-bom-compat` in libs.versions.toml), so the bytecode references in the renderer's
+    // ui-test entry points are guaranteed to exist. Bumping it later means bumping the renderer's
+    // compile floor in lockstep — keep the two in sync.
     if (manageDependencies) {
-      project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-manifest")
-      project.dependencies.add("testImplementation", "androidx.compose.ui:ui-test-junit4")
+      project.dependencies.add(
+        "testImplementation",
+        "androidx.compose.ui:ui-test-manifest:$RENDERER_COMPOSE_FLOOR_VERSION",
+      )
+      project.dependencies.add(
+        "testImplementation",
+        "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
+      )
       // Pin `androidx.core:core` to the floor that compose-ui 1.10+ requires.
       // The renderer's test classpath gets compose-ui via roborazzi-compose's
       // transitive deps regardless of what the consumer declares, and
@@ -459,18 +497,20 @@ internal object AndroidPreviewSupport {
       recordInjectedDependency(
         project,
         injectedDependencies,
-        coordinate = "androidx.compose.ui:ui-test-manifest",
+        coordinate = "androidx.compose.ui:ui-test-manifest:$RENDERER_COMPOSE_FLOOR_VERSION",
         configuration = "testImplementation",
         outcome = "APPLIED",
-        reason = "merges ComponentActivity into the unit-test manifest for renderer",
+        reason =
+          "merges ComponentActivity into the unit-test manifest for renderer; pinned to the renderer's compile floor so tile-only consumers without a Compose BOM still resolve a version (Gradle picks max with consumer-BOM-aligned versions)",
       )
       recordInjectedDependency(
         project,
         injectedDependencies,
-        coordinate = "androidx.compose.ui:ui-test-junit4",
+        coordinate = "androidx.compose.ui:ui-test-junit4:$RENDERER_COMPOSE_FLOOR_VERSION",
         configuration = "testImplementation",
         outcome = "APPLIED",
-        reason = "provides createAndroidComposeRule / mainClock used by renderer",
+        reason =
+          "provides createAndroidComposeRule / mainClock used by renderer; pinned to the renderer's compile floor (see ui-test-manifest entry above for the version-pin rationale)",
       )
       recordInjectedDependency(
         project,
@@ -538,14 +578,21 @@ internal object AndroidPreviewSupport {
       val composeAiTraceEnabled = resolveComposeAiTraceEnabled(project, extension).get()
       if (composeAiTraceEnabled) {
         if (manageDependencies) {
-          project.dependencies.add("testImplementation", "androidx.compose.runtime:runtime-tracing")
+          // Pinned to the same renderer-compile-floor as ui-test-manifest above so consumers
+          // without a Compose BOM (tile-only / older-Compose) still resolve a version. See the
+          // [RENDERER_COMPOSE_FLOOR_VERSION] KDoc for the resolution model.
+          project.dependencies.add(
+            "testImplementation",
+            "androidx.compose.runtime:runtime-tracing:$RENDERER_COMPOSE_FLOOR_VERSION",
+          )
           recordInjectedDependency(
             project,
             injectedDependencies,
-            coordinate = "androidx.compose.runtime:runtime-tracing",
+            coordinate = "androidx.compose.runtime:runtime-tracing:$RENDERER_COMPOSE_FLOOR_VERSION",
             configuration = "testImplementation",
             outcome = "APPLIED",
-            reason = "required by compose-ai-tools trace data product",
+            reason =
+              "required by compose-ai-tools trace data product; pinned to the renderer's compile floor (Gradle picks max with consumer BOM)",
           )
         } else {
           recordInjectedDependency(
