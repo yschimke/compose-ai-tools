@@ -8,6 +8,8 @@ export type {
     AccessibilityFinding,
     AccessibilityNode,
     Capture,
+    DaemonDataExtensionDescriptor,
+    DaemonDataProductCapability,
     ExtensionToWebview,
     HistoryDiffSummary,
     HistoryEntry,

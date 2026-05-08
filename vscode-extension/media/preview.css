@@ -637,6 +637,152 @@ body {
     font-size: calc(var(--vscode-font-size) - 2px);
 }
 
+/* -- Suggestion chip row + bucketed picker ---------------------------- */
+
+.focus-suggestions {
+    border-top: 1px solid var(--card-border);
+    background: color-mix(in srgb, var(--card-bg) 70%, transparent);
+}
+
+.focus-suggestions-summary {
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    list-style: none;
+}
+
+.focus-suggestions-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-suggestions[open] .focus-summary-chevron {
+    transform: rotate(180deg);
+}
+
+.focus-suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 8px 8px;
+}
+
+.focus-suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--card-border);
+    background: var(--vscode-editor-background);
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    cursor: pointer;
+}
+
+.focus-suggestion-chip:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-suggestion-chip:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.focus-suggestion-chip[data-state="on"] {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder) 25%,
+        var(--vscode-editor-background)
+    );
+    border-color: var(--vscode-focusBorder);
+}
+
+.focus-suggestion-chip[data-cost="expensive"]::after {
+    content: "$";
+    font-size: calc(var(--vscode-font-size) - 4px);
+    color: var(--text-secondary);
+    margin-left: 2px;
+}
+
+.focus-suggestion-chip-hint {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-suggestion-empty {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    padding: 0 0 4px;
+}
+
+.focus-buckets {
+    border-top: 1px solid var(--card-border);
+}
+
+.focus-bucket {
+    border-top: 1px solid
+        color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+.focus-bucket:first-child {
+    border-top: none;
+}
+
+.focus-bucket-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    list-style: none;
+}
+
+.focus-bucket-summary::-webkit-details-marker {
+    display: none;
+}
+
+.focus-bucket-summary:hover {
+    background: var(--toolbar-hover);
+}
+
+.focus-bucket-label {
+    flex: 1;
+}
+
+.focus-bucket-count {
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-bucket[open] .focus-summary-chevron {
+    transform: rotate(180deg);
+}
+
+.focus-bucket-body {
+    padding: 0 0 4px;
+}
+
+.focus-bucket-empty {
+    padding: 4px 8px 8px 30px;
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-product-option[data-cost="expensive"] > .focus-product-text::after {
+    content: "$";
+    color: var(--text-secondary);
+    margin-left: auto;
+    padding-left: 6px;
+}
+
 /* -- Preview card ----------------------------------------------------- */
 
 .preview-card {

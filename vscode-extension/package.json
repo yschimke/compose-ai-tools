@@ -136,6 +136,11 @@
                     "default": false,
                     "description": "Enable early, unstable preview features in the VS Code panel, including focus-mode diffs, focus inspector extension layers, a11y overlay controls, recording, and diff-all commands. Focus mode and live interactive previews remain available when this is off."
                 },
+                "composePreview.autoEnableCheap.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When the focus-mode inspector suggests a data extension that's cheap to compute (theme tokens, fonts, strings, layout tree), auto-enable it on first sight per module. Expensive layers (recomposition heatmap, render trace, accessibility re-render) are never auto-enabled and stay click-to-toggle. Suggestions themselves don't depend on this setting; only whether the suggestion auto-applies."
+                },
                 "composePreview.logging.level": {
                     "type": "string",
                     "enum": [

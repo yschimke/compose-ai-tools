@@ -243,6 +243,7 @@ export class PreviewApp extends LitElement {
     protected firstUpdated(): void {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
+        const initialAutoEnableCheap = this.dataset.autoEnableCheap === "true";
         const vscode = getVsCodeApi<PersistedState>();
         const state: PersistedState = vscode.getState() ?? { filters: {} };
         // `earlyFeaturesEnabled` lives in `previewStore` so future
@@ -251,6 +252,7 @@ export class PreviewApp extends LitElement {
         // terseness; writes go straight to `previewStore.setState`.
         previewStore.setState({
             earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
+            autoEnableCheapEnabled: initialAutoEnableCheap,
         });
         const earlyFeatures = (): boolean =>
             previewStore.getState().earlyFeaturesEnabled;
@@ -366,6 +368,8 @@ export class PreviewApp extends LitElement {
         inspector = new FocusInspectorController({
             el: focusInspector,
             earlyFeatures,
+            autoEnableCheap: () =>
+                previewStore.getState().autoEnableCheapEnabled,
             getPreview: (id) =>
                 previewStore.getState().allPreviews.find((p) => p.id === id),
             getA11yFindings: (id) => {
@@ -393,6 +397,7 @@ export class PreviewApp extends LitElement {
                 focusController.requestFocusedDiff(against),
             onRequestLaunchOnDevice: () =>
                 focusController.requestLaunchOnDevice(),
+            getScope: () => previewStore.getState().moduleDir,
         });
 
         // Config for the interactive-input pointer machine. The predicate

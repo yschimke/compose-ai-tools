@@ -1,34 +1,45 @@
 // Focus-mode inspector — the side panel that appears when a single
-// preview is focused. Three sections: an Inspect product picker (a11y
-// / Layout / Strings / Resources / Fonts / Render / Theme /
-// Recomposition), a History accordion (diff vs HEAD, diff vs main),
-// and a Tools strip (a11y, device, live, record action buttons).
+// preview is focused. Three sections, top to bottom:
 //
-// Lifted verbatim from `behavior.ts`'s `renderFocusInspector` cluster
-// (`sectionHeader` / `actionButton` / `historyPanel` / `productSpec` /
-// `productPicker` / `productOption` / `toggleFocusProduct` /
-// `buildFocusPlaceholders`). Same DOM structure, same CSS classes,
-// same accordion-open persistence (`focusProductPickerOpen` /
-// `focusHistoryOpen`) — those flags and the `enabledFocusProducts`
-// Set live as private state on the controller now rather than free
-// variables in `setupPreviewBehavior`.
+//   1. **Suggested for this preview** — a short chip row driven by
+//      annotation hints (Wear device, scroll capture, existing a11y
+//      findings, non-default UI mode) plus the per-scope MRU. Capped
+//      at MAX_SUGGESTIONS so the eye lands on it. Cheap kinds may
+//      auto-enable when `composePreview.autoEnableCheap.enabled` is on.
 //
-// Action callbacks (toggleA11yOverlay / toggleInteractive /
-// toggleRecording / requestFocusedDiff / requestLaunchOnDevice) and
-// the per-preview state queries (a11y findings / nodes, live set,
-// store-backed `a11yOverlayId`) are passed in via `FocusInspectorConfig`
-// so the module doesn't need closure access to the rest of
-// `behavior.ts`. `clearAll` resets the `enabledFocusProducts` Set.
+//   2. **Five stable buckets** (Accessibility / Layout / Performance
+//      / Theming / Resources, plus a fallback "More" for unknown
+//      namespaces) — each `<details>` collapses by default; expanding
+//      reveals the kinds the daemon actually advertises (or, today,
+//      the built-in placeholder set). The chrome stays at five rows
+//      regardless of how many extensions register on the daemon
+//      side; only the contents change.
 //
-// `renderSummary` and `themeSummary` from the imperative copy were
-// dead code (defined but never called) and are dropped; behaviour
-// unchanged.
+//   3. **History** + **Tools** — diff buttons (HEAD / main) and
+//      action buttons (a11y, device, live, record). Unchanged from
+//      the previous flat-picker layout.
+//
+// All taxonomy / cheapness / suggestion logic lives in
+// `focusProductTaxonomy.ts` so it's testable without a DOM. This
+// module is the imperative DOM glue plus the per-scope MRU map.
 
 import type {
     AccessibilityFinding,
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
+import {
+    BUCKET_META,
+    MAX_SUGGESTIONS,
+    PRODUCT_BUCKETS,
+    type ProductBucket,
+    type ProductDescriptor,
+    bucketOf,
+    bumpMru,
+    costOf,
+    groupByBucket,
+    suggestFor,
+} from "./focusProductTaxonomy";
 
 export interface FocusInspectorConfig {
     /** The `<div id="focus-inspector">` element rendered by `<preview-app>`. */
@@ -36,42 +47,53 @@ export interface FocusInspectorConfig {
     /** Whether `composePreview.earlyFeatures` is on — when off the
      *  inspector hides and the caller's `clear` path clears it. */
     earlyFeatures(): boolean;
+    /** Whether `composePreview.autoEnableCheap.enabled` is on. When
+     *  true, suggested cheap kinds auto-enable on first sight per
+     *  scope. Always-false fallback is safe. */
+    autoEnableCheap(): boolean;
     /** Look up the manifest entry for a preview, or `undefined` when
-     *  the preview is unknown to this panel (e.g. transient state
-     *  during a `setPreviews` swap). */
+     *  the preview is unknown to this panel. */
     getPreview(previewId: string): PreviewInfo | undefined;
-    /** Latest a11y findings for a preview. Reads the runtime cache
-     *  populated from `setPreviews` / `updateA11y`. */
+    /** Latest a11y findings for a preview. */
     getA11yFindings(previewId: string): readonly AccessibilityFinding[];
     /** Latest a11y hierarchy nodes for a preview. */
     getA11yNodes(previewId: string): readonly AccessibilityNode[];
-    /** `previewId` whose a11y overlay subscription is currently on, or
-     *  `null` when no card is subscribed. */
+    /** `previewId` whose a11y overlay subscription is currently on. */
     getA11yOverlayId(): string | null;
     /** Whether [previewId] is currently in the live (interactive) set. */
     isLive(previewId: string): boolean;
-    /** Click handlers shared with the focus toolbar — pressed from
-     *  the inspector's product-picker rows / tools strip. */
+    /** Click handlers shared with the focus toolbar. */
     onToggleA11yOverlay(): void;
     /** `shift = false` matches the toolbar Live button — single-target. */
     onToggleInteractive(shift: boolean): void;
     onToggleRecording(): void;
     onRequestFocusedDiff(against: "head" | "main"): void;
     onRequestLaunchOnDevice(): void;
-}
-
-interface ProductOptionSpec {
-    icon: string;
-    label: string;
-    value: string;
-    enabled: boolean;
-    state: "ok" | "warn" | "idle";
-    onToggle(): void;
+    /**
+     * Scope key for MRU. Two previews in the same module share an MRU
+     * list; switching modules resets effective ranking. Empty string
+     * is a valid sentinel (treated as a single shared scope).
+     */
+    getScope(): string;
 }
 
 export class FocusInspectorController {
+    /** Toggles the user has explicitly enabled, by `kind`. Includes
+     *  daemon-side products (subscribed) and local placeholders. */
     private readonly enabled = new Set<string>();
-    private productPickerOpen = false;
+    /** Per-scope MRU: scope -> kinds, most-recent first. In-memory
+     *  for now; persistence via `vscode.setState` is a follow-up. */
+    private readonly mruByScope = new Map<string, string[]>();
+    /** Per-scope set of kinds we've already auto-enabled this session,
+     *  so `autoEnableCheap` doesn't keep flipping a kind back on after
+     *  the user explicitly turned it off. */
+    private readonly autoEnabledByScope = new Map<string, Set<string>>();
+    /** Daemon-advertised products. Replaces the built-in placeholders
+     *  when set. `null` means "use built-in fallback". Pushed in via
+     *  `setProducts`. */
+    private daemonProducts: ProductDescriptor[] | null = null;
+    private suggestionsOpen = true;
+    private bucketOpen: Partial<Record<ProductBucket, boolean>> = {};
     private historyOpen = false;
     /** Last card we rendered. Held so `toggleProduct` can re-render
      *  the panel on the same card after flipping a checkbox. */
@@ -79,9 +101,18 @@ export class FocusInspectorController {
 
     constructor(private readonly config: FocusInspectorConfig) {}
 
+    /**
+     * Replace the descriptor list with daemon-advertised products.
+     * Pass `null` to fall back to the built-in placeholder set.
+     * Re-renders if a card is currently focused.
+     */
+    setProducts(products: ProductDescriptor[] | null): void {
+        this.daemonProducts = products;
+        if (this.lastCard) this.render(this.lastCard);
+    }
+
     /** Repaint the inspector for [card], or clear it when [card] is
-     *  `null` / earlyFeatures is off. Called by `applyLayout`,
-     *  `setInteractiveForCard`, `toggleRecording`, etc. */
+     *  `null` / earlyFeatures is off. */
     render(card: HTMLElement | null): void {
         const el = this.config.el;
         el.innerHTML = "";
@@ -92,65 +123,59 @@ export class FocusInspectorController {
             return;
         }
         const previewId = card.dataset.previewId ?? "";
-        const p = previewId ? this.config.getPreview(previewId) : undefined;
-        if (!previewId || !p) {
+        const preview = previewId
+            ? this.config.getPreview(previewId)
+            : undefined;
+        if (!previewId || !preview) {
             this.lastCard = null;
             return;
         }
         this.lastCard = card;
 
+        const products = this.resolveProducts();
+        const productByKind = new Map(products.map((p) => [p.kind, p]));
+        const findings = this.config.getA11yFindings(previewId);
+        const scope = this.config.getScope();
+        const suggestions = suggestFor({
+            preview,
+            findingsCount: findings.length,
+            mru: this.mruByScope.get(scope) ?? [],
+            available: new Set(productByKind.keys()),
+        });
+
+        // Auto-enable cheap suggested kinds, once per scope per kind.
+        // Keeps the suggestion chip "active" without requiring a click,
+        // but never re-enables a kind the user has manually turned off
+        // since the autoEnabled map is sticky for the session.
+        if (this.config.autoEnableCheap()) {
+            const auto = this.ensureAutoEnabledSet(scope);
+            for (const kind of suggestions) {
+                if (auto.has(kind)) continue;
+                const p = productByKind.get(kind);
+                if (!p || p.cost !== "cheap") continue;
+                if (!this.enabled.has(kind)) {
+                    this.enabled.add(kind);
+                }
+                auto.add(kind);
+            }
+        }
+
         const inspect = document.createElement("section");
         inspect.className = "focus-panel focus-inspect-panel";
         inspect.appendChild(sectionHeader("search", "Inspect"));
-        const findings = this.config.getA11yFindings(previewId);
-        const nodes = this.config.getA11yNodes(previewId);
         inspect.appendChild(
-            this.productPicker([
-                {
-                    icon: "eye",
-                    label: "Accessibility",
-                    value:
-                        findings.length > 0
-                            ? findings.length +
-                              " finding" +
-                              (findings.length === 1 ? "" : "s")
-                            : "Overlay",
-                    enabled: previewId === this.config.getA11yOverlayId(),
-                    state: findings.length > 0 ? "warn" : "idle",
-                    onToggle: () => this.config.onToggleA11yOverlay(),
-                },
-                {
-                    icon: "list-tree",
-                    label: "Layout",
-                    value:
-                        nodes.length > 0
-                            ? nodes.length +
-                              " node" +
-                              (nodes.length === 1 ? "" : "s")
-                            : "Placeholder",
-                    enabled: this.enabled.has("layout"),
-                    state: nodes.length > 0 ? "ok" : "idle",
-                    onToggle: () => this.toggleProduct("layout"),
-                },
-                this.productSpec("symbol-string", "Strings", "strings"),
-                this.productSpec("file-code", "Resources", "resources"),
-                this.productSpec("text-size", "Fonts", "fonts"),
-                this.productSpec("pulse", "Render", "render"),
-                this.productSpec("symbol-color", "Theme", "theme"),
-                {
-                    icon: "sync",
-                    label: "Recomposition",
-                    value: this.config.isLive(previewId)
-                        ? "Live"
-                        : "Placeholder",
-                    enabled:
-                        this.enabled.has("recomposition") ||
-                        this.config.isLive(previewId),
-                    state: this.config.isLive(previewId) ? "ok" : "idle",
-                    onToggle: () => this.toggleProduct("recomposition"),
-                },
-            ]),
+            this.renderSuggestionRow(
+                suggestions,
+                productByKind,
+                preview,
+                previewId,
+                findings,
+            ),
         );
+        inspect.appendChild(
+            this.renderBuckets(products, preview, previewId, findings),
+        );
+
         const controls = document.createElement("section");
         controls.className = "focus-panel focus-controls-panel";
         controls.appendChild(sectionHeader("settings-gear", "Tools"));
@@ -189,76 +214,278 @@ export class FocusInspectorController {
         el.appendChild(inspect);
         el.appendChild(this.historyPanel());
         el.appendChild(controls);
-        const placeholders = this.buildPlaceholders();
-        if (placeholders) inspect.appendChild(placeholders);
     }
 
     /**
-     * Reset the per-preview product-enable Set. Called by `behavior.ts`
-     * on the `clearAll` message path (panel scope changed) so the
-     * inspector doesn't carry stale "Layout enabled" / "Render enabled"
-     * checkboxes into the new module's previews.
+     * Reset the per-preview product-enable Set. Called by the message
+     * dispatcher on the `clearAll` / `setEarlyFeatures off` path so the
+     * inspector doesn't carry stale toggles into a new module's
+     * previews.
      */
     clearProducts(): void {
         this.enabled.clear();
+        this.autoEnabledByScope.clear();
     }
 
-    private toggleProduct(id: string): void {
-        if (this.enabled.has(id)) {
-            this.enabled.delete(id);
-        } else {
-            this.enabled.add(id);
+    private resolveProducts(): ProductDescriptor[] {
+        if (this.daemonProducts && this.daemonProducts.length > 0) {
+            return this.daemonProducts;
         }
+        return BUILT_IN_PRODUCTS;
+    }
+
+    private ensureAutoEnabledSet(scope: string): Set<string> {
+        let s = this.autoEnabledByScope.get(scope);
+        if (!s) {
+            s = new Set();
+            this.autoEnabledByScope.set(scope, s);
+        }
+        return s;
+    }
+
+    private toggleProduct(kind: string): void {
+        if (this.enabled.has(kind)) {
+            this.enabled.delete(kind);
+        } else {
+            this.enabled.add(kind);
+        }
+        const scope = this.config.getScope();
+        const cur = this.mruByScope.get(scope) ?? [];
+        this.mruByScope.set(scope, bumpMru(cur, kind));
         if (this.lastCard) this.render(this.lastCard);
     }
 
-    private productSpec(
-        icon: string,
-        label: string,
-        id: string,
-    ): ProductOptionSpec {
-        return {
-            icon,
-            label,
-            value: "Placeholder",
-            enabled: this.enabled.has(id),
-            state: "idle",
-            onToggle: () => this.toggleProduct(id),
-        };
-    }
-
-    private productPicker(products: ProductOptionSpec[]): HTMLElement {
-        const picker = document.createElement("details");
-        picker.className = "focus-product-picker";
-        picker.open = this.productPickerOpen;
-        picker.addEventListener("toggle", () => {
-            this.productPickerOpen = picker.open;
+    private renderSuggestionRow(
+        suggestions: readonly string[],
+        productByKind: ReadonlyMap<string, ProductDescriptor>,
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): HTMLElement {
+        const row = document.createElement("details");
+        row.className = "focus-suggestions";
+        row.open = this.suggestionsOpen;
+        row.addEventListener("toggle", () => {
+            this.suggestionsOpen = row.open;
         });
         const summary = document.createElement("summary");
-        summary.className = "focus-product-summary";
-        const selected = products.filter((product) => product.enabled);
+        summary.className = "focus-suggestions-summary";
         const summaryText = document.createElement("span");
-        summaryText.textContent =
-            selected.length === 0
-                ? "Choose inspection layers"
-                : selected.length === 1
-                  ? selected[0].label
-                  : selected.length + " layers selected";
+        const visibleSuggestions = suggestions.slice(0, MAX_SUGGESTIONS);
+        if (visibleSuggestions.length === 0) {
+            summaryText.textContent = "No suggestions for this preview";
+        } else {
+            summaryText.textContent =
+                "Suggested for this preview · " + visibleSuggestions.length;
+        }
         summary.appendChild(summaryText);
         const chevron = document.createElement("i");
         chevron.className =
             "codicon codicon-chevron-down focus-summary-chevron";
         chevron.setAttribute("aria-hidden", "true");
         summary.appendChild(chevron);
-        picker.appendChild(summary);
+        row.appendChild(summary);
 
-        const menu = document.createElement("div");
-        menu.className = "focus-product-menu";
-        for (const product of products) {
-            menu.appendChild(productOption(product));
+        const chipBox = document.createElement("div");
+        chipBox.className = "focus-suggestion-chips";
+        for (const kind of visibleSuggestions) {
+            const p = productByKind.get(kind);
+            if (!p) continue;
+            chipBox.appendChild(
+                this.renderChip(p, preview, previewId, findings),
+            );
         }
-        picker.appendChild(menu);
-        return picker;
+        if (visibleSuggestions.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "focus-suggestion-empty";
+            empty.textContent =
+                "Nothing matches this preview's annotations yet — pick layers below.";
+            chipBox.appendChild(empty);
+        }
+        row.appendChild(chipBox);
+        return row;
+    }
+
+    private renderChip(
+        p: ProductDescriptor,
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): HTMLElement {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "focus-suggestion-chip";
+        const isOn = this.isProductOn(p.kind, previewId);
+        chip.dataset.state = isOn ? "on" : "off";
+        chip.dataset.cost = p.cost;
+        const titleParts = [
+            p.label,
+            p.cost === "cheap"
+                ? "Cheap to enable."
+                : "May increase render cost.",
+        ];
+        chip.title = titleParts.join(" — ");
+        const icon = document.createElement("i");
+        icon.className = "codicon codicon-" + p.icon;
+        icon.setAttribute("aria-hidden", "true");
+        chip.appendChild(icon);
+        const label = document.createElement("span");
+        label.textContent = p.label;
+        chip.appendChild(label);
+        const hint = this.dynamicHint(p, previewId, findings);
+        if (hint) {
+            const hintEl = document.createElement("span");
+            hintEl.className = "focus-suggestion-chip-hint";
+            hintEl.textContent = hint;
+            chip.appendChild(hintEl);
+        }
+        chip.addEventListener("click", () => this.handleChipClick(p));
+        // Mark unused params consumed for lint — kept in the signature
+        // because future suggestion variants will read them.
+        void preview;
+        return chip;
+    }
+
+    private handleChipClick(p: ProductDescriptor): void {
+        if (p.kind === "local/a11y/overlay") {
+            this.config.onToggleA11yOverlay();
+            return;
+        }
+        this.toggleProduct(p.kind);
+    }
+
+    private renderBuckets(
+        products: readonly ProductDescriptor[],
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): HTMLElement {
+        const wrapper = document.createElement("div");
+        wrapper.className = "focus-buckets";
+        const grouped = groupByBucket(products);
+        const order: ProductBucket[] = [...PRODUCT_BUCKETS];
+        // "More" bucket only renders when non-empty — unknown
+        // namespaces would otherwise add visual noise on every preview.
+        if ((grouped.get("more") ?? []).length > 0) order.push("more");
+        for (const bucket of order) {
+            const items = grouped.get(bucket) ?? [];
+            wrapper.appendChild(
+                this.renderBucket(bucket, items, preview, previewId, findings),
+            );
+        }
+        return wrapper;
+    }
+
+    private renderBucket(
+        bucket: ProductBucket,
+        items: readonly ProductDescriptor[],
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): HTMLElement {
+        const meta = BUCKET_META[bucket];
+        const enabledCount = items.filter((p) =>
+            this.isProductOn(p.kind, previewId),
+        ).length;
+
+        const details = document.createElement("details");
+        details.className = "focus-bucket";
+        details.dataset.bucket = bucket;
+        details.open = !!this.bucketOpen[bucket];
+        details.addEventListener("toggle", () => {
+            this.bucketOpen[bucket] = details.open;
+        });
+
+        const summary = document.createElement("summary");
+        summary.className = "focus-bucket-summary";
+        const icon = document.createElement("i");
+        icon.className = "codicon codicon-" + meta.icon;
+        icon.setAttribute("aria-hidden", "true");
+        summary.appendChild(icon);
+        const label = document.createElement("span");
+        label.className = "focus-bucket-label";
+        label.textContent = meta.label;
+        summary.appendChild(label);
+        const count = document.createElement("span");
+        count.className = "focus-bucket-count";
+        if (items.length === 0) {
+            count.textContent = "—";
+        } else if (enabledCount > 0) {
+            count.textContent = enabledCount + " / " + items.length;
+        } else {
+            count.textContent = String(items.length);
+        }
+        summary.appendChild(count);
+        const chevron = document.createElement("i");
+        chevron.className =
+            "codicon codicon-chevron-down focus-summary-chevron";
+        chevron.setAttribute("aria-hidden", "true");
+        summary.appendChild(chevron);
+        details.appendChild(summary);
+
+        const body = document.createElement("div");
+        body.className = "focus-bucket-body";
+        if (items.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "focus-bucket-empty";
+            empty.textContent = "No layers from current extensions.";
+            body.appendChild(empty);
+        }
+        // Sort within bucket by MRU rank then label, so familiar
+        // layers float to the top without changing the bucket itself.
+        const mru = this.mruByScope.get(this.config.getScope()) ?? [];
+        const mruRank = (kind: string): number => {
+            const idx = mru.indexOf(kind);
+            return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+        };
+        const sorted = [...items].sort((a, b) => {
+            const ra = mruRank(a.kind);
+            const rb = mruRank(b.kind);
+            if (ra !== rb) return ra - rb;
+            return a.label.localeCompare(b.label);
+        });
+        for (const p of sorted) {
+            body.appendChild(
+                this.renderProductRow(p, preview, previewId, findings),
+            );
+        }
+        details.appendChild(body);
+        return details;
+    }
+
+    private renderProductRow(
+        p: ProductDescriptor,
+        preview: PreviewInfo,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): HTMLElement {
+        const option = document.createElement("label");
+        option.className = "focus-product-option";
+        option.dataset.cost = p.cost;
+        option.dataset.bucket = bucketOf(p.kind);
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = this.isProductOn(p.kind, previewId);
+        input.addEventListener("change", () => this.handleChipClick(p));
+        option.appendChild(input);
+        const icon = document.createElement("i");
+        icon.className = "codicon codicon-" + p.icon;
+        icon.setAttribute("aria-hidden", "true");
+        option.appendChild(icon);
+        const text = document.createElement("div");
+        text.className = "focus-product-text";
+        const name = document.createElement("span");
+        name.className = "focus-product-name";
+        name.textContent = p.label;
+        const val = document.createElement("span");
+        val.className = "focus-product-value";
+        val.textContent =
+            this.dynamicHint(p, previewId, findings) ?? p.hint ?? "";
+        text.appendChild(name);
+        text.appendChild(val);
+        option.appendChild(text);
+        void preview;
+        return option;
     }
 
     private historyPanel(): HTMLElement {
@@ -303,34 +530,38 @@ export class FocusInspectorController {
         return history;
     }
 
-    private buildPlaceholders(): HTMLElement | null {
-        const defs: ReadonlyArray<readonly [string, string, string]> = [
-            ["layout", "Layout", "layout tree and bounds"],
-            ["strings", "Strings", "text/strings and i18n/translations"],
-            ["resources", "Resources", "resources/used"],
-            ["fonts", "Fonts", "fonts/used"],
-            ["render", "Render", "render/trace and render/composeAiTrace"],
-            ["theme", "Theme", "compose/theme"],
-            ["recomposition", "Recomposition", "compose/recomposition"],
-        ];
-        const active = defs.filter(([id]) => this.enabled.has(id));
-        if (active.length === 0) return null;
-        const wrapper = document.createElement("div");
-        wrapper.className = "focus-placeholder-list";
-        for (const [id, label, kind] of active) {
-            const details = document.createElement("details");
-            details.className = "focus-placeholder";
-            details.dataset.product = id;
-            const summary = document.createElement("summary");
-            summary.textContent = label;
-            details.appendChild(summary);
-            const body = document.createElement("div");
-            body.className = "focus-placeholder-body";
-            body.textContent = kind;
-            details.appendChild(body);
-            wrapper.appendChild(details);
+    private isProductOn(kind: string, previewId: string): boolean {
+        if (kind === "local/a11y/overlay") {
+            return previewId === this.config.getA11yOverlayId();
         }
-        return wrapper;
+        if (kind === "compose/recomposition") {
+            return this.config.isLive(previewId) || this.enabled.has(kind);
+        }
+        return this.enabled.has(kind);
+    }
+
+    private dynamicHint(
+        p: ProductDescriptor,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): string | null {
+        if (p.kind === "local/a11y/overlay" && findings.length > 0) {
+            return (
+                findings.length +
+                " finding" +
+                (findings.length === 1 ? "" : "s")
+            );
+        }
+        if (p.kind === "layout/tree") {
+            const nodes = this.config.getA11yNodes(previewId);
+            if (nodes.length > 0) {
+                return nodes.length + " node" + (nodes.length === 1 ? "" : "s");
+            }
+        }
+        if (p.kind === "compose/recomposition") {
+            return this.config.isLive(previewId) ? "Live" : null;
+        }
+        return null;
     }
 }
 
@@ -364,29 +595,77 @@ function actionButton(
     return btn;
 }
 
-function productOption(product: ProductOptionSpec): HTMLElement {
-    const option = document.createElement("label");
-    option.className = "focus-product-option";
-    option.dataset.state = product.state;
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = product.enabled;
-    input.addEventListener("change", product.onToggle);
-    option.appendChild(input);
-    const icon = document.createElement("i");
-    icon.className = "codicon codicon-" + product.icon;
-    icon.setAttribute("aria-hidden", "true");
-    option.appendChild(icon);
-    const text = document.createElement("div");
-    text.className = "focus-product-text";
-    const name = document.createElement("span");
-    name.className = "focus-product-name";
-    name.textContent = product.label;
-    const val = document.createElement("span");
-    val.className = "focus-product-value";
-    val.textContent = product.value;
-    text.appendChild(name);
-    text.appendChild(val);
-    option.appendChild(text);
-    return option;
-}
+/**
+ * Built-in placeholder set used until the daemon's advertised
+ * capabilities are pushed in via `setProducts`. Mirrors the layers the
+ * previous flat-picker shipped, classified into buckets by their
+ * pseudo-kinds (`local/<bucket-prefix>/...`). Kept here rather than in
+ * the taxonomy module because it's UI-shaped (icons, labels) — the
+ * taxonomy module is pure data classification.
+ */
+const BUILT_IN_PRODUCTS: ProductDescriptor[] = [
+    {
+        kind: "local/a11y/overlay",
+        label: "Accessibility",
+        icon: "eye",
+        hint: "Overlay",
+        cost: "expensive",
+        daemonBacked: true,
+    },
+    {
+        kind: "layout/tree",
+        label: "Layout",
+        icon: "list-tree",
+        hint: "Tree and bounds",
+        cost: "cheap",
+        daemonBacked: true,
+    },
+    {
+        kind: "text/strings",
+        label: "Strings",
+        icon: "symbol-string",
+        hint: "Text and translations",
+        cost: "cheap",
+        daemonBacked: true,
+    },
+    {
+        kind: "resources/used",
+        label: "Resources",
+        icon: "file-code",
+        hint: "Resources used",
+        cost: "cheap",
+        daemonBacked: true,
+    },
+    {
+        kind: "fonts/used",
+        label: "Fonts",
+        icon: "text-size",
+        hint: "Fonts used",
+        cost: "cheap",
+        daemonBacked: true,
+    },
+    {
+        kind: "render/trace",
+        label: "Render",
+        icon: "pulse",
+        hint: "Trace and AI trace",
+        cost: "expensive",
+        daemonBacked: true,
+    },
+    {
+        kind: "compose/theme",
+        label: "Theme",
+        icon: "symbol-color",
+        hint: "Theme tokens",
+        cost: "cheap",
+        daemonBacked: true,
+    },
+    {
+        kind: "compose/recomposition",
+        label: "Recomposition",
+        icon: "sync",
+        hint: "Heatmap",
+        cost: "expensive",
+        daemonBacked: true,
+    },
+];
