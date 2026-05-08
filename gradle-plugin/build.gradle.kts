@@ -57,49 +57,6 @@ val functionalTestRuntimeOnly by configurations.getting {
   extendsFrom(configurations.testRuntimeOnly.get())
 }
 
-// `withPluginClasspath()` reads from `pluginUnderTestMetadata.pluginClasspath`, which by default
-// is just `sourceSets.main.runtimeClasspath`. AGP is `compileOnly` at the main level (so it
-// stays out of the published plugin JAR) — that means `AndroidComponentsExtension` is not
-// reachable from the plugin's classloader at functional-test time, and
-// `AndroidPreviewSupport.configure` throws `NoClassDefFoundError` the moment a synthetic
-// project applies `com.android.library`.
-//
-// Pull in **only the AGP API artifacts** (`gradle-api` + transitive `gradle-common-api` /
-// `gradle-settings-api`), not the full `gradle` runtime. The runtime jar drags in
-// `kotlin-gradle-plugin:2.2.10` plus its bundled Kotlin compiler, which then collides with the
-// `kotlin-compose-compiler-plugin-embeddable:2.3.21` the synthetic project resolves through its
-// own plugin block — TestKit puts both classes on the same classloader hierarchy and Kotlin
-// trips with "language version 2.0 incompatible with ComposeComponentRegistrar". The API jar
-// alone carries the AndroidComponentsExtension / Variant / CommonExtension / SingleArtifact
-// types that `AndroidPreviewSupport` reaches for; the synthetic project still gets the full
-// AGP runtime through its own `id("com.android.library")` plugin block.
-val agpForFunctionalTest by configurations.creating {
-  isCanBeResolved = true
-  isCanBeConsumed = false
-}
-
-dependencies {
-  // Mark non-transitive: even `gradle-api` drags in `kotlin-stdlib:2.2.10`, and any Kotlin
-  // version other than the one the synthetic project's compose-compiler-plugin was built for
-  // (`2.3.21`) trips "language version 2.0 incompatible with ComposeComponentRegistrar". The
-  // bare `gradle-api`, `gradle-common-api`, and `gradle-settings-api` jars carry the AGP types
-  // the plugin reaches for; we add the three explicit coords below so all referenced classes
-  // resolve without dragging Kotlin transitively.
-  agpForFunctionalTest("com.android.tools.build:gradle-api:${libs.versions.agp.get()}") {
-    isTransitive = false
-  }
-  agpForFunctionalTest("com.android.tools.build:gradle-common-api:${libs.versions.agp.get()}") {
-    isTransitive = false
-  }
-  agpForFunctionalTest("com.android.tools.build:gradle-settings-api:${libs.versions.agp.get()}") {
-    isTransitive = false
-  }
-}
-
-tasks.named<org.gradle.plugin.devel.tasks.PluginUnderTestMetadata>("pluginUnderTestMetadata") {
-  pluginClasspath.from(agpForFunctionalTest)
-}
-
 val functionalTestTask =
   tasks.register<Test>("functionalTest") {
     testClassesDirs = functionalTest.output.classesDirs
@@ -109,16 +66,23 @@ val functionalTestTask =
     // `AccessibilityAndroidFunctionalTest` exercises the full external-consumer Android render
     // path: synthetic `com.android.library` project + AGP + Robolectric + the plugin's
     // auto-injected `ee.schimke.composeai:renderer-android:<plugin-version>` Maven coordinate.
-    // The synthetic project's `dependencyResolutionManagement.repositories { mavenLocal() }`
-    // catches the AAR. The test `assumeTrue`s out cleanly when the AAR isn't in `~/.m2`, so
-    // the default `:gradle-plugin:check` stays fast — the caller (CI / dev) is expected to run
-    // `./gradlew :renderer-android:publishToMavenLocal` first when they want the Android-flavour
-    // coverage.
+    // The synthetic project resolves *both* AGP and our plugin through its own `plugins { ... }`
+    // block (`id("com.android.library") version ...`, `id("ee.schimke.composeai.preview")
+    // version ...`) so they share one classloader hierarchy — `withPluginClasspath()` is
+    // deliberately *not* used by that test class, because doing so loaded our plugin (and AGP)
+    // twice on different loaders and made `AndroidComponentsExtension` identity checks fail.
     //
-    // We don't `dependsOn(":renderer-android:publishToMavenLocal")` here because `:gradle-plugin`
-    // is an `includeBuild`, and cross-build task dependencies on the *parent* build would have
-    // to flow the other direction (parent → child). The skip-and-document model keeps the
-    // included-build boundary clean.
+    // The test `assumeTrue`s out cleanly when the AAR or plugin POM isn't in `~/.m2`, so the
+    // default `:gradle-plugin:check` stays fast: the caller (CI / dev) is expected to invoke
+    // `./gradlew functionalTestWithAndroid` from the parent build, which pre-publishes the
+    // renderer AAR closure *and* the plugin itself to mavenLocal.
+    //
+    // Ordering between the two parent-scheduled tasks (`:gradle-plugin:publishToMavenLocal` and
+    // `:gradle-plugin:functionalTest`, both `dependsOn`d by the root `functionalTestWithAndroid`
+    // task) is enforced via `mustRunAfter` below so plain `:gradle-plugin:functionalTest` runs
+    // don't drag in a publish.
+
+    mustRunAfter("publishToMavenLocal")
 
     // Surface the host's `~/.m2/repository`, the plugin's compile-time version, and the Android
     // SDK location (for synthetic-project `local.properties`) to the test JVM.

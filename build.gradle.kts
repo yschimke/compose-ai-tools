@@ -68,9 +68,14 @@ val androidFunctionalTestPublishTargets =
 tasks.register("functionalTestWithAndroid") {
   group = "verification"
   description =
-    "Publishes renderer-android (+ transitive internal modules) to mavenLocal, then runs " +
-      "gradle-plugin's functionalTest (including the Android-flavour " +
+    "Publishes renderer-android (+ transitive internal modules) and the gradle plugin itself to " +
+      "mavenLocal, then runs gradle-plugin's functionalTest (including the Android-flavour " +
       "AccessibilityAndroidFunctionalTest)."
   androidFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
+  // The synthetic Android-library project resolves our plugin through its own
+  // `plugins { id("ee.schimke.composeai.preview") version "<v>" }` block (so AGP and our plugin
+  // share one classloader hierarchy — the fix for the loader-split blocker tracked in #733).
+  // That requires the plugin to be in mavenLocal before the functional test starts.
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
