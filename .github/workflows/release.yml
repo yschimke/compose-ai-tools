@@ -255,6 +255,25 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Collect release assets
+        # `actions/upload-artifact` preserves the lowest-common-ancestor of the
+        # paths it was given. `build-applications` ships files from both
+        # `cli/build/distributions/` and `mcp/build/distributions/`, so its LCA
+        # is the workspace root — meaning the CLI/MCP zips and tarballs land at
+        # `artifacts/cli/build/distributions/…` and `artifacts/mcp/build/…`,
+        # not directly under `artifacts/`. A shallow `artifacts/*.zip` glob
+        # therefore matched nothing on 0.10.4 and `gh release upload` exited 1
+        # with the literal pattern. Recurse with `find` so we pick up assets at
+        # any depth, then feed an explicit file list to `gh`.
+        run: |
+          mapfile -t assets < <(find artifacts -type f \
+            \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.vsix' \) | sort)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "No release assets found under artifacts/" >&2
+            exit 1
+          fi
+          printf 'asset: %s\n' "${assets[@]}"
+          printf '%s\n' "${assets[@]}" > "$RUNNER_TEMP/release-assets.txt"
       - name: Upload or create GitHub Release
         # $TAG_NAME is read from env (not templated into the script), so the
         # tag name — attacker-influenceable through git or the dispatch input
@@ -268,19 +287,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
+          mapfile -t assets < "$RUNNER_TEMP/release-assets.txt"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME exists — uploading assets."
-            gh release upload "$TAG_NAME" \
-              --clobber \
-              artifacts/*.zip \
-              artifacts/*.tar.gz \
-              artifacts/*.vsix
+            gh release upload "$TAG_NAME" --clobber "${assets[@]}"
           else
             echo "Release $TAG_NAME does not exist — creating."
             gh release create "$TAG_NAME" \
               --title "compose-ai-tools ${TAG_NAME#v}" \
               --generate-notes \
-              artifacts/*.zip \
-              artifacts/*.tar.gz \
-              artifacts/*.vsix
+              "${assets[@]}"
           fi
