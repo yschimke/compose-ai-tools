@@ -49,3 +49,8 @@ fun PseudoSampleAccent() {
 fun PseudoSampleBidi() {
   PseudoSampleBody()
 }
+
+// Note: span preservation for styled (`<b>` / `<annotation>`) string resources is verified by
+// `:data-pseudolocale-connector`'s `PseudolocaleResourcesSpanPreservationTest` (Robolectric).
+// Adding a visual preview for it would need `AnnotatedString.fromHtml(...)` from a newer Compose
+// runtime than the renderer's compile floor; the unit test is the source of truth.

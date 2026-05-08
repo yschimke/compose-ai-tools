@@ -3,4 +3,10 @@
   <string name="pseudo_greeting">Hello, world!</string>
   <string name="pseudo_settings_title">Settings</string>
   <string name="pseudo_settings_subtitle">Tap a row to edit</string>
+  <!-- Styled string with inline `<b>` markup — Android's resource compiler turns this into
+       a Spanned with a StyleSpan(Bold) over the "low" range. Used by `PseudoSampleStyled`
+       to verify PseudolocaleResources preserves spans through the pseudolocale transform
+       (regression: an earlier implementation called .toString() on the CharSequence and
+       stripped the spans). -->
+  <string name="pseudo_styled_warning">Battery <b>low</b>: charge soon.</string>
 </resources>

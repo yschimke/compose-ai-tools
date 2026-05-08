@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -108,5 +109,41 @@ class PreviewOverrideMergeTest {
 
     val empty = mergePreviewOverrides(base, PreviewOverrides()).toExtensionOverrides()
     assertNull("merged extension bag should be null when no extension fields are set", empty)
+  }
+
+  @Test
+  fun `pseudolocale localeTag flows through toExtensionOverrides so the planner runs`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 400,
+        heightPx = 800,
+        density = 3.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val accent =
+      mergePreviewOverrides(base, PreviewOverrides(localeTag = "en-XA")).toExtensionOverrides()
+    assertNotNull(
+      "locale-only en-XA must produce a non-null extension bag so PseudolocalePreviewOverrideExtension plans the around-composable",
+      accent,
+    )
+    assertEquals("en-XA", accent?.localeTag)
+
+    val bidi =
+      mergePreviewOverrides(base, PreviewOverrides(localeTag = "ar-XB")).toExtensionOverrides()
+    assertNotNull(bidi)
+    assertEquals("ar-XB", bidi?.localeTag)
+
+    val realLocale =
+      mergePreviewOverrides(base, PreviewOverrides(localeTag = "fr-FR")).toExtensionOverrides()
+    assertNull(
+      "non-pseudo locales must not project into the extension bag — the renderer applies them via qualifiers / LocaleList directly",
+      realLocale,
+    )
   }
 }

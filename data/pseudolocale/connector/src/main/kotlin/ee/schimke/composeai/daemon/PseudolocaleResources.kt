@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import ee.schimke.composeai.data.pseudolocale.Pseudolocale
 import ee.schimke.composeai.data.pseudolocale.Pseudolocalizer
 
@@ -22,22 +24,45 @@ import ee.schimke.composeai.data.pseudolocale.Pseudolocalizer
  * Format-arg overloads (`getString(int, vararg)`, `getQuantityString(int, int, vararg)`) compose
  * naturally — the template is pseudolocalised once, then `String.format` substitutes args into it.
  * Placeholders like `%1$s` survive the transform unchanged, see `Pseudolocalizer`.
+ *
+ * **Span preservation.** `Resources.getText(int)` returns `CharSequence`, which is a `Spanned`
+ * (`SpannedString`) when the resource is styled — `<b>`, `<i>`, `<a>`, custom `<annotation>` tags
+ * all surface as `Object`-typed spans on a single underlying string. A naive
+ * `Pseudolocalizer.transform(text.toString(), mode)` flattens those spans because `toString()`
+ * drops them. To keep styled previews accurate, route through `Pseudolocalizer.transformWithIndices`,
+ * build a `SpannableStringBuilder` from the transformed text, and remap each span's start / end via
+ * the index map. Plain (non-`Spanned`) inputs still take the cheaper `transform` fast path with no
+ * `SpannableStringBuilder` allocation.
  */
 internal class PseudolocaleResources(
   base: Resources,
   private val mode: Pseudolocale,
 ) : Resources(base.assets, base.displayMetrics, base.configuration) {
 
-  override fun getText(id: Int): CharSequence =
-    Pseudolocalizer.transform(super.getText(id).toString(), mode)
+  override fun getText(id: Int): CharSequence = pseudolocalise(super.getText(id))
 
   override fun getText(id: Int, def: CharSequence): CharSequence {
     val raw = super.getText(id, def)
-    return if (raw === def) def else Pseudolocalizer.transform(raw.toString(), mode)
+    return if (raw === def) def else pseudolocalise(raw)
   }
 
   override fun getQuantityText(id: Int, quantity: Int): CharSequence =
-    Pseudolocalizer.transform(super.getQuantityText(id, quantity).toString(), mode)
+    pseudolocalise(super.getQuantityText(id, quantity))
+
+  private fun pseudolocalise(raw: CharSequence): CharSequence {
+    if (raw !is Spanned) return Pseudolocalizer.transform(raw.toString(), mode)
+    val transformed = Pseudolocalizer.transformWithIndices(raw.toString(), mode)
+    val sb = SpannableStringBuilder(transformed.text)
+    val map = transformed.indexMap
+    val length = raw.length
+    for (span in raw.getSpans(0, length, Any::class.java)) {
+      val srcStart = raw.getSpanStart(span).coerceIn(0, length)
+      val srcEnd = raw.getSpanEnd(span).coerceIn(srcStart, length)
+      val flags = raw.getSpanFlags(span)
+      sb.setSpan(span, map[srcStart], map[srcEnd], flags)
+    }
+    return sb
+  }
 }
 
 /**

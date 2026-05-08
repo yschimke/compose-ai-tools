@@ -19,26 +19,47 @@ package ee.schimke.composeai.data.pseudolocale
  *   code paths that bypass `LocalLayoutDirection`.
  */
 object Pseudolocalizer {
-  fun accent(input: CharSequence): String = transform(input.toString(), accent = true)
+  /**
+   * Pseudolocalised text plus the input-to-output index map needed to remap span ranges over the
+   * original [input] onto the transformed [text].
+   *
+   * `indexMap[i]` is the output position corresponding to input position `i`, with size
+   * `input.length + 1` so a span's `endExclusive` index can be looked up unambiguously
+   * (`indexMap[input.length]` is the position immediately after the last input character — before
+   * any trailing accent padding / closing bracket).
+   *
+   * Callers consume this when the input came from a `Spanned`/`SpannedString`: walk the original
+   * spans, look up start/end through `indexMap`, and re-attach to a `SpannableStringBuilder` built
+   * from [text]. Without that, calling `toString()` on the styled `CharSequence` strips the spans
+   * before transformation and any preview using bold / annotation / URLSpan resources would render
+   * unstyled — see `PseudolocaleResources` in `:data-pseudolocale-connector`.
+   */
+  class TransformResult(val text: String, val indexMap: IntArray)
 
-  fun bidi(input: CharSequence): String = transform(input.toString(), accent = false)
+  fun accent(input: CharSequence): String = transform(input.toString(), Pseudolocale.ACCENT)
 
-  fun transform(input: String, mode: Pseudolocale): String =
+  fun bidi(input: CharSequence): String = transform(input.toString(), Pseudolocale.BIDI)
+
+  fun transform(input: String, mode: Pseudolocale): String = transformWithIndices(input, mode).text
+
+  fun transformWithIndices(input: String, mode: Pseudolocale): TransformResult =
     when (mode) {
-      Pseudolocale.ACCENT -> accent(input)
-      Pseudolocale.BIDI -> bidi(input)
+      Pseudolocale.ACCENT -> accentWithIndices(input)
+      Pseudolocale.BIDI -> bidiWithIndices(input)
     }
 
-  private fun transform(input: String, accent: Boolean): String {
-    if (input.isEmpty()) return input
+  private fun accentWithIndices(input: String): TransformResult {
+    if (input.isEmpty()) return TransformResult("", IntArray(1))
     val sb = StringBuilder(input.length + 8)
-    if (accent) sb.append('[')
+    val map = IntArray(input.length + 1)
+    sb.append('[')
     var i = 0
     while (i < input.length) {
       val ch = input[i]
       // Preserve placeholder tokens — `%1$s`, `%d`, `%s`, etc.
       if (ch == '%') {
         val end = consumePrintfPlaceholder(input, i)
+        for (k in i until end) map[k] = sb.length + (k - i)
         sb.append(input, i, end)
         i = end
         continue
@@ -47,6 +68,7 @@ object Pseudolocalizer {
       if (ch == '{') {
         val end = input.indexOf('}', i)
         if (end != -1) {
+          for (k in i..end) map[k] = sb.length + (k - i)
           sb.append(input, i, end + 1)
           i = end + 1
           continue
@@ -56,27 +78,54 @@ object Pseudolocalizer {
       if (ch == '<') {
         val end = input.indexOf('>', i)
         if (end != -1) {
+          for (k in i..end) map[k] = sb.length + (k - i)
           sb.append(input, i, end + 1)
           i = end + 1
           continue
         }
       }
-      if (accent) sb.append(ACCENT_MAP[ch.code] ?: ch) else sb.append(ch)
+      map[i] = sb.length
+      sb.append(ACCENT_MAP[ch.code] ?: ch)
       i++
     }
-    if (accent) {
-      // Expand to ~130% via dots — the AAPT2 default. Skipping when the input is whitespace-only
-      // avoids producing bracket-only artefacts for empty resources.
-      val target = (input.length * 1.3).toInt().coerceAtLeast(input.length + 2)
-      val padding = target - (sb.length - 1)
-      if (padding > 0) {
-        sb.append(' ')
-        repeat(padding) { sb.append('·') }
-      }
-      sb.append(']')
-      return sb.toString()
+    // End-of-content position before padding / closing bracket — span endExclusive lookups land
+    // here when they cover the full input.
+    map[input.length] = sb.length
+    // Expand to ~130% via dots — the AAPT2 default. Skipping when the input is whitespace-only
+    // avoids producing bracket-only artefacts for empty resources.
+    val target = (input.length * 1.3).toInt().coerceAtLeast(input.length + 2)
+    val padding = target - (sb.length - 1)
+    if (padding > 0) {
+      sb.append(' ')
+      repeat(padding) { sb.append('·') }
     }
-    return wrapBidi(sb.toString())
+    sb.append(']')
+    return TransformResult(sb.toString(), map)
+  }
+
+  private fun bidiWithIndices(input: String): TransformResult {
+    if (input.isEmpty()) return TransformResult("", IntArray(1))
+    val sb = StringBuilder(input.length + 8)
+    val map = IntArray(input.length + 1)
+    var i = 0
+    while (i < input.length) {
+      if (input[i].isWhitespace()) {
+        map[i] = sb.length
+        sb.append(input[i])
+        i++
+        continue
+      }
+      val wordStart = i
+      while (i < input.length && !input[i].isWhitespace()) i++
+      sb.append(RLO)
+      for (k in wordStart until i) {
+        map[k] = sb.length
+        sb.append(input[k])
+      }
+      sb.append(PDF)
+    }
+    map[input.length] = sb.length
+    return TransformResult(sb.toString(), map)
   }
 
   private fun consumePrintfPlaceholder(input: String, start: Int): Int {
@@ -104,28 +153,6 @@ object Pseudolocalizer {
       return i
     }
     return i
-  }
-
-  private fun wrapBidi(input: String): String {
-    if (input.isEmpty()) return input
-    val sb = StringBuilder(input.length + 8)
-    var word = StringBuilder()
-    fun flushWord() {
-      if (word.isNotEmpty()) {
-        sb.append(RLO).append(word).append(PDF)
-        word = StringBuilder()
-      }
-    }
-    for (ch in input) {
-      if (ch.isWhitespace()) {
-        flushWord()
-        sb.append(ch)
-      } else {
-        word.append(ch)
-      }
-    }
-    flushWord()
-    return sb.toString()
   }
 
   private const val RLO: Char = '‮'
