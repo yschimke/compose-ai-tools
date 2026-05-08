@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.5](https://github.com/yschimke/compose-ai-tools/compare/v0.10.4...v0.10.5) (2026-05-08)
+
+
+### Bug Fixes
+
+* **ci:** collect nested release artifacts via find instead of shallow glob ([#940](https://github.com/yschimke/compose-ai-tools/issues/940)) ([9096c44](https://github.com/yschimke/compose-ai-tools/commit/9096c44c7470caa5cc22fb78a349839ef0059f19))
+
 ## [0.10.4](https://github.com/yschimke/compose-ai-tools/compare/v0.10.3...v0.10.4) (2026-05-08)
 
 
