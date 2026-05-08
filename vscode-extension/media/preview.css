@@ -1713,6 +1713,11 @@ body {
 
 .card-title-row .card-title {
     flex: 1;
+    /* min-width:0 lets the flex item shrink below its intrinsic content width;
+       without it, an unbreakable function name (e.g. RemoteIconButtonEnabledPreview)
+       expands the button to the full word width and pushes the focus icon out of
+       the row. The full name stays available via the hover tooltip. */
+    min-width: 0;
     text-align: left;
     background: transparent;
     border: none;
@@ -1720,6 +1725,17 @@ body {
     padding: 0;
     font: inherit;
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Trailing affordances in the title row keep their intrinsic width so a
+   long, unbreakable title can't push them off-row. */
+.card-title-row .card-focus-btn,
+.card-title-row .card-stale-btn,
+.card-title-row .animation-icon {
+    flex: none;
 }
 
 /* Focus icon next to the title — clicking enters focus mode for that card.
