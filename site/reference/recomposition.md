@@ -20,6 +20,7 @@ recomposed N times for one click" reviews.
 | Modules | `:data-recomposition-core` (published) · `:data-recomposition-connector` |
 | Render mode | instrumented |
 | Cost | medium |
+| Token usage | ~1 000–1 500 tok per query (`compose/recomposition` ~3–5 KB). See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Desktop · shared |
 

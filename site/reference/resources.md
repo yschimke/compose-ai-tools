@@ -21,6 +21,7 @@ resolved value and the source qualifier (default vs. `night`,
 | Modules | `:data-resources-core` (published) · `:data-resources-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | ~175 tok per query (`resources/used` ~610 chars). See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android |
 

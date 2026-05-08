@@ -19,6 +19,7 @@ plus a back-pointer to which nodes consumed each token.
 | Modules | `:data-theme-core` (published) · `:data-theme-connector` |
 | Render mode | default |
 | Cost | medium |
+| Token usage | Inline JSON, not yet benchmarked (scales with consuming nodes). See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Desktop · shared |
 

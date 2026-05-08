@@ -20,6 +20,7 @@ agents can verify keyboard / D-pad navigation without an emulator.
 | Modules | `:data-focus-core` (published) · `:data-focus-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | Inline JSON, not yet benchmarked. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Desktop · Wear · shared |
 

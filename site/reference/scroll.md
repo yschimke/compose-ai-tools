@@ -20,6 +20,7 @@ through the renderer extension pipeline.
 | Modules | `:data-scroll-core` |
 | Render mode | default |
 | Cost | medium (extra renders per scroll step) |
+| Token usage | Image-only — ~1.5 k tok per `render/scroll/*` PNG read; payload itself is a `path`. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | path (PNG / GIF) |
 | Platforms | Android · Desktop · shared |
 

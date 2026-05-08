@@ -19,6 +19,7 @@ the resolved fallback chain Compose actually picked.
 | Modules | `:data-fonts-core` (published) · `:data-fonts-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | Inline JSON, not yet benchmarked. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Desktop · shared |
 
