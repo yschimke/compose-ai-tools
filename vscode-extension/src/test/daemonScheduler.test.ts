@@ -64,6 +64,18 @@ class FakeClient {
  * the daemon without spinning up streams. Keyed by moduleId because the
  * scheduler may register a different bag per module.
  */
+interface ModuleLike {
+    readonly projectDir: string;
+    readonly modulePath: string;
+}
+
+/** Builds a {@link ModuleLike} from a single string used as both projectDir
+ *  (filesystem) and the colon-form modulePath. Lets every existing test keep
+ *  passing a bare `"mod"` while the production API requires both fields. */
+function mod(name: string): ModuleLike {
+    return { projectDir: name, modulePath: `:${name}` };
+}
+
 class FakeGate {
     public client: FakeClient | null = new FakeClient();
     public ready = false;
@@ -92,16 +104,19 @@ class FakeGate {
         }
     >();
 
-    isDaemonReady(_moduleId: string): boolean {
+    isDaemonReady(_modulePath: string): boolean {
         return this.ready;
     }
-    getOrSpawn(moduleId: string, events: unknown): Promise<FakeClient | null> {
-        this.getOrSpawnCalls.push(moduleId);
+    getOrSpawn(
+        module: ModuleLike,
+        events: unknown,
+    ): Promise<FakeClient | null> {
+        this.getOrSpawnCalls.push(module.modulePath);
         const err = this.getOrSpawnErrors.shift();
         if (err) {
             return Promise.reject(err);
         }
-        this.capturedEvents.set(moduleId, events as never);
+        this.capturedEvents.set(module.modulePath, events as never);
         return Promise.resolve(this.client);
     }
 }
@@ -109,8 +124,8 @@ class FakeGate {
 class FakeGradleService {
     public bootstrapCalls: string[] = [];
     public bootstrapShouldThrow: Error | null = null;
-    async runDaemonBootstrap(moduleId: string): Promise<void> {
-        this.bootstrapCalls.push(moduleId);
+    async runDaemonBootstrap(module: ModuleLike): Promise<void> {
+        this.bootstrapCalls.push(module.modulePath);
         if (this.bootstrapShouldThrow) {
             throw this.bootstrapShouldThrow;
         }
@@ -208,9 +223,9 @@ function build() {
 describe("DaemonScheduler", () => {
     it("dedupes setVisible when the visible set is unchanged", async () => {
         const { gate, scheduler } = build();
-        await scheduler.setVisible("mod", ["a", "b"], []);
-        await scheduler.setVisible("mod", ["a", "b"], []); // no-op
-        await scheduler.setVisible("mod", ["b", "a"], []); // same set, different order — still no-op
+        await scheduler.setVisible(mod("mod"), ["a", "b"], []);
+        await scheduler.setVisible(mod("mod"), ["a", "b"], []); // no-op
+        await scheduler.setVisible(mod("mod"), ["b", "a"], []); // same set, different order — still no-op
         const visibleCalls = gate.client!.calls.filter(
             (c) => c.method === "setVisible",
         );
@@ -220,7 +235,7 @@ describe("DaemonScheduler", () => {
     it("caps speculative renderNow at the budget", async () => {
         const { gate, scheduler } = build();
         const predicted = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"];
-        await scheduler.setVisible("mod", ["v1"], predicted);
+        await scheduler.setVisible(mod("mod"), ["v1"], predicted);
         const renderCalls = gate.client!.calls.filter(
             (c) => c.method === "renderNow",
         );
@@ -238,7 +253,7 @@ describe("DaemonScheduler", () => {
 
     it("does not re-speculate IDs already in the visible set", async () => {
         const { gate, scheduler } = build();
-        await scheduler.setVisible("mod", ["a", "b"], ["b", "c", "d"]);
+        await scheduler.setVisible(mod("mod"), ["a", "b"], ["b", "c", "d"]);
         const renderCalls = gate.client!.calls.filter(
             (c) => c.method === "renderNow",
         );
@@ -254,8 +269,8 @@ describe("DaemonScheduler", () => {
         // identical work; the daemon's reactive queue still handles them on
         // actual focus.
         const { gate, scheduler } = build();
-        await scheduler.setVisible("mod", ["v1"], ["p1", "p2"]);
-        await scheduler.setVisible("mod", ["v2"], ["p1", "p2"]); // same predictions
+        await scheduler.setVisible(mod("mod"), ["v1"], ["p1", "p2"]);
+        await scheduler.setVisible(mod("mod"), ["v2"], ["p1", "p2"]); // same predictions
         const renderCalls = gate.client!.calls.filter(
             (c) => c.method === "renderNow",
         );
@@ -269,8 +284,8 @@ describe("DaemonScheduler", () => {
         // them and may issue speculative renders even if visibility is the
         // same set as last time.
         const { gate, scheduler } = build();
-        await scheduler.setVisible("mod", ["v1"], []);
-        await scheduler.setVisible("mod", ["v1"], ["fresh1", "fresh2"]);
+        await scheduler.setVisible(mod("mod"), ["v1"], []);
+        await scheduler.setVisible(mod("mod"), ["v1"], ["fresh1", "fresh2"]);
         const renderCalls = gate.client!.calls.filter(
             (c) => c.method === "renderNow",
         );
@@ -282,23 +297,26 @@ describe("DaemonScheduler", () => {
     it("skips daemon traffic entirely when the gate has no client", async () => {
         const { gate, scheduler } = build();
         gate.client = null;
-        await scheduler.fileChanged("mod", "/x.kt");
-        await scheduler.setFocus("mod", ["a"]);
-        await scheduler.setVisible("mod", ["a"], ["b"]);
-        const ok = await scheduler.ensureModule("mod");
+        await scheduler.fileChanged(mod("mod"), "/x.kt");
+        await scheduler.setFocus(mod("mod"), ["a"]);
+        await scheduler.setVisible(mod("mod"), ["a"], ["b"]);
+        const ok = await scheduler.ensureModule(mod("mod"));
         assert.strictEqual(ok, false);
     });
 
     it("classifies file kinds for fileChanged", async () => {
         const { gate, scheduler } = build();
-        await scheduler.fileChanged("mod", "/proj/src/main/kotlin/Foo.kt");
+        await scheduler.fileChanged(mod("mod"), "/proj/src/main/kotlin/Foo.kt");
         await scheduler.fileChanged(
-            "mod",
+            mod("mod"),
             "/proj/src/main/res/values/strings.xml",
         );
-        await scheduler.fileChanged("mod", "/proj/gradle/libs.versions.toml");
-        await scheduler.fileChanged("mod", "/proj/build.gradle.kts");
-        await scheduler.fileChanged("mod", "/proj/gradle.properties");
+        await scheduler.fileChanged(
+            mod("mod"),
+            "/proj/gradle/libs.versions.toml",
+        );
+        await scheduler.fileChanged(mod("mod"), "/proj/build.gradle.kts");
+        await scheduler.fileChanged(mod("mod"), "/proj/gradle.properties");
         const kinds = gate
             .client!.calls.filter((c) => c.method === "fileChanged")
             .map((c) => (c.args as { kind: string }).kind);
@@ -313,8 +331,8 @@ describe("DaemonScheduler", () => {
 
     it("dedupes setFocus when ids are unchanged regardless of order", async () => {
         const { gate, scheduler } = build();
-        await scheduler.setFocus("mod", ["a", "b"]);
-        await scheduler.setFocus("mod", ["b", "a"]);
+        await scheduler.setFocus(mod("mod"), ["a", "b"]);
+        await scheduler.setFocus(mod("mod"), ["b", "a"]);
         const focusCalls = gate.client!.calls.filter(
             (c) => c.method === "setFocus",
         );
@@ -331,8 +349,8 @@ describe("DaemonScheduler", () => {
             ]); // PNG magic
             fs.writeFileSync(pngPath, bytes);
 
-            await scheduler.ensureModule("mod");
-            const evts = gate.capturedEvents.get("mod")!;
+            await scheduler.ensureModule(mod("mod"));
+            const evts = gate.capturedEvents.get(":mod")!;
             evts.onRenderFinished!({ id: "p1", pngPath, tookMs: 200 });
 
             assert.strictEqual(images.length, 1);
@@ -349,8 +367,8 @@ describe("DaemonScheduler", () => {
         // to the last frame for this preview id. The scheduler must skip the disk read +
         // base64 + onPreviewImageReady hop so the panel doesn't repaint identical bytes.
         const { gate, scheduler, images, failures } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         // Use a path that doesn't exist on disk — if the scheduler even tries to read it,
         // it would emit onRenderFailed. The dedup short-circuit means it does neither:
         // no image, no failure.
@@ -374,8 +392,8 @@ describe("DaemonScheduler", () => {
 
     it("reports onRenderFailed when the renderFinished PNG path is unreadable", async () => {
         const { gate, scheduler, failures } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onRenderFinished!({
             id: "pZ",
             pngPath: "/no/such/file.png",
@@ -393,8 +411,8 @@ describe("DaemonScheduler", () => {
         // the panel is already populated by the Gradle fallback. We
         // detect the documented stub-filename shape and skip.
         const { gate, scheduler, log, failures, images } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         for (let i = 1; i <= 5; i++) {
             evts.onRenderFinished!({
                 id: `p${i}`,
@@ -412,8 +430,8 @@ describe("DaemonScheduler", () => {
 
     it("detects gif stub paths the same way as png stubs", async () => {
         const { gate, scheduler, failures, images } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onRenderFinished!({
             id: "p1",
             pngPath: ".compose-preview-history/daemon-stub-1.gif",
@@ -428,8 +446,8 @@ describe("DaemonScheduler", () => {
         // happen to be missing must still surface as a failure so the
         // daemon's render bug is visible rather than silently swallowed.
         const { gate, scheduler, failures } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onRenderFinished!({
             id: "pY",
             pngPath: "/abs/build/compose-previews/renders/com.example.X.png",
@@ -441,19 +459,19 @@ describe("DaemonScheduler", () => {
 
     it("forwards onRenderFailed from the daemon directly to the caller", async () => {
         const { gate, scheduler, failures } = build();
-        await scheduler.ensureModule("mod");
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onRenderFailed!({ id: "pX", error: { message: "compile error" } });
         assert.deepStrictEqual(failures, [
-            { moduleId: "mod", previewId: "pX", message: "compile error" },
+            { moduleId: ":mod", previewId: "pX", message: "compile error" },
         ]);
     });
 
     it("clears the speculation cache and visibility memo when the channel closes", async () => {
         const { gate, scheduler } = build();
         // Speculate first so the cache is populated.
-        await scheduler.setVisible("mod", ["v1"], ["p1", "p2"]);
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.setVisible(mod("mod"), ["v1"], ["p1", "p2"]);
+        const evts = gate.capturedEvents.get(":mod")!;
 
         // Channel close → the gate registry will replace the client. Pretend
         // a fresh daemon spawned with a new client object.
@@ -462,7 +480,7 @@ describe("DaemonScheduler", () => {
         evts.onChannelClosed!();
 
         // Same predictions on a fresh daemon should re-issue, not dedup.
-        await scheduler.setVisible("mod", ["v1"], ["p1", "p2"]);
+        await scheduler.setVisible(mod("mod"), ["v1"], ["p1", "p2"]);
         const renderCalls = fresh.calls.filter((c) => c.method === "renderNow");
         assert.strictEqual(
             renderCalls.length,
@@ -476,29 +494,29 @@ describe("DaemonScheduler", () => {
         // daemon — frameStreamIds don't survive a JVM restart, so a stale entry would route
         // future clicks to a stream id the new daemon never minted.
         const { gate, scheduler, channelClosed } = build();
-        await scheduler.ensureModule("alpha");
-        await scheduler.ensureModule("beta");
-        gate.capturedEvents.get("alpha")!.onChannelClosed!();
-        assert.deepStrictEqual(channelClosed, ["alpha"]);
-        gate.capturedEvents.get("beta")!.onChannelClosed!();
-        assert.deepStrictEqual(channelClosed, ["alpha", "beta"]);
+        await scheduler.ensureModule(mod("alpha"));
+        await scheduler.ensureModule(mod("beta"));
+        gate.capturedEvents.get(":alpha")!.onChannelClosed!();
+        assert.deepStrictEqual(channelClosed, [":alpha"]);
+        gate.capturedEvents.get(":beta")!.onChannelClosed!();
+        assert.deepStrictEqual(channelClosed, [":alpha", ":beta"]);
     });
 
     it("routes classpathDirty to the caller and drops the module speculation cache", async () => {
         const { gate, scheduler, dirty } = build();
-        await scheduler.setVisible("mod", ["v1"], ["p1", "p2"]);
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.setVisible(mod("mod"), ["v1"], ["p1", "p2"]);
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onClasspathDirty!({ detail: "libs.versions.toml SHA changed" });
         assert.strictEqual(dirty.length, 1);
-        assert.strictEqual(dirty[0].moduleId, "mod");
+        assert.strictEqual(dirty[0].moduleId, ":mod");
     });
 
     it("forwards discoveryUpdated to the caller with the moduleId attached", async () => {
         const { gate, scheduler, discovery } = build();
         // First call any scheduler method that goes through getOrSpawn so the
         // events bag for `mod` is registered; setFocus is the cheapest.
-        await scheduler.setFocus("mod", ["p1"]);
-        const evts = gate.capturedEvents.get("mod")!;
+        await scheduler.setFocus(mod("mod"), ["p1"]);
+        const evts = gate.capturedEvents.get(":mod")!;
         evts.onDiscoveryUpdated!({
             added: [],
             removed: ["p1"],
@@ -506,17 +524,17 @@ describe("DaemonScheduler", () => {
             totalPreviews: 0,
         });
         assert.strictEqual(discovery.length, 1);
-        assert.strictEqual(discovery[0].moduleId, "mod");
+        assert.strictEqual(discovery[0].moduleId, ":mod");
         assert.deepStrictEqual(discovery[0].params.removed, ["p1"]);
     });
 
     it("renderNow returns true on accept and false when no daemon is available", async () => {
         const { gate, scheduler } = build();
-        const ok = await scheduler.renderNow("mod", ["p1"], "fast");
+        const ok = await scheduler.renderNow(mod("mod"), ["p1"], "fast");
         assert.strictEqual(ok, true);
 
         gate.client = null;
-        const fail = await scheduler.renderNow("mod2", ["p1"], "fast");
+        const fail = await scheduler.renderNow(mod("mod2"), ["p1"], "fast");
         assert.strictEqual(fail, false);
     });
 
@@ -526,7 +544,11 @@ describe("DaemonScheduler", () => {
             queued: ["p1"],
             rejected: [{ id: "pBad", reason: "unknown preview ID" }],
         };
-        const ok = await scheduler.renderNow("mod", ["p1", "pBad"], "fast");
+        const ok = await scheduler.renderNow(
+            mod("mod"),
+            ["p1", "pBad"],
+            "fast",
+        );
         assert.strictEqual(ok, true);
         assert.ok(
             log.some((l) => l.includes("rejected pBad")),
@@ -541,12 +563,12 @@ describe("DaemonScheduler", () => {
             const states: string[] = [];
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                "mod",
+                mod("mod"),
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, true);
             assert.deepStrictEqual(states, ["spawning", "ready"]);
-            assert.deepStrictEqual(gate.getOrSpawnCalls, ["mod"]);
+            assert.deepStrictEqual(gate.getOrSpawnCalls, [":mod"]);
             assert.deepStrictEqual(
                 gradle.bootstrapCalls,
                 [],
@@ -563,7 +585,7 @@ describe("DaemonScheduler", () => {
             const states: string[] = [];
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                "mod",
+                mod("mod"),
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, true);
@@ -573,8 +595,8 @@ describe("DaemonScheduler", () => {
                 "spawning",
                 "ready",
             ]);
-            assert.deepStrictEqual(gate.getOrSpawnCalls, ["mod", "mod"]);
-            assert.deepStrictEqual(gradle.bootstrapCalls, ["mod"]);
+            assert.deepStrictEqual(gate.getOrSpawnCalls, [":mod", ":mod"]);
+            assert.deepStrictEqual(gradle.bootstrapCalls, [":mod"]);
             assert.ok(
                 log.some((l) => l.includes("cached launch failed")),
                 `expected cached failure log, got: ${log.join(" / ")}`,
@@ -588,7 +610,7 @@ describe("DaemonScheduler", () => {
             const states: string[] = [];
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                "mod",
+                mod("mod"),
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, true);
@@ -615,7 +637,7 @@ describe("DaemonScheduler", () => {
                     gradle as unknown as Parameters<
                         typeof scheduler.warmModule
                     >[0],
-                    "mod",
+                    mod("mod"),
                     (s) => states.push(s),
                 ),
                 /Gradle config-cache rejected/,
@@ -633,7 +655,7 @@ describe("DaemonScheduler", () => {
             gate.client = null;
             const ok = await scheduler.warmModule(
                 gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
-                "mod",
+                mod("mod"),
                 (s) => states.push(s),
             );
             assert.strictEqual(ok, false);
@@ -664,13 +686,13 @@ describe("DaemonScheduler", () => {
                 },
                 { appendLine: (s) => log.push(s) },
             );
-            await scheduler.ensureModule("mod");
-            const evts = gate.capturedEvents.get("mod")! as unknown as {
+            await scheduler.ensureModule(mod("mod"));
+            const evts = gate.capturedEvents.get(":mod")! as unknown as {
                 onHistoryAdded?: (params: { entry: unknown }) => void;
             };
             evts.onHistoryAdded!({ entry: { id: "abc", previewId: "X" } });
             assert.strictEqual(seen.length, 1);
-            assert.strictEqual(seen[0].moduleId, "mod");
+            assert.strictEqual(seen[0].moduleId, ":mod");
             assert.deepStrictEqual(seen[0].entry, {
                 id: "abc",
                 previewId: "X",
@@ -693,8 +715,8 @@ describe("DaemonScheduler", () => {
                     // no onHistoryAdded
                 },
             );
-            await scheduler.ensureModule("mod");
-            const evts = gate.capturedEvents.get("mod")! as unknown as {
+            await scheduler.ensureModule(mod("mod"));
+            const evts = gate.capturedEvents.get(":mod")! as unknown as {
                 onHistoryAdded?: (params: { entry: unknown }) => void;
             };
             // Doesn't throw.
@@ -710,7 +732,7 @@ describe("DaemonScheduler", () => {
     describe("data products", () => {
         it("does not auto-subscribe on setVisible by default — subscriptions are explicit", async () => {
             const { gate, scheduler } = build();
-            await scheduler.setVisible("mod", ["a", "b"], []);
+            await scheduler.setVisible(mod("mod"), ["a", "b"], []);
             const subs = gate.client!.calls.filter(
                 (c) => c.method === "dataSubscribe",
             );
@@ -720,7 +742,7 @@ describe("DaemonScheduler", () => {
         it("setDataProductSubscription(true) issues data/subscribe per kind", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf", "a11y/hierarchy"],
                 true,
@@ -738,13 +760,13 @@ describe("DaemonScheduler", () => {
         it("setDataProductSubscription(true) twice is idempotent", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
             );
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
@@ -758,13 +780,13 @@ describe("DaemonScheduler", () => {
         it("setDataProductSubscription(false) issues data/unsubscribe and forgets the pair", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
             );
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 false,
@@ -775,7 +797,7 @@ describe("DaemonScheduler", () => {
             assert.strictEqual(unsubs.length, 1);
             // Re-enabling re-issues subscribe (bookkeeping was cleared).
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
@@ -789,7 +811,7 @@ describe("DaemonScheduler", () => {
         it("setDataProductSubscription(false) on an unknown pair is a no-op", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 false,
@@ -804,19 +826,19 @@ describe("DaemonScheduler", () => {
 
         it("setVisible drops bookkeeping for previews that left view", async () => {
             const { gate, scheduler } = build();
-            await scheduler.setVisible("mod", ["a", "b"], []);
+            await scheduler.setVisible(mod("mod"), ["a", "b"], []);
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
             );
-            await scheduler.setVisible("mod", ["b"], []); // 'a' fell out
+            await scheduler.setVisible(mod("mod"), ["b"], []); // 'a' fell out
             // Re-subscribing 'a' should issue another subscribe (bookkeeping was cleared by
             // the visibility prune even though the daemon never received our explicit call).
-            await scheduler.setVisible("mod", ["a", "b"], []);
+            await scheduler.setVisible(mod("mod"), ["a", "b"], []);
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
@@ -829,8 +851,8 @@ describe("DaemonScheduler", () => {
 
         it("forwards renderFinished.dataProducts via onDataProductsAttached", async () => {
             const { gate, scheduler, dataProducts } = build();
-            await scheduler.ensureModule("mod");
-            const evts = gate.capturedEvents.get("mod")! as unknown as {
+            await scheduler.ensureModule(mod("mod"));
+            const evts = gate.capturedEvents.get(":mod")! as unknown as {
                 onRenderFinished: (p: {
                     id: string;
                     pngPath: string;
@@ -868,8 +890,8 @@ describe("DaemonScheduler", () => {
 
         it("does not fire onDataProductsAttached when renderFinished carries no products", async () => {
             const { gate, scheduler, dataProducts } = build();
-            await scheduler.ensureModule("mod");
-            const evts = gate.capturedEvents.get("mod")! as unknown as {
+            await scheduler.ensureModule(mod("mod"));
+            const evts = gate.capturedEvents.get(":mod")! as unknown as {
                 onRenderFinished: (p: {
                     id: string;
                     pngPath: string;
@@ -890,7 +912,7 @@ describe("DaemonScheduler", () => {
             const { gate, scheduler, log } = build();
             gate.client!.dataSubscribeRejects = true;
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,
@@ -912,7 +934,7 @@ describe("DaemonScheduler", () => {
             // Retry succeeds (the rollback dropped the bookkeeping).
             gate.client!.dataSubscribeRejects = false;
             await scheduler.setDataProductSubscription(
-                "mod",
+                mod("mod"),
                 "a",
                 ["a11y/atf"],
                 true,

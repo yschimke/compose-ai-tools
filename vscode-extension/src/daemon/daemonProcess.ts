@@ -12,6 +12,7 @@ import {
     InitializeResult,
 } from "./daemonProtocol";
 import { LogFilter } from "../logFilter";
+import { ModuleInfo } from "../gradleService";
 
 /**
  * Reads `<module>/build/compose-previews/daemon-launch.json` and returns the
@@ -21,12 +22,12 @@ import { LogFilter } from "../logFilter";
  */
 export function readLaunchDescriptor(
     workspaceRoot: string,
-    moduleId: string,
+    module: ModuleInfo,
     logger?: DaemonClientLogger,
 ): DaemonLaunchDescriptor | null {
     const file = path.join(
         workspaceRoot,
-        moduleId,
+        module.projectDir,
         "build",
         "compose-previews",
         "daemon-launch.json",

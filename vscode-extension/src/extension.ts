@@ -2,7 +2,12 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
-import { GradleService, GradleApi, TaskCancelledError } from "./gradleService";
+import {
+    GradleService,
+    GradleApi,
+    ModuleInfo,
+    TaskCancelledError,
+} from "./gradleService";
 import { JdkImageError } from "./jdkImageErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import {
@@ -114,7 +119,7 @@ const historyScopeRef: { current: HistoryScope | null } = { current: null };
 async function isSourceNewerThanRenders(
     activeFile: string,
     previews: PreviewInfo[],
-    modules: string[],
+    modules: ModuleInfo[],
 ): Promise<boolean> {
     if (!gradleService) {
         return false;
@@ -150,7 +155,7 @@ let lastLoadedModules: string[] = [];
  * webview has focus (undefined) or resolve to an unrelated editor.
  */
 let currentScopeFile: string | null = null;
-let currentScopeModule: string | null = null;
+let currentScopeModule: ModuleInfo | null = null;
 /**
  * True when the panel currently shows a compile-error banner the
  * extension posted (either from the LSP gate or from a kotlinc parse
@@ -163,7 +168,7 @@ let compileGateActive = false;
 const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used to look up the
  *  owning module when the webview posts a per-preview action. */
-const previewModuleMap = new Map<string, string>();
+const previewModuleMap = new Map<string, ModuleInfo>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
 const firstSaveSeen = new Set<string>();
@@ -599,7 +604,9 @@ export async function activate(
                 // respawn so the lookup uses today's mapping.
                 const stale: string[] = [];
                 for (const previewId of activeInteractiveStreams.keys()) {
-                    if (previewModuleMap.get(previewId) === moduleId) {
+                    if (
+                        previewModuleMap.get(previewId)?.modulePath === moduleId
+                    ) {
                         stale.push(previewId);
                     }
                 }
@@ -610,7 +617,9 @@ export async function activate(
                 // a daemon respawn either, so a `requestStreamStop` against a stale id would
                 // be a wasted notification at best, mis-routed at worst.
                 for (const previewId of [...activeStreamFrameStreams.keys()]) {
-                    if (previewModuleMap.get(previewId) !== moduleId) {
+                    if (
+                        previewModuleMap.get(previewId)?.modulePath !== moduleId
+                    ) {
                         continue;
                     }
                     const sid = activeStreamFrameStreams.get(previewId);
@@ -619,7 +628,9 @@ export async function activate(
                     panel?.postMessage({ command: "streamStopped", previewId });
                 }
                 for (const previewId of [...activeRecordingSessions.keys()]) {
-                    if (previewModuleMap.get(previewId) === moduleId) {
+                    if (
+                        previewModuleMap.get(previewId)?.modulePath === moduleId
+                    ) {
                         activeRecordingSessions.delete(previewId);
                         activeRecordingFormats.delete(previewId);
                         panel?.postMessage({
@@ -704,12 +715,18 @@ export async function activate(
     // Phase H7 — preview history source. The standalone History view is not
     // contributed; history is surfaced from the focus view alongside data products.
     historyScopeRef.current = null;
+    const moduleInfoFromScope = (modulePath: string): ModuleInfo | null =>
+        gradleService?.findModuleByPath(modulePath) ?? null;
     historySource = buildHistorySource({
         isDaemonReady: (moduleId) =>
             daemonGate?.isDaemonReady(moduleId) ?? false,
         daemonList: async (scope) => {
+            const module = moduleInfoFromScope(scope.moduleId);
+            if (!module) {
+                throw new Error("daemon unavailable");
+            }
             const client = await daemonGate?.getOrSpawn(
-                scope.moduleId,
+                module,
                 daemonScheduler!.daemonEvents(scope.moduleId),
             );
             if (!client) {
@@ -722,8 +739,12 @@ export async function activate(
             if (!moduleId) {
                 throw new Error("no scope");
             }
+            const module = moduleInfoFromScope(moduleId);
+            if (!module) {
+                throw new Error("daemon unavailable");
+            }
             const client = await daemonGate?.getOrSpawn(
-                moduleId,
+                module,
                 daemonScheduler!.daemonEvents(moduleId),
             );
             if (!client) {
@@ -736,8 +757,12 @@ export async function activate(
             if (!moduleId) {
                 throw new Error("no scope");
             }
+            const module = moduleInfoFromScope(moduleId);
+            if (!module) {
+                throw new Error("daemon unavailable");
+            }
             const client = await daemonGate?.getOrSpawn(
-                moduleId,
+                module,
                 daemonScheduler!.daemonEvents(moduleId),
             );
             if (!client) {
@@ -1065,7 +1090,7 @@ export async function activate(
             // daemon's first `onPreviewImageReady` for this module.
             const journeyModule = gradleService?.resolveModule(doc.uri.fsPath);
             if (journeyModule) {
-                startEditJourney(journeyModule);
+                startEditJourney(journeyModule.modulePath);
             }
             // The daemon-vs-Gradle decision is made inside runRefreshExclusive
             // — either path runs, never both. See `pickRefreshMode` for the
@@ -1226,11 +1251,11 @@ async function flushInteractiveStreams(): Promise<void> {
     await Promise.all([
         ...interactiveEntries.map(async ([previewId, streamId]) => {
             try {
-                const moduleId = previewModuleMap.get(previewId);
-                if (!moduleId) return;
+                const module = previewModuleMap.get(previewId);
+                if (!module) return;
                 const client = await daemonGate?.getOrSpawn(
-                    moduleId,
-                    daemonScheduler!.daemonEvents(moduleId),
+                    module,
+                    daemonScheduler!.daemonEvents(module.modulePath),
                 );
                 client?.interactiveStop({ frameStreamId: streamId });
             } catch {
@@ -1239,11 +1264,11 @@ async function flushInteractiveStreams(): Promise<void> {
         }),
         ...streamEntries.map(async ([previewId, streamId]) => {
             try {
-                const moduleId = previewModuleMap.get(previewId);
-                if (!moduleId) return;
+                const module = previewModuleMap.get(previewId);
+                if (!module) return;
                 const client = await daemonGate?.getOrSpawn(
-                    moduleId,
-                    daemonScheduler!.daemonEvents(moduleId),
+                    module,
+                    daemonScheduler!.daemonEvents(module.modulePath),
                 );
                 client?.streamStop({ frameStreamId: streamId });
                 panel?.postMessage({ command: "streamStopped", previewId });
@@ -1270,13 +1295,13 @@ async function flushRecordingSessions(options: {
     await Promise.all(
         entries.map(async ([previewId, recordingId]) => {
             try {
-                const moduleId = previewModuleMap.get(previewId);
-                if (!moduleId) {
+                const module = previewModuleMap.get(previewId);
+                if (!module) {
                     return;
                 }
                 const client = await daemonGate?.getOrSpawn(
-                    moduleId,
-                    daemonScheduler!.daemonEvents(moduleId),
+                    module,
+                    daemonScheduler!.daemonEvents(module.modulePath),
                 );
                 if (!client) {
                     return;
@@ -1427,6 +1452,7 @@ function invalidateModuleCache(filePath: string): void {
     const module = gradleService.resolveModule(filePath);
     if (module) {
         gradleService.invalidateCache(module);
+        moduleManifestCache.delete(module.modulePath);
     }
 }
 
@@ -1470,15 +1496,20 @@ async function applyDiscoveryDiff(
         return;
     }
 
+    const module = gradleService.findModuleByPath(moduleId);
+    if (!module) {
+        logLine(`[daemon] discoveryUpdated for unknown module ${moduleId}`);
+        return;
+    }
     // Always reconcile caches, even when no preview editor is visible. Only
     // repaint the panel when its current scope still belongs to this module;
     // daemon save/discovery events can also arrive for background files.
     const repaintFile =
         currentScopeFile &&
-        gradleService.resolveModule(currentScopeFile) === moduleId
+        gradleService.resolveModule(currentScopeFile)?.modulePath === moduleId
             ? currentScopeFile
             : undefined;
-    await reconcilePreviewManifest(moduleId, repaintFile);
+    await reconcilePreviewManifest(module, repaintFile);
 }
 
 /**
@@ -1497,13 +1528,14 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     if (!module) {
         return "failed";
     }
+    const moduleKey = module.modulePath;
 
     // Bootstrap (Gradle task + JVM spawn) happens once per module per
     // session. Normally it has already fired from the active-editor warm
     // path; on the rare case where the user saves before scope-in (e.g.
     // external file save, another editor split) we cover ourselves here.
-    if (!daemonBootstrappedModules.has(module)) {
-        daemonBootstrappedModules.add(module);
+    if (!daemonBootstrappedModules.has(moduleKey)) {
+        daemonBootstrappedModules.add(moduleKey);
         try {
             const warmed = await daemonScheduler.warmModule(
                 gradleService,
@@ -1511,13 +1543,13 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
                 (state) => updateDaemonStatus(module, state),
             );
             if (!warmed) {
-                daemonBootstrappedModules.delete(module);
+                daemonBootstrappedModules.delete(moduleKey);
                 return daemonGate.isBuildDisabled(module)
                     ? "disabled"
                     : "failed";
             }
         } catch (err) {
-            daemonBootstrappedModules.delete(module);
+            daemonBootstrappedModules.delete(moduleKey);
             logLine(`daemon: ${String((err as Error).message ?? err)}`);
             return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
         }
@@ -1544,7 +1576,7 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // own; the caller just shouldn't escalate to a Gradle render in that
     // case (the panel will repopulate via discover + the daemon's
     // discoveryUpdated push).
-    const manifest = moduleManifestCache.get(module) ?? [];
+    const manifest = moduleManifestCache.get(moduleKey) ?? [];
     let filePreviews = previewsForFile(manifest, module, filePath);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
         logLine(
@@ -1552,7 +1584,8 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         );
         const repaintFile =
             currentScopeFile &&
-            gradleService.resolveModule(currentScopeFile) === module
+            gradleService.resolveModule(currentScopeFile)?.modulePath ===
+                moduleKey
                 ? currentScopeFile
                 : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
@@ -1566,7 +1599,7 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     }
     try {
         await daemonScheduler.setFocus(module, ids);
-        const fullIds = heavyOptInsFor(module, ids);
+        const fullIds = heavyOptInsFor(module.modulePath, ids);
         const fastIds =
             fullIds.length === 0
                 ? ids
@@ -1653,7 +1686,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     panel.postMessage({
         command: "setPreviews",
         previews: displayPreviews,
-        moduleDir: module,
+        moduleDir: module.projectDir,
         heavyStaleIds: [],
     });
 
@@ -1693,8 +1726,8 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     // takes the stealth-refresh path (no clearAll) rather
     // than tearing down what we just painted.
     hasPreviewsLoaded = true;
-    lastLoadedModules = [module];
-    moduleManifestCache.set(module, visiblePreviews);
+    lastLoadedModules = [module.modulePath];
+    moduleManifestCache.set(module.modulePath, visiblePreviews);
     setCurrentScopeFile(filePath);
     return true;
 }
@@ -1730,7 +1763,7 @@ async function runActivationRefresh(filePath: string): Promise<void> {
         return;
     }
     const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) {
+    if (!module || !daemonGate.isDaemonReady(module.modulePath)) {
         return;
     }
     // Phase 3 — kick off a fresh render through the daemon. Reuses the same
@@ -1759,13 +1792,14 @@ async function warmDaemonForFile(
     if (!module) {
         return false;
     }
-    if (daemonBootstrappedModules.has(module)) {
-        if (daemonGate.isDaemonReady(module) && opts.refreshAfterReady) {
+    const moduleKey = module.modulePath;
+    if (daemonBootstrappedModules.has(moduleKey)) {
+        if (daemonGate.isDaemonReady(moduleKey) && opts.refreshAfterReady) {
             await refreshAfterDaemonReady(filePath, "view-open");
         }
-        return daemonGate.isDaemonReady(module);
+        return daemonGate.isDaemonReady(moduleKey);
     }
-    daemonBootstrappedModules.add(module);
+    daemonBootstrappedModules.add(moduleKey);
     try {
         const warmed = await daemonScheduler.warmModule(
             gradleService,
@@ -1776,7 +1810,7 @@ async function warmDaemonForFile(
             },
         );
         if (!warmed) {
-            daemonBootstrappedModules.delete(module);
+            daemonBootstrappedModules.delete(moduleKey);
         }
         finishDaemonStartupProgress(module, filePath, warmed);
         if (warmed && opts.refreshAfterReady) {
@@ -1784,11 +1818,11 @@ async function warmDaemonForFile(
         }
         return warmed;
     } catch (err) {
-        daemonBootstrappedModules.delete(module);
+        daemonBootstrappedModules.delete(moduleKey);
         stopDaemonStartupProgress(module);
         panel?.postMessage({ command: "clearProgress" });
         logLine(
-            `daemon: warm failed for ${module}: ${String((err as Error).message ?? err)}`,
+            `daemon: warm failed for ${moduleKey}: ${String((err as Error).message ?? err)}`,
         );
         vscode.window.showErrorMessage(
             "Compose Preview daemon failed to start. Preview saves will not render until the daemon is fixed.",
@@ -1804,7 +1838,10 @@ async function warmDaemonForFile(
  * bootstrapping the daemon. Surface the daemon phase in the panel itself so
  * the user can tell the extension is still doing useful work.
  */
-function publishDaemonStartupProgress(module: string, state: WarmState): void {
+function publishDaemonStartupProgress(
+    module: ModuleInfo,
+    state: WarmState,
+): void {
     if (!panel) {
         return;
     }
@@ -1812,12 +1849,13 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
         stopDaemonStartupProgress(module);
         return;
     }
+    const moduleLabel = module.modulePath;
     switch (state) {
         case "bootstrapping":
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
                     command: "showMessage",
-                    text: `Preparing Compose Preview daemon for ${module}…`,
+                    text: `Preparing Compose Preview daemon for ${moduleLabel}…`,
                 });
             }
             startDaemonStartupProgress(
@@ -1832,7 +1870,7 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
                     command: "showMessage",
-                    text: `Starting Compose Preview daemon for ${module}…`,
+                    text: `Starting Compose Preview daemon for ${moduleLabel}…`,
                 });
             }
             startDaemonStartupProgress(
@@ -1870,7 +1908,7 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
             if (!hasPreviewsLoaded) {
                 panel.postMessage({
                     command: "showMessage",
-                    text: `Compose Preview daemon is disabled for ${module}; using Gradle previews.`,
+                    text: `Compose Preview daemon is disabled for ${moduleLabel}; using Gradle previews.`,
                 });
             }
             panel.postMessage({ command: "clearProgress" });
@@ -1879,7 +1917,7 @@ function publishDaemonStartupProgress(module: string, state: WarmState): void {
 }
 
 function startDaemonStartupProgress(
-    module: string,
+    module: ModuleInfo,
     label: string,
     start: number,
     end: number,
@@ -1906,16 +1944,16 @@ function startDaemonStartupProgress(
         });
     };
     tick();
-    daemonStartupProgressTimers.set(module, setInterval(tick, 250));
+    daemonStartupProgressTimers.set(module.modulePath, setInterval(tick, 250));
 }
 
-function isDaemonStartupScopeActive(module: string): boolean {
-    return currentScopeModule === module;
+function isDaemonStartupScopeActive(module: ModuleInfo): boolean {
+    return currentScopeModule?.modulePath === module.modulePath;
 }
 
 function setCurrentScopeFile(
     filePath: string | null,
-    module?: string | null,
+    module?: ModuleInfo | null,
 ): void {
     currentScopeFile = filePath;
     currentScopeModule =
@@ -1925,23 +1963,24 @@ function setCurrentScopeFile(
             : null);
 }
 
-function stopDaemonStartupProgress(module: string): void {
-    const timer = daemonStartupProgressTimers.get(module);
+function stopDaemonStartupProgress(module: ModuleInfo): void {
+    const timer = daemonStartupProgressTimers.get(module.modulePath);
     if (!timer) {
         return;
     }
     clearInterval(timer);
-    daemonStartupProgressTimers.delete(module);
+    daemonStartupProgressTimers.delete(module.modulePath);
 }
 
 function stopAllDaemonStartupProgress(): void {
-    for (const module of daemonStartupProgressTimers.keys()) {
-        stopDaemonStartupProgress(module);
+    for (const timer of daemonStartupProgressTimers.values()) {
+        clearInterval(timer);
     }
+    daemonStartupProgressTimers.clear();
 }
 
 function finishDaemonStartupProgress(
-    module: string,
+    module: ModuleInfo,
     filePath: string,
     warmed: boolean,
 ): void {
@@ -1953,7 +1992,7 @@ function finishDaemonStartupProgress(
         return;
     }
     panel.postMessage({ command: "clearProgress" });
-    const allPreviews = moduleManifestCache.get(module)?.length ?? 0;
+    const allPreviews = moduleManifestCache.get(module.modulePath)?.length ?? 0;
     panel.postMessage({
         command: "showMessage",
         text:
@@ -1963,14 +2002,14 @@ function finishDaemonStartupProgress(
     });
 }
 
-function visiblePreviewCount(module: string, filePath: string): number {
-    const previews = moduleManifestCache.get(module) ?? [];
+function visiblePreviewCount(module: ModuleInfo, filePath: string): number {
+    const previews = moduleManifestCache.get(module.modulePath) ?? [];
     return previewsForFile(previews, module, filePath).length;
 }
 
 function previewsForFile(
     previews: PreviewInfo[],
-    module: string,
+    module: ModuleInfo,
     filePath: string,
 ): PreviewInfo[] {
     if (!gradleService) {
@@ -1990,19 +2029,20 @@ function previewsForFile(
 }
 
 async function reconcilePreviewManifest(
-    module: string,
+    module: ModuleInfo,
     repaintFilePath?: string,
 ): Promise<PreviewInfo[] | null> {
     if (!gradleService) {
         return null;
     }
     gradleService.invalidateCache(module);
+    moduleManifestCache.delete(module.modulePath);
     let manifest;
     try {
         manifest = await gradleService.discoverPreviews(module);
     } catch (err) {
         logLine(
-            `[daemon] silent discover failed for ${module}: ${(err as Error).message}`,
+            `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message}`,
         );
         return null;
     }
@@ -2011,8 +2051,9 @@ async function reconcilePreviewManifest(
     }
 
     const fresh = manifest.previews;
+    const moduleKey = module.modulePath;
     for (const [id, owner] of [...previewModuleMap.entries()]) {
-        if (owner === module) {
+        if (owner.modulePath === moduleKey) {
             previewModuleMap.delete(id);
         }
     }
@@ -2022,21 +2063,21 @@ async function reconcilePreviewManifest(
         }
         previewModuleMap.set(p.id, module);
     }
-    moduleManifestCache.set(module, fresh);
-    registry.replaceModule(module, fresh);
+    moduleManifestCache.set(moduleKey, fresh);
+    registry.replaceModule(moduleKey, fresh);
 
     if (!panel || !repaintFilePath) {
         return fresh;
     }
 
     const visiblePreviews = previewsForFile(fresh, module, repaintFilePath);
-    const heavyStaleIds = fastTierModules.has(module)
+    const heavyStaleIds = fastTierModules.has(moduleKey)
         ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
         : [];
     panel.postMessage({
         command: "setPreviews",
         previews: visiblePreviews.map(withDataProductCaptures),
-        moduleDir: module,
+        moduleDir: module.projectDir,
         heavyStaleIds,
     });
     return fresh;
@@ -2050,7 +2091,7 @@ async function refreshAfterDaemonReady(
         return;
     }
     const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) {
+    if (!module || !daemonGate.isDaemonReady(module.modulePath)) {
         return;
     }
     if (currentScopeFile && currentScopeFile !== filePath) {
@@ -2058,7 +2099,7 @@ async function refreshAfterDaemonReady(
     }
     if (pendingRefresh || refreshInFlight) {
         logLine(
-            `daemon: skip post-warm refresh for ${module}; refresh already active`,
+            `daemon: skip post-warm refresh for ${module.modulePath}; refresh already active`,
         );
         return;
     }
@@ -2080,12 +2121,13 @@ async function refreshAfterDaemonReady(
 }
 
 async function reconcilePreviewManifestAfterDaemonReady(
-    module: string,
+    module: ModuleInfo,
     filePath: string,
 ): Promise<boolean> {
     if (!gradleService || !panel) {
         return false;
     }
+    const moduleKey = module.modulePath;
     try {
         panel.postMessage({
             command: "setProgress",
@@ -2095,6 +2137,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
             slow: false,
         });
         gradleService.invalidateCache(module);
+        moduleManifestCache.delete(moduleKey);
         const manifest = await gradleService.discoverPreviews(module);
         if (!manifest) {
             panel.postMessage({ command: "clearProgress" });
@@ -2108,7 +2151,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
         const fresh = manifest.previews;
         const freshIds = new Set(fresh.map((p) => p.id));
         for (const [id, owner] of [...previewModuleMap.entries()]) {
-            if (owner === module && !freshIds.has(id)) {
+            if (owner.modulePath === moduleKey && !freshIds.has(id)) {
                 previewModuleMap.delete(id);
             }
         }
@@ -2118,8 +2161,8 @@ async function reconcilePreviewManifestAfterDaemonReady(
             }
             previewModuleMap.set(p.id, module);
         }
-        moduleManifestCache.set(module, fresh);
-        registry.replaceModule(module, fresh);
+        moduleManifestCache.set(moduleKey, fresh);
+        registry.replaceModule(moduleKey, fresh);
 
         const visiblePreviews = previewsForFile(fresh, module, filePath);
         if (visiblePreviews.length === 0) {
@@ -2136,13 +2179,13 @@ async function reconcilePreviewManifestAfterDaemonReady(
             return false;
         }
 
-        const heavyStaleIds = fastTierModules.has(module)
+        const heavyStaleIds = fastTierModules.has(moduleKey)
             ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
             : [];
         panel.postMessage({
             command: "setPreviews",
             previews: visiblePreviews.map(withDataProductCaptures),
-            moduleDir: module,
+            moduleDir: module.projectDir,
             heavyStaleIds,
         });
         panel.postMessage({ command: "clearCompileErrors" });
@@ -2151,7 +2194,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
         return true;
     } catch (err) {
         logLine(
-            `daemon: post-warm discover failed for ${module}: ${(err as Error).message}`,
+            `daemon: post-warm discover failed for ${moduleKey}: ${(err as Error).message}`,
         );
         panel.postMessage({ command: "clearProgress" });
         return false;
@@ -2166,7 +2209,7 @@ async function warmShownPreviewsForFile(
         return;
     }
     const module = gradleService.resolveModule(filePath);
-    if (!module || !daemonGate.isDaemonReady(module)) {
+    if (!module || !daemonGate.isDaemonReady(module.modulePath)) {
         return;
     }
 
@@ -2175,12 +2218,12 @@ async function warmShownPreviewsForFile(
         gradleService.workspaceRoot,
         module,
     );
-    const scopeKey = `${module}::${filterFile}`;
+    const scopeKey = `${module.modulePath}::${filterFile}`;
     if (daemonShownPreviewWarmScopes.has(scopeKey)) {
         return;
     }
 
-    const ids = (moduleManifestCache.get(module) ?? [])
+    const ids = (moduleManifestCache.get(module.modulePath) ?? [])
         .filter((p) =>
             previewSourceMatches(
                 p.sourceFile,
@@ -2202,7 +2245,7 @@ async function warmShownPreviewsForFile(
     } catch (err) {
         daemonShownPreviewWarmScopes.delete(scopeKey);
         logLine(
-            `daemon: view-open warmup failed for ${module}: ${String((err as Error).message ?? err)}`,
+            `daemon: view-open warmup failed for ${module.modulePath}: ${String((err as Error).message ?? err)}`,
         );
     }
 }
@@ -2223,13 +2266,13 @@ function clearDaemonShownPreviewWarmScopes(moduleId: string): void {
  * the user can see why their file was rendered via Gradle. Hidden any
  * time no module is in flight.
  */
-function updateDaemonStatus(module: string, state: WarmState): void {
+function updateDaemonStatus(module: ModuleInfo, state: WarmState): void {
     // Push availability for the interactive (live-stream) toggle on every
     // state transition. Done outside the !daemonStatusItem early-return so
     // tests that drive activate() without a status bar still see the
     // panel-side state propagate. Cheap: a no-op when panel isn't open.
     if (state === "ready" || state === "fallback") {
-        publishInteractiveAvailability(module);
+        publishInteractiveAvailability(module.modulePath);
     }
     if (!daemonStatusItem) {
         return;
@@ -2238,9 +2281,10 @@ function updateDaemonStatus(module: string, state: WarmState): void {
         clearTimeout(daemonStatusClearTimer);
         daemonStatusClearTimer = null;
     }
+    const moduleLabel = module.modulePath;
     switch (state) {
         case "bootstrapping":
-            daemonStatusItem.text = `$(loading~spin) Daemon: bootstrapping ${module}…`;
+            daemonStatusItem.text = `$(loading~spin) Daemon: bootstrapping ${moduleLabel}…`;
             // Cold-build context: composePreviewDaemonStart itself is a
             // small JSON-emit task, but it depends on the consumer's
             // compileKotlin / variant resolution. On a fresh checkout
@@ -2257,13 +2301,13 @@ function updateDaemonStatus(module: string, state: WarmState): void {
             daemonStatusItem.show();
             break;
         case "spawning":
-            daemonStatusItem.text = `$(loading~spin) Daemon: spawning ${module}…`;
+            daemonStatusItem.text = `$(loading~spin) Daemon: spawning ${moduleLabel}…`;
             daemonStatusItem.tooltip =
                 "Launching the preview daemon JVM and running initialize";
             daemonStatusItem.show();
             break;
         case "ready":
-            daemonStatusItem.text = `$(check) Daemon: ${module}`;
+            daemonStatusItem.text = `$(check) Daemon: ${moduleLabel}`;
             daemonStatusItem.tooltip =
                 "Preview daemon is up and serving renders";
             daemonStatusItem.show();
@@ -2273,7 +2317,7 @@ function updateDaemonStatus(module: string, state: WarmState): void {
             );
             break;
         case "fallback":
-            daemonStatusItem.text = `$(warning) Daemon: ${module} (using Gradle)`;
+            daemonStatusItem.text = `$(warning) Daemon: ${moduleLabel} (using Gradle)`;
             daemonStatusItem.tooltip =
                 "Daemon spawn failed — using the Gradle render path. See Output → Compose Preview.";
             daemonStatusItem.show();
@@ -2351,26 +2395,29 @@ function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
 
 /** Read calibrated phase durations for `module` from workspace state. Empty
  *  on first run; the tracker falls back to its built-in phase defaults. */
-function readCalibration(module: string): PhaseDurations {
+function readCalibration(module: ModuleInfo): PhaseDurations {
     if (!extensionContext) {
         return {};
     }
     const all = extensionContext.workspaceState.get<
         Record<string, PhaseDurations>
     >(PROGRESS_CALIBRATION_KEY, {});
-    return all[module] ?? {};
+    return all[module.modulePath] ?? {};
 }
 
 /** Persist updated calibration for `module`, blending into prior samples via
  *  EMA so a single anomalous run doesn't dominate. */
-function writeCalibration(module: string, latest: PhaseDurations): void {
+function writeCalibration(module: ModuleInfo, latest: PhaseDurations): void {
     if (!extensionContext) {
         return;
     }
     const all = extensionContext.workspaceState.get<
         Record<string, PhaseDurations>
     >(PROGRESS_CALIBRATION_KEY, {});
-    all[module] = mergeCalibration(all[module] ?? {}, latest);
+    all[module.modulePath] = mergeCalibration(
+        all[module.modulePath] ?? {},
+        latest,
+    );
     void extensionContext.workspaceState.update(PROGRESS_CALIBRATION_KEY, all);
 }
 
@@ -2446,14 +2493,15 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
     // (not here) so it captures the debounce wait too. Manual refreshes
     // that bypass save have no timer running, in which case
     // `endEditJourney` no-ops below.
-    const journeyModule = gradleService?.resolveModule(filePath);
+    const journeyModuleKey =
+        gradleService?.resolveModule(filePath)?.modulePath ?? null;
     try {
         const mode = pickRefreshMode(filePath);
         if (mode === "daemon") {
             const compileOk = await runDaemonCompileOnly(filePath);
             if (!compileOk) {
-                if (journeyModule) {
-                    editJourneyByModule.delete(journeyModule);
+                if (journeyModuleKey) {
+                    editJourneyByModule.delete(journeyModuleKey);
                 }
                 vscode.window.showErrorMessage(
                     "Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.",
@@ -2469,13 +2517,13 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
             }
             if (result === "disabled") {
                 await refresh(true, filePath, "fast");
-                if (journeyModule) {
-                    endEditJourney(journeyModule);
+                if (journeyModuleKey) {
+                    endEditJourney(journeyModuleKey);
                 }
                 return;
             }
-            if (journeyModule) {
-                editJourneyByModule.delete(journeyModule);
+            if (journeyModuleKey) {
+                editJourneyByModule.delete(journeyModuleKey);
             }
             vscode.window.showErrorMessage(
                 "Compose Preview daemon is unavailable. Restart the preview daemon after fixing the daemon issue.",
@@ -2483,8 +2531,8 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
             return;
         }
         await refresh(true, filePath, "fast");
-        if (journeyModule) {
-            endEditJourney(journeyModule);
+        if (journeyModuleKey) {
+            endEditJourney(journeyModuleKey);
         }
     } finally {
         refreshInFlight = false;
@@ -2530,10 +2578,10 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
         await gradleService.compileOnly(module);
     } catch (err) {
         if (err instanceof TaskCancelledError) {
-            logLine(`daemon: compileOnly cancelled for ${module}`);
+            logLine(`daemon: compileOnly cancelled for ${module.modulePath}`);
         } else {
             logLine(
-                `daemon: compileOnly failed for ${module}: ${(err as Error).message}`,
+                `daemon: compileOnly failed for ${module.modulePath}: ${(err as Error).message}`,
             );
         }
         return false;
@@ -2557,7 +2605,7 @@ function sendModuleList() {
     if (!gradleService || !panel) {
         return;
     }
-    const modules = gradleService.findPreviewModules();
+    const modules = gradleService.findPreviewModules().map((m) => m.modulePath);
     panel.postMessage({
         command: "setModules",
         modules,
@@ -2744,7 +2792,7 @@ async function refresh(
         clearHeavyRefreshOptIns();
     }
     logLine(
-        `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module}`,
+        `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module.modulePath}`,
     );
 
     // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
@@ -2800,9 +2848,13 @@ async function refresh(
     setCurrentScopeFile(activeFile, module);
     // Phase H7 — re-scope the History panel alongside the live panel.
     // `projectDir` is the consumer module's absolute path; we synthesize
-    // it from workspaceRoot + module here because GradleService keeps
-    // modules as relative slash-paths.
-    const projectDir = path.join(gradleService.workspaceRoot, module);
+    // it from workspaceRoot + module.projectDir here because GradleService
+    // keeps modules as relative slash-paths and reassigned-projectDir
+    // layouts (androidx-mini) make `module.projectDir` ≠ module.modulePath.
+    const projectDir = path.join(
+        gradleService.workspaceRoot,
+        module.projectDir,
+    );
     // Preserve the previewId narrow across same-module refreshes so a
     // save-driven refresh doesn't briefly widen the History panel to the
     // module before the webview re-publishes the narrow on next layout.
@@ -2810,24 +2862,26 @@ async function refresh(
     // owned by the previous module's preview set.
     const prior = historyScopeRef.current;
     const sameModule =
-        prior?.moduleId === module && prior.projectDir === projectDir;
+        prior?.moduleId === module.modulePath &&
+        prior.projectDir === projectDir;
     const newScope: HistoryScope = sameModule
         ? {
-              moduleId: module,
+              moduleId: module.modulePath,
               projectDir,
               previewId: prior!.previewId,
               previewLabel: prior!.previewLabel,
           }
-        : { moduleId: module, projectDir };
+        : { moduleId: module.modulePath, projectDir };
     historyScopeRef.current = newScope;
-    const modules = [module];
+    const modules: ModuleInfo[] = [module];
+    const modulePathList = modules.map((m) => m.modulePath);
 
     // When the module scope changes (user switched files to a different
     // module, or went from "all modules" to a single one) the old cards are
     // from a different context and should be discarded up front rather than
     // left visible until the diff in setPreviews prunes them — which won't
     // happen if the new refresh cancels before setPreviews.
-    const scopeChanged = !sameScope(modules, lastLoadedModules);
+    const scopeChanged = !sameScope(modulePathList, lastLoadedModules);
     if (scopeChanged) {
         panel.postMessage({ command: "clearAll" });
         hasPreviewsLoaded = false;
@@ -2844,7 +2898,7 @@ async function refresh(
             panel.postMessage({ command: "setLoading" });
         }
     }
-    lastLoadedModules = modules;
+    lastLoadedModules = modulePathList;
     gradleService.cancel();
 
     // Forward progress-bar updates to the webview. Single tracker per refresh
@@ -2885,6 +2939,7 @@ async function refresh(
             if (abort.signal.aborted) {
                 return "cancelled";
             }
+            const modKey = mod.modulePath;
 
             let manifest = !forceRender
                 ? gradleService.readManifest(mod)
@@ -2922,9 +2977,9 @@ async function refresh(
             // module (heavy captures are now fresh on disk).
             if (forceRender && manifest) {
                 if (tier === "fast") {
-                    fastTierModules.add(mod);
+                    fastTierModules.add(modKey);
                 } else {
-                    fastTierModules.delete(mod);
+                    fastTierModules.delete(modKey);
                 }
             }
 
@@ -2941,16 +2996,16 @@ async function refresh(
                     perModule.push(p);
                 }
             }
-            registry.replaceModule(mod, perModule);
+            registry.replaceModule(modKey, perModule);
             // Mirror per-module previews for the daemon scheduler — the
             // save side-channel uses this snapshot to translate "active
             // file" into a list of preview IDs without an extension-side
             // discovery round-trip. Cleared when the module's render
             // returns no manifest (preview-set went empty).
             if (manifest) {
-                moduleManifestCache.set(mod, perModule);
+                moduleManifestCache.set(modKey, perModule);
             } else {
-                moduleManifestCache.delete(mod);
+                moduleManifestCache.delete(modKey);
             }
         }
 
@@ -3004,7 +3059,7 @@ async function refresh(
         // webview decorates these cards with a stale badge so the user knows
         // the GIF/long-scroll image is from a previous full render.
         const moduleIsFastTier = modules.some((mod) =>
-            fastTierModules.has(mod),
+            fastTierModules.has(mod.modulePath),
         );
         const heavyStaleIds = moduleIsFastTier
             ? visiblePreviews.filter(hasHeavyCapture).map((p) => p.id)
@@ -3015,7 +3070,7 @@ async function refresh(
         panel.postMessage({
             command: "setPreviews",
             previews: displayPreviews,
-            moduleDir: modules.join(","),
+            moduleDir: modules.map((m) => m.projectDir).join(","),
             heavyStaleIds,
         });
         hasPreviewsLoaded = true;
@@ -3069,13 +3124,20 @@ async function refresh(
             ));
         if (!sourceIsStale) {
             const imageJobs: Promise<void>[] = [];
+            const modulesByPath = new Map<string, ModuleInfo>();
+            for (const m of modules) {
+                modulesByPath.set(m.modulePath, m);
+            }
             for (const preview of displayPreviews) {
                 const captures = preview.captures;
                 if (captures.length === 0) {
                     continue;
                 }
 
-                const mod = previewModuleMap.get(preview.id);
+                const ownerModule = previewModuleMap.get(preview.id);
+                const mod = ownerModule
+                    ? (modulesByPath.get(ownerModule.modulePath) ?? ownerModule)
+                    : undefined;
                 if (!mod) {
                     continue;
                 }
@@ -3280,7 +3342,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // changing focus clears the opt-in set.
             const mod = previewModuleMap.get(msg.previewId);
             if (mod) {
-                optInHeavyRefresh(mod, msg.previewId);
+                optInHeavyRefresh(mod.modulePath, msg.previewId);
                 if (daemonGate && daemonScheduler) {
                     void daemonScheduler.renderNow(
                         mod,
@@ -3558,10 +3620,12 @@ async function runLivePreviewDiff(
     if (!panel || !historySource) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    const manifest = moduleId ? moduleManifestCache.get(moduleId) : undefined;
+    const module = previewModuleMap.get(previewId);
+    const manifest = module
+        ? moduleManifestCache.get(module.modulePath)
+        : undefined;
     const info = manifest?.find((p) => p.id === previewId);
-    if (!moduleId || !info || !gradleService) {
+    if (!module || !info || !gradleService) {
         panel.postMessage({
             command: "previewDiffError",
             previewId,
@@ -3580,7 +3644,7 @@ async function runLivePreviewDiff(
         });
         return;
     }
-    const moduleDir = path.join(gradleService.workspaceRoot, moduleId);
+    const moduleDir = path.join(gradleService.workspaceRoot, module.projectDir);
     const livePath = path.join(moduleDir, capture.renderOutput);
     const liveBytes = await fs.promises.readFile(livePath).catch(() => null);
     if (!liveBytes) {
@@ -3593,8 +3657,15 @@ async function runLivePreviewDiff(
         return;
     }
 
-    const projectDir = path.join(gradleService.workspaceRoot, moduleId);
-    const scope: HistoryScope = { moduleId, projectDir, previewId };
+    const projectDir = path.join(
+        gradleService.workspaceRoot,
+        module.projectDir,
+    );
+    const scope: HistoryScope = {
+        moduleId: module.modulePath,
+        projectDir,
+        previewId,
+    };
     let entries: unknown[];
     try {
         const result = await historySource.list(scope);
@@ -3655,7 +3726,7 @@ async function runLivePreviewDiff(
     if (against === "main") {
         const baseline = await readPreviewMainPng(
             gradleService.workspaceRoot,
-            moduleId,
+            module.modulePath,
             previewId,
         );
         if (baseline) {
@@ -3741,7 +3812,9 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
     }
     const { module, applicationId, info } = preview;
     const composableFqn = `${info.className}.${info.functionName}`;
-    logLine(`launchOnDevice: ${module} (${applicationId}) → ${composableFqn}`);
+    logLine(
+        `launchOnDevice: ${module.modulePath} (${applicationId}) → ${composableFqn}`,
+    );
 
     await vscode.window.withProgress(
         {
@@ -3812,7 +3885,7 @@ async function launchOnDevice(focusedPreviewId?: string): Promise<void> {
 }
 
 interface ResolvedLaunchPreview {
-    module: string;
+    module: ModuleInfo;
     applicationId: string;
     info: PreviewInfo;
 }
@@ -3831,14 +3904,20 @@ interface ResolvedLaunchPreview {
  */
 async function resolveLaunchPreview(
     focusedPreviewId: string | undefined,
-    candidates: Array<{ module: string; applicationId: string }>,
+    candidates: Array<{ module: ModuleInfo; applicationId: string }>,
 ): Promise<ResolvedLaunchPreview | null> {
-    const candidateByModule = new Map(candidates.map((c) => [c.module, c]));
+    const candidateByModule = new Map(
+        candidates.map((c) => [c.module.modulePath, c]),
+    );
 
     if (focusedPreviewId) {
         const owner = previewModuleMap.get(focusedPreviewId);
-        const candidate = owner ? candidateByModule.get(owner) : undefined;
-        const previews = owner ? moduleManifestCache.get(owner) : undefined;
+        const candidate = owner
+            ? candidateByModule.get(owner.modulePath)
+            : undefined;
+        const previews = owner
+            ? moduleManifestCache.get(owner.modulePath)
+            : undefined;
         const info = previews?.find((p) => p.id === focusedPreviewId);
         if (candidate && info) {
             return {
@@ -3849,7 +3928,7 @@ async function resolveLaunchPreview(
         }
         if (owner && !candidate) {
             vscode.window.showInformationMessage(
-                `Compose Preview: ${owner} is not an Android application module — ` +
+                `Compose Preview: ${owner.modulePath} is not an Android application module — ` +
                     'add id("com.android.application") to deploy a preview from it.',
             );
             return null;
@@ -3857,17 +3936,18 @@ async function resolveLaunchPreview(
     }
 
     interface PreviewPickItem extends vscode.QuickPickItem {
-        candidate: { module: string; applicationId: string };
+        candidate: { module: ModuleInfo; applicationId: string };
         info: PreviewInfo;
     }
     const items: PreviewPickItem[] = [];
     for (const candidate of candidates) {
-        const previews = moduleManifestCache.get(candidate.module) ?? [];
+        const previews =
+            moduleManifestCache.get(candidate.module.modulePath) ?? [];
         for (const info of previews) {
             items.push({
                 label: info.functionName,
                 description: candidate.applicationId,
-                detail: `${candidate.module} · ${info.className}`,
+                detail: `${candidate.module.modulePath} · ${info.className}`,
                 candidate,
                 info,
             });
@@ -3922,13 +4002,14 @@ async function diffAllVsMain(): Promise<void> {
         );
         return;
     }
-    const moduleId = gradleService.resolveModule(currentScopeFile);
-    if (!moduleId) {
+    const module = gradleService.resolveModule(currentScopeFile);
+    if (!module) {
         vscode.window.showInformationMessage(
             "Active file is not part of a Compose Preview module.",
         );
         return;
     }
+    const moduleId = module.modulePath;
     const manifest = moduleManifestCache.get(moduleId);
     if (!manifest || manifest.length === 0) {
         vscode.window.showInformationMessage(
@@ -3936,7 +4017,10 @@ async function diffAllVsMain(): Promise<void> {
         );
         return;
     }
-    const projectDir = path.join(gradleService.workspaceRoot, moduleId);
+    const projectDir = path.join(
+        gradleService.workspaceRoot,
+        module.projectDir,
+    );
 
     interface DriftItem extends vscode.QuickPickItem {
         previewId: string;
@@ -4125,7 +4209,7 @@ function lookupPreviewLabel(previewId: string): string | undefined {
     if (!mod) {
         return undefined;
     }
-    const manifest = moduleManifestCache.get(mod);
+    const manifest = moduleManifestCache.get(mod.modulePath);
     const info = manifest?.find((p) => p.id === previewId);
     if (!info) {
         return undefined;
@@ -4154,8 +4238,8 @@ async function handleSetInteractive(
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
         logLine(
             `[interactive] no module for ${previewId}; ignoring setInteractive`,
         );
@@ -4167,8 +4251,8 @@ async function handleSetInteractive(
             activeInteractiveStreams.delete(previewId);
             updateInteractiveStatus();
             const client = await daemonGate?.getOrSpawn(
-                moduleId,
-                daemonScheduler.daemonEvents(moduleId),
+                module,
+                daemonScheduler.daemonEvents(module.modulePath),
             );
             client?.interactiveStop({ frameStreamId: stream });
         }
@@ -4176,8 +4260,8 @@ async function handleSetInteractive(
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     if (!client) {
         // The webview already saw the toggle disabled — but the user could
@@ -4185,7 +4269,7 @@ async function handleSetInteractive(
         // fresh availability ping so the chip reverts cleanly.
         panel?.postMessage({
             command: "setInteractiveAvailability",
-            moduleId,
+            moduleId: module.modulePath,
             ready: false,
             interactiveSupported: false,
         });
@@ -4209,11 +4293,11 @@ async function handleSetInteractive(
         activeInteractiveStreams.set(previewId, result.frameStreamId);
         updateInteractiveStatus();
         logLine(
-            `[interactive] live mode on for ${previewId} (module=${moduleId}, ` +
+            `[interactive] live mode on for ${previewId} (module=${module.modulePath}, ` +
                 `streamId=${result.frameStreamId}, ` +
                 `heldSession=${result.heldSession})`,
         );
-        await daemonScheduler.setFocus(moduleId, [previewId]);
+        await daemonScheduler.setFocus(module, [previewId]);
         return;
     } catch (err) {
         logLine(
@@ -4240,21 +4324,21 @@ async function handleRequestStreamStart(previewId: string): Promise<void> {
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
         logLine(
             `[stream] no module for ${previewId}; ignoring requestStreamStart`,
         );
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     if (!client) {
         panel?.postMessage({
             command: "setInteractiveAvailability",
-            moduleId,
+            moduleId: module.modulePath,
             ready: false,
             interactiveSupported: false,
         });
@@ -4278,11 +4362,11 @@ async function handleRequestStreamStart(previewId: string): Promise<void> {
             heldSession: result.heldSession,
         });
         logLine(
-            `[stream] started for ${previewId} (module=${moduleId}, ` +
+            `[stream] started for ${previewId} (module=${module.modulePath}, ` +
                 `streamId=${result.frameStreamId}, codec=${result.codec}, ` +
                 `heldSession=${result.heldSession})`,
         );
-        await daemonScheduler.setFocus(moduleId, [previewId]);
+        await daemonScheduler.setFocus(module, [previewId]);
     } catch (err) {
         // MethodNotFound on older daemons → silent fallback. The webview
         // already toggled the card into LIVE optimistically; revert it.
@@ -4305,13 +4389,13 @@ async function handleRequestStreamStop(previewId: string): Promise<void> {
     activeStreamFrameStreams.delete(previewId);
     streamFrameIdToPreviewId.delete(sid);
     updateInteractiveStatus();
-    const moduleId = previewModuleMap.get(previewId);
-    if (!daemonGate || !daemonScheduler || !moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!daemonGate || !daemonScheduler || !module) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     client?.streamStop({ frameStreamId: sid });
     panel?.postMessage({ command: "streamStopped", previewId });
@@ -4327,13 +4411,13 @@ async function handleRequestStreamVisibility(
     if (!sid) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!daemonGate || !daemonScheduler || !moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!daemonGate || !daemonScheduler || !module) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     client?.streamVisibility({ frameStreamId: sid, visible, fps });
 }
@@ -4433,12 +4517,12 @@ function updateInteractiveStatus(): void {
         ...activeInteractiveStreams.keys(),
         ...activeStreamFrameStreams.keys(),
     ]) {
-        const moduleId = previewModuleMap.get(previewId);
-        if (!moduleId) {
+        const module = previewModuleMap.get(previewId);
+        if (!module) {
             continue;
         }
-        if (!daemonGate.isInteractiveSupported(moduleId)) {
-            unsupportedModules.add(moduleId);
+        if (!daemonGate.isInteractiveSupported(module.modulePath)) {
+            unsupportedModules.add(module.modulePath);
         }
     }
     if (unsupportedModules.size === 0) {
@@ -4467,16 +4551,16 @@ async function handleSetRecording(
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
         logLine(
             `[recording] no module for ${previewId}; ignoring setRecording`,
         );
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     if (!client) {
         panel?.postMessage({ command: "clearRecording", previewId });
@@ -4529,10 +4613,10 @@ async function handleSetRecording(
         });
         activeRecordingSessions.set(previewId, result.recordingId);
         activeRecordingFormats.set(previewId, format);
-        await daemonScheduler.setFocus(moduleId, [previewId]);
+        await daemonScheduler.setFocus(module, [previewId]);
         logLine(
             `[recording] live recording on for ${previewId} ` +
-                `(module=${moduleId}, recordingId=${result.recordingId})`,
+                `(module=${module.modulePath}, recordingId=${result.recordingId})`,
         );
     } catch (err) {
         logLine(
@@ -4566,13 +4650,13 @@ async function forwardInteractiveInput(
     if (!streamId) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     if (!client) {
         return;
@@ -4597,13 +4681,13 @@ async function forwardRecordingInput(
     if (!recordingId) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
-    if (!moduleId) {
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
         return;
     }
     const client = await daemonGate?.getOrSpawn(
-        moduleId,
-        daemonScheduler.daemonEvents(moduleId),
+        module,
+        daemonScheduler.daemonEvents(module.modulePath),
     );
     if (!client) {
         return;
@@ -4649,35 +4733,42 @@ async function notifyDaemonViewport(
     // panel is module-scoped). Each module's daemon gets its own slice.
     const visibleByModule = new Map<string, string[]>();
     const predictedByModule = new Map<string, string[]>();
+    const moduleByPath = new Map<string, ModuleInfo>();
     for (const id of visible) {
         const mod = previewModuleMap.get(id);
         if (!mod) {
             continue;
         }
-        if (!visibleByModule.has(mod)) {
-            visibleByModule.set(mod, []);
+        moduleByPath.set(mod.modulePath, mod);
+        if (!visibleByModule.has(mod.modulePath)) {
+            visibleByModule.set(mod.modulePath, []);
         }
-        visibleByModule.get(mod)!.push(id);
+        visibleByModule.get(mod.modulePath)!.push(id);
     }
     for (const id of predicted) {
         const mod = previewModuleMap.get(id);
         if (!mod) {
             continue;
         }
-        if (!predictedByModule.has(mod)) {
-            predictedByModule.set(mod, []);
+        moduleByPath.set(mod.modulePath, mod);
+        if (!predictedByModule.has(mod.modulePath)) {
+            predictedByModule.set(mod.modulePath, []);
         }
-        predictedByModule.get(mod)!.push(id);
+        predictedByModule.get(mod.modulePath)!.push(id);
     }
-    const modules = new Set([
+    const modulePaths = new Set([
         ...visibleByModule.keys(),
         ...predictedByModule.keys(),
     ]);
-    for (const mod of modules) {
+    for (const modulePath of modulePaths) {
+        const mod = moduleByPath.get(modulePath);
+        if (!mod) {
+            continue;
+        }
         await daemonScheduler.setVisible(
             mod,
-            visibleByModule.get(mod) ?? [],
-            predictedByModule.get(mod) ?? [],
+            visibleByModule.get(modulePath) ?? [],
+            predictedByModule.get(modulePath) ?? [],
         );
     }
 }

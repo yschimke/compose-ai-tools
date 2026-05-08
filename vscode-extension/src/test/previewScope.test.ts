@@ -31,16 +31,20 @@ function makePreview(
 }
 
 function withTempProject(
-    fn: (workspaceRoot: string, module: string, homeScreenFile: string) => void,
+    fn: (
+        workspaceRoot: string,
+        module: { projectDir: string; modulePath: string },
+        homeScreenFile: string,
+    ) => void,
 ): void {
     const workspaceRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "compose-preview-scope-"),
     );
     try {
-        const module = "app";
+        const module = { projectDir: "app", modulePath: ":app" };
         const homeScreenFile = path.join(
             workspaceRoot,
-            module,
+            module.projectDir,
             "src",
             "main",
             "kotlin",

@@ -92,7 +92,10 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                const manifest = service.readManifest("testmodule");
+                const manifest = service.readManifest({
+                    projectDir: "testmodule",
+                    modulePath: ":testmodule",
+                });
 
                 assert.notStrictEqual(manifest, null);
                 assert.strictEqual(manifest!.module, "sample-android");
@@ -104,7 +107,13 @@ describe("GradleService", () => {
             "returns null for missing manifest",
             withTempDir((dir, api) => {
                 const service = new GradleService(dir, api);
-                assert.strictEqual(service.readManifest("nonexistent"), null);
+                assert.strictEqual(
+                    service.readManifest({
+                        projectDir: "nonexistent",
+                        modulePath: ":nonexistent",
+                    }),
+                    null,
+                );
             }),
         );
 
@@ -124,7 +133,13 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(service.readManifest("bad"), null);
+                assert.strictEqual(
+                    service.readManifest({
+                        projectDir: "bad",
+                        modulePath: ":bad",
+                    }),
+                    null,
+                );
             }),
         );
 
@@ -144,7 +159,13 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(service.readManifest("empty"), null);
+                assert.strictEqual(
+                    service.readManifest({
+                        projectDir: "empty",
+                        modulePath: ":empty",
+                    }),
+                    null,
+                );
             }),
         );
     });
@@ -174,7 +195,10 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                const manifest = service.readResourceManifest("testmodule");
+                const manifest = service.readResourceManifest({
+                    projectDir: "testmodule",
+                    modulePath: ":testmodule",
+                });
 
                 assert.notStrictEqual(manifest, null);
                 assert.strictEqual(manifest!.module, "sample-android");
@@ -233,7 +257,10 @@ describe("GradleService", () => {
             withTempDir((dir, api) => {
                 const service = new GradleService(dir, api);
                 assert.strictEqual(
-                    service.readResourceManifest("nonexistent"),
+                    service.readResourceManifest({
+                        projectDir: "nonexistent",
+                        modulePath: ":nonexistent",
+                    }),
                     null,
                 );
             }),
@@ -255,7 +282,13 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(service.readResourceManifest("bad"), null);
+                assert.strictEqual(
+                    service.readResourceManifest({
+                        projectDir: "bad",
+                        modulePath: ":bad",
+                    }),
+                    null,
+                );
             }),
         );
 
@@ -275,7 +308,13 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(service.readResourceManifest("empty"), null);
+                assert.strictEqual(
+                    service.readResourceManifest({
+                        projectDir: "empty",
+                        modulePath: ":empty",
+                    }),
+                    null,
+                );
             }),
         );
     });
@@ -299,7 +338,7 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 const base64 = await service.readPreviewImage(
-                    "mod",
+                    { projectDir: "mod", modulePath: ":mod" },
                     "renders/test.png",
                 );
 
@@ -313,7 +352,10 @@ describe("GradleService", () => {
             withTempDir(async (dir, api) => {
                 const service = new GradleService(dir, api);
                 assert.strictEqual(
-                    await service.readPreviewImage("mod", "missing.png"),
+                    await service.readPreviewImage(
+                        { projectDir: "mod", modulePath: ":mod" },
+                        "missing.png",
+                    ),
                     null,
                 );
             }),
@@ -337,7 +379,9 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    { projectDir: "app", modulePath: ":app" },
+                ]);
             }),
         );
 
@@ -357,7 +401,9 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    { projectDir: "app", modulePath: ":app" },
+                ]);
             }),
         );
 
@@ -392,7 +438,9 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.deepStrictEqual(service.findPreviewModules(), ["app"]);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    { projectDir: "app", modulePath: ":app" },
+                ]);
             }),
         );
 
@@ -434,7 +482,9 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.deepStrictEqual(service.findPreviewModules(), ["mod"]);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    { projectDir: "mod", modulePath: ":mod" },
+                ]);
             }),
         );
 
@@ -469,8 +519,8 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 assert.deepStrictEqual(service.findPreviewModules(), [
-                    "app",
-                    "lib",
+                    { projectDir: "app", modulePath: ":app" },
+                    { projectDir: "lib", modulePath: ":lib" },
                 ]);
             }),
         );
@@ -504,8 +554,8 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 assert.deepStrictEqual(service.findPreviewModules(), [
-                    "samples/cmp",
-                    "samples/wear",
+                    { projectDir: "samples/cmp", modulePath: ":samples:cmp" },
+                    { projectDir: "samples/wear", modulePath: ":samples:wear" },
                 ]);
             }),
         );
@@ -522,11 +572,14 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(
+                assert.deepStrictEqual(
                     service.resolveModule(
                         path.join(dir, "sample-android", "src", "Foo.kt"),
                     ),
-                    "sample-android",
+                    {
+                        projectDir: "sample-android",
+                        modulePath: ":sample-android",
+                    },
                 );
             }),
         );
@@ -554,7 +607,7 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(
+                assert.deepStrictEqual(
                     service.resolveModule(
                         path.join(
                             dir,
@@ -568,7 +621,10 @@ describe("GradleService", () => {
                             "Foo.kt",
                         ),
                     ),
-                    "samples/wear",
+                    {
+                        projectDir: "samples/wear",
+                        modulePath: ":samples:wear",
+                    },
                 );
             }),
         );
@@ -589,18 +645,96 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                assert.strictEqual(
+                assert.deepStrictEqual(
                     service.resolveModule(
                         path.join(dir, "foo", "bar", "src", "Foo.kt"),
                     ),
-                    "foo/bar",
+                    { projectDir: "foo/bar", modulePath: ":foo:bar" },
                 );
-                assert.strictEqual(
+                assert.deepStrictEqual(
                     service.resolveModule(
                         path.join(dir, "foo", "src", "Foo.kt"),
                     ),
-                    "foo",
+                    { projectDir: "foo", modulePath: ":foo" },
                 );
+            }),
+        );
+
+        it(
+            "returns the marker's canonical modulePath when projectDir is reassigned (androidx-mini layout)",
+            withTempDir((dir, api) => {
+                // Mirrors the AndroidX-style settings.gradle.kts that maps
+                // a deep filesystem path to a flatter Gradle project path —
+                // e.g. `androidx/wear/compose/remote/remote-material3/samples`
+                // hosting `:wear:compose:remote:remote-material3-samples`.
+                const projectDir = path.join(
+                    dir,
+                    "androidx",
+                    "wear",
+                    "compose",
+                    "remote",
+                    "remote-material3",
+                    "samples",
+                );
+                const markerDir = path.join(
+                    projectDir,
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    JSON.stringify({
+                        schema: "compose-preview-applied/v1",
+                        modulePath:
+                            ":wear:compose:remote:remote-material3-samples",
+                        moduleName: "remote-material3-samples",
+                        pluginVersion: "0.10.5",
+                    }),
+                );
+
+                const service = new GradleService(dir, api);
+                const expected = {
+                    projectDir:
+                        "androidx/wear/compose/remote/remote-material3/samples",
+                    modulePath: ":wear:compose:remote:remote-material3-samples",
+                };
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    expected,
+                ]);
+                assert.deepStrictEqual(
+                    service.resolveModule(
+                        path.join(projectDir, "src", "main", "Foo.kt"),
+                    ),
+                    expected,
+                );
+            }),
+        );
+
+        it(
+            "falls back to projectDir-derived modulePath when applied.json is malformed",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle.kts"),
+                    'plugins { id("ee.schimke.composeai.preview") }',
+                );
+                const markerDir = path.join(
+                    dir,
+                    "lib",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(markerDir, { recursive: true });
+                fs.writeFileSync(
+                    path.join(markerDir, "applied.json"),
+                    "{ not json",
+                );
+
+                const service = new GradleService(dir, api);
+                assert.deepStrictEqual(service.findPreviewModules(), [
+                    { projectDir: "lib", modulePath: ":lib" },
+                ]);
             }),
         );
     });
@@ -636,7 +770,10 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews("mod");
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
 
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
@@ -678,7 +815,10 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews("samples/wear");
+                await service.discoverPreviews({
+                    projectDir: "samples/wear",
+                    modulePath: ":samples:wear",
+                });
 
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
@@ -713,8 +853,14 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews("mod");
-                await service.discoverPreviews("mod");
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
 
                 // Second call hit cache — only one Gradle invocation
                 assert.strictEqual(api.runCalls.length, 1);
@@ -747,7 +893,10 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 // Prime the cache via a discoverPreviews invocation.
-                await service.discoverPreviews("mod");
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
                     api.runCalls[0].taskName,
@@ -755,7 +904,10 @@ describe("GradleService", () => {
                 );
 
                 // compileOnly runs a different task and invalidates the cache.
-                await service.compileOnly("mod");
+                await service.compileOnly({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
                 assert.strictEqual(api.runCalls.length, 2);
                 assert.strictEqual(
                     api.runCalls[1].taskName,
@@ -763,7 +915,10 @@ describe("GradleService", () => {
                 );
 
                 // Cache was dropped, so the next discoverPreviews calls Gradle again.
-                await service.discoverPreviews("mod");
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
                 assert.strictEqual(api.runCalls.length, 3);
                 assert.strictEqual(
                     api.runCalls[2].taskName,
@@ -797,9 +952,18 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews("mod");
-                service.invalidateCache("mod");
-                await service.discoverPreviews("mod");
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                service.invalidateCache({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                await service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
 
                 assert.strictEqual(api.runCalls.length, 2);
             }),
@@ -812,7 +976,10 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews("mod"),
+                    service.discoverPreviews({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    }),
                     /Gradle task .* failed/,
                 );
             }),
@@ -829,7 +996,10 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews("mod"),
+                    service.discoverPreviews({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    }),
                     (err: unknown) => {
                         assert.ok(
                             err instanceof TaskCancelledError,
@@ -851,7 +1021,10 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews("mod"),
+                    service.discoverPreviews({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    }),
                     (err: unknown) => {
                         assert.ok(
                             err instanceof JdkImageError,
@@ -874,7 +1047,9 @@ describe("GradleService", () => {
             withTempDir(async (dir, api) => {
                 const service = new GradleService(dir, api);
                 // Start a task but don't await — simulate running
-                service.discoverPreviews("mod").catch(() => {}); // swallow error
+                service
+                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .catch(() => {}); // swallow error
                 await new Promise((resolve) => setTimeout(resolve, 10));
 
                 await service.cancel();
@@ -910,9 +1085,14 @@ describe("GradleService", () => {
                 const service = new GradleService(dir, heldApi);
 
                 const bootstrap = service
-                    .runDaemonBootstrap("mod")
+                    .runDaemonBootstrap({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    })
                     .catch(() => {});
-                const render = service.discoverPreviews("mod").catch(() => {});
+                const render = service
+                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .catch(() => {});
                 // Yield enough turns for both runTask invocations to be
                 // recorded in activeKeys.
                 await new Promise((resolve) => setImmediate(resolve));

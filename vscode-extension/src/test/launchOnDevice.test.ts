@@ -253,12 +253,18 @@ describe("collectAndroidApplicationModules", () => {
             );
 
             const got = collectAndroidApplicationModules(dir, [
-                "samples/app",
-                "samples/lib",
-                "samples/cmp",
+                { projectDir: "samples/app", modulePath: ":samples:app" },
+                { projectDir: "samples/lib", modulePath: ":samples:lib" },
+                { projectDir: "samples/cmp", modulePath: ":samples:cmp" },
             ]);
             assert.deepStrictEqual(got, [
-                { module: "samples/app", applicationId: "com.example.app" },
+                {
+                    module: {
+                        projectDir: "samples/app",
+                        modulePath: ":samples:app",
+                    },
+                    applicationId: "com.example.app",
+                },
             ]);
         }),
     );
@@ -278,11 +284,11 @@ describe("collectAndroidApplicationModules", () => {
                 );
             }
             const got = collectAndroidApplicationModules(dir, [
-                "z-app",
-                "a-app",
+                { projectDir: "z-app", modulePath: ":z-app" },
+                { projectDir: "a-app", modulePath: ":a-app" },
             ]);
             assert.deepStrictEqual(
-                got.map((x) => x.module),
+                got.map((x) => x.module.projectDir),
                 ["a-app", "z-app"],
             );
         }),

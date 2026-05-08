@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { ModuleInfo } from "./gradleService";
 
 // Matches a top-level Kotlin package declaration. Tolerates optional trailing
 // semicolon and leading whitespace (annotations/comments above `package` are
@@ -31,10 +32,10 @@ export function packageQualifiedSourcePath(filePath: string): string {
 export function moduleRelativeSourcePath(
     filePath: string,
     workspaceRoot: string,
-    module: string,
+    module: ModuleInfo,
 ): string {
     return normalizeSourcePath(
-        path.relative(path.join(workspaceRoot, module), filePath),
+        path.relative(path.join(workspaceRoot, module.projectDir), filePath),
     );
 }
 
@@ -45,7 +46,7 @@ function normalizeSourcePath(value: string): string {
 function sourcePathCandidates(
     filePath: string,
     workspaceRoot: string,
-    module: string,
+    module: ModuleInfo,
 ): Set<string> {
     const candidates = new Set<string>();
     candidates.add(normalizeSourcePath(packageQualifiedSourcePath(filePath)));
@@ -69,7 +70,7 @@ export function previewSourceMatches(
     previewSourceFile: string | null | undefined,
     filePath: string,
     workspaceRoot: string,
-    module: string,
+    module: ModuleInfo,
 ): boolean {
     if (!previewSourceFile) {
         return false;

@@ -13,12 +13,16 @@ export type RefreshMode = "daemon" | "gradle";
  * - `'daemon'` — the file resolves to a module. The save path skips
  *   `renderPreviews` entirely; daemon failures are surfaced as errors instead of falling back.
  * - `'gradle'` — file outside any module. Existing Gradle render path runs.
+ *
+ * Accepts the resolved module as an opaque value — only truthiness matters
+ * here. Callers pass either `ModuleInfo | null` or the raw modulePath
+ * string; both work.
  */
 export function pickRefreshModeFor(
     _filePath: string,
-    moduleId: string | null,
+    module: { readonly modulePath: string } | string | null,
 ): RefreshMode {
-    if (!moduleId) {
+    if (!module) {
         return "gradle";
     }
     return "daemon";

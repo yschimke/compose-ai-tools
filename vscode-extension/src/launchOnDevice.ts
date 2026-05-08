@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
+import { ModuleInfo } from "./gradleService";
 
 /**
  * Helpers for the "Launch on Device" panel button. This module is
@@ -211,11 +212,15 @@ export function buildPreviewActivityAmStartArgs(opts: {
  */
 export function collectAndroidApplicationModules(
     workspaceRoot: string,
-    modules: Iterable<string>,
-): Array<{ module: string; applicationId: string }> {
-    const out: Array<{ module: string; applicationId: string }> = [];
+    modules: Iterable<ModuleInfo>,
+): Array<{ module: ModuleInfo; applicationId: string }> {
+    const out: Array<{ module: ModuleInfo; applicationId: string }> = [];
     for (const module of modules) {
-        const buildFile = path.join(workspaceRoot, module, "build.gradle.kts");
+        const buildFile = path.join(
+            workspaceRoot,
+            module.projectDir,
+            "build.gradle.kts",
+        );
         let content: string;
         try {
             content = fs.readFileSync(buildFile, "utf-8");
@@ -227,6 +232,6 @@ export function collectAndroidApplicationModules(
             out.push({ module, applicationId: info.applicationId });
         }
     }
-    out.sort((a, b) => a.module.localeCompare(b.module));
+    out.sort((a, b) => a.module.modulePath.localeCompare(b.module.modulePath));
     return out;
 }

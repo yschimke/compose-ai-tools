@@ -25,15 +25,26 @@ export async function sourceFileMtime(
     }
 }
 
+/**
+ * Workspace-relative description of a Gradle module — `projectDir` locates
+ * the build directory on disk, `modulePath` is the canonical id stamped
+ * into the freshness JSON. Decoupled here so this module doesn't have to
+ * import `gradleService`.
+ */
+export interface ModuleRef {
+    readonly projectDir: string;
+    readonly modulePath: string;
+}
+
 export function renderFreshnessStampPath(
     workspaceRoot: string,
-    module: string,
+    module: ModuleRef,
     sourceFile: string,
 ): string {
     const encoded = Buffer.from(sourceFile).toString("base64url");
     return path.join(
         workspaceRoot,
-        module,
+        module.projectDir,
         "build",
         "compose-previews",
         "render-freshness",
@@ -43,7 +54,7 @@ export function renderFreshnessStampPath(
 
 export async function writeRenderFreshnessStamp(
     workspaceRoot: string,
-    module: string,
+    module: ModuleRef,
     sourceFile: string,
     previews: PreviewInfo[],
 ): Promise<void> {
@@ -54,7 +65,7 @@ export async function writeRenderFreshnessStamp(
 
     const stamp: RenderFreshnessStamp = {
         schemaVersion: STAMP_SCHEMA_VERSION,
-        module,
+        module: module.modulePath,
         sourceFile,
         sourceMtimeMs: sourceMtime,
         renderedAtMs: Date.now(),
@@ -71,7 +82,7 @@ export async function writeRenderFreshnessStamp(
 
 export async function hasFreshRenderStamp(
     workspaceRoot: string,
-    module: string,
+    module: ModuleRef,
     sourceFile: string,
     previews: PreviewInfo[],
 ): Promise<boolean> {
@@ -88,7 +99,7 @@ export async function hasFreshRenderStamp(
         const stamp = JSON.parse(raw) as Partial<RenderFreshnessStamp>;
         if (
             stamp.schemaVersion !== STAMP_SCHEMA_VERSION ||
-            stamp.module !== module ||
+            stamp.module !== module.modulePath ||
             stamp.sourceFile !== sourceFile ||
             typeof stamp.sourceMtimeMs !== "number" ||
             !Array.isArray(stamp.previewIds)
