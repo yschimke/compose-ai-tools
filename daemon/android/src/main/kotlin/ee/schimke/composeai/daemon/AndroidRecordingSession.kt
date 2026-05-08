@@ -410,13 +410,32 @@ class AndroidRecordingSession(
       if (selector == null) {
         return@RecordingScriptEventHandler unsupportedEvidence(
           event,
-          "${event.kind} requires a non-null 'selector' object to resolve the target node",
+          message =
+            "${event.kind} requires a non-null 'selector' object to resolve the target node",
+          unsupportedReason =
+            ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason(
+              code =
+                ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReasonCode
+                  .MISSING_SELECTOR,
+              actionKind = actionKind,
+              selectorJson = null,
+              useUnmergedTree = event.useUnmergedTree ?: false,
+            ),
         )
       }
       if (actionKind == "inputText" && event.inputText == null) {
         return@RecordingScriptEventHandler unsupportedEvidence(
           event,
-          "${event.kind} requires a non-null 'inputText' string",
+          message = "${event.kind} requires a non-null 'inputText' string",
+          unsupportedReason =
+            ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason(
+              code =
+                ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReasonCode
+                  .MISSING_INPUT_TEXT,
+              actionKind = actionKind,
+              selectorJson = selector.toString(),
+              useUnmergedTree = event.useUnmergedTree ?: false,
+            ),
         )
       }
       val selectorJson = selector.toString()
@@ -431,9 +450,21 @@ class AndroidRecordingSession(
       if (matched) {
         appliedEvidence(event, "uia '$actionKind' fired against selector=$selectorJson")
       } else {
+        // #874 item #2 — typed evidence shape. The bridge runs the heuristic in the same
+        // sandbox the matcher walked, so the near-match it returns is grounded against the
+        // same SemanticsOwner snapshot the dispatch saw zero / multi matches against.
+        val reason =
+          interactive.findUiAutomatorEvidence(
+            actionKind = actionKind,
+            selectorJson = selectorJson,
+            useUnmergedTree = useUnmergedTree,
+            inputText = event.inputText,
+          )
         unsupportedEvidence(
           event,
-          "no node matched selector=$selectorJson for uia '$actionKind' (or matched node didn't expose the action)",
+          message =
+            "no node matched selector=$selectorJson for uia '$actionKind' (or matched node didn't expose the action)",
+          unsupportedReason = reason,
         )
       }
     }

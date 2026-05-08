@@ -281,6 +281,40 @@ class AndroidInteractiveSessionTest {
           false,
           matched,
         )
+
+        // #874 item #2 — after a miss, the recording-session handler asks the bridge to
+        // compute structured evidence so the response carries the matched-count + closest
+        // near-match node. Verify the round-trip end-to-end through the same held-rule loop
+        // the dispatch ran against.
+        val reason =
+          session.findUiAutomatorEvidence(
+            actionKind = "click",
+            selectorJson = """{"text":"NoSuchLabel"}""",
+            useUnmergedTree = false,
+            inputText = null,
+          )
+        assertNotNull(
+          "findUiAutomatorEvidence must return a structured reason after a miss",
+          reason,
+        )
+        assertEquals(
+          ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReasonCode.NO_MATCH,
+          reason!!.code,
+        )
+        assertEquals(0, reason.matchCount)
+        assertEquals("click", reason.actionKind)
+        // ClickableToggleSquare exposes Modifier.clickable, so the heuristic must surface it
+        // as the near-match — agents see "you matched 0 nodes; here's the actionable node
+        // you might have meant" without re-rendering.
+        assertNotNull(
+          "the held composition has an actionable node; the heuristic must surface it",
+          reason.nearMatch,
+        )
+        assertTrue(
+          "near-match must expose the click action so the agent sees that fixing the selector " +
+            "will let the dispatch fire — got actions=${reason.nearMatch!!.actions}",
+          "click" in reason.nearMatch!!.actions,
+        )
       } finally {
         session.close()
       }

@@ -1775,6 +1775,22 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.FindUiAutomatorEvidence -> {
+                  try {
+                    val reason =
+                      UiAutomatorEvidence.compute(
+                        rule = rule,
+                        actionKind = cmd.actionKind,
+                        selectorJson = cmd.selectorJson,
+                        useUnmergedTree = cmd.useUnmergedTree,
+                      )
+                    cmd.replyReason.set(reason)
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.DispatchLifecycle -> {
                   try {
                     val applied = performLifecycleTransition(rule, cmd)

@@ -1323,6 +1323,13 @@ data class RecordingScriptEvidence(
   val lifecycleEvent: String? = null,
   val tags: List<String> = emptyList(),
   val message: String? = null,
+  /**
+   * Typed companion to [message] for unsupported `uia.*` dispatches (#874 item #2). When present,
+   * carries the structured cause + closest near-match node so agents can iterate on selectors
+   * without re-rendering. `null` for non-uia events and for applied uia dispatches — agents that
+   * pre-date this field keep reading [message] and ignore [unsupportedReason].
+   */
+  val unsupportedReason: UiAutomatorUnsupportedReason? = null,
 )
 
 /**
