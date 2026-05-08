@@ -2778,29 +2778,44 @@ async function refresh(
         return "no-module";
     }
 
-    // Cancel any in-flight refresh
-    const wasInFlight = pendingRefresh !== null;
-    const previousRefreshKey = pendingRefreshKey;
-    pendingRefresh?.abort();
-    const abort = new AbortController();
-    pendingRefresh = abort;
-    // Cleared until we resolve the scope and reach the start-log gate;
-    // early-return paths (no-module, gated) leave it null so a later
-    // refresh with the same args still gets a start log.
-    pendingRefreshKey = null;
-
     // The panel is always scoped to exactly one Kotlin source file. If no
     // suitable file is available (webview has focus → activeTextEditor is
     // undefined, build script, Log/Output pane has focus) the panel shows the
     // empty state rather than falling through to an ambiguous multi-file view.
     // Picks, in priority: caller > active editor > any visible Kotlin editor >
     // last-scoped file. See resolveScopeFile for the full chain.
+    //
+    // Resolved up-front (before the abort below) so we can detect a redundant
+    // call against an in-flight refresh with the same args and bail without
+    // disrupting Gradle.
     const { file: activeFile, source: scopeSource } =
         resolveScopeFile(forFilePath);
     const module =
         activeFile && isPreviewSourceFile(activeFile)
             ? gradleService.resolveModule(activeFile)
             : null;
+
+    // Coalesce identical concurrent refreshes. Activation, panel restore, and
+    // editor-focus events can each schedule the same refresh within ~100ms;
+    // aborting + restarting Gradle for each one wedges the build into a
+    // "Build cancelled." loop where no render ever finishes. The in-flight
+    // refresh will produce the same result this caller wants, so let it run.
+    if (activeFile && module && pendingRefresh !== null) {
+        const incomingKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
+        if (pendingRefreshKey === incomingKey) {
+            return "cancelled";
+        }
+    }
+
+    // Cancel any in-flight refresh (different args — superseded)
+    pendingRefresh?.abort();
+    const abort = new AbortController();
+    pendingRefresh = abort;
+    // Cleared until we reach the start-log gate; early-return paths
+    // (no-module, gated) leave it null so a later refresh with the same args
+    // still runs.
+    pendingRefreshKey = null;
+
     if (!activeFile || !module) {
         logLine(
             `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource})`,
@@ -2823,14 +2838,10 @@ async function refresh(
     if (currentScopeFile && currentScopeFile !== activeFile) {
         clearHeavyRefreshOptIns();
     }
-    const refreshKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
-    const sameAsInFlight = wasInFlight && previousRefreshKey === refreshKey;
-    pendingRefreshKey = refreshKey;
-    if (!sameAsInFlight) {
-        logLine(
-            `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module.modulePath}`,
-        );
-    }
+    pendingRefreshKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
+    logLine(
+        `start forceRender=${forceRender} file=${path.basename(activeFile)} (${scopeSource}) module=${module.modulePath}`,
+    );
 
     // LSP gate. Saves a 5–30 s round-trip through compileKotlin when the
     // user is mid-typo-fix — the active file's diagnostics already tell us
