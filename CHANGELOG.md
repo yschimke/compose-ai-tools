@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.7](https://github.com/yschimke/compose-ai-tools/compare/v0.10.6...v0.10.7) (2026-05-08)
+
+
+### Bug Fixes
+
+* **vscode:** coalesce identical concurrent refresh calls instead of aborting Gradle ([#963](https://github.com/yschimke/compose-ai-tools/issues/963)) ([ac58146](https://github.com/yschimke/compose-ai-tools/commit/ac581462c0244acab44b42ce4bf40c201783b1dd))
+* **vscode:** suppress duplicate refresh logs and collapse blank-line gaps ([#961](https://github.com/yschimke/compose-ai-tools/issues/961)) ([58fdc57](https://github.com/yschimke/compose-ai-tools/commit/58fdc579b8f065b2644c095655c6de478a7128ce))
+
 ## [0.10.6](https://github.com/yschimke/compose-ai-tools/compare/v0.10.5...v0.10.6) (2026-05-08)
 
 
