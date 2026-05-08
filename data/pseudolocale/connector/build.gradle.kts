@@ -22,7 +22,10 @@ plugins {
   alias(libs.plugins.tapmoc)
 }
 
-android { namespace = "ee.schimke.composeai.data.pseudolocale.connector" }
+android {
+  namespace = "ee.schimke.composeai.data.pseudolocale.connector"
+  testOptions { unitTests { isIncludeAndroidResources = true } }
+}
 
 dependencies {
   api(project(":data-pseudolocale-core"))
@@ -31,6 +34,11 @@ dependencies {
   api(project(":data-render-compose"))
 
   testImplementation(libs.junit)
+  // Robolectric-driven span-preservation test for `PseudolocaleResources`: real `SpannableString`
+  // construction needs an Android runtime, and `Resources(AssetManager, ...)` needs an initialised
+  // app to pull from. The test reaches the application via
+  // `RuntimeEnvironment.getApplication()` so we don't need a separate `androidx.test.core` dep.
+  testImplementation(libs.robolectric)
 }
 
 mavenPublishing {

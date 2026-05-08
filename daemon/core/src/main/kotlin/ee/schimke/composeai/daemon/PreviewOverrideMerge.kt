@@ -48,20 +48,49 @@ data class MergedPreviewOverrides(
   val focus: FocusOverride?,
 ) {
   /**
-   * Project the merged overrides down to a [PreviewOverrides] bag that only carries
-   * extension-driven fields (no size / density / locale, since those are applied directly by the
-   * renderer). Returns `null` when no extension-driven override is set so the renderer can skip the
-   * data-extension pipeline entirely.
+   * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
+   * extensions consume. Returns `null` when no extension-driven override is set so the renderer can
+   * skip the data-extension pipeline entirely.
+   *
+   * **`localeTag` exception.** Pseudolocale handling (`en-XA` / `ar-XB`) is in two halves: the
+   * renderer rewrites the qualifier directly, but the around-composable wrap that pseudolocalises
+   * `Resources.getText` (Android) / flips `LocalLayoutDirection` (Desktop) is driven by
+   * `PseudolocalePreviewOverrideExtension`, which inspects `localeTag`. So when the caller set
+   * *only* `localeTag = "en-XA"` we still need to flow the bag through the planner pipeline;
+   * without this, locale-only overrides ran the qualifier rewrite but never installed the
+   * around-composable, leaving strings un-pseudolocalised.
    */
   fun toExtensionOverrides(): PreviewOverrides? {
-    if (material3Theme == null && wallpaper == null && ambient == null && focus == null) return null
+    val isPseudolocale = isPseudolocaleTag(localeTag)
+    if (
+      material3Theme == null &&
+        wallpaper == null &&
+        ambient == null &&
+        focus == null &&
+        !isPseudolocale
+    ) {
+      return null
+    }
     return PreviewOverrides(
       material3Theme = material3Theme,
       wallpaper = wallpaper,
       ambient = ambient,
       focus = focus,
+      localeTag = if (isPseudolocale) localeTag else null,
     )
   }
+}
+
+/**
+ * Hard-coded duplicate of `Pseudolocale.fromTag(...) != null`. Inlined here so `:daemon:core` (the
+ * protocol module) doesn't take a dependency on `:data-pseudolocale-core` just to gate the bag
+ * projection in [MergedPreviewOverrides.toExtensionOverrides]. If new pseudolocale tags ever land,
+ * keep this list in sync with the `Pseudolocale` enum's `tag` values.
+ */
+private fun isPseudolocaleTag(tag: String?): Boolean {
+  if (tag.isNullOrBlank()) return false
+  val normalized = tag.replace('_', '-').lowercase()
+  return normalized == "en-xa" || normalized == "ar-xb"
 }
 
 /**
