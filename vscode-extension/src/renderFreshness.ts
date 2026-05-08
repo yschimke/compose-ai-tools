@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { PreviewInfo } from "./types";
@@ -41,14 +42,19 @@ export function renderFreshnessStampPath(
     module: ModuleRef,
     sourceFile: string,
 ): string {
-    const encoded = Buffer.from(sourceFile).toString("base64url");
+    const hash = crypto
+        .createHash("sha256")
+        .update(sourceFile)
+        .digest("hex")
+        .slice(0, 16);
+    const base = path.basename(sourceFile);
     return path.join(
         workspaceRoot,
         module.projectDir,
         "build",
         "compose-previews",
         "render-freshness",
-        `${encoded}.json`,
+        `${base}-${hash}.json`,
     );
 }
 
