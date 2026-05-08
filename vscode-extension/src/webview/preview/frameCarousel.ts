@@ -21,6 +21,7 @@
 
 import { mimeFor } from "./cardData";
 import { buildErrorPanel } from "./errorPanel";
+import { buildFrameControls, updateFrameIndicator } from "./frameCarouselDom";
 import {
     attachInteractiveInputHandlers,
     type InteractiveInputConfig,
@@ -62,51 +63,11 @@ export class FrameCarouselController {
      * post-mount state.
      */
     buildControls(card: HTMLElement): HTMLElement {
-        const bar = document.createElement("div");
-        bar.className = "frame-controls";
-
-        const prev = document.createElement("button");
-        prev.className = "icon-button frame-prev";
-        prev.setAttribute("aria-label", "Previous capture");
-        prev.title = "Previous capture";
-        prev.innerHTML =
-            '<i class="codicon codicon-chevron-left" aria-hidden="true"></i>';
-        prev.addEventListener("click", () => this.step(card, -1));
-
-        const indicator = document.createElement("span");
-        indicator.className = "frame-indicator";
-        indicator.setAttribute("aria-live", "polite");
-
-        const next = document.createElement("button");
-        next.className = "icon-button frame-next";
-        next.setAttribute("aria-label", "Next capture");
-        next.title = "Next capture";
-        next.innerHTML =
-            '<i class="codicon codicon-chevron-right" aria-hidden="true"></i>';
-        next.addEventListener("click", () => this.step(card, 1));
-
-        bar.appendChild(prev);
-        bar.appendChild(indicator);
-        bar.appendChild(next);
-
-        // Arrow keys when the carousel has focus. Stop propagation so
-        // the document-level focus-mode nav doesn't also advance the card.
-        bar.tabIndex = 0;
-        bar.addEventListener("keydown", (e) => {
-            if (e.key === "ArrowLeft") {
-                this.step(card, -1);
-                e.preventDefault();
-                e.stopPropagation();
-            } else if (e.key === "ArrowRight") {
-                this.step(card, 1);
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        });
-
-        // Seed indicator text so it's not blank before any image arrives.
-        requestAnimationFrame(() => this.updateIndicator(card));
-        return bar;
+        return buildFrameControls(
+            card,
+            (c, d) => this.step(c, d),
+            (c) => requestAnimationFrame(() => this.updateIndicator(c)),
+        );
     }
 
     /**
@@ -117,19 +78,9 @@ export class FrameCarouselController {
      * module updates the indicator itself after `step` / `show`.
      */
     updateIndicator(card: HTMLElement): void {
-        const indicator = card.querySelector<HTMLElement>(".frame-indicator");
-        const prevBtn = card.querySelector<HTMLButtonElement>(".frame-prev");
-        const nextBtn = card.querySelector<HTMLButtonElement>(".frame-next");
-        if (!indicator) return;
         const previewId = card.dataset.previewId ?? "";
         const caps = previewStore.getState().cardCaptures.get(previewId);
-        if (!caps) return;
-        const idx = parseInt(card.dataset.currentIndex || "0", 10);
-        const capture = caps[idx];
-        const label = capture && capture.label ? capture.label : "—";
-        indicator.textContent = idx + 1 + " / " + caps.length + " · " + label;
-        if (prevBtn) prevBtn.disabled = idx === 0;
-        if (nextBtn) nextBtn.disabled = idx === caps.length - 1;
+        updateFrameIndicator(card, caps);
     }
 
     private step(card: HTMLElement, delta: number): void {
