@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Reject commit messages that contain agent-attribution spam or that don't
+# follow Conventional Commits. Install with `scripts/install-git-hooks.sh`.
+
+set -euo pipefail
+
+msg_file="$1"
+
+# Strip git's comment lines (those starting with '#') before inspecting.
+msg_body="$(grep -v '^#' "$msg_file" || true)"
+
+# Allow auto-generated messages (merge, revert, fixup!, squash!) through
+# untouched — they're produced by git itself and not authored prose.
+first_line="$(printf '%s\n' "$msg_body" | sed -n '1{/^$/d;p;q;}')"
+case "$first_line" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *)
+    exit 0
+    ;;
+esac
+
+fail() {
+  printf '\ncommit-msg hook rejected this commit:\n\n  %s\n\n' "$1" >&2
+  exit 1
+}
+
+# 1. Reject agent-attribution spam anywhere in the message.
+spam_patterns=(
+  'Co-Authored-By:[[:space:]]*Claude'
+  'noreply@anthropic\.com'
+  'claude\.ai/code'
+  'Generated with[[:space:]]+\[?Claude Code'
+  '🤖[[:space:]]*Generated with'
+  'Co-Authored-By:[[:space:]]*Codex'
+  'Co-Authored-By:[[:space:]]*ChatGPT'
+  'noreply@openai\.com'
+)
+for pattern in "${spam_patterns[@]}"; do
+  if printf '%s' "$msg_body" | grep -Eqi "$pattern"; then
+    fail "agent-attribution spam detected (pattern: $pattern). Remove it and recommit."
+  fi
+done
+
+# 2. Enforce Conventional Commits on the subject line.
+# Format: type(scope)?!?: description   (scope optional, '!' marks breaking change)
+subject="$first_line"
+if [ -z "$subject" ]; then
+  fail "empty commit message."
+fi
+
+conv_re='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([^)]+\))?!?: .+'
+if ! printf '%s' "$subject" | grep -Eq "$conv_re"; then
+  fail "subject must follow Conventional Commits, e.g. 'fix(scope): message'.
+Allowed types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.
+Got: $subject"
+fi
+
+exit 0
