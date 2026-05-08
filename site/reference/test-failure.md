@@ -21,6 +21,7 @@ animation state, and a redacted snapshot summary.
 | Modules | `:data-render-core` (published) · `:data-render-connector` |
 | Render mode | failed render |
 | Cost | low |
+| Token usage | ~195 tok per query (`test/failure` ~680 chars). See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Availability | fetch-only after `renderFailed` |
 | Platforms | Android · Desktop · shared |

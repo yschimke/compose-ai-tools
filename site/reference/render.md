@@ -20,6 +20,7 @@ background.
 | Modules | `:data-render-core` (published) · `:data-render-connector` · `:data-render-compose` |
 | Render mode | default · live |
 | Cost | low |
+| Token usage | ~50 tok inline per kind; +~1.5 k per `render/deviceClip` / `render/deviceBackground` PNG read. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline (JSON) · path (PNG for clip / background) |
 | Platforms | Android · Desktop · shared |
 

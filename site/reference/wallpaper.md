@@ -20,6 +20,7 @@ algorithm Android uses for system wallpaper-driven theming
 | Modules | `:data-wallpaper-core` (published) · `:data-wallpaper-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | Inline JSON, not yet benchmarked. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Wear |
 

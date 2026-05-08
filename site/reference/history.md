@@ -19,6 +19,7 @@ entries (e.g. base render vs. PR head, or before / after a code edit).
 | Modules | `:data-history-core` (published) · `:data-history-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | Inline JSON, not yet benchmarked. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android · Desktop · shared |
 

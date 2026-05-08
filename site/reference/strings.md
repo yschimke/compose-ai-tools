@@ -19,6 +19,7 @@ locale coverage from `values*/strings.xml` (`i18n/translations`).
 | Modules | `:data-strings-core` (published) · `:data-strings-connector` |
 | Render mode | default |
 | Cost | low |
+| Token usage | ~135 tok inline (`text/strings` ~470 chars); +~1.5 k per rendered PNG read. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
 | Transport | inline |
 | Platforms | Android (i18n is Android-only) · Desktop · shared (`text/strings`) |
 
