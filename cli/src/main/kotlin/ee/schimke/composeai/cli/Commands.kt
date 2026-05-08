@@ -4,6 +4,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 import kotlinx.serialization.EncodeDefault
@@ -264,6 +265,36 @@ abstract class Command(protected val args: List<String>) {
    * cached on first call.
    */
   protected val brief: Boolean = "--brief" in args
+
+  /**
+   * Sanctioned escape hatch when an agent thinks `:renderAllPreviews` is serving a stale render.
+   * Set via `--force=<reason>`; threaded into Gradle as `--rerun-tasks` so every input task
+   * re-executes regardless of UP-TO-DATE. **Never** runs `:clean` and **never** touches
+   * `build/classes/` — agents that delete class files directly are exactly the failure mode we're
+   * giving an alternative to. Each use is logged to stderr with a pointer to issue #924, where
+   * agents are asked to report the freshness gap that made them reach for it.
+   */
+  protected val forceReason: String? = args.flagValue("--force")?.takeIf { it.isNotBlank() }
+
+  private val forceNoticePrinted = AtomicBoolean(false)
+
+  /**
+   * Build the gradle-side argument list for a render-pipeline task, prepending `--rerun-tasks` when
+   * [forceReason] is set so the build re-executes even if Gradle's UP-TO-DATE check would skip it.
+   * Emits a one-line stderr notice the first time it's called per process so the agent (and the
+   * human reading their transcript) can see the reason and the tracking-issue link.
+   */
+  protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
+    val reason = forceReason ?: return extra
+    if (forceNoticePrinted.compareAndSet(false, true)) {
+      System.err.println(
+        "compose-preview --force: reason='$reason' — passing --rerun-tasks. " +
+          "Please report on https://github.com/yschimke/compose-ai-tools/issues/924 " +
+          "(do not delete build/classes/ — that's what this flag exists to replace)."
+      )
+    }
+    return listOf("--rerun-tasks") + extra
+  }
 
   abstract fun run()
 
@@ -787,7 +818,8 @@ class ShowCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
 
   override fun run() {
-    val outcome = renderAllModules(silenceStdout = jsonOutput)
+    val outcome =
+      renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     if (!outcome.buildOk) {
       System.err.println("Render failed")
       System.out.flush()
@@ -926,7 +958,7 @@ class RenderCommand(args: List<String>) : Command(args) {
       val modules = resolveModules(gradle)
       val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
 
-      if (!runGradle(gradle, *tasks)) {
+      if (!runGradle(gradle, *tasks, arguments = gradleArgsWithForce())) {
         reportRenderFailures(gradle)
         exitProcess(2)
       }
@@ -989,7 +1021,7 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
   private val failOn: String? = args.flagValue("--fail-on")
 
   override fun run() {
-    val gradleArguments =
+    val a11yArgs =
       if (forceEnable) {
         listOf(
           "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
@@ -998,7 +1030,8 @@ class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) 
       } else {
         emptyList()
       }
-    val outcome = renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArguments)
+    val outcome =
+      renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce(a11yArgs))
 
     val enabledModules = outcome.manifests.filter { it.second.accessibilityReport != null }
     if (enabledModules.isEmpty()) {

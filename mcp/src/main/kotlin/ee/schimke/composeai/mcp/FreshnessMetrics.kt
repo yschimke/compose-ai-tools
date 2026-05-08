@@ -10,7 +10,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * Counters surfaced via the `status` MCP tool. Three buckets:
+ * Counters surfaced via the `status` MCP tool. Four buckets:
  *
  * 1. **Probe outcomes** — every call to `ensureSourceFreshBeforeRender` lands in exactly one of
  *    these buckets, so an operator can see the rate of "actually changed" vs "unchanged" vs
@@ -24,6 +24,10 @@ import kotlinx.serialization.json.putJsonObject
  *    despite no source change (non-deterministic — points at clock-reading composables, daemon
  *    classloader bugs, or build-output drift). Recent non-deterministic URIs are kept in a small
  *    ring buffer so the operator can spot offending previews.
+ * 4. **Forces** — every `render_preview.force` call. Bumped from
+ *    `DaemonMcpServer.invalidateClasspathForForce`; the recent-reasons ring buffer is what an
+ *    operator pastes into a comment on issue #924 when reporting the gap that made the agent reach
+ *    for the escape hatch.
  */
 class FreshnessMetrics {
 
@@ -57,12 +61,24 @@ class FreshnessMetrics {
   val samplingDeterministic = AtomicLong()
   val samplingNondeterministic = AtomicLong()
 
+  // Force counters — bumped by `render_preview` when an agent passed `force.reason`. Each call here
+  // is an agent telling us our freshness logic missed an edit; the goal is for this to stay near
+  // zero. See https://github.com/yschimke/compose-ai-tools/issues/924.
+  val forcesUsed = AtomicLong()
+
   /**
    * Last-seen timestamp for previews observed to render non-deterministically. Insertion-ordered;
    * the oldest entry is evicted past [MAX_RECENT_NONDETERMINISTIC]. Synchronised because the
    * sampling thread and the status-tool thread both touch it.
    */
   private val recentNondeterministic = LinkedHashMap<String, Long>()
+
+  /**
+   * Recent `render_preview.force.reason` strings, paired with the URI they fired against.
+   * Insertion-ordered; oldest evicted past [MAX_RECENT_FORCES]. Surfaced via `status` so an
+   * operator can see why agents reached for the escape hatch and link the report on issue #924.
+   */
+  private val recentForces = ArrayDeque<ForceRecord>()
 
   @Synchronized
   fun recordNondeterministic(uri: String) {
@@ -76,6 +92,17 @@ class FreshnessMetrics {
 
   @Synchronized
   fun snapshotNondeterministic(): Map<String, Long> = LinkedHashMap(recentNondeterministic)
+
+  @Synchronized
+  fun recordForce(uri: String, reason: String) {
+    forcesUsed.incrementAndGet()
+    recentForces.addLast(ForceRecord(uri = uri, reason = reason, atMs = System.currentTimeMillis()))
+    while (recentForces.size > MAX_RECENT_FORCES) recentForces.removeFirst()
+  }
+
+  @Synchronized fun snapshotForces(): List<ForceRecord> = recentForces.toList()
+
+  data class ForceRecord(val uri: String, val reason: String, val atMs: Long)
 
   fun toJson(): JsonObject = buildJsonObject {
     putJsonObject("probes") {
@@ -115,9 +142,24 @@ class FreshnessMetrics {
         }
       }
     }
+    putJsonObject("forces") {
+      put("used", JsonPrimitive(forcesUsed.get()))
+      putJsonArray("recent") {
+        snapshotForces().forEach { record ->
+          add(
+            buildJsonObject {
+              put("uri", record.uri)
+              put("reason", record.reason)
+              put("atMs", JsonPrimitive(record.atMs))
+            }
+          )
+        }
+      }
+    }
   }
 
   companion object {
     private const val MAX_RECENT_NONDETERMINISTIC = 32
+    private const val MAX_RECENT_FORCES = 16
   }
 }

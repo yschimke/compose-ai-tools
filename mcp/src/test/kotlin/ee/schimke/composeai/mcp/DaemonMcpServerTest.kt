@@ -3026,6 +3026,123 @@ class DaemonMcpServerTest {
   }
 
   // -------------------------------------------------------------------------
+  // `render_preview.force` — sanctioned escape hatch for stale renders.
+  // Issue #924 tracks reports; the field exists to take `rm -rf build/classes/`
+  // off the table for agents who'd otherwise reach for it.
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun `render_preview with force forwards fileChanged classpath before renderNow`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    val moduleDir = tmp.newFolder("workspace", "module")
+    val sourceFile = moduleDir.resolve("src/main/kotlin/com/example/Preview.kt")
+    sourceFile.parentFile.mkdirs()
+    sourceFile.writeText("@Preview fun Red() {}")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId, sourceFile = "src/main/kotlin/com/example/Preview.kt")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("force-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        putJsonObject("force") { put("reason", "edit to Preview.kt didn't reflect") }
+      },
+      timeoutMs = 10_000,
+    )
+
+    val fileChanged = daemon.fileChanges.poll(2_000, TimeUnit.MILLISECONDS)
+    assertWithMessage("force must forward fileChanged before renderNow")
+      .that(fileChanged)
+      .isNotNull()
+    assertThat(fileChanged!!["kind"]?.jsonPrimitive?.contentOrNull).isEqualTo("classpath")
+    assertThat(fileChanged["changeType"]?.jsonPrimitive?.contentOrNull).isEqualTo("modified")
+    // Path defaults to the catalogued source file when present.
+    assertThat(fileChanged["path"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("src/main/kotlin/com/example/Preview.kt")
+
+    assertThat(daemon.renderRequests.poll(2_000, TimeUnit.MILLISECONDS))
+      .isEqualTo(listOf(previewId))
+  }
+
+  @Test
+  fun `render_preview rejects force without a non-empty reason`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    warmDaemonFor(workspaceId, ":module")
+
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val missingReason =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("force") {}
+        },
+      )
+    assertThat(missingReason.firstTextContent()).contains("'force' requires a non-empty 'reason'")
+
+    val blankReason =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("force") { put("reason", "   ") }
+        },
+      )
+    assertThat(blankReason.firstTextContent()).contains("'force' requires a non-empty 'reason'")
+  }
+
+  @Test
+  fun `force usage bumps forces metric and surfaces the reason via status`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47)
+    val pngFile = tmp.newFile("force-metric.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        putJsonObject("force") { put("reason", "agent reached for rm -rf — caught by linter") }
+      },
+      timeoutMs = 10_000,
+    )
+
+    val statusResp = client.callTool("status", buildJsonObject {})
+    val payload = json.parseToJsonElement(statusResp.firstTextContent()).jsonObject
+    val forces = payload["freshness"]?.jsonObject?.get("forces")?.jsonObject!!
+    assertThat(forces["used"]?.jsonPrimitive?.content).isEqualTo("1")
+    val recent = forces["recent"]!!.jsonArray
+    assertThat(recent).hasSize(1)
+    val first = recent[0].jsonObject
+    assertThat(first["uri"]?.jsonPrimitive?.contentOrNull).isEqualTo(uri)
+    assertThat(first["reason"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("agent reached for rm -rf — caught by linter")
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 
