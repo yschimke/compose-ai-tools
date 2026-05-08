@@ -220,7 +220,13 @@ export class LiveStateController {
         this.postLiveCommand(previewId, plan.turnOnTarget);
         this.applyLiveBadge();
         this.cfg.applyInteractiveButtonState();
-        this.cfg.renderInspector(card);
+        // The focus inspector is a focus-mode-only panel — refreshing it from a
+        // grid-layout click would un-hide the Inspect surface (data extensions,
+        // legends, reports) on top of the grid. Only repaint when the inspector
+        // is actually showing.
+        if (this.cfg.inFocus()) {
+            this.cfg.renderInspector(card);
+        }
     }
 
     /** Single-click-to-LIVE entry point from the in-card image click handler.
