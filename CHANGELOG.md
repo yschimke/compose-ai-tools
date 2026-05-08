@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.3](https://github.com/yschimke/compose-ai-tools/compare/v0.10.2...v0.10.3) (2026-05-08)
+
+
+### Features
+
+* **mcp:** add enable_extensions tool + use it from agent-audit script ([#935](https://github.com/yschimke/compose-ai-tools/issues/935)) ([559251c](https://github.com/yschimke/compose-ai-tools/commit/559251c36c43d46aff88d3990213595af6ad517c))
+
 ## [0.10.2](https://github.com/yschimke/compose-ai-tools/compare/v0.10.1...v0.10.2) (2026-05-08)
 
 
