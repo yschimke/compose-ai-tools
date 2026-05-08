@@ -1,5 +1,9 @@
 # compose-ai-tools
 
+**[Documentation](https://yschimke.github.io/compose-ai-tools/)** —
+install, VS Code Marketplace, and one-page-per-product reference for
+each data extension.
+
 Render `@Preview` composables to PNG outside Android Studio, so AI coding
 agents can see what they're changing. Works with Jetpack Compose (Android,
 via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
@@ -91,6 +95,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 
 ## More
 
+- [Documentation site](https://yschimke.github.io/compose-ai-tools/) — installation, VS Code Marketplace, and the per-product data-extension reference.
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure, plugin configuration.
 - [CI install action](.github/actions/install/README.md) — pin the CLI on `$PATH` in any GitHub Actions job, with version-catalog + Renovate recipes.
 - [Cloud sandbox setup](skills/compose-preview/design/CLAUDE_CLOUD.md) — Claude Code on the web, network allowlist.
