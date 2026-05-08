@@ -20,6 +20,20 @@ common stale state. Treat its output as authoritative; do not run
 
 In particular:
 
+- **Do not delete `build/classes/...` or `build/intermediates/...`.** Some
+  agent loops have been observed reaching for `rm -rf` (or `./gradlew clean`)
+  when a render looks stale. Don't. The sanctioned escape hatch is the
+  `force` field on `render_preview`:
+  ```json
+  { "uri": "compose-preview://...", "force": { "reason": "edit to Foo.kt didn't reflect" } }
+  ```
+  It forwards `fileChanged({kind:"classpath"})` to every replica before
+  rendering, dropping the daemon's user classloader — same effect as
+  invalidating the bytecode, without touching `build/`. Every use bumps a
+  `forces.used` counter and is logged. **Report each use** on
+  [issue #924](https://github.com/yschimke/compose-ai-tools/issues/924)
+  with the URI, reason, and the edit that didn't land — those reports are
+  how the freshness logic gets fixed.
 - **Do not re-run `mcp install`** to recover from a perceived hang, a stale
   render, or a dependency bump. `install` is a one-time bootstrap; the only
   conditions that warrant re-running it are the ones `mcp doctor` flags as
@@ -132,9 +146,11 @@ for the full table) cover the rest:
   view (e.g. the agent invoked the Edit tool from a different process). The
   daemon's classloader-swap fast path picks up bytecode changes without a
   full reboot.
-- `render_preview(uri, overrides?)` — force-render bypassing cache. Use
-  `overrides` to flip device, locale, fontScale, uiMode, orientation, or
-  density per call without editing the `@Preview` annotation.
+- `render_preview(uri, overrides?, force?)` — render bypassing the in-memory
+  render cache. Use `overrides` to flip device, locale, fontScale, uiMode,
+  orientation, or density per call without editing the `@Preview` annotation.
+  `force = { reason }` is the sanctioned escape hatch for stale renders —
+  see the "do not delete `build/classes/`" note above.
 - `history_list` / `history_diff` — proxy the daemon's history feature for
   comparing rendered output across runs.
 - `list_data_products` / `get_preview_data` / `subscribe_preview_data` —

@@ -936,7 +936,11 @@ class DaemonMcpServer(
       ),
       ToolDef(
         name = "render_preview",
-        description = "Force-render a preview by URI, bypassing any cache. Returns the PNG inline.",
+        description =
+          "Render a preview by URI, bypassing the in-memory render cache. Returns the PNG inline. " +
+            "Pass `force={reason}` only when the freshness probe missed a real edit (this should be rare); " +
+            "report each use on https://github.com/yschimke/compose-ai-tools/issues/924. " +
+            "Do NOT delete `build/classes/...` or run `./gradlew clean` to chase a stale render.",
         inputSchema =
           parseSchema(
             """
@@ -944,7 +948,8 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
-                "overrides":{"type":"object","description":"Optional per-call display overrides."}
+                "overrides":{"type":"object","description":"Optional per-call display overrides."},
+                "force":{"type":"object","description":"Sanctioned escape hatch when the freshness probe missed an edit. Forwards fileChanged({kind:\"classpath\"}) before rendering, dropping the daemon's user classloader. Each use is logged + counted; please report on issue #924.","properties":{"reason":{"type":"string","description":"Human-readable reason for needing force (required)."}},"required":["reason"]}
               },
               "required":["uri"]
             }
@@ -1059,10 +1064,17 @@ class DaemonMcpServer(
       ToolDef(
         name = "render_preview",
         description =
-          "Force-render a preview by URI, bypassing any cache. Returns the rendered PNG inline. " +
-            "Optional `overrides` apply per-call display-property overrides (size, density, " +
+          "Render a preview by URI, bypassing the in-memory render cache. Returns the rendered PNG " +
+            "inline. Optional `overrides` apply per-call display-property overrides (size, density, " +
             "locale, fontScale, uiMode, orientation, device, inspectionMode) — see PROTOCOL.md " +
-            "§ 5 (`renderNow.overrides`).",
+            "§ 5 (`renderNow.overrides`). " +
+            "Optional `force={reason}` is the sanctioned escape hatch for when the freshness " +
+            "probe missed a real edit — it forwards a `fileChanged({kind:\"classpath\"})` to every " +
+            "replica before rendering, dropping the daemon's user classloader. Use of `force` is a " +
+            "freshness-logic gap; please post a comment on " +
+            "https://github.com/yschimke/compose-ai-tools/issues/924 with the URI, reason, and the " +
+            "edit that didn't land. Do NOT delete `build/classes/...` or run `./gradlew clean` to " +
+            "chase a stale render.",
         inputSchema =
           parseSchema(
             """
@@ -1094,6 +1106,14 @@ class DaemonMcpServer(
                       }
                     }
                   }
+                },
+                "force":{
+                  "type":"object",
+                  "description":"Sanctioned escape hatch for stale renders. Forwards a fileChanged({kind:\"classpath\"}) to every replica of this URI's daemon before issuing renderNow, dropping the daemon's user classloader. Each use bumps a `forces.used` counter and is logged in `recent` (see `status`). Please report on https://github.com/yschimke/compose-ai-tools/issues/924.",
+                  "properties":{
+                    "reason":{"type":"string","description":"Human-readable reason for needing force (required). Stored in the recent-forces ring buffer for debugging."}
+                  },
+                  "required":["reason"]
                 }
               },
               "required":["uri"]
@@ -1727,6 +1747,17 @@ class DaemonMcpServer(
             return errorCallToolResult("render_preview: invalid overrides: ${e.message}")
           }
       }
+    val forceReason =
+      args["force"]?.let { force ->
+        val reason =
+          (force as? JsonObject)?.get("reason")?.jsonPrimitive?.contentOrNull?.takeIf {
+            it.isNotBlank()
+          }
+            ?: return errorCallToolResult(
+              "render_preview: 'force' requires a non-empty 'reason' string"
+            )
+        reason
+      }
     if (overrides != null) {
       val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
       val violations = validateOverrides(overrides, daemon)
@@ -1734,11 +1765,41 @@ class DaemonMcpServer(
         return errorCallToolResult("render_preview: ${violations.joinToString("; ")}")
       }
     }
+    if (forceReason != null) invalidateClasspathForForce(uri, forceReason)
     return runCatching {
         val bytes = renderAndReadBytes(uri, overrides = overrides)
         pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Sanctioned classpath invalidation for `render_preview.force`. Forwards a
+   * `fileChanged({kind:"classpath"})` to every replica of the URI's daemon so the daemon's
+   * `UserClassLoaderHolder` rotates before the next `renderNow` binds. Bumps `forces.used` and
+   * keeps the reason in the recent-forces ring buffer so the operator can find it via `status`.
+   *
+   * Each call is a freshness-logic gap; report on
+   * https://github.com/yschimke/compose-ai-tools/issues/924.
+   */
+  private fun invalidateClasspathForForce(uri: PreviewUri, reason: String) {
+    val daemon = supervisor.daemonFor(uri.workspaceId, uri.modulePath)
+    // Use the catalogued source file when we have one (gives the daemon a real path to log) and
+    // fall back to a synthetic marker otherwise. The daemon doesn't gate the swap on path
+    // existence — it only cares about `kind`.
+    val path =
+      catalog[DaemonAddr(uri.workspaceId, uri.modulePath)]?.get(uri.previewFqn)?.sourceFile
+        ?: "force-render://${uri.previewFqn}"
+    daemon.allClients().forEach { client ->
+      runCatching {
+        client.fileChanged(path = path, kind = FileKind.CLASSPATH, changeType = ChangeType.MODIFIED)
+      }
+    }
+    freshnessMetrics.recordForce(uri.toUri(), reason)
+    System.err.println(
+      "render_preview.force: ${uri.toUri()} reason='$reason' — please report on " +
+        "https://github.com/yschimke/compose-ai-tools/issues/924"
+    )
   }
 
   /**

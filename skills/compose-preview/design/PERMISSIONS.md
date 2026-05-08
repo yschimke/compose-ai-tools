@@ -22,6 +22,20 @@ keep anything that publishes or mutates shared state on the prompt path.
   on `gh api repos/<owner>/<repo>/{comments,actions,contents,…}`. The
   `gh run` calls come up constantly when a render fails on the runner.
 
+**Never** (even with consent — these are the wrong tool for the job):
+
+- **`rm -rf` against `build/classes/**`, `build/intermediates/**`, or
+  `build/tmp/**`.** Agents that delete compiled output to "force" a fresh
+  render are masking a bug in the freshness probe and risk leaving the
+  module in a broken state. Use `compose-preview render --force=<reason>`
+  (CLI) or `render_preview` with `force = { reason }` (MCP) instead — both
+  go through the daemon's classloader-swap path without touching `build/`.
+  Report each use on
+  [issue #924](https://github.com/yschimke/compose-ai-tools/issues/924).
+- **`./gradlew clean`** for the same reason. `--rerun-tasks` (which the
+  CLI's `--force` flag sets for you) re-executes the render pipeline
+  without throwing away the rest of `build/`.
+
 **Require explicit consent** (publish or mutate shared state — keep on the
 prompt path):
 

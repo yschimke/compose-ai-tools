@@ -126,6 +126,10 @@ private fun printUsage() {
       --verbose, -v        Show full Gradle build output (implies --progress)
       --timeout <seconds>  Gradle build timeout (default: 300)
       --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
+      --force=<reason>     Sanctioned escape hatch when a render looks stale: passes
+                           --rerun-tasks to Gradle so every input task re-executes. Does NOT
+                           run :clean and does NOT touch build/classes/. Each use is logged
+                           with a pointer to issue #924 — please report the freshness gap.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.

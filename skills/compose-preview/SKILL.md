@@ -68,6 +68,10 @@ Options:
   --progress           Print per-task milestone/heartbeat lines to stderr
   --verbose, -v        Full Gradle build output (implies --progress)
   --timeout <seconds>  Gradle build timeout (default: 300)
+  --force=<reason>     Sanctioned escape hatch for stale renders: passes
+                       --rerun-tasks to Gradle. Does NOT run :clean and
+                       does NOT touch build/classes/. Logs the reason and
+                       points at issue #924 — please report.
 ```
 
 OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by default
