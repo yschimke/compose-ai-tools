@@ -1136,7 +1136,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews finds private and internal previews`() {
+  fun `discoverPreviews finds internal previews and skips private previews`() {
     // Teams that don't want @Preview functions to leak into their public
     // API mark them `private` (or `internal`). Kotlin compiles `private
     // fun` to JVM `private` and ClassGraph's default visibility filter
@@ -1188,6 +1188,7 @@ class DiscoveryFunctionalTest {
         .build()
 
     assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.output).contains("skipping private @Preview")
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -1197,9 +1198,8 @@ class DiscoveryFunctionalTest {
     // so we match by prefix rather than exact equality.
     val names = manifest.previews.map { it.functionName }
     assertThat(names).contains("PublicPreview")
-    assertThat(names).contains("PrivatePreview")
     assertThat(names.any { it.startsWith("InternalPreview") }).isTrue()
-    assertThat(manifest.previews).hasSize(3)
+    assertThat(manifest.previews).hasSize(2)
   }
 
   @Test
