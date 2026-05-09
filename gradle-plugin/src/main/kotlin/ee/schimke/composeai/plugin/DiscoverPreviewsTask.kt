@@ -528,6 +528,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // multi-preview expansion — the provider is the same no matter which
     // @Preview drove the fan-out.
     val previewParameter = extractPreviewParameter(method)
+    val hasUnsupportedParameters = hasUnsupportedPreviewParameters(method, previewParameter)
+    if (hasUnsupportedParameters) {
+      logger.warn(
+        "composePreview: skipping @Preview '${classInfo.name}.${method.name}' — " +
+          "method has parameter(s) without @PreviewParameter provider wiring. " +
+          "Only parameterless previews or @PreviewParameter-injected previews are supported."
+      )
+      return
+    }
 
     // Target inference is identical across every @Preview expansion on a single function — the
     // bytecode and signals don't change between (e.g.) the Light and Dark variants of a
@@ -594,6 +603,17 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         )
       }
     }
+  }
+
+  private fun hasUnsupportedPreviewParameters(
+    method: MethodInfo,
+    previewParameter: Pair<String, Int>?,
+  ): Boolean {
+    val parameterCount = method.parameterInfo?.size ?: 0
+    if (parameterCount == 0) return false
+    // Current renderer contract: preview methods are either parameterless,
+    // or take exactly one value sourced by @PreviewParameter.
+    return parameterCount != 1 || previewParameter == null
   }
 
   /**
