@@ -47,6 +47,11 @@ on:
         required: false
         type: string
         default: ""
+      base_ref:
+        description: "Optional base ref for diffing outside pull_request context (for example, main)."
+        required: false
+        type: string
+        default: ""
       codex_review_command:
         description: "Override command used when Codex API key is selected."
         required: false
@@ -113,30 +118,54 @@ jobs:
           python -m pip install "codex-cli>=0.1.0"
           codex skills install --github "$SKILL_REPO" --name compose-preview-review
 
+      - name: Resolve base ref for code diff
+        id: base-ref
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ inputs.base_ref }}" ]]; then
+            base_ref="${{ inputs.base_ref }}"
+          elif [[ -n "${{ github.base_ref }}" ]]; then
+            base_ref="${{ github.base_ref }}"
+          else
+            base_ref="main"
+          fi
+          echo "value=$base_ref" >> "$GITHUB_OUTPUT"
+
       - name: Capture PR code diff
         id: code-diff
         run: |
           set -euo pipefail
           mkdir -p review-input
-          git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}"
-          git diff --unified=0 "origin/${{ github.base_ref }}...HEAD" > review-input/code.diff
-          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > review-input/changed-files.txt
+          base_ref="${{ steps.base-ref.outputs.value }}"
+          git fetch --no-tags --prune --depth=1 origin "$base_ref"
+          git diff --unified=0 "origin/$base_ref...HEAD" > review-input/code.diff
+          git diff --name-only "origin/$base_ref...HEAD" > review-input/changed-files.txt
           {
             echo "code_diff_path=review-input/code.diff"
             echo "changed_files_path=review-input/changed-files.txt"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download preview artifacts
+      - name: Download required preview artifacts (images + metadata)
         if: ${{ inputs.preview_status == 'success' }}
+        continue-on-error: true
         uses: actions/download-artifact@95815c38cf65f0f7be28e0db867f65f0f4bb63f1 # v4.2.1
         with:
           path: review-input/previews
           merge-multiple: false
           pattern: |
             ${{ inputs.preview_images_artifact }}
+            ${{ inputs.preview_metadata_artifact }}
+
+      - name: Download optional diff artifacts (may be empty when previews are identical)
+        if: ${{ inputs.preview_status == 'success' }}
+        continue-on-error: true
+        uses: actions/download-artifact@95815c38cf65f0f7be28e0db867f65f0f4bb63f1 # v4.2.1
+        with:
+          path: review-input/previews
+          merge-multiple: false
+          pattern: |
             ${{ inputs.preview_diff_artifact }}
             ${{ inputs.preview_baseline_artifact }}
-            ${{ inputs.preview_metadata_artifact }}
 
       - name: Evaluate context readiness
         id: context
@@ -147,6 +176,8 @@ jobs:
             reason="preview workflow status was '${{ inputs.preview_status }}'"
           elif [[ ! -d review-input/previews ]]; then
             reason="preview artifacts were not downloaded"
+          elif ! find review-input/previews -type f | grep -q .; then
+            reason="preview artifacts directory was empty"
           fi
 
           if [[ -n "$reason" ]]; then
@@ -163,23 +194,30 @@ jobs:
           set -euo pipefail
           count=0
           agent=""
+          reason=""
           if [[ -n "${{ secrets.codex_api_key }}" ]]; then agent="codex"; count=$((count+1)); fi
           if [[ -n "${{ secrets.claude_api_key }}" ]]; then agent="claude"; count=$((count+1)); fi
           if [[ -n "${{ secrets.gemini_api_key }}" ]]; then agent="gemini"; count=$((count+1)); fi
 
           if [[ "$count" -eq 0 ]]; then
-            echo "::error::No AI API key configured. Provide one of codex_api_key, claude_api_key, or gemini_api_key."
-            exit 1
+            reason="no AI API key configured"
+          elif [[ "$count" -gt 1 ]]; then
+            reason="multiple AI API keys configured"
           fi
-          if [[ "$count" -gt 1 ]]; then
-            echo "::error::Multiple AI keys configured. Provide exactly one key to avoid ambiguous agent selection."
-            exit 1
+
+          if [[ -n "$reason" ]]; then
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+            echo "agent=" >> "$GITHUB_OUTPUT"
+          else
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "reason=" >> "$GITHUB_OUTPUT"
+            echo "agent=$agent" >> "$GITHUB_OUTPUT"
           fi
-          echo "agent=$agent" >> "$GITHUB_OUTPUT"
 
       - name: Run selected AI review (code + preview)
         id: ai-review
-        if: ${{ steps.context.outputs.ready == 'true' }}
+        if: ${{ steps.context.outputs.ready == 'true' && steps.select-agent.outputs.valid == 'true' }}
         env:
           CODEX_API_KEY: ${{ secrets.codex_api_key }}
           ANTHROPIC_API_KEY: ${{ secrets.claude_api_key }}
@@ -220,16 +258,16 @@ jobs:
           esac
 
       - name: Emit blocked status when context is missing
-        if: ${{ steps.context.outputs.ready != 'true' }}
+        if: ${{ steps.context.outputs.ready != 'true' || steps.select-agent.outputs.valid != 'true' }}
         run: |
           set -euo pipefail
           mkdir -p review-output
           cat > review-output/codex-review.md <<EOF
           ## AI PR Review — Blocked
 
-          AI review did not run because required preview context was unavailable.
+          AI review did not run because required review context was unavailable.
 
-          **Reason:** ${{ steps.context.outputs.reason }}
+          **Reason:** ${{ steps.context.outputs.reason || steps.select-agent.outputs.reason }}
 
           ### Missing context / blocked checks
           - Code review context: available
