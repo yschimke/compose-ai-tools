@@ -3498,7 +3498,50 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void handleSetA11yOverlay(msg.previewId, msg.enabled);
             }
             break;
+        case "setDataExtensionEnabled":
+            if (earlyFeaturesEnabled()) {
+                void handleSetDataExtensionEnabled(
+                    msg.previewId,
+                    msg.kind,
+                    msg.enabled,
+                );
+            }
+            break;
     }
+}
+
+/**
+ * Focus-inspector data-extension toggle. Routes a `(previewId, kind)`
+ * subscription through the daemon scheduler so the daemon attaches (or
+ * stops attaching) the payload on the next render. The webview already
+ * paints a "Loading…" placeholder synchronously on toggle; the next
+ * render swap (fed back through the existing data-product
+ * notifications) replaces it with the real contribution.
+ *
+ * No-op when the preview's owning module isn't known yet (panel rebuild
+ * race) or when the daemon scheduler isn't wired (Gradle-only mode) —
+ * the placeholder stays visible in those cases, which is the right UX:
+ * the user sees that nothing came back rather than the toggle silently
+ * doing nothing.
+ */
+async function handleSetDataExtensionEnabled(
+    previewId: string,
+    kind: string,
+    enabled: boolean,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleId = previewModuleMap.get(previewId);
+    if (!moduleId) {
+        return;
+    }
+    await daemonScheduler.setDataProductSubscription(
+        moduleId,
+        previewId,
+        [kind],
+        enabled,
+    );
 }
 
 /**

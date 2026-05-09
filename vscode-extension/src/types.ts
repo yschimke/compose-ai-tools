@@ -779,7 +779,29 @@ export type WebviewToExtension =
      * and tells the webview to drop the cached nodes/findings. Idempotent on
      * both sides.
      */
-    | { command: "setA11yOverlay"; previewId: string; enabled: boolean };
+    | { command: "setA11yOverlay"; previewId: string; enabled: boolean }
+    /**
+     * Focus-inspector data-extension toggle. The webview flips its local
+     * `enabled` set for [kind] (with an immediate "Loading…" placeholder
+     * if no real data is cached yet) and emits this message so the
+     * extension can `data/subscribe`/`data/unsubscribe` against the
+     * daemon for that `(previewId, kind)` pair. Subsequent renders
+     * attach the payload, the daemon pushes it as `updateA11y` /
+     * future `updateData*` notifications, and the inspector swaps the
+     * placeholder out on the next re-render. Idempotent on both sides;
+     * unknown kinds are dropped by the daemon and the placeholder
+     * stays visible until the user toggles the kind back off.
+     *
+     * Distinct from `setA11yOverlay`: that path bundles the two a11y
+     * kinds + the panel-side overlay teardown. This path is for every
+     * other daemon-backed kind and never touches a11y caches.
+     */
+    | {
+          command: "setDataExtensionEnabled";
+          previewId: string;
+          kind: string;
+          enabled: boolean;
+      };
 
 /**
  * Narrow shape the History panel reads off each sidecar JSON entry. The

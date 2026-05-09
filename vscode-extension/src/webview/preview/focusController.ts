@@ -267,7 +267,13 @@ export class FocusController {
                 previewId = visible[focusIndex].dataset.previewId || null;
             }
         }
-        if (previewId === this.config.getLastScopedPreviewId()) return;
+        const prev = this.config.getLastScopedPreviewId();
+        if (previewId === prev) return;
+        // Focus has moved: tell the inspector to drop any data-extension
+        // subscriptions it asked the daemon to attach for the previous
+        // preview. Mirrors the a11y-overlay teardown in `applyLayout` —
+        // off-screen previews aren't worth the daemon attaching data to.
+        if (prev) this.config.inspector.releasePreview(prev);
         this.config.setLastScopedPreviewId(previewId);
         // Mirror to the store so subscribed components (the upcoming
         // `<focus-controls>`, `<focus-inspector>`, etc.) react without
