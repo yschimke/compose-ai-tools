@@ -178,6 +178,9 @@ const previewModuleMap = new Map<string, ModuleInfo>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
 const firstSaveSeen = new Set<string>();
+/** Last edited preview function name per Kotlin file, captured from in-memory edits and
+ * consumed on save to prioritize that preview's refresh. */
+const lastEditedPreviewFunctionByFile = new Map<string, string>();
 /** Save-driven refresh coalescing state. See {@link enqueueSaveRefresh}. */
 let pendingSavePath: string | null = null;
 let debounceElapsed = true;
@@ -1123,6 +1126,26 @@ export async function activate(
     // away; subsequent saves coalesce through a debounced + in-flight-aware
     // queue so we never stack builds on top of each other.
     context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument((event) => {
+            const filePath = event.document.uri.fsPath;
+            if (!isPreviewSourceFile(filePath) || event.contentChanges.length === 0) {
+                return;
+            }
+            const latestLine =
+                event.contentChanges[event.contentChanges.length - 1]?.range.start.line;
+            if (latestLine !== undefined) {
+                const editedFunction = functionNameAtLine(
+                    event.document.getText(),
+                    latestLine,
+                );
+                if (editedFunction) {
+                    lastEditedPreviewFunctionByFile.set(filePath, editedFunction);
+                }
+            }
+        }),
+    );
+
+    context.subscriptions.push(
         vscode.workspace.onDidSaveTextDocument((doc) => {
             if (!isSourceFile(doc.uri.fsPath)) {
                 return;
@@ -1151,6 +1174,11 @@ export async function activate(
                 firstSaveSeen.add(doc.uri.fsPath);
                 enqueueSaveRefresh(doc.uri.fsPath);
             }
+        }),
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidCloseTextDocument((doc) => {
+            lastEditedPreviewFunctionByFile.delete(doc.uri.fsPath);
         }),
     );
 
@@ -1636,7 +1664,7 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
             ? previewsForFile(fresh, module, filePath)
             : filePreviews;
     }
-    const ids = filePreviews.map((p) => p.id);
+    const ids = prioritizeEditedPreview(filePath, filePreviews.map((p) => p.id));
     if (ids.length === 0) {
         return "accepted";
     }
@@ -1675,6 +1703,39 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         logLine(`daemon: ${String((err as Error).message ?? err)}`);
         return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
     }
+}
+
+function prioritizeEditedPreview(filePath: string, ids: string[]): string[] {
+    const editedFunction = lastEditedPreviewFunctionByFile.get(filePath);
+    if (!editedFunction || ids.length <= 1) {
+        return ids;
+    }
+    const prioritized = ids.find((id) => previewFunctionNameFromId(id) === editedFunction);
+    if (!prioritized) {
+        return ids;
+    }
+    return [prioritized, ...ids.filter((id) => id !== prioritized)];
+}
+
+function functionNameAtLine(source: string, line: number): string | null {
+    const lines = source.split(/\r?\n/);
+    const clamped = Math.max(0, Math.min(line, lines.length - 1));
+    for (let i = clamped; i >= 0; i--) {
+        const m = lines[i].match(/\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+        if (m?.[1]) {
+            return m[1];
+        }
+    }
+    return null;
+}
+
+function previewFunctionNameFromId(previewId: string): string {
+    const hash = previewId.lastIndexOf("#");
+    if (hash >= 0 && hash + 1 < previewId.length) {
+        return previewId.substring(hash + 1);
+    }
+    const dot = previewId.lastIndexOf(".");
+    return dot >= 0 ? previewId.substring(dot + 1) : previewId;
 }
 
 /**
