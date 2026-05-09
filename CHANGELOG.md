@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.10.8](https://github.com/yschimke/compose-ai-tools/compare/v0.10.7...v0.10.8) (2026-05-09)
+
+
+### Features
+
+* add reusable AI PR review workflow and cloud image-size overrides ([#982](https://github.com/yschimke/compose-ai-tools/issues/982)) ([848351f](https://github.com/yschimke/compose-ai-tools/commit/848351f60d105711b08915b59723d6fdc3409543))
+
+
+### Bug Fixes
+
+* always advertise a11y data products ([#1003](https://github.com/yschimke/compose-ai-tools/issues/1003)) ([5730bb2](https://github.com/yschimke/compose-ai-tools/commit/5730bb20e58e0203a06f25183ff753de3277eac1))
+* **build:** resolve Gradle lint warnings ([#992](https://github.com/yschimke/compose-ai-tools/issues/992)) ([1dcc321](https://github.com/yschimke/compose-ai-tools/commit/1dcc321fc9dddfbd150e273dba10330254899fb6))
+* **ci:** use canonical action pins ([#995](https://github.com/yschimke/compose-ai-tools/issues/995)) ([42ed969](https://github.com/yschimke/compose-ai-tools/commit/42ed969e7220bd263f21052890e37de2a3d3072b))
+* correct YAML indentation in codex review reusable workflow ([#983](https://github.com/yschimke/compose-ai-tools/issues/983)) ([5d6ae31](https://github.com/yschimke/compose-ai-tools/commit/5d6ae31a5e6aff484b836fe1e8e47b6fff4db13c))
+* **plugin:** discover Compose previews with compiler params ([#994](https://github.com/yschimke/compose-ai-tools/issues/994)) ([6ebe735](https://github.com/yschimke/compose-ai-tools/commit/6ebe7354505c9042b4bde2864a00b6c9dde8bfe5))
+* **plugin:** drop private @Preview methods at discovery with a warning ([#967](https://github.com/yschimke/compose-ai-tools/issues/967)) ([0790e35](https://github.com/yschimke/compose-ai-tools/commit/0790e35311b4c14947bcc2568025420488d05c64))
+* sanitize preview name suffixes for render output paths ([#991](https://github.com/yschimke/compose-ai-tools/issues/991)) ([9bc472e](https://github.com/yschimke/compose-ai-tools/commit/9bc472e6b5309cc9de16884d014408c50766b10b))
+* skip unsupported preview methods and add regression tests ([#984](https://github.com/yschimke/compose-ai-tools/issues/984)) ([0d6437e](https://github.com/yschimke/compose-ai-tools/commit/0d6437e71e3f7e13b95fb4c75576a625d65863b4))
+* unblock preview review audit checks ([#988](https://github.com/yschimke/compose-ai-tools/issues/988)) ([3286082](https://github.com/yschimke/compose-ai-tools/commit/328608261cbe764140ed4440ce2e2ed34f027c7e))
+* **vscode:** restore CI test jobs ([#993](https://github.com/yschimke/compose-ai-tools/issues/993)) ([099f485](https://github.com/yschimke/compose-ai-tools/commit/099f4859662e9996d95fe4da7f1fc7a9b15e86cd))
+* **vscode:** scope focus-inspector data extensions per preview with placeholder + background fetch ([#969](https://github.com/yschimke/compose-ai-tools/issues/969)) ([9d71dbc](https://github.com/yschimke/compose-ai-tools/commit/9d71dbc52b13ef3e406b36edc3c87a498597312b))
+* **vscode:** wire daemon data products into focus inspector reports ([#985](https://github.com/yschimke/compose-ai-tools/issues/985)) ([dd5098b](https://github.com/yschimke/compose-ai-tools/commit/dd5098b439e68c4dcc1b1f3452f99a6e38dbc43e))
+
 ## [0.10.7](https://github.com/yschimke/compose-ai-tools/compare/v0.10.6...v0.10.7) (2026-05-08)
 
 
