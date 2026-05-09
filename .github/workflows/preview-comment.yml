@@ -1,32 +1,21 @@
-name: Preview Comment
+name: Preview Comment (Legacy / Manual)
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize]
-    paths-ignore:
-      - "skills/**"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/integration.yml"
-      - ".github/workflows/preview-comment.yml"
+  workflow_dispatch:
 
-# Workflow-level: read only. Jobs that need to push renders or comment on
-# the PR widen below.
+# Legacy preview-comment flow remains supported; disabled by default in this repo to avoid duplicate PR comments.
 permissions:
   contents: read
 
 concurrency:
-  group: preview-comment-${{ github.event.pull_request.number }}
+  group: preview-comment-manual
   cancel-in-progress: true
 
 jobs:
   compare:
-    name: Compare previews
+    name: Compare previews (legacy)
     runs-on: ubuntu-latest
     permissions:
-      # preview-comment composite action appends a commit to the shared
-      # compose-preview/pr branch and upserts a PR comment with
-      # before/after images.
       contents: write
       pull-requests: write
     steps:
@@ -36,5 +25,4 @@ jobs:
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/preview-comment
         with:
-          # See preview-baselines.yml for the source-vs-release rationale.
           cli-version: source
