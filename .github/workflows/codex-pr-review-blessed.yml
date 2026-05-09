@@ -1,0 +1,99 @@
+name: Codex PR Review (Blessed)
+
+on:
+  reaction:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: codex-pr-review-blessed-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: >-
+      github.event.action == 'created' &&
+      github.event.reaction.content == 'eyes' &&
+      github.event.sender.login == github.repository_owner &&
+      github.event.issue.pull_request &&
+      !(github.event.issue.user.login == github.repository_owner || contains(fromJson(vars.AI_REVIEW_TRUSTED_AUTHORS_JSON || '[]'), github.event.issue.user.login))
+    name: Generate previews for blessed PR review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      pr_head_repository: ${{ steps.pr-head.outputs.repository }}
+      pr_head_ref: ${{ steps.pr-head.outputs.ref }}
+      pr_base_ref: ${{ steps.pr-head.outputs.base_ref }}
+    steps:
+      - name: Resolve PR head/base metadata
+        id: pr-head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+          readarray -t pr_info < <(python - <<'PY' "$pr_json"
+          import json,sys
+          d=json.loads(sys.argv[1])
+          print(d["head"]["ref"])
+          print(d["head"]["repo"]["full_name"])
+          print(d["base"]["ref"])
+          PY
+          )
+          echo "ref=${pr_info[0]}" >> "$GITHUB_OUTPUT"
+          echo "repository=${pr_info[1]}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${pr_info[2]}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ steps.pr-head.outputs.repository }}
+          ref: ${{ steps.pr-head.outputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Render Android sample previews
+        run: ./gradlew :samples:android:renderAllPreviews
+      - name: Render CMP sample previews
+        run: ./gradlew :samples:cmp:renderAllPreviews
+      - name: Upload preview images
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-images
+          path: |
+            samples/android/build/compose-previews/renders
+            samples/cmp/build/compose-previews/renders
+          if-no-files-found: warn
+      - name: Upload preview metadata
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-metadata
+          path: |
+            samples/android/build/compose-previews/**/*.json
+            samples/cmp/build/compose-previews/**/*.json
+          if-no-files-found: warn
+
+  codex-review:
+    if: ${{ needs.preview.result == 'success' }}
+    name: Codex review (blessed, preview-gated)
+    needs: [preview]
+    uses: ./.github/workflows/codex-pr-review-reusable.yml
+    with:
+      preview_status: ${{ needs.preview.result }}
+      pr_head_repository: ${{ needs.preview.outputs.pr_head_repository }}
+      pr_head_ref: ${{ needs.preview.outputs.pr_head_ref }}
+      base_ref: ${{ needs.preview.outputs.pr_base_ref }}
+      post_review_comment: true
+      strict_mode: false
+      update_pr_branch: false
+    secrets:
+      codex_api_key: ${{ secrets.CODEX_API_KEY }}
+      claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+      gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+      github_token: ${{ secrets.GITHUB_TOKEN }}

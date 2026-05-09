@@ -52,6 +52,16 @@ on:
         required: false
         type: string
         default: ""
+      pr_head_repository:
+        description: "Optional repository (owner/name) for the PR head checkout."
+        required: false
+        type: string
+        default: ""
+      pr_head_ref:
+        description: "Optional ref (branch or SHA) for the PR head checkout."
+        required: false
+        type: string
+        default: ""
       codex_review_command:
         description: "Override command used when Codex API key is selected."
         required: false
@@ -98,6 +108,9 @@ jobs:
     steps:
       - name: Checkout PR HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ inputs.pr_head_repository != '' && inputs.pr_head_repository || github.repository }}
+          ref: ${{ inputs.pr_head_ref != '' && inputs.pr_head_ref || github.sha }}
 
       - name: Setup Java 21
         uses: actions/setup-java@5ee0d849887c110cf94ae5f7d2aeb5b3f87f5f55 # v5.0.0
@@ -137,9 +150,16 @@ jobs:
           set -euo pipefail
           mkdir -p review-input
           base_ref="${{ steps.base-ref.outputs.value }}"
-          git fetch --no-tags --prune --depth=1 origin "$base_ref"
-          git diff --unified=0 "origin/$base_ref...HEAD" > review-input/code.diff
-          git diff --name-only "origin/$base_ref...HEAD" > review-input/changed-files.txt
+          base_remote="origin"
+
+          if [[ -n "${{ inputs.pr_head_repository }}" && "${{ inputs.pr_head_repository }}" != "${{ github.repository }}" ]]; then
+            base_remote="upstream-base"
+            git remote add "$base_remote" "https://github.com/${{ github.repository }}.git"
+          fi
+
+          git fetch --no-tags --prune --depth=1 "$base_remote" "$base_ref"
+          git diff --unified=0 "$base_remote/$base_ref...HEAD" > review-input/code.diff
+          git diff --name-only "$base_remote/$base_ref...HEAD" > review-input/changed-files.txt
           {
             echo "code_diff_path=review-input/code.diff"
             echo "changed_files_path=review-input/changed-files.txt"
