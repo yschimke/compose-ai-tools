@@ -67,11 +67,11 @@ runs:
     # use). The pinned tag is bumped per release by release-please.
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.10.7 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.10.7 # x-release-please-version zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
-      uses: yschimke/compose-ai-tools/.github/actions/install@v0.10.7 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.10.7 # x-release-please-version zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
