@@ -1,0 +1,91 @@
+name: Codex PR Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: codex-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: ${{ !github.event.pull_request.draft }}
+    name: Generate previews for review context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Render Android sample previews
+        id: render-android
+        continue-on-error: true
+        run: ./gradlew :samples:android:renderAllPreviews --info
+      - name: Render CMP sample previews
+        id: render-cmp
+        continue-on-error: true
+        run: ./gradlew :samples:cmp:renderAllPreviews --info
+      - name: Upload preview images
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-images
+          path: |
+            samples/android/build/compose-previews/renders
+            samples/cmp/build/compose-previews/renders
+          if-no-files-found: warn
+      - name: Upload preview metadata
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-metadata
+          path: |
+            samples/android/build/compose-previews/**/*.json
+            samples/cmp/build/compose-previews/**/*.json
+          if-no-files-found: warn
+
+      - name: Detect rendered preview context
+        id: preview-context
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+          files=(samples/android/build/compose-previews/renders/**/* samples/cmp/build/compose-previews/renders/**/* )
+          count=0
+          for f in "${files[@]}"; do
+            [[ -f "$f" ]] && count=$((count+1))
+          done
+          echo "rendered_file_count=$count" >> "$GITHUB_OUTPUT"
+          if [[ "$count" -gt 0 ]]; then
+            echo "Found $count rendered preview files; continuing with partial visual context if needed."
+          else
+            echo "No rendered preview files found."
+          fi
+
+      - name: Fail preview job only when rendering failed and no preview context exists
+        if: ${{ (steps.render-android.outcome != 'success' || steps.render-cmp.outcome != 'success') && steps.preview-context.outputs.rendered_file_count == '0' }}
+        run: |
+          echo "Preview rendering failed and no preview artifacts were generated."
+          exit 1
+
+  codex-review:
+    name: Codex review (preview-gated)
+    if: ${{ !github.event.pull_request.draft && always() }}
+    needs: [preview]
+    uses: ./.github/workflows/codex-pr-review-reusable.yml
+    with:
+      preview_status: ${{ needs.preview.result }}
+      post_review_comment: true
+      strict_mode: false
+      update_pr_branch: false
+    secrets:
+      codex_api_key: ${{ secrets.CODEX_API_KEY }}
+      claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+      gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+      github_token: ${{ secrets.GITHUB_TOKEN }}

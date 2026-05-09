@@ -588,7 +588,8 @@ abstract class Command(protected val args: List<String>) {
               .takeIf { it.isNotEmpty() }
               ?.let { module.projectDir.resolve("build/compose-previews/$it").canonicalFile }
               ?.takeIf { it.exists() }
-          val sha = pngFile?.let { previewSha256(it) }
+          val normalizedPngFile = pngFile?.let { applyImageSizeOverride(it, imageSizeOverride) }
+          val sha = normalizedPngFile?.let { previewSha256(it) }
           val stateKey = if (index == 0) p.id else "${p.id}#$index"
           if (sha != null) updated[stateKey] = sha
           val priorSha = prior[stateKey]
@@ -601,7 +602,7 @@ abstract class Command(protected val args: List<String>) {
           CaptureResult(
             advanceTimeMillis = capture.advanceTimeMillis,
             scroll = capture.scroll,
-            pngPath = pngFile?.absolutePath,
+            pngPath = normalizedPngFile?.absolutePath,
             sha256 = sha,
             changed = changed,
           )
@@ -1122,6 +1123,45 @@ internal fun a11yExitCode(buildOk: Boolean, errorCount: Int, warnCount: Int, fai
 private fun sha256(bytes: ByteArray): String {
   val md = MessageDigest.getInstance("SHA-256")
   return md.digest(bytes).joinToString("") { "%02x".format(it) }
+}
+
+
+private data class ImageSizeOverride(val maxEdgePx: Int?) {
+  companion object {
+    fun detect(env: Map<String, String> = System.getenv()): ImageSizeOverride {
+      if (!env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()) {
+        return ImageSizeOverride(maxEdgePx = 2000)
+      }
+      if (env["__CFBundleIdentifier"] == "com.google.antigravity" || !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()) {
+        return ImageSizeOverride(maxEdgePx = 3072)
+      }
+      if (!env["CODEX_SANDBOX"].isNullOrBlank() || !env["CODEX_SESSION_ID"].isNullOrBlank()) {
+        return ImageSizeOverride(maxEdgePx = 3072)
+      }
+      return ImageSizeOverride(maxEdgePx = null)
+    }
+  }
+}
+
+private fun applyImageSizeOverride(file: File, override: ImageSizeOverride): File {
+  val maxEdgePx = override.maxEdgePx ?: return file
+  val source = runCatching { ImageIO.read(file) }.getOrNull() ?: return file
+  if (source.width <= maxEdgePx && source.height <= maxEdgePx) return file
+  val scale = minOf(maxEdgePx.toDouble() / source.width, maxEdgePx.toDouble() / source.height)
+  val targetWidth = maxOf(1, kotlin.math.floor(source.width * scale).toInt())
+  val targetHeight = maxOf(1, kotlin.math.floor(source.height * scale).toInt())
+  val target = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB)
+  val g = target.createGraphics()
+  try {
+    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+    g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
+    g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+    g.drawImage(source, 0, 0, targetWidth, targetHeight, null)
+  } finally {
+    g.dispose()
+  }
+  ImageIO.write(target, "png", file)
+  return file
 }
 
 /**
