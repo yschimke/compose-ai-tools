@@ -79,6 +79,26 @@ export interface FocusInspectorConfig {
     onRequestFocusedDiff(against: "head" | "main"): void;
     onRequestLaunchOnDevice(): void;
     /**
+     * Fired when the user toggles a daemon-backed data-extension row in
+     * the bucket list (or its suggestion chip). The wiring posts a
+     * `setDataExtensionEnabled` message so the extension can
+     * subscribe/unsubscribe against the daemon for `(previewId, kind)`,
+     * which causes the next render to attach (or stop attaching) the
+     * payload. The inspector itself paints a placeholder immediately —
+     * background fetch fills the real contribution on the next render.
+     *
+     * `local/*` kinds that have their own dedicated wiring
+     * (`local/a11y/overlay`, `local/render/error`) never reach this
+     * callback — they short-circuit in `handleChipClick` /
+     * `collectPresentations` before we get here. Optional so existing
+     * tests don't have to thread a stub through every harness.
+     */
+    onToggleDataExtension?(
+        previewId: string,
+        kind: string,
+        enabled: boolean,
+    ): void;
+    /**
      * Scope key for MRU. Two previews in the same module share an MRU
      * list; switching modules resets effective ranking. Empty string
      * is a valid sentinel (treated as a single shared scope).
@@ -101,9 +121,16 @@ export interface FocusInspectorConfig {
 }
 
 export class FocusInspectorController {
-    /** Toggles the user has explicitly enabled, by `kind`. Includes
-     *  daemon-side products (subscribed) and local placeholders. */
-    private readonly enabled = new Set<string>();
+    /**
+     * Per-preview map of kinds the user has explicitly enabled in the
+     * focus inspector. Scope is intentionally per-previewId — toggling a
+     * data extension only affects the currently focused preview, never
+     * the rest of the grid (a future "apply to all" affordance would
+     * write through this map for every visible card). Keeps the daemon
+     * subscription set tight so we don't keep producing data for
+     * previews the user has navigated away from.
+     */
+    private readonly enabledByPreview = new Map<string, Set<string>>();
     /** Per-scope MRU: scope -> kinds, most-recent first. In-memory
      *  for now; persistence via `vscode.setState` is a follow-up. */
     private readonly mruByScope = new Map<string, string[]>();
@@ -175,12 +202,13 @@ export class FocusInspectorController {
         // since the autoEnabled map is sticky for the session.
         if (this.config.autoEnableCheap()) {
             const auto = this.ensureAutoEnabledSet(scope);
+            const set = this.ensureEnabledSet(previewId);
             for (const kind of suggestions) {
                 if (auto.has(kind)) continue;
                 const p = productByKind.get(kind);
                 if (!p || p.cost !== "cheap") continue;
-                if (!this.enabled.has(kind)) {
-                    this.enabled.add(kind);
+                if (!set.has(kind)) {
+                    set.add(kind);
                 }
                 auto.add(kind);
             }
@@ -270,14 +298,46 @@ export class FocusInspectorController {
     }
 
     /**
-     * Reset the per-preview product-enable Set. Called by the message
+     * Reset every per-preview product-enable Set. Called by the message
      * dispatcher on the `clearAll` / `setEarlyFeatures off` path so the
      * inspector doesn't carry stale toggles into a new module's
-     * previews.
+     * previews. Does NOT fire `onToggleDataExtension` callbacks — at
+     * this point the daemon has already been told to drop subscriptions
+     * by the same teardown path (panel close / module switch /
+     * earlyFeatures off), so an extra unsubscribe round-trip would be
+     * redundant.
      */
     clearProducts(): void {
-        this.enabled.clear();
+        this.enabledByPreview.clear();
         this.autoEnabledByScope.clear();
+    }
+
+    /**
+     * Focus is moving away from [previewId] (focus-out, focus-mode exit,
+     * or panel teardown). Unsubscribe every kind we'd asked the daemon
+     * to attach for that preview, then drop the per-preview state so a
+     * later return shows fresh checkboxes. Mirrors the a11y-overlay
+     * teardown in `FocusController.applyLayout` — once the preview is
+     * off-screen the user can't see the data anyway, so keeping the
+     * daemon producing it just wastes work.
+     *
+     * No-op when the previous focus had no enabled kinds, or when the
+     * caller hasn't wired `onToggleDataExtension` (tests typically
+     * don't).
+     */
+    releasePreview(previewId: string): void {
+        const set = this.enabledByPreview.get(previewId);
+        if (!set || set.size === 0) {
+            this.enabledByPreview.delete(previewId);
+            return;
+        }
+        const cb = this.config.onToggleDataExtension;
+        if (cb) {
+            for (const kind of set) {
+                cb(previewId, kind, false);
+            }
+        }
+        this.enabledByPreview.delete(previewId);
     }
 
     private resolveProducts(): ProductDescriptor[] {
@@ -297,17 +357,45 @@ export class FocusInspectorController {
     }
 
     private toggleProduct(kind: string): void {
-        if (this.enabled.has(kind)) {
-            this.enabled.delete(kind);
+        const previewId = this.lastCard?.dataset.previewId ?? null;
+        if (!previewId) return;
+        const set = this.ensureEnabledSet(previewId);
+        const turningOn = !set.has(kind);
+        if (turningOn) {
+            set.add(kind);
         } else {
-            this.enabled.add(kind);
+            set.delete(kind);
         }
         const scope = this.config.getScope();
         const cur = this.getMru(scope);
         const next = bumpMru(cur, kind);
         this.mruByScope.set(scope, next);
         this.config.saveMru(scope, next);
+        // Background fetch: tell the extension to subscribe/unsubscribe
+        // against the daemon for this (previewId, kind) pair so the next
+        // render attaches (or stops attaching) the payload. Skip kinds
+        // that have their own dedicated wiring — `local/a11y/overlay`
+        // routes through `setA11yOverlay` (handled in `handleChipClick`),
+        // and other `local/*` kinds are panel-side only. Re-rendering
+        // below paints a placeholder right away so the user sees the
+        // toggle take effect even before the daemon answers.
+        if (!kind.startsWith("local/") && this.config.onToggleDataExtension) {
+            this.config.onToggleDataExtension(previewId, kind, turningOn);
+        }
         if (this.lastCard) this.render(this.lastCard);
+    }
+
+    private ensureEnabledSet(previewId: string): Set<string> {
+        let set = this.enabledByPreview.get(previewId);
+        if (!set) {
+            set = new Set();
+            this.enabledByPreview.set(previewId, set);
+        }
+        return set;
+    }
+
+    private enabledKindsFor(previewId: string): ReadonlySet<string> {
+        return this.enabledByPreview.get(previewId) ?? EMPTY_KIND_SET;
     }
 
     /**
@@ -587,12 +675,31 @@ export class FocusInspectorController {
                 out.push({ kind: "local/render/error", presentation });
             }
         }
-        for (const kind of this.enabled) {
+        const productByKind = new Map(
+            this.resolveProducts().map((p) => [p.kind, p]),
+        );
+        const enabled = this.enabledKindsFor(previewId);
+        for (const kind of enabled) {
             const presenter = getPresenter(kind);
-            if (!presenter) continue;
-            const presentation = presenter(ctx);
-            if (!presentation) continue;
-            out.push({ kind, presentation });
+            const presentation = presenter ? presenter(ctx) : null;
+            if (presentation) {
+                out.push({ kind, presentation });
+                continue;
+            }
+            // Toggle-on must always paint *something* so the user sees
+            // their click take effect even before the daemon answers.
+            // When the registered presenter (or the missing-presenter
+            // case) yields nothing, fall back to a "Loading…" report
+            // keyed off the descriptor we resolved for the bucket list.
+            // Skip purely panel-side kinds — those either own their
+            // own UI surface (a11y overlay, render-error banner) or
+            // never produce daemon data we'd be waiting for.
+            if (kind.startsWith("local/")) continue;
+            const descriptor = productByKind.get(kind);
+            out.push({
+                kind,
+                presentation: pendingPresentation(kind, descriptor?.label),
+            });
         }
         return out;
     }
@@ -842,10 +949,11 @@ export class FocusInspectorController {
         if (kind === "local/a11y/overlay") {
             return previewId === this.config.getA11yOverlayId();
         }
+        const set = this.enabledKindsFor(previewId);
         if (kind === "compose/recomposition") {
-            return this.config.isLive(previewId) || this.enabled.has(kind);
+            return this.config.isLive(previewId) || set.has(kind);
         }
-        return this.enabled.has(kind);
+        return set.has(kind);
     }
 
     private dynamicHint(
@@ -882,6 +990,37 @@ function sectionHeader(icon: string, label: string): HTMLElement {
     span.textContent = label;
     header.appendChild(span);
     return header;
+}
+
+/**
+ * Shared empty-set sentinel returned from `enabledKindsFor` when a
+ * preview has no toggles. Avoids allocating a fresh Set on every render
+ * — the inspector re-renders on focus navigation, MRU updates, daemon
+ * pushes, and product-list changes.
+ */
+const EMPTY_KIND_SET: ReadonlySet<string> = new Set();
+
+/**
+ * Build a "Loading…" report contribution for a kind the user just
+ * enabled, when the registered presenter (or absence of one) hasn't
+ * produced anything yet. Keeps the data section non-empty between the
+ * click and the next render so the toggle visibly takes effect.
+ */
+function pendingPresentation(
+    kind: string,
+    label: string | undefined,
+): ProductPresentation {
+    const body = document.createElement("div");
+    body.className = "focus-report-empty";
+    const display = label && label.length > 0 ? label : kind;
+    body.textContent = `Waiting for daemon to attach ${display}…`;
+    return {
+        report: {
+            title: display,
+            summary: "Loading",
+            body,
+        },
+    };
 }
 
 function actionButton(

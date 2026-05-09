@@ -407,6 +407,14 @@ export class PreviewApp extends LitElement {
                 focusController.requestFocusedDiff(against),
             onRequestLaunchOnDevice: () =>
                 focusController.requestLaunchOnDevice(),
+            onToggleDataExtension: (previewId, kind, enabled) => {
+                vscode.postMessage({
+                    command: "setDataExtensionEnabled",
+                    previewId,
+                    kind,
+                    enabled,
+                });
+            },
             getScope: () => previewStore.getState().moduleDir,
             loadMru: (scope) => state.focusMruByScope?.[scope] ?? [],
             saveMru: (scope, mru) => {
