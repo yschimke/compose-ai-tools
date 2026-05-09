@@ -6,6 +6,7 @@ import io.github.classgraph.AnnotationInfo
 import io.github.classgraph.ClassGraph
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
+import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
 import kotlinx.serialization.json.Json
@@ -104,6 +105,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // `expect`/`actual` collapses onto the same `androidx...` class name on
     // every target we care about.
     private const val PREVIEW_PARAMETER_FQN = "androidx.compose.ui.tooling.preview.PreviewParameter"
+    private const val COMPOSER_FQN = "androidx.compose.runtime.Composer"
 
     internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
 
@@ -609,12 +611,26 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     method: MethodInfo,
     previewParameter: Pair<String, Int>?,
   ): Boolean {
-    val parameterCount = method.parameterInfo?.size ?: 0
-    if (parameterCount == 0) return false
+    val userParameters = userPreviewParameters(method)
+    if (userParameters.isEmpty()) return false
     // Current renderer contract: preview methods are either parameterless,
     // or take exactly one value sourced by @PreviewParameter.
-    return parameterCount != 1 || previewParameter == null
+    return userParameters.size != 1 || previewParameter == null
   }
+
+  private fun userPreviewParameters(method: MethodInfo): List<MethodParameterInfo> {
+    val params = method.parameterInfo?.toList() ?: return emptyList()
+    val composerIndex = params.indexOfLast { it.typeDescriptorName() == COMPOSER_FQN }
+    if (composerIndex == -1) return params
+    val compilerMaskParams = params.drop(composerIndex + 1)
+    if (compilerMaskParams.all { it.typeDescriptorName() == "int" }) {
+      return params.take(composerIndex)
+    }
+    return params
+  }
+
+  private fun MethodParameterInfo.typeDescriptorName(): String =
+    getTypeDescriptor().toString().removePrefix("class ")
 
   /**
    * Scans [method]'s parameters for `@PreviewParameter`. Returns the provider FQN + `limit` of the
