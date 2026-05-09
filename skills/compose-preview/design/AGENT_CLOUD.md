@@ -21,6 +21,7 @@ Allow these hosts (plus each platform's default trusted registries):
 - `repo.gradle.org`
 - `services.gradle.org`
 - `api.adoptium.net`
+- `api.foojay.io`
 - `api.github.com`
 - `jogamp.org`
 - `jitpack.io`
@@ -36,6 +37,7 @@ Recommended rationale:
 | `repo.gradle.org` | Gradle libraries/tooling artifacts |
 | `services.gradle.org` | Gradle distributions |
 | `api.adoptium.net` | JDK/toolchain provisioning APIs |
+| `api.foojay.io` | Java distro metadata used by Gradle toolchain resolution |
 | `api.github.com` | GitHub API usage by tooling/scripts |
 | `jogamp.org` | Native/graphics dependencies occasionally pulled by desktop stacks |
 | `jitpack.io` | Projects published through JitPack |
@@ -124,4 +126,3 @@ Optional Android verification:
 - **Claude cloud:** choose Custom network mode and include trusted defaults.
 - **Codex cloud containers:** ensure outbound network policy allows the host list above; some environments default to restricted egress.
 - **Gemini sandboxes:** verify workspace policy includes Google Maven + Gradle hosts; downloadable fonts often fail first when blocked.
-
