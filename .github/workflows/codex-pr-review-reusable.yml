@@ -52,6 +52,16 @@ on:
         required: false
         type: string
         default: ""
+      pr_head_repository:
+        description: "Optional repository (owner/name) for the PR head checkout."
+        required: false
+        type: string
+        default: ""
+      pr_head_ref:
+        description: "Optional ref (branch or SHA) for the PR head checkout."
+        required: false
+        type: string
+        default: ""
       codex_review_command:
         description: "Override command used when Codex API key is selected."
         required: false
@@ -98,6 +108,9 @@ jobs:
     steps:
       - name: Checkout PR HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ inputs.pr_head_repository != '' && inputs.pr_head_repository || github.repository }}
+          ref: ${{ inputs.pr_head_ref != '' && inputs.pr_head_ref || github.sha }}
 
       - name: Setup Java 21
         uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0

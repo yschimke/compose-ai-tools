@@ -26,8 +26,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      pr_head_repository: ${{ steps.pr-head.outputs.repository }}
+      pr_head_ref: ${{ steps.pr-head.outputs.ref }}
+      pr_base_ref: ${{ steps.pr-head.outputs.base_ref }}
     steps:
-      - name: Resolve PR head ref
+      - name: Resolve PR head/base metadata
         id: pr-head
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -36,15 +40,21 @@ jobs:
         run: |
           set -euo pipefail
           pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
-          head_ref=$(python - <<'PY' "$pr_json"
-import json,sys
-print(json.loads(sys.argv[1])["head"]["ref"])
-PY
-)
-          echo "ref=$head_ref" >> "$GITHUB_OUTPUT"
+          readarray -t pr_info < <(python - <<'PY' "$pr_json"
+          import json,sys
+          d=json.loads(sys.argv[1])
+          print(d["head"]["ref"])
+          print(d["head"]["repo"]["full_name"])
+          print(d["base"]["ref"])
+          PY
+          )
+          echo "ref=${pr_info[0]}" >> "$GITHUB_OUTPUT"
+          echo "repository=${pr_info[1]}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${pr_info[2]}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          repository: ${{ steps.pr-head.outputs.repository }}
           ref: ${{ steps.pr-head.outputs.ref }}
           persist-credentials: false
       - uses: ./.github/actions/setup
@@ -76,6 +86,9 @@ PY
     uses: ./.github/workflows/codex-pr-review-reusable.yml
     with:
       preview_status: ${{ needs.preview.result }}
+      pr_head_repository: ${{ needs.preview.outputs.pr_head_repository }}
+      pr_head_ref: ${{ needs.preview.outputs.pr_head_ref }}
+      base_ref: ${{ needs.preview.outputs.pr_base_ref }}
       post_review_comment: true
       strict_mode: false
       update_pr_branch: false
