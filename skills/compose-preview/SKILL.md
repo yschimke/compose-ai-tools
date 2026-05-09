@@ -12,7 +12,7 @@ Desktop (via `ImageComposeScene` + Skia).
 Maintained at [github.com/yschimke/compose-ai-tools](https://github.com/yschimke/compose-ai-tools)
 under `skills/compose-preview/`. The bundle this documentation ships with is
 <!-- x-release-please-start-version -->
-**v0.10.7**.
+**v0.10.8**.
 <!-- x-release-please-end -->
 Run `compose-preview --version` to check the installed bundle, `compose-preview doctor`
 to compare against the latest release (warns when the local copy trails), and
@@ -156,7 +156,7 @@ Apply the plugin in `<module>/build.gradle.kts`:
 <!-- x-release-please-start-version -->
 ```kotlin
 plugins {
-    id("ee.schimke.composeai.preview") version "0.10.7"
+    id("ee.schimke.composeai.preview") version "0.10.8"
 }
 
 composePreview {
