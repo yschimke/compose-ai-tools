@@ -388,23 +388,25 @@ fun main(args: Array<String>) {
                 TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex),
             )
           )
-          if (a11yPreviewExtensionEnabled) {
-            add(
-              Extension(
-                id = "a11y",
-                displayName = "Accessibility",
-                dataProductRegistry = AccessibilityDataProductRegistry(rootDir = dataRoot),
-                dataExtensionDescriptors = AccessibilityRecordingScriptEvents.descriptors,
-                previewExtensionDescriptors =
+          add(
+            Extension(
+              id = "a11y",
+              displayName = "Accessibility",
+              dataProductRegistry = AccessibilityDataProductRegistry(rootDir = dataRoot),
+              dataExtensionDescriptors = AccessibilityRecordingScriptEvents.descriptors,
+              previewExtensionDescriptors =
+                if (a11yPreviewExtensionEnabled) {
                   listOf(
                     AccessibilitySemanticsPreviewExtension.descriptor,
                     AtfChecksPreviewExtension.descriptor,
                     AccessibilityOverlayPreviewExtension.descriptor,
                     AccessibilityAnnotatedPreviewExtension.descriptor,
-                  ),
-              )
+                  )
+                } else {
+                  emptyList()
+                },
             )
-          }
+          )
           // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.) plus the
           // `uia/hierarchy` data product (#874). Always wired on the Android backend — the
           // dispatch path lives in RobolectricHost and the hierarchy producer ride along on
