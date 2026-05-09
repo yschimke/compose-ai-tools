@@ -1,0 +1,342 @@
+name: AI PR Review (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      preview_status:
+        description: "Result of upstream preview job/workflow (e.g. success, failure, cancelled, skipped)."
+        required: true
+        type: string
+      preview_images_artifact:
+        description: "Artifact name containing preview images from the PR/head build."
+        required: false
+        type: string
+        default: compose-preview-images
+      preview_diff_artifact:
+        description: "Artifact name containing generated visual diff images."
+        required: false
+        type: string
+        default: compose-preview-diff-images
+      preview_baseline_artifact:
+        description: "Artifact name containing baseline preview images and/or metadata."
+        required: false
+        type: string
+        default: compose-preview-baseline
+      preview_metadata_artifact:
+        description: "Artifact name containing preview index/metadata JSON files."
+        required: false
+        type: string
+        default: compose-preview-metadata
+      strict_mode:
+        description: "Fail the workflow when the selected agent reports blocking visual regressions."
+        required: false
+        type: boolean
+        default: false
+      post_review_comment:
+        description: "Whether to post a PR comment with review output."
+        required: false
+        type: boolean
+        default: true
+      update_pr_branch:
+        description: "Attempt to commit review artifacts back to the PR branch; skips with warning when not permitted."
+        required: false
+        type: boolean
+        default: true
+      code_diff_paths:
+        description: "Optional newline-delimited path globs for code review focus."
+        required: false
+        type: string
+        default: ""
+      codex_review_command:
+        description: "Override command used when Codex API key is selected."
+        required: false
+        type: string
+        default: ""
+      claude_review_command:
+        description: "Override command used when Claude API key is selected."
+        required: false
+        type: string
+        default: ""
+      gemini_review_command:
+        description: "Override command used when Gemini API key is selected."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      codex_api_key:
+        description: "Optional API key used by Codex review tooling."
+        required: false
+      claude_api_key:
+        description: "Optional API key used by Claude review tooling."
+        required: false
+      gemini_api_key:
+        description: "Optional API key used by Gemini review tooling."
+        required: false
+      github_token:
+        description: "Token used to read artifacts and write PR comments/checks."
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  ai-pr-review:
+    name: AI PR review
+    runs-on: ubuntu-latest
+    outputs:
+      selected_agent: ${{ steps.select-agent.outputs.agent }}
+      review_status: ${{ steps.set-status.outputs.review_status }}
+      blocking_findings: ${{ steps.set-status.outputs.blocking_findings }}
+      review_summary_path: ${{ steps.set-status.outputs.review_summary_path }}
+    steps:
+      - name: Checkout PR HEAD
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Java 21
+        uses: actions/setup-java@5ee0d849887c110cf94ae5f7d2aeb5b3f87f5f55 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@e6f91f20b04f46f0ad197610f2d91b7f68e0f04c # v3.2.2
+
+      - name: Install compose-preview-review skill (Codex)
+        if: ${{ secrets.codex_api_key != '' }}
+        env:
+          SKILL_REPO: yschimke/compose-ai-tools
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "codex-cli>=0.1.0"
+          codex skills install --github "$SKILL_REPO" --name compose-preview-review
+
+      - name: Capture PR code diff
+        id: code-diff
+        run: |
+          set -euo pipefail
+          mkdir -p review-input
+          git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}"
+          git diff --unified=0 "origin/${{ github.base_ref }}...HEAD" > review-input/code.diff
+          git diff --name-only "origin/${{ github.base_ref }}...HEAD" > review-input/changed-files.txt
+          {
+            echo "code_diff_path=review-input/code.diff"
+            echo "changed_files_path=review-input/changed-files.txt"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download preview artifacts
+        if: ${{ inputs.preview_status == 'success' }}
+        uses: actions/download-artifact@95815c38cf65f0f7be28e0db867f65f0f4bb63f1 # v4.2.1
+        with:
+          path: review-input/previews
+          merge-multiple: false
+          pattern: |
+            ${{ inputs.preview_images_artifact }}
+            ${{ inputs.preview_diff_artifact }}
+            ${{ inputs.preview_baseline_artifact }}
+            ${{ inputs.preview_metadata_artifact }}
+
+      - name: Evaluate context readiness
+        id: context
+        run: |
+          set -euo pipefail
+          reason=""
+          if [[ "${{ inputs.preview_status }}" != "success" ]]; then
+            reason="preview workflow status was '${{ inputs.preview_status }}'"
+          elif [[ ! -d review-input/previews ]]; then
+            reason="preview artifacts were not downloaded"
+          fi
+
+          if [[ -n "$reason" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "reason=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select review agent from available keys
+        id: select-agent
+        run: |
+          set -euo pipefail
+          count=0
+          agent=""
+          if [[ -n "${{ secrets.codex_api_key }}" ]]; then agent="codex"; count=$((count+1)); fi
+          if [[ -n "${{ secrets.claude_api_key }}" ]]; then agent="claude"; count=$((count+1)); fi
+          if [[ -n "${{ secrets.gemini_api_key }}" ]]; then agent="gemini"; count=$((count+1)); fi
+
+          if [[ "$count" -eq 0 ]]; then
+            echo "::error::No AI API key configured. Provide one of codex_api_key, claude_api_key, or gemini_api_key."
+            exit 1
+          fi
+          if [[ "$count" -gt 1 ]]; then
+            echo "::error::Multiple AI keys configured. Provide exactly one key to avoid ambiguous agent selection."
+            exit 1
+          fi
+          echo "agent=$agent" >> "$GITHUB_OUTPUT"
+
+      - name: Run selected AI review (code + preview)
+        id: ai-review
+        if: ${{ steps.context.outputs.ready == 'true' }}
+        env:
+          CODEX_API_KEY: ${{ secrets.codex_api_key }}
+          ANTHROPIC_API_KEY: ${{ secrets.claude_api_key }}
+          GEMINI_API_KEY: ${{ secrets.gemini_api_key }}
+        run: |
+          set -euo pipefail
+          mkdir -p review-output
+          agent="${{ steps.select-agent.outputs.agent }}"
+          case "$agent" in
+            codex)
+              if [[ -n "${{ inputs.codex_review_command }}" ]]; then
+                eval "${{ inputs.codex_review_command }}"
+              else
+                codex review \
+                  --skill compose-preview-review \
+                  --code-diff "${{ steps.code-diff.outputs.code_diff_path }}" \
+                  --changed-files "${{ steps.code-diff.outputs.changed_files_path }}" \
+                  --preview-dir review-input/previews \
+                  --focus-paths "${{ inputs.code_diff_paths }}" \
+                  --output-json review-output/codex-review.json \
+                  --output-markdown review-output/codex-review.md
+              fi
+              ;;
+            claude)
+              if [[ -z "${{ inputs.claude_review_command }}" ]]; then
+                echo "::error::claude_api_key is set but no claude_review_command was provided."
+                exit 1
+              fi
+              eval "${{ inputs.claude_review_command }}"
+              ;;
+            gemini)
+              if [[ -z "${{ inputs.gemini_review_command }}" ]]; then
+                echo "::error::gemini_api_key is set but no gemini_review_command was provided."
+                exit 1
+              fi
+              eval "${{ inputs.gemini_review_command }}"
+              ;;
+          esac
+
+      - name: Emit blocked status when context is missing
+        if: ${{ steps.context.outputs.ready != 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p review-output
+          cat > review-output/codex-review.md <<EOF
+          ## AI PR Review — Blocked
+
+          AI review did not run because required preview context was unavailable.
+
+          **Reason:** ${{ steps.context.outputs.reason }}
+
+          ### Missing context / blocked checks
+          - Code review context: available
+          - Preview review context: unavailable
+          - Visual diff checks: blocked
+          EOF
+          cat > review-output/codex-review.json <<EOF
+          {"status":"blocked","blocking_findings":0,"reason":"${{ steps.context.outputs.reason }}"}
+          EOF
+
+      - name: Optionally update PR branch with review artifacts
+        if: ${{ inputs.update_pr_branch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.github_token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "::warning::Skipping PR branch update because event is ${{ github.event_name }} (not pull_request)."
+            exit 0
+          fi
+
+          if [[ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+            echo "::warning::Skipping PR branch update for fork PR (no safe push permission)."
+            exit 0
+          fi
+
+          branch="${{ github.event.pull_request.head.ref }}"
+          if [[ -z "$branch" ]]; then
+            echo "::warning::Skipping PR branch update because PR head ref is unavailable."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p .codex/review-output
+          cp review-output/codex-review.md .codex/review-output/codex-review.md
+          cp review-output/codex-review.json .codex/review-output/codex-review.json
+          git add .codex/review-output/codex-review.md .codex/review-output/codex-review.json
+
+          if git diff --cached --quiet; then
+            echo "No PR branch update needed; review artifacts unchanged."
+            exit 0
+          fi
+
+          git commit -m "chore: update AI review artifacts"
+          if ! git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:${branch}"; then
+            echo "::warning::Unable to push AI review artifacts to PR branch (insufficient permissions or branch protection)."
+          fi
+
+      - name: Publish PR comment
+        if: ${{ inputs.post_review_comment }}
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.github_token }}
+          script: |
+            const fs = require('fs')
+            const body = fs.readFileSync('review-output/codex-review.md', 'utf8')
+            const marker = '<!-- codex-pr-review -->'
+            const fullBody = `${marker}\n${body}`
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const existing = comments.find((c) => c.body && c.body.includes(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              })
+            }
+
+      - name: Set outputs
+        id: set-status
+        run: |
+          set -euo pipefail
+          status=$(python - <<'PY'
+import json
+with open('review-output/codex-review.json', encoding='utf-8') as f:
+    data = json.load(f)
+print(data.get('status', 'unknown'))
+PY
+)
+          blocking=$(python - <<'PY'
+import json
+with open('review-output/codex-review.json', encoding='utf-8') as f:
+    data = json.load(f)
+print(int(data.get('blocking_findings', 0)))
+PY
+)
+          {
+            echo "review_status=$status"
+            echo "blocking_findings=$blocking"
+            echo "review_summary_path=review-output/codex-review.md"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enforce strict mode
+        if: ${{ inputs.strict_mode && steps.set-status.outputs.blocking_findings != '0' }}
+        run: |
+          echo "Strict mode enabled and blocking findings were reported."
+          exit 1

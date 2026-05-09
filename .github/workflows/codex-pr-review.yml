@@ -1,0 +1,59 @@
+name: Codex PR Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Generate previews for review context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Render Android sample previews
+        run: ./gradlew :samples:android:renderAllPreviews
+      - name: Render CMP sample previews
+        run: ./gradlew :samples:cmp:renderAllPreviews
+      - name: Upload preview images
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-images
+          path: |
+            samples/android/build/compose-previews/renders
+            samples/cmp/build/compose-previews/renders
+          if-no-files-found: warn
+      - name: Upload preview metadata
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: compose-preview-metadata
+          path: |
+            samples/android/build/compose-previews/**/*.json
+            samples/cmp/build/compose-previews/**/*.json
+          if-no-files-found: warn
+
+  codex-review:
+    name: Codex review (preview-gated)
+    needs: [preview]
+    uses: ./.github/workflows/codex-pr-review-reusable.yml
+    with:
+      preview_status: ${{ needs.preview.result }}
+      post_review_comment: true
+      strict_mode: false
+    secrets:
+      codex_api_key: ${{ secrets.CODEX_API_KEY }}
+      claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+      gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+      github_token: ${{ secrets.GITHUB_TOKEN }}
