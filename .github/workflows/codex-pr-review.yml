@@ -45,6 +45,7 @@ jobs:
           if-no-files-found: warn
 
   codex-review:
+    if: ${{ github.event.pull_request.user.login == github.repository_owner || contains(fromJson(vars.AI_REVIEW_TRUSTED_AUTHORS_JSON || '[]'), github.event.pull_request.user.login) }}
     name: Codex review (preview-gated)
     needs: [preview]
     uses: ./.github/workflows/codex-pr-review-reusable.yml
@@ -52,6 +53,7 @@ jobs:
       preview_status: ${{ needs.preview.result }}
       post_review_comment: true
       strict_mode: false
+      update_pr_branch: false
     secrets:
       codex_api_key: ${{ secrets.CODEX_API_KEY }}
       claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
