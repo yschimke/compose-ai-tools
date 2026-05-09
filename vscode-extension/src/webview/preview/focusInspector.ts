@@ -67,6 +67,8 @@ export interface FocusInspectorConfig {
     getA11yFindings(previewId: string): readonly AccessibilityFinding[];
     /** Latest a11y hierarchy nodes for a preview. */
     getA11yNodes(previewId: string): readonly AccessibilityNode[];
+    /** Latest daemon data product payload for preview/kind. */
+    getDataProduct?(previewId: string, kind: string): unknown;
     /** `previewId` whose a11y overlay subscription is currently on. */
     getA11yOverlayId(): string | null;
     /** Whether [previewId] is currently in the live (interactive) set. */
@@ -663,7 +665,14 @@ export class FocusInspectorController {
         findings: readonly AccessibilityFinding[],
     ): { kind: string; presentation: ProductPresentation }[] {
         const nodes = this.config.getA11yNodes(previewId);
-        const ctx: PresenterContext = { card, preview, findings, nodes };
+        const ctx: PresenterContext = {
+            card,
+            preview,
+            findings,
+            nodes,
+            data: (kind: string) =>
+                this.config.getDataProduct?.(previewId, kind),
+        };
         const out: { kind: string; presentation: ProductPresentation }[] = [];
         // The error presenter is implicit: we always invoke it so a
         // render error surfaces even when the user hasn't enabled

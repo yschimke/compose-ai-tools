@@ -541,6 +541,23 @@ export async function activate(
                         nodes: decoded.nodes ?? undefined,
                     });
                 }
+                if (panel) {
+                    const payloads = dataProducts
+                        .map((dp) => ({
+                            kind: dp.kind,
+                            payload:
+                                dp.payload ??
+                                readJsonPath(dp.path, outputChannel),
+                        }))
+                        .filter((dp) => dp.payload !== undefined);
+                    if (payloads.length > 0) {
+                        panel.postMessage({
+                            command: "updateDataProducts",
+                            previewId,
+                            dataProducts: payloads,
+                        });
+                    }
+                }
             },
             onClasspathDirty: (moduleId, detail) => {
                 outputChannel.appendLine(

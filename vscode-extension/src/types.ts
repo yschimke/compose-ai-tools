@@ -409,6 +409,11 @@ export type ExtensionToWebview =
           nodes?: AccessibilityNode[] | null;
       }
     | {
+          command: "updateDataProducts";
+          previewId: string;
+          dataProducts: { kind: string; payload: unknown }[];
+      }
+    | {
           command: "setImageError";
           previewId: string;
           captureIndex: number;

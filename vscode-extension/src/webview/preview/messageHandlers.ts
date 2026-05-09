@@ -109,6 +109,10 @@ export interface PreviewMessageContext {
         findings: readonly AccessibilityFinding[] | null | undefined,
         nodes: readonly AccessibilityNode[] | null | undefined,
     ): void;
+    updateDataProducts(
+        previewId: string,
+        dataProducts: readonly { kind: string; payload: unknown }[],
+    ): void;
     focusOnCard(card: HTMLElement): void;
 }
 
@@ -151,6 +155,9 @@ export function handleExtensionMessage(
         }
         case "updateA11y":
             ctx.applyA11yUpdate(msg.previewId, msg.findings, msg.nodes);
+            return;
+        case "updateDataProducts":
+            ctx.updateDataProducts(msg.previewId, msg.dataProducts);
             return;
         case "setModules":
             // Module selector removed from UI — module is resolved from the

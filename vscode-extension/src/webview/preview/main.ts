@@ -374,6 +374,7 @@ export class PreviewApp extends LitElement {
         let inspector!: FocusInspectorController;
         let liveState!: LiveStateController;
         let focusController!: FocusController;
+        const dataProductsByPreview = new Map<string, Map<string, unknown>>();
 
         inspector = new FocusInspectorController({
             el: focusInspector,
@@ -398,6 +399,8 @@ export class PreviewApp extends LitElement {
                     []
                 );
             },
+            getDataProduct: (previewId, kind) =>
+                dataProductsByPreview.get(previewId)?.get(kind),
             getA11yOverlayId: a11yOverlay,
             isLive: (id) => liveState.isLive(id),
             onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
@@ -702,6 +705,20 @@ export class PreviewApp extends LitElement {
             ensureNotBlank,
             applyA11yUpdate: (previewId, findings, nodes) =>
                 applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig),
+            updateDataProducts: (previewId, dataProducts) => {
+                let byKind = dataProductsByPreview.get(previewId);
+                if (!byKind) {
+                    byKind = new Map();
+                    dataProductsByPreview.set(previewId, byKind);
+                }
+                for (const dp of dataProducts) {
+                    byKind.set(dp.kind, dp.payload);
+                }
+                const focused = focusController.focusedCard();
+                if (focused?.dataset.previewId === previewId) {
+                    inspector.render(focused);
+                }
+            },
             focusOnCard,
         };
         window.addEventListener("message", (event) => {
