@@ -98,7 +98,7 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 - [Documentation site](https://yschimke.github.io/compose-ai-tools/) — installation, VS Code Marketplace, and the per-product data-extension reference.
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure, plugin configuration.
 - [CI install action](.github/actions/install/README.md) — pin the CLI on `$PATH` in any GitHub Actions job, with version-catalog + Renovate recipes.
-- [Cloud sandbox setup](skills/compose-preview/design/CLAUDE_CLOUD.md) — Claude Code on the web, network allowlist.
+- [Cloud sandbox setup](skills/compose-preview/design/AGENT_CLOUD.md) — Claude Code on the web, network allowlist.
 - [CI workflows](skills/compose-preview-review/design/CI_PREVIEWS.md) — `compose-preview/main` baselines, PR diff comments.
 - [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; consuming `-SNAPSHOT` builds.
 - [Architecture (contributor)](docs/AGENTS.md) — class-by-class map of the four-stage pipeline.
