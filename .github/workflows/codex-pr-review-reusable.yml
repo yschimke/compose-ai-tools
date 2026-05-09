@@ -100,13 +100,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup Java 21
-        uses: actions/setup-java@5ee0d849887c110cf94ae5f7d2aeb5b3f87f5f55 # v5.0.0
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@e6f91f20b04f46f0ad197610f2d91b7f68e0f04c # v3.2.2
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
       - name: Install compose-preview-review skill (Codex)
         if: ${{ secrets.codex_api_key != '' }}
@@ -148,7 +148,7 @@ jobs:
       - name: Download required preview artifacts (images + metadata)
         if: ${{ inputs.preview_status == 'success' }}
         continue-on-error: true
-        uses: actions/download-artifact@95815c38cf65f0f7be28e0db867f65f0f4bb63f1 # v4.2.1
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           path: review-input/previews
           merge-multiple: false
@@ -159,7 +159,7 @@ jobs:
       - name: Download optional diff artifacts (may be empty when previews are identical)
         if: ${{ inputs.preview_status == 'success' }}
         continue-on-error: true
-        uses: actions/download-artifact@95815c38cf65f0f7be28e0db867f65f0f4bb63f1 # v4.2.1
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         with:
           path: review-input/previews
           merge-multiple: false
