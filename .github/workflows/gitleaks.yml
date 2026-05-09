@@ -1,18 +1,19 @@
 name: gitleaks
 
-# Scans every PR and every push for accidentally-committed secrets (API keys,
-# private keys, tokens, signing material, etc). Findings fail the job so a
-# leaked secret cannot land on main without an explicit override.
+# Periodic secret scan for accidentally-committed credentials (API keys,
+# private keys, tokens, signing material, etc). This intentionally runs off
+# the PR critical path and uses the OSS CLI wrapper rather than the hosted
+# gitleaks-action license-validation path, which is noisy under installation
+# rate limits.
 #
 # Particularly important for this repo because the release/snapshot workflows
 # handle GPG signing keys and Maven Central tokens — a stray paste into a
 # commit message or source file would be exactly the kind of incident this
-# catches before merge.
+# catches on the default branch scan.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '43 5 * * 2'
   workflow_dispatch:
 
 permissions:
@@ -24,9 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          # Full history so gitleaks can scan every commit on a PR, not just HEAD.
+          # Full history so gitleaks can scan every reachable commit on main.
           fetch-depth: 0
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: gacts/gitleaks@02aceef15e73b088702bc802fa411a6d0021cf88 # v1.3.0
+        with:
+          version: 8.30.1

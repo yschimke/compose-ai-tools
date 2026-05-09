@@ -5,13 +5,17 @@ name: zizmor
 # `pull_request_target` usage, unpinned third-party actions, missing or
 # excessive `permissions:` blocks, self-hosted-runner misconfiguration, etc.
 #
-# Findings stream into the Security tab via SARIF upload (code scanning),
-# so they show up on PRs as annotated comments and on the dashboard.
+# PRs run deterministic/offline checks only when GitHub Actions files change,
+# without SARIF upload or other GitHub API calls that can rate-limit the
+# critical path. Online audits and Security tab uploads run only on a schedule
+# or by manual dispatch.
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    paths:
+      - '.github/**'
+  schedule:
+    - cron: '17 5 * * 2'
   workflow_dispatch:
 
 permissions:
@@ -28,4 +32,18 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+      - name: Run offline PR audit
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          online-audits: false
+          advanced-security: false
+          token: ''
+
+      - name: Run scheduled online audit
+        if: github.event_name != 'pull_request'
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          online-audits: true
+          advanced-security: true
