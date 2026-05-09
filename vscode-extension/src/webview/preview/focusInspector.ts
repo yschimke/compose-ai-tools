@@ -145,6 +145,7 @@ export class FocusInspectorController {
      *  `setProducts`. */
     private daemonProducts: ProductDescriptor[] | null = null;
     private suggestionsOpen = true;
+    private suggestedKinds = new Set<string>();
     private bucketOpen: Partial<Record<ProductBucket, boolean>> = {};
     private historyOpen = false;
     /** Last card we rendered. Held so `toggleProduct` can re-render
@@ -197,6 +198,9 @@ export class FocusInspectorController {
             mru: this.getMru(scope),
             available: new Set(productByKind.keys()),
         });
+        const visibleSuggestions = suggestions.slice(0, MAX_SUGGESTIONS);
+
+        this.suggestedKinds = new Set(visibleSuggestions);
 
         // Auto-enable cheap suggested kinds, once per scope per kind.
         // Keeps the suggestion chip "active" without requiring a click,
@@ -221,7 +225,7 @@ export class FocusInspectorController {
         inspect.appendChild(sectionHeader("search", "Inspect"));
         inspect.appendChild(
             this.renderSuggestionRow(
-                suggestions,
+                visibleSuggestions,
                 productByKind,
                 preview,
                 previewId,
@@ -430,7 +434,6 @@ export class FocusInspectorController {
         const summary = document.createElement("summary");
         summary.className = "focus-suggestions-summary";
         const summaryText = document.createElement("span");
-        const visibleSuggestions = suggestions.slice(0, MAX_SUGGESTIONS);
         if (visibleSuggestions.length === 0) {
             summaryText.textContent = "No suggestions for this preview";
         } else {
@@ -597,7 +600,12 @@ export class FocusInspectorController {
             const idx = mru.indexOf(kind);
             return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
         };
+        const suggestedRank = (kind: string): number =>
+            this.suggestedKinds.has(kind) ? 0 : Number.MAX_SAFE_INTEGER;
         const sorted = [...items].sort((a, b) => {
+            const sa = suggestedRank(a.kind);
+            const sb = suggestedRank(b.kind);
+            if (sa !== sb) return sa - sb;
             const ra = mruRank(a.kind);
             const rb = mruRank(b.kind);
             if (ra !== rb) return ra - rb;
@@ -631,6 +639,17 @@ export class FocusInspectorController {
         icon.className = "codicon codicon-" + p.icon;
         icon.setAttribute("aria-hidden", "true");
         option.appendChild(icon);
+        const auditBadge = this.auditBadgeFor(p, previewId, findings);
+        if (auditBadge) {
+            const badge = document.createElement("span");
+            badge.className = "focus-product-suggested-rank";
+            badge.textContent = auditBadge;
+            badge.title =
+                auditBadge === "?"
+                    ? "Audit queued"
+                    : `${auditBadge} audit finding${auditBadge === "1" ? "" : "s"}`;
+            option.appendChild(badge);
+        }
         const text = document.createElement("div");
         text.className = "focus-product-text";
         const name = document.createElement("span");
@@ -645,6 +664,27 @@ export class FocusInspectorController {
         option.appendChild(text);
         void preview;
         return option;
+    }
+
+    private auditBadgeFor(
+        p: ProductDescriptor,
+        previewId: string,
+        findings: readonly AccessibilityFinding[],
+    ): string | null {
+        if (!this.suggestedKinds.has(p.kind)) return null;
+        const isOn = this.isProductOn(p.kind, previewId);
+        if (p.kind.startsWith("a11y/") || p.kind === "local/a11y/overlay") {
+            if (findings.length > 0) return String(findings.length);
+            return isOn ? "?" : null;
+        }
+        const hint = this.dynamicHint(p, previewId, findings) ?? "";
+        const match = hint.match(/\d+/);
+        if (match) {
+            const n = Number(match[0]);
+            return n > 0 ? String(n) : null;
+        }
+        if (isOn && p.daemonBacked) return "?";
+        return null;
     }
 
     /**
@@ -805,6 +845,14 @@ export class FocusInspectorController {
                 const dot = document.createElement("span");
                 dot.className = "focus-legend-dot";
                 li.appendChild(dot);
+                const rank = this.suggestedRankByKind.get(p.kind);
+                if (rank != null) {
+                    const badge = document.createElement("span");
+                    badge.className = "focus-product-suggested-rank";
+                    badge.textContent = String(rank);
+                    badge.title = `Suggested item #${rank}`;
+                    option.appendChild(badge);
+                }
                 const text = document.createElement("div");
                 text.className = "focus-legend-text";
                 const lab = document.createElement("div");
