@@ -90,10 +90,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
-| `MainSquarePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-screenshot-test/MainPreviewsKt.MainSquarePreview_main-square.png" width="150" /> |
-| `InstanceGreen` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-screenshot-test/ScreenshotPreviews.InstanceGreen_instance-green.png" width="150" /> |
-| `InstanceRed` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-screenshot-test/ScreenshotPreviews.InstanceRed_instance-red.png" width="150" /> |
-| `ScreenshotTopLevelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-screenshot-test/ScreenshotPreviewsKt.ScreenshotTopLevelPreview_screenshotTest-toplevel.png" width="150" /> |
+| `MainSquarePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-screenshot-test/com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square.png" width="150" /> |
 
 ## samples:cmp
 
@@ -156,8 +153,4 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ButtonPreview_Devices_-_Small_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png" width="150" /> |
-| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.HelloTilePreview_Large_Round.png" width="150" /> |
-| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.HelloTilePreview_Small_Round.png" width="150" /> |
-| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.StepsTilePreview_Large_Round.png" width="150" /> |
-| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.StepsTilePreview_Small_Round.png" width="150" /> |
 

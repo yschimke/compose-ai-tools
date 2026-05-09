@@ -149,36 +149,15 @@
   "samples:android-screenshot-test/com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square": {
     "captureLabel": "",
     "functionName": "MainSquarePreview",
-    "renderBasename": "MainPreviewsKt.MainSquarePreview_main-square.png",
+    "renderBasename": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square.png",
     "sha256": "a90781a82be57f76cde772aeef416dd0b7ac8c87d5ebb451df437b8347cb7c28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroidscreenshot/MainPreviews.kt"
-  },
-  "samples:android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceGreen_instance-green": {
-    "captureLabel": "",
-    "functionName": "InstanceGreen",
-    "renderBasename": "ScreenshotPreviews.InstanceGreen_instance-green.png",
-    "sha256": "41bd24524039e08c8efb5a076235c4b46b92734fee03512eed458b74c0f84cc3",
-    "sourceFile": "src/screenshotTest/kotlin/com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
-  },
-  "samples:android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviews.InstanceRed_instance-red": {
-    "captureLabel": "",
-    "functionName": "InstanceRed",
-    "renderBasename": "ScreenshotPreviews.InstanceRed_instance-red.png",
-    "sha256": "9c217ba0f15ffbc42b90caa6abcd58d3d233e648a3b9f77854a6f16e08a4e4ff",
-    "sourceFile": "src/screenshotTest/kotlin/com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
-  },
-  "samples:android-screenshot-test/com.example.sampleandroidscreenshot.ScreenshotPreviewsKt.ScreenshotTopLevelPreview_screenshotTest-toplevel": {
-    "captureLabel": "",
-    "functionName": "ScreenshotTopLevelPreview",
-    "renderBasename": "ScreenshotPreviewsKt.ScreenshotTopLevelPreview_screenshotTest-toplevel.png",
-    "sha256": "fe32f0419a83a7c61710013774bc6be5e169b790e0120abcb640f0f20370bab4",
-    "sourceFile": "src/screenshotTest/kotlin/com/example/sampleandroidscreenshot/ScreenshotPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.AnimatedPreviewsKt.FadeInBoxAnimatedPreview": {
     "captureLabel": "",
     "functionName": "FadeInBoxAnimatedPreview",
     "renderBasename": "AnimatedPreviewsKt.FadeInBoxAnimatedPreview.gif",
-    "sha256": "760cd673bb6f452f2cb0d3d094c63152c49562843cb6218d2fb3d643f2964c68",
+    "sha256": "bc52d7ed41861ea49c1dcc6fc0467ad22ae0b033f0642a3a15c10deb610c5bb8",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AnimatedPreviews.kt"
   },
   "samples:android/com.example.sampleandroid.AnimatedPreviewsKt.RevealLabelAnimatedPreview": {
@@ -733,33 +712,5 @@
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png",
     "sha256": "db99f08046c7235f255cb810cb4d73631a5a2108f2087e0e205d148207c784d9",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
-  },
-  "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
-    "captureLabel": "",
-    "functionName": "HelloTilePreview",
-    "renderBasename": "TilePreviewsKt.HelloTilePreview_Large_Round.png",
-    "sha256": "4ce8b8a44b0562846a58bab7c91ef0e50acf68806607befaeb52d2a7a850b18a",
-    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
-  },
-  "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Small Round": {
-    "captureLabel": "",
-    "functionName": "HelloTilePreview",
-    "renderBasename": "TilePreviewsKt.HelloTilePreview_Small_Round.png",
-    "sha256": "2ed98813bb8bd197b324012ad3a361f4e8c025e3a16798b47e46808379f435c4",
-    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
-  },
-  "samples:wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Large Round": {
-    "captureLabel": "",
-    "functionName": "StepsTilePreview",
-    "renderBasename": "TilePreviewsKt.StepsTilePreview_Large_Round.png",
-    "sha256": "3d1993766d9f1463952675600e16c82f6bb3b609c6386d002c7dc30fc0e4304a",
-    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
-  },
-  "samples:wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Small Round": {
-    "captureLabel": "",
-    "functionName": "StepsTilePreview",
-    "renderBasename": "TilePreviewsKt.StepsTilePreview_Small_Round.png",
-    "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
-    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
   }
 }
