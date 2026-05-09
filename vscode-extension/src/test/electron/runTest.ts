@@ -83,6 +83,7 @@ async function main(): Promise<void> {
             "--disable-updates",
         ],
         extensionTestsEnv: {
+            ELECTRON_RUN_AS_NODE: undefined,
             COMPOSE_PREVIEW_TEST_MODE: "1",
             ...(e2eMode ? { COMPOSE_PREVIEW_E2E: "1" } : {}),
         },

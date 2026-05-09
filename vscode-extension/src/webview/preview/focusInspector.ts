@@ -419,7 +419,7 @@ export class FocusInspectorController {
     }
 
     private renderSuggestionRow(
-        suggestions: readonly string[],
+        visibleSuggestions: readonly string[],
         productByKind: ReadonlyMap<string, ProductDescriptor>,
         preview: PreviewInfo,
         previewId: string,
@@ -845,14 +845,6 @@ export class FocusInspectorController {
                 const dot = document.createElement("span");
                 dot.className = "focus-legend-dot";
                 li.appendChild(dot);
-                const rank = this.suggestedRankByKind.get(p.kind);
-                if (rank != null) {
-                    const badge = document.createElement("span");
-                    badge.className = "focus-product-suggested-rank";
-                    badge.textContent = String(rank);
-                    badge.title = `Suggested item #${rank}`;
-                    option.appendChild(badge);
-                }
                 const text = document.createElement("div");
                 text.className = "focus-legend-text";
                 const lab = document.createElement("div");
@@ -1110,7 +1102,7 @@ function actionButton(
 const BUILT_IN_PRODUCTS: ProductDescriptor[] = [
     {
         kind: "local/a11y/overlay",
-        label: "Accessibility",
+        label: "Accessibility overlay",
         icon: "eye",
         hint: "Overlay",
         cost: "expensive",

@@ -167,7 +167,7 @@
         "watch:webview": "node esbuild.webview.mjs --watch",
         "format": "prettier --write --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
         "format:check": "prettier --check --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
-        "test": "npm run compile && mocha --exit 'out/test/!(electron)/**/*.test.js' 'out/test/*.test.js'",
+        "test": "npm run compile && mocha --exit out/test/runMocha.js",
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "test:e2e": "npm run compile && COMPOSE_PREVIEW_E2E=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
