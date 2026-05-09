@@ -63,7 +63,7 @@ interface Harness {
     a11yClicks: number;
 }
 
-function makeHarness(): Harness {
+function makeHarness(findingsCount = 0, autoEnableCheap = false): Harness {
     const toggles: ToggleEvent[] = [];
     let a11yClicks = 0;
 
@@ -76,12 +76,21 @@ function makeHarness(): Harness {
     const inspector = new FocusInspectorController({
         el: container,
         earlyFeatures: () => true,
-        autoEnableCheap: () => false,
+        autoEnableCheap: () => autoEnableCheap,
         // Echo any preview id back as a synthetic PreviewInfo so a test
         // can render against several cards without each one needing to
         // be threaded through the harness factory.
-        getPreview: (id) => ({ ...samplePreview, id }),
-        getA11yFindings: () => [],
+        getPreview: (id) => ({
+            ...samplePreview,
+            id,
+            params: { ...samplePreview.params, uiMode: autoEnableCheap ? 32 : 0 },
+        }),
+        getA11yFindings: () =>
+            Array.from({ length: findingsCount }, () => ({
+                level: "ERROR",
+                type: "stub",
+                message: "stub",
+            })),
         getA11yNodes: () => [],
         getA11yOverlayId: () => null,
         isLive: () => false,
@@ -221,6 +230,45 @@ describe("focus inspector data-extension toggle", () => {
             '.focus-product-option[data-bucket="theming"] > input',
         )!;
         assert.strictEqual(themeCheckboxA2.checked, true);
+    });
+
+    it("surfaces suggested kinds first and badges audit findings count", () => {
+        const h = makeHarness(3);
+        h.inspector.render(h.card);
+        const a11yBucket = h.container.querySelector(
+            '.focus-bucket[data-bucket="accessibility"] .focus-bucket-body',
+        );
+        assert.ok(a11yBucket, "expected accessibility bucket body");
+        const rows = [
+            ...a11yBucket!.querySelectorAll<HTMLElement>(
+                ".focus-product-option",
+            ),
+        ];
+        assert.ok(rows.length > 0, "expected accessibility rows");
+        const firstName = rows[0]
+            .querySelector(".focus-product-name")
+            ?.textContent?.trim();
+        assert.strictEqual(firstName, "Accessibility overlay");
+        const badge = rows[0].querySelector<HTMLElement>(
+            ".focus-product-suggested-rank",
+        );
+        assert.ok(badge, "expected suggested rank badge on first row");
+        assert.strictEqual(badge!.textContent, "3");
+    });
+
+    it("shows '?' while a suggested audit is queued, and removes for zero findings", () => {
+        const h = makeHarness(0, true);
+        h.inspector.render(h.card);
+        const themingBucket = h.container.querySelector(
+            '.focus-bucket[data-bucket="theming"] .focus-bucket-body',
+        );
+        assert.ok(themingBucket, "expected theming bucket body");
+        const themeRow = findRowByLabel(themingBucket as HTMLElement, "Theme");
+        const badge = themeRow.querySelector<HTMLElement>(
+            ".focus-product-suggested-rank",
+        );
+        assert.ok(badge, "expected queued audit badge");
+        assert.strictEqual(badge!.textContent, "?");
     });
 
     it("releasePreview unsubscribes every kind enabled for the previous focus", () => {

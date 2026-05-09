@@ -575,6 +575,19 @@ body {
     color: var(--text-secondary);
 }
 
+.focus-product-suggested-rank {
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--vscode-font-size) - 4px);
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-button-background, #0e639c);
+}
+
 .focus-product-option[data-state="ok"] > .codicon {
     color: var(--vscode-charts-green, #89d185);
 }
