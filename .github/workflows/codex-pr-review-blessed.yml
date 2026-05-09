@@ -1,26 +1,51 @@
-name: Codex PR Review
+name: Codex PR Review (Blessed)
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  reaction:
+    types: [created]
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
 
 concurrency:
-  group: codex-pr-review-${{ github.event.pull_request.number }}
+  group: codex-pr-review-blessed-${{ github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    name: Generate previews for review context
+    if: >-
+      github.event.action == 'created' &&
+      github.event.reaction.content == 'eyes' &&
+      github.event.sender.login == github.repository_owner &&
+      github.event.issue.pull_request &&
+      !(github.event.issue.user.login == github.repository_owner || contains(fromJson(vars.AI_REVIEW_TRUSTED_AUTHORS_JSON || '[]'), github.event.issue.user.login))
+    name: Generate previews for blessed PR review
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     steps:
+      - name: Resolve PR head ref
+        id: pr-head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+          head_ref=$(python - <<'PY' "$pr_json"
+import json,sys
+print(json.loads(sys.argv[1])["head"]["ref"])
+PY
+)
+          echo "ref=$head_ref" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ steps.pr-head.outputs.ref }}
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Render Android sample previews
@@ -45,8 +70,8 @@ jobs:
           if-no-files-found: warn
 
   codex-review:
-    if: ${{ github.event.pull_request.user.login == github.repository_owner || contains(fromJson(vars.AI_REVIEW_TRUSTED_AUTHORS_JSON || '[]'), github.event.pull_request.user.login) }}
-    name: Codex review (preview-gated)
+    if: ${{ needs.preview.result == 'success' }}
+    name: Codex review (blessed, preview-gated)
     needs: [preview]
     uses: ./.github/workflows/codex-pr-review-reusable.yml
     with:
