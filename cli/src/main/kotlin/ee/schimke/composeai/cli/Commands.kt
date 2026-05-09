@@ -540,6 +540,7 @@ abstract class Command(protected val args: List<String>) {
     manifests: List<Pair<PreviewModule, PreviewManifest>>
   ): List<PreviewResult> {
     val results = mutableListOf<PreviewResult>()
+    val imageSizeOverride = ImageSizeOverride.detect()
     val a11yByKey = readAllA11yReports(manifests)
     // Track which modules had a11y enabled so we can distinguish "no
     // findings" (empty list) from "feature off" (null) in `PreviewResult`.
@@ -1125,14 +1126,18 @@ private fun sha256(bytes: ByteArray): String {
   return md.digest(bytes).joinToString("") { "%02x".format(it) }
 }
 
-
 private data class ImageSizeOverride(val maxEdgePx: Int?) {
   companion object {
     fun detect(env: Map<String, String> = System.getenv()): ImageSizeOverride {
-      if (!env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()) {
+      if (
+        !env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()
+      ) {
         return ImageSizeOverride(maxEdgePx = 2000)
       }
-      if (env["__CFBundleIdentifier"] == "com.google.antigravity" || !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()) {
+      if (
+        env["__CFBundleIdentifier"] == "com.google.antigravity" ||
+          !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()
+      ) {
         return ImageSizeOverride(maxEdgePx = 3072)
       }
       if (!env["CODEX_SANDBOX"].isNullOrBlank() || !env["CODEX_SESSION_ID"].isNullOrBlank()) {
@@ -1153,9 +1158,18 @@ private fun applyImageSizeOverride(file: File, override: ImageSizeOverride): Fil
   val target = BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB)
   val g = target.createGraphics()
   try {
-    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-    g.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
-    g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+    g.setRenderingHint(
+      java.awt.RenderingHints.KEY_INTERPOLATION,
+      java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+    )
+    g.setRenderingHint(
+      java.awt.RenderingHints.KEY_RENDERING,
+      java.awt.RenderingHints.VALUE_RENDER_QUALITY,
+    )
+    g.setRenderingHint(
+      java.awt.RenderingHints.KEY_ANTIALIASING,
+      java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+    )
     g.drawImage(source, 0, 0, targetWidth, targetHeight, null)
   } finally {
     g.dispose()
