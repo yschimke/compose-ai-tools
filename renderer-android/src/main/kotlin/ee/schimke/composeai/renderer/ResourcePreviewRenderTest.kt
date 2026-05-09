@@ -37,6 +37,7 @@ import org.robolectric.annotation.Config
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
+@Suppress("NewApi")
 class ResourcePreviewRenderTest {
 
   @Test

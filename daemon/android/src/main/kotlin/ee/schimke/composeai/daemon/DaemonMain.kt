@@ -1,4 +1,5 @@
 @file:JvmName("DaemonMain")
+@file:Suppress("NewApi")
 
 package ee.schimke.composeai.daemon
 

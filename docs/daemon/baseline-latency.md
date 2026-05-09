@@ -20,8 +20,8 @@ Toolchain pinned per target:
 
 | Target  | Plugins / runtimes                                                  |
 | ------- | ------------------------------------------------------------------- |
-| android | AGP 9.2.0, Kotlin 2.3.21, Robolectric 4.16.1 SDK 35, Compose BOM 2026.04.01 |
-| desktop | Compose Multiplatform 1.10.3, Kotlin 2.3.21, kotlin.jvm plugin       |
+| android | AGP 9.2.0, Kotlin 2.3.20, Robolectric 4.16.1 SDK 35, Compose BOM 2026.04.01 |
+| desktop | Compose Multiplatform 1.10.3, Kotlin 2.3.20, kotlin.jvm plugin       |
 
 ## Workloads
 

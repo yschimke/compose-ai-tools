@@ -47,9 +47,9 @@ import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyContextKeys
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtension
 import java.io.File
-import java.util.Base64
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import okio.ByteString.Companion.decodeBase64
 
 /**
  * Robolectric/Compose render body for the preview daemon — the per-preview inner loop that turns a
@@ -939,8 +939,7 @@ data class RenderSpec(
 
     private fun String.decodePreviewOverrides(): PreviewOverrides? =
       runCatching {
-          val bytes = Base64.getUrlDecoder().decode(this)
-          json.decodeFromString(PreviewOverrides.serializer(), bytes.toString(Charsets.UTF_8))
+          decodeBase64()?.utf8()?.let { json.decodeFromString(PreviewOverrides.serializer(), it) }
         }
         .getOrNull()
   }

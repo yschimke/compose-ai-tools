@@ -111,7 +111,7 @@ class AccessibilityAndroidFunctionalTest {
             // AGP 9.x bundles its own Kotlin compilation; the standalone
             // `org.jetbrains.kotlin.android` plugin is gone (and applying it now hard-errors).
             id("com.android.library") version "9.2.0"
-            id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
+            id("org.jetbrains.kotlin.plugin.compose") version "2.3.20"
             // Resolved through the synthetic project's `pluginManagement.repositories.mavenLocal()`
             // — the plugin itself is published there by the parent build's `functionalTestWithAndroid`
             // task. Pinning the version (rather than relying on `withPluginClasspath()`) keeps AGP and

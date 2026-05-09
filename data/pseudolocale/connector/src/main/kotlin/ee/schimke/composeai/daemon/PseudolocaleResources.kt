@@ -34,6 +34,7 @@ import ee.schimke.composeai.data.pseudolocale.Pseudolocalizer
  * the index map. Plain (non-`Spanned`) inputs still take the cheaper `transform` fast path with no
  * `SpannableStringBuilder` allocation.
  */
+@Suppress("DEPRECATION")
 internal class PseudolocaleResources(
   base: Resources,
   private val mode: Pseudolocale,

@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusDirection as ComposeFocusDirection
@@ -62,7 +63,7 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
     CompositionLocalProvider(LocalInputModeManager provides KeyboardInputModeManager) {
       val focusManager = LocalFocusManager.current
       val active by FocusController.activeFocus
-      val lastIndex = remember { mutableStateOf(-1) }
+      val lastIndex = remember { mutableIntStateOf(-1) }
       val entered = remember { mutableStateOf(false) }
       LaunchedEffect(active) {
         val cap = active ?: return@LaunchedEffect

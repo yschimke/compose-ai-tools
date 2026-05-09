@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)

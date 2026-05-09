@@ -4,7 +4,7 @@ plugins {
   id("composeai.maven-publishing")
   `java-gradle-plugin`
   `kotlin-dsl`
-  alias(libs.plugins.kotlin.serialization)
+  id("org.jetbrains.kotlin.plugin.serialization") version embeddedKotlinVersion
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.tapmoc)
 }

@@ -1,10 +1,6 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
 
 plugins {
   id("composeai.maven-publishing")
@@ -28,7 +24,11 @@ dependencies {
 
 mavenPublishing {
   configure(
-    AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true)
+    AndroidSingleVariantLibrary(
+      javadocJar = JavadocJar.Empty(),
+      sourcesJar = SourcesJar.Sources(),
+      variant = "release",
+    )
   )
 }
 

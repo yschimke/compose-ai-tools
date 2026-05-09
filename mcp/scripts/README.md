@@ -40,7 +40,7 @@ NEXT="${VERSION%.*}.$((${VERSION##*.} + 1))"
 CP="$(pwd)/mcp/build/libs/mcp-${NEXT}-SNAPSHOT.jar"
 CP="$CP:$(pwd)/daemon/core/build/libs/core-${NEXT}-SNAPSHOT.jar"
 for jar in \
-    "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.3.21/"*"/kotlin-stdlib-2.3.21.jar" \
+    "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib/2.3.20/"*"/kotlin-stdlib-2.3.20.jar" \
     "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm/1.10.2/"*"/kotlinx-coroutines-core-jvm-1.10.2.jar" \
     "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-serialization-json-jvm/1.11.0/"*"/kotlinx-serialization-json-jvm-1.11.0.jar" \
     "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlinx/kotlinx-serialization-core-jvm/1.11.0/"*"/kotlinx-serialization-core-jvm-1.11.0.jar" \

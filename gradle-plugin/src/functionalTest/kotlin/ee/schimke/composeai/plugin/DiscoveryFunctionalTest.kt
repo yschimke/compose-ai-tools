@@ -798,38 +798,38 @@ class DiscoveryFunctionalTest {
     assertThat(plain.params.previewParameterLimit).isEqualTo(Int.MAX_VALUE)
   }
 
-
-
   @Test
   fun `discoverPreviews skips private preview methods`() {
     val projectDir = createCmpTestProject()
 
-    File(projectDir, "src/main/kotlin/test/Previews.kt").writeText(
-      """
-      package test
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .writeText(
+        """
+        package test
 
-      import androidx.compose.foundation.background
-      import androidx.compose.foundation.layout.Box
-      import androidx.compose.foundation.layout.size
-      import androidx.compose.runtime.Composable
-      import androidx.compose.ui.Modifier
-      import androidx.compose.ui.graphics.Color
-      import androidx.compose.ui.tooling.preview.Preview
-      import androidx.compose.ui.unit.dp
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.unit.dp
 
-      @Preview
-      @Composable
-      private fun PrivatePreview() {
-          Box(modifier = Modifier.size(50.dp).background(Color.Red))
-      }
+        @Preview
+        @Composable
+        private fun PrivatePreview() {
+            Box(modifier = Modifier.size(50.dp).background(Color.Red))
+        }
 
-      @Preview
-      @Composable
-      fun PublicPreview() {
-          Box(modifier = Modifier.size(50.dp).background(Color.Blue))
-      }
-      """.trimIndent()
-    )
+        @Preview
+        @Composable
+        fun PublicPreview() {
+            Box(modifier = Modifier.size(50.dp).background(Color.Blue))
+        }
+        """
+          .trimIndent()
+      )
 
     val result =
       GradleRunner.create()
@@ -850,49 +850,51 @@ class DiscoveryFunctionalTest {
   fun `discoverPreviews skips previews with unsupported parameters`() {
     val projectDir = createCmpTestProject()
 
-    File(projectDir, "src/main/kotlin/test/Previews.kt").writeText(
-      """
-      package test
+    File(projectDir, "src/main/kotlin/test/Previews.kt")
+      .writeText(
+        """
+        package test
 
-      import androidx.compose.foundation.background
-      import androidx.compose.foundation.layout.Box
-      import androidx.compose.foundation.layout.size
-      import androidx.compose.runtime.Composable
-      import androidx.compose.ui.Modifier
-      import androidx.compose.ui.graphics.Color
-      import androidx.compose.ui.tooling.preview.Preview
-      import androidx.compose.ui.tooling.preview.PreviewParameter
-      import androidx.compose.ui.tooling.preview.PreviewParameterProvider
-      import androidx.compose.ui.unit.dp
+        import androidx.compose.foundation.background
+        import androidx.compose.foundation.layout.Box
+        import androidx.compose.foundation.layout.size
+        import androidx.compose.runtime.Composable
+        import androidx.compose.ui.Modifier
+        import androidx.compose.ui.graphics.Color
+        import androidx.compose.ui.tooling.preview.Preview
+        import androidx.compose.ui.tooling.preview.PreviewParameter
+        import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+        import androidx.compose.ui.unit.dp
 
-      class IntProvider : PreviewParameterProvider<Int> {
-          override val values: Sequence<Int> = sequenceOf(1)
-      }
+        class IntProvider : PreviewParameterProvider<Int> {
+            override val values: Sequence<Int> = sequenceOf(1)
+        }
 
-      @Preview
-      @Composable
-      fun UnsupportedArgPreview(value: String) {
-          Box(modifier = Modifier.size(50.dp).background(Color.Red))
-      }
+        @Preview
+        @Composable
+        fun UnsupportedArgPreview(value: String) {
+            Box(modifier = Modifier.size(50.dp).background(Color.Red))
+        }
 
-      @Preview
-      @Composable
-      fun TooManyArgsPreview(
-          @PreviewParameter(IntProvider::class) first: Int,
-          second: Int,
-      ) {
-          Box(modifier = Modifier.size(50.dp).background(Color.Green))
-      }
+        @Preview
+        @Composable
+        fun TooManyArgsPreview(
+            @PreviewParameter(IntProvider::class) first: Int,
+            second: Int,
+        ) {
+            Box(modifier = Modifier.size(50.dp).background(Color.Green))
+        }
 
-      @Preview
-      @Composable
-      fun SupportedPreview(
-          @PreviewParameter(IntProvider::class) value: Int,
-      ) {
-          Box(modifier = Modifier.size(50.dp).background(Color(value)))
-      }
-      """.trimIndent()
-    )
+        @Preview
+        @Composable
+        fun SupportedPreview(
+            @PreviewParameter(IntProvider::class) value: Int,
+        ) {
+            Box(modifier = Modifier.size(50.dp).background(Color(value)))
+        }
+        """
+          .trimIndent()
+      )
 
     val result =
       GradleRunner.create()

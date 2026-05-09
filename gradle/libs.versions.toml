@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.3.20"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -84,6 +84,7 @@ compose-ui-prerelease = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.11.1"
+okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
 maven-publish = "0.36.0"
@@ -108,7 +109,7 @@ checker-qual = "4.0.0"
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
 # derived dynamic theming actually produces.
-material-kolor = "4.1.1"
+material-kolor = "4.0.5"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -148,6 +149,7 @@ wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.60.0" }

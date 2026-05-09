@@ -15,9 +15,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.resources.ResourcesUsedProduct
 import java.io.File
-import java.nio.file.Files
 import java.util.Collections
-import kotlin.io.path.name
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -63,6 +61,7 @@ typealias ResourcesUsedPayload = ee.schimke.composeai.data.resources.ResourcesUs
 typealias ResourceUsedReference = ee.schimke.composeai.data.resources.ResourceUsedReference
 typealias ResourceUsedConsumer = ee.schimke.composeai.data.resources.ResourceUsedConsumer
 
+@Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
 class RecordingResources(
   private val base: Resources,
   assets: AssetManager,
@@ -209,19 +208,14 @@ private object ResourceSourceIndex {
   private fun buildIndex(): Map<String, String> {
     val out = linkedMapOf<String, String>()
     for (resDir in resDirs()) {
-      Files.walk(resDir.toPath()).use { paths ->
-        paths
-          .filter { Files.isRegularFile(it) }
-          .forEach { path ->
-            val parent = path.parent?.name ?: return@forEach
-            val baseType = parent.substringBefore('-')
-            val file = path.toFile()
-            if (baseType == "values" && file.extension == "xml") {
-              indexValuesFile(file, out)
-            } else if (baseType in FILE_RESOURCE_TYPES) {
-              out.putIfAbsent("$baseType/${file.nameWithoutExtension}", file.absolutePath)
-            }
-          }
+      resDir.walkTopDown().filter(File::isFile).forEach { file ->
+        val parent = file.parentFile?.name ?: return@forEach
+        val baseType = parent.substringBefore('-')
+        if (baseType == "values" && file.extension == "xml") {
+          indexValuesFile(file, out)
+        } else if (baseType in FILE_RESOURCE_TYPES) {
+          out.putIfAbsent("$baseType/${file.nameWithoutExtension}", file.absolutePath)
+        }
       }
     }
     return out
@@ -230,13 +224,9 @@ private object ResourceSourceIndex {
   private fun buildRelativeIndex(): Map<String, String> {
     val out = linkedMapOf<String, String>()
     for (resDir in resDirs()) {
-      Files.walk(resDir.toPath()).use { paths ->
-        paths
-          .filter { Files.isRegularFile(it) }
-          .forEach { path ->
-            val relative = resDir.toPath().relativize(path).joinToString("/")
-            out.putIfAbsent("res/$relative", path.toFile().absolutePath)
-          }
+      resDir.walkTopDown().filter(File::isFile).forEach { file ->
+        val relative = file.relativeTo(resDir).invariantSeparatorsPath
+        out.putIfAbsent("res/$relative", file.absolutePath)
       }
     }
     return out
@@ -275,9 +265,6 @@ private object ResourceSourceIndex {
       }
     }
   }
-
-  private fun java.nio.file.Path.joinToString(separator: String): String =
-    iterator().asSequence().joinToString(separator) { it.name }
 
   private val FILE_RESOURCE_TYPES = setOf("drawable", "layout")
 }
