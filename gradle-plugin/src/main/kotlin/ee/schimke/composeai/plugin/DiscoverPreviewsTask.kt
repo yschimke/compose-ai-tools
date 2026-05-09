@@ -1156,7 +1156,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   // varies. Fall back to device + fontScale + uiMode only if neither name nor
   // group is present.
   private fun buildVariantSuffix(params: PreviewParams): String {
-    if (!params.name.isNullOrBlank()) return "_${params.name}"
+    if (!params.name.isNullOrBlank()) return "_${sanitizeForPath(params.name)}"
     if (!params.group.isNullOrBlank()) return "_${sanitizeForPath(params.group)}"
     val parts = mutableListOf<String>()
     params.device?.substringAfterLast(":")?.takeIf { it.isNotBlank() }?.let(parts::add)
