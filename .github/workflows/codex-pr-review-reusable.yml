@@ -150,9 +150,16 @@ jobs:
           set -euo pipefail
           mkdir -p review-input
           base_ref="${{ steps.base-ref.outputs.value }}"
-          git fetch --no-tags --prune --depth=1 origin "$base_ref"
-          git diff --unified=0 "origin/$base_ref...HEAD" > review-input/code.diff
-          git diff --name-only "origin/$base_ref...HEAD" > review-input/changed-files.txt
+          base_remote="origin"
+
+          if [[ -n "${{ inputs.pr_head_repository }}" && "${{ inputs.pr_head_repository }}" != "${{ github.repository }}" ]]; then
+            base_remote="upstream-base"
+            git remote add "$base_remote" "https://github.com/${{ github.repository }}.git"
+          fi
+
+          git fetch --no-tags --prune --depth=1 "$base_remote" "$base_ref"
+          git diff --unified=0 "$base_remote/$base_ref...HEAD" > review-input/code.diff
+          git diff --name-only "$base_remote/$base_ref...HEAD" > review-input/changed-files.txt
           {
             echo "code_diff_path=review-input/code.diff"
             echo "changed_files_path=review-input/changed-files.txt"
