@@ -49,6 +49,8 @@ export interface PresenterContext {
     findings: readonly AccessibilityFinding[];
     /** Latest cached a11y hierarchy nodes, or empty. */
     nodes: readonly AccessibilityNode[];
+    /** Latest daemon data-product payload for this kind, if any. */
+    data?(kind: string): unknown;
 }
 
 /** Bag of contributions a presenter can make to one or more surfaces.
@@ -249,18 +251,56 @@ function a11yFindingsPresenter(
 }
 
 function composeThemePresenter(
-    _ctx: PresenterContext,
+    ctx: PresenterContext,
 ): ProductPresentation | null {
-    // Theme tokens are a placeholder until `compose/theme` lands as a
-    // real data product; the report mount is what we're proving here.
+    const payload = ctx.data?.("compose/theme") as
+        | {
+              colors?: Record<string, string>;
+              typography?: Record<string, string>;
+              shapes?: Record<string, string>;
+          }
+        | undefined;
+    if (!payload) {
+        const body = document.createElement("div");
+        body.className = "focus-report-empty";
+        body.textContent =
+            "Theme tokens will appear here when the daemon attaches `compose/theme`.";
+        return {
+            report: {
+                title: "Theme tokens",
+                summary: "Awaiting data",
+                body,
+            },
+        };
+    }
     const body = document.createElement("div");
-    body.className = "focus-report-empty";
-    body.textContent =
-        "Theme tokens will appear here when the daemon attaches `compose/theme`.";
+    const rows = document.createElement("ul");
+    rows.className = "focus-report-list";
+    const addSection = (title: string, values: Record<string, string> = {}) => {
+        const keys = Object.keys(values);
+        if (keys.length === 0) return;
+        const header = document.createElement("li");
+        header.textContent = title;
+        rows.appendChild(header);
+        for (const key of keys.sort()) {
+            const li = document.createElement("li");
+            li.textContent = `${key}: ${values[key]}`;
+            rows.appendChild(li);
+        }
+    };
+    addSection("Colors", payload.colors);
+    addSection("Typography", payload.typography);
+    addSection("Shapes", payload.shapes);
+    if (!rows.hasChildNodes()) {
+        body.className = "focus-report-empty";
+        body.textContent = "compose/theme payload was empty.";
+    } else {
+        body.appendChild(rows);
+    }
     return {
         report: {
             title: "Theme tokens",
-            summary: "Awaiting data",
+            summary: "Daemon data",
             body,
         },
     };
