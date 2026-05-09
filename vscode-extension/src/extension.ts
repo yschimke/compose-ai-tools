@@ -1128,18 +1128,25 @@ export async function activate(
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const filePath = event.document.uri.fsPath;
-            if (!isPreviewSourceFile(filePath) || event.contentChanges.length === 0) {
+            if (
+                !isPreviewSourceFile(filePath) ||
+                event.contentChanges.length === 0
+            ) {
                 return;
             }
             const latestLine =
-                event.contentChanges[event.contentChanges.length - 1]?.range.start.line;
+                event.contentChanges[event.contentChanges.length - 1]?.range
+                    .start.line;
             if (latestLine !== undefined) {
                 const editedFunction = functionNameAtLine(
                     event.document.getText(),
                     latestLine,
                 );
                 if (editedFunction) {
-                    lastEditedPreviewFunctionByFile.set(filePath, editedFunction);
+                    lastEditedPreviewFunctionByFile.set(
+                        filePath,
+                        editedFunction,
+                    );
                 }
             }
         }),
@@ -1664,7 +1671,10 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
             ? previewsForFile(fresh, module, filePath)
             : filePreviews;
     }
-    const ids = prioritizeEditedPreview(filePath, filePreviews.map((p) => p.id));
+    const ids = prioritizeEditedPreview(
+        filePath,
+        filePreviews.map((p) => p.id),
+    );
     if (ids.length === 0) {
         return "accepted";
     }
@@ -1710,7 +1720,9 @@ function prioritizeEditedPreview(filePath: string, ids: string[]): string[] {
     if (!editedFunction || ids.length <= 1) {
         return ids;
     }
-    const prioritized = ids.find((id) => previewFunctionNameFromId(id) === editedFunction);
+    const prioritized = ids.find(
+        (id) => previewFunctionNameFromId(id) === editedFunction,
+    );
     if (!prioritized) {
         return ids;
     }
@@ -3492,7 +3504,12 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // doesn't survive across the bridge so a buggy webview build
             // could send a string here.
             if (Array.isArray(msg.visible) && Array.isArray(msg.predicted)) {
-                void notifyDaemonViewport(msg.visible, msg.predicted);
+                void notifyDaemonViewport(msg.visible, msg.predicted).catch(
+                    (err) =>
+                        logLine(
+                            `daemon: viewport update failed: ${String((err as Error).message ?? err)}`,
+                        ),
+                );
             }
             break;
         case "previewScopeChanged": {

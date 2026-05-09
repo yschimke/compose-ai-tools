@@ -281,6 +281,15 @@ function handleSetPreviews(
     ctx.restoreFilterState();
     ctx.applyFilters();
     ctx.applyLayout();
+    // Tell the extension the cards reached the grid. Powers the e2e test's
+    // "real webview consumed setPreviews" assertion — `postedMessageLog`
+    // alone only proves the host posted the message, not that a resolved
+    // webview ever received it. Send this before live/daemon adorners run so
+    // unrelated optional UI paths cannot mask the core render acknowledgement.
+    ctx.vscode.postMessage({
+        command: "webviewPreviewsRendered",
+        count: ctx.grid.querySelectorAll(".preview-card").length,
+    });
     // setPreviews can rebuild the focused card from scratch; re-stamp the live
     // badge so the LIVE chip reattaches to the right card(s). Drop any live
     // previewIds that are gone from the new manifest — silent cleanup; the
@@ -289,14 +298,6 @@ function handleSetPreviews(
     ctx.liveState.pruneLive((id) => newIds.has(id));
     ctx.liveState.applyLiveBadge();
     ctx.applyInteractiveButtonState();
-    // Tell the extension the cards reached the grid. Powers the e2e test's
-    // "real webview consumed setPreviews" assertion — `postedMessageLog`
-    // alone only proves the host posted the message, not that a resolved
-    // webview ever received it.
-    ctx.vscode.postMessage({
-        command: "webviewPreviewsRendered",
-        count: ctx.grid.querySelectorAll(".preview-card").length,
-    });
 }
 
 function handleClearAll(ctx: PreviewMessageContext): void {
