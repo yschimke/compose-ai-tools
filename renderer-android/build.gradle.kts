@@ -1,10 +1,6 @@
-@file:Suppress(
-  "DEPRECATION"
-) // AndroidSingleVariantLibrary(Boolean, Boolean) is deprecated; the replacement
-
-// types (SourcesJar/JavadocJar) vary between plugin versions. Re-visit when bumping.
-
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
 
 plugins {
   id("composeai.maven-publishing")
@@ -122,6 +118,9 @@ dependencies {
   compileOnly(libs.compose.foundation)
   compileOnly(libs.compose.material3)
   compileOnly(libs.compose.runtime)
+  // Required to compile against data-ambient-connector's public extension class. Keep it
+  // compile-only so Wear apps continue to supply their own runtime ambient API version.
+  compileOnly(libs.wear.compose.foundation)
   // `compose.ui.tooling.preview` from `compose-bom-compat` (1.9.x) doesn't
   // ship `PreviewWrapper` / `PreviewWrapperProvider` — those landed in
   // ui-tooling-preview 1.11.0. We pin the 1.11+ variant here so
@@ -150,6 +149,7 @@ dependencies {
   testImplementation(libs.compose.foundation)
   testImplementation(libs.compose.material3)
   testImplementation(libs.compose.runtime)
+  testImplementation(libs.wear.compose.foundation)
   testImplementation(libs.compose.ui.tooling.preview)
   testImplementation(libs.activity.compose)
   testImplementation("androidx.compose.ui:ui-test-junit4")
@@ -202,7 +202,11 @@ dependencies {
 
 mavenPublishing {
   configure(
-    AndroidSingleVariantLibrary(variant = "release", sourcesJar = true, publishJavadocJar = true)
+    AndroidSingleVariantLibrary(
+      javadocJar = JavadocJar.Empty(),
+      sourcesJar = SourcesJar.Sources(),
+      variant = "release",
+    )
   )
 }
 

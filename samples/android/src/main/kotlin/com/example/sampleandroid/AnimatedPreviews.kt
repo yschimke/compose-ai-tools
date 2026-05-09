@@ -5,8 +5,8 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,11 +41,11 @@ import ee.schimke.composeai.preview.AnimatedPreview
 fun FadeInBoxAnimatedPreview() {
     // `MutableTransitionState(false)` + `targetState = true` set during
     // composition is the canonical "kick off a transition on first
-    // frame" pattern. `updateTransition` registers the transition with
+    // frame" pattern. `rememberTransition` registers the transition with
     // the slot table so AnimationSearch picks it up cleanly.
     val state = remember { MutableTransitionState(false) }
     state.targetState = true
-    val transition = updateTransition(state, label = "fade-in")
+    val transition = rememberTransition(state, label = "fade-in")
     val alpha by transition.animateFloat(
         transitionSpec = { tween(durationMillis = 600, easing = LinearOutSlowInEasing) },
         label = "alpha",

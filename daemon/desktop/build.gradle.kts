@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 // Renderer-desktop daemon module — see docs/daemon/DESIGN.md § 4
 // ("Renderer-agnostic surface") and § 6 (module layout).
 //

@@ -2,12 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Run Extension (artifacts, Meshcore)",
+            "name": "Run Extension (artifacts, compose-ai-tools)",
             "type": "extensionHost",
             "request": "launch",
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}/.vscode-test/artifact-extension",
-                "${env:HOME}/workspace/meshcore-mobile"
+                "${env:HOME}/workspace/compose-ai-tools"
             ],
             "outFiles": [
                 "${workspaceFolder}/.vscode-test/artifact-extension/out/**/*.js"

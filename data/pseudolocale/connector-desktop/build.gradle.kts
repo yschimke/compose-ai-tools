@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 // `:data-pseudolocale-connector-desktop` is the JVM-side counterpart to
 // `:data-pseudolocale-connector`
 // (Android). Both planners read `renderNow.overrides.localeTag` and emit a

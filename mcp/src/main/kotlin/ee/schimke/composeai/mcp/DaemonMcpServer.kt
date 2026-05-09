@@ -3803,7 +3803,6 @@ class DaemonMcpServer(
     else content.take(8)
   }
 
-
   private fun applyImageSizeOverride(pngBytes: ByteArray): ByteArray {
     val maxEdgePx = imageSizeOverride.maxEdgePx ?: return pngBytes
     val source = runCatching { ImageIO.read(pngBytes.inputStream()) }.getOrNull() ?: return pngBytes
@@ -3811,7 +3810,12 @@ class DaemonMcpServer(
     val scale = minOf(maxEdgePx.toDouble() / source.width, maxEdgePx.toDouble() / source.height)
     val targetWidth = maxOf(1, kotlin.math.floor(source.width * scale).toInt())
     val targetHeight = maxOf(1, kotlin.math.floor(source.height * scale).toInt())
-    val target = java.awt.image.BufferedImage(targetWidth, targetHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val target =
+      java.awt.image.BufferedImage(
+        targetWidth,
+        targetHeight,
+        java.awt.image.BufferedImage.TYPE_INT_ARGB,
+      )
     val g = target.createGraphics()
     try {
       g.setRenderingHint(
@@ -3840,10 +3844,15 @@ class DaemonMcpServer(
       fun detect(env: Map<String, String> = System.getenv()): ImageSizeOverride {
         // Claude Code frequently accumulates many screenshots in one request; Anthropic enforces a
         // 2000px/dimension cap on many-image requests there, so pre-scale defensively.
-        if (!env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()) {
+        if (
+          !env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()
+        ) {
           return ImageSizeOverride(maxEdgePx = 2000)
         }
-        if (env["__CFBundleIdentifier"] == "com.google.antigravity" || !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()) {
+        if (
+          env["__CFBundleIdentifier"] == "com.google.antigravity" ||
+            !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()
+        ) {
           return ImageSizeOverride(maxEdgePx = 3072)
         }
         if (!env["CODEX_SANDBOX"].isNullOrBlank() || !env["CODEX_SESSION_ID"].isNullOrBlank()) {

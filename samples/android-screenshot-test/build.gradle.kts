@@ -14,8 +14,18 @@ plugins {
   id("composeai.android-conventions")
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.android.compose.screenshot)
+  alias(libs.plugins.android.compose.screenshot) apply false
   id("ee.schimke.composeai.preview")
+}
+
+val screenshotTestEnabled =
+  providers
+    .gradleProperty("android.experimental.enableScreenshotTest")
+    .map(String::toBoolean)
+    .getOrElse(false)
+
+if (screenshotTestEnabled) {
+  pluginManager.apply(libs.plugins.android.compose.screenshot.get().pluginId)
 }
 
 android {
@@ -30,12 +40,8 @@ android {
 
   buildFeatures { compose = true }
 
-  // Required opt-in for `com.android.compose.screenshot`. Without this the
-  // plugin registers no tasks and the `screenshotTest` source set never
-  // appears on disk — at which point we'd only discover `main` previews
-  // and this sample would degenerate into a carbon copy of
-  // `:samples:android`.
-  experimentalProperties["android.experimental.enableScreenshotTest"] = true
+  // `screenshotTest` is experimental in AGP. The source set appears only when
+  // callers opt in with `android.experimental.enableScreenshotTest=true`.
 }
 
 dependencies {
@@ -47,12 +53,14 @@ dependencies {
   implementation(libs.activity.compose)
   debugImplementation("androidx.compose.ui:ui-tooling")
 
-  // Google's plugin requires `ui-tooling` on the screenshotTest classpath
-  // to instantiate PreviewParameter providers and run the `@Preview`
-  // functions under Layoutlib. Our renderer doesn't use this configuration
-  // — it drives composables via its own ClassGraph-discovered methods —
-  // but compiling the screenshotTest source set still needs it.
-  "screenshotTestImplementation"(platform(libs.compose.bom.stable))
-  "screenshotTestImplementation"(libs.compose.ui.tooling.preview)
-  "screenshotTestImplementation"("androidx.compose.ui:ui-tooling")
+  if (screenshotTestEnabled) {
+    // Google's plugin requires `ui-tooling` on the screenshotTest classpath
+    // to instantiate PreviewParameter providers and run the `@Preview`
+    // functions under Layoutlib. Our renderer doesn't use this configuration
+    // — it drives composables via its own ClassGraph-discovered methods —
+    // but compiling the screenshotTest source set still needs it.
+    "screenshotTestImplementation"(platform(libs.compose.bom.stable))
+    "screenshotTestImplementation"(libs.compose.ui.tooling.preview)
+    "screenshotTestImplementation"("androidx.compose.ui:ui-tooling")
+  }
 }

@@ -36,7 +36,7 @@ class AccessibilityImageProcessor : ImageProcessor {
       ) ?: return emptyMap()
     val extra =
       DataProductExtra(
-        name = OVERLAY_NAME,
+        name = AccessibilityDataProducer.OVERLAY_EXTRA_NAME,
         path = written.absolutePath,
         mediaType = "image/png",
         sizeBytes = written.length().takeIf { it > 0 },

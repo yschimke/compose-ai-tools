@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer.uiautomator
 
 import android.os.Bundle
+import android.os.Build
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.semantics.SemanticsActions
@@ -262,7 +263,7 @@ internal class ViewBacking(val view: View) : NodeBacking {
     get() = ani?.isCheckable
 
   override val isChecked: Boolean?
-    get() = ani?.isChecked
+    get() = ani?.checkedCompat()
 
   override val isSelected: Boolean?
     get() = ani?.isSelected
@@ -278,6 +279,14 @@ internal class ViewBacking(val view: View) : NodeBacking {
     return List(group.childCount) { i -> ViewBacking(group.getChildAt(i)) }
   }
 }
+
+private fun AccessibilityNodeInfo.checkedCompat(): Boolean =
+  if (Build.VERSION.SDK_INT >= 36) {
+    getChecked() == AccessibilityNodeInfo.CHECKED_STATE_TRUE
+  } else {
+    @Suppress("DEPRECATION")
+    isChecked
+  }
 
 /**
  * Compose-side projection. Maps `BySelector` chains onto the closest `SemanticsProperties` /
@@ -684,4 +693,3 @@ public object By {
 
   public fun scrollable(): Selector = Selector().scrollable()
 }
-

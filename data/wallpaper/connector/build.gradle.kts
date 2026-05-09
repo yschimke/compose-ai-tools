@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
@@ -16,7 +18,11 @@ dependencies {
   // KMP port of Material Color Utilities — `dynamicColorScheme(seed, isDark, style, contrast)`
   // returns the canonical Material 3 dynamic ColorScheme from a single seed color, matching what
   // Android's wallpaper-derived theming produces.
-  implementation(libs.material.kolor)
+  implementation(libs.material.kolor) {
+    exclude(group = "org.jetbrains.compose.material3")
+    exclude(group = "org.jetbrains.compose.runtime")
+    exclude(group = "org.jetbrains.compose.ui")
+  }
   testImplementation(libs.junit)
   testImplementation(compose.desktop.currentOs)
   testImplementation(compose.runtime)

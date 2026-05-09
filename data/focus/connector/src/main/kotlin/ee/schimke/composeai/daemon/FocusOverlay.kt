@@ -8,8 +8,6 @@ import java.awt.Font
 import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import javax.imageio.ImageIO
 
 /**
@@ -30,7 +28,7 @@ object FocusOverlay {
 
     val rawFile = File(outputFile.parentFile, outputFile.nameWithoutExtension + ".raw." + outputFile.extension)
     runCatching {
-      Files.copy(outputFile.toPath(), rawFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+      outputFile.copyTo(rawFile, overwrite = true)
     }
 
     val image = runCatching { ImageIO.read(outputFile) }.getOrNull() ?: return

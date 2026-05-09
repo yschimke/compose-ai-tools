@@ -102,6 +102,7 @@ dependencies {
   // AnimationInspector, ScrollDriver, PixelSystemFontAliases, RenderManifest,
   // PreviewRenderStrategy, etc.) — see DESIGN.md § 7.
   implementation(project(":renderer-android"))
+  implementation(libs.okio)
 
   // D2.2 — accessibility data product (registry + producer + image processor) lives in its
   // own module pair: `:data-a11y-connector` brings `:data-a11y-core` (the generic ATF +
