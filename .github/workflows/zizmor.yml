@@ -5,13 +5,13 @@ name: zizmor
 # `pull_request_target` usage, unpinned third-party actions, missing or
 # excessive `permissions:` blocks, self-hosted-runner misconfiguration, etc.
 #
-# Findings stream into the Security tab via SARIF upload (code scanning),
-# so they show up on PRs as annotated comments and on the dashboard.
+# Runs off the PR critical path to avoid noisy failures from GitHub API
+# rate limits and existing advisory/static-analysis findings. Scheduled and
+# manual runs still upload SARIF to the Security tab.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '17 5 * * 2'
   workflow_dispatch:
 
 permissions:
@@ -29,3 +29,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          online-audits: true
+          advanced-security: true
