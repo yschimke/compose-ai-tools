@@ -193,7 +193,7 @@ Loaded on demand. Read only what the current task needs.
 | [design/WEAR_UI.md](./design/WEAR_UI.md) | Wear OS Material 3 Expressive design. |
 | [design/WEAR_TILES.md](./design/WEAR_TILES.md) | Wear Tiles (protolayout, not Compose). |
 | [design/REMOTE_COMPOSE.md](./design/REMOTE_COMPOSE.md) | Remote Compose dialect + `RemoteDocument`. |
-| [design/CLAUDE_CLOUD.md](./design/CLAUDE_CLOUD.md) | Running compose-preview in Claude Code cloud sandboxes (allowlist, JDK, install paths). |
+| [design/AGENT_CLOUD.md](./design/AGENT_CLOUD.md) | Running compose-preview in Claude Code cloud sandboxes (allowlist, JDK, install paths). |
 | [design/VSCODE.md](./design/VSCODE.md) | VS Code extension (humans, not agents). |
 
 ## Related skill
