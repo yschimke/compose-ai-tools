@@ -910,7 +910,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `renderOutput strips common package prefix and sanitises spaces and parens`() {
+  fun `renderOutput strips common package prefix and sanitises path-unsafe preview names`() {
     val projectDir = createCmpTestProject()
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -933,7 +933,7 @@ class DiscoveryFunctionalTest {
           Box(modifier = Modifier.size(50.dp).background(Color.Red))
       }
 
-      @Preview(name = "plain")
+      @Preview(name = "plain/with slash")
       @Composable
       fun TileDarkStates() {
           Box(modifier = Modifier.size(50.dp).background(Color.Blue))
@@ -965,7 +965,8 @@ class DiscoveryFunctionalTest {
       .isEqualTo("renders/TileLightStates_tile_light_light.png")
 
     val dark = manifest.previews.single { it.functionName == "TileDarkStates" }
-    assertThat(dark.captures.single().renderOutput).isEqualTo("renders/TileDarkStates_plain.png")
+    assertThat(dark.captures.single().renderOutput)
+      .isEqualTo("renders/TileDarkStates_plain_with_slash.png")
   }
 
   @Test
