@@ -98,6 +98,8 @@ class DaemonMcpServer(
     encodeDefaults = false
   }
 
+  private val imageSizeOverride: ImageSizeOverride = ImageSizeOverride.detect()
+
   /**
    * Counters surfaced via the `status` MCP tool: probe outcomes, polling cycles, and random
    * sampling determinism. Lets an operator answer "why does my agent see stale renders?" without
@@ -434,7 +436,7 @@ class DaemonMcpServer(
     val outcome = awaitNextRender(uri, session, progressToken, overrides)
     val file = File(outcome.pngPath)
     check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
-    return Files.readAllBytes(file.toPath())
+    return applyImageSizeOverride(Files.readAllBytes(file.toPath()))
   }
 
   /**
@@ -3799,6 +3801,57 @@ class DaemonMcpServer(
     return if (content.startsWith("ref:"))
       content.removePrefix("ref:").trim().substringAfterLast('/')
     else content.take(8)
+  }
+
+
+  private fun applyImageSizeOverride(pngBytes: ByteArray): ByteArray {
+    val maxEdgePx = imageSizeOverride.maxEdgePx ?: return pngBytes
+    val source = runCatching { ImageIO.read(pngBytes.inputStream()) }.getOrNull() ?: return pngBytes
+    if (source.width <= maxEdgePx && source.height <= maxEdgePx) return pngBytes
+    val scale = minOf(maxEdgePx.toDouble() / source.width, maxEdgePx.toDouble() / source.height)
+    val targetWidth = maxOf(1, kotlin.math.floor(source.width * scale).toInt())
+    val targetHeight = maxOf(1, kotlin.math.floor(source.height * scale).toInt())
+    val target = java.awt.image.BufferedImage(targetWidth, targetHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = target.createGraphics()
+    try {
+      g.setRenderingHint(
+        java.awt.RenderingHints.KEY_INTERPOLATION,
+        java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR,
+      )
+      g.setRenderingHint(
+        java.awt.RenderingHints.KEY_RENDERING,
+        java.awt.RenderingHints.VALUE_RENDER_QUALITY,
+      )
+      g.setRenderingHint(
+        java.awt.RenderingHints.KEY_ANTIALIASING,
+        java.awt.RenderingHints.VALUE_ANTIALIAS_ON,
+      )
+      g.drawImage(source, 0, 0, targetWidth, targetHeight, null)
+    } finally {
+      g.dispose()
+    }
+    val out = java.io.ByteArrayOutputStream()
+    ImageIO.write(target, "png", out)
+    return out.toByteArray()
+  }
+
+  private data class ImageSizeOverride(val maxEdgePx: Int?) {
+    companion object {
+      fun detect(env: Map<String, String> = System.getenv()): ImageSizeOverride {
+        // Claude Code frequently accumulates many screenshots in one request; Anthropic enforces a
+        // 2000px/dimension cap on many-image requests there, so pre-scale defensively.
+        if (!env["CLAUDE_CODE_SESSION_ID"].isNullOrBlank() || !env["CLAUDE_ENV_FILE"].isNullOrBlank()) {
+          return ImageSizeOverride(maxEdgePx = 2000)
+        }
+        if (env["__CFBundleIdentifier"] == "com.google.antigravity" || !env["ANTIGRAVITY_CLI_ALIAS"].isNullOrBlank()) {
+          return ImageSizeOverride(maxEdgePx = 3072)
+        }
+        if (!env["CODEX_SANDBOX"].isNullOrBlank() || !env["CODEX_SESSION_ID"].isNullOrBlank()) {
+          return ImageSizeOverride(maxEdgePx = 3072)
+        }
+        return ImageSizeOverride(maxEdgePx = null)
+      }
+    }
   }
 
   companion object {
