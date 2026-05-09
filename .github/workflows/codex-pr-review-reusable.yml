@@ -354,19 +354,19 @@ jobs:
         run: |
           set -euo pipefail
           status=$(python - <<'PY'
-import json
-with open('review-output/codex-review.json', encoding='utf-8') as f:
-    data = json.load(f)
-print(data.get('status', 'unknown'))
-PY
-)
+          import json
+          with open('review-output/codex-review.json', encoding='utf-8') as f:
+              data = json.load(f)
+          print(data.get('status', 'unknown'))
+          PY
+          )
           blocking=$(python - <<'PY'
-import json
-with open('review-output/codex-review.json', encoding='utf-8') as f:
-    data = json.load(f)
-print(int(data.get('blocking_findings', 0)))
-PY
-)
+          import json
+          with open('review-output/codex-review.json', encoding='utf-8') as f:
+              data = json.load(f)
+          print(int(data.get('blocking_findings', 0)))
+          PY
+          )
           {
             echo "review_status=$status"
             echo "blocking_findings=$blocking"
