@@ -189,7 +189,7 @@ see the dedicated [`compose-preview-review/design/MCP_REVIEW.md`](../../compose-
 - **Cloud sandboxes.** The `install.sh` bootstrap covers the CLI; the MCP
   server runs out of the same launcher with no extra steps. JVM toolchain
   story is unchanged from the CLI — see
-  [`design/CLAUDE_CLOUD.md`](./CLAUDE_CLOUD.md).
+  [`design/AGENT_CLOUD.md`](./AGENT_CLOUD.md).
 
 ## See also
 
