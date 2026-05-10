@@ -3681,6 +3681,20 @@ async function handleSetDataExtensionEnabled(
         [kind],
         enabled,
     );
+    if (!enabled && (kind === "a11y/atf" || kind === "a11y/hierarchy")) {
+        // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
+        // down the cached overlay/legend immediately so the visual layer clears without
+        // waiting on the next render. Empty arrays are the agreed signal: applyA11yUpdate
+        // drops the corresponding cached entries and removes the layers from the DOM.
+        // Other kinds (touchTargets, overlay) don't currently drive a webview overlay
+        // independent of these two, so leaving them out keeps the message minimal.
+        const update: { previewId: string; findings?: never[]; nodes?: never[] } = {
+            previewId,
+        };
+        if (kind === "a11y/atf") update.findings = [];
+        if (kind === "a11y/hierarchy") update.nodes = [];
+        panel?.postMessage({ command: "updateA11y", ...update });
+    }
 }
 
 /**
