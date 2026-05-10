@@ -53,8 +53,11 @@
 # run time (not install time). The --android-sdk path additionally needs
 # unzip and write access to $ANDROID_HOME (sudo when not root).
 #
-# Claude Code cloud-sandbox mode (auto-detected via $CLAUDE_ENV_FILE or
-# $CLAUDE_CODE_SESSION_ID):
+# Cloud-sandbox mode (auto-detected for Claude/Codex):
+#   - Claude: $CLAUDE_ENV_FILE or $CLAUDE_CODE_SESSION_ID
+#   - Codex:  $CODEX_SANDBOX or $CODEX_SESSION_ID
+#
+# Claude-specific env-file behavior:
 #   - Uses the pre-installed JDK (21 on current Claude Cloud images) when it's
 #     Java 17+ — the CLI, plugin, and renderer AARs are compiled to JDK 17
 #     bytecode and run fine on any newer JDK, so there's no need to downgrade.
@@ -106,13 +109,16 @@ VERSION="${1:-${VERSION:-}}"
 BIN_DIR="$PREFIX/bin"
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 
-# Claude Code cloud sandbox auto-detection ---------------------------------
+# Cloud sandbox auto-detection (Claude/Codex) -------------------------------
+if [[ -n "${CODEX_SANDBOX:-}" || -n "${CODEX_SESSION_ID:-}" ]]; then
+  AGENT_CLOUD_HOST="codex"
+elif [[ -n "${CLAUDE_ENV_FILE:-}" || -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
+  AGENT_CLOUD_HOST="claude"
+else
+  AGENT_CLOUD_HOST=""
+fi
 if [[ -z "${CLAUDE_CLOUD:-}" ]]; then
-  if [[ -n "${CLAUDE_ENV_FILE:-}" || -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
-    CLAUDE_CLOUD=1
-  else
-    CLAUDE_CLOUD=0
-  fi
+  CLAUDE_CLOUD=$([[ -n "$AGENT_CLOUD_HOST" ]] && echo 1 || echo 0)
 fi
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -202,14 +208,36 @@ link_skills_for_detected_hosts() {
   fi
 }
 
-# ---- Cloud: ensure Java 17+ is available ---------------------------------
+# ---- Cloud: ensure required JDK is available ------------------------------
 #
-# Claude Cloud images currently pre-install JDK 21, which already satisfies
-# the Java-17+ requirement. The renderer JARs and plugin are compiled to JDK
-# 17 bytecode; a newer JDK runs them without issue. Consumer projects pinned
-# to a JDK-17 toolchain are handled by Gradle's own toolchain resolution (or
-# the consumer can bump their toolchain to the same major the daemon runs
-# on). Only apt-install JDK 17 when no JDK 17+ is detected.
+# Resolve the required daemon toolchain from gradle/gradle-daemon-jvm.properties
+# when available; default to 17 as a safe floor. This allows cloud sessions to
+# auto-install/select JDK 21 when the project requires it.
+
+REQUIRED_JAVA_MAJOR="17"
+DAEMON_JVM_PROPS=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  candidate="$script_dir/../gradle/gradle-daemon-jvm.properties"
+  [[ -f "$candidate" ]] && DAEMON_JVM_PROPS="$candidate"
+fi
+if [[ -z "$DAEMON_JVM_PROPS" ]]; then
+  candidate="$PWD/gradle/gradle-daemon-jvm.properties"
+  [[ -f "$candidate" ]] && DAEMON_JVM_PROPS="$candidate"
+fi
+if [[ -z "$DAEMON_JVM_PROPS" ]] && command -v git >/dev/null 2>&1; then
+  git_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ -n "$git_root" ]]; then
+    candidate="$git_root/gradle/gradle-daemon-jvm.properties"
+    [[ -f "$candidate" ]] && DAEMON_JVM_PROPS="$candidate"
+  fi
+fi
+if [[ -n "$DAEMON_JVM_PROPS" ]]; then
+  required_from_props="$(awk -F= '/^toolchainVersion=/{print $2; exit}' "$DAEMON_JVM_PROPS" || true)"
+  if [[ -n "$required_from_props" && "$required_from_props" =~ ^[0-9]+$ ]]; then
+    REQUIRED_JAVA_MAJOR="$required_from_props"
+  fi
+fi
 
 if [[ "$CLAUDE_CLOUD" == 1 ]]; then
   detected_major=""
@@ -219,23 +247,26 @@ if [[ "$CLAUDE_CLOUD" == 1 ]]; then
     # rejected by the >= 17 check below.
     detected_major="$(java -version 2>&1 | head -1 | awk -F'"' '{print $2}' | awk -F. '{print $1}')"
   fi
-  if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -ge 17 ]]; then
+  if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -eq "$REQUIRED_JAVA_MAJOR" ]]; then
     log "claude cloud: using existing JDK $detected_major on PATH"
   else
-    JDK17_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
-    if [[ ! -x "$JDK17_HOME/bin/java" ]]; then
+    if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ ]]; then
+      log "claude cloud: detected JDK $detected_major but project requires JDK $REQUIRED_JAVA_MAJOR; selecting required JDK"
+    fi
+    JDK_HOME="/usr/lib/jvm/java-${REQUIRED_JAVA_MAJOR}-openjdk-amd64"
+    if [[ ! -x "$JDK_HOME/bin/java" ]]; then
       if [[ "$ACCEPT_DOWNLOAD" != 1 && "$ACCEPT_UPGRADE" != 1 ]]; then
-        die "no JDK 17+ on PATH; rerun with --yes to apt-install openjdk-17-jdk-headless"
+        die "required JDK $REQUIRED_JAVA_MAJOR not available; rerun with --yes to apt-install openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
       fi
-      log "claude cloud: no JDK 17+ detected; installing openjdk-17-jdk-headless"
+      log "claude cloud: installing openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
       SUDO=""
       if [[ $EUID -ne 0 ]]; then
-        command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK 17"
+        command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK ${REQUIRED_JAVA_MAJOR}"
         SUDO="sudo"
       fi
-      $SUDO apt-get install -y -qq openjdk-17-jdk-headless
+      $SUDO apt-get install -y -qq "openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
     fi
-    export JAVA_HOME="$JDK17_HOME"
+    export JAVA_HOME="$JDK_HOME"
     export PATH="$JAVA_HOME/bin:$PATH"
   fi
 fi
@@ -468,7 +499,24 @@ proxy_java_tool_options() {
 }
 
 maybe_write_env_file() {
-  if [[ "$CLAUDE_CLOUD" == 1 && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
+  local env_file=""
+  if [[ -z "${AGENT_CLOUD_HOST:-}" ]]; then
+    return 0
+  fi
+
+  case "${AGENT_CLOUD_HOST:-}" in
+    claude)
+      env_file="${CLAUDE_ENV_FILE:-}"
+      ;;
+    codex)
+      env_file="${CODEX_ENV_FILE:-${CODEX_HOME:-$HOME/.codex}/.env}"
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if [[ -n "$env_file" && -w "$(dirname "$env_file")" ]]; then
     local jto sdk_path=""
     jto="$(proxy_java_tool_options)"
     if [[ "$INSTALL_ANDROID_SDK" == 1 ]]; then
@@ -479,8 +527,8 @@ maybe_write_env_file() {
       [[ "$INSTALL_ANDROID_SDK" == 1 ]] && echo "ANDROID_HOME=$ANDROID_HOME"
       echo "PATH=$BIN_DIR:${JAVA_HOME:+$JAVA_HOME/bin:}${sdk_path}\$PATH"
       [[ -n "$jto" ]] && echo "JAVA_TOOL_OPTIONS=$jto"
-    } >> "$CLAUDE_ENV_FILE"
-    log "wrote env vars to \$CLAUDE_ENV_FILE"
+    } >> "$env_file"
+    log "wrote env vars to $env_file"
   fi
 }
 
