@@ -482,7 +482,24 @@ proxy_java_tool_options() {
 }
 
 maybe_write_env_file() {
-  if [[ "$CLAUDE_CLOUD" == 1 && "${AGENT_CLOUD_HOST:-}" == "claude" && -n "${CLAUDE_ENV_FILE:-}" && -w "$(dirname "$CLAUDE_ENV_FILE")" ]]; then
+  local env_file=""
+  if [[ "$CLAUDE_CLOUD" != 1 ]]; then
+    return 0
+  fi
+
+  case "${AGENT_CLOUD_HOST:-}" in
+    claude)
+      env_file="${CLAUDE_ENV_FILE:-}"
+      ;;
+    codex)
+      env_file="${CODEX_ENV_FILE:-${CODEX_HOME:-$HOME/.codex}/.env}"
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  if [[ -n "$env_file" && -w "$(dirname "$env_file")" ]]; then
     local jto sdk_path=""
     jto="$(proxy_java_tool_options)"
     if [[ "$INSTALL_ANDROID_SDK" == 1 ]]; then
@@ -493,8 +510,8 @@ maybe_write_env_file() {
       [[ "$INSTALL_ANDROID_SDK" == 1 ]] && echo "ANDROID_HOME=$ANDROID_HOME"
       echo "PATH=$BIN_DIR:${JAVA_HOME:+$JAVA_HOME/bin:}${sdk_path}\$PATH"
       [[ -n "$jto" ]] && echo "JAVA_TOOL_OPTIONS=$jto"
-    } >> "$CLAUDE_ENV_FILE"
-    log "wrote env vars to \$CLAUDE_ENV_FILE"
+    } >> "$env_file"
+    log "wrote env vars to $env_file"
   fi
 }
 
