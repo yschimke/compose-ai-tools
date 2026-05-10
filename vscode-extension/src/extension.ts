@@ -1128,18 +1128,25 @@ export async function activate(
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const filePath = event.document.uri.fsPath;
-            if (!isPreviewSourceFile(filePath) || event.contentChanges.length === 0) {
+            if (
+                !isPreviewSourceFile(filePath) ||
+                event.contentChanges.length === 0
+            ) {
                 return;
             }
             const latestLine =
-                event.contentChanges[event.contentChanges.length - 1]?.range.start.line;
+                event.contentChanges[event.contentChanges.length - 1]?.range
+                    .start.line;
             if (latestLine !== undefined) {
                 const editedFunction = functionNameAtLine(
                     event.document.getText(),
                     latestLine,
                 );
                 if (editedFunction) {
-                    lastEditedPreviewFunctionByFile.set(filePath, editedFunction);
+                    lastEditedPreviewFunctionByFile.set(
+                        filePath,
+                        editedFunction,
+                    );
                 }
             }
         }),
@@ -1664,7 +1671,10 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
             ? previewsForFile(fresh, module, filePath)
             : filePreviews;
     }
-    const ids = prioritizeEditedPreview(filePath, filePreviews.map((p) => p.id));
+    const ids = prioritizeEditedPreview(
+        filePath,
+        filePreviews.map((p) => p.id),
+    );
     if (ids.length === 0) {
         return "accepted";
     }
@@ -1710,7 +1720,9 @@ function prioritizeEditedPreview(filePath: string, ids: string[]): string[] {
     if (!editedFunction || ids.length <= 1) {
         return ids;
     }
-    const prioritized = ids.find((id) => previewFunctionNameFromId(id) === editedFunction);
+    const prioritized = ids.find(
+        (id) => previewFunctionNameFromId(id) === editedFunction,
+    );
     if (!prioritized) {
         return ids;
     }
@@ -2846,6 +2858,34 @@ type RefreshOutcome =
     | "failed"
     | "gated";
 
+/**
+ * Rank for the coalesce-or-supersede decision when a new refresh arrives
+ * while one is already in flight. Higher = more work / more user intent.
+ *
+ * - `0` — discovery-only (`forceRender=false`). Triggered by file-save,
+ *   editor focus change, panel restore. Cheap; the user didn't explicitly
+ *   ask for new pixels.
+ * - `1` — fast tier explicit render (`forceRender=true, tier=fast`).
+ *   Daemon-driven path or a per-card heavy-refresh opt-in.
+ * - `2` — full tier explicit render (`forceRender=true, tier=full`).
+ *   What the panel's Refresh button posts.
+ *
+ * Used by [refresh] to drop weaker incoming refreshes for the same
+ * `(file, module)` rather than aborting + restarting Gradle. The
+ * canonical race the ranking solves: user clicks the panel's Refresh
+ * button → focus moves into the webview → `onDidChangeActiveTextEditor`
+ * fires `refresh(false)` → without ranking, that lighter refresh aborts
+ * the user's full render.
+ */
+function refreshStrength(
+    forceRender: boolean,
+    tier: "fast" | "full" | undefined,
+): number {
+    if (!forceRender) return 0;
+    if (tier === "full") return 2;
+    return 1;
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
@@ -2873,19 +2913,40 @@ async function refresh(
             ? gradleService.resolveModule(activeFile)
             : null;
 
-    // Coalesce identical concurrent refreshes. Activation, panel restore, and
-    // editor-focus events can each schedule the same refresh within ~100ms;
-    // aborting + restarting Gradle for each one wedges the build into a
-    // "Build cancelled." loop where no render ever finishes. The in-flight
-    // refresh will produce the same result this caller wants, so let it run.
-    if (activeFile && module && pendingRefresh !== null) {
+    // Coalesce concurrent refreshes for the same (file, module). Activation,
+    // panel restore, and editor-focus events can each schedule the same
+    // refresh within ~100ms; aborting + restarting Gradle for each one
+    // wedges the build into a "Build cancelled." loop where no render ever
+    // finishes. Beyond exact-key matches, also drop incoming requests that
+    // are *weaker* than the in-flight one — a `forceRender=false` discover
+    // refresh that fires when focus shifts off the editor (e.g. the user
+    // clicked the panel's refresh button, which moved focus away from
+    // their .kt file) must not abort a `forceRender=true` render the user
+    // explicitly asked for.
+    if (activeFile && module && pendingRefresh !== null && pendingRefreshKey) {
         const incomingKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
         if (pendingRefreshKey === incomingKey) {
             return "cancelled";
         }
+        const pendingParts = pendingRefreshKey.split("|");
+        // pendingParts: [forceRender, tier, file, modulePath]
+        if (
+            pendingParts.length === 4 &&
+            pendingParts[2] === activeFile &&
+            pendingParts[3] === module.modulePath
+        ) {
+            const pendingStrength = refreshStrength(
+                pendingParts[0] === "true",
+                pendingParts[1] as "fast" | "full",
+            );
+            const incomingStrength = refreshStrength(forceRender, tier);
+            if (incomingStrength < pendingStrength) {
+                return "cancelled";
+            }
+        }
     }
 
-    // Cancel any in-flight refresh (different args — superseded)
+    // Cancel any in-flight refresh (different / stronger args — superseded)
     pendingRefresh?.abort();
     const abort = new AbortController();
     pendingRefresh = abort;
