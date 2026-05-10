@@ -185,6 +185,14 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         throw err;
     }
 
+    // PROTOCOL.md § 3 — `initialized` MUST land before any further request, otherwise the
+    // daemon rejects with -32001 ("received '<method>' before 'initialized' notification").
+    // We had `extensions/list+enable` running before this notification, which silently broke
+    // the whole capability handshake — the catch below swallowed the rejection and every
+    // subsequent `data/subscribe` came back as "kind not advertised". Fix is to fire
+    // `initialized` as soon as the initialize round-trip resolves.
+    client.initialized();
+
     // PROTOCOL.md § 3a — daemons advertise an empty capability surface until the client
     // opts in via `extensions/enable`. The panel doesn't yet do per-card lifecycle
     // (open card → enable extension → subscribe → close → unsubscribe), so as a
@@ -218,7 +226,6 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         );
     }
 
-    client.initialized();
     return { client, process: child, initializeResult, exited };
 }
 
