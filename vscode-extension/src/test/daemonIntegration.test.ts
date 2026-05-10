@@ -3,9 +3,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { PassThrough } from "stream";
-import { DaemonClient } from "../daemon/daemonClient";
+import { DaemonClient, DaemonRpcError } from "../daemon/daemonClient";
 import { encodeFrame, FrameDecoder } from "../daemon/daemonFraming";
 import {
+    DataSubscribeParams,
+    ERROR_DATA_PRODUCT_UNKNOWN,
     InitializeParams,
     JsonRpcRequest,
     PROTOCOL_VERSION,
@@ -30,6 +32,12 @@ class FakeDaemon {
     private onRenderNow:
         | ((req: JsonRpcRequest, params: RenderNowParams) => void)
         | null = null;
+    private onSubscribeReq:
+        | ((req: JsonRpcRequest, params: DataSubscribeParams) => void)
+        | null = null;
+    private onUnsubscribeReq:
+        | ((req: JsonRpcRequest, params: DataSubscribeParams) => void)
+        | null = null;
 
     constructor() {
         this.toClient = new PassThrough();
@@ -50,6 +58,16 @@ class FakeDaemon {
     ): void {
         this.onRenderNow = handler;
     }
+    onSubscribe(
+        handler: (req: JsonRpcRequest, params: DataSubscribeParams) => void,
+    ): void {
+        this.onSubscribeReq = handler;
+    }
+    onUnsubscribe(
+        handler: (req: JsonRpcRequest, params: DataSubscribeParams) => void,
+    ): void {
+        this.onUnsubscribeReq = handler;
+    }
 
     sendNotification(method: string, params: unknown): void {
         this.toClient.write(encodeFrame({ jsonrpc: "2.0", method, params }));
@@ -57,6 +75,16 @@ class FakeDaemon {
 
     sendResult(id: number, result: unknown): void {
         this.toClient.write(encodeFrame({ jsonrpc: "2.0", id, result }));
+    }
+
+    sendError(id: number, code: number, message: string): void {
+        this.toClient.write(
+            encodeFrame({
+                jsonrpc: "2.0",
+                id,
+                error: { code, message },
+            }),
+        );
     }
 
     close(): void {
@@ -76,6 +104,13 @@ class FakeDaemon {
                 this.onInitialize(m);
             } else if (m.method === "renderNow" && this.onRenderNow) {
                 this.onRenderNow(m, m.params as RenderNowParams);
+            } else if (m.method === "data/subscribe" && this.onSubscribeReq) {
+                this.onSubscribeReq(m, m.params as DataSubscribeParams);
+            } else if (
+                m.method === "data/unsubscribe" &&
+                this.onUnsubscribeReq
+            ) {
+                this.onUnsubscribeReq(m, m.params as DataSubscribeParams);
             } else if (m.method === "shutdown") {
                 this.sendResult(m.id, null);
             }
@@ -291,6 +326,112 @@ describe("daemon integration — fake daemon round trip", () => {
             }
             await new Promise((r) => setImmediate(r));
             assert.deepStrictEqual(seen, ids);
+        } finally {
+            daemon.close();
+        }
+    });
+
+    /**
+     * Wire-level coverage for the focus-mode subscribe path. The webview
+     * fires `setA11yOverlay` / `setDataExtensionEnabled`, the host routes
+     * each `(previewId, kind)` into `client.dataSubscribe`, and the daemon
+     * either acknowledges or — when the kind isn't advertised by an
+     * enabled extension — rejects with `-32020 DataProductUnknown`.
+     * Mirrors the `[daemon] dataSubscribe ... failed: -32020 ...` errors
+     * that surfaced in #1003 and #985 when an extension's data-product
+     * registry was gated behind a flag the daemon hadn't enabled.
+     */
+    it("data/subscribe round-trip resolves OK for an advertised kind", async () => {
+        const daemon = new FakeDaemon();
+        daemon.onInit((req) => daemon.sendResult(req.id, defaultInitResult()));
+        daemon.onSubscribe((req) => daemon.sendResult(req.id, { ok: true }));
+        daemon.onUnsubscribe((req) => daemon.sendResult(req.id, { ok: true }));
+        const client = new DaemonClient(daemon.fromClient, daemon.toClient, {});
+        try {
+            await client.initialize({
+                clientVersion: "0.0.0",
+                workspaceRoot: "/w",
+                moduleId: ":m",
+                moduleProjectDir: "/w/m",
+                capabilities: { visibility: true, metrics: true },
+            });
+            client.initialized();
+            const sub = await client.dataSubscribe({
+                previewId: "p1",
+                kind: "a11y/atf",
+            });
+            assert.strictEqual(sub.ok, true);
+            const unsub = await client.dataUnsubscribe({
+                previewId: "p1",
+                kind: "a11y/atf",
+            });
+            assert.strictEqual(unsub.ok, true);
+
+            const methods = daemon.seenRequests.map((r) => r.method);
+            assert.deepStrictEqual(methods, [
+                "initialize",
+                "data/subscribe",
+                "data/unsubscribe",
+            ]);
+        } finally {
+            daemon.close();
+        }
+    });
+
+    it("data/subscribe rejection surfaces -32020 and the channel keeps serving requests", async () => {
+        const daemon = new FakeDaemon();
+        daemon.onInit((req) => daemon.sendResult(req.id, defaultInitResult()));
+        // Mirror the daemon's behaviour when a kind isn't advertised by any
+        // publicly enabled extension — see JsonRpcServer.handleDataSubscribe.
+        daemon.onSubscribe((req, params) =>
+            daemon.sendError(
+                req.id,
+                ERROR_DATA_PRODUCT_UNKNOWN,
+                `data/subscribe: kind not advertised: ${params.kind}`,
+            ),
+        );
+        const client = new DaemonClient(daemon.fromClient, daemon.toClient, {});
+        try {
+            await client.initialize({
+                clientVersion: "0.0.0",
+                workspaceRoot: "/w",
+                moduleId: ":m",
+                moduleProjectDir: "/w/m",
+                capabilities: { visibility: true, metrics: true },
+            });
+            client.initialized();
+
+            // Generic kind name — the rejection shape is identical for any
+            // unadvertised kind (`a11y/atf`, `text/strings`, etc.).
+            await assert.rejects(
+                client.dataSubscribe({
+                    previewId: "p1",
+                    kind: "text/strings",
+                }),
+                (err: unknown) => {
+                    assert.ok(err instanceof DaemonRpcError);
+                    assert.strictEqual(
+                        err.rpc.code,
+                        ERROR_DATA_PRODUCT_UNKNOWN,
+                    );
+                    assert.match(err.rpc.message, /kind not advertised/);
+                    return true;
+                },
+            );
+
+            // Channel must remain usable — pre-D2 daemons reject every kind
+            // and the panel is expected to keep functioning.
+            daemon.onRender((req, params) =>
+                daemon.sendResult(req.id, {
+                    queued: params.previews,
+                    rejected: [],
+                }),
+            );
+            const result = await client.renderNow({
+                previews: ["p1"],
+                tier: "fast",
+            });
+            assert.deepStrictEqual(result.queued, ["p1"]);
         } finally {
             daemon.close();
         }
