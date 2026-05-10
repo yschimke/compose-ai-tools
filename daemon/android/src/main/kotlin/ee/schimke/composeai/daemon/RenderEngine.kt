@@ -167,19 +167,23 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
     /**
-     * D2 — when true, render in a11y mode (`LocalInspectionMode = false`) and dump
+     * D2 / D2.2 — render in a11y mode (`LocalInspectionMode = false`) and dump
      * `a11y-atf.json` + `a11y-hierarchy.json` under [dataDir] so the daemon's data-product
      * registry can surface them as `a11y/atf` + `a11y/hierarchy`. Mirrors the design doc's
      * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
-     * render, traded for simpler implementation than per-render kind threading.
+     * render.
      *
-     * Defaults to the [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] system property set by the Gradle preview
-     * extension.
-     * selector. False (the default) keeps the pre-D2 paused-clock + `LocalInspectionMode = true`
-     * fast path used by the harness's fake-mode tests.
+     * `null` (the default) means *resolve from context*: a11y mode is on iff [RenderSpec.renderMode]
+     * is `"a11y"` (set by the daemon's `data/fetch` re-render path or by the host's per-preview
+     * subscription state) OR the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop is `true`.
+     * Pass `true` / `false` explicitly to force the mode regardless of context (used by tests).
      */
-    runAccessibility: Boolean = System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true",
+    runAccessibility: Boolean? = null,
   ): RenderResult {
+    val effectiveRunAccessibility =
+      runAccessibility
+        ?: (spec.renderMode == A11Y_RENDER_MODE ||
+          System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true")
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
     // so force record mode if the surrounding JVM didn't set it. Idempotent across renders;
@@ -278,7 +282,7 @@ class RenderEngine(
                 // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
                 // through rather than parking under the paused clock — same trade
                 // `RobolectricRenderTest.renderWithA11y` already pays.
-                val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
+                val inspectionMode = if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
                 CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
                     themeFallbackCapture.capture(typography, shapes)
@@ -402,7 +406,7 @@ class RenderEngine(
             // `AccessibilityDataProductRegistry`. Wrapped in try/catch so an a11y failure does
             // not strand the PNG the user already cares about — the registry sees a missing
             // file as "no attachment for this kind on this render".
-            if (runAccessibility && dataDir != null) {
+            if (effectiveRunAccessibility && dataDir != null) {
               try {
                 trace.section("a11y:dataProducts") {
                   val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
@@ -699,6 +703,15 @@ class RenderEngine(
      */
     const val A11Y_PREVIEW_EXTENSION_ENABLED_PROP: String =
       "composeai.previewExtensions.a11y.enabled"
+
+    /**
+     * D2.2 — `RenderSpec.renderMode` value the daemon stamps when a `data/fetch` for an a11y kind
+     * needs a fresh render, and when the host's per-preview subscription state demands a11y for
+     * the next dispatch. The engine's [runAccessibility] auto-resolution treats this as equivalent
+     * to the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop being on for that one render —
+     * `LocalInspectionMode = false`, ATF + hierarchy artefacts written to `dataDir`.
+     */
+    const val A11Y_RENDER_MODE: String = "a11y"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.
