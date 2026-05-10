@@ -904,7 +904,7 @@ class JsonRpcServer(
    * directly. See PROTOCOL.md § 5 (`renderNow.overrides`) for the wire-level shape.
    */
   private fun encodeRenderPayload(previewId: String, overrides: PreviewOverrides?): String {
-    return buildString {
+    val base = buildString {
       if (previewId.isNotEmpty()) append("previewId=").append(previewId)
       if (overrides == null) return@buildString
       val deviceToken = overrides.device?.takeIf { it.isNotBlank() }
@@ -989,6 +989,28 @@ class JsonRpcServer(
         )
       }
     }
+    // D2.2 — sticky subscription → render-mode injection. When a panel has subscribed to any
+    // `a11y/*` kind for [previewId] (focus inspector's A11y toggle is the canonical caller),
+    // every subsequent renderNow for that preview runs in a11y mode so the ATF + hierarchy
+    // artefacts land for `attachmentsFor` to ship on the next `renderFinished`. The mode tag is
+    // the same channel the data/fetch RequiresRerender path uses; renderer-side resolution lives
+    // in `RenderEngine.runAccessibility`'s auto-mode (`spec.renderMode == "a11y"`).
+    val mode = subscriptionDrivenRenderMode(previewId) ?: return base
+    return if (base.isEmpty()) "mode=$mode" else "$base;mode=$mode"
+  }
+
+  /**
+   * D2.2 — pick the renderer-mode tag implied by [previewId]'s active subscriptions, or `null` if
+   * no subscription demands a mode. Today only the `a11y/...` kind family maps to a mode
+   * (`"a11y"`); future producers that need sticky subscription-driven render modes can extend by
+   * introducing their own kind prefix → mode mapping. Stays in [JsonRpcServer] (rather than each
+   * producer registry) so the dispatcher owns "what mode does the renderer need next" the same way
+   * it owns "which kinds are advertised."
+   */
+  private fun subscriptionDrivenRenderMode(previewId: String): String? {
+    val kinds = subscriptions[previewId] ?: return null
+    if (kinds.any { it.startsWith("a11y/") }) return "a11y"
+    return null
   }
 
   private val renderResultsQueue = LinkedBlockingQueue<Any>()
