@@ -15,6 +15,7 @@ import ee.schimke.composeai.renderer.AccessibilityHierarchyPayload
 import ee.schimke.composeai.renderer.AccessibilityNode
 import ee.schimke.composeai.renderer.AccessibilityTouchTargetsPayload
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -156,10 +157,12 @@ object AccessibilityDataProducer {
  * registry decides whether the data ends up on the wire based on the dispatcher's subscription
  * bookkeeping.
  *
- * `attachable: true` for both kinds — they ride `renderFinished.dataProducts` when the client
- * has subscribed. `fetchable: true` for both — pull-on-demand reads from the same files. Neither
- * kind triggers a re-render: the producer always runs in daemon a11y mode, so the JSON is on
- * disk for any preview that has rendered at least once.
+ * `attachable: true` — they ride `renderFinished.dataProducts` when the client has subscribed.
+ * `fetchable: true` — pull-on-demand reads from the same files. `requiresRerender: true` (D2.2)
+ * — when the latest render didn't run in a11y mode the artefact is absent, so [fetch] returns
+ * [DataProductRegistry.Outcome.RequiresRerender] and the dispatcher queues a `mode=a11y` re-render
+ * before re-invoking. The cost of a11y mode is paid only when a panel actually subscribes, not on
+ * every render.
  *
  * `rootDir` mirrors `RenderEngine`'s `dataDir` (defaults to `<outputDir.parent>/data`). Wired by
  * [DaemonMain].
@@ -167,6 +170,20 @@ object AccessibilityDataProducer {
 class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductRegistry {
 
   private val json = Json { ignoreUnknownKeys = true }
+
+  /**
+   * D2.2 — set of `(previewId, kind)` pairs the dispatcher has reported subscribed via
+   * [onSubscribe] and not yet torn down via [onUnsubscribe] (or `setVisible` pruning, which fans
+   * out as `onUnsubscribe` calls per dropped pair). Tracked here so the host's render dispatcher
+   * can ask [isPreviewSubscribed] before queueing the next render and stamp `mode=a11y` into the
+   * payload — turning a `data/subscribe` for a focus-mode card into "all subsequent renders for
+   * this preview run with `LocalInspectionMode = false` and write the ATF/hierarchy artefacts,
+   * until focus moves on." Today the predicate has no readers wired yet (PR 1d will land that
+   * hook); the bookkeeping is structural and idempotent so adding the read site is the only
+   * remaining step.
+   */
+  private val subscribedPairs: MutableSet<Pair<String, String>> =
+    ConcurrentHashMap.newKeySet()
 
   override val capabilities: List<DataProductCapability> =
     listOf(
@@ -176,7 +193,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         transport = DataProductTransport.INLINE,
         attachable = true,
         fetchable = true,
-        requiresRerender = false,
+        requiresRerender = true,
         displayName = "Accessibility findings",
         facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
         sampling = SamplingPolicy.End,
@@ -187,7 +204,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         transport = DataProductTransport.PATH,
         attachable = true,
         fetchable = true,
-        requiresRerender = false,
+        requiresRerender = true,
         displayName = "Accessibility hierarchy",
         facets = listOf(DataProductFacet.STRUCTURED),
         mediaTypes = listOf("application/json"),
@@ -199,7 +216,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         transport = DataProductTransport.INLINE,
         attachable = true,
         fetchable = true,
-        requiresRerender = false,
+        requiresRerender = true,
         displayName = "Touch target findings",
         facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
         sampling = SamplingPolicy.End,
@@ -210,7 +227,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
         transport = DataProductTransport.PATH,
         attachable = true,
         fetchable = true,
-        requiresRerender = false,
+        requiresRerender = true,
         displayName = "Accessibility overlay",
         facets = listOf(DataProductFacet.ARTIFACT, DataProductFacet.IMAGE, DataProductFacet.OVERLAY),
         mediaTypes = listOf("image/png"),
@@ -238,7 +255,12 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
           fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY) to DataProductTransport.PATH
         else -> return DataProductRegistry.Outcome.Unknown
       }
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
+    // D2.2 — every a11y kind is `requiresRerender = true`. A missing artefact means the latest
+    // render didn't run in a11y mode (the producer's writeArtifacts is gated on
+    // `effectiveRunAccessibility`); the dispatcher reacts by queueing a re-render with
+    // `mode=a11y` and re-invoking fetch, which then finds the freshly-written file. See
+    // [DataProductRegistry.Outcome.RequiresRerender] for the dispatch contract.
+    if (!file.exists()) return DataProductRegistry.Outcome.RequiresRerender("a11y")
     val extras = extrasFor(previewId, kind)
     // The overlay kind is binary (PNG); never parse it as JSON. Path-only.
     if (kind == AccessibilityDataProducer.KIND_OVERLAY) {
@@ -398,6 +420,43 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
     }
     return out
   }
+
+  /**
+   * D2.2 — record `(previewId, kind)` so the next render of [previewId] can run in a11y mode.
+   * Idempotent across re-subscribes (the [Set] de-duplicates). Only the four advertised a11y
+   * kinds are tracked; an unrelated kind (the dispatcher routes here only after capability
+   * matching, but this is defensive) is ignored.
+   */
+  override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
+    if (!isAccessibilityKind(kind)) return
+    subscribedPairs.add(previewId to kind)
+  }
+
+  /**
+   * D2.2 — drop the `(previewId, kind)` bookkeeping. Fires on explicit `data/unsubscribe`, on
+   * `setVisible`-driven pruning when the preview leaves view, and on daemon shutdown. After this
+   * runs, [isPreviewSubscribed] reflects the new state synchronously.
+   */
+  override fun onUnsubscribe(previewId: String, kind: String) {
+    if (!isAccessibilityKind(kind)) return
+    subscribedPairs.remove(previewId to kind)
+  }
+
+  /**
+   * D2.2 — `true` iff at least one a11y kind has a live subscription for [previewId]. Designed for
+   * the host's render dispatcher: when this returns `true` the next `host.submit(...)` payload
+   * for [previewId] should carry `mode=a11y` so the renderer flips `LocalInspectionMode` and
+   * writes the ATF/hierarchy artefacts the subscribed kinds will read off disk on the next
+   * `attachmentsFor` pass.
+   */
+  fun isPreviewSubscribed(previewId: String): Boolean =
+    subscribedPairs.any { (id, _) -> id == previewId }
+
+  private fun isAccessibilityKind(kind: String): Boolean =
+    kind == AccessibilityDataProducer.KIND_ATF ||
+      kind == AccessibilityDataProducer.KIND_HIERARCHY ||
+      kind == AccessibilityDataProducer.KIND_TOUCH_TARGETS ||
+      kind == AccessibilityDataProducer.KIND_OVERLAY
 
   private fun fileFor(previewId: String, fileName: String): File =
     rootDir.resolve(previewId).resolve(fileName)

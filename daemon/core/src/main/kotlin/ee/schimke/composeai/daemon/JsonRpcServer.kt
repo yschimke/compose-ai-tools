@@ -306,8 +306,15 @@ class JsonRpcServer(
    * plus a heavy render). Overridden at handshake time by `initialize.options.maxRenderMs` if
    * positive; values ≤ 0 are ignored and the default applies. See PROTOCOL.md § 3
    * (`initialize.options.maxRenderMs`).
+   *
+   * The constructor honours the `composeai.daemon.renderTimeoutMs` sysprop as the initial value
+   * before the handshake — useful for ad-hoc debugging when a render hangs and you want a fast
+   * failure (e.g. `-Dcomposeai.daemon.renderTimeoutMs=30000` for 30s).
    */
-  @Volatile private var renderTimeoutMs: Long = DEFAULT_RENDER_TIMEOUT_MS
+  @Volatile
+  private var renderTimeoutMs: Long =
+    System.getProperty(RENDER_TIMEOUT_PROP)?.toLongOrNull()?.takeIf { it > 0 }
+      ?: DEFAULT_RENDER_TIMEOUT_MS
 
   /**
    * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. The map is keyed
@@ -904,7 +911,7 @@ class JsonRpcServer(
    * directly. See PROTOCOL.md § 5 (`renderNow.overrides`) for the wire-level shape.
    */
   private fun encodeRenderPayload(previewId: String, overrides: PreviewOverrides?): String {
-    return buildString {
+    val base = buildString {
       if (previewId.isNotEmpty()) append("previewId=").append(previewId)
       if (overrides == null) return@buildString
       val deviceToken = overrides.device?.takeIf { it.isNotBlank() }
@@ -989,6 +996,28 @@ class JsonRpcServer(
         )
       }
     }
+    // D2.2 — sticky subscription → render-mode injection. When a panel has subscribed to any
+    // `a11y/*` kind for [previewId] (focus inspector's A11y toggle is the canonical caller),
+    // every subsequent renderNow for that preview runs in a11y mode so the ATF + hierarchy
+    // artefacts land for `attachmentsFor` to ship on the next `renderFinished`. The mode tag is
+    // the same channel the data/fetch RequiresRerender path uses; renderer-side resolution lives
+    // in `RenderEngine.runAccessibility`'s auto-mode (`spec.renderMode == "a11y"`).
+    val mode = subscriptionDrivenRenderMode(previewId) ?: return base
+    return if (base.isEmpty()) "mode=$mode" else "$base;mode=$mode"
+  }
+
+  /**
+   * D2.2 — pick the renderer-mode tag implied by [previewId]'s active subscriptions, or `null` if
+   * no subscription demands a mode. Today only the `a11y/...` kind family maps to a mode
+   * (`"a11y"`); future producers that need sticky subscription-driven render modes can extend by
+   * introducing their own kind prefix → mode mapping. Stays in [JsonRpcServer] (rather than each
+   * producer registry) so the dispatcher owns "what mode does the renderer need next" the same way
+   * it owns "which kinds are advertised."
+   */
+  private fun subscriptionDrivenRenderMode(previewId: String): String? {
+    val kinds = subscriptions[previewId] ?: return null
+    if (kinds.any { it.startsWith("a11y/") }) return "a11y"
+    return null
   }
 
   private val renderResultsQueue = LinkedBlockingQueue<Any>()
@@ -1599,6 +1628,12 @@ class JsonRpcServer(
     val attachments: List<DataProductAttachment> =
       if (requestedKinds.isEmpty()) emptyList()
       else extensions.publicDataProducts().attachmentsFor(previewId, requestedKinds)
+    System.err.println(
+      "compose-ai-daemon: [renderFinished] previewId=$previewId " +
+        "subscribedKinds=${subscriptions[previewId]?.sorted() ?: emptyList<String>()} " +
+        "globalAttachKinds=${globalAttachKinds.sorted()} " +
+        "attachments=${attachments.map { it.kind }}"
+    )
     return RenderFinishedParams(
       id = previewId,
       pngPath = pngPath,
@@ -3362,6 +3397,14 @@ class JsonRpcServer(
      * single-render render body. Overridable per-session via `initialize.options.maxRenderMs`.
      */
     const val DEFAULT_RENDER_TIMEOUT_MS: Long = 5 * 60_000L
+
+    /**
+     * Sysprop override for the initial [renderTimeoutMs]. Set to a positive ms value (e.g.
+     * `-Dcomposeai.daemon.renderTimeoutMs=30000`) to surface render hangs as timeouts within a
+     * debugging-friendly window before the client's `initialize.options.maxRenderMs` lands. Unset /
+     * non-positive values keep [DEFAULT_RENDER_TIMEOUT_MS].
+     */
+    const val RENDER_TIMEOUT_PROP: String = "composeai.daemon.renderTimeoutMs"
 
     /** RECORDING.md — default `recording/start.fps` when the caller doesn't specify one. */
     const val DEFAULT_RECORDING_FPS: Int = 30

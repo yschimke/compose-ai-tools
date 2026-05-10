@@ -167,19 +167,23 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
     /**
-     * D2 — when true, render in a11y mode (`LocalInspectionMode = false`) and dump
+     * D2 / D2.2 — render in a11y mode (`LocalInspectionMode = false`) and dump
      * `a11y-atf.json` + `a11y-hierarchy.json` under [dataDir] so the daemon's data-product
      * registry can surface them as `a11y/atf` + `a11y/hierarchy`. Mirrors the design doc's
      * "produce always, gate emission on subscriptions" approach — the cost is a few ms per
-     * render, traded for simpler implementation than per-render kind threading.
+     * render.
      *
-     * Defaults to the [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] system property set by the Gradle preview
-     * extension.
-     * selector. False (the default) keeps the pre-D2 paused-clock + `LocalInspectionMode = true`
-     * fast path used by the harness's fake-mode tests.
+     * `null` (the default) means *resolve from context*: a11y mode is on iff [RenderSpec.renderMode]
+     * is `"a11y"` (set by the daemon's `data/fetch` re-render path or by the host's per-preview
+     * subscription state) OR the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop is `true`.
+     * Pass `true` / `false` explicitly to force the mode regardless of context (used by tests).
      */
-    runAccessibility: Boolean = System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true",
+    runAccessibility: Boolean? = null,
   ): RenderResult {
+    val effectiveRunAccessibility =
+      runAccessibility
+        ?: (spec.renderMode == A11Y_RENDER_MODE ||
+          System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true")
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
     // so force record mode if the surrounding JVM didn't set it. Idempotent across renders;
@@ -210,6 +214,12 @@ class RenderEngine(
     System.err.println(
       "compose-ai-daemon: [render] ${spec.className}#${spec.functionName} " +
         "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint"
+    )
+    System.err.println(
+      "compose-ai-daemon: [render] mode=${spec.renderMode ?: "<default>"} " +
+        "effectiveRunAccessibility=$effectiveRunAccessibility " +
+        "inspectionMode=${if (effectiveRunAccessibility) false else spec.inspectionMode ?: true} " +
+        "outputBaseName=${spec.outputBaseName}"
     )
 
     // `device = "id:wearos_*_round"` / `isRound=true` previews need a circular crop matching the
@@ -271,6 +281,9 @@ class RenderEngine(
             // re-used during the post-capture pass below to write the artefacts.
             val builtDataArtifactExtensions = dataArtifactExtensions.build(rule.activity)
 
+            System.err.println(
+              "compose-ai-daemon: [render] phase=setContent.start outputBaseName=${spec.outputBaseName}"
+            )
             trace.section("compose:setContent") {
               rule.setContent {
                 // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
@@ -278,7 +291,7 @@ class RenderEngine(
                 // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
                 // through rather than parking under the paused clock — same trade
                 // `RobolectricRenderTest.renderWithA11y` already pays.
-                val inspectionMode = if (runAccessibility) false else spec.inspectionMode ?: true
+                val inspectionMode = if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
                 CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
                     themeFallbackCapture.capture(typography, shapes)
@@ -301,6 +314,10 @@ class RenderEngine(
               }
             }
 
+            System.err.println(
+              "compose-ai-daemon: [render] phase=setContent.done outputBaseName=${spec.outputBaseName}"
+            )
+
             // CAPTURE_ADVANCE_MS is the same paused-clock advance `RobolectricRenderTest` uses —
             // ≈ 2 Choreographer frames. Enough to settle initial composition + one
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
@@ -317,6 +334,9 @@ class RenderEngine(
             // renderer's wear-round path.
             val roborazziOptions =
               RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
+            System.err.println(
+              "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
+            )
             rule
               .onRoot()
               .also {
@@ -324,6 +344,9 @@ class RenderEngine(
                   it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
                 }
               }
+            System.err.println(
+              "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
+            )
 
             // Always-on data-artifact extensions (fonts, resources, semantics, layout-inspector,
             // i18n, etc). Each extension owns its own recorder lifecycle (installed during
@@ -375,6 +398,10 @@ class RenderEngine(
               val productStore = RecordingDataProductStore()
               for (ext in builtDataArtifactExtensions) {
                 if (ext !is PostCaptureProcessor) continue
+                System.err.println(
+                  "compose-ai-daemon: [render] phase=dataArtifact.${ext.id}.start outputBaseName=${spec.outputBaseName}"
+                )
+                val extStartNs = System.nanoTime()
                 try {
                   trace.section("dataArtifact:${ext.id}") {
                     ext.process(
@@ -387,6 +414,11 @@ class RenderEngine(
                       )
                     )
                   }
+                  System.err.println(
+                    "compose-ai-daemon: [render] phase=dataArtifact.${ext.id}.done " +
+                      "outputBaseName=${spec.outputBaseName} " +
+                      "tookMs=${(System.nanoTime() - extStartNs) / 1_000_000L}"
+                  )
                 } catch (t: Throwable) {
                   System.err.println(
                     "RenderEngine: ${ext.id} data write failed for ${spec.outputBaseName}: " +
@@ -402,7 +434,10 @@ class RenderEngine(
             // `AccessibilityDataProductRegistry`. Wrapped in try/catch so an a11y failure does
             // not strand the PNG the user already cares about — the registry sees a missing
             // file as "no attachment for this kind on this render".
-            if (runAccessibility && dataDir != null) {
+            if (effectiveRunAccessibility && dataDir != null) {
+              System.err.println(
+                "compose-ai-daemon: [render] phase=a11y.start outputBaseName=${spec.outputBaseName}"
+              )
               try {
                 trace.section("a11y:dataProducts") {
                   val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
@@ -438,12 +473,17 @@ class RenderEngine(
                     isRound = isRound,
                     imageProcessors = imageProcessors,
                   )
+                  System.err.println(
+                    "compose-ai-daemon: [render] phase=a11y.done outputBaseName=${spec.outputBaseName} " +
+                      "findings=${findings.findings.size} nodes=${hierarchy.nodes.size}"
+                  )
                 }
               } catch (t: Throwable) {
                 System.err.println(
-                  "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
+                  "compose-ai-daemon: [render] phase=a11y.failed outputBaseName=${spec.outputBaseName} " +
+                    "error=${t.javaClass.simpleName}: ${t.message}"
                 )
+                t.printStackTrace(System.err)
               }
             }
 
@@ -545,7 +585,20 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
     try {
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.start outputBaseName=${spec.outputBaseName}"
+      )
       trace.section("render:evaluateRule") { rule.apply(statement, description).evaluate() }
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.done outputBaseName=${spec.outputBaseName}"
+      )
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.failed outputBaseName=${spec.outputBaseName} " +
+          "error=${t.javaClass.simpleName}: ${t.message}"
+      )
+      t.printStackTrace(System.err)
+      throw t
     } finally {
       Thread.currentThread().contextClassLoader = previousContext
     }
@@ -597,6 +650,10 @@ class RenderEngine(
       previewContextBuilder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
     }
     val previewContext = previewContextBuilder.build()
+    System.err.println(
+      "compose-ai-daemon: [render] phase=complete outputBaseName=${spec.outputBaseName} " +
+        "tookMs=$tookMs pngPath=${outputFile.absolutePath}"
+    )
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
@@ -699,6 +756,15 @@ class RenderEngine(
      */
     const val A11Y_PREVIEW_EXTENSION_ENABLED_PROP: String =
       "composeai.previewExtensions.a11y.enabled"
+
+    /**
+     * D2.2 — `RenderSpec.renderMode` value the daemon stamps when a `data/fetch` for an a11y kind
+     * needs a fresh render, and when the host's per-preview subscription state demands a11y for
+     * the next dispatch. The engine's [runAccessibility] auto-resolution treats this as equivalent
+     * to the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop being on for that one render —
+     * `LocalInspectionMode = false`, ATF + hierarchy artefacts written to `dataDir`.
+     */
+    const val A11Y_RENDER_MODE: String = "a11y"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.

@@ -185,6 +185,14 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         throw err;
     }
 
+    // PROTOCOL.md § 3 — `initialized` MUST land before any further request, otherwise the
+    // daemon rejects with -32001 ("received '<method>' before 'initialized' notification").
+    // We had `extensions/list+enable` running before this notification, which silently broke
+    // the whole capability handshake — the catch below swallowed the rejection and every
+    // subsequent `data/subscribe` came back as "kind not advertised". Fix is to fire
+    // `initialized` as soon as the initialize round-trip resolves.
+    client.initialized();
+
     // PROTOCOL.md § 3a — daemons advertise an empty capability surface until the client
     // opts in via `extensions/enable`. The panel doesn't yet do per-card lifecycle
     // (open card → enable extension → subscribe → close → unsubscribe), so as a
@@ -192,21 +200,22 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // pre-v2 "everything advertised" behaviour. Lean opt-in is a follow-up.
     try {
         const list = await client.extensionsList();
-        const ids = list.extensions.map((info) => info.id);
+        const ids = (list.extensions ?? []).map((info) => info.id);
         if (ids.length > 0) {
             const enabled = await client.extensionsEnable({ ids });
             initializeResult = {
                 ...initializeResult,
                 capabilities: {
                     ...initializeResult.capabilities,
-                    dataProducts: enabled.dataProducts,
-                    dataExtensions: enabled.dataExtensions,
-                    previewExtensions: enabled.previewExtensions,
+                    dataProducts: enabled.dataProducts ?? [],
+                    dataExtensions: enabled.dataExtensions ?? [],
+                    previewExtensions: enabled.previewExtensions ?? [],
                 },
             };
-            if (enabled.unknown.length > 0) {
+            const unknown = enabled.unknown ?? [];
+            if (unknown.length > 0) {
                 opts.logger?.appendLine(
-                    `[daemon] extensions/enable skipped unknown ids ${enabled.unknown.join(", ")}`,
+                    `[daemon] extensions/enable skipped unknown ids ${unknown.join(", ")}`,
                 );
             }
         }
@@ -218,7 +227,6 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         );
     }
 
-    client.initialized();
     return { client, process: child, initializeResult, exited };
 }
 

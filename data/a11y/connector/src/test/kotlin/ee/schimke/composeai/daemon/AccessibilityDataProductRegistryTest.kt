@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -50,8 +51,9 @@ class AccessibilityDataProductRegistryTest {
     for (cap in registry.capabilities) {
       assertTrue(cap.attachable)
       assertTrue(cap.fetchable)
-      // The producer always runs in daemon a11y mode — no per-fetch re-render.
-      assertTrue(!cap.requiresRerender)
+      // D2.2 — a11y mode is paid per-subscription. When no artefact exists yet, fetch returns
+      // RequiresRerender and the dispatcher queues a `mode=a11y` re-render.
+      assertTrue("${cap.kind}: requiresRerender should be true", cap.requiresRerender)
     }
   }
 
@@ -192,16 +194,54 @@ class AccessibilityDataProductRegistryTest {
   }
 
   @Test
-  fun `fetch returns NotAvailable when the preview never rendered`() {
+  fun `fetch on a missing artefact returns RequiresRerender so the dispatcher can re-run in a11y mode`() {
+    // D2.2 — a11y artefacts only land when the render ran in a11y mode. A previously-untouched
+    // preview (or one rendered in the default fast path) has no `a11y-*.json` on disk; the
+    // dispatcher (`JsonRpcServer.handleDataFetchWithRerender`) reacts to RequiresRerender by
+    // queueing a `mode=a11y` re-render and re-invoking fetch.
     val registry = AccessibilityDataProductRegistry(rootDir)
-    val outcome =
-      registry.fetch(
-        previewId = "com.example.NoRender",
-        kind = "a11y/hierarchy",
-        params = null,
-        inline = false,
+    for (kind in listOf("a11y/atf", "a11y/hierarchy", "a11y/touchTargets", "a11y/overlay")) {
+      val outcome =
+        registry.fetch(
+          previewId = "com.example.NoRender",
+          kind = kind,
+          params = null,
+          inline = false,
+        )
+      assertEquals(
+        "$kind: missing artefact should trigger a re-render in a11y mode",
+        DataProductRegistry.Outcome.RequiresRerender("a11y"),
+        outcome,
       )
-    assertEquals(DataProductRegistry.Outcome.NotAvailable, outcome)
+    }
+  }
+
+  @Test
+  fun `fetch on a fresh artefact returns Ok after a previous RequiresRerender produced it`() {
+    // Mirrors the dispatcher's two-step round-trip: first fetch returns RequiresRerender, the
+    // re-render writes the artefact, the dispatcher re-invokes fetch and now sees Ok.
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.HomeKt#HomePreview"
+
+    // Step 1 — pre-render. Artefact missing, dispatcher would re-render.
+    val pre =
+      registry.fetch(previewId = previewId, kind = "a11y/atf", params = null, inline = true)
+    assertEquals(DataProductRegistry.Outcome.RequiresRerender("a11y"), pre)
+
+    // Step 2 — re-render in a11y mode lands the artefacts.
+    AccessibilityDataProducer.writeArtifacts(
+      rootDir = rootDir,
+      previewId = previewId,
+      findings = emptyList(),
+      nodes = emptyList(),
+    )
+
+    // Step 3 — dispatcher re-invokes fetch; now Ok.
+    val post =
+      registry.fetch(previewId = previewId, kind = "a11y/atf", params = null, inline = true)
+    assertTrue("post-rerender fetch should be Ok, was $post", post is DataProductRegistry.Outcome.Ok)
+    val result = (post as DataProductRegistry.Outcome.Ok).result
+    assertNotNull(result.payload)
   }
 
   @Test
@@ -303,6 +343,68 @@ class AccessibilityDataProductRegistryTest {
     assertNotNull(extras)
     assertEquals(1, extras!!.size)
     assertEquals(overlay.absolutePath, extras[0].path)
+  }
+
+  @Test
+  fun `isPreviewSubscribed flips after onSubscribe and clears after onUnsubscribe`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.HomeKt#HomePreview"
+    assertFalse(registry.isPreviewSubscribed(previewId))
+
+    registry.onSubscribe(previewId, "a11y/atf", params = null)
+    assertTrue(registry.isPreviewSubscribed(previewId))
+
+    registry.onUnsubscribe(previewId, "a11y/atf")
+    assertFalse(registry.isPreviewSubscribed(previewId))
+  }
+
+  @Test
+  fun `isPreviewSubscribed stays true while any a11y kind remains subscribed`() {
+    // Focus inspector subscribes to a11y/atf + a11y/hierarchy as a pair (A11Y_OVERLAY_KINDS).
+    // Unsubscribing one shouldn't drop us out of a11y render mode while the other is still
+    // live — otherwise the next render strips ATF/hierarchy capture mid-overlay.
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.HomeKt#HomePreview"
+    registry.onSubscribe(previewId, "a11y/atf", params = null)
+    registry.onSubscribe(previewId, "a11y/hierarchy", params = null)
+
+    registry.onUnsubscribe(previewId, "a11y/atf")
+    assertTrue(
+      "still subscribed via a11y/hierarchy",
+      registry.isPreviewSubscribed(previewId),
+    )
+
+    registry.onUnsubscribe(previewId, "a11y/hierarchy")
+    assertFalse(registry.isPreviewSubscribed(previewId))
+  }
+
+  @Test
+  fun `onSubscribe is idempotent so a re-subscribe does not double-count the pair`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    val previewId = "com.example.HomeKt#HomePreview"
+    registry.onSubscribe(previewId, "a11y/atf", params = null)
+    registry.onSubscribe(previewId, "a11y/atf", params = null)
+    // One unsubscribe should clear it — if onSubscribe had double-counted, isPreviewSubscribed
+    // would still be true here.
+    registry.onUnsubscribe(previewId, "a11y/atf")
+    assertFalse(registry.isPreviewSubscribed(previewId))
+  }
+
+  @Test
+  fun `subscriptions are scoped per previewId`() {
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    registry.onSubscribe("com.example.A", "a11y/atf", params = null)
+    assertTrue(registry.isPreviewSubscribed("com.example.A"))
+    assertFalse(registry.isPreviewSubscribed("com.example.B"))
+  }
+
+  @Test
+  fun `non-accessibility kinds passed to onSubscribe are ignored`() {
+    // The dispatcher only routes here after capability matching, but the registry stays
+    // defensive — a misrouted call must not poison the predicate.
+    val registry = AccessibilityDataProductRegistry(rootDir)
+    registry.onSubscribe("com.example.A", "compose/recomposition", params = null)
+    assertFalse(registry.isPreviewSubscribed("com.example.A"))
   }
 
   @Test

@@ -378,6 +378,21 @@ export function applyDataProductsToRegistry(
     return null;
 }
 
+/**
+ * `true` iff [dp]'s `path` looks like a JSON file. The webview's
+ * `updateDataProducts` channel carries inline JSON payloads, so we only fall
+ * through to `readJsonPath` for kinds that actually carry JSON. Binary kinds
+ * (e.g. `a11y/overlay` ships a PNG) would otherwise produce `Unexpected token
+ * '�'` errors when the host eagerly tried to read the file as JSON. The
+ * wire `DataProductAttachment` doesn't carry a `mediaType`, so we sniff the
+ * file extension — every JSON producer wires `.json` paths, every binary
+ * producer wires its native extension (`.png`, `.bin`, etc.).
+ */
+function isJsonDataProduct(dp: DataProductAttachment): boolean {
+    if (!dp.path) return false;
+    return dp.path.toLowerCase().endsWith(".json");
+}
+
 function readJsonPath(
     p: string | undefined,
     log: { appendLine(value: string): void },
@@ -530,11 +545,19 @@ export async function activate(
                 // the diagnostics provider already listens to. The panel receives a targeted
                 // `updateA11y` post so its cached overlays repaint without re-emitting the entire
                 // preview list.
+                outputChannel.appendLine(
+                    `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
+                        .map((dp) => dp.kind)
+                        .join(",")}]`,
+                );
                 const decoded = applyDataProductsToRegistry(
                     registry,
                     previewId,
                     dataProducts,
                     outputChannel,
+                );
+                outputChannel.appendLine(
+                    `[daemon] decoded a11y for ${previewId}: findings=${decoded?.findings?.length ?? "<none>"} nodes=${decoded?.nodes?.length ?? "<none>"}`,
                 );
                 if (decoded && panel) {
                     panel.postMessage({
@@ -550,7 +573,9 @@ export async function activate(
                             kind: dp.kind,
                             payload:
                                 dp.payload ??
-                                readJsonPath(dp.path, outputChannel),
+                                (isJsonDataProduct(dp)
+                                    ? readJsonPath(dp.path, outputChannel)
+                                    : undefined),
                         }))
                         .filter((dp) => dp.payload !== undefined);
                     if (payloads.length > 0) {
@@ -1128,18 +1153,25 @@ export async function activate(
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const filePath = event.document.uri.fsPath;
-            if (!isPreviewSourceFile(filePath) || event.contentChanges.length === 0) {
+            if (
+                !isPreviewSourceFile(filePath) ||
+                event.contentChanges.length === 0
+            ) {
                 return;
             }
             const latestLine =
-                event.contentChanges[event.contentChanges.length - 1]?.range.start.line;
+                event.contentChanges[event.contentChanges.length - 1]?.range
+                    .start.line;
             if (latestLine !== undefined) {
                 const editedFunction = functionNameAtLine(
                     event.document.getText(),
                     latestLine,
                 );
                 if (editedFunction) {
-                    lastEditedPreviewFunctionByFile.set(filePath, editedFunction);
+                    lastEditedPreviewFunctionByFile.set(
+                        filePath,
+                        editedFunction,
+                    );
                 }
             }
         }),
@@ -1664,7 +1696,10 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
             ? previewsForFile(fresh, module, filePath)
             : filePreviews;
     }
-    const ids = prioritizeEditedPreview(filePath, filePreviews.map((p) => p.id));
+    const ids = prioritizeEditedPreview(
+        filePath,
+        filePreviews.map((p) => p.id),
+    );
     if (ids.length === 0) {
         return "accepted";
     }
@@ -1710,7 +1745,9 @@ function prioritizeEditedPreview(filePath: string, ids: string[]): string[] {
     if (!editedFunction || ids.length <= 1) {
         return ids;
     }
-    const prioritized = ids.find((id) => previewFunctionNameFromId(id) === editedFunction);
+    const prioritized = ids.find(
+        (id) => previewFunctionNameFromId(id) === editedFunction,
+    );
     if (!prioritized) {
         return ids;
     }
@@ -2846,6 +2883,34 @@ type RefreshOutcome =
     | "failed"
     | "gated";
 
+/**
+ * Rank for the coalesce-or-supersede decision when a new refresh arrives
+ * while one is already in flight. Higher = more work / more user intent.
+ *
+ * - `0` — discovery-only (`forceRender=false`). Triggered by file-save,
+ *   editor focus change, panel restore. Cheap; the user didn't explicitly
+ *   ask for new pixels.
+ * - `1` — fast tier explicit render (`forceRender=true, tier=fast`).
+ *   Daemon-driven path or a per-card heavy-refresh opt-in.
+ * - `2` — full tier explicit render (`forceRender=true, tier=full`).
+ *   What the panel's Refresh button posts.
+ *
+ * Used by [refresh] to drop weaker incoming refreshes for the same
+ * `(file, module)` rather than aborting + restarting Gradle. The
+ * canonical race the ranking solves: user clicks the panel's Refresh
+ * button → focus moves into the webview → `onDidChangeActiveTextEditor`
+ * fires `refresh(false)` → without ranking, that lighter refresh aborts
+ * the user's full render.
+ */
+function refreshStrength(
+    forceRender: boolean,
+    tier: "fast" | "full" | undefined,
+): number {
+    if (!forceRender) return 0;
+    if (tier === "full") return 2;
+    return 1;
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
@@ -2873,19 +2938,40 @@ async function refresh(
             ? gradleService.resolveModule(activeFile)
             : null;
 
-    // Coalesce identical concurrent refreshes. Activation, panel restore, and
-    // editor-focus events can each schedule the same refresh within ~100ms;
-    // aborting + restarting Gradle for each one wedges the build into a
-    // "Build cancelled." loop where no render ever finishes. The in-flight
-    // refresh will produce the same result this caller wants, so let it run.
-    if (activeFile && module && pendingRefresh !== null) {
+    // Coalesce concurrent refreshes for the same (file, module). Activation,
+    // panel restore, and editor-focus events can each schedule the same
+    // refresh within ~100ms; aborting + restarting Gradle for each one
+    // wedges the build into a "Build cancelled." loop where no render ever
+    // finishes. Beyond exact-key matches, also drop incoming requests that
+    // are *weaker* than the in-flight one — a `forceRender=false` discover
+    // refresh that fires when focus shifts off the editor (e.g. the user
+    // clicked the panel's refresh button, which moved focus away from
+    // their .kt file) must not abort a `forceRender=true` render the user
+    // explicitly asked for.
+    if (activeFile && module && pendingRefresh !== null && pendingRefreshKey) {
         const incomingKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
         if (pendingRefreshKey === incomingKey) {
             return "cancelled";
         }
+        const pendingParts = pendingRefreshKey.split("|");
+        // pendingParts: [forceRender, tier, file, modulePath]
+        if (
+            pendingParts.length === 4 &&
+            pendingParts[2] === activeFile &&
+            pendingParts[3] === module.modulePath
+        ) {
+            const pendingStrength = refreshStrength(
+                pendingParts[0] === "true",
+                pendingParts[1] as "fast" | "full",
+            );
+            const incomingStrength = refreshStrength(forceRender, tier);
+            if (incomingStrength < pendingStrength) {
+                return "cancelled";
+            }
+        }
     }
 
-    // Cancel any in-flight refresh (different args — superseded)
+    // Cancel any in-flight refresh (different / stronger args — superseded)
     pendingRefresh?.abort();
     const abort = new AbortController();
     pendingRefresh = abort;
@@ -3620,6 +3706,24 @@ async function handleSetDataExtensionEnabled(
         [kind],
         enabled,
     );
+    if (!enabled && (kind === "a11y/atf" || kind === "a11y/hierarchy")) {
+        // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
+        // down the cached overlay/legend immediately so the visual layer clears without
+        // waiting on the next render. Empty arrays are the agreed signal: applyA11yUpdate
+        // drops the corresponding cached entries and removes the layers from the DOM.
+        // Other kinds (touchTargets, overlay) don't currently drive a webview overlay
+        // independent of these two, so leaving them out keeps the message minimal.
+        const update: {
+            previewId: string;
+            findings?: never[];
+            nodes?: never[];
+        } = {
+            previewId,
+        };
+        if (kind === "a11y/atf") update.findings = [];
+        if (kind === "a11y/hierarchy") update.nodes = [];
+        panel?.postMessage({ command: "updateA11y", ...update });
+    }
 }
 
 /**
