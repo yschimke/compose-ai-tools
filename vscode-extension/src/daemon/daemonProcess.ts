@@ -200,21 +200,22 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // pre-v2 "everything advertised" behaviour. Lean opt-in is a follow-up.
     try {
         const list = await client.extensionsList();
-        const ids = list.extensions.map((info) => info.id);
+        const ids = (list.extensions ?? []).map((info) => info.id);
         if (ids.length > 0) {
             const enabled = await client.extensionsEnable({ ids });
             initializeResult = {
                 ...initializeResult,
                 capabilities: {
                     ...initializeResult.capabilities,
-                    dataProducts: enabled.dataProducts,
-                    dataExtensions: enabled.dataExtensions,
-                    previewExtensions: enabled.previewExtensions,
+                    dataProducts: enabled.dataProducts ?? [],
+                    dataExtensions: enabled.dataExtensions ?? [],
+                    previewExtensions: enabled.previewExtensions ?? [],
                 },
             };
-            if (enabled.unknown.length > 0) {
+            const unknown = enabled.unknown ?? [];
+            if (unknown.length > 0) {
                 opts.logger?.appendLine(
-                    `[daemon] extensions/enable skipped unknown ids ${enabled.unknown.join(", ")}`,
+                    `[daemon] extensions/enable skipped unknown ids ${unknown.join(", ")}`,
                 );
             }
         }

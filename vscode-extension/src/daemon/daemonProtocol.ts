@@ -319,13 +319,15 @@ export interface InitializeResult {
 export interface ExtensionInfo {
     id: string;
     displayName: string;
-    dependencies: string[];
-    publiclyEnabled: boolean;
+    // Daemon serializes with `encodeDefaults = false`; empty lists/false-defaults drop off the
+    // wire. Treat list fields as optional + default at access sites.
+    dependencies?: string[];
+    publiclyEnabled?: boolean;
     /** True iff publicly enabled OR pulled in as a dependency of another public extension. */
-    active: boolean;
-    dataProductKinds: string[];
-    dataExtensionIds: string[];
-    previewExtensionIds: string[];
+    active?: boolean;
+    dataProductKinds?: string[];
+    dataExtensionIds?: string[];
+    previewExtensionIds?: string[];
 }
 
 export interface ExtensionsListResult {
@@ -337,17 +339,19 @@ export interface ExtensionsEnableParams {
 }
 
 export interface ExtensionsEnableResult {
-    newlyEnabled: string[];
-    pulledIn: string[];
-    alreadyEnabled: string[];
-    unknown: string[];
+    // Daemon serializes with `encodeDefaults = false`; empty lists drop off the wire entirely.
+    // Treat every field as optional and default to `[]` at access sites.
+    newlyEnabled?: string[];
+    pulledIn?: string[];
+    alreadyEnabled?: string[];
+    unknown?: string[];
     /**
      * Updated public capability snapshots — same shape as the `initialize.capabilities`
      * fields. Saves a follow-up `extensions/list` round-trip after enabling.
      */
-    dataProducts: DataProductCapability[];
-    dataExtensions: DataExtensionDescriptor[];
-    previewExtensions: PreviewExtensionDescriptor[];
+    dataProducts?: DataProductCapability[];
+    dataExtensions?: DataExtensionDescriptor[];
+    previewExtensions?: PreviewExtensionDescriptor[];
 }
 
 export interface ExtensionsDisableParams {
