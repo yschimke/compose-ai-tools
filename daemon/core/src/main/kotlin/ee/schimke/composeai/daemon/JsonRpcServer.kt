@@ -1628,6 +1628,12 @@ class JsonRpcServer(
     val attachments: List<DataProductAttachment> =
       if (requestedKinds.isEmpty()) emptyList()
       else extensions.publicDataProducts().attachmentsFor(previewId, requestedKinds)
+    System.err.println(
+      "compose-ai-daemon: [renderFinished] previewId=$previewId " +
+        "subscribedKinds=${subscriptions[previewId]?.sorted() ?: emptyList<String>()} " +
+        "globalAttachKinds=${globalAttachKinds.sorted()} " +
+        "attachments=${attachments.map { it.kind }}"
+    )
     return RenderFinishedParams(
       id = previewId,
       pngPath = pngPath,

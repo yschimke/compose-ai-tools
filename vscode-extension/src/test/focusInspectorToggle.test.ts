@@ -83,7 +83,10 @@ function makeHarness(findingsCount = 0, autoEnableCheap = false): Harness {
         getPreview: (id) => ({
             ...samplePreview,
             id,
-            params: { ...samplePreview.params, uiMode: autoEnableCheap ? 32 : 0 },
+            params: {
+                ...samplePreview.params,
+                uiMode: autoEnableCheap ? 32 : 0,
+            },
         }),
         getA11yFindings: () =>
             Array.from({ length: findingsCount }, () => ({

@@ -378,6 +378,21 @@ export function applyDataProductsToRegistry(
     return null;
 }
 
+/**
+ * `true` iff [dp]'s `path` looks like a JSON file. The webview's
+ * `updateDataProducts` channel carries inline JSON payloads, so we only fall
+ * through to `readJsonPath` for kinds that actually carry JSON. Binary kinds
+ * (e.g. `a11y/overlay` ships a PNG) would otherwise produce `Unexpected token
+ * '�'` errors when the host eagerly tried to read the file as JSON. The
+ * wire `DataProductAttachment` doesn't carry a `mediaType`, so we sniff the
+ * file extension — every JSON producer wires `.json` paths, every binary
+ * producer wires its native extension (`.png`, `.bin`, etc.).
+ */
+function isJsonDataProduct(dp: DataProductAttachment): boolean {
+    if (!dp.path) return false;
+    return dp.path.toLowerCase().endsWith(".json");
+}
+
 function readJsonPath(
     p: string | undefined,
     log: { appendLine(value: string): void },
@@ -558,7 +573,9 @@ export async function activate(
                             kind: dp.kind,
                             payload:
                                 dp.payload ??
-                                readJsonPath(dp.path, outputChannel),
+                                (isJsonDataProduct(dp)
+                                    ? readJsonPath(dp.path, outputChannel)
+                                    : undefined),
                         }))
                         .filter((dp) => dp.payload !== undefined);
                     if (payloads.length > 0) {
@@ -3696,7 +3713,11 @@ async function handleSetDataExtensionEnabled(
         // drops the corresponding cached entries and removes the layers from the DOM.
         // Other kinds (touchTargets, overlay) don't currently drive a webview overlay
         // independent of these two, so leaving them out keeps the message minimal.
-        const update: { previewId: string; findings?: never[]; nodes?: never[] } = {
+        const update: {
+            previewId: string;
+            findings?: never[];
+            nodes?: never[];
+        } = {
             previewId,
         };
         if (kind === "a11y/atf") update.findings = [];
