@@ -215,6 +215,12 @@ class RenderEngine(
       "compose-ai-daemon: [render] ${spec.className}#${spec.functionName} " +
         "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint"
     )
+    System.err.println(
+      "compose-ai-daemon: [render] mode=${spec.renderMode ?: "<default>"} " +
+        "effectiveRunAccessibility=$effectiveRunAccessibility " +
+        "inspectionMode=${if (effectiveRunAccessibility) false else spec.inspectionMode ?: true} " +
+        "outputBaseName=${spec.outputBaseName}"
+    )
 
     // `device = "id:wearos_*_round"` / `isRound=true` previews need a circular crop matching the
     // standalone renderer's `RobolectricRenderTest`. The standalone path also gates on
@@ -275,6 +281,9 @@ class RenderEngine(
             // re-used during the post-capture pass below to write the artefacts.
             val builtDataArtifactExtensions = dataArtifactExtensions.build(rule.activity)
 
+            System.err.println(
+              "compose-ai-daemon: [render] phase=setContent.start outputBaseName=${spec.outputBaseName}"
+            )
             trace.section("compose:setContent") {
               rule.setContent {
                 // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
@@ -305,6 +314,10 @@ class RenderEngine(
               }
             }
 
+            System.err.println(
+              "compose-ai-daemon: [render] phase=setContent.done outputBaseName=${spec.outputBaseName}"
+            )
+
             // CAPTURE_ADVANCE_MS is the same paused-clock advance `RobolectricRenderTest` uses —
             // ≈ 2 Choreographer frames. Enough to settle initial composition + one
             // `LaunchedEffect` pass; deterministic snapshot point for any infinite animation.
@@ -321,6 +334,9 @@ class RenderEngine(
             // renderer's wear-round path.
             val roborazziOptions =
               RoborazziOptions(recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound))
+            System.err.println(
+              "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=${spec.outputBaseName}"
+            )
             rule
               .onRoot()
               .also {
@@ -328,6 +344,9 @@ class RenderEngine(
                   it.captureRoboImage(file = outputFile, roborazziOptions = roborazziOptions)
                 }
               }
+            System.err.println(
+              "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
+            )
 
             // Always-on data-artifact extensions (fonts, resources, semantics, layout-inspector,
             // i18n, etc). Each extension owns its own recorder lifecycle (installed during
@@ -407,6 +426,9 @@ class RenderEngine(
             // not strand the PNG the user already cares about — the registry sees a missing
             // file as "no attachment for this kind on this render".
             if (effectiveRunAccessibility && dataDir != null) {
+              System.err.println(
+                "compose-ai-daemon: [render] phase=a11y.start outputBaseName=${spec.outputBaseName}"
+              )
               try {
                 trace.section("a11y:dataProducts") {
                   val view = (rule.onRoot().fetchSemanticsNode().root as ViewRootForTest).view
@@ -442,12 +464,17 @@ class RenderEngine(
                     isRound = isRound,
                     imageProcessors = imageProcessors,
                   )
+                  System.err.println(
+                    "compose-ai-daemon: [render] phase=a11y.done outputBaseName=${spec.outputBaseName} " +
+                      "findings=${findings.findings.size} nodes=${hierarchy.nodes.size}"
+                  )
                 }
               } catch (t: Throwable) {
                 System.err.println(
-                  "RenderEngine: a11y data write failed for ${spec.outputBaseName}: " +
-                    "${t.javaClass.simpleName}: ${t.message}"
+                  "compose-ai-daemon: [render] phase=a11y.failed outputBaseName=${spec.outputBaseName} " +
+                    "error=${t.javaClass.simpleName}: ${t.message}"
                 )
+                t.printStackTrace(System.err)
               }
             }
 
@@ -549,7 +576,20 @@ class RenderEngine(
     val previousContext = Thread.currentThread().contextClassLoader
     Thread.currentThread().contextClassLoader = classLoader
     try {
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.start outputBaseName=${spec.outputBaseName}"
+      )
       trace.section("render:evaluateRule") { rule.apply(statement, description).evaluate() }
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.done outputBaseName=${spec.outputBaseName}"
+      )
+    } catch (t: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: [render] phase=evaluateRule.failed outputBaseName=${spec.outputBaseName} " +
+          "error=${t.javaClass.simpleName}: ${t.message}"
+      )
+      t.printStackTrace(System.err)
+      throw t
     } finally {
       Thread.currentThread().contextClassLoader = previousContext
     }
@@ -601,6 +641,10 @@ class RenderEngine(
       previewContextBuilder.putInspectionValue(MATERIAL3_THEME_PAYLOAD_CONTEXT_KEY, it)
     }
     val previewContext = previewContextBuilder.build()
+    System.err.println(
+      "compose-ai-daemon: [render] phase=complete outputBaseName=${spec.outputBaseName} " +
+        "tookMs=$tookMs pngPath=${outputFile.absolutePath}"
+    )
     return RenderResult(
       id = requestId,
       classLoaderHashCode = System.identityHashCode(classLoader),
