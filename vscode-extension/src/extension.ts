@@ -530,11 +530,19 @@ export async function activate(
                 // the diagnostics provider already listens to. The panel receives a targeted
                 // `updateA11y` post so its cached overlays repaint without re-emitting the entire
                 // preview list.
+                outputChannel.appendLine(
+                    `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
+                        .map((dp) => dp.kind)
+                        .join(",")}]`,
+                );
                 const decoded = applyDataProductsToRegistry(
                     registry,
                     previewId,
                     dataProducts,
                     outputChannel,
+                );
+                outputChannel.appendLine(
+                    `[daemon] decoded a11y for ${previewId}: findings=${decoded?.findings?.length ?? "<none>"} nodes=${decoded?.nodes?.length ?? "<none>"}`,
                 );
                 if (decoded && panel) {
                     panel.postMessage({
