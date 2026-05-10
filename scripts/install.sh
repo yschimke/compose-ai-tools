@@ -230,15 +230,18 @@ if [[ "$CLAUDE_CLOUD" == 1 ]]; then
     # rejected by the >= 17 check below.
     detected_major="$(java -version 2>&1 | head -1 | awk -F'"' '{print $2}' | awk -F. '{print $1}')"
   fi
-  if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -ge "$REQUIRED_JAVA_MAJOR" ]]; then
+  if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -eq "$REQUIRED_JAVA_MAJOR" ]]; then
     log "claude cloud: using existing JDK $detected_major on PATH"
   else
+    if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ ]]; then
+      log "claude cloud: detected JDK $detected_major but project requires JDK $REQUIRED_JAVA_MAJOR; selecting required JDK"
+    fi
     JDK_HOME="/usr/lib/jvm/java-${REQUIRED_JAVA_MAJOR}-openjdk-amd64"
     if [[ ! -x "$JDK_HOME/bin/java" ]]; then
       if [[ "$ACCEPT_DOWNLOAD" != 1 && "$ACCEPT_UPGRADE" != 1 ]]; then
-        die "no JDK ${REQUIRED_JAVA_MAJOR}+ on PATH; rerun with --yes to apt-install openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
+        die "required JDK $REQUIRED_JAVA_MAJOR not available; rerun with --yes to apt-install openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
       fi
-      log "claude cloud: no JDK ${REQUIRED_JAVA_MAJOR}+ detected; installing openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
+      log "claude cloud: installing openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
       SUDO=""
       if [[ $EUID -ne 0 ]]; then
         command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK ${REQUIRED_JAVA_MAJOR}"
