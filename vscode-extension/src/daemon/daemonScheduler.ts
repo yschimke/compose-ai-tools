@@ -367,6 +367,7 @@ export class DaemonScheduler {
         if (!client) {
             return;
         }
+        let subscribedAny = false;
         for (const kind of kinds) {
             const subKey = `${module.modulePath}::${previewId}::${kind}`;
             const already = this.subscribedPairs.has(subKey);
@@ -375,6 +376,7 @@ export class DaemonScheduler {
             }
             if (enabled) {
                 this.subscribedPairs.add(subKey);
+                subscribedAny = true;
                 client.dataSubscribe({ previewId, kind }).catch((err) => {
                     // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
                     // expected, not noise — log to the daemon channel and roll back the
@@ -396,6 +398,29 @@ export class DaemonScheduler {
                     );
                 });
             }
+        }
+        // D2.2 — `data/subscribe` records subscription state but doesn't trigger a render
+        // on its own; the daemon's `subscriptionDrivenRenderMode` only injects the mode tag
+        // on the *next* renderNow for this preview. Without a follow-up render request the
+        // chip stays checked but no a11y artefacts ever land — the focus inspector's UX
+        // expects "click chip → see overlay within one render time," which means we need
+        // to bridge that gap host-side. Fire a single fast-tier renderNow per call (not
+        // per kind) when at least one new subscription took. Idempotent w.r.t. unsubscribes
+        // and no-op-subscribes — they don't set `subscribedAny`. The daemon's existing
+        // dedup means a second renderNow for an in-flight render coalesces.
+        if (enabled && subscribedAny) {
+            client
+                .renderNow({
+                    previews: [previewId],
+                    tier: "fast",
+                    reason: "data/subscribe",
+                })
+                .catch((err) => {
+                    const msg = (err as Error)?.message ?? String(err);
+                    this.logger.appendLine(
+                        `[daemon] post-subscribe renderNow(${previewId}) failed: ${msg}`,
+                    );
+                });
         }
     }
 
