@@ -398,6 +398,10 @@ class RenderEngine(
               val productStore = RecordingDataProductStore()
               for (ext in builtDataArtifactExtensions) {
                 if (ext !is PostCaptureProcessor) continue
+                System.err.println(
+                  "compose-ai-daemon: [render] phase=dataArtifact.${ext.id}.start outputBaseName=${spec.outputBaseName}"
+                )
+                val extStartNs = System.nanoTime()
                 try {
                   trace.section("dataArtifact:${ext.id}") {
                     ext.process(
@@ -410,6 +414,11 @@ class RenderEngine(
                       )
                     )
                   }
+                  System.err.println(
+                    "compose-ai-daemon: [render] phase=dataArtifact.${ext.id}.done " +
+                      "outputBaseName=${spec.outputBaseName} " +
+                      "tookMs=${(System.nanoTime() - extStartNs) / 1_000_000L}"
+                  )
                 } catch (t: Throwable) {
                   System.err.println(
                     "RenderEngine: ${ext.id} data write failed for ${spec.outputBaseName}: " +
