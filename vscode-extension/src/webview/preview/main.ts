@@ -563,6 +563,15 @@ export class PreviewApp extends LitElement {
             applyLayout();
         });
 
+        // Mirror the gutter-icon `setFunctionFilter` path: persist the new
+        // function/group picks and re-run filtering so the grid updates.
+        // Without this, the dropdowns updated their internal state but
+        // nothing ever called `filterController.apply()`.
+        filterToolbar.addEventListener("filter-changed", () => {
+            saveFilterState();
+            applyFilters();
+        });
+
         btnPrev.addEventListener("click", () => navigateFocus(-1));
         btnNext.addEventListener("click", () => navigateFocus(1));
         btnDiffHead.addEventListener("click", () => requestFocusedDiff("head"));
