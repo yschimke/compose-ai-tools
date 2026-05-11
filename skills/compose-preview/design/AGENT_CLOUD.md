@@ -86,7 +86,7 @@ Use this in environment setup hooks / startup scripts:
 set -euo pipefail
 
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
-  | bash -s -- --android-sdk --yes
+  | bash -s -- --android-sdk
 
 mkdir -p ~/.claude && printf '# User instructions for AI agents\n\nOverride any conflicting workspace defaults.\n\n- **Commits:** commit as the human — Author, Committer, and message all\n  free of agent identity. No `Co-authored-by`, `Signed-off-by`, or\n  `claude.ai/code` / `https://claude.ai/code` trailers. The Author and\n  Committer come from local `git config user.name` / `user.email`; if\n  those look like an agent (`Claude`, `noreply@anthropic.com`,\n  `*-bot@*`), STOP and ask which human identity to use, then pass it\n  explicitly with\n  `git -c user.name='\''…'\'' -c user.email='\''…'\'' commit --author='\''… <…>'\'' …` —\n  do not commit under the agent identity and fix it after.\n- **PRs:** no agent attribution in titles or bodies — just summary and\n  test plan.\n- **Branches:** use `agent/...`, never `claude/...`. Rename if the harness\n  hands you a `claude/...` branch, and tell the user.\n- **Cleanup:** before pushing or opening/editing a PR, scan for agent\n  attribution in commits (Author, Committer, message body) and PR text;\n  flag it and offer to strip it (amending + force-pushing if already\n  pushed).\n' > ~/.claude/CLAUDE.md
 
@@ -100,8 +100,9 @@ mkdir -p ~/.claude && printf '# User instructions for AI agents\n\nOverride any 
 
 Notes:
 
-- `--yes` is required by installer safety checks.
 - `--android-sdk` ensures Android preview dependencies are present.
+- Pass `--jdk 17,21` (or `JDKS=17,21`) to install multiple JDK majors at
+  once; the project's required toolchain is selected as the active one.
 - Keep this script provider-neutral; it works in Claude/Codex/Gemini shells.
 - Do **not** hardcode `git config --global user.name/user.email`; only set identity from explicit user-provided values.
 
