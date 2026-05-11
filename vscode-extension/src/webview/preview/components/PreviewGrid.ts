@@ -27,11 +27,22 @@
 // Light DOM keeps `media/preview.css` rules targeting `.preview-grid`,
 // `.preview-card`, etc. applying unchanged.
 
+import { decideVariantCollapse } from "../variantCollapse";
+
 export type LayoutMode = "grid" | "flow" | "column" | "focus";
 
 export interface FilterValues {
     fn: string;
     group: string;
+}
+
+export interface ApplyFiltersOptions {
+    /** When true, collapse variants of the same function (same
+     *  className+functionName) so only the first card survives. Only takes
+     *  effect when neither the function nor the group filter is narrower
+     *  than `"all"` — picking a function or group is treated as an
+     *  explicit "show all variants for this selection" signal. */
+    collapseVariants?: boolean;
 }
 
 export class PreviewGrid extends HTMLElement {
@@ -84,17 +95,52 @@ export class PreviewGrid extends HTMLElement {
      * `filtered-out` class on each card based on the function/group
      * picks and returns how many ended up visible — callers use that
      * count to decide whether to surface the "no matches" banner.
+     *
+     * When `options.collapseVariants` is true and both filters are
+     * `"all"`, variants of the same function (matched on
+     * `data-class-name + data-function`) collapse to the first card —
+     * the rest pick up `filtered-out` (and an extra
+     * `collapsed-variant` class so callers can tell the two apart).
      */
-    applyFilters(filters: FilterValues): number {
+    applyFilters(
+        filters: FilterValues,
+        options: ApplyFiltersOptions = {},
+    ): number {
         const { fn, group } = filters;
-        let visibleCount = 0;
-        for (const card of this.getCards()) {
+        const cards = this.getCards();
+        const filterEligible: HTMLElement[] = [];
+        const matches = new Map<HTMLElement, boolean>();
+        for (const card of cards) {
             const cardFn = card.dataset.function ?? "";
             const cardGroup = card.dataset.group ?? "";
             const show =
                 (fn === "all" || cardFn === fn) &&
                 (group === "all" || cardGroup === group);
+            matches.set(card, show);
+            if (show) filterEligible.push(card);
+        }
+        const decision = decideVariantCollapse({
+            collapseVariants: !!options.collapseVariants,
+            fnFilter: fn,
+            groupFilter: group,
+            candidates: filterEligible.map((c) => ({
+                id: c.dataset.previewId ?? "",
+                functionKey:
+                    (c.dataset.className ?? "") +
+                    "::" +
+                    (c.dataset.function ?? ""),
+            })),
+        });
+        let visibleCount = 0;
+        for (const card of cards) {
+            const passes = matches.get(card) ?? false;
+            const collapsed =
+                passes &&
+                decision.active &&
+                decision.hidden.has(card.dataset.previewId ?? "");
+            const show = passes && !collapsed;
             card.classList.toggle("filtered-out", !show);
+            card.classList.toggle("collapsed-variant", collapsed);
             if (show) visibleCount++;
         }
         return visibleCount;

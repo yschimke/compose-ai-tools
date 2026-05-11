@@ -200,6 +200,14 @@ export function handleExtensionMessage(
         case "setAutoEnableCheap":
             previewStore.setState({ autoEnableCheapEnabled: !!msg.enabled });
             return;
+        case "setCollapseVariants":
+            previewStore.setState({
+                collapseVariantsEnabled: !!msg.enabled,
+            });
+            // Re-apply filters so the grid picks up the change without
+            // waiting for the user to touch the toolbar.
+            ctx.applyFilters();
+            return;
         case "setDaemonCapabilities":
             ctx.inspector.setProducts(
                 productsFromDaemonCapabilities(

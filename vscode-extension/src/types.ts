@@ -579,6 +579,15 @@ export type ExtensionToWebview =
      */
     | { command: "setAutoEnableCheap"; enabled: boolean }
     /**
+     * Reflects `composePreview.collapseVariants.enabled` from settings.
+     * When `true`, the preview grid shows only one card per function
+     * (`className + functionName`) while no function or group filter is
+     * active; picking a function or group from the toolbar expands all
+     * variants for that selection. Sent at panel boot and on settings
+     * change.
+     */
+    | { command: "setCollapseVariants"; enabled: boolean }
+    /**
      * Daemon capabilities for the active module — the kinds the daemon
      * can produce (`dataProducts`) and the data extensions registered
      * (`dataExtensions`). The focus inspector groups these into its

@@ -255,6 +255,12 @@ function autoEnableCheapEnabled(): boolean {
         .get<boolean>("autoEnableCheap.enabled", false);
 }
 
+function collapseVariantsEnabled(): boolean {
+    return vscode.workspace
+        .getConfiguration("composePreview")
+        .get<boolean>("collapseVariants.enabled", true);
+}
+
 /**
  * Show the remediation notification for a detected JdkImageError. The offered
  * "Open JDK setting" action reveals `java.import.gradle.java.home` — the
@@ -748,6 +754,7 @@ export async function activate(
         () => earlyFeaturesEnabled(),
         undefined,
         () => autoEnableCheapEnabled(),
+        () => collapseVariantsEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -1061,6 +1068,16 @@ export async function activate(
                 panel?.postMessage({
                     command: "setAutoEnableCheap",
                     enabled: autoEnableCheapEnabled(),
+                });
+            }
+            if (
+                event.affectsConfiguration(
+                    "composePreview.collapseVariants.enabled",
+                )
+            ) {
+                panel?.postMessage({
+                    command: "setCollapseVariants",
+                    enabled: collapseVariantsEnabled(),
                 });
             }
         }),
