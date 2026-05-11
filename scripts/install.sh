@@ -2,9 +2,10 @@
 #
 # Bootstrap installer for the compose-preview skill bundles.
 #
-# Installs two sibling skills into the detected agent host's user-scope
-# skills directory (Claude Code, Codex, or Antigravity), with symlinks into
-# the other detected hosts so a single install serves all of them:
+# Installs two sibling skills into the shared cross-agent skills directory
+# (`~/.agents/skills/` by default). Gemini reads `~/.agents/skills/` directly;
+# Claude Code and Codex only read their own per-host dirs, so we symlink the
+# canonical bundle in for each detected host:
 #
 #   <skills-root>/compose-preview/                     (renderer + CLI)
 #   |-- SKILL.md                                       (from skill tarball)
@@ -16,12 +17,21 @@
 #   |-- SKILL.md                                       (from skill tarball)
 #   `-- design/...                                     (from skill tarball)
 #
+#   ~/.claude/skills/compose-preview        -> <skills-root>/compose-preview
+#   ~/.claude/skills/compose-preview-review -> …                   (if claude detected)
+#   ~/.codex/skills/...                                            (if codex detected)
+#
+# No symlink is created under ~/.gemini/: Gemini scans both `~/.agents/skills/`
+# and `~/.gemini/skills/`, so an extra entry there would surface as a
+# "Skill conflict detected" warning (issue #1005).
+#
 # <skills-root> resolves in order:
 #   1. $SKILL_DIR/.. when explicitly set
-#   2. The skill dir of the cloud agent currently running this script
-#      (Claude → ~/.claude/skills, Codex → ${CODEX_HOME:-~/.codex}/skills)
-#   3. Whichever agent config directory already exists on disk
-#   4. ~/.claude/skills (final fallback)
+#   2. $AGENTS_SKILLS_ROOT (default: ~/.agents/skills)
+#
+# On upgrade we sweep any stale compose-preview symlinks earlier versions
+# wrote under ~/.gemini/skills/ or ~/.gemini/antigravity/skills/ (regular
+# directories and files are left alone).
 #
 # Also symlinks ~/.local/bin/compose-preview so the CLI is on PATH without
 # the consumer having to know the skill-bundle layout. Idempotent: rerunning
@@ -39,7 +49,8 @@
 #   JDKS=17,21 scripts/install.sh              # same, via env
 #
 # Override locations:
-#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh
+#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh  # full path
+#   AGENTS_SKILLS_ROOT=~/.claude/skills scripts/install.sh         # parent dir
 #   PREFIX=$HOME/.local scripts/install.sh       # for the ~/.local/bin symlink
 #   REPO=yschimke/compose-ai-tools scripts/install.sh
 #   ANDROID_HOME=$HOME/Android/Sdk scripts/install.sh --android-sdk
@@ -128,29 +139,16 @@ if [[ -z "${CLAUDE_CLOUD:-}" ]]; then
   CLAUDE_CLOUD=$([[ -n "$AGENT_CLOUD_HOST" ]] && echo 1 || echo 0)
 fi
 
-# Skill install root — pick the canonical agent-skills directory based on
-# (a) the agent host currently running this script, then (b) whichever agent
-# config dir already exists, then (c) Claude as the fallback. The
-# link_skills_for_detected_hosts helper later symlinks the canonical bundle
-# into every other detected host's skill dir, so one install serves Claude,
-# Codex, and Antigravity in parallel. Override with `SKILL_DIR=...`.
+# Skill install root — the canonical bundle lives in the shared cross-agent
+# dir `~/.agents/skills/`. Gemini CLI scans `~/.agents/skills/` directly, so
+# nothing extra is needed for Gemini. Claude Code and Codex (which only scan
+# their own per-host dirs) get a symlink each from `link_skills_for_hosts_*`
+# below — that way one physical install serves every agent without any of
+# them seeing the bundle in two scan paths at once (issue #1005). Override
+# with `SKILL_DIR=...` (full path) or `AGENTS_SKILLS_ROOT=...` (parent dir).
+AGENTS_SKILLS_ROOT="${AGENTS_SKILLS_ROOT:-$HOME/.agents/skills}"
 if [[ -z "$SKILL_DIR" ]]; then
-  codex_skills="${CODEX_HOME:-$HOME/.codex}/skills/compose-preview"
-  claude_skills="$HOME/.claude/skills/compose-preview"
-  antigravity_skills="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}/compose-preview"
-  case "$AGENT_CLOUD_HOST" in
-    codex)  candidates=("$codex_skills" "$claude_skills" "$antigravity_skills") ;;
-    claude) candidates=("$claude_skills" "$codex_skills" "$antigravity_skills") ;;
-    *)      candidates=("$claude_skills" "$codex_skills" "$antigravity_skills") ;;
-  esac
-  for c in "${candidates[@]}"; do
-    parent_root="$(dirname "$(dirname "$c")")"
-    if [[ -d "$parent_root" ]]; then
-      SKILL_DIR="$c"
-      break
-    fi
-  done
-  SKILL_DIR="${SKILL_DIR:-$claude_skills}"
+  SKILL_DIR="$AGENTS_SKILLS_ROOT/compose-preview"
 fi
 
 # Android SDK location — honor an explicit ANDROID_HOME from the caller; else
@@ -187,34 +185,28 @@ sha256_of() {
 require curl
 require tar
 
-# ---- Skill-bundle symlinks for detected agent hosts ----------------------
+# ---- Per-host symlinks + legacy gemini-mirror cleanup ---------------------
 #
-# The skill bundles are extracted once into $SKILL_DIR / $REVIEW_SKILL_DIR.
-# For every other agent host detected on this machine, drop a symlink from
-# that host's user-scope skills directory pointing at the canonical bundle,
-# so updates flow through automatically and disk content isn't duplicated.
-# Detection mirrors `compose-preview mcp install`. The host that already
-# owns the canonical bundle is skipped to avoid linking onto itself.
+# Claude Code and Codex only scan their own per-host skills dir, so we
+# symlink the canonical bundle into each one when detected. Gemini reads
+# `~/.agents/skills/` directly, so it gets NO symlink — adding one would
+# put the same skill into both `~/.agents/skills/` and `~/.gemini/skills/`
+# and Gemini would emit "Skill conflict detected" (issue #1005). Older
+# versions of this script created exactly that gemini mirror; on upgrade
+# we sweep it (and the legacy antigravity subdir) for any compose-preview /
+# compose-preview-review symlinks we recognise as ours. Non-symlinks are
+# left alone so any user-managed content is preserved.
 #
 # Skill dirs (override via env):
-#   - Codex:       ${CODEX_HOME:-$HOME/.codex}/skills
-#                  https://developers.openai.com/codex/skills
-#   - Antigravity: ${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}
-#                  https://antigravity.google/docs/skills
-#
-# Idempotent: a symlink already pointing at the canonical bundle is left alone;
-# a stale symlink is repointed; a regular directory or file is left untouched
-# with a warning (so we never clobber user-managed content).
+#   - Codex: ${CODEX_HOME:-$HOME/.codex}/skills
+#            https://developers.openai.com/codex/skills
+
+have_claude() {
+  [[ -d "$HOME/.claude" ]] || command -v claude >/dev/null 2>&1
+}
 
 have_codex() {
   [[ -d "${CODEX_HOME:-$HOME/.codex}" ]] || command -v codex >/dev/null 2>&1
-}
-
-have_antigravity() {
-  [[ -d "$HOME/.gemini/antigravity" ]] \
-    || [[ "${__CFBundleIdentifier:-}" == "com.google.antigravity" ]] \
-    || [[ -n "${ANTIGRAVITY_CLI_ALIAS:-}" ]] \
-    || command -v antigravity >/dev/null 2>&1
 }
 
 link_skill_into_dir() {
@@ -238,37 +230,51 @@ link_skill_into_dir() {
   ln -s "$src" "$dst"
 }
 
+cleanup_legacy_gemini_skill_links() {
+  # Sweep gemini-side mirrors written by older versions of this script.
+  # Gemini scans both ~/.gemini/skills/ and ~/.agents/skills/, so any
+  # symlink we add under ~/.gemini/ now would duplicate the entry.
+  local roots=(
+    "$HOME/.gemini/skills"
+    "$HOME/.gemini/antigravity/skills"
+  )
+  local root name
+  for root in "${roots[@]}"; do
+    [[ -d "$root" ]] || continue
+    [[ "$root" == "$AGENTS_SKILLS_ROOT" ]] && continue
+    for name in compose-preview compose-preview-review; do
+      local entry="$root/$name"
+      [[ -L "$entry" ]] || continue
+      local target; target="$(readlink "$entry" 2>/dev/null || true)"
+      case "$target" in
+        *compose-preview-review*|*compose-preview*)
+          log "removing legacy gemini skill link: $entry (was -> $target)"
+          rm -f "$entry"
+          ;;
+      esac
+    done
+  done
+}
+
 link_skills_for_detected_hosts() {
   # Run after the canonical bundles exist; otherwise the symlinks would dangle.
   [[ -d "$SKILL_DIR" ]] || return 0
-  # Real path of the dir that owns the canonical bundles; skip any host
-  # whose skills dir is the same (i.e. would symlink onto itself).
+  cleanup_legacy_gemini_skill_links
   local owning_root; owning_root="$(dirname "$SKILL_DIR")"
+  if have_claude; then
+    local claude_dir="$HOME/.claude/skills"
+    if [[ "$claude_dir" != "$owning_root" ]]; then
+      mkdir -p "$claude_dir"
+      link_skill_into_dir "claude" "$claude_dir" "$SKILL_DIR"
+      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "claude" "$claude_dir" "$REVIEW_SKILL_DIR"
+    fi
+  fi
   if have_codex; then
     local codex_dir="${CODEX_HOME:-$HOME/.codex}/skills"
     if [[ "$codex_dir" != "$owning_root" ]]; then
       mkdir -p "$codex_dir"
       link_skill_into_dir "codex" "$codex_dir" "$SKILL_DIR"
       [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "codex" "$codex_dir" "$REVIEW_SKILL_DIR"
-    fi
-  fi
-  if have_antigravity; then
-    local ag_dir="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}"
-    if [[ "$ag_dir" != "$owning_root" ]]; then
-      mkdir -p "$ag_dir"
-      link_skill_into_dir "antigravity" "$ag_dir" "$SKILL_DIR"
-      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "antigravity" "$ag_dir" "$REVIEW_SKILL_DIR"
-    fi
-  fi
-  # If the canonical bundle is under codex/antigravity, mirror it into Claude
-  # too when ~/.claude exists. (The original code only mirrored "away from"
-  # Claude; now the canonical home can be any of them.)
-  if [[ -d "$HOME/.claude" ]]; then
-    local claude_dir="$HOME/.claude/skills"
-    if [[ "$claude_dir" != "$owning_root" ]]; then
-      mkdir -p "$claude_dir"
-      link_skill_into_dir "claude" "$claude_dir" "$SKILL_DIR"
-      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "claude" "$claude_dir" "$REVIEW_SKILL_DIR"
     fi
   fi
 }
