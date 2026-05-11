@@ -62,11 +62,11 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal_FOCUS_step2_Next.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal_FOCUS_step3_Previous.png" width="150" /> |
 | `FocusTraversalPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/FocusTraversalPreview_Focus_Traversal_FOCUS_step4_Next.png" width="150" /> |
-| `InsetFocusRingAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingAnimatedPreview_Inset_Focus_Ring_moving.gif" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_0.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_1.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_2.png" width="150" /> |
 | `InsetFocusRingFanOutPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_3.png" width="150" /> |
+| `InsetFocusRingMovingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/InsetFocusRingMovingPreview_Inset_Focus_Ring_moving.gif" width="150" /> |
 | `OpacityFocusPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android-alpha/OpacityFocusPreview_Opacity_Focus.png" width="150" /> |
 
 ## samples:android-daemon-bench

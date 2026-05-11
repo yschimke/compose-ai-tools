@@ -55,13 +55,6 @@
     "sha256": "bf00fb5b6ab05136601bbc03a21666e11aa027e37c2c507e1b6c64f1dc2eb89b",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
-  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingAnimatedPreview_Inset Focus Ring \u2014 moving": {
-    "captureLabel": "",
-    "functionName": "InsetFocusRingAnimatedPreview",
-    "renderBasename": "InsetFocusRingAnimatedPreview_Inset_Focus_Ring_moving.gif",
-    "sha256": "4d83868fb149210027646843789c95e1e42dae697fddb5add5b6dae4fefb97ae",
-    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
-  },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out": {
     "captureLabel": "",
     "functionName": "InsetFocusRingFanOutPreview",
@@ -88,6 +81,13 @@
     "functionName": "InsetFocusRingFanOutPreview",
     "renderBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_3.png",
     "sha256": "e545d133bb4a8b0670cb49860cc871c99c3c197174b4b48288c22bb228b6f256",
+    "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
+  },
+  "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingMovingPreview_Inset Focus Ring \u2014 moving": {
+    "captureLabel": "",
+    "functionName": "InsetFocusRingMovingPreview",
+    "renderBasename": "InsetFocusRingMovingPreview_Inset_Focus_Ring_moving.gif",
+    "sha256": "ad13c83790fa12412c74b2c03146ec3e35bf9b3f1947ef235611e97fc6ad256d",
     "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt"
   },
   "samples:android-alpha/com.example.samplealpha.FocusRingPreviewsKt.OpacityFocusPreview_Opacity Focus": {
@@ -661,7 +661,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
