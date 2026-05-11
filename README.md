@@ -56,6 +56,16 @@ Working examples: [`samples/android/build.gradle.kts`](samples/android/build.gra
 [`samples/wear/build.gradle.kts`](samples/wear/build.gradle.kts),
 [`samples/cmp/build.gradle.kts`](samples/cmp/build.gradle.kts).
 
+### Zero-Code Integration (Alternative)
+
+You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is particularly useful for AI agents or when exploring the tool without committing changes to the repository.
+
+To use this method:
+1. Create a Gradle init script (e.g., `~/.gradle/init.d/compose-ai-tools.gradle`) that resolves the plugin and applies it to Android application projects.
+2. Control its application with an environment variable (e.g., `COMPOSE_AI_TOOLS=true`).
+
+See [skills/compose-preview/SKILL.md](skills/compose-preview/SKILL.md) for a sample init script and details.
+
 Then:
 
 ```sh

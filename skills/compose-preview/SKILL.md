@@ -166,6 +166,42 @@ composePreview {
 ```
 <!-- x-release-please-end -->
 
+### Zero-Code Integration (Alternative)
+
+You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is useful for agents operating in environments where they shouldn't or cannot modify the build files directly.
+
+Create a file named `~/.gradle/init.d/compose-ai-tools.gradle` with the following content:
+
+```groovy
+allprojects {
+    buildscript {
+        repositories {
+            gradlePluginPortal()
+            mavenCentral()
+        }
+        dependencies {
+            classpath "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:latest.release"
+        }
+    }
+
+    afterEvaluate { project ->
+        if (System.getenv("COMPOSE_AI_TOOLS") == "true") {
+            if (project.plugins.hasPlugin("com.android.application")) {
+                if (!project.plugins.hasPlugin("ee.schimke.composeai.preview")) {
+                    project.pluginManager.apply("ee.schimke.composeai.preview")
+                    println "Applied ee.schimke.composeai.preview to ${project.name} via init script"
+                }
+            }
+        }
+    }
+}
+```
+
+To enable it, set the environment variable:
+```sh
+export COMPOSE_AI_TOOLS=true
+```
+
 CMP Desktop projects additionally need
 `implementation(compose.components.uiToolingPreview)` — the bundled `@Preview`
 annotation has `SOURCE` retention and is invisible to classpath scanning
