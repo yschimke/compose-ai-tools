@@ -113,7 +113,7 @@ jobs:
           ref: ${{ inputs.pr_head_ref != '' && inputs.pr_head_ref || github.sha }}
 
       - name: Setup Java 21
-        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: temurin
           java-version: "21"
