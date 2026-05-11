@@ -9,6 +9,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private onMessage: (msg: WebviewToExtension) => void;
     private earlyFeaturesEnabled: () => boolean;
     private autoEnableCheapEnabled: () => boolean;
+    private collapseVariantsEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
 
     constructor(
@@ -17,11 +18,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         earlyFeaturesEnabled: () => boolean = () => false,
         shouldRestoreVisibility: () => boolean = () => false,
         autoEnableCheapEnabled: () => boolean = () => false,
+        collapseVariantsEnabled: () => boolean = () => true,
     ) {
         this.extensionUri = extensionUri;
         this.onMessage = onMessage;
         this.earlyFeaturesEnabled = earlyFeaturesEnabled;
         this.autoEnableCheapEnabled = autoEnableCheapEnabled;
+        this.collapseVariantsEnabled = collapseVariantsEnabled;
         this.shouldRestoreVisibility = shouldRestoreVisibility;
     }
 
@@ -55,6 +58,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         const nonce = getNonce();
         const earlyFeaturesEnabled = this.earlyFeaturesEnabled();
         const autoEnableCheapEnabled = this.autoEnableCheapEnabled();
+        const collapseVariantsEnabled = this.collapseVariantsEnabled();
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, "media", "preview.css"),
         );
@@ -84,6 +88,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <preview-app
         data-early-features="${earlyFeaturesEnabled ? "true" : "false"}"
         data-auto-enable-cheap="${autoEnableCheapEnabled ? "true" : "false"}"
+        data-collapse-variants="${collapseVariantsEnabled ? "true" : "false"}"
     ></preview-app>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

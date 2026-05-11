@@ -254,6 +254,11 @@ export class PreviewApp extends LitElement {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
         const initialAutoEnableCheap = this.dataset.autoEnableCheap === "true";
+        // Default true keeps the new collapse-by-default behaviour in
+        // ad-hoc test contexts (where the dataset attribute is missing);
+        // explicit `false` opts out.
+        const initialCollapseVariants =
+            this.dataset.collapseVariants !== "false";
         const vscode = getVsCodeApi<PersistedState>();
         const state: PersistedState = vscode.getState() ?? { filters: {} };
         // `earlyFeaturesEnabled` lives in `previewStore` so future
@@ -263,6 +268,7 @@ export class PreviewApp extends LitElement {
         previewStore.setState({
             earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
             autoEnableCheapEnabled: initialAutoEnableCheap,
+            collapseVariantsEnabled: initialCollapseVariants,
         });
         const earlyFeatures = (): boolean =>
             previewStore.getState().earlyFeaturesEnabled;
@@ -513,6 +519,8 @@ export class PreviewApp extends LitElement {
             messageBanner,
             getAllPreviews: () => previewStore.getState().allPreviews,
             applyLayout: () => focusController.applyLayout(),
+            collapseVariants: () =>
+                previewStore.getState().collapseVariantsEnabled,
         });
 
         const staleBadge = new StaleBadgeController(vscode);
@@ -553,6 +561,15 @@ export class PreviewApp extends LitElement {
             state.layout = next;
             vscode.setState(state);
             applyLayout();
+        });
+
+        // Mirror the gutter-icon `setFunctionFilter` path: persist the new
+        // function/group picks and re-run filtering so the grid updates.
+        // Without this, the dropdowns updated their internal state but
+        // nothing ever called `filterController.apply()`.
+        filterToolbar.addEventListener("filter-changed", () => {
+            saveFilterState();
+            applyFilters();
         });
 
         btnPrev.addEventListener("click", () => navigateFocus(-1));

@@ -141,6 +141,11 @@
                     "default": false,
                     "description": "When the focus-mode inspector suggests a data extension that's cheap to compute (theme tokens, fonts, strings, layout tree), auto-enable it on first sight per module. Expensive layers (recomposition heatmap, render trace, accessibility re-render) are never auto-enabled and stay click-to-toggle. Suggestions themselves don't depend on this setting; only whether the suggestion auto-applies."
                 },
+                "composePreview.collapseVariants.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Collapse @Preview variants (multi-preview, @PreviewParameter, font/uiMode/device combinations) so only one card per function is shown when no function or group filter is active. Picking a specific function or group from the filter toolbar expands all variants for that selection. Turn off to always show every variant."
+                },
                 "composePreview.logging.level": {
                     "type": "string",
                     "enum": [
