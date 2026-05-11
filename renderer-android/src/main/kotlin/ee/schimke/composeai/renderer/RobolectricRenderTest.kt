@@ -678,7 +678,8 @@ abstract class RobolectricRenderTestBase(
                 // planner here or wrap content with the extension's `AroundComposable` directly,
                 // matching the existing ambient / wallpaper / theme pattern. Per-feature renderer
                 // branches are a smell — see `docs/AGENTS.md` § "Architecture rules".
-                val anyFocusCapture = preview.captures.any { it.focus != null }
+                val anyFocusCapture =
+                    preview.captures.any { it.focus != null || it.focusGif != null }
                 val focusExtension =
                     if (anyFocusCapture) FocusOverrideExtension() else null
                 // `@AmbientPreview` discovery stamps the same `AmbientCapture` onto every capture
@@ -909,7 +910,33 @@ abstract class RobolectricRenderTestBase(
                             if (handled) currentTime += job.capture.animation.durationMs.toLong()
                         }
 
-                    if (!longHandled && !gifHandled && !animationHandled) {
+                    // @FocusedPreview(gif = true): drive `FocusController` through each step
+                    // and stitch the captured frames into a single GIF. Inside-composition
+                    // walk is what makes focus-gained AND focus-lost both fire (see the
+                    // ripple's `IndicationNode` for the pairing contract); driving from
+                    // outside via direct `MutableInteractionSource.emit` loses the pairing
+                    // and leaves stale indications on every visited focusable (#1020).
+                    val focusGifHandled = !longHandled && !gifHandled && !animationHandled &&
+                        job is CaptureRenderJob &&
+                        job.capture.focusGif != null &&
+                        handleFocusGifCapture(
+                            rule = rule,
+                            focusGif = job.capture.focusGif,
+                            previewId = preview.id,
+                            isRound = isRoundDevice(params.device) &&
+                                (params.showSystemUi || params.kind == PreviewKind.TILE),
+                            outputFile = outputFile,
+                        ).also { handled ->
+                            if (handled) {
+                                val perStep = (
+                                    job.capture.focusGif.frameDelayMs.toLong()
+                                        + FocusController.SETTLE_MS
+                                )
+                                currentTime += perStep * job.capture.focusGif.steps.size
+                            }
+                        }
+
+                    if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled) {
                         // TOP mode is the unscrolled initial frame — no
                         // drive, just a capture. END mode drives the first
                         // scrollable on the requested axis to its content
@@ -935,11 +962,11 @@ abstract class RobolectricRenderTestBase(
 
                     // AS-parity: crop the PNG down to the composable's
                     // intrinsic size on wrapped axes. Skipped for stitched
-                    // LONG output, scroll GIF output, and @AnimatedPreview
-                    // GIF output — those files' dimensions are the full
-                    // scrollable extent / frame size, not the composable's
-                    // intrinsic box.
-                    if (!longHandled && !gifHandled && !animationHandled &&
+                    // LONG output, scroll GIF output, @AnimatedPreview GIF
+                    // output, and @FocusedPreview(gif=true) GIF output —
+                    // those files' dimensions are the full scrollable
+                    // extent / frame size, not the composable's intrinsic box.
+                    if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled &&
                         (wrapWidth || wrapHeight) && measured != null) {
                         cropPngTopLeft(
                             file = outputFile,
@@ -1818,6 +1845,79 @@ private fun handleAnimatedCapture(
         return true
     } finally {
         framesDir.deleteRecursively()
+    }
+}
+
+/**
+ * Handles `@FocusedPreview(gif = true)` captures: drives [FocusController] through each declared
+ * step and stitches the per-step captures into a single GIF. The inside-composition
+ * `LaunchedEffect`-driven walk in [FocusOverrideExtension.AroundComposable] is what makes each
+ * step emit *both* `FocusInteraction.Focus` on the new target *and* `FocusInteraction.Unfocus`
+ * on the previously focused one — the renderer just flips the controller's state and waits for
+ * the settle window before capturing.
+ *
+ * Returns `true` when [outputFile] was written.
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+private fun handleFocusGifCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    focusGif: FocusGifCapture,
+    previewId: String,
+    isRound: Boolean,
+    outputFile: File,
+): Boolean {
+    if (focusGif.steps.isEmpty()) return false
+    val framesDir = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}_focus_frames")
+    framesDir.deleteRecursively()
+    framesDir.mkdirs()
+
+    val frameRoborazziOptions = RoborazziOptions(
+        recordOptions = RoborazziOptions.RecordOptions(applyDeviceCrop = isRound),
+    )
+    val frameFiles = mutableListOf<File>()
+
+    try {
+        focusGif.steps.forEachIndexed { i, step ->
+            rule.runOnUiThread {
+                FocusController.set(step.toFocusOverride())
+                androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+            }
+            // Settle so the focus walk's `LaunchedEffect` runs `moveFocus`, the FocusableNode
+            // emits paired Focus/Unfocus interactions, and the ripple's `IndicationNode`
+            // crossfades to the new highlight before the frame is captured.
+            rule.mainClock.advanceTimeBy(FocusController.SETTLE_MS)
+            rule.mainClock.advanceTimeBy(focusGif.frameDelayMs.toLong())
+            val frameFile = File(framesDir, "frame_$i.png")
+            rule.onRoot()
+                .captureRoboImage(file = frameFile, roborazziOptions = frameRoborazziOptions)
+            frameFiles += frameFile
+        }
+
+        val frames = frameFiles.map {
+            javax.imageio.ImageIO.read(it) ?: error("Failed to read focus frame PNG: $it")
+        }
+        // Hold the first and last frames a touch longer so the viewer reads the starting
+        // and ending focus state before the loop restarts — mirrors @AnimatedPreview.
+        val frameDelays = IntArray(frames.size) { i ->
+            when (i) {
+                0 -> HOLD_START_ANIM_MS
+                frames.lastIndex -> HOLD_END_ANIM_MS
+                else -> focusGif.frameDelayMs
+            }
+        }
+        val written = ScrollGifEncoder.encode(
+            frames = frames,
+            outputFile = outputFile,
+            frameDelaysMs = frameDelays,
+        ) ?: return false
+        System.err.println(
+            "@FocusedPreview(gif=true) on '$previewId': encoded ${frames.size} frames → " +
+                written.name + ".",
+        )
+        return true
+    } finally {
+        framesDir.deleteRecursively()
+        rule.runOnUiThread { FocusController.set(null) }
     }
 }
 

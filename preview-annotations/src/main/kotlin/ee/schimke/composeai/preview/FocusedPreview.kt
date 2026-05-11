@@ -80,6 +80,15 @@ annotation class FocusedPreview(
    * captures byte-identical to a no-overlay run when reviewers don't want the marker.
    */
   val overlay: Boolean = false,
+  /**
+   * When `true`, the renderer stitches the per-step captures into a single animated GIF at
+   * `renders/<id>.gif` instead of writing one PNG per step. Each `[indices]` entry (or each
+   * `[traverse]` step) becomes one GIF frame, driven through the same `FocusManager.moveFocus` walk
+   * that the per-PNG path uses — so consumer code stays plain `Row { Button(...) }` with no
+   * hand-rolled `MutableInteractionSource` / `LaunchedEffect` focus emission. Ignored when the
+   * annotation collapses to a single step (one `indices` entry, empty `traverse`). Off by default.
+   */
+  val gif: Boolean = false,
 )
 
 /**

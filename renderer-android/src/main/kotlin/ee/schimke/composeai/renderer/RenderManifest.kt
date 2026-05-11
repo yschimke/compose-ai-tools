@@ -70,6 +70,16 @@ data class FocusCapture(
     val overlay: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `FocusGifCapture`. */
+@Serializable
+data class FocusGifCapture(
+    val steps: List<FocusCapture>,
+    val frameDelayMs: Int = DEFAULT_FOCUS_GIF_FRAME_DELAY_MS,
+)
+
+/** Mirrors the plugin's `DEFAULT_FOCUS_GIF_FRAME_DELAY_MS`. */
+const val DEFAULT_FOCUS_GIF_FRAME_DELAY_MS: Int = 800
+
 /** Renderer-side mirror of the plugin's `AmbientCaptureState`. */
 @Serializable
 enum class AmbientCaptureState {
@@ -146,6 +156,7 @@ data class RenderPreviewCapture(
     val scroll: ScrollCapture? = null,
     val animation: AnimationCapture? = null,
     val focus: FocusCapture? = null,
+    val focusGif: FocusGifCapture? = null,
     val ambient: AmbientCapture? = null,
     val renderOutput: String = "",
     /**

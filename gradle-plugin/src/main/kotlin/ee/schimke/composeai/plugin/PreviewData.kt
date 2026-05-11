@@ -126,6 +126,33 @@ data class FocusCapture(
 )
 
 /**
+ * `@FocusedPreview(gif = true)` capture state. Carries the per-step focus instructions discovery
+ * built from `[indices]` / `[traverse]`; the renderer drives each step through the same
+ * `FocusManager.moveFocus` walk the per-PNG `focus` path uses and stitches the captured frames into
+ * a single animated GIF.
+ *
+ * Carried on its own field on [Capture] rather than overloading [FocusCapture] so the renderer
+ * routes per-step PNG mode and GIF mode at the top of the capture loop (mirrors the `scroll` /
+ * `animation` split).
+ */
+@Serializable
+data class FocusGifCapture(
+  val steps: List<FocusCapture>,
+  /**
+   * Per-frame delay in milliseconds. Drives both the virtual-clock settle window between steps and
+   * the GIF's per-frame `delayTime`. Defaults to [DEFAULT_FOCUS_GIF_FRAME_DELAY_MS].
+   */
+  val frameDelayMs: Int = DEFAULT_FOCUS_GIF_FRAME_DELAY_MS,
+)
+
+/**
+ * Default per-frame delay for a `@FocusedPreview(gif = true)` capture. ~800ms gives the focus-in
+ * transition (Material's ~150ms ripple fade plus a reader beat) enough dwell time to be visible
+ * before the next step starts moving focus.
+ */
+const val DEFAULT_FOCUS_GIF_FRAME_DELAY_MS: Int = 800
+
+/**
  * Wear OS ambient-mode capture state sourced from `@AmbientPreview`. Carried as its own field on
  * [Capture] — orthogonal to [Capture.scroll] / [Capture.animation] / [Capture.focus] — so the
  * renderer can switch on its presence to wrap the preview composition with the
@@ -186,6 +213,7 @@ const val SCROLL_TOP_COST: Float = 1.0f
 const val SCROLL_END_COST: Float = 3.0f
 const val SCROLL_LONG_COST: Float = 20.0f
 const val SCROLL_GIF_COST: Float = 40.0f
+const val FOCUS_GIF_COST: Float = 40.0f
 const val ANIMATION_COST: Float = 50.0f
 const val ACCESSIBILITY_COST_PER_CAPTURE: Float = 4.0f
 const val HEAVY_COST_THRESHOLD: Float = 5.0f
@@ -266,6 +294,11 @@ data class Capture(
   val animation: AnimationCapture? = null,
   /** `null` → no focus drive. Set when the preview carries a `@FocusedPreview` annotation. */
   val focus: FocusCapture? = null,
+  /**
+   * `null` → no focus-driven GIF. Set when the preview carries `@FocusedPreview(gif = true)`.
+   * Mutually exclusive with [focus] on the same capture — the GIF capture owns its steps inline.
+   */
+  val focusGif: FocusGifCapture? = null,
   /**
    * `null` → no Wear OS ambient-mode override. Set when the preview carries an `@AmbientPreview`
    * annotation. Renderer wraps the composition with `:data-ambient-connector`'s

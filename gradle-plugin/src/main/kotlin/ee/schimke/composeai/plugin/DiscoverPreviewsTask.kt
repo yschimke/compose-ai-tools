@@ -519,6 +519,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val scrollSpecs = extractScrollSpecs(annotations)
     val animationSpec = extractAnimationSpec(annotations)
     val focusSpecs = extractFocusSpecs(annotations)
+    val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
@@ -573,6 +574,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             scrollSpecs,
             animationSpec,
             focusSpecs,
+            focusGifSpec,
             ambientSpec,
             timings,
             previewParameter,
@@ -596,6 +598,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
             scrollSpecs,
             animationSpec,
             focusSpecs,
+            focusGifSpec,
             ambientSpec,
             timings,
             previewParameter,
@@ -675,6 +678,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     focuses: List<FocusCapture>,
+    focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     timings: List<Long>,
   ): PreviewOutputPlan {
@@ -685,22 +689,52 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // inflates a static View and there's no animation surface to drive.
     val effectiveAnimation = if (isTile) null else animation
     // `@FocusedPreview` only applies to Compose previews (the focus owner
-    // is a Compose construct); tile previews ignore it.
-    val effectiveFocuses = if (isTile) emptyList() else focuses
+    // is a Compose construct); tile previews ignore it. `gif = true` swaps
+    // the per-step PNG fan-out for a single GIF capture, so skip the
+    // per-step PNG path entirely when a GIF spec is set.
+    val effectiveFocusGif = if (isTile) null else focusGif
+    val effectiveFocuses = if (isTile || effectiveFocusGif != null) emptyList() else focuses
     // `@AmbientPreview` is Wear-Compose-only — it drives `LocalAmbientModeManager`. Tile previews
     // render through `TileRenderer` and never enter the Compose composition where the local lives,
     // so the override is a no-op there.
     val effectiveAmbient = if (isTile) null else ambient
 
+    // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
+    // function. When one is paired with anything else on the same function — scroll/time
+    // fan-out, or each other — they need disambiguating suffixes so neither silently
+    // overwrites the other. Plain filename only when a single GIF mode owns the function with
+    // no scroll/time siblings.
+    val gifSharesFn =
+      effectiveScrolls.isNotEmpty() ||
+        effectiveTimings.isNotEmpty() ||
+        (effectiveAnimation != null && effectiveFocusGif != null)
+
+    // @FocusedPreview(gif = true): one GIF capture per annotated function, dimension-flat —
+    // doesn't cross with scrolls / timings / focus fan-out. Mirrors @AnimatedPreview's
+    // "single-output annotation" pattern.
+    val focusGifCaptures: List<Capture> =
+      if (effectiveFocusGif == null) emptyList()
+      else {
+        val suffix = if (gifSharesFn) "_focus_gif" else ""
+        listOf(
+          Capture(
+            focusGif = effectiveFocusGif,
+            ambient = effectiveAmbient,
+            renderOutput = "renders/${previewId}${suffix}.gif",
+            cost = FOCUS_GIF_COST,
+          )
+        )
+      }
+
     // @AnimatedPreview produces its own dedicated capture, alongside any
     // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
     // when other captures share the function (the multi-mode scroll
-    // pattern), and the plain filename otherwise.
+    // pattern, or a peer `@FocusedPreview(gif = true)` GIF), and the plain
+    // filename otherwise.
     val animationCaptures: List<Capture> =
       if (effectiveAnimation == null) emptyList()
       else {
-        val sharesFn = effectiveScrolls.isNotEmpty() || effectiveTimings.isNotEmpty()
-        val suffix = if (sharesFn) "_anim" else ""
+        val suffix = if (gifSharesFn) "_anim" else ""
         listOf(
           Capture(
             animation = effectiveAnimation,
@@ -742,15 +776,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         else -> effectiveFocuses.map { it to "_FOCUS_${focusSuffixOf(it)}" }
       }
 
-    // When ONLY @AnimatedPreview is on the function, the scroll/time/focus
-    // cross-product would still emit one (null, null, null) row — i.e. a
-    // static PNG capture. Suppress that to keep `@AnimatedPreview` a clean
-    // single-output annotation.
+    // When ONLY @AnimatedPreview (or @FocusedPreview(gif = true)) is on the function, the
+    // scroll/time/focus cross-product would still emit one (null, null, null) row — i.e. a
+    // static PNG capture. Suppress that to keep single-output annotations clean.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveFocuses.isNotEmpty() ||
-        effectiveAnimation == null
+        (effectiveAnimation == null && effectiveFocusGif == null)
 
     val scrollTimeCaptures: List<Capture> =
       if (!emitStaticCross) emptyList()
@@ -856,7 +889,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     }
 
     return PreviewOutputPlan(
-      captures = scrollTimeCaptures + animationCaptures,
+      captures = scrollTimeCaptures + animationCaptures + focusGifCaptures,
       dataProducts = dataProducts,
     )
   }
@@ -964,6 +997,24 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
   private fun extractFocusSpecs(annotations: List<AnnotationInfo>): List<FocusCapture> {
     val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return emptyList()
+    return readFocusSteps(ann)
+  }
+
+  /**
+   * Returns a single [FocusGifCapture] when the function carries `@FocusedPreview(gif = true)` and
+   * the captured step list has at least one entry. `null` otherwise — single-step annotations
+   * collapse to plain captures and never produce a GIF (a one-frame GIF wouldn't animate anything).
+   */
+  private fun extractFocusGifSpec(annotations: List<AnnotationInfo>): FocusGifCapture? {
+    val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return null
+    val gif = (ann.parameterValues.getValue("gif") as? Boolean) ?: false
+    if (!gif) return null
+    val steps = readFocusSteps(ann)
+    if (steps.size < 2) return null
+    return FocusGifCapture(steps = steps)
+  }
+
+  private fun readFocusSteps(ann: AnnotationInfo): List<FocusCapture> {
     val pv = ann.parameterValues
     val overlay = (pv.getValue("overlay") as? Boolean) ?: false
     val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
@@ -1106,6 +1157,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     scrolls: List<ScrollCapture>,
     animation: AnimationCapture?,
     focuses: List<FocusCapture>,
+    focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
@@ -1116,7 +1168,8 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val fqn = "${classInfo.name}.${method.name}"
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
-    val outputPlan = buildOutputPlan(ann, id, scrolls, animation, focuses, ambient, timings)
+    val outputPlan =
+      buildOutputPlan(ann, id, scrolls, animation, focuses, focusGif, ambient, timings)
     // Tile previews don't go through @Composable invocations — they return a `TilePreviewData`
     // and the renderer reflects them directly. Skipping the lazy means the bytecode walk never
     // runs for tile-only methods.

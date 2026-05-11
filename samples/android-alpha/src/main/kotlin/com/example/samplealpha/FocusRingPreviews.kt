@@ -12,18 +12,11 @@ import androidx.compose.material3.RippleThemeConfiguration
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import ee.schimke.composeai.preview.AnimatedPreview
 import ee.schimke.composeai.preview.FocusDirection
 import ee.schimke.composeai.preview.FocusedPreview
-import kotlinx.coroutines.delay
 
 private val LABELS = listOf("Save", "Edit", "Share", "Delete")
 
@@ -61,57 +54,25 @@ fun InsetFocusRingFanOutPreview() {
     }
 }
 
+/**
+ * Moving inset focus ring as a single animated GIF. `@FocusedPreview(gif = true)` drives focus
+ * through the same `FocusManager.moveFocus` path the per-PNG fan-out uses and stitches the
+ * per-step captures into a GIF — so the sample stays plain `Row { Button(...) }` with no
+ * `MutableInteractionSource` / `LaunchedEffect` focus-emission hacks (which lose the
+ * `FocusInteraction.Unfocus` pairing and leave every visited button with a stale focus ring,
+ * see #1020).
+ */
 @Preview(
     name = "Inset Focus Ring — moving",
     widthDp = 480,
     heightDp = 96,
     showBackground = true,
 )
-@AnimatedPreview(durationMs = 3200, frameIntervalMs = 200, showCurves = false)
+@FocusedPreview(indices = [0, 1, 2, 3], gif = true)
 @Composable
-fun InsetFocusRingAnimatedPreview() {
-    var idx by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(800)
-            idx = (idx + 1) % LABELS.size
-        }
-    }
+fun InsetFocusRingMovingPreview() {
     MaterialTheme {
-        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) {
-            // The animated preview drives focus via in-composition state
-            // rather than the @FocusedPreview annotation: the GIF needs
-            // one row composable that re-renders its focus state across
-            // 16 frames, not 16 separate preview captures.
-            FocusRingRowAnimated(idx)
-        }
-    }
-}
-
-@Composable
-private fun FocusRingRowAnimated(focusedIndex: Int) {
-    val sources =
-        remember {
-            List(LABELS.size) {
-                androidx.compose.foundation.interaction.MutableInteractionSource()
-            }
-        }
-    LaunchedEffect(focusedIndex) {
-        sources[focusedIndex].emit(
-            androidx.compose.foundation.interaction.FocusInteraction.Focus()
-        )
-    }
-    Row(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        LABELS.forEachIndexed { i, label ->
-            Button(
-                onClick = {},
-                modifier = Modifier.padding(end = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-                interactionSource = sources[i],
-            ) {
-                Text(label)
-            }
-        }
+        WithRippleConfig(RippleDefaults.InsetFocusRingRippleThemeConfiguration) { ButtonRow() }
     }
 }
 
