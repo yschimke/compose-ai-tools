@@ -55,7 +55,7 @@ jobs:
       # Cache the @vscode/test-electron VS Code download so subsequent runs
       # don't re-fetch the ~150MB stable build.
       - name: Cache VS Code download
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: vscode-extension/.vscode-test
           key: vscode-test-electron-${{ runner.os }}
