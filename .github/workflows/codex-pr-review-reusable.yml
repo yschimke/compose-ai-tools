@@ -168,7 +168,7 @@ jobs:
       - name: Download required preview artifacts (images + metadata)
         if: ${{ inputs.preview_status == 'success' }}
         continue-on-error: true
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: review-input/previews
           merge-multiple: false
@@ -179,7 +179,7 @@ jobs:
       - name: Download optional diff artifacts (may be empty when previews are identical)
         if: ${{ inputs.preview_status == 'success' }}
         continue-on-error: true
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: review-input/previews
           merge-multiple: false
