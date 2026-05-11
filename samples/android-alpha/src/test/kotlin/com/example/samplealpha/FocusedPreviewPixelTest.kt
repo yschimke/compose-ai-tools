@@ -34,6 +34,7 @@ class FocusedPreviewPixelTest {
     private val fanOutBase = "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out"
     private val traversalBase = "FocusTraversalPreview_Focus_Traversal"
     private val overlayBase = "FocusOverlayPreview_Focus_Overlay"
+    private val movingBase = "InsetFocusRingMovingPreview_Inset_Focus_Ring_moving"
 
     /**
      * The four `_FOCUS_<n>.png` fan-out captures must all differ from each other — same
@@ -80,6 +81,27 @@ class FocusedPreviewPixelTest {
         assertThat(h1).isEqualTo(h3)
         assertThat(h2).isEqualTo(h4)
         assertThat(h1).isNotEqualTo(h2)
+    }
+
+    /**
+     * `@FocusedPreview(gif = true)`: discovery should emit one stitched `.gif` instead of N
+     * `_FOCUS_<n>.png` siblings, and the GIF mode must drive focus through the renderer's
+     * `FocusManager.moveFocus` walk — so the file exists, is non-empty, has the GIF magic
+     * header, and no per-step PNGs leaked alongside (the whole point of the gif flag was to
+     * collapse the sample's hand-rolled `LaunchedEffect` focus emission, #1020).
+     */
+    @Test
+    fun `moving inset ring lands at a single gif`() {
+        val gif = File(rendersDir, "$movingBase.gif")
+        assertThat(gif.exists()).isTrue()
+        assertThat(gif.length()).isGreaterThan(0L)
+        val header = gif.inputStream().use { it.readNBytes(6).toString(Charsets.US_ASCII) }
+        assertThat(header).isAnyOf("GIF87a", "GIF89a")
+        // No PNG siblings — the gif flag swapped the per-step PNG fan-out for one GIF.
+        (0..3).forEach { i ->
+            val sibling = File(rendersDir, "${movingBase}_FOCUS_$i.png")
+            assertThat(sibling.exists()).isFalse()
+        }
     }
 
     /**
