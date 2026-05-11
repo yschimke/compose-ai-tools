@@ -2,52 +2,54 @@
 #
 # Bootstrap installer for the compose-preview skill bundles.
 #
-# Installs two sibling skills under ~/.claude/skills/ so Claude Code's
-# skill discovery finds them:
+# Installs two sibling skills into the detected agent host's user-scope
+# skills directory (Claude Code, Codex, or Antigravity), with symlinks into
+# the other detected hosts so a single install serves all of them:
 #
-#   ~/.claude/skills/compose-preview/                  (renderer + CLI)
+#   <skills-root>/compose-preview/                     (renderer + CLI)
 #   |-- SKILL.md                                       (from skill tarball)
 #   |-- design/...                                     (from skill tarball)
 #   |-- cli/compose-preview-<ver>/bin/compose-preview  (from CLI tarball)
 #   `-- bin/compose-preview -> ../cli/.../compose-preview
 #
-#   ~/.claude/skills/compose-preview-review/           (PR-review workflows)
+#   <skills-root>/compose-preview-review/              (PR-review workflows)
 #   |-- SKILL.md                                       (from skill tarball)
 #   `-- design/...                                     (from skill tarball)
 #
+# <skills-root> resolves in order:
+#   1. $SKILL_DIR/.. when explicitly set
+#   2. The skill dir of the cloud agent currently running this script
+#      (Claude → ~/.claude/skills, Codex → ${CODEX_HOME:-~/.codex}/skills)
+#   3. Whichever agent config directory already exists on disk
+#   4. ~/.claude/skills (final fallback)
+#
 # Also symlinks ~/.local/bin/compose-preview so the CLI is on PATH without
 # the consumer having to know the skill-bundle layout. Idempotent: rerunning
-# with the same version is a no-op.
-#
-# Download safety:
-#   By default this script will NOT download executables. It only proceeds
-#   when the user has explicitly opted in. This protects against agent loops
-#   that re-invoke the installer on every preview, and against generally
-#   blind `curl … | bash` consumption.
-#
-#   - First-time install requires --yes (or COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1).
-#     Without it, the script prints the exact command to run and exits 1.
-#   - When a different version is already installed, an upgrade requires
-#     --upgrade (or COMPOSE_PREVIEW_ACCEPT_UPGRADE=1). --upgrade implies --yes.
-#   - When the requested version matches what's already installed, the
-#     script is a no-op (just refreshes any missing symlinks; never downloads).
+# with the same version is a no-op; passing no VERSION resolves the latest
+# release and replaces whatever is installed.
 #
 # Usage:
-#   scripts/install.sh --yes                   # install latest release
-#   scripts/install.sh --yes 0.3.2             # install a specific version
-#   VERSION=0.3.2 scripts/install.sh --yes     # same, via env
-#   scripts/install.sh --upgrade               # upgrade to latest
-#   scripts/install.sh --upgrade 0.4.0         # upgrade to specific version
-#   scripts/install.sh --yes --android-sdk     # also install the Android SDK
+#   scripts/install.sh                         # install latest release
+#   scripts/install.sh 0.3.2                   # install a specific version
+#   VERSION=0.3.2 scripts/install.sh           # same, via env
+#   scripts/install.sh --android-sdk           # also install the Android SDK
 #                                              # (cmdline-tools + platforms;android-36
 #                                              # + platform-tools + build-tools;36.0.0)
+#   scripts/install.sh --jdk 17,21             # install JDK 17 and 21 (first = active)
+#   JDKS=17,21 scripts/install.sh              # same, via env
 #
 # Override locations:
-#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh --yes
-#   PREFIX=$HOME/.local scripts/install.sh --yes  # for the ~/.local/bin symlink
-#   REPO=yschimke/compose-ai-tools scripts/install.sh --yes
-#   ANDROID_HOME=/opt/android-sdk scripts/install.sh --yes --android-sdk
-#   INSTALL_ANDROID_SDK=1 scripts/install.sh --yes  # same as --android-sdk
+#   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh
+#   PREFIX=$HOME/.local scripts/install.sh       # for the ~/.local/bin symlink
+#   REPO=yschimke/compose-ai-tools scripts/install.sh
+#   ANDROID_HOME=$HOME/Android/Sdk scripts/install.sh --android-sdk
+#   INSTALL_ANDROID_SDK=1 scripts/install.sh     # same as --android-sdk
+#
+# ANDROID_HOME default:
+#   - $ANDROID_HOME if set
+#   - /opt/android-sdk when running as root or in a cloud sandbox
+#   - $HOME/Library/Android/sdk on macOS
+#   - $HOME/Android/Sdk otherwise (Android Studio's Linux default)
 #
 # Requires: bash, curl, tar, sha256sum (or shasum), and Java 17+ on PATH at
 # run time (not install time). The --android-sdk path additionally needs
@@ -84,20 +86,26 @@
 set -euo pipefail
 
 REPO="${REPO:-yschimke/compose-ai-tools}"
-SKILL_DIR="${SKILL_DIR:-$HOME/.claude/skills/compose-preview}"
+SKILL_DIR="${SKILL_DIR:-}"
 PREFIX="${PREFIX:-$HOME/.local}"
 INSTALL_ANDROID_SDK="${INSTALL_ANDROID_SDK:-0}"
-ACCEPT_DOWNLOAD="${COMPOSE_PREVIEW_ACCEPT_DOWNLOAD:-0}"
-ACCEPT_UPGRADE="${COMPOSE_PREVIEW_ACCEPT_UPGRADE:-0}"
+JDKS_REQUESTED="${JDKS:-}"
+ANDROID_HOME_INPUT="${ANDROID_HOME:-}"
 
 # Argument parsing — flags first, then positional VERSION. Flags can appear in
 # any order. Unknown flags are an error so typos don't get silently swallowed.
+# --yes/--upgrade are accepted (and ignored) for backwards compatibility with
+# old README snippets and pipelines; the consent gate they used to drive was
+# removed (it was impractical to thread --yes through every agent invocation).
 positional=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --android-sdk) INSTALL_ANDROID_SDK=1; shift ;;
-    --yes|-y) ACCEPT_DOWNLOAD=1; shift ;;
-    --upgrade) ACCEPT_UPGRADE=1; ACCEPT_DOWNLOAD=1; shift ;;
+    --jdk|--jdks)
+      [[ $# -ge 2 ]] || { echo "error: $1 requires a value" >&2; exit 1; }
+      JDKS_REQUESTED="$2"; shift 2 ;;
+    --jdk=*|--jdks=*) JDKS_REQUESTED="${1#*=}"; shift ;;
+    --yes|-y|--upgrade) shift ;;
     --) shift; positional+=("$@"); break ;;
     -*) echo "error: unknown flag: $1" >&2; exit 1 ;;
     *) positional+=("$1"); shift ;;
@@ -107,7 +115,6 @@ set -- "${positional[@]+"${positional[@]}"}"
 VERSION="${1:-${VERSION:-}}"
 
 BIN_DIR="$PREFIX/bin"
-ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 
 # Cloud sandbox auto-detection (Claude/Codex) -------------------------------
 if [[ -n "${CODEX_SANDBOX:-}" || -n "${CODEX_SESSION_ID:-}" ]]; then
@@ -119,6 +126,45 @@ else
 fi
 if [[ -z "${CLAUDE_CLOUD:-}" ]]; then
   CLAUDE_CLOUD=$([[ -n "$AGENT_CLOUD_HOST" ]] && echo 1 || echo 0)
+fi
+
+# Skill install root — pick the canonical agent-skills directory based on
+# (a) the agent host currently running this script, then (b) whichever agent
+# config dir already exists, then (c) Claude as the fallback. The
+# link_skills_for_detected_hosts helper later symlinks the canonical bundle
+# into every other detected host's skill dir, so one install serves Claude,
+# Codex, and Antigravity in parallel. Override with `SKILL_DIR=...`.
+if [[ -z "$SKILL_DIR" ]]; then
+  codex_skills="${CODEX_HOME:-$HOME/.codex}/skills/compose-preview"
+  claude_skills="$HOME/.claude/skills/compose-preview"
+  antigravity_skills="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}/compose-preview"
+  case "$AGENT_CLOUD_HOST" in
+    codex)  candidates=("$codex_skills" "$claude_skills" "$antigravity_skills") ;;
+    claude) candidates=("$claude_skills" "$codex_skills" "$antigravity_skills") ;;
+    *)      candidates=("$claude_skills" "$codex_skills" "$antigravity_skills") ;;
+  esac
+  for c in "${candidates[@]}"; do
+    parent_root="$(dirname "$(dirname "$c")")"
+    if [[ -d "$parent_root" ]]; then
+      SKILL_DIR="$c"
+      break
+    fi
+  done
+  SKILL_DIR="${SKILL_DIR:-$claude_skills}"
+fi
+
+# Android SDK location — honor an explicit ANDROID_HOME from the caller; else
+# pick a writable default that doesn't require sudo for the common case. A
+# system-wide /opt path makes sense for cloud sandboxes (running as root, with
+# the filesystem snapshotted across sessions) but is hostile to local users.
+if [[ -n "$ANDROID_HOME_INPUT" ]]; then
+  ANDROID_HOME="$ANDROID_HOME_INPUT"
+elif [[ $EUID -eq 0 || "$CLAUDE_CLOUD" == 1 ]]; then
+  ANDROID_HOME="/opt/android-sdk"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  ANDROID_HOME="$HOME/Library/Android/sdk"
+else
+  ANDROID_HOME="$HOME/Android/Sdk"
 fi
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -143,11 +189,12 @@ require tar
 
 # ---- Skill-bundle symlinks for detected agent hosts ----------------------
 #
-# The skill bundles are extracted once into $SKILL_DIR / $REVIEW_SKILL_DIR
-# (defaults under ~/.claude/skills/). For every other agent host detected on
-# this machine, drop a symlink from that host's user-scope skills directory
-# pointing at the canonical bundle, so updates flow through automatically and
-# disk content isn't duplicated. Detection mirrors `compose-preview mcp install`.
+# The skill bundles are extracted once into $SKILL_DIR / $REVIEW_SKILL_DIR.
+# For every other agent host detected on this machine, drop a symlink from
+# that host's user-scope skills directory pointing at the canonical bundle,
+# so updates flow through automatically and disk content isn't duplicated.
+# Detection mirrors `compose-preview mcp install`. The host that already
+# owns the canonical bundle is skipped to avoid linking onto itself.
 #
 # Skill dirs (override via env):
 #   - Codex:       ${CODEX_HOME:-$HOME/.codex}/skills
@@ -194,25 +241,46 @@ link_skill_into_dir() {
 link_skills_for_detected_hosts() {
   # Run after the canonical bundles exist; otherwise the symlinks would dangle.
   [[ -d "$SKILL_DIR" ]] || return 0
+  # Real path of the dir that owns the canonical bundles; skip any host
+  # whose skills dir is the same (i.e. would symlink onto itself).
+  local owning_root; owning_root="$(dirname "$SKILL_DIR")"
   if have_codex; then
     local codex_dir="${CODEX_HOME:-$HOME/.codex}/skills"
-    mkdir -p "$codex_dir"
-    link_skill_into_dir "codex" "$codex_dir" "$SKILL_DIR"
-    [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "codex" "$codex_dir" "$REVIEW_SKILL_DIR"
+    if [[ "$codex_dir" != "$owning_root" ]]; then
+      mkdir -p "$codex_dir"
+      link_skill_into_dir "codex" "$codex_dir" "$SKILL_DIR"
+      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "codex" "$codex_dir" "$REVIEW_SKILL_DIR"
+    fi
   fi
   if have_antigravity; then
     local ag_dir="${ANTIGRAVITY_SKILLS_DIR:-$HOME/.gemini/antigravity/skills}"
-    mkdir -p "$ag_dir"
-    link_skill_into_dir "antigravity" "$ag_dir" "$SKILL_DIR"
-    [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "antigravity" "$ag_dir" "$REVIEW_SKILL_DIR"
+    if [[ "$ag_dir" != "$owning_root" ]]; then
+      mkdir -p "$ag_dir"
+      link_skill_into_dir "antigravity" "$ag_dir" "$SKILL_DIR"
+      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "antigravity" "$ag_dir" "$REVIEW_SKILL_DIR"
+    fi
+  fi
+  # If the canonical bundle is under codex/antigravity, mirror it into Claude
+  # too when ~/.claude exists. (The original code only mirrored "away from"
+  # Claude; now the canonical home can be any of them.)
+  if [[ -d "$HOME/.claude" ]]; then
+    local claude_dir="$HOME/.claude/skills"
+    if [[ "$claude_dir" != "$owning_root" ]]; then
+      mkdir -p "$claude_dir"
+      link_skill_into_dir "claude" "$claude_dir" "$SKILL_DIR"
+      [[ -d "$REVIEW_SKILL_DIR" ]] && link_skill_into_dir "claude" "$claude_dir" "$REVIEW_SKILL_DIR"
+    fi
   fi
 }
 
-# ---- Cloud: ensure required JDK is available ------------------------------
+# ---- Cloud: ensure required JDK(s) are available --------------------------
 #
-# Resolve the required daemon toolchain from gradle/gradle-daemon-jvm.properties
-# when available; default to 17 as a safe floor. This allows cloud sessions to
-# auto-install/select JDK 21 when the project requires it.
+# Resolve the project's required daemon toolchain from
+# gradle/gradle-daemon-jvm.properties when available; default to 17 as a safe
+# floor. The active JAVA_HOME points at the required major; additional majors
+# requested via --jdk get apt-installed alongside it (Gradle's toolchain
+# auto-detection then finds them under /usr/lib/jvm/), which is how a project
+# on JDK 17 can also expose 21 for `-Pjdk-version=21` smoke runs.
 
 REQUIRED_JAVA_MAJOR="17"
 DAEMON_JVM_PROPS=""
@@ -239,36 +307,84 @@ if [[ -n "$DAEMON_JVM_PROPS" ]]; then
   fi
 fi
 
-if [[ "$CLAUDE_CLOUD" == 1 ]]; then
+# Build the list of JDK majors to install. Default: just the required major
+# (which itself defaults to 17). `--jdk 17,21` or `JDKS=17,21` requests
+# additional majors; the active one is always REQUIRED_JAVA_MAJOR.
+declare -a JDK_MAJORS=()
+if [[ -n "$JDKS_REQUESTED" ]]; then
+  IFS=',' read -r -a _requested <<<"$JDKS_REQUESTED"
+  for m in "${_requested[@]}"; do
+    m="${m// /}"
+    [[ -n "$m" ]] || continue
+    [[ "$m" =~ ^[0-9]+$ ]] || die "invalid --jdk value: '$m' (expected integer major version)"
+    JDK_MAJORS+=("$m")
+  done
+fi
+seen_required=0
+for m in "${JDK_MAJORS[@]:+${JDK_MAJORS[@]}}"; do
+  [[ "$m" == "$REQUIRED_JAVA_MAJOR" ]] && seen_required=1 && break
+done
+if [[ "$seen_required" == 0 ]]; then
+  JDK_MAJORS=("$REQUIRED_JAVA_MAJOR" ${JDK_MAJORS[@]:+"${JDK_MAJORS[@]}"})
+fi
+
+install_openjdk_major() {
+  local major="$1"
+  local jdk_home="/usr/lib/jvm/java-${major}-openjdk-amd64"
+  if [[ -x "$jdk_home/bin/java" ]]; then
+    log "JDK $major already present at $jdk_home"
+    printf '%s\n' "$jdk_home"
+    return 0
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    log "warning: JDK $major not present at $jdk_home and apt-get unavailable; skipping"
+    return 1
+  fi
+  local sudo=""
+  if [[ $EUID -ne 0 ]]; then
+    command -v sudo >/dev/null 2>&1 || { log "warning: need root or sudo to apt-install openjdk-${major}-jdk-headless; skipping"; return 1; }
+    sudo="sudo"
+  fi
+  log "apt-installing openjdk-${major}-jdk-headless"
+  $sudo apt-get install -y -qq "openjdk-${major}-jdk-headless" \
+    || { log "warning: apt-get failed for openjdk-${major}-jdk-headless; skipping"; return 1; }
+  if [[ -x "$jdk_home/bin/java" ]]; then
+    printf '%s\n' "$jdk_home"
+    return 0
+  fi
+  log "warning: openjdk-${major}-jdk-headless installed but $jdk_home/bin/java missing"
+  return 1
+}
+
+if [[ "$CLAUDE_CLOUD" == 1 || -n "$JDKS_REQUESTED" ]]; then
+  # Active JDK: prefer the existing one on PATH if its major matches the
+  # required version (avoids a redundant apt round-trip on cloud images that
+  # already ship the right JDK), otherwise install it.
   detected_major=""
   if command -v java >/dev/null 2>&1; then
     # `java -version` prints `openjdk version "21.0.10" ...` to stderr.
-    # Legacy JDK 8 reports `1.8.x`, which parses to major=1 and gets
-    # rejected by the >= 17 check below.
+    # Legacy JDK 8 reports `1.8.x`, which parses to major=1.
     detected_major="$(java -version 2>&1 | head -1 | awk -F'"' '{print $2}' | awk -F. '{print $1}')"
   fi
   if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ && "$detected_major" -eq "$REQUIRED_JAVA_MAJOR" ]]; then
-    log "claude cloud: using existing JDK $detected_major on PATH"
+    log "using existing JDK $detected_major on PATH as the active toolchain"
   else
     if [[ -n "$detected_major" && "$detected_major" =~ ^[0-9]+$ ]]; then
-      log "claude cloud: detected JDK $detected_major but project requires JDK $REQUIRED_JAVA_MAJOR; selecting required JDK"
+      log "detected JDK $detected_major but project requires JDK $REQUIRED_JAVA_MAJOR; selecting required JDK"
     fi
-    JDK_HOME="/usr/lib/jvm/java-${REQUIRED_JAVA_MAJOR}-openjdk-amd64"
-    if [[ ! -x "$JDK_HOME/bin/java" ]]; then
-      if [[ "$ACCEPT_DOWNLOAD" != 1 && "$ACCEPT_UPGRADE" != 1 ]]; then
-        die "required JDK $REQUIRED_JAVA_MAJOR not available; rerun with --yes to apt-install openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
-      fi
-      log "claude cloud: installing openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
-      SUDO=""
-      if [[ $EUID -ne 0 ]]; then
-        command -v sudo >/dev/null 2>&1 || die "need root or sudo to install JDK ${REQUIRED_JAVA_MAJOR}"
-        SUDO="sudo"
-      fi
-      $SUDO apt-get install -y -qq "openjdk-${REQUIRED_JAVA_MAJOR}-jdk-headless"
-    fi
+    JDK_HOME="$(install_openjdk_major "$REQUIRED_JAVA_MAJOR")" \
+      || die "could not install required JDK $REQUIRED_JAVA_MAJOR"
     export JAVA_HOME="$JDK_HOME"
     export PATH="$JAVA_HOME/bin:$PATH"
   fi
+
+  # Additional JDKs (anything in JDK_MAJORS besides the active major). Gradle's
+  # toolchain auto-detection scans /usr/lib/jvm/ so we don't need to export
+  # extra env vars.
+  for m in "${JDK_MAJORS[@]}"; do
+    [[ "$m" == "$REQUIRED_JAVA_MAJOR" ]] && continue
+    install_openjdk_major "$m" >/dev/null || true
+  done
 fi
 
 # ---- Optional: install Android SDK ---------------------------------------
@@ -367,31 +483,24 @@ fi
 
 # ---- Resolve version ------------------------------------------------------
 #
-# The order matters for the download-safety gate further down: detect what's
-# already installed BEFORE talking to github.com, so a re-invocation that
-# wants the existing version can short-circuit without any network at all.
+# Detect what's already installed BEFORE talking to github.com so a
+# re-invocation that wants the existing version can short-circuit without
+# touching the network at all.
 
 SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
 INSTALLED_VERSION="$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)"
 
 if [[ -z "$VERSION" ]]; then
-  if [[ -n "$INSTALLED_VERSION" && "$ACCEPT_UPGRADE" != 1 ]]; then
-    # Something is already installed and the caller didn't ask to upgrade.
-    # Default to the installed version so re-invocations are pure no-ops.
-    VERSION="$INSTALLED_VERSION"
-    log "using installed version $VERSION (pass --upgrade to fetch latest)"
-  else
-    log "resolving latest release of $REPO"
-    # Use the public HTML redirect rather than api.github.com; the API is
-    # rate-limited on shared sandbox IPs and would 403 for unauthenticated
-    # callers. The redirect target is /releases/tag/v<VER>.
-    RESOLVED="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-      "https://github.com/$REPO/releases/latest")" \
-      || die "could not reach github.com/$REPO/releases/latest"
-    VERSION="${RESOLVED##*/v}"
-    [[ -n "$VERSION" && "$VERSION" != "$RESOLVED" ]] \
-      || die "could not parse version from $RESOLVED"
-  fi
+  log "resolving latest release of $REPO"
+  # Use the public HTML redirect rather than api.github.com; the API is
+  # rate-limited on shared sandbox IPs and would 403 for unauthenticated
+  # callers. The redirect target is /releases/tag/v<VER>.
+  RESOLVED="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+    "https://github.com/$REPO/releases/latest")" \
+    || die "could not reach github.com/$REPO/releases/latest"
+  VERSION="${RESOLVED##*/v}"
+  [[ -n "$VERSION" && "$VERSION" != "$RESOLVED" ]] \
+    || die "could not parse version from $RESOLVED"
 fi
 
 CLI_ASSET="compose-preview-${VERSION}.tar.gz"
@@ -406,76 +515,6 @@ SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
 # loading just one of them doesn't pull in the other's content.
 REVIEW_SKILL_DIR="$(dirname "$SKILL_DIR")/compose-preview-review"
 REVIEW_SKILL_VERSION_FILE="$REVIEW_SKILL_DIR/.skill-version"
-
-# ---- Download-safety gate -------------------------------------------------
-#
-# Three states, three behaviours:
-#   1. Same version already installed → no download, refresh missing symlinks
-#      and exit. Always allowed; does not require any flag.
-#   2. Nothing installed → fresh install, requires --yes (or
-#      COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1). Otherwise prints the exact command
-#      to run and exits 1 without touching the network beyond the version
-#      probe above.
-#   3. Different version installed → upgrade, requires --upgrade (or
-#      COMPOSE_PREVIEW_ACCEPT_UPGRADE=1). Same fail-with-instructions otherwise.
-#
-# The point: an agent that re-runs the installer between previews must not
-# silently re-fetch tarballs. The user has to actively opt in.
-
-print_install_instructions() {
-  cat >&2 <<EOF
-
-compose-preview is not installed.
-
-By default this script does not download executables. To proceed, re-run
-it with --yes (which confirms you accept the download):
-
-  scripts/install.sh --yes${VERSION:+ $VERSION}
-
-Or pipe form:
-
-  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh \\
-    | bash -s -- --yes
-
-Equivalent env var: COMPOSE_PREVIEW_ACCEPT_DOWNLOAD=1.
-EOF
-}
-
-print_upgrade_instructions() {
-  cat >&2 <<EOF
-
-compose-preview $INSTALLED_VERSION is currently installed; this run would
-replace it with $VERSION.
-
-By default the installer refuses to overwrite an existing version. To
-upgrade, re-run with --upgrade:
-
-  scripts/install.sh --upgrade${1:+ $1}
-
-Or pipe form:
-
-  curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh \\
-    | bash -s -- --upgrade
-
-Equivalent env var: COMPOSE_PREVIEW_ACCEPT_UPGRADE=1. Pass nothing if you
-want to keep $INSTALLED_VERSION — leaving --upgrade off is the safe choice.
-EOF
-}
-
-# Same-version short-circuit happens later (after function defs), so it can
-# call link_skills_for_detected_hosts / maybe_write_env_file. Here we only
-# enforce the consent gate, which never needs those helpers.
-if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
-  : # short-circuit eligible — handled below
-elif [[ -n "$INSTALLED_VERSION" && "$INSTALLED_VERSION" != "$VERSION" ]]; then
-  if [[ "$ACCEPT_UPGRADE" != 1 ]]; then
-    print_upgrade_instructions "$VERSION"
-    exit 1
-  fi
-elif [[ "$ACCEPT_DOWNLOAD" != 1 ]]; then
-  print_install_instructions
-  exit 1
-fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -565,15 +604,10 @@ install_skill_bundle() {
 }
 
 # ---- Same-version short-circuit ------------------------------------------
-# Runs after all helper functions are defined. Refreshes any symlinks the
-# caller might have blown away and repairs a missing sibling skill bundle
-# (cheap, install_skill_bundle is itself a no-op when the per-bundle marker
-# matches), but never re-downloads the CLI tarball or the main skill.
-#
-# Same-version repair doesn't trigger the consent gate above: the user
-# already accepted this version when they first installed it. The gate
-# exists to stop *new* downloads going through silently, not to block
-# topping up a previously-accepted install.
+# Refreshes any symlinks the caller might have blown away and repairs a
+# missing sibling skill bundle (cheap, install_skill_bundle is itself a
+# no-op when the per-bundle marker matches), but never re-downloads the CLI
+# tarball or the main skill.
 
 if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
   log "compose-preview $VERSION already installed"

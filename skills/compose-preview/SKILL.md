@@ -115,24 +115,23 @@ the pattern with code.
 The plugin is on Maven Central — most projects already have `mavenCentral()`
 in their plugin repositories, so no credentials or extra registry config.
 
-**Agents: check first, install only with user consent.** Run
+**Agents: check first, install only when missing.** Run
 `compose-preview --version && compose-preview doctor` to see whether the CLI
 is already available — if it is, you're done. Don't blindly re-run the
-installer between previews; that's how runaway download loops start.
+installer between previews; the script is idempotent for same-version runs
+but still does network probes.
 
 If the CLI is missing, surface this command to the user and let them run
-it (or copy it back to you). The installer refuses to download without
-`--yes`, which exists exactly so agents can't pull binaries by accident:
+it (or copy it back to you):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh \
-  | bash -s -- --yes
+  | bash
 compose-preview doctor
 ```
 
-To upgrade an existing install, swap `--yes` for `--upgrade` (or set
-`COMPOSE_PREVIEW_ACCEPT_UPGRADE=1`). Without either flag the script prints
-instructions and exits — no tarball is fetched.
+Re-running the same command upgrades to the latest release; pin a specific
+version by appending it (`… | bash -s -- 0.10.8`).
 
 `doctor` verifies Java 17+ on `PATH` (JDK 21/25 are fine — the renderer is
 compiled to JDK 17 bytecode). If the install path isn't on `PATH`, the
