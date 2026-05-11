@@ -699,30 +699,42 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // so the override is a no-op there.
     val effectiveAmbient = if (isTile) null else ambient
 
+    // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
+    // function. When one is paired with anything else on the same function — scroll/time
+    // fan-out, or each other — they need disambiguating suffixes so neither silently
+    // overwrites the other. Plain filename only when a single GIF mode owns the function with
+    // no scroll/time siblings.
+    val gifSharesFn =
+      effectiveScrolls.isNotEmpty() ||
+        effectiveTimings.isNotEmpty() ||
+        (effectiveAnimation != null && effectiveFocusGif != null)
+
     // @FocusedPreview(gif = true): one GIF capture per annotated function, dimension-flat —
     // doesn't cross with scrolls / timings / focus fan-out. Mirrors @AnimatedPreview's
     // "single-output annotation" pattern.
     val focusGifCaptures: List<Capture> =
       if (effectiveFocusGif == null) emptyList()
-      else
+      else {
+        val suffix = if (gifSharesFn) "_focus_gif" else ""
         listOf(
           Capture(
             focusGif = effectiveFocusGif,
             ambient = effectiveAmbient,
-            renderOutput = "renders/${previewId}.gif",
+            renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
           )
         )
+      }
 
     // @AnimatedPreview produces its own dedicated capture, alongside any
     // scroll / time fan-out. The GIF gets a distinguishing `_anim` suffix
     // when other captures share the function (the multi-mode scroll
-    // pattern), and the plain filename otherwise.
+    // pattern, or a peer `@FocusedPreview(gif = true)` GIF), and the plain
+    // filename otherwise.
     val animationCaptures: List<Capture> =
       if (effectiveAnimation == null) emptyList()
       else {
-        val sharesFn = effectiveScrolls.isNotEmpty() || effectiveTimings.isNotEmpty()
-        val suffix = if (sharesFn) "_anim" else ""
+        val suffix = if (gifSharesFn) "_anim" else ""
         listOf(
           Capture(
             animation = effectiveAnimation,
