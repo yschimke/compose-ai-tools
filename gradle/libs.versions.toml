@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.20"
+kotlin = "2.3.21"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -43,7 +43,7 @@ activity-compose = "1.13.0"
 # `navigation.*` script-event surface end-to-end. Activity-compose 1.13's
 # transitive `androidx.navigationevent` floor (see CompatRules.kt) means
 # this stays compatible with the renderer's compileOnly stack.
-navigation-compose = "2.9.7"
+navigation-compose = "2.9.8"
 wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
@@ -53,7 +53,7 @@ wear-tooling-preview = "1.0.0"
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
 # controller) so consumer code wired to `AmbientAware { ... }` can render under
 # a synthetic ambient state without flashing a real watch.
-wear = "1.3.0"
+wear = "1.4.0"
 # Horologist's `AmbientAware` composable + `AmbientState` sealed type — the
 # de-facto helper most Wear apps use to wrap their root content. Used by
 # `:samples:wear` previews to demonstrate the ambient override end-to-end.
@@ -73,7 +73,7 @@ horologist = "0.7.15"
 #    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
 #    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
 #    inside `RemoteButtonImpl` at preview render time.
-compose-remote = "1.0.0-alpha08"
+compose-remote = "1.0.0-alpha09"
 wear-compose-remote = "1.0.0-alpha02"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
@@ -83,7 +83,7 @@ wear-compose-remote = "1.0.0-alpha02"
 compose-ui-prerelease = "1.11.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.11.1"
+mcp-kotlin-sdk = "0.12.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -104,12 +104,12 @@ android-compose-screenshot = "0.0.1-alpha14"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.0.0"
+checker-qual = "4.1.0"
 # KMP port of Google's Material Color Utilities. Powers the wallpaper data
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
 # derived dynamic theming actually produces.
-material-kolor = "4.0.5"
+material-kolor = "4.1.1"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
