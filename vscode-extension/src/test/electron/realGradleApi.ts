@@ -16,10 +16,17 @@ export class RealGradleApi implements GradleApi {
      * @param gradlewDir Absolute path to the directory containing the
      *                   `gradlew` script (the repo root).
      * @param onLog Optional sink for human-readable progress lines.
+     * @param extraArgs Extra CLI arguments appended to every `gradlew`
+     *                  invocation. Used by suites that need to set Gradle
+     *                  properties (`-Pfoo=bar`) without plumbing through
+     *                  `gradleService.ts`. Example: the wear a11y e2e
+     *                  passes `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`
+     *                  until #1009 lands the always-on daemon registry.
      */
     constructor(
         private readonly gradlewDir: string,
         private readonly onLog: (line: string) => void = () => {},
+        private readonly extraArgs: ReadonlyArray<string> = [],
     ) {}
 
     runTask(opts: {
@@ -37,7 +44,11 @@ export class RealGradleApi implements GradleApi {
             process.platform === "win32"
                 ? path.join(this.gradlewDir, "gradlew.bat")
                 : path.join(this.gradlewDir, "gradlew");
-        const gradleArgs = [opts.taskName, ...(opts.args ?? [])];
+        const gradleArgs = [
+            opts.taskName,
+            ...(opts.args ?? []),
+            ...this.extraArgs,
+        ];
         this.onLog(
             `[realGradleApi] ${gradlewPath} ${gradleArgs.join(" ")} (cwd=${opts.projectFolder})`,
         );
