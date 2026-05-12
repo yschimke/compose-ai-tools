@@ -5,8 +5,6 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
-composePreview { previewExtensions { a11y { /* enableAllChecks() */ } } }
-
 android {
   namespace = "com.example.sampleremotecompose"
   // compose-remote alpha08+ / wear-compose-remote alpha02+ raise the AAR

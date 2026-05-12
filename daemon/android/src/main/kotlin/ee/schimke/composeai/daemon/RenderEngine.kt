@@ -175,15 +175,13 @@ class RenderEngine(
      *
      * `null` (the default) means *resolve from context*: a11y mode is on iff [RenderSpec.renderMode]
      * is `"a11y"` (set by the daemon's `data/fetch` re-render path or by the host's per-preview
-     * subscription state) OR the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop is `true`.
-     * Pass `true` / `false` explicitly to force the mode regardless of context (used by tests).
+     * subscription state). Pass `true` / `false` explicitly to force the mode regardless of context
+     * (used by tests).
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
     val effectiveRunAccessibility =
-      runAccessibility
-        ?: (spec.renderMode == A11Y_RENDER_MODE ||
-          System.getProperty(A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true")
+      runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
     // the target path and *doesn't* write a new PNG. The daemon writes baselines, never compares,
     // so force record mode if the surrounding JVM didn't set it. Idempotent across renders;
@@ -289,8 +287,8 @@ class RenderEngine(
                 // D2 — a11y mode flips LocalInspectionMode off so Compose populates real
                 // accessibility semantics (mergeMode, contentDescription, role) for ATF + the
                 // hierarchy walk to consume after capture. Tradeoff: infinite animations tick
-                // through rather than parking under the paused clock — same trade
-                // `RobolectricRenderTest.renderWithA11y` already pays.
+                // through rather than parking under the paused clock — same trade the standalone
+                // renderer already pays in its always-on a11y pass.
                 val inspectionMode = if (effectiveRunAccessibility) false else spec.inspectionMode ?: true
                 CompositionLocalProvider(LocalInspectionMode provides inspectionMode) {
                   CaptureMaterialTheme { _, typography, shapes, payload ->
@@ -749,20 +747,10 @@ class RenderEngine(
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
 
     /**
-     * Preview extension selector for the a11y producer. When set to `"true"`, each render runs in
-     * a11y mode and writes `a11y-{atf,hierarchy}.json` artefacts under
-     * `<outputDir.parent>/data/<previewId>/`. Tests and callers that do not enable the extension
-     * leave it unset and the fast path stays unchanged.
-     */
-    const val A11Y_PREVIEW_EXTENSION_ENABLED_PROP: String =
-      "composeai.previewExtensions.a11y.enabled"
-
-    /**
      * D2.2 — `RenderSpec.renderMode` value the daemon stamps when a `data/fetch` for an a11y kind
      * needs a fresh render, and when the host's per-preview subscription state demands a11y for
-     * the next dispatch. The engine's [runAccessibility] auto-resolution treats this as equivalent
-     * to the legacy [A11Y_PREVIEW_EXTENSION_ENABLED_PROP] sysprop being on for that one render —
-     * `LocalInspectionMode = false`, ATF + hierarchy artefacts written to `dataDir`.
+     * the next dispatch. When this is set, the engine's [runAccessibility] auto-resolution flips
+     * `LocalInspectionMode = false` and writes ATF + hierarchy artefacts to `dataDir`.
      */
     const val A11Y_RENDER_MODE: String = "a11y"
 

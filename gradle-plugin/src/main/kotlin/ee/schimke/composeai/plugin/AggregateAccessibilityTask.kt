@@ -3,7 +3,6 @@ package ee.schimke.composeai.plugin
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
@@ -16,25 +15,19 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Aggregates the per-preview ATF reports emitted by [RobolectricRenderTestBase] into a single
- * `accessibility.json` keyed by previewId, and fails the build when findings exceed the thresholds
- * configured on the built-in `a11y` data-product plugin.
- *
- * Runs once per Android module after `renderPreviews`. Only registered when
- * `composePreview.previewExtensions { a11y { enableAllChecks() } }`.
+ * Aggregates the per-preview ATF reports emitted by `RobolectricRenderTest` into a single
+ * `accessibility.json` keyed by previewId. Never fails the build — findings are reported (logged,
+ * written to the JSON report, surfaced as CLI / VS Code diagnostics) but the task is purely
+ * informational. Runs once per Android module after `renderPreviews`.
  */
 @CacheableTask
-abstract class VerifyAccessibilityTask : DefaultTask() {
+abstract class AggregateAccessibilityTask : DefaultTask() {
 
   @get:InputDirectory
   @get:PathSensitive(PathSensitivity.NONE)
   abstract val perPreviewDir: DirectoryProperty
 
   @get:Input abstract val moduleName: Property<String>
-
-  @get:Input abstract val failOnErrors: Property<Boolean>
-
-  @get:Input abstract val failOnWarnings: Property<Boolean>
 
   @get:OutputFile abstract val reportFile: RegularFileProperty
 
@@ -73,7 +66,7 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
   @Serializable private data class A11yReport(val module: String, val entries: List<A11yEntry>)
 
   @TaskAction
-  fun verify() {
+  fun aggregate() {
     val json = Json {
       prettyPrint = true
       encodeDefaults = true
@@ -111,22 +104,6 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
           "  [${finding.level}] ${entry.previewId} · ${finding.type}: ${finding.message}"
         )
       }
-    }
-
-    val failures = mutableListOf<String>()
-    if (failOnErrors.get() && errorCount > 0) {
-      failures += "$errorCount error(s)"
-    }
-    if (failOnWarnings.get() && warningCount > 0) {
-      failures += "$warningCount warning(s)"
-    }
-    if (failures.isNotEmpty()) {
-      throw GradleException(
-        "Accessibility check failed: ${failures.joinToString(", ")}. " +
-          "See ${out.absolutePath} for the full report, or disable the " +
-          "relevant `failOn*` flag in `composePreview.previewExtensions.a11y` " +
-          "to downgrade to a warning."
-      )
     }
   }
 }

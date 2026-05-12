@@ -6,16 +6,6 @@ plugins {
 }
 
 composePreview {
-  previewExtensions {
-    a11y {
-      // Sample wires a deliberately-broken `BadWearButtonPreview` so the
-      // `.a11y.png` for Wear exercises the stacked (legend-below) layout.
-      // Uncomment `enableAllChecks()` and re-run to see the annotation;
-      // defaults off so `./gradlew check` stays clean.
-      // enableAllChecks()
-    }
-  }
-
   // `LongScrollPreviewPixelTest` reads PNGs from
   // `build/compose-previews/renders/`; opt the unit-test tasks into a
   // `dependsOn(renderAllPreviews)` chain so `:samples:wear:check` renders

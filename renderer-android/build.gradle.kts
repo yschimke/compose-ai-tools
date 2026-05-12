@@ -164,12 +164,10 @@ dependencies {
 
   implementation(libs.roborazzi)
   implementation(libs.roborazzi.compose)
-  // ATF accessibility checks. Exercised only when consumers opt in via
-  // `composePreview { previewExtensions { a11y { enableAllChecks() } } }`, but always
-  // on the classpath because the renderer test references these types
-  // unconditionally.
+  // ATF accessibility checks. Runs unconditionally on every render (always-on, never-fail) —
+  // a11y is a normal data producer now, same footing as theme / recomposition.
   //
-  // The a11y-enabled path uses `createAndroidComposeRule<ComponentActivity>()`
+  // The a11y path uses `createAndroidComposeRule<ComponentActivity>()`
   // + `onRoot().captureRoboImage(...)` + ATF against the `ViewRootForTest`
   // backing the SemanticsNode. That's the same plumbing roborazzi-
   // accessibility-check's `checkRoboAccessibility` extension uses — it's the

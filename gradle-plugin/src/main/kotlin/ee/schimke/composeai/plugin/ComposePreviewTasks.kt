@@ -138,13 +138,7 @@ internal object ComposePreviewTasks {
           dependsOn(discoverTask)
           dependsOn(renderClasspathGuard)
         }
-      registerRenderAllPreviews(
-        project,
-        extension,
-        renderTask,
-        previewOutputDir,
-        verifyAccessibilityTask = null,
-      )
+      registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
     } else {
       registerStubRenderTask(
         project,
@@ -438,12 +432,6 @@ internal object ComposePreviewTasks {
       moduleName.set(project.name)
       variantName.set(extension.variant)
       projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
-      // Generic data-product override:
-      // `-PcomposePreview.previewExtensions.a11y.allChecks=true` wins over the
-      // extension. Lets VSCode / CLI flip the feature on for a run without
-      // editing build.gradle.kts. Isolated-Projects-safe because
-      // `providers.gradleProperty` is.
-      a11yDataProductsEnabled.set(AndroidPreviewSupport.resolveA11yEnabled(project, extension))
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as
@@ -513,13 +501,7 @@ internal object ComposePreviewTasks {
         description = "Render all previews to PNG (stub)"
         dependsOn(discoverTask)
       }
-    registerRenderAllPreviews(
-      project,
-      extension,
-      renderTask,
-      previewOutputDir,
-      verifyAccessibilityTask = null,
-    )
+    registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
   }
 
   /** Registers `renderAllPreviews` as the user-facing entry point. */
@@ -528,7 +510,6 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
     renderTask: TaskProvider<*>,
     previewOutputDir: Provider<Directory>,
-    verifyAccessibilityTask: TaskProvider<*>?,
   ) {
     // Post-condition check: every entry in the manifest must have a PNG
     // on disk after the render dependency ran. We ship the renderer
@@ -560,11 +541,6 @@ internal object ComposePreviewTasks {
         .withPropertyName("manifest")
       inputs.property("tier", tierProvider)
       outputs.file(validationMarker).withPropertyName("validationMarker")
-      // `verifyAccessibility` runs AFTER rendering so PNGs always exist
-      // even when the check fails. `finalizedBy` (instead of `dependsOn`)
-      // lets the build still produce artefacts for CLI/VSCode to
-      // inspect when the a11y threshold trips the build.
-      verifyAccessibilityTask?.let { finalizedBy(it) }
       doLast {
         val isFastTier = tierProvider.get() == "fast"
         val manifestOnDisk = manifestFile.get().asFile

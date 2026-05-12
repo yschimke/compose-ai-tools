@@ -221,7 +221,7 @@ object AccessibilityChecker {
     private val DEBUG = System.getProperty("composeai.a11y.debug") == "true"
 
     /**
-     * Writes the per-preview report. The plugin's `verifyAccessibility` task
+     * Writes the per-preview report. The plugin's `aggregateAccessibility` task
      * collects all of these into a single `accessibility.json`; writing
      * per-preview avoids concurrent-writer issues when previews are sharded
      * across JVMs.
