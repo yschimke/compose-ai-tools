@@ -729,6 +729,7 @@ export class FocusInspectorController {
             this.resolveProducts().map((p) => [p.kind, p]),
         );
         const enabled = this.enabledKindsFor(previewId);
+        const trace: string[] = [];
         for (const kind of enabled) {
             const presenter = getPresenter(kind);
             // A registered presenter is authoritative — non-null
@@ -743,13 +744,19 @@ export class FocusInspectorController {
                 const presentation = presenter(ctx);
                 if (presentation) {
                     out.push({ kind, presentation });
+                    trace.push(`${kind}:presenter`);
+                } else {
+                    trace.push(`${kind}:presenter-null`);
                 }
                 continue;
             }
             // Skip purely panel-side kinds — those either own their
             // own UI surface (a11y overlay, render-error banner) or
             // never produce daemon data we'd be waiting for.
-            if (kind.startsWith("local/")) continue;
+            if (kind.startsWith("local/")) {
+                trace.push(`${kind}:local-skip`);
+                continue;
+            }
             const descriptor = productByKind.get(kind);
             const data = ctx.data?.(kind);
             // No registered presenter: render a generic payload-dump
@@ -770,6 +777,19 @@ export class FocusInspectorController {
                 presentation:
                     generic ?? pendingPresentation(kind, descriptor?.label),
             });
+            trace.push(
+                data === undefined
+                    ? `${kind}:pending(no-data)`
+                    : generic
+                      ? `${kind}:generic`
+                      : `${kind}:pending(generic-null)`,
+            );
+        }
+        if (trace.length > 0) {
+            console.log(
+                `[compose-preview] inspector.collectPresentations previewId=${previewId} ` +
+                    `enabled=[${[...enabled].join(",")}] resolved=[${trace.join(",")}]`,
+            );
         }
         return out;
     }

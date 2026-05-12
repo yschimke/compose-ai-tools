@@ -609,6 +609,13 @@ export async function activate(
                 outputChannel.appendLine(
                     `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
                         .map((dp) => dp.kind)
+                        .join(
+                            ",",
+                        )}] panel=${panel ? "live" : "missing"} transports=[${dataProducts
+                        .map(
+                            (dp) =>
+                                `${dp.kind}:${dp.payload !== undefined ? "inline" : dp.path ? "path" : "empty"}`,
+                        )
                         .join(",")}]`,
                 );
                 const decoded = applyDataProductsToRegistry(
@@ -644,6 +651,26 @@ export async function activate(
                                       : undefined),
                         }))
                         .filter((dp) => dp.payload !== undefined);
+                    const dropped = dataProducts.length - payloads.length;
+                    outputChannel.appendLine(
+                        `[daemon] updateDataProducts post for ${previewId}: ` +
+                            `forwarding=${payloads.length} dropped=${dropped} ` +
+                            `kinds=[${payloads.map((p) => p.kind).join(",")}]` +
+                            (dropped > 0
+                                ? ` droppedKinds=[${dataProducts
+                                      .filter(
+                                          (dp) =>
+                                              !payloads.some(
+                                                  (p) => p.kind === dp.kind,
+                                              ),
+                                      )
+                                      .map(
+                                          (dp) =>
+                                              `${dp.kind}(path=${dp.path ?? "<none>"})`,
+                                      )
+                                      .join(",")}]`
+                                : ""),
+                    );
                     if (payloads.length > 0) {
                         panel.postMessage({
                             command: "updateDataProducts",
@@ -651,6 +678,10 @@ export async function activate(
                             dataProducts: payloads,
                         });
                     }
+                } else {
+                    outputChannel.appendLine(
+                        `[daemon] updateDataProducts skipped for ${previewId}: panel not yet wired`,
+                    );
                 }
             },
             onClasspathDirty: (moduleId, detail) => {
