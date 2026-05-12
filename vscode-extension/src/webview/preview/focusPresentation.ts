@@ -139,6 +139,7 @@ export function _resetPresentersForTest(): void {
 
 registerPresenter("a11y/hierarchy", a11yHierarchyPresenter);
 registerPresenter("a11y/atf", a11yFindingsPresenter);
+registerPresenter("a11y/overlay", a11yOverlayPresenter);
 registerPresenter("compose/theme", composeThemePresenter);
 registerPresenter("local/render/error", renderErrorPresenter);
 
@@ -246,6 +247,59 @@ function a11yFindingsPresenter(
                 " finding" +
                 (findings.length === 1 ? "" : "s"),
             entries,
+        },
+    };
+}
+
+/**
+ * `a11y/overlay` — the daemon's annotated PNG. Rendered as a Report
+ * (collapsed `<details>`) rather than swapped onto the card so the
+ * structured a11y kinds (`a11y/atf` + `a11y/hierarchy`) remain the
+ * primary review surface. The PNG is here for investigations where a
+ * structured-only view isn't enough — e.g. reproducing what a CI PR
+ * preview reported.
+ *
+ * Wire payload is `{ imageBase64, mediaType, sizeBytes }`, posted from
+ * `extension.ts` after reading the path-transport PNG off disk.
+ */
+function a11yOverlayPresenter(
+    ctx: PresenterContext,
+): ProductPresentation | null {
+    const raw = ctx.data?.("a11y/overlay");
+    if (!raw || typeof raw !== "object") return null;
+    const data = raw as {
+        imageBase64?: unknown;
+        mediaType?: unknown;
+        sizeBytes?: unknown;
+    };
+    if (typeof data.imageBase64 !== "string" || data.imageBase64.length === 0) {
+        return null;
+    }
+    const mediaType =
+        typeof data.mediaType === "string" ? data.mediaType : "image/png";
+    const body = document.createElement("div");
+    body.className = "focus-report-overlay-png";
+    const note = document.createElement("p");
+    note.className = "focus-report-overlay-note";
+    note.textContent =
+        "Daemon-rendered annotated PNG. Useful for investigating what a CI " +
+        "preview reported; for routine review prefer the structured a11y " +
+        "kinds (findings + hierarchy) which drive the locally-painted overlay.";
+    const img = document.createElement("img");
+    img.className = "focus-report-overlay-img";
+    img.alt = "Accessibility overlay (annotated)";
+    img.src = `data:${mediaType};base64,${data.imageBase64}`;
+    body.appendChild(note);
+    body.appendChild(img);
+    const summary =
+        typeof data.sizeBytes === "number" && data.sizeBytes > 0
+            ? `${Math.max(1, Math.round(data.sizeBytes / 1024))} kB`
+            : undefined;
+    return {
+        report: {
+            title: "Accessibility overlay (PNG)",
+            summary,
+            body,
         },
     };
 }
