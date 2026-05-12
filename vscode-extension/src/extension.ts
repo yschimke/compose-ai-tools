@@ -399,6 +399,49 @@ function isJsonDataProduct(dp: DataProductAttachment): boolean {
     return dp.path.toLowerCase().endsWith(".json");
 }
 
+/**
+ * `true` iff [dp]'s `path` looks like a PNG. Counterpart to
+ * [isJsonDataProduct]: binary data products (today `a11y/overlay`) flow
+ * through [readBinaryDataProductPayload] which base64-encodes the bytes
+ * so the webview can render them via a `data:` URI without needing
+ * webview-resource access. Other binary kinds (`.bin`, etc.) get
+ * filtered out — we only forward formats the webview can actually
+ * display.
+ */
+function isImageDataProduct(dp: DataProductAttachment): boolean {
+    if (!dp.path) return false;
+    return dp.path.toLowerCase().endsWith(".png");
+}
+
+/**
+ * Read a PNG-transport data product off disk and return the webview
+ * payload — `{ imageBase64, mediaType, sizeBytes }`. Returns
+ * `undefined` (logged) on read failure so the calling map step drops
+ * the entry rather than posting a half-formed payload. Investigation
+ * surface only: the panel renders the bytes in the focus inspector's
+ * Reports section behind a collapsed `<details>` so the structured
+ * a11y kinds stay the default review path.
+ */
+function readBinaryDataProductPayload(
+    dp: DataProductAttachment,
+    log: { appendLine(value: string): void },
+): { imageBase64: string; mediaType: string; sizeBytes: number } | undefined {
+    if (!dp.path) return undefined;
+    try {
+        const buf = fs.readFileSync(dp.path);
+        return {
+            imageBase64: buf.toString("base64"),
+            mediaType: "image/png",
+            sizeBytes: buf.length,
+        };
+    } catch (err) {
+        log.appendLine(
+            `[daemon] could not read data-product image at ${dp.path}: ${(err as Error).message}`,
+        );
+        return undefined;
+    }
+}
+
 function readJsonPath(
     p: string | undefined,
     log: { appendLine(value: string): void },
@@ -581,7 +624,12 @@ export async function activate(
                                 dp.payload ??
                                 (isJsonDataProduct(dp)
                                     ? readJsonPath(dp.path, outputChannel)
-                                    : undefined),
+                                    : isImageDataProduct(dp)
+                                      ? readBinaryDataProductPayload(
+                                            dp,
+                                            outputChannel,
+                                        )
+                                      : undefined),
                         }))
                         .filter((dp) => dp.payload !== undefined);
                     if (payloads.length > 0) {

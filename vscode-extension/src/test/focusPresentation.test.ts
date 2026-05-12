@@ -49,6 +49,7 @@ function ctx(overrides?: {
     nodes?: readonly AccessibilityNode[];
     findings?: readonly AccessibilityFinding[];
     cardDataset?: Record<string, string>;
+    data?: (kind: string) => unknown;
 }) {
     const card = document.createElement("div");
     if (overrides?.cardDataset) {
@@ -59,6 +60,7 @@ function ctx(overrides?: {
         preview: samplePreview,
         findings: overrides?.findings ?? [],
         nodes: overrides?.nodes ?? [],
+        data: overrides?.data,
     };
 }
 
@@ -127,6 +129,44 @@ describe("focusPresentation registry", () => {
         assert.ok(result);
         assert.ok(result!.error);
         assert.strictEqual(result!.overlay, null);
+    });
+
+    it("a11y/overlay presenter returns null when no payload is cached", () => {
+        const overlay = getPresenter("a11y/overlay")!;
+        assert.strictEqual(overlay(ctx()), null);
+        // Wrong-shape payloads also fall through to null so the
+        // inspector renders the pending fallback instead of a broken
+        // <img>.
+        const malformed = overlay(ctx({ data: () => ({ imageBase64: 42 }) }));
+        assert.strictEqual(malformed, null);
+        const empty = overlay(ctx({ data: () => ({ imageBase64: "" }) }));
+        assert.strictEqual(empty, null);
+    });
+
+    it("a11y/overlay presenter emits a Report with the PNG when payload is present", () => {
+        const overlay = getPresenter("a11y/overlay")!;
+        const result = overlay(
+            ctx({
+                data: (kind) =>
+                    kind === "a11y/overlay"
+                        ? {
+                              imageBase64: "AAAA",
+                              mediaType: "image/png",
+                              sizeBytes: 4096,
+                          }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        assert.ok(result!.report);
+        assert.strictEqual(
+            result!.report!.title,
+            "Accessibility overlay (PNG)",
+        );
+        assert.strictEqual(result!.report!.summary, "4 kB");
+        const img = result!.report!.body.querySelector("img");
+        assert.ok(img);
+        assert.strictEqual(img!.src, "data:image/png;base64,AAAA");
     });
 
     it("renderErrorPresenter activates only when the card carries a render error", () => {
