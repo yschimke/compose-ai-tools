@@ -480,6 +480,30 @@ internal object AndroidPreviewSupport {
         "${variantName}Implementation",
         "androidx.customview:customview-poolingcontainer:1.0.0",
       )
+      // Pin `androidx.activity:activity` to a floor that exposes the
+      // `view_tree_on_back_pressed_dispatcher_owner` resource id. The
+      // renderer's test classpath pulls activity-compose ≥ 1.13 transitively
+      // (via roborazzi-compose), whose `ComponentActivity.initializeViewTreeOwners`
+      // → `ViewTreeOnBackPressedDispatcherOwner.set` reads
+      // `androidx.activity.R.id.view_tree_on_back_pressed_dispatcher_owner`
+      // (added in `androidx.activity:activity:1.5.0`). The merged unit-test
+      // resource APK is built from the consumer's MAIN variant, so on
+      // tile-only consumers whose main pulls only a legacy activity (e.g.
+      // wear-os-samples' WearTilesKotlin resolves `activity:1.1.0` via old
+      // transitives) the field is missing and Robolectric crashes the
+      // moment `createAndroidComposeRule<ComponentActivity>().setContent {}`
+      // runs:
+      //
+      //   `NoSuchFieldError: Class androidx.activity.R$id does not have
+      //   member field 'int view_tree_on_back_pressed_dispatcher_owner'`
+      //
+      // Same `${variantName}Implementation` floor pattern as the
+      // `androidx.core:core` and `customview-poolingcontainer` entries
+      // above — Gradle picks the max with consumer-aligned versions, so
+      // this is a no-op for Compose-app consumers that already get a
+      // newer activity transitively, and a fix for tile-only consumers
+      // that don't.
+      project.dependencies.add("${variantName}Implementation", "androidx.activity:activity:1.10.0")
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -516,6 +540,15 @@ internal object AndroidPreviewSupport {
         reason =
           "compose-ui's ViewCompositionStrategy reads androidx.customview.poolingcontainer.R.id.* from PoolingContainer.<clinit>; merged test APK needs the R class",
       )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.activity:activity:1.10.0",
+        configuration = "${variantName}Implementation",
+        outcome = "APPLIED",
+        reason =
+          "activity-compose 1.5+ on the renderer test classpath reads R.id.view_tree_on_back_pressed_dispatcher_owner via ViewTreeOnBackPressedDispatcherOwner.set (added in androidx.activity:activity:1.5.0); merged test APK needs the field so ComponentActivity.initializeViewTreeOwners doesn't NoSuchFieldError",
+      )
     } else {
       recordInjectedDependency(
         project,
@@ -550,6 +583,15 @@ internal object AndroidPreviewSupport {
         outcome = "SKIPPED_BY_CONFIG",
         reason =
           "manageDependencies=false; consumer must ensure androidx.customview:customview-poolingcontainer is on the main variant so the merged test APK includes its R class (referenced by compose-ui's PoolingContainer)",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.activity:activity:1.10.0",
+        configuration = "${variantName}Implementation",
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; consumer must ensure androidx.activity:activity >= 1.5.0 on the main variant so the merged test APK includes R.id.view_tree_on_back_pressed_dispatcher_owner (referenced by activity-compose's ComponentActivity.initializeViewTreeOwners)",
       )
     }
 
