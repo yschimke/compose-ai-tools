@@ -912,6 +912,86 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `discoverPreviews keeps tile previews that take a Context parameter`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub the tile @Preview annotation under its real FQN. CMP 1.10 (the
+    // version this fixture uses) doesn't ship `androidx.wear.tiles.tooling`,
+    // but discovery is FQN-driven — the stub exercises the same code path
+    // wear-os-samples' WearTilesKotlin hit when its tile previews started
+    // returning zero entries after PR #984's parameter gate landed.
+    val previewFqnDir = File(projectDir, "src/main/kotlin/androidx/wear/tiles/tooling/preview")
+    previewFqnDir.mkdirs()
+    File(previewFqnDir, "Preview.kt")
+      .writeText(
+        """
+        package androidx.wear.tiles.tooling.preview
+
+        @MustBeDocumented
+        @Retention(AnnotationRetention.BINARY)
+        @Repeatable
+        @Target(AnnotationTarget.FUNCTION, AnnotationTarget.ANNOTATION_CLASS)
+        annotation class Preview(val name: String = "")
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Tiles.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.wear.tiles.tooling.preview.Preview
+
+      // Stand-in for `android.content.Context`. Discovery doesn't reflect
+      // parameter types beyond @PreviewParameter, so any single non-Composer
+      // parameter exercises the gate the same way the real tile-preview
+      // signature does.
+      class FakeContext
+
+      // Multi-preview meta-annotation expanding to two tile previews — the
+      // upstream WearTilesKotlin `MultiRoundDevicesWithFontScalePreviews`
+      // shape, minimised. Exercises the multi-preview branch of the tile
+      // exemption alongside the direct one below.
+      @Preview(name = "Small Round")
+      @Preview(name = "Large Round")
+      annotation class MultiRoundTiles
+
+      @MultiRoundTiles
+      fun MetaTilePreview(context: FakeContext) = "stub"
+
+      @Preview(name = "Direct")
+      fun DirectTilePreview(context: FakeContext) = "stub"
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("discoverPreviews", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    // The "unsupported parameters" warning must NOT fire for tile previews —
+    // their (Context) parameter is part of the supported contract.
+    assertThat(result.output).doesNotContain("MetaTilePreview' — method has parameter(s)")
+    assertThat(result.output).doesNotContain("DirectTilePreview' — method has parameter(s)")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val tilePreviews =
+      manifest.previews.filter {
+        it.functionName == "MetaTilePreview" || it.functionName == "DirectTilePreview"
+      }
+    assertThat(tilePreviews.map { it.functionName })
+      .containsExactly("MetaTilePreview", "MetaTilePreview", "DirectTilePreview")
+    assertThat(tilePreviews.map { it.params.kind }.toSet()).containsExactly(PreviewKind.TILE)
+  }
+
+  @Test
   fun `renderOutput strips common package prefix and sanitises path-unsafe preview names`() {
     val projectDir = createCmpTestProject()
 
