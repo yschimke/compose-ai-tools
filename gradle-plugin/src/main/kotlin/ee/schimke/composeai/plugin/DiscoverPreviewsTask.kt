@@ -531,7 +531,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // multi-preview expansion — the provider is the same no matter which
     // @Preview drove the fan-out.
     val previewParameter = extractPreviewParameter(method)
-    val hasUnsupportedParameters = hasUnsupportedPreviewParameters(method, previewParameter)
+    val isTilePreview = isAnyTilePreviewAnnotation(annotations, scanResult)
+    val hasUnsupportedParameters =
+      !isTilePreview && hasUnsupportedPreviewParameters(method, previewParameter)
     if (hasUnsupportedParameters) {
       logger.warn(
         "composePreview: skipping @Preview '${classInfo.name}.${method.name}' — " +
@@ -608,6 +610,24 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         )
       }
     }
+  }
+
+  /**
+   * Tile previews ([TILE_PREVIEW_FQN]) take a single `(context: Context)` argument supplied by the
+   * renderer at run time; the @PreviewParameter contract that gates Compose previews doesn't apply
+   * to them. Walk direct annotations + multi-preview meta-annotations so a tile preview reached
+   * through a multi-preview alias (e.g. `@MultiRoundTilesPreviews`) is exempted too.
+   */
+  private fun isAnyTilePreviewAnnotation(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    if (collectDirectPreviews(annotations).any { it.name == TILE_PREVIEW_FQN }) return true
+    for (ann in annotations) {
+      val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
+      if (resolved.any { it.name == TILE_PREVIEW_FQN }) return true
+    }
+    return false
   }
 
   private fun hasUnsupportedPreviewParameters(
