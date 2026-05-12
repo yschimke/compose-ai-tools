@@ -25,14 +25,23 @@
 // the script only seeds repositories — safe to leave on Gradle's init.d
 // path for unrelated builds on the same runner.
 //
+// Application uses `pluginManager.withPlugin(...)`, NOT `afterEvaluate`.
+// `AndroidPreviewSupport.configure` wires `androidComponents.finalizeDsl`
+// and `onVariants` callbacks that have to be registered before AGP locks
+// the DSL — `afterEvaluate` runs after that lock, the callbacks never
+// fire, and `discoverPreviews` ships zero previews. `withPlugin` fires
+// synchronously as soon as AGP is applied (during the consumer's
+// `plugins { }` block, before the rest of the build script body), which
+// is the same moment the old patch-the-`plugins{}`-block approach landed
+// the plugin. That's also early enough for the script body to reference
+// the `composePreview { }` extension (e.g. the daemon-enable block CI
+// appends before `composePreviewDaemonStart`).
+//
 // Applying via buildscript-classpath injection (rather than via the init
 // script's own classpath with `initscript { dependencies { classpath … } }`)
 // keeps the plugin's classes in the same classloader scope as the
 // consumer's AGP, so reflective `getByType<AndroidComponentsExtension>()`
-// lookups inside the plugin see matching Class identities. The previous
-// patch-the-`plugins{}`-block approach achieved the same thing through the
-// consumer's plugin classpath; this is the equivalent for the
-// don't-touch-the-source-tree path.
+// lookups inside the plugin see matching Class identities.
 
 val pluginVersion: String = System.getenv("COMPOSE_AI_PLUGIN_VERSION")
     ?: error(
@@ -61,16 +70,15 @@ allprojects {
         }
     }
 
-    afterEvaluate {
-        if (System.getenv("COMPOSE_AI_TOOLS") != "true") return@afterEvaluate
-        val triggers = listOf(
-            "com.android.application",
-            "com.android.library",
-            "org.jetbrains.compose",
-        )
-        if (triggers.none { plugins.hasPlugin(it) }) return@afterEvaluate
-        if (plugins.hasPlugin("ee.schimke.composeai.preview")) return@afterEvaluate
+    if (System.getenv("COMPOSE_AI_TOOLS") != "true") return@allprojects
+
+    fun applyComposeAiPreview() {
+        if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
         pluginManager.apply("ee.schimke.composeai.preview")
         println("Applied ee.schimke.composeai.preview to $name via init script")
     }
+
+    pluginManager.withPlugin("com.android.application") { applyComposeAiPreview() }
+    pluginManager.withPlugin("com.android.library") { applyComposeAiPreview() }
+    pluginManager.withPlugin("org.jetbrains.compose") { applyComposeAiPreview() }
 }
