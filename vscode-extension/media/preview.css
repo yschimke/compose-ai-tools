@@ -996,6 +996,128 @@ body {
     color: var(--text-primary);
 }
 
+/* Generic payload renderers — see genericPayload.ts. Shared wrapper
+   carries the body + the copy-raw button so both align to the same
+   left/right edges as the rest of the Report body. */
+.focus-report-generic-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.focus-report-copy-raw {
+    align-self: flex-end;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    padding: 1px 6px;
+}
+
+.focus-report-copy-raw:hover {
+    background: color-mix(in srgb, var(--card-border) 20%, transparent);
+    color: var(--text-primary);
+}
+
+.focus-report-copy-raw[disabled] {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.focus-report-pre {
+    margin: 0;
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: color-mix(in srgb, var(--card-border) 15%, transparent);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-report-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.focus-report-table th,
+.focus-report-table td {
+    border-bottom: 1px solid
+        color-mix(in srgb, var(--card-border) 50%, transparent);
+    padding: 2px 6px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.focus-report-table th {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.focus-report-primitive-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.focus-report-kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 0;
+}
+
+.focus-report-kv > dt {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.focus-report-kv > dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.focus-report-swatches {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.focus-report-swatch {
+    display: grid;
+    grid-template-columns: 18px max-content 1fr;
+    align-items: center;
+    gap: 8px;
+}
+
+.focus-report-swatch-sample {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, var(--card-border) 60%, transparent);
+}
+
+.focus-report-swatch-label {
+    color: var(--text-primary);
+}
+
+.focus-report-swatch-value {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.focus-report-overlay-img {
+    max-width: 100%;
+    max-height: 320px;
+    display: block;
+    border: 1px solid color-mix(in srgb, var(--card-border) 50%, transparent);
+    border-radius: 3px;
+}
+
 /* Card overlay stack — sized to the image's intrinsic pixel space so
    bound coordinates from the renderer (left,top,right,bottom in
    source-bitmap pixels) line up. The image-container is

@@ -48,6 +48,7 @@ import {
     type ProductPresentation,
     getPresenter,
 } from "./focusPresentation";
+import { renderGenericBody } from "./genericPayload";
 import { LegendArrowController } from "./legendArrow";
 
 export interface FocusInspectorConfig {
@@ -1070,72 +1071,40 @@ function sectionHeader(icon: string, label: string): HTMLElement {
 const EMPTY_KIND_SET: ReadonlySet<string> = new Set();
 
 /**
- * Build a generic Report contribution for a kind that has no registered
- * presenter but does have a cached payload. Two shapes:
+ * Build a generic Report contribution for a kind that has no
+ * registered presenter but does have a cached payload. Shape detection
+ * + DOM building lives in `./genericPayload.ts` — table / swatches /
+ * key-value / image / JSON-pre — so this function is just the
+ * inspector-facing wrapper that decides "is there anything worth
+ * showing?" and reaches for the shared body builder.
  *
- *  - Image payload (`{ imageBase64, mediaType? }`) — render as `<img>`
- *    inside a collapsed `<details>` so the user can scrub through it
- *    without it stealing focus from the structured surfaces.
- *  - Anything else — JSON-stringify the value into a `<pre>` block.
- *
- * Returns `null` if the value is `null`, an empty object, or otherwise
- * obviously empty so the caller can fall back to "no data" messaging.
- * Other readers that want a polished view can register a kind-specific
- * presenter — this is the unsurprising default.
+ * Returns `null` for null / empty-object / empty-array payloads so the
+ * caller can fall back to the pending placeholder instead of a Report
+ * with an empty body.
  */
 function genericPresentation(
     kind: string,
     label: string | undefined,
     data: unknown,
 ): ProductPresentation | null {
-    if (data === null) return null;
-    const display = label && label.length > 0 ? label : kind;
-    // Image-shaped payloads — same wire shape `extension.ts` produces
-    // for `.png` data products. Treat the payload as opaque bytes; if
-    // a `mediaType` isn't set we default to PNG because that's what
-    // every binary data product ships today.
-    if (typeof data === "object" && data !== null) {
-        const maybeImage = data as {
-            imageBase64?: unknown;
-            mediaType?: unknown;
-        };
-        if (
-            typeof maybeImage.imageBase64 === "string" &&
-            maybeImage.imageBase64.length > 0
-        ) {
-            const mediaType =
-                typeof maybeImage.mediaType === "string"
-                    ? maybeImage.mediaType
-                    : "image/png";
-            const body = document.createElement("div");
-            body.className = "focus-report-generic focus-report-generic-image";
-            const img = document.createElement("img");
-            img.className = "focus-report-overlay-img";
-            img.alt = display;
-            img.src = `data:${mediaType};base64,${maybeImage.imageBase64}`;
-            body.appendChild(img);
-            return { report: { title: display, body } };
-        }
-    }
-    let serialized: string;
-    try {
-        serialized = JSON.stringify(data, null, 2);
-    } catch {
-        // Unserialisable payloads (cycles, BigInt, etc.) — fall back
-        // to the runtime stringification rather than dropping the
-        // report entirely. The user still sees that data arrived.
-        serialized = String(data);
-    }
-    if (!serialized || serialized === "{}" || serialized === "[]") {
+    if (data === null || data === undefined) return null;
+    if (Array.isArray(data) && data.length === 0) return null;
+    if (
+        typeof data === "object" &&
+        data !== null &&
+        !Array.isArray(data) &&
+        Object.keys(data as object).length === 0
+    ) {
         return null;
     }
-    const body = document.createElement("div");
-    body.className = "focus-report-generic focus-report-generic-json";
-    const pre = document.createElement("pre");
-    pre.className = "focus-report-pre";
-    pre.textContent = serialized;
-    body.appendChild(pre);
-    return { report: { title: display, summary: "Daemon data", body } };
+    const display = label && label.length > 0 ? label : kind;
+    return {
+        report: {
+            title: display,
+            summary: "Daemon data",
+            body: renderGenericBody(data, display),
+        },
+    };
 }
 
 /**
