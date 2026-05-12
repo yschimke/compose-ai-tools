@@ -63,7 +63,11 @@ interface Harness {
     a11yClicks: number;
 }
 
-function makeHarness(findingsCount = 0, autoEnableCheap = false): Harness {
+function makeHarness(
+    findingsCount = 0,
+    autoEnableCheap = false,
+    dataByKind: Record<string, unknown> = {},
+): Harness {
     const toggles: ToggleEvent[] = [];
     let a11yClicks = 0;
 
@@ -74,6 +78,7 @@ function makeHarness(findingsCount = 0, autoEnableCheap = false): Harness {
     document.body.appendChild(card);
 
     const inspector = new FocusInspectorController({
+        getDataProduct: (_previewId, kind) => dataByKind[kind],
         el: container,
         earlyFeatures: () => true,
         autoEnableCheap: () => autoEnableCheap,
@@ -178,6 +183,77 @@ describe("focus inspector data-extension toggle", () => {
         assert.strictEqual(summary!.textContent, "Loading");
         const body = placeholderReport!.querySelector(".focus-report-body");
         assert.ok(body && body.textContent && body.textContent.length > 0);
+    });
+
+    it("falls back to a generic JSON dump for a no-presenter kind once data arrives", () => {
+        const h = makeHarness(0, false, {
+            "fonts/used": { families: ["Roboto", "Inter"], glyphCount: 42 },
+        });
+        h.inspector.render(h.card);
+        const fontsRow = findRowByLabel(h.container, "Fonts");
+        fontsRow.querySelector<HTMLInputElement>("input")!.click();
+        const report = h.container.querySelector(
+            '.focus-report[data-kind="fonts/used"]',
+        );
+        assert.ok(report, "expected a fonts/used report after toggle");
+        const summary = report!.querySelector(".focus-report-summary-hint");
+        assert.strictEqual(summary?.textContent, "Daemon data");
+        const pre = report!.querySelector("pre.focus-report-pre");
+        assert.ok(pre, "generic fallback should render the payload as <pre>");
+        assert.ok(pre!.textContent?.includes("Roboto"));
+        assert.ok(pre!.textContent?.includes("glyphCount"));
+    });
+
+    it("renders an <img> for a no-presenter kind whose payload looks like an image", () => {
+        const h = makeHarness(0, false, {
+            "fonts/used": {
+                imageBase64: "AAAA",
+                mediaType: "image/png",
+                sizeBytes: 1024,
+            },
+        });
+        h.inspector.render(h.card);
+        findRowByLabel(h.container, "Fonts")
+            .querySelector<HTMLInputElement>("input")!
+            .click();
+        const report = h.container.querySelector(
+            '.focus-report[data-kind="fonts/used"]',
+        );
+        assert.ok(report);
+        const img = report!.querySelector<HTMLImageElement>("img");
+        assert.ok(img, "image payload should render as an <img>");
+        assert.strictEqual(img!.src, "data:image/png;base64,AAAA");
+    });
+
+    it("trusts a presenter that returns null instead of stamping a Loading placeholder", () => {
+        // a11y/atf returns null when findings are empty — the local
+        // overlay layer handles the no-findings case visually, so we
+        // mustn't double-stamp a "Loading…" report under the inspector.
+        // This was the old "Loading… forever" UX before the trust-null
+        // fix landed.
+        const h = makeHarness();
+        // Built-in product list doesn't include a11y/atf — push it via
+        // setProducts so the inspector renders an enabled-able row.
+        h.inspector.setProducts([
+            {
+                kind: "a11y/atf",
+                label: "Accessibility findings",
+                icon: "eye",
+                cost: "expensive",
+                daemonBacked: true,
+            },
+        ]);
+        h.inspector.render(h.card);
+        const atfRow = findRowByLabel(h.container, "Accessibility findings");
+        atfRow.querySelector<HTMLInputElement>("input")!.click();
+        const report = h.container.querySelector(
+            '.focus-report[data-kind="a11y/atf"]',
+        );
+        assert.strictEqual(
+            report,
+            null,
+            "a11y/atf with no findings should NOT stamp a placeholder report",
+        );
     });
 
     it("does not fire onToggleDataExtension for the local a11y overlay chip", () => {

@@ -730,24 +730,44 @@ export class FocusInspectorController {
         const enabled = this.enabledKindsFor(previewId);
         for (const kind of enabled) {
             const presenter = getPresenter(kind);
-            const presentation = presenter ? presenter(ctx) : null;
-            if (presentation) {
-                out.push({ kind, presentation });
+            // A registered presenter is authoritative — non-null
+            // contributions get slotted in, an intentional null means
+            // "I have nothing to add this render" (a11y/atf with no
+            // findings is the canonical case; the legend / overlay
+            // surfaces are empty by design). Don't fall back to a
+            // pending placeholder in that case — it'd surprise the
+            // user with a permanent "Loading…" for a kind the daemon
+            // already answered.
+            if (presenter) {
+                const presentation = presenter(ctx);
+                if (presentation) {
+                    out.push({ kind, presentation });
+                }
                 continue;
             }
-            // Toggle-on must always paint *something* so the user sees
-            // their click take effect even before the daemon answers.
-            // When the registered presenter (or the missing-presenter
-            // case) yields nothing, fall back to a "Loading…" report
-            // keyed off the descriptor we resolved for the bucket list.
             // Skip purely panel-side kinds — those either own their
             // own UI surface (a11y overlay, render-error banner) or
             // never produce daemon data we'd be waiting for.
             if (kind.startsWith("local/")) continue;
             const descriptor = productByKind.get(kind);
+            const data = ctx.data?.(kind);
+            // No registered presenter: render a generic payload-dump
+            // Report so every subscribed kind surfaces *something*
+            // useful — JSON pretty-print for structured data, an
+            // <img> for known image payloads. Keeps the panel
+            // unsurprising for kinds we haven't yet hand-rolled a
+            // presenter for, and gives consumers a flexible "what did
+            // the daemon attach?" investigation surface. When no data
+            // has arrived yet, fall through to the pending placeholder
+            // so the toggle still paints something.
+            const generic =
+                data !== undefined
+                    ? genericPresentation(kind, descriptor?.label, data)
+                    : null;
             out.push({
                 kind,
-                presentation: pendingPresentation(kind, descriptor?.label),
+                presentation:
+                    generic ?? pendingPresentation(kind, descriptor?.label),
             });
         }
         return out;
@@ -1048,6 +1068,75 @@ function sectionHeader(icon: string, label: string): HTMLElement {
  * pushes, and product-list changes.
  */
 const EMPTY_KIND_SET: ReadonlySet<string> = new Set();
+
+/**
+ * Build a generic Report contribution for a kind that has no registered
+ * presenter but does have a cached payload. Two shapes:
+ *
+ *  - Image payload (`{ imageBase64, mediaType? }`) — render as `<img>`
+ *    inside a collapsed `<details>` so the user can scrub through it
+ *    without it stealing focus from the structured surfaces.
+ *  - Anything else — JSON-stringify the value into a `<pre>` block.
+ *
+ * Returns `null` if the value is `null`, an empty object, or otherwise
+ * obviously empty so the caller can fall back to "no data" messaging.
+ * Other readers that want a polished view can register a kind-specific
+ * presenter — this is the unsurprising default.
+ */
+function genericPresentation(
+    kind: string,
+    label: string | undefined,
+    data: unknown,
+): ProductPresentation | null {
+    if (data === null) return null;
+    const display = label && label.length > 0 ? label : kind;
+    // Image-shaped payloads — same wire shape `extension.ts` produces
+    // for `.png` data products. Treat the payload as opaque bytes; if
+    // a `mediaType` isn't set we default to PNG because that's what
+    // every binary data product ships today.
+    if (typeof data === "object" && data !== null) {
+        const maybeImage = data as {
+            imageBase64?: unknown;
+            mediaType?: unknown;
+        };
+        if (
+            typeof maybeImage.imageBase64 === "string" &&
+            maybeImage.imageBase64.length > 0
+        ) {
+            const mediaType =
+                typeof maybeImage.mediaType === "string"
+                    ? maybeImage.mediaType
+                    : "image/png";
+            const body = document.createElement("div");
+            body.className = "focus-report-generic focus-report-generic-image";
+            const img = document.createElement("img");
+            img.className = "focus-report-overlay-img";
+            img.alt = display;
+            img.src = `data:${mediaType};base64,${maybeImage.imageBase64}`;
+            body.appendChild(img);
+            return { report: { title: display, body } };
+        }
+    }
+    let serialized: string;
+    try {
+        serialized = JSON.stringify(data, null, 2);
+    } catch {
+        // Unserialisable payloads (cycles, BigInt, etc.) — fall back
+        // to the runtime stringification rather than dropping the
+        // report entirely. The user still sees that data arrived.
+        serialized = String(data);
+    }
+    if (!serialized || serialized === "{}" || serialized === "[]") {
+        return null;
+    }
+    const body = document.createElement("div");
+    body.className = "focus-report-generic focus-report-generic-json";
+    const pre = document.createElement("pre");
+    pre.className = "focus-report-pre";
+    pre.textContent = serialized;
+    body.appendChild(pre);
+    return { report: { title: display, summary: "Daemon data", body } };
+}
 
 /**
  * Build a "Loading…" report contribution for a kind the user just
