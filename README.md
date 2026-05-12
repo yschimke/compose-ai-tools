@@ -153,4 +153,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `ButtonPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.ButtonPreview_Devices_-_Small_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png" width="150" /> |
 | `CircularProgressIndicatorPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png" width="150" /> |
+| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.HelloTilePreview_Large_Round.png" width="150" /> |
+| `HelloTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.HelloTilePreview_Small_Round.png" width="150" /> |
+| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.StepsTilePreview_Large_Round.png" width="150" /> |
+| `StepsTilePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:wear/TilePreviewsKt.StepsTilePreview_Small_Round.png" width="150" /> |
 

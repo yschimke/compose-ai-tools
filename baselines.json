@@ -661,7 +661,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
@@ -712,5 +712,33 @@
     "renderBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Small_Round.png",
     "sha256": "db99f08046c7235f255cb810cb4d73631a5a2108f2087e0e205d148207c784d9",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
+  },
+  "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Large Round": {
+    "captureLabel": "",
+    "functionName": "HelloTilePreview",
+    "renderBasename": "TilePreviewsKt.HelloTilePreview_Large_Round.png",
+    "sha256": "4ce8b8a44b0562846a58bab7c91ef0e50acf68806607befaeb52d2a7a850b18a",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.TilePreviewsKt.HelloTilePreview_Small Round": {
+    "captureLabel": "",
+    "functionName": "HelloTilePreview",
+    "renderBasename": "TilePreviewsKt.HelloTilePreview_Small_Round.png",
+    "sha256": "2ed98813bb8bd197b324012ad3a361f4e8c025e3a16798b47e46808379f435c4",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Large Round": {
+    "captureLabel": "",
+    "functionName": "StepsTilePreview",
+    "renderBasename": "TilePreviewsKt.StepsTilePreview_Large_Round.png",
+    "sha256": "3d1993766d9f1463952675600e16c82f6bb3b609c6386d002c7dc30fc0e4304a",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:wear/com.example.samplewear.TilePreviewsKt.StepsTilePreview_Small Round": {
+    "captureLabel": "",
+    "functionName": "StepsTilePreview",
+    "renderBasename": "TilePreviewsKt.StepsTilePreview_Small_Round.png",
+    "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
+    "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
   }
 }
