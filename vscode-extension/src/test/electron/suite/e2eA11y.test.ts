@@ -52,15 +52,6 @@ interface A11yStateAck extends PostedMessage {
     nodesCount: number | null;
 }
 
-function findMessage(
-    messages: unknown[],
-    command: string,
-): PostedMessage | undefined {
-    return messages.find((m) => (m as PostedMessage).command === command) as
-        | PostedMessage
-        | undefined;
-}
-
 async function waitFor<T>(
     description: string,
     timeoutMs: number,
@@ -217,11 +208,19 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             timeoutMs,
             500,
             () => {
-                const m = findMessage(api.getPostedMessages(), "setPreviews");
-                if (!m) return undefined;
-                const previews = m.previews as PreviewSummary[] | undefined;
-                if (!previews || previews.length === 0) return undefined;
-                return m;
+                // Scan in reverse for the latest non-empty setPreviews:
+                // the refresh flow can emit an initial empty/stale payload
+                // (cached-manifest replay) before the rendered manifest
+                // lands, and `Array.prototype.find` would lock onto the
+                // empty one forever.
+                const msgs = api.getPostedMessages();
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                    const m = msgs[i] as PostedMessage;
+                    if (m.command !== "setPreviews") continue;
+                    const previews = m.previews as PreviewSummary[] | undefined;
+                    if (previews && previews.length > 0) return m;
+                }
+                return undefined;
             },
         );
         const previews = setPreviews.previews as PreviewSummary[];
