@@ -128,6 +128,18 @@ export function _resetPresentersForTest(): void {
     registry.clear();
 }
 
+/**
+ * Visible for tests only — re-register the built-in presenters after a
+ * call to {@link _resetPresentersForTest}. Side-effect-only `require`
+ * of this module won't re-run the bottom-of-file `registerPresenter`
+ * calls (Node caches the module), and even busting the require cache
+ * creates a *second* copy of the registry — so the only reliable way
+ * to put the built-ins back is to call this helper directly.
+ */
+export function _seedBuiltInPresentersForTest(): void {
+    seedBuiltInPresenters();
+}
+
 // ---- Built-in presenters --------------------------------------------------
 //
 // Concrete presenters live alongside the framework so the registry is
@@ -137,11 +149,15 @@ export function _resetPresentersForTest(): void {
 // here is to prove each surface's mount works end-to-end, not to fake
 // data the daemon doesn't actually produce.
 
-registerPresenter("a11y/hierarchy", a11yHierarchyPresenter);
-registerPresenter("a11y/atf", a11yFindingsPresenter);
-registerPresenter("a11y/overlay", a11yOverlayPresenter);
-registerPresenter("compose/theme", composeThemePresenter);
-registerPresenter("local/render/error", renderErrorPresenter);
+function seedBuiltInPresenters(): void {
+    registerPresenter("a11y/hierarchy", a11yHierarchyPresenter);
+    registerPresenter("a11y/atf", a11yFindingsPresenter);
+    registerPresenter("a11y/overlay", a11yOverlayPresenter);
+    registerPresenter("compose/theme", composeThemePresenter);
+    registerPresenter("local/render/error", renderErrorPresenter);
+}
+
+seedBuiltInPresenters();
 
 function a11yHierarchyPresenter(
     ctx: PresenterContext,
