@@ -43,6 +43,14 @@ DIRECT_IDS = (
     "org.jetbrains.compose",
 )
 
+ID_DECL_RE = re.compile(
+    r"id\(\"(?P<id>[^\"]+)\"\)(?P<tail>[^\n]*)"
+)
+
+ALIAS_DECL_RE = re.compile(
+    r"alias\((?P<alias>[^)]+)\)(?P<tail>[^\n]*)"
+)
+
 # Convention-plugin alias patterns. We look for tokens that end with
 # `androidApplication`, `androidLibrary`, or `jetbrainsCompose` (case-sensitive,
 # camelCase boundary) inside the plugins block.
@@ -127,9 +135,16 @@ def is_candidate(path: Path) -> bool:
     if not m:
         return False
     block = m.group(1)
-    if any(s in block for s in DIRECT_IDS):
-        return True
-    return ALIAS_RE.search(block) is not None
+    for m in ID_DECL_RE.finditer(block):
+        if m.group("id") in DIRECT_IDS and "apply false" not in m.group("tail"):
+            return True
+
+    for m in ALIAS_DECL_RE.finditer(block):
+        alias = m.group("alias")
+        if ALIAS_RE.search(alias) and "apply false" not in m.group("tail"):
+            return True
+
+    return False
 
 
 def walk_and_patch(root: Path, version: str) -> int:
