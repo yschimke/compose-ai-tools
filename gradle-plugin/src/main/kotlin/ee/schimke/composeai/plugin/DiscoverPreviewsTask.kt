@@ -198,6 +198,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
               .map { it.name }
               .toSet()
           for (classInfo in scanResult.allClasses) {
+            // Method-walk only project classes. Library JARs stay on the
+            // ClassGraph classpath so `scanResult.getClassInfo` can resolve
+            // multi-preview annotations (e.g. @WearPreviewDevices) declared
+            // there, but iterating their methods produced no real previews
+            // and spammed hundreds of "skipping @Preview" warnings for
+            // synthetic Kotlin inline-class methods like
+            // `TransformationState.equals-impl`. See issue #1039.
+            if (classInfo.name !in projectClassFqns) continue
             scanClassCount++
             for (method in classInfo.methodInfo) {
               val annotations = method.annotationInfo ?: continue
@@ -508,6 +516,22 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     projectClassFqns: Set<String>,
     previews: MutableList<PreviewInfo>,
   ) {
+    // Resolve the method's preview annotations up-front so we can bail
+    // before any per-method work (and before the "skipping @Preview"
+    // warning) when the method isn't actually a preview. The caller
+    // routes every annotated method through here, so without this guard
+    // an unrelated annotation (e.g. `@JvmStatic` on a synthetic Kotlin
+    // inline-class method) would trigger the unsupported-parameters
+    // warning despite carrying no @Preview at all. See issue #1039.
+    val directPreviews = collectDirectPreviews(annotations)
+    val resolvedMultiPreviews: List<AnnotationInfo> =
+      if (directPreviews.isNotEmpty()) {
+        emptyList()
+      } else {
+        annotations.flatMap { resolveMultiPreview(it, scanResult, mutableSetOf()) }
+      }
+    if (directPreviews.isEmpty() && resolvedMultiPreviews.isEmpty()) return
+
     // @PreviewWrapper and @ScrollingPreview are both non-repeatable and apply
     // to every @Preview on the function (including expansions from
     // multi-preview meta-annotations). `@ScrollingPreview.modes` maps TOP/END
@@ -564,7 +588,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       )
     }
 
-    val directPreviews = collectDirectPreviews(annotations)
     if (directPreviews.isNotEmpty()) {
       for (ann in directPreviews) {
         previews.add(
@@ -588,27 +611,24 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
       return
     }
 
-    for (ann in annotations) {
-      val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
-      for (resolvedAnn in resolved) {
-        previews.add(
-          makePreview(
-            classInfo,
-            method,
-            resolvedAnn,
-            wrapperFqn,
-            scrollSpecs,
-            animationSpec,
-            focusSpecs,
-            focusGifSpec,
-            ambientSpec,
-            timings,
-            previewParameter,
-            previewSourceFile,
-            inferredTargets,
-          )
+    for (resolvedAnn in resolvedMultiPreviews) {
+      previews.add(
+        makePreview(
+          classInfo,
+          method,
+          resolvedAnn,
+          wrapperFqn,
+          scrollSpecs,
+          animationSpec,
+          focusSpecs,
+          focusGifSpec,
+          ambientSpec,
+          timings,
+          previewParameter,
+          previewSourceFile,
+          inferredTargets,
         )
-      }
+      )
     }
   }
 
