@@ -31,8 +31,11 @@ export async function run(): Promise<void> {
     // suite excludes it. Pattern selection here so each mode's run output
     // doesn't list "skipped" entries for the other mode's tests.
     const e2eMode = process.env.COMPOSE_PREVIEW_E2E === "1";
-    const pattern = e2eMode ? "**/e2e.test.js" : "**/*.test.js";
-    const ignore = e2eMode ? [] : ["**/e2e.test.js"];
+    // Match every `e2e*.test.js` so the slow suite can be split across
+    // files (`e2e.test.js`, `e2eA11y.test.js`, …) without having to
+    // restate file names here.
+    const pattern = e2eMode ? "**/e2e*.test.js" : "**/*.test.js";
+    const ignore = e2eMode ? [] : ["**/e2e*.test.js"];
     const files = await glob(pattern, { cwd: testsRoot, ignore });
     console.log(
         `[suite] discovered ${files.length} test file(s) in ${testsRoot} (e2e=${e2eMode})`,

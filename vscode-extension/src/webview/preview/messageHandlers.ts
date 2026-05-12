@@ -155,6 +155,16 @@ export function handleExtensionMessage(
         }
         case "updateA11y":
             ctx.applyA11yUpdate(msg.previewId, msg.findings, msg.nodes);
+            ctx.vscode.postMessage({
+                command: "webviewA11yState",
+                previewId: msg.previewId,
+                findingsCount:
+                    msg.findings === undefined
+                        ? null
+                        : (msg.findings?.length ?? 0),
+                nodesCount:
+                    msg.nodes === undefined ? null : (msg.nodes?.length ?? 0),
+            });
             return;
         case "updateDataProducts":
             ctx.updateDataProducts(msg.previewId, msg.dataProducts);

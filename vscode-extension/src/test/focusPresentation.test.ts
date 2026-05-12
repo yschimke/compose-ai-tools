@@ -6,6 +6,7 @@
 import * as assert from "assert";
 import {
     _resetPresentersForTest,
+    _seedBuiltInPresentersForTest,
     getPresenter,
     registerPresenter,
 } from "../webview/preview/focusPresentation";
@@ -198,10 +199,19 @@ describe("focusPresentation registry", () => {
     it("_resetPresentersForTest empties the registry", () => {
         _resetPresentersForTest();
         assert.strictEqual(getPresenter("a11y/hierarchy"), undefined);
-        // Re-import to reseed for sibling tests in this file. Mocha
-        // doesn't reload modules across `describe` blocks, so mirror
-        // the side-effect register calls inline.
-        require("../webview/preview/focusPresentation");
+        // Reseed so sibling test files that depend on the built-ins
+        // (the "trusts a presenter that returns null" assertion in
+        // focusInspectorToggle.test is the canonical case) don't see
+        // an empty registry. A bare re-`require` here is a no-op
+        // (Node's module cache), and busting the cache creates a
+        // *second* copy of the registry the first import's
+        // `getPresenter` can't see — the only reliable restore is
+        // calling the seed helper directly.
+        _seedBuiltInPresentersForTest();
+        assert.ok(
+            getPresenter("a11y/hierarchy"),
+            "registry must be reseeded so the built-in a11y/hierarchy presenter is callable again",
+        );
     });
 });
 

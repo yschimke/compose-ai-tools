@@ -656,6 +656,24 @@ export type WebviewToExtension =
      * full host→webview→DOM loop is regression-locked.
      */
     | { command: "webviewPreviewsRendered"; count: number }
+    /**
+     * Webview reports it has finished applying an `updateA11y` payload —
+     * sent from `messageHandlers.ts` after `applyA11yUpdate` mutates the
+     * per-card a11y caches. Mirrors `webviewPreviewsRendered`: lets e2e
+     * tests assert the chip → daemon → host → webview chain landed
+     * without scraping the DOM.
+     *
+     * `findingsCount` / `nodesCount` are `null` when that side wasn't part
+     * of the inbound update (so a `nodes`-only update doesn't masquerade
+     * as a 0-findings update). When present, the integer reflects the
+     * length of the array the webview just consumed.
+     */
+    | {
+          command: "webviewA11yState";
+          previewId: string;
+          findingsCount: number | null;
+          nodesCount: number | null;
+      }
     | { command: "openFile"; className: string; functionName: string }
     | { command: "selectModule"; value: string }
     /**

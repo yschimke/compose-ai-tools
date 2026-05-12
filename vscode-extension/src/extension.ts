@@ -313,6 +313,18 @@ export interface ComposePreviewTestApi {
         force?: boolean,
         tier?: "fast" | "full",
     ): Promise<void>;
+    /**
+     * Drive a focus-inspector data-extension chip toggle from a test, by
+     * calling the same `handleSetDataExtensionEnabled` path the webview
+     * postMessage hits. Used by the a11y e2e tests to exercise the
+     * chip → daemon → attachment → webview chain without round-tripping
+     * through DevTools.
+     */
+    triggerSetDataExtensionEnabled(
+        previewId: string,
+        kind: string,
+        enabled: boolean,
+    ): Promise<void>;
     /** Snapshot of every panel message posted since [resetMessages]. */
     getPostedMessages(): unknown[];
     /**
@@ -1351,6 +1363,13 @@ export async function activate(
                 tier: "fast" | "full" = "full",
             ): Promise<void> {
                 return refresh(force, filePath, tier).then(() => {});
+            },
+            triggerSetDataExtensionEnabled(
+                previewId: string,
+                kind: string,
+                enabled: boolean,
+            ): Promise<void> {
+                return handleSetDataExtensionEnabled(previewId, kind, enabled);
             },
             getPostedMessages(): unknown[] {
                 return [...postedMessageLog];
