@@ -959,10 +959,19 @@ internal object AndroidPreviewSupport {
               }
             }
             .files
-        // Callable defers `.files` resolution until the Test task queries
-        // this FileCollection, keeping the configuration lazy.
+        // Wire the zipTree expansion through `elements.map { ... }` so Gradle's
+        // task-graph walk sees a Provider (build-dependency-aware, value
+        // resolved lazily) instead of a Callable. A Callable here forces
+        // `rendererConfig` to resolve during task-graph construction —
+        // `DefaultConfigurableFileCollection.visitDependencies` unwraps Callables
+        // eagerly via `DeferredUtil.unpackNestableDeferred`, which calls into
+        // `rendererJars.getFiles()` and trips AGP's
+        // `DependencyResolutionChecks` "resolved during configuration time"
+        // warning (issue #1038). The Provider chain below participates in the
+        // build-dependency graph through `rendererJars.elements` without
+        // realising the configuration until task execution.
         project.files(
-          java.util.concurrent.Callable { rendererJars.files.map { project.zipTree(it) } }
+          rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
         )
       }
 
