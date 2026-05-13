@@ -142,6 +142,19 @@ export function buildPreviewCard(
     const card = document.createElement("preview-card") as PreviewCard;
     card.preview = p;
     card.config = config;
+    // Stamp the filter-critical attributes synchronously so the
+    // `applyFilters` call that handleSetPreviews fires immediately
+    // after renderPreviews can see them — populatePreviewCard runs
+    // from Lit's `firstUpdated()` which is scheduled on a microtask,
+    // so by the time it sets these the first applyFilters has already
+    // run against an empty grid (no `.preview-card` selector match,
+    // no dataset → variant collapse silently no-ops, all cards land
+    // visible until the next manifest reseed).
+    card.classList.add("preview-card");
+    card.dataset.previewId = p.id;
+    card.dataset.function = p.functionName;
+    card.dataset.group = p.params.group || "";
+    card.dataset.className = p.className;
     return card;
 }
 
@@ -168,10 +181,13 @@ export function populatePreviewCard(
     // (idiomatic `XxxPreviews.kt` / `screenshotTest` layout). The CSS hook lets
     // the panel render them under a "from elsewhere" treatment without changing
     // the message shape.
-    card.className =
-        "preview-card" +
-        (animated ? " animated-card" : "") +
-        (p.referenced ? " referenced" : "");
+    //
+    // Use classList rather than reassigning className so the eager
+    // `preview-card` class stamped in buildPreviewCard survives — the
+    // filter walker relies on it before this populate step has run.
+    card.classList.add("preview-card");
+    card.classList.toggle("animated-card", animated);
+    card.classList.toggle("referenced", !!p.referenced);
     card.id = "preview-" + sanitizeId(p.id);
     card.setAttribute("role", "listitem");
     card.dataset.function = p.functionName;
