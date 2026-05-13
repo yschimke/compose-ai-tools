@@ -1793,6 +1793,41 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+/* Surfaces "+N variants" on the surviving card when variant-collapse
+   hides duplicates. Without it the only path to the siblings is
+   picking the function in the toolbar dropdown — easy to miss when
+   identical-looking previews sit side by side. Anchored top-left so
+   it doesn't crowd the existing focus / animation icons on the right
+   of the title row. */
+.variant-count-chip {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 2;
+    padding: 2px 6px;
+    border: 1px solid var(--card-border);
+    border-radius: 9999px;
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    font-size: calc(var(--vscode-font-size) - 3px);
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    opacity: 0.85;
+    transition:
+        opacity 0.15s,
+        background 0.15s;
+}
+.variant-count-chip:hover {
+    opacity: 1;
+    background: var(--toolbar-hover);
+    color: var(--vscode-foreground);
+}
+.variant-count-chip:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
 /* -- Animated card carousel ------------------------------------------ */
 
 /* Icon in the title row telegraphs "this preview has multiple captures"; the

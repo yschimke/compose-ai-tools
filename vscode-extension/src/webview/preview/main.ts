@@ -572,6 +572,21 @@ export class PreviewApp extends LitElement {
             applyFilters();
         });
 
+        // The "+N variants" chip on a collapsed-variant survivor card
+        // is the only in-grid affordance pointing at hidden siblings.
+        // Clicking it narrows the function filter to that card's
+        // function, which disables variant collapse and reveals all
+        // variants — same trio the gutter-icon `setFunctionFilter`
+        // message handler runs.
+        grid.addEventListener("variant-chip-clicked", (evt) => {
+            const detail = (evt as CustomEvent<{ fn?: string }>).detail;
+            const fn = detail?.fn;
+            if (!fn) return;
+            filterToolbar.setFunctionValue(fn);
+            saveFilterState();
+            applyFilters();
+        });
+
         btnPrev.addEventListener("click", () => navigateFocus(-1));
         btnNext.addEventListener("click", () => navigateFocus(1));
         btnDiffHead.addEventListener("click", () => requestFocusedDiff("head"));
