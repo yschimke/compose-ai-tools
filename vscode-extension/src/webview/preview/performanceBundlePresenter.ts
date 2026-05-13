@@ -519,13 +519,16 @@ function renderComposeAiTraceSection(
     label.textContent = "Open in Perfetto";
     button.appendChild(label);
     button.addEventListener("click", () => {
-        const payload = {
-            previewId,
-            recomposition: rawPayloads.recomposition,
-            renderTrace: rawPayloads.renderTrace,
-            composeAiTrace: rawPayloads.composeAiTrace,
-        };
-        copyToClipboard(JSON.stringify(payload, null, 2));
+        // Ship the raw Perfetto-importable trace JSON only — paste-
+        // into-ui.perfetto.dev expects the trace at the document root
+        // (it scans for top-level `traceEvents` etc.), so wrapping it
+        // under `composeAiTrace` was a regression: the paste loaded
+        // as "not a trace." When the daemon hasn't attached a
+        // composeAiTrace payload yet, fall through to an empty
+        // string so the clipboard write is a clear no-op rather than
+        // shipping a misleading wrapper.
+        const trace = rawPayloads.composeAiTrace;
+        copyToClipboard(trace ? JSON.stringify(trace, null, 2) : "");
     });
     section.appendChild(button);
     return section;
