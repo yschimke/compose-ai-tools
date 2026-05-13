@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.10.9](https://github.com/yschimke/compose-ai-tools/compare/v0.10.8...v0.10.9) (2026-05-13)
+
+
+### Features
+
+* **a11y:** subscription-driven a11y data products + protocol + UX fixes ([#1007](https://github.com/yschimke/compose-ai-tools/issues/1007)) ([c819a8f](https://github.com/yschimke/compose-ai-tools/commit/c819a8f075c79260328bd75ca5f812ca14246dc9))
+* add diagnostic logging for data products flow ([#1050](https://github.com/yschimke/compose-ai-tools/issues/1050)) ([080edfd](https://github.com/yschimke/compose-ai-tools/commit/080edfdff9807bf20e45b076e9197fece787cf89))
+* add shape-aware generic payload renderers for focus inspector ([#1045](https://github.com/yschimke/compose-ai-tools/issues/1045)) ([a5f0377](https://github.com/yschimke/compose-ai-tools/commit/a5f037737ce6e76f96e3dd073c05a9cd38ddae7e))
+* add variant count chip to collapsed preview cards ([#1051](https://github.com/yschimke/compose-ai-tools/issues/1051)) ([8bd1762](https://github.com/yschimke/compose-ai-tools/commit/8bd1762e5445117a500173158c6647f00ab89bf7))
+* **focus:** add @FocusedPreview(gif = true) and remove sample hack ([#1031](https://github.com/yschimke/compose-ai-tools/issues/1031)) ([f079dfd](https://github.com/yschimke/compose-ai-tools/commit/f079dfd3ab849b33b82e865bbfefd9dd22a056cd))
+* generic fallback presenter and a11y/overlay PNG support ([#1044](https://github.com/yschimke/compose-ai-tools/issues/1044)) ([1a31551](https://github.com/yschimke/compose-ai-tools/commit/1a31551d2915dcd20131734d0378ca81387901ca))
+* **install:** multi-JDK install + agent-aware paths, drop --yes gate ([#1029](https://github.com/yschimke/compose-ai-tools/issues/1029)) ([138f868](https://github.com/yschimke/compose-ai-tools/commit/138f868cc5df3acb2a7cb73be8e9c68559da6ac0))
+* **vscode:** collapse @Preview variants by default, expand on filter ([#1028](https://github.com/yschimke/compose-ai-tools/issues/1028)) ([d42d85f](https://github.com/yschimke/compose-ai-tools/commit/d42d85f295351fde052115368de7f4479de083e5))
+
+
+### Bug Fixes
+
+* **discovery:** keep tile previews despite the unsupported-parameter gate ([#1036](https://github.com/yschimke/compose-ai-tools/issues/1036)) ([826786d](https://github.com/yschimke/compose-ai-tools/commit/826786d5567d004f76e0af1d4538ea84d0212362))
+* pin androidx.activity to 1.10.0 for Robolectric compatibility ([#1041](https://github.com/yschimke/compose-ai-tools/issues/1041)) ([f296e60](https://github.com/yschimke/compose-ai-tools/commit/f296e604230af6f81050ad7b6ab5d714a251d531))
+* reposition variant count chip to bottom-left ([#1053](https://github.com/yschimke/compose-ai-tools/issues/1053)) ([4c094ff](https://github.com/yschimke/compose-ai-tools/commit/4c094ff0ba6aaa042fe9515678d076705bcea06e))
+* resolve renderer jars lazily to avoid configuration-time warnings ([#1040](https://github.com/yschimke/compose-ai-tools/issues/1040)) ([914b275](https://github.com/yschimke/compose-ai-tools/commit/914b275950397916396a28898730872b2ca13987))
+* skip library class methods to reduce preview scan warnings ([#1042](https://github.com/yschimke/compose-ai-tools/issues/1042)) ([b2db7fb](https://github.com/yschimke/compose-ai-tools/commit/b2db7fbbec019f9b3f8fd5ab0a34a9eaac84ea43))
+* switch to zero-code integration for compose-ai plugin in CI ([#1034](https://github.com/yschimke/compose-ai-tools/issues/1034)) ([1eed04f](https://github.com/yschimke/compose-ai-tools/commit/1eed04fa3129681db42400ba31d72c307fa2452f))
+* **vscode-extension:** handle historyPruned + surface class-version errors ([#1049](https://github.com/yschimke/compose-ai-tools/issues/1049)) ([cd1a058](https://github.com/yschimke/compose-ai-tools/commit/cd1a0584a1024ad8fa5c4a4bde819e0f643d3889))
+
 ## [0.10.8](https://github.com/yschimke/compose-ai-tools/compare/v0.10.7...v0.10.8) (2026-05-09)
 
 
