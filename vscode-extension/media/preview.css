@@ -1965,15 +1965,27 @@ body {
 }
 .a11y-hierarchy-box {
     position: absolute;
-    border: 1px dashed rgba(80, 160, 255, 0.7);
-    background: rgba(80, 160, 255, 0.06);
+    border: 1px dashed var(--a11y-hier-color, rgba(80, 160, 255, 0.7));
+    background: color-mix(
+        in srgb,
+        var(--a11y-hier-color, rgba(80, 160, 255, 1)) 12%,
+        transparent
+    );
     border-radius: 1px;
     pointer-events: auto;
-    transition: background 120ms ease;
+    transition:
+        background 120ms ease,
+        box-shadow 120ms ease;
 }
-.a11y-hierarchy-box:hover {
-    background: rgba(80, 160, 255, 0.18);
-    border-color: rgba(80, 160, 255, 1);
+.a11y-hierarchy-box:hover,
+.a11y-hierarchy-box.a11y-active {
+    background: color-mix(
+        in srgb,
+        var(--a11y-hier-color, rgba(80, 160, 255, 1)) 28%,
+        transparent
+    );
+    border-color: var(--a11y-hier-color, rgba(80, 160, 255, 1));
+    box-shadow: 0 0 0 1px var(--a11y-hier-color, rgba(80, 160, 255, 1));
 }
 /* Nodes sitting under a focusable ancestor that already carries its own
  * contentDescription — TalkBack reads only the ancestor. Shown with a lighter
@@ -1981,7 +1993,7 @@ body {
  * separate stops". */
 .a11y-hierarchy-box.a11y-hierarchy-unmerged {
     border-style: dotted;
-    border-color: rgba(160, 200, 255, 0.5);
+    opacity: 0.6;
 }
 .a11y-box {
     position: absolute;
@@ -2080,4 +2092,30 @@ body {
 }
 .a11y-level-info {
     --a11y-color: #1976d2;
+}
+
+/* Hierarchy legend — one row per `a11y/hierarchy` node, swatch colour
+ * matches the corresponding `.a11y-hierarchy-box` via the shared
+ * `--a11y-hier-color` CSS custom property set in JS. */
+.a11y-hierarchy-row {
+    align-items: center;
+}
+.a11y-hierarchy-row.a11y-hierarchy-row-unmerged {
+    opacity: 0.7;
+}
+/* Tighten the gap between consecutive plain-text nodes so adjacent
+ * label-only rows visually group, mirroring the spatial pairing in
+ * the preview (e.g. "Morning run · 5.2 km · 28 min"). */
+.a11y-hierarchy-row-adjacent {
+    margin-top: -4px;
+    padding-top: 2px;
+}
+.a11y-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--a11y-hier-color, #888);
+    border: 1px solid rgba(0, 0, 0, 0.25);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+    flex-shrink: 0;
 }
