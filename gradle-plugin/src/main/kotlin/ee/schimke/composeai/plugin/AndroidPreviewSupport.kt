@@ -1038,7 +1038,7 @@ internal object AndroidPreviewSupport {
     val dataProductsDirectory = previewOutputDir.map { it.dir("data") }
     val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
-    // Per-preview ATF findings land here. `verifyAccessibility` rolls them
+    // Per-preview ATF findings land here. `compose-preview a11y` rolls them
     // up into a single `accessibility.json` next to `previews.json`. Kept
     // separate from renders/ so caching treats the two output trees
     // independently.
@@ -1187,28 +1187,17 @@ internal object AndroidPreviewSupport {
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
-        // Data-product flags are routed through a CommandLineArgumentProvider
-        // rather than `systemProperty(...)` so toggling the `-P` override
-        // doesn't invalidate the Gradle configuration cache. `systemProperty`
-        // evaluates its value eagerly at configuration time — the provider
-        // we'd read there becomes part of the config-cache key, so flipping
-        // `-PcomposePreview.previewExtensions.a11y.enableAllChecks` forces a ~5-10s
-        // reconfigure. CommandLineArgumentProvider's `@Input` providers
-        // are only evaluated at task execution, which is exactly the
-        // lazy-input semantics we want for VSCode toggles.
-        //
-        // Renderer always inspects these sysprops at runtime; when
-        // enabled=false, the a11y code paths are no-ops (see
-        // [RobolectricRenderTest.renderWithA11y] / `renderDefault`).
+        // The renderer always writes ATF findings + ANI hierarchy artefacts; tell it which
+        // directory to land per-preview JSON sidecars in. Routed through a
+        // `CommandLineArgumentProvider` so the path is resolved at task execution time —
+        // `Test.systemProperty(name, provider)` would stringify the provider itself via
+        // `Object.toString()` (`fixed(class java.lang.String, …)`) rather than its value.
         jvmArgumentProviders.add(
-          AccessibilitySystemPropsProvider(
-            enabled = resolveA11yEnabled(project, extension),
-            annotate = resolveA11yAnnotate(project, extension),
-            outputDir = accessibilityPerPreviewDir.map { it.asFile.absolutePath },
-            debug = project.providers.gradleProperty("composeai.a11y.debug").orElse("false"),
+          AccessibilityOutputDirProvider(
+            outputDir = accessibilityPerPreviewDir.map { it.asFile.absolutePath }
           )
         )
-        // Display filters — same lazy-input pattern as a11y so `-PcomposePreview.displayFilter
+        // Display filters — lazy-input pattern so `-PcomposePreview.displayFilter
         // .filters=grayscale,invert` toggles don't invalidate the configuration cache.
         // RobolectricRenderTest reads `composeai.displayfilter.filters` after each capture and
         // calls DisplayFilterDataProducer.writeArtifacts when non-empty.
@@ -1339,37 +1328,21 @@ internal object AndroidPreviewSupport {
       }
     }
 
-    // `verifyAccessibility` is ALWAYS registered so toggling
-    // `-PcomposePreview.previewExtensions.a11y.enableAllChecks` doesn't change the
-    // task graph — config cache stays valid across VSCode / CLI toggles.
-    // An `onlyIf` gate backed by the lazy provider makes it a no-op when
-    // the feature is off: the task configures but never executes, so the
-    // JSON aggregation and failure thresholds only kick in when the user
-    // actually opted in.
-    val a11yEnabledProvider = resolveA11yEnabled(project, extension)
-    val verifyA11yTask =
-      project.tasks.register("verifyAccessibility", VerifyAccessibilityTask::class.java) {
+    // `aggregateAccessibility` rolls per-preview ATF sidecars into the top-level
+    // `accessibility.json` the CLI / VS Code extension consume. Never fails — a11y is a normal
+    // data producer now, on the same footing as theme / recomposition / etc.
+    val aggregateA11yTask =
+      project.tasks.register("aggregateAccessibility", AggregateAccessibilityTask::class.java) {
         group = "compose preview"
-        description =
-          "Aggregate ATF findings from renderPreviews and fail per configured thresholds"
-        perPreviewDir.set(accessibilityPerPreviewDir)
+        description = "Aggregate per-preview ATF findings into accessibility.json"
+        perPreviewFiles.from(project.fileTree(accessibilityPerPreviewDir) { include("*.json") })
         reportFile.set(accessibilityReportFile)
         moduleName.set(project.name)
-        failOnErrors.set(a11yExtension(extension).failOnErrors)
-        failOnWarnings.set(a11yExtension(extension).failOnWarnings)
         dependsOn(renderTask)
-        onlyIf("composePreview.previewExtensions.a11y.enableAllChecks") {
-          a11yEnabledProvider.get()
-        }
       }
 
-    ComposePreviewTasks.registerRenderAllPreviews(
-      project,
-      extension,
-      renderTask,
-      previewOutputDir,
-      verifyA11yTask,
-    )
+    ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+    project.tasks.named("renderAllPreviews").configure { dependsOn(aggregateA11yTask) }
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
     // unconditionally so the VS Code extension can sniff the output file
@@ -1501,12 +1474,6 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
       )
-      // Preview extension selection. The daemon consumes the same a11y selector as
-      // `renderPreviews`; there is no daemon-specific a11y feature flag.
-      this.systemProperties.put(
-        "composeai.previewExtensions.a11y.enabled",
-        resolveA11yEnabled(project, extension).map { it.toString() },
-      )
       this.systemProperties.put(
         "composeai.daemon.perfettoTrace",
         resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
@@ -1559,33 +1526,24 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Lazy holder for data-product-related system properties on the `renderPreviews` `Test` task.
-   * Using a CommandLineArgumentProvider — instead of `test.systemProperty(...)` — means the values
-   * are resolved at task execution time, so flipping the underlying Gradle property doesn't
-   * invalidate the configuration cache. Each `@Input` participates in the task's own up-to-date
-   * check, so toggling a11y correctly re-runs rendering.
+   * Forwards the directory where `RobolectricRenderTest` writes per-preview a11y JSON sidecars.
+   * Lives in a `CommandLineArgumentProvider` (rather than `Test.systemProperty(...)`) because the
+   * provider would otherwise be stringified eagerly via `Object.toString()` — yielding `fixed(class
+   * java.lang.String, …)` instead of the path itself.
    */
-  internal class AccessibilitySystemPropsProvider(
-    @get:org.gradle.api.tasks.Input val enabled: org.gradle.api.provider.Provider<Boolean>,
-    @get:org.gradle.api.tasks.Input val annotate: org.gradle.api.provider.Provider<Boolean>,
-    @get:org.gradle.api.tasks.Input val outputDir: org.gradle.api.provider.Provider<String>,
-    @get:org.gradle.api.tasks.Input val debug: org.gradle.api.provider.Provider<String>,
+  internal class AccessibilityOutputDirProvider(
+    @get:org.gradle.api.tasks.Input val outputDir: org.gradle.api.provider.Provider<String>
   ) : org.gradle.process.CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> =
-      listOf(
-        "-Dcomposeai.a11y.enabled=${enabled.get()}",
-        "-Dcomposeai.a11y.annotate=${annotate.get()}",
-        "-Dcomposeai.a11y.outputDir=${outputDir.get()}",
-        "-Dcomposeai.a11y.debug=${debug.get()}",
-      )
+      listOf("-Dcomposeai.a11y.outputDir=${outputDir.get()}")
   }
 
   /**
    * Forwards the `composePreview.displayFilter.filters` Gradle property as the
-   * `composeai.displayfilter.filters` system property on the spawned renderer JVM. Same
-   * `CommandLineArgumentProvider` shape as [AccessibilitySystemPropsProvider] so toggling filters
-   * on the command line (`-PcomposePreview.displayFilter.filters=grayscale,invert`) doesn't
-   * invalidate the configuration cache. Empty / unset is forwarded as an empty string;
+   * `composeai.displayfilter.filters` system property on the spawned renderer JVM. The
+   * `CommandLineArgumentProvider` shape (vs `test.systemProperty(...)`) means values are resolved
+   * at task execution time, so toggling `-PcomposePreview.displayFilter.filters=grayscale,invert`
+   * doesn't invalidate the configuration cache. Empty / unset is forwarded as an empty string;
    * `DisplayFilterConfig.fromSystemProperties()` treats blank input as "feature disabled".
    */
   internal class DisplayFilterSystemPropsProvider(
@@ -1598,74 +1556,16 @@ internal object AndroidPreviewSupport {
   /**
    * Lazy `Provider<String>` for the comma-separated display-filter list. Reads
    * `-PcomposePreview.displayFilter.filters=...`; defaults to empty (feature off) so existing
-   * builds don't change behaviour. Same Provider-not-String discipline as [resolveA11yEnabled] for
-   * configuration-cache friendliness.
+   * builds don't change behaviour. Returns a Provider — not a String — so consumers can pass it to
+   * lazy task inputs without invalidating the configuration cache on toggle.
    */
   internal fun resolveDisplayFilterFilters(
     project: org.gradle.api.Project
   ): org.gradle.api.provider.Provider<String> =
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
 
-  /**
-   * Returns a lazy `Provider<Boolean>` for the effective a11y data-product selection. The
-   * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=<true|false>` Gradle property enables
-   * every a11y check; `-PcomposePreview.previewExtensions.a11y.checks=atf,hierarchy` enables only
-   * named a11y checks.
-   *
-   * **Deliberately returns a Provider, not a Boolean.** Reading `.get()` at configuration time keys
-   * the configuration cache on the current property value, which means every VSCode toggle would
-   * invalidate the cache and pay a ~5-10s reconfigure cost. Consumers should pass this provider to
-   * task `onlyIf`, `CommandLineArgumentProvider` inputs, etc. — those evaluate it at
-   * task-graph-resolution time without cache invalidation.
-   */
-  internal fun resolveA11yEnabled(
-    project: org.gradle.api.Project,
-    extension: PreviewExtension,
-  ): org.gradle.api.provider.Provider<Boolean> {
-    val a11y = a11yExtension(extension)
-    val genericA11y = extension.previewExtensions.extensions.findByName("a11y")
-    val genericAllChecks =
-      genericA11y?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
-    val configuredAllChecks =
-      a11y.allChecksEnabled.zip(genericAllChecks) { typed, generic -> typed || generic }
-    val genericChecks =
-      genericA11y?.checks
-        ?: project.objects.listProperty(String::class.java).convention(emptyList())
-    val wholeExtension =
-      project.providers
-        .gradleProperty("composePreview.previewExtensions.a11y.enableAllChecks")
-        .map { it.toBooleanStrictOrNull() ?: false }
-        .orElse(configuredAllChecks)
-    val selectedChecks =
-      project.providers
-        .gradleProperty("composePreview.previewExtensions.a11y.checks")
-        .map { raw -> parseCheckList(raw).any { it in A11Y_CHECK_IDS } }
-        .orElse(
-          a11y.checks.zip(genericChecks) { typedChecks, genericChecks ->
-            (typedChecks + genericChecks).any { it in A11Y_CHECK_IDS }
-          }
-        )
-    return wholeExtension.zip(selectedChecks) { whole, selected -> whole || selected }
-  }
-
-  /** Same config-cache-friendly treatment for `annotateScreenshots`. See [resolveA11yEnabled]. */
-  internal fun resolveA11yAnnotate(
-    project: org.gradle.api.Project,
-    extension: PreviewExtension,
-  ): org.gradle.api.provider.Provider<Boolean> =
-    project.providers
-      .gradleProperty("composePreview.previewExtensions.a11y.annotateScreenshots")
-      .map { it.toBooleanStrictOrNull() ?: true }
-      .orElse(a11yExtension(extension).annotateScreenshots)
-
-  private fun a11yExtension(extension: PreviewExtension): A11yPreviewExtension =
-    extension.previewExtensions.a11y
-
   private fun parseCheckList(raw: String): Set<String> =
     raw.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-
-  private val A11Y_CHECK_IDS =
-    setOf("atf", "hierarchy", "overlay", "a11y/atf", "a11y/hierarchy", "a11y/overlay")
 
   internal fun resolveComposeAiTraceEnabled(
     project: org.gradle.api.Project,
@@ -1708,9 +1608,9 @@ internal object AndroidPreviewSupport {
    * (`@AnimatedPreview` and non-TOP `@ScrollingPreview` modes); `full` (the default) renders
    * everything as before.
    *
-   * Returned as a `Provider<String>` for the same reason as [resolveA11yEnabled]: feeding `.get()`
-   * to a `CommandLineArgumentProvider` means the tier is resolved at task-execution time, so VS
-   * Code flipping the property between saves doesn't invalidate the configuration cache.
+   * Returned as a `Provider<String>` (not a String) so feeding `.get()` to a
+   * `CommandLineArgumentProvider` resolves the tier at task-execution time — VS Code flipping the
+   * property between saves doesn't invalidate the configuration cache.
    */
   internal fun resolveTier(
     project: org.gradle.api.Project
@@ -1721,9 +1621,9 @@ internal object AndroidPreviewSupport {
       .orElse("full")
 
   /**
-   * Lazy holder for the render-tier system property on the `renderPreviews` `Test` task. Same
-   * pattern as [AccessibilitySystemPropsProvider] — the Provider is `@Input`, so flipping
-   * `-PcomposePreview.tier` re-runs the task without invalidating the configuration cache.
+   * Lazy holder for the render-tier system property on the `renderPreviews` `Test` task. The
+   * Provider is `@Input`, so flipping `-PcomposePreview.tier` re-runs the task without invalidating
+   * the configuration cache.
    */
   internal class TierSystemPropProvider(
     @get:org.gradle.api.tasks.Input val tier: org.gradle.api.provider.Provider<String>

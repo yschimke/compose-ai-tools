@@ -3,38 +3,36 @@ package ee.schimke.composeai.plugin
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
-import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Aggregates the per-preview ATF reports emitted by [RobolectricRenderTestBase] into a single
- * `accessibility.json` keyed by previewId, and fails the build when findings exceed the thresholds
- * configured on the built-in `a11y` data-product plugin.
+ * Aggregates the per-preview ATF reports emitted by `RobolectricRenderTest` into a single
+ * `accessibility.json` keyed by previewId. Never fails the build — findings are reported (logged,
+ * written to the JSON report, surfaced as CLI / VS Code diagnostics) but the task is purely
+ * informational. Runs once per Android module after `renderPreviews`.
  *
- * Runs once per Android module after `renderPreviews`. Only registered when
- * `composePreview.previewExtensions { a11y { enableAllChecks() } }`.
+ * The inputs are modeled as a `@InputFiles` `FileCollection` rather than `@InputDirectory` so the
+ * task no-ops cleanly on modules whose `RobolectricRenderTest` never wrote a per-preview JSON (e.g.
+ * tile-only consumers, or modules that errored before any capture). Writes an empty
+ * `accessibility.json` in that case so the CLI's manifest-pointer follow doesn't break.
  */
 @CacheableTask
-abstract class VerifyAccessibilityTask : DefaultTask() {
+abstract class AggregateAccessibilityTask : DefaultTask() {
 
-  @get:InputDirectory
+  @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
-  abstract val perPreviewDir: DirectoryProperty
+  abstract val perPreviewFiles: ConfigurableFileCollection
 
   @get:Input abstract val moduleName: Property<String>
-
-  @get:Input abstract val failOnErrors: Property<Boolean>
-
-  @get:Input abstract val failOnWarnings: Property<Boolean>
 
   @get:OutputFile abstract val reportFile: RegularFileProperty
 
@@ -62,10 +60,6 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
   private data class A11yEntry(
     val previewId: String,
     val findings: List<A11yFinding>,
-    // Mirror of [renderer-android/RenderManifest.AccessibilityNode] —
-    // round-trips through the aggregate JSON so downstream tools (CLI,
-    // VS Code, the python report lib) can read the ANI overlay data
-    // without going through the renderer's classpath.
     val nodes: List<A11yNode> = emptyList(),
     val annotatedPath: String? = null,
   )
@@ -73,24 +67,18 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
   @Serializable private data class A11yReport(val module: String, val entries: List<A11yEntry>)
 
   @TaskAction
-  fun verify() {
+  fun aggregate() {
     val json = Json {
       prettyPrint = true
       encodeDefaults = true
       ignoreUnknownKeys = true
     }
 
-    val dir = perPreviewDir.get().asFile
     val entries =
-      if (dir.exists()) {
-        dir
-          .listFiles { f -> f.isFile && f.name.endsWith(".json") }
-          .orEmpty()
-          .sortedBy { it.name }
-          .map { json.decodeFromString(A11yEntry.serializer(), it.readText()) }
-      } else {
-        emptyList()
-      }
+      perPreviewFiles
+        .filter { it.isFile && it.name.endsWith(".json") }
+        .sortedBy { it.name }
+        .map { json.decodeFromString(A11yEntry.serializer(), it.readText()) }
 
     val report = A11yReport(module = moduleName.get(), entries = entries)
     val out = reportFile.get().asFile
@@ -111,22 +99,6 @@ abstract class VerifyAccessibilityTask : DefaultTask() {
           "  [${finding.level}] ${entry.previewId} · ${finding.type}: ${finding.message}"
         )
       }
-    }
-
-    val failures = mutableListOf<String>()
-    if (failOnErrors.get() && errorCount > 0) {
-      failures += "$errorCount error(s)"
-    }
-    if (failOnWarnings.get() && warningCount > 0) {
-      failures += "$warningCount warning(s)"
-    }
-    if (failures.isNotEmpty()) {
-      throw GradleException(
-        "Accessibility check failed: ${failures.joinToString(", ")}. " +
-          "See ${out.absolutePath} for the full report, or disable the " +
-          "relevant `failOn*` flag in `composePreview.previewExtensions.a11y` " +
-          "to downgrade to a warning."
-      )
     }
   }
 }

@@ -36,10 +36,20 @@ export class FilterToolbar extends LitElement {
 
     setFunctionOptions(opts: readonly string[]): void {
         this.fnOptions = opts;
+        // Clamp the current value back to "all" if the new options no
+        // longer include it — otherwise the <select> falls back to
+        // rendering "All functions" while fnValue still holds the stale
+        // name, and applyFilters silently narrows to zero matches.
+        if (this.fnValue !== "all" && !opts.includes(this.fnValue)) {
+            this.fnValue = "all";
+        }
     }
 
     setGroupOptions(opts: readonly string[]): void {
         this.grpOptions = opts;
+        if (this.grpValue !== "all" && !opts.includes(this.grpValue)) {
+            this.grpValue = "all";
+        }
     }
 
     /**

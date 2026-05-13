@@ -565,16 +565,12 @@ abstract class RobolectricRenderTestBase(
         // between previews sharing the same Robolectric sandbox.
         org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
 
-        // ATF opt-in. When enabled:
-        //   - `LocalInspectionMode` flips to `false` so Compose populates the
-        //     accessibility semantics tree (inspection mode suppresses it,
-        //     leaving ATF with nothing to flag).
-        //   - After capture we pull the `ViewRootForTest`-backed view off the
-        //     still-attached SemanticsNode and hand it to [AccessibilityChecker].
-        //     Capturing before ATF keeps the PNG output stable — findings only
-        //     gate the *sidecar* artifacts.
-        val a11yEnabled = System.getProperty("composeai.a11y.enabled") == "true"
-        val annotate = a11yEnabled && System.getProperty("composeai.a11y.annotate") != "false"
+        // ATF runs unconditionally — a11y is a normal data producer now (parity with theme,
+        // recomposition, etc.). `LocalInspectionMode` flips to `false` so Compose populates the
+        // accessibility semantics tree (inspection mode suppresses it, leaving ATF with nothing
+        // to flag). After capture we pull the `ViewRootForTest`-backed view off the still-attached
+        // SemanticsNode and hand it to [AccessibilityChecker]. Capturing before ATF keeps the PNG
+        // output stable — findings only land in *sidecar* artifacts.
 
         // The v2 replacement (`androidx.compose.ui.test.junit4.v2.createAndroidComposeRule`)
         // that the deprecation warning suggests was added in compose-ui-test
@@ -703,7 +699,7 @@ abstract class RobolectricRenderTestBase(
                     ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(params.locale)
                         ?.let { ee.schimke.composeai.daemon.PseudolocaleOverrideExtension(it) }
                 val providedValues = buildList {
-                    add(LocalInspectionMode provides !a11yEnabled)
+                    add(LocalInspectionMode provides false)
                     if (scrollCaptureProvidable != null) {
                         add(scrollCaptureProvidable provides scrollCaptureInProgress)
                     }
@@ -984,11 +980,7 @@ abstract class RobolectricRenderTestBase(
                         FocusOverlay.apply(capturedView, outputFile, focus.toFocusOverride())
                     }
 
-                    if (
-                        job is CaptureRenderJob &&
-                            a11yEnabled &&
-                            captureIndex == a11yCaptureIndex()
-                    ) {
+                    if (job is CaptureRenderJob && captureIndex == a11yCaptureIndex()) {
                         // `fetchSemanticsNode().root as ViewRootForTest` is the
                         // exact view roborazzi-accessibility-check's
                         // `checkRoboAccessibility` walks — it's the only view
@@ -1028,7 +1020,7 @@ abstract class RobolectricRenderTestBase(
                             previewId = preview.id,
                             findings = findings.findings,
                             nodes = hierarchy.nodes,
-                            screenshot = outputFile.takeIf { annotate },
+                            screenshot = outputFile,
                             isRound = isRoundDevice(preview.params.device) &&
                                 (preview.params.showSystemUi ||
                                     preview.params.kind == PreviewKind.TILE),

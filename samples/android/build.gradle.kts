@@ -6,16 +6,6 @@ plugins {
 }
 
 composePreview {
-  previewExtensions {
-    a11y {
-      // Sample includes deliberately-broken previews (BadButton,
-      // TinyTapTarget, TinyNativeButton) used as demo data for the CLI /
-      // VSCode surfacing of a11y findings. Uncomment `enableAllChecks()` to
-      // exercise the opt-in path; defaults off to keep the sample's render
-      // build byte-identical to the non-a11y baseline.
-      // enableAllChecks()
-    }
-  }
   // resourcePreviews { ... } is on by default — the sample exercises the
   // Android XML resource preview pipeline (vector / animated-vector /
   // adaptive-icon) without any extra config.

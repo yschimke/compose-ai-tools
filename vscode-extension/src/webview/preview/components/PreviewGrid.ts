@@ -143,7 +143,70 @@ export class PreviewGrid extends HTMLElement {
             card.classList.toggle("collapsed-variant", collapsed);
             if (show) visibleCount++;
         }
+        this.updateVariantChips(filterEligible, decision.active);
         return visibleCount;
+    }
+
+    /**
+     * Mark the surviving card of each collapsed function-key with a
+     * "+N variants" chip — the only affordance pointing to siblings
+     * that variant-collapse hid. Clicking the chip dispatches a
+     * `variant-chip-clicked` event with the function name; the panel
+     * host listens for it and reuses the same setFunctionValue +
+     * applyFilters path the gutter-icon `setFunctionFilter` message
+     * already drives. Stays a no-op (and removes any pre-existing
+     * chips) when collapse isn't active, so picking a function or
+     * group from the toolbar leaves cards chip-free.
+     */
+    private updateVariantChips(
+        filterEligible: readonly HTMLElement[],
+        collapseActive: boolean,
+    ): void {
+        for (const card of this.getCards()) {
+            const chip = card.querySelector(".variant-count-chip");
+            if (chip) chip.remove();
+        }
+        if (!collapseActive) return;
+        const totals = new Map<string, number>();
+        const survivors = new Map<string, HTMLElement>();
+        for (const card of filterEligible) {
+            const key =
+                (card.dataset.className ?? "") +
+                "::" +
+                (card.dataset.function ?? "");
+            totals.set(key, (totals.get(key) ?? 0) + 1);
+            if (!survivors.has(key)) survivors.set(key, card);
+        }
+        for (const [key, card] of survivors) {
+            const total = totals.get(key) ?? 1;
+            if (total <= 1) continue;
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "variant-count-chip";
+            const others = total - 1;
+            chip.textContent =
+                "+" + others + (others === 1 ? " variant" : " variants");
+            const title =
+                "Show all " +
+                total +
+                " variants of " +
+                (card.dataset.function ?? "this preview");
+            chip.title = title;
+            chip.setAttribute("aria-label", title);
+            chip.addEventListener("click", (evt) => {
+                evt.stopPropagation();
+                const fn = card.dataset.function ?? "";
+                if (!fn) return;
+                card.dispatchEvent(
+                    new CustomEvent<{ fn: string }>("variant-chip-clicked", {
+                        detail: { fn },
+                        bubbles: true,
+                        composed: true,
+                    }),
+                );
+            });
+            card.appendChild(chip);
+        }
     }
 
     /**

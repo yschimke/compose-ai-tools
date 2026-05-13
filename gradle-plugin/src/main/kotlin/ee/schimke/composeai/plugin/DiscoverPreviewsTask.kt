@@ -48,13 +48,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:Input abstract val projectDirectory: Property<String>
 
   /**
-   * When `true`, [outputFile] is written with a populated [PreviewManifest.accessibilityReport]
-   * pointer so downstream tools can locate the sidecar report. The file itself is produced later by
-   * the render task / verify task.
-   */
-  @get:Input abstract val a11yDataProductsEnabled: Property<Boolean>
-
-  /**
    * When `true` and discovery produces zero previews, emit a diagnostics block to the lifecycle log
    * (classDirs contents, post-filter dep-JAR sample, ClassGraph scan summary, observed annotation
    * FQNs) and fail the task. Wired from the `composePreview.failOnEmpty` extension /
@@ -273,7 +266,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
-        accessibilityReport = "accessibility.json".takeIf { a11yDataProductsEnabled.get() },
+        accessibilityReport = "accessibility.json",
       )
 
     val outFile = outputFile.get().asFile

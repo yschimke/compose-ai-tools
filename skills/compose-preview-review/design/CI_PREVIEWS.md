@@ -21,24 +21,16 @@ and overlay annotation path enabled, then appends the annotated PNGs and
 `findings.json` to `compose-preview/a11y/main`. On pull requests it writes
 to `compose-preview/a11y/pr` and upserts a `<!-- a11y-report -->` comment.
 
-The action deliberately uses Gradle overrides instead of requiring every
-sample or app module to opt in permanently:
+A11y is always-on for Android renders — no extra Gradle properties needed:
 
 ```bash
-./gradlew ":samples:wear:renderAllPreviews" \
-  -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
-  -PcomposePreview.previewExtensions.a11y.annotateScreenshots=true
+./gradlew ":samples:wear:renderAllPreviews"
 ```
 
-For local agent review outside CI, prefer the equivalent extension command:
-
-```bash
-compose-preview extensions run a11y-annotated-preview.render --module samples:wear --json
-```
-
-Then read `a11yAnnotatedPath` for the selected preview. A populated a11y
-baseline branch should contain `.a11y.png` files next to the clean PNGs; if
-the README only links clean PNGs, the a11y render path did not run.
+Every preview gets its `.a11y.png` annotated overlay next to the clean PNG.
+A populated a11y baseline branch should contain `.a11y.png` files next to the
+clean PNGs; if the README only links clean PNGs, the a11y render path did not
+run.
 
 ## Workflow 1 — update baselines on push to `main`
 
