@@ -52,6 +52,28 @@ import {
     type ThemePayload,
     type WallpaperPayload,
 } from "./themingBundlePresenter";
+import {
+    ambientTableColumns,
+    computeAmbientBundleData,
+    type AmbientPayload,
+    type AmbientStateLevel,
+} from "./ambientBundlePresenter";
+import {
+    computeDisplayFilterBundleData,
+    displayFilterTableColumns,
+} from "./displayFilterBundlePresenter";
+import {
+    computeErrorsBundleData,
+    errorsTableColumns,
+    renderErrorsStackFrames,
+    type TestFailurePayload,
+} from "./errorsBundlePresenter";
+import {
+    computeHistoryDiffBundleData,
+    historyDiffTableColumns,
+    renderHistoryDiffHeader,
+    type HistoryDiffPayload,
+} from "./historyDiffBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -803,6 +825,254 @@ export class PreviewApp extends LitElement {
             refreshExpanderFor("theming");
             dataTabs.setTabBody("theming", body.wrapper);
         };
+
+        // ---- Display bundle (displayfilter/*) ------------------------------
+        const displayBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("display");
+            if (b) return b;
+            b = buildBundleBody(
+                "display",
+                "Display filters",
+                displayFilterTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("display", b);
+            return b;
+        };
+        const refreshDisplayBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            // Build rows from the currently-subscribed kinds, not the
+            // full bundle catalog — otherwise filters show as "active"
+            // when their checkbox is off, drifting the displayed
+            // (and Copy-JSON'd) state away from actual subscriptions.
+            const bundle = getBundle("display");
+            const enabledKinds = new Set(
+                bundleController.state().enabledKinds("display"),
+            );
+            const entries =
+                bundle?.kinds
+                    .filter((k) => enabledKinds.has(k.kind))
+                    .map((k) => ({
+                        kind: k.kind,
+                        label: k.label,
+                    })) ?? [];
+            const data = computeDisplayFilterBundleData(entries);
+            const body = displayBodyBuilt();
+            const table = body.table;
+            table.setRows(data.rows);
+            table.summary =
+                data.rows.length +
+                " filter" +
+                (data.rows.length === 1 ? "" : "s");
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "displayfilter-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                filters: entries,
+            }));
+            // TODO: when daemon-side per-filter override plumbing lands,
+            // forward `row-selected` events to a `requestDisplayFilter`
+            // wire message so clicking a row swaps the focused card's
+            // image. Today the table is read-only.
+            refreshExpanderFor("display");
+            dataTabs.setTabBody("display", body.wrapper);
+        };
+
+        // ---- Watch bundle (compose/ambient) --------------------------------
+        const ambientBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("watch");
+            if (b) return b;
+            b = buildBundleBody(
+                "watch",
+                "Ambient state",
+                ambientTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("watch", b);
+            return b;
+        };
+        const refreshWatchBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const payload =
+                (byKind?.get("compose/ambient") as
+                    | AmbientPayload
+                    | undefined) ?? null;
+            const data = computeAmbientBundleData(payload);
+            const body = ambientBodyBuilt();
+            const table = body.table;
+            table.setRows(data.rows);
+            table.summary = data.state ?? "no data";
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "ambient-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                payload,
+            }));
+            refreshExpanderFor("watch");
+            dataTabs.setTabBody("watch", body.wrapper);
+            stampAmbientBadge(target, data.state, data.stateLevel);
+        };
+        // Per-card ambient badge state — keyed on previewId so we can
+        // clear or update it across focus changes without DOM churn.
+        const ambientBadges = new Map<string, HTMLElement>();
+        const stampAmbientBadge = (
+            previewId: string,
+            state: string | null,
+            level: AmbientStateLevel,
+        ): void => {
+            const card = document.getElementById(
+                "preview-" + previewId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+            );
+            if (!card) return;
+            const container =
+                card.querySelector<HTMLElement>(".image-container");
+            if (!container) return;
+            let badge = ambientBadges.get(previewId);
+            if (!state) {
+                if (badge) {
+                    badge.remove();
+                    ambientBadges.delete(previewId);
+                }
+                return;
+            }
+            if (!badge) {
+                badge = document.createElement("span");
+                badge.className = "ambient-state-badge";
+                ambientBadges.set(previewId, badge);
+            }
+            badge.dataset.level = level;
+            badge.dataset.state = state;
+            badge.textContent = state;
+            if (badge.parentElement !== container) {
+                container.appendChild(badge);
+            }
+        };
+        // Tear down every stamped ambient badge — called when the
+        // Watch bundle deactivates so stale telemetry doesn't linger
+        // on cards after the chip is dismissed.
+        const clearAllAmbientBadges = (): void => {
+            for (const badge of ambientBadges.values()) {
+                badge.remove();
+            }
+            ambientBadges.clear();
+        };
+
+        // ---- History bundle (history/diff/regions) -------------------------
+        const historyDiffBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("history");
+            if (b) return b;
+            b = buildBundleBody(
+                "history",
+                "History diff regions",
+                historyDiffTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("history", b);
+            return b;
+        };
+        // History tab body is a header + table — wrap them in a host
+        // element kept across refreshes so the table doesn't lose its
+        // hover state when the header is rebuilt.
+        const refreshHistoryBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const payload =
+                (byKind?.get("history/diff/regions") as
+                    | HistoryDiffPayload
+                    | undefined) ?? null;
+            const data = computeHistoryDiffBundleData(payload);
+            const body = historyDiffBodyBuilt();
+            const host = body.wrapper;
+            // Wipe the prior header but keep the expander + table
+            // mounted across refreshes — `<data-table>` updates in
+            // place when its rows change. Stamp the new header just
+            // before the table so the order is `[expander] [header]
+            // [table]`.
+            host.querySelector(".history-diff-header")?.remove();
+            host.insertBefore(renderHistoryDiffHeader(data.header), body.table);
+            const table = body.table;
+            table.setRows(data.rows);
+            table.summary =
+                data.rows.length +
+                " region" +
+                (data.rows.length === 1 ? "" : "s");
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "history-diff-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                payload,
+            }));
+            refreshExpanderFor("history");
+            dataTabs.setTabBody("history", host);
+            // The overlay array is computed via `data.overlay` and is
+            // intentionally not stamped onto the card here — the
+            // panel's per-card overlay stack is still being unified
+            // (see the A11y bundle for the matching gap). Test-side
+            // assertions cover the array shape directly.
+            void data.overlay;
+        };
+
+        // ---- Errors bundle (test/failure) ----------------------------------
+        const errorsBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("errors");
+            if (b) return b;
+            b = buildBundleBody(
+                "errors",
+                "Errors",
+                errorsTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("errors", b);
+            return b;
+        };
+        const refreshErrorsBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const payload =
+                (byKind?.get("test/failure") as
+                    | TestFailurePayload
+                    | undefined) ?? null;
+            const data = computeErrorsBundleData(payload);
+            const body = errorsBodyBuilt();
+            const host = body.wrapper;
+            const table = body.table;
+            table.setRows(data.rows);
+            table.summary = data.hasFailure
+                ? data.stackFrames.length > 0
+                    ? data.stackFrames.length +
+                      " stack frame" +
+                      (data.stackFrames.length === 1 ? "" : "s")
+                    : "no stack"
+                : "no failure";
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "errors-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                payload,
+            }));
+            // Replace any prior stack-frames block; null path strips
+            // the section when the new payload has no frames. The
+            // expander + table mount inside `body.wrapper` already.
+            host.querySelector(".errors-stack-frames")?.remove();
+            const stack = renderErrorsStackFrames(data.stackFrames);
+            if (stack) host.appendChild(stack);
+            refreshExpanderFor("errors");
+            dataTabs.setTabBody("errors", host);
+        };
+
         const reflectBundleState = (): void => {
             const s = bundleController.state();
             bundleChipBar.setState({
@@ -819,6 +1089,14 @@ export class PreviewApp extends LitElement {
                 refreshPerformanceBundle();
             }
             if (s.activeBundles.includes("theming")) refreshThemingBundle();
+            if (s.activeBundles.includes("display")) refreshDisplayBundle();
+            if (s.activeBundles.includes("watch")) {
+                refreshWatchBundle();
+            } else {
+                clearAllAmbientBadges();
+            }
+            if (s.activeBundles.includes("history")) refreshHistoryBundle();
+            if (s.activeBundles.includes("errors")) refreshErrorsBundle();
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
@@ -1178,6 +1456,43 @@ export class PreviewApp extends LitElement {
                 const matchesTarget = currentBundleTarget() === previewId;
                 if (matchesTarget && activeBundles.includes("a11y")) {
                     refreshA11yBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("watch") &&
+                    dataProducts.some((dp) => dp.kind === "compose/ambient")
+                ) {
+                    refreshWatchBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("history") &&
+                    dataProducts.some(
+                        (dp) => dp.kind === "history/diff/regions",
+                    )
+                ) {
+                    refreshHistoryBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("errors") &&
+                    dataProducts.some((dp) => dp.kind === "test/failure")
+                ) {
+                    refreshErrorsBundle();
+                }
+                // Auto-light the Errors chip when a test/failure
+                // payload arrives. Hooked here rather than on the
+                // daemon-side renderFailed because by the time
+                // test/failure is fetched the panel already has the
+                // payload via updateDataProducts; routing through the
+                // dispatcher would need a new PreviewMessageContext
+                // callback. Re-pressing the chip later still toggles
+                // it off.
+                if (dataProducts.some((dp) => dp.kind === "test/failure")) {
+                    bundleController.handleExternalKindToggle(
+                        "test/failure",
+                        true,
+                    );
                 }
                 if (
                     matchesTarget &&

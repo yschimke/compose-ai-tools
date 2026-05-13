@@ -2497,6 +2497,124 @@ body {
     padding: 4px 0;
 }
 .perf-bundle-section {
+/* ---- Display bundle (displayfilter/*) -------------------------------- */
+.displayfilter-thumb-cell {
+    width: 32px;
+}
+.displayfilter-thumb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background, #1e1e1e);
+    color: var(--vscode-editorWidget-foreground, #cccccc);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    border: 1px solid var(--vscode-editorWidget-border, transparent);
+}
+.displayfilter-id-cell code {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+/* ---- Watch bundle (compose/ambient) ---------------------------------- */
+.ambient-key-cell {
+    width: 40%;
+}
+.ambient-value-cell {
+    font-variant-numeric: tabular-nums;
+}
+.ambient-state-badge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #fff;
+    background: var(--ambient-badge-color, #1976d2);
+    pointer-events: none;
+    z-index: 4;
+}
+.ambient-state-badge[data-level="warning"] {
+    --ambient-badge-color: #f57c00;
+}
+.ambient-state-badge[data-level="error"] {
+    --ambient-badge-color: #d32f2f;
+}
+.ambient-state-badge[data-level="info"] {
+    --ambient-badge-color: #1976d2;
+}
+
+/* ---- History bundle (history/diff/regions) --------------------------- */
+.history-diff-host {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.history-diff-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(
+        --vscode-editorWidget-background,
+        rgba(255, 255, 255, 0.04)
+    );
+}
+.history-diff-baseline {
+    font-size: 11px;
+}
+.history-diff-baseline-label {
+    opacity: 0.7;
+}
+.history-diff-baseline-id {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+}
+.history-diff-totals {
+    font-size: 11px;
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+}
+.history-diff-swatch-cell {
+    width: 24px;
+}
+.history-diff-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    /* `--intensity` (0..1) is set inline by the presenter — ramps the
+       swatch opacity so small drift fades into the row and large drift
+       reads as a confident block. Clamp at 0.15 so even the smallest
+       region stays visible. */
+    background: #d96bff;
+    opacity: calc(0.15 + var(--intensity, 0) * 0.85);
+}
+.history-diff-bounds-cell code {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+/* Region overlay boxes — colour-ramped via the parent `--intensity`
+   custom property. `<box-overlay>` writes `--overlay-color` for the
+   tint; we layer opacity on top. */
+.box-overlay .overlay-box[data-overlay-id^="history-diff-region-"] {
+    /* History-diff regions are big — soften the default border so the
+       fill (tint × intensity) carries the signal. */
+    border-width: 1px;
+}
+
+/* ---- Errors bundle (test/failure) ------------------------------------ */
+.errors-bundle-host {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -2724,4 +2842,34 @@ body {
     text-align: right;
     font-variant-numeric: tabular-nums;
     width: 80px;
+.errors-key-cell {
+    width: 30%;
+}
+.errors-value-cell {
+    word-break: break-word;
+}
+.errors-value-cell code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+}
+.errors-stack-frames {
+    border: 1px solid
+        var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.08));
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+.errors-stack-frames > summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 11px;
+    opacity: 0.85;
+}
+.errors-stack-frames-list {
+    margin: 6px 0 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    opacity: 0.9;
 }
