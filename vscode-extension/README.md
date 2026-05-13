@@ -32,7 +32,15 @@ renders them to PNG, and the extension loads those PNGs into a webview.
 
 ## Apply the Gradle plugin
 
-Add
+The extension auto-applies the Compose Preview plugin to any module that
+already applies `com.android.application`, `com.android.library`, or
+`org.jetbrains.compose` — no `build.gradle.kts` edit needed. A bundled init
+script is passed to every Gradle invocation via `--init-script` and pulls
+the plugin from Maven Central. Workspaces that don't apply one of those host
+plugins fall back to **minimal mode** (see below); workspaces that apply the
+plugin explicitly continue to work the same way.
+
+To opt in manually instead, add
 [`ee.schimke.composeai.preview`](https://central.sonatype.com/artifact/ee.schimke.composeai/compose-preview-plugin)
 to the module whose previews you want to render:
 
@@ -52,6 +60,25 @@ The plugin is on Maven Central, so no extra repository setup is needed when
 [project README](https://github.com/yschimke/compose-ai-tools#setup) for
 snapshot builds.
 
+To disable auto-inject and require an explicit plugin application, set
+`composePreview.autoInject.enabled` to `false`.
+
+## Minimal mode
+
+When no module in the workspace applies the Compose Preview plugin (and
+auto-inject can't attach onto an Android / Compose host plugin), the
+extension boots into **minimal mode**: the preview daemon, data extensions
+(a11y overlays, hierarchy, focus-mode inspector layers), and live /
+interactive previews are all disabled, and renders no longer fire
+automatically on save. Click the refresh button (or run
+`Compose Preview: Refresh Previews` / `Render All Previews`) to render.
+
+Override via `composePreview.mode`: `auto` (default) picks based on the
+workspace, `minimal` forces the gradle-only path, `full` forces the daemon
+backend. After a Gradle sync writes the authoritative plugin-applied
+markers, the extension offers a one-click reload if a switch to full mode
+becomes possible.
+
 ## Usage
 
 1. Open a Kotlin project that applies the Compose Preview Gradle plugin.
@@ -68,10 +95,12 @@ snapshot builds.
 
 ### Settings
 
-| Setting                        | Default  | Description                                                                                                                                                                                                                                                                                                                                  |
-| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `composePreview.variant`       | `debug`  | Build variant to use for preview rendering (Android).                                                                                                                                                                                                                                                                                        |
-| `composePreview.logging.level` | `normal` | Verbosity for the "Compose Preview" output channel. `quiet` shows only errors and the BUILD outcome; `normal` keeps active task headers and summary lines but drops UP-TO-DATE/SKIPPED noise, configuration-cache bookkeeping, and dedupes the repeated Roborazzi ActionBar warnings; `verbose` shows every line from Gradle and the daemon. |
+| Setting                             | Default  | Description                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `composePreview.mode`               | `auto`   | Backend mode: `auto` picks `full` when the plugin is applied (or can be auto-injected onto an Android / Compose host), else `minimal`. Force `full` or `minimal` to override. Requires a window reload to take effect.                                                                                                                       |
+| `composePreview.autoInject.enabled` | `true`   | Pass the bundled init script via `--init-script` so the plugin auto-applies to Android / Compose projects. Disable to keep Gradle invocations untouched and require manual `id("ee.schimke.composeai.preview")` setup.                                                                                                                       |
+| `composePreview.variant`            | `debug`  | Build variant to use for preview rendering (Android).                                                                                                                                                                                                                                                                                        |
+| `composePreview.logging.level`      | `normal` | Verbosity for the "Compose Preview" output channel. `quiet` shows only errors and the BUILD outcome; `normal` keeps active task headers and summary lines but drops UP-TO-DATE/SKIPPED noise, configuration-cache bookkeeping, and dedupes the repeated Roborazzi ActionBar warnings; `verbose` shows every line from Gradle and the daemon. |
 
 ## Links
 

@@ -170,6 +170,8 @@ composePreview {
 
 You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is useful for agents operating in environments where they shouldn't or cannot modify the build files directly.
 
+> **VS Code users:** the [`Compose Preview` extension](../../vscode-extension/) already passes a bundled init script via `--init-script` on every Gradle invocation it makes, so its renders pick up Android / Compose projects with no extra setup. The instructions below are for CLI and CI flows that go through `./gradlew` directly.
+
 Create a file named `~/.gradle/init.d/compose-ai-tools.gradle` with the following content:
 
 ```groovy
