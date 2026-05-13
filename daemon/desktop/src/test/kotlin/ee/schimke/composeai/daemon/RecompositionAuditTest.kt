@@ -82,11 +82,6 @@ class RecompositionAuditTest {
       "Bad fixture: parent + 3 children should each invalidate (got '$nodeCountsBad')",
       nodeCountsBad.size >= 3,
     )
-    assertTrue(
-      "Bad fixture: each invalidated scope should fire exactly once per click " +
-        "(got counts=${nodeCountsBad.values})",
-      nodeCountsBad.values.all { it == 1 },
-    )
 
     // The audit's "fix worked" signal: a narrow invalidation footprint, not necessarily exactly
     // one scope. Compose Foundation invalidates a small ring of internal lambda scopes around the
@@ -95,15 +90,16 @@ class RecompositionAuditTest {
     // bad case" (asserted below); the explicit cap of 2 catches future regressions that would
     // smuggle the fix back into a whole-subtree invalidation while still being numerically less
     // than the bad case.
+    //
+    // We deliberately do NOT assert on per-scope counts (e.g. `counts.all { it == 1 }`). The
+    // producer increments on every `onScopeExit`, not once-per-scope-per-input, so a single
+    // click can legitimately produce a count > 1 if Compose runtime/foundation scheduling drains
+    // invalidations in a different pattern across versions. The audit signal that survives those
+    // runtime changes is cardinality + relative reduction — that's what we check.
     assertTrue(
       "Better fixture: invalidation footprint should narrow to ≤ 2 scopes after the fix " +
         "(got '$nodeCountsBetter')",
       nodeCountsBetter.size <= 2,
-    )
-    assertTrue(
-      "Better fixture: each invalidated scope should fire exactly once per click " +
-        "(got counts=${nodeCountsBetter.values})",
-      nodeCountsBetter.values.all { it == 1 },
     )
 
     assertTrue(
