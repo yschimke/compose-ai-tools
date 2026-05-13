@@ -38,6 +38,7 @@ import type {
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
+import { registerInspectionPresenters } from "./inspectionPresenters";
 
 export interface PresenterContext {
     /** The focused card element. Presenters that produce overlays
@@ -163,6 +164,13 @@ function seedBuiltInPresenters(): void {
     registerPresenter("compose/recomposition", composeRecompositionPresenter);
     registerPresenter("render/trace", renderTracePresenter);
     registerPresenter("local/render/error", renderErrorPresenter);
+    // Inspection bundle (#1059) — side-effect import that calls
+    // `registerPresenter` for `compose/semantics`, `layout/inspector`,
+    // and `uia/hierarchy`. Re-running the seed after
+    // `_resetPresentersForTest` needs to reseed those too, so we call
+    // back into the module's idempotent `registerInspectionPresenters`
+    // here rather than relying on the top-level side effect.
+    registerInspectionPresenters();
 }
 
 seedBuiltInPresenters();

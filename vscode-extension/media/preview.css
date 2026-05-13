@@ -1172,6 +1172,150 @@ body {
     color: var(--vscode-focusBorder);
 }
 
+/* Inspection-bundle tree-table (compose/semantics, layout/inspector,
+   uia/hierarchy) — see inspectionTreeTable.ts. Shares
+   .focus-overlay-box with the a11y/hierarchy presenter so bound
+   highlights look consistent across kinds. */
+
+.inspection-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.inspection-tree-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.inspection-tree-summary {
+    color: var(--text-secondary);
+    margin-right: auto;
+}
+
+.inspection-tree-copy-json {
+    align-items: center;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    gap: 4px;
+    padding: 1px 6px;
+}
+
+.inspection-tree-copy-json:hover {
+    background: color-mix(in srgb, var(--card-border) 20%, transparent);
+    color: var(--text-primary);
+}
+
+.inspection-tree-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.inspection-tree-table th,
+.inspection-tree-table td {
+    border-bottom: 1px solid
+        color-mix(in srgb, var(--card-border) 50%, transparent);
+    padding: 2px 6px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.inspection-tree-table th {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.inspection-tree-expander-col,
+.inspection-tree-action-col {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.inspection-tree-expander {
+    padding-right: 0 !important;
+}
+
+.inspection-tree-expand {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0 2px;
+}
+
+.inspection-tree-expand:hover {
+    color: var(--text-primary);
+}
+
+.inspection-tree-table tbody tr[data-has-overlay="true"]:hover {
+    background: color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent);
+}
+
+.inspection-tree-action-btn {
+    align-items: center;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    gap: 4px;
+    padding: 1px 6px;
+}
+
+.inspection-tree-action-btn:hover {
+    background: color-mix(in srgb, var(--card-border) 20%, transparent);
+    color: var(--text-primary);
+}
+
+.inspection-source-link {
+    background: transparent;
+    border: none;
+    color: var(--vscode-textLink-foreground, #4f9cd9);
+    cursor: pointer;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    padding: 0;
+    text-align: left;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+.inspection-source-link:hover {
+    color: var(--vscode-textLink-activeForeground, var(--text-primary));
+}
+
+.inspection-modifiers-more {
+    color: var(--text-secondary);
+    cursor: help;
+}
+
+.inspection-action-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.inspection-action-chip {
+    background: color-mix(in srgb, var(--card-border) 25%, transparent);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: calc(var(--vscode-font-size) - 3px);
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
 /* -- Preview card ----------------------------------------------------- */
 
 .preview-card {
