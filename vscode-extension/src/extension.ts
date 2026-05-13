@@ -3933,6 +3933,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 },
             );
             break;
+        case "copyToClipboard":
+            void vscode.env.clipboard.writeText(msg.text);
+            break;
     }
 }
 
