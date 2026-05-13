@@ -4,8 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import {
     APPLIES_PLUGIN_RE,
+    appliesInjectableHostPlugin,
     appliesPlugin,
     findPluginAppliedAncestor,
+    INJECTABLE_HOST_PLUGIN_IDS,
 } from "../pluginDetection";
 
 function withTempDir(
@@ -216,4 +218,63 @@ describe("APPLIES_PLUGIN_RE", () => {
     // Note: the raw regex is just the plugin-reference matcher. The `apply
     // false` exclusion happens at the line level inside [appliesPlugin] so
     // the raw regex alone does still match a `... apply false` line.
+});
+
+describe("appliesInjectableHostPlugin", () => {
+    it("matches every id in INJECTABLE_HOST_PLUGIN_IDS", () => {
+        for (const id of INJECTABLE_HOST_PLUGIN_IDS) {
+            assert.ok(
+                appliesInjectableHostPlugin(`plugins { id("${id}") }`),
+                `expected to match ${id}`,
+            );
+        }
+    });
+
+    it("matches the Groovy DSL form", () => {
+        assert.ok(
+            appliesInjectableHostPlugin(
+                "plugins { id 'com.android.application' }",
+            ),
+        );
+    });
+
+    it("ignores ee.schimke.composeai.preview itself (only host plugins count)", () => {
+        // The whole point of the helper is to detect plugins the init script
+        // can attach onto — our own plugin is detected via the existing
+        // [appliesPlugin] path, not this one.
+        assert.strictEqual(
+            appliesInjectableHostPlugin(
+                'plugins { id("ee.schimke.composeai.preview") }',
+            ),
+            false,
+        );
+    });
+
+    it("ignores apply-false declarations", () => {
+        // Root-build.gradle's `plugins { id(\"com.android.application\") apply false }`
+        // declares the plugin for subprojects but doesn't apply it here; the
+        // init script's `withPlugin` hook wouldn't fire either, so we shouldn't
+        // flip into full mode based on this line.
+        assert.strictEqual(
+            appliesInjectableHostPlugin(
+                'id("com.android.application") apply false',
+            ),
+            false,
+        );
+    });
+
+    it("returns false on an empty / non-Gradle script", () => {
+        assert.strictEqual(appliesInjectableHostPlugin(""), false);
+        assert.strictEqual(
+            appliesInjectableHostPlugin("// no plugins here"),
+            false,
+        );
+    });
+
+    it("rejects declaration-only id assignments (e.g. plugin DSL block in a buildSrc convention)", () => {
+        assert.strictEqual(
+            appliesInjectableHostPlugin('id = "com.android.application"'),
+            false,
+        );
+    });
 });

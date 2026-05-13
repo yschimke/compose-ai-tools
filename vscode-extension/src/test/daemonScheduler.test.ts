@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { DaemonScheduler } from "../daemon/daemonScheduler";
+import { LiveDaemonScheduler } from "../daemon/daemonScheduler";
 
 interface RecordedCall {
     method:
@@ -202,8 +202,8 @@ function build() {
             channelClosed.push(moduleId);
         },
     };
-    const scheduler = new DaemonScheduler(
-        gate as unknown as ConstructorParameters<typeof DaemonScheduler>[0],
+    const scheduler = new LiveDaemonScheduler(
+        gate as unknown as ConstructorParameters<typeof LiveDaemonScheduler>[0],
         events,
         { appendLine: (s) => log.push(s) },
     );
@@ -716,9 +716,9 @@ describe("DaemonScheduler", () => {
             const gate = new FakeGate();
             const log: string[] = [];
             const seen: { moduleId: string; entry: unknown }[] = [];
-            const scheduler = new DaemonScheduler(
+            const scheduler = new LiveDaemonScheduler(
                 gate as unknown as ConstructorParameters<
-                    typeof DaemonScheduler
+                    typeof LiveDaemonScheduler
                 >[0],
                 {
                     onPreviewImageReady: () => {},
@@ -747,9 +747,9 @@ describe("DaemonScheduler", () => {
             // scheduler must tolerate that — daemon pushes still arrive,
             // they just go nowhere.
             const gate = new FakeGate();
-            const scheduler = new DaemonScheduler(
+            const scheduler = new LiveDaemonScheduler(
                 gate as unknown as ConstructorParameters<
-                    typeof DaemonScheduler
+                    typeof LiveDaemonScheduler
                 >[0],
                 {
                     onPreviewImageReady: () => {},

@@ -35,11 +35,17 @@ import {
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { captureLabel, withDataProductCaptures } from "./captureLabels";
-import { DaemonGate } from "./daemon/daemonGate";
+import {
+    DaemonGate,
+    GradleOnlyDaemonGate,
+    LiveDaemonGate,
+} from "./daemon/daemonGate";
 import { DataProductAttachment } from "./daemon/daemonProtocol";
 import {
     A11Y_OVERLAY_KINDS,
     DaemonScheduler,
+    GradleOnlyDaemonScheduler,
+    LiveDaemonScheduler,
     WarmState,
 } from "./daemon/daemonScheduler";
 import {
@@ -75,6 +81,8 @@ import {
     hasFreshRenderStamp,
     writeRenderFreshnessStamp,
 } from "./renderFreshness";
+import { BUNDLED_PLUGIN_VERSION, materializeInitScript } from "./initScript";
+import { ResolvedMode, resolveModeFromSettings } from "./composePreviewMode";
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -257,6 +265,57 @@ function earlyFeaturesEnabled(): boolean {
     return vscode.workspace
         .getConfiguration("composePreview")
         .get<boolean>("earlyFeatures.enabled", false);
+}
+
+/**
+ * Production wrapper for [resolveModeFromSettings]. Reads live VS Code
+ * settings and forwards. Called at activation and again after
+ * `bootstrapAppliedMarkers()` finishes so the post-Gradle-sync re-evaluation
+ * can prompt for a reload when the authoritative `applied.json` markers
+ * reveal a plugin module the activation-time text scan missed.
+ */
+export function resolveMode(gradleService: {
+    findPreviewModules(): { modulePath: string }[];
+    hasInjectableHostModule(): boolean;
+}): ResolvedMode {
+    const config = vscode.workspace.getConfiguration("composePreview");
+    const mode = config.get<string>("mode", "auto");
+    return resolveModeFromSettings(
+        {
+            mode:
+                mode === "minimal" || mode === "full" || mode === "auto"
+                    ? mode
+                    : "auto",
+            autoInjectEnabled: autoInjectEnabled(),
+        },
+        gradleService,
+    );
+}
+
+/**
+ * Whether the bundled `apply-compose-ai-preview.init.gradle.kts` is passed
+ * to Gradle via `--init-script`. Off ⇒ the user must apply the preview
+ * plugin themselves; on (default) ⇒ the script auto-applies it to any
+ * Android / Compose project.
+ */
+function autoInjectEnabled(): boolean {
+    return vscode.workspace
+        .getConfiguration("composePreview")
+        .get<boolean>("autoInject.enabled", true);
+}
+
+/**
+ * True when the GradleOnly backend is wired up — i.e. we're in minimal mode.
+ * Module-scope so auto-render call sites that live outside `activate()` (e.g.
+ * [onDiagnosticsChanged], the stale-source kicker inside [refresh]) can gate
+ * themselves without reading the user setting again.
+ *
+ * `daemonGate` is set during activation and never re-assigned, so this is a
+ * stable signal for the session — matching the rest of the mode contract
+ * which requires a window reload to switch.
+ */
+function inMinimalMode(): boolean {
+    return daemonGate?.spawnsDaemons === false;
 }
 
 function autoEnableCheapEnabled(): boolean {
@@ -578,11 +637,35 @@ export async function activate(
               },
           };
 
+    // Auto-inject: ship a Gradle init script that applies the preview plugin
+    // to Android / Compose projects on the user's behalf. The path is added
+    // to every Gradle invocation via `argsProvider` so the consumer never has
+    // to touch their `build.gradle.kts`. Materializing here (instead of from
+    // a static media path) lets us version-pin the plugin coordinate in
+    // TypeScript and keep the rendered script in extension storage, which
+    // survives extension updates without polluting `~/.gradle/init.d/`.
+    let initScriptArgs: readonly string[] = [];
+    if (autoInjectEnabled()) {
+        try {
+            const initScriptPath = materializeInitScript(
+                context.globalStorageUri.fsPath,
+            );
+            initScriptArgs = ["--init-script", initScriptPath];
+            outputChannel.appendLine(
+                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+            );
+        } catch (err) {
+            outputChannel.appendLine(
+                `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
+            );
+        }
+    }
+
     gradleService = new GradleService(
         workspaceRoot,
         gradleApi,
         outputChannel,
-        () => [],
+        () => [...initScriptArgs],
         logFilter,
     );
 
@@ -590,275 +673,309 @@ export async function activate(
     // `composePreview { daemon { enabled = false } }`, in which case the gate falls back to the
     // Gradle render path for that module. Daemon failures surface as errors instead of silently
     // falling back to Gradle.
-    daemonGate = new DaemonGate(
-        workspaceRoot,
-        "0.1.0",
-        outputChannel,
-        logFilter,
+    //
+    // Minimal mode swaps in `GradleOnlyDaemonGate` / `GradleOnlyDaemonScheduler`.
+    // Both satisfy the `DaemonGate` / `DaemonScheduler` interfaces, so call sites
+    // throughout this file don't branch on the backend — the no-op methods just
+    // report "no daemon" and the existing Gradle paths take over. Saves still go
+    // through `notifyDaemonOfSave`, which short-circuits to `'disabled'` on the
+    // gradle-only gate; the save handler additionally skips auto-rendering in
+    // minimal mode so the user drives renders manually via the refresh button.
+    const initialMode = resolveMode(gradleService);
+    const minimal = initialMode.mode === "minimal";
+    outputChannel.appendLine(
+        `[startup] mode=${initialMode.mode} reason=${initialMode.reason}`,
     );
-    daemonScheduler = new DaemonScheduler(
-        daemonGate,
-        {
-            onPreviewImageReady: (moduleId, previewId, imageBase64) => {
-                // First image after a save closes the edit→update journey
-                // for this module. Live-stream frames from an interactive
-                // session also funnel through this callback, but they can
-                // only fire after the user already saw a complete render —
-                // any pending journey timer has already been cleared, so the
-                // `endEditJourney` no-ops in that path.
-                endEditJourney(moduleId);
-                if (!panel) {
-                    return;
-                }
-                if (
-                    activeInteractiveStreams.has(previewId) &&
-                    logFilter.shouldEmitVerbose()
-                ) {
-                    logLine(
-                        `[interactive] frame ${previewId} bytes=${imageBase64.length}`,
-                    );
-                }
-                // Capture index 0 — the daemon's v1 renderFinished targets the
-                // representative capture only. Multi-capture (animated) renders
-                // still come through the Gradle path; the daemon's predictive
-                // pre-warm focuses on the cheap interactive loop.
-                panel.postMessage({
-                    command: "updateImage",
-                    previewId,
-                    captureIndex: 0,
-                    imageData: imageBase64,
-                });
-            },
-            onRenderFailed: (_moduleId, previewId, message) => {
-                if (!panel) {
-                    return;
-                }
-                panel.postMessage({
-                    command: "setImageError",
-                    previewId,
-                    captureIndex: 0,
-                    message,
-                    replaceExisting: false,
-                });
-            },
-            onDataProductsAttached: (_moduleId, previewId, dataProducts) => {
-                // D2 — route the data products attached to this render. For path-transport kinds
-                // (`a11y/hierarchy`) we read the JSON off disk; inline kinds (`a11y/atf`) carry
-                // their payload in `dp.payload`. The registry update fires `onDidChange`, which
-                // the diagnostics provider already listens to. The panel receives a targeted
-                // `updateA11y` post so its cached overlays repaint without re-emitting the entire
-                // preview list.
-                outputChannel.appendLine(
-                    `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
-                        .map((dp) => dp.kind)
-                        .join(
-                            ",",
-                        )}] panel=${panel ? "live" : "missing"} transports=[${dataProducts
-                        .map(
-                            (dp) =>
-                                `${dp.kind}:${dp.payload !== undefined ? "inline" : dp.path ? "path" : "empty"}`,
-                        )
-                        .join(",")}]`,
-                );
-                const decoded = applyDataProductsToRegistry(
-                    registry,
-                    previewId,
-                    dataProducts,
-                    outputChannel,
-                );
-                outputChannel.appendLine(
-                    `[daemon] decoded a11y for ${previewId}: findings=${decoded?.findings?.length ?? "<none>"} nodes=${decoded?.nodes?.length ?? "<none>"}`,
-                );
-                if (decoded && panel) {
-                    panel.postMessage({
-                        command: "updateA11y",
-                        previewId,
-                        findings: decoded.findings ?? undefined,
-                        nodes: decoded.nodes ?? undefined,
-                    });
-                }
-                if (panel) {
-                    const payloads = dataProducts
-                        .map((dp) => ({
-                            kind: dp.kind,
-                            payload:
-                                dp.payload ??
-                                (isJsonDataProduct(dp)
-                                    ? readJsonPath(dp.path, outputChannel)
-                                    : isImageDataProduct(dp)
-                                      ? readBinaryDataProductPayload(
-                                            dp,
-                                            outputChannel,
-                                        )
-                                      : undefined),
-                        }))
-                        .filter((dp) => dp.payload !== undefined);
-                    const dropped = dataProducts.length - payloads.length;
-                    outputChannel.appendLine(
-                        `[daemon] updateDataProducts post for ${previewId}: ` +
-                            `forwarding=${payloads.length} dropped=${dropped} ` +
-                            `kinds=[${payloads.map((p) => p.kind).join(",")}]` +
-                            (dropped > 0
-                                ? ` droppedKinds=[${dataProducts
-                                      .filter(
-                                          (dp) =>
-                                              !payloads.some(
-                                                  (p) => p.kind === dp.kind,
-                                              ),
-                                      )
-                                      .map(
-                                          (dp) =>
-                                              `${dp.kind}(path=${dp.path ?? "<none>"})`,
-                                      )
-                                      .join(",")}]`
-                                : ""),
-                    );
-                    if (payloads.length > 0) {
-                        panel.postMessage({
-                            command: "updateDataProducts",
-                            previewId,
-                            dataProducts: payloads,
-                        });
-                    }
-                } else {
-                    outputChannel.appendLine(
-                        `[daemon] updateDataProducts skipped for ${previewId}: panel not yet wired`,
-                    );
-                }
-            },
-            onClasspathDirty: (moduleId, detail) => {
-                outputChannel.appendLine(
-                    `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
-                );
-                clearDaemonShownPreviewWarmScopes(moduleId);
-                // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
-                // closed handler in DaemonGate evicts the entry. Next save runs
-                // Gradle, which re-bootstraps a fresh daemon when the user
-                // re-enables it via composePreviewDaemonStart.
-                // Drop the interactive-mode availability so any open LIVE chip
-                // disables itself instead of streaming stale frames from a
-                // soon-to-die daemon.
-                publishInteractiveAvailability(moduleId);
-            },
-            onDiscoveryUpdated: (moduleId, params) => {
-                // Daemon emits this only when the in-memory preview index drifted
-                // (added / removed / changed against the snapshot it held before
-                // the save). Identity-only saves are silent. Apply the diff to
-                // the extension-side mirror used for daemon focus computation —
-                // we deliberately don't post a "loading" or progress message;
-                // the user already saw the new PNG arrive via `renderFinished`,
-                // and a webview reshape is only needed when the preview set
-                // actually changed.
-                applyDiscoveryDiff(moduleId, params);
-            },
-            onHistoryAdded: (_moduleId, params) => {
-                // Phase H7 — daemon push: a fresh render landed and was archived. History is
-                // now focus-view-only; the live panel resolves it on demand when the user
-                // asks for a diff from the focused preview.
-                void params;
-            },
-            onHistoryPruned: (_moduleId, params) => {
-                // Counterpart to onHistoryAdded. Same focus-view-only policy — the live
-                // panel re-fetches on demand, so we don't push pruned IDs anywhere. Wired
-                // to silence "ignoring unknown notification: historyPruned" in the log and
-                // to keep the protocol surface complete if H14's cross-module timeline
-                // resurrects in-memory history caching.
-                void params;
-            },
-            onStreamFrame: (_moduleId, params) => {
-                // `composestream/1` — daemon emitted a frame on a live stream. Look up the
-                // owning previewId by frameStreamId; drop frames whose stream id we never
-                // minted (idempotent on a stale stream from a previous daemon lifetime).
-                const previewId = streamFrameIdToPreviewId.get(
-                    params.frameStreamId,
-                );
-                if (!previewId) {
-                    return;
-                }
-                if (!panel) {
-                    return;
-                }
-                panel.postMessage({
-                    command: "streamFrame",
-                    previewId,
-                    frameStreamId: params.frameStreamId,
-                    seq: params.seq,
-                    ptsMillis: params.ptsMillis,
-                    widthPx: params.widthPx,
-                    heightPx: params.heightPx,
-                    codec: params.codec,
-                    keyframe: params.keyframe,
-                    final: params.final,
-                    payloadBase64: params.payloadBase64,
-                });
-                if (params.final === true) {
-                    streamFrameIdToPreviewId.delete(params.frameStreamId);
-                    activeStreamFrameStreams.delete(previewId);
-                }
-            },
-            onChannelClosed: (moduleId) => {
-                clearDaemonShownPreviewWarmScopes(moduleId);
-                // Daemon's stdio channel closed (process exit, classpath dirty,
-                // spawn died). frameStreamIds don't survive a JVM restart, so
-                // drop every entry in `activeInteractiveStreams` whose previewId
-                // belongs to this module. Without this, a click landing after
-                // the daemon respawned would carry a stale streamId the new
-                // JVM never minted, and v2 dispatch would silently drop. The
-                // extension's `previewModuleMap` still resolves correctly post-
-                // respawn so the lookup uses today's mapping.
-                const stale: string[] = [];
-                for (const previewId of activeInteractiveStreams.keys()) {
-                    if (
-                        previewModuleMap.get(previewId)?.modulePath === moduleId
-                    ) {
-                        stale.push(previewId);
-                    }
-                }
-                for (const previewId of stale) {
-                    activeInteractiveStreams.delete(previewId);
-                }
-                // Same hygiene for `composestream/1` streams — frameStreamIds don't survive
-                // a daemon respawn either, so a `requestStreamStop` against a stale id would
-                // be a wasted notification at best, mis-routed at worst.
-                for (const previewId of [...activeStreamFrameStreams.keys()]) {
-                    if (
-                        previewModuleMap.get(previewId)?.modulePath !== moduleId
-                    ) {
-                        continue;
-                    }
-                    const sid = activeStreamFrameStreams.get(previewId);
-                    activeStreamFrameStreams.delete(previewId);
-                    if (sid) streamFrameIdToPreviewId.delete(sid);
-                    panel?.postMessage({ command: "streamStopped", previewId });
-                }
-                for (const previewId of [...activeRecordingSessions.keys()]) {
-                    if (
-                        previewModuleMap.get(previewId)?.modulePath === moduleId
-                    ) {
-                        activeRecordingSessions.delete(previewId);
-                        activeRecordingFormats.delete(previewId);
-                        panel?.postMessage({
-                            command: "clearRecording",
-                            previewId,
-                        });
-                    }
-                }
-                updateInteractiveStatus();
-                if (stale.length > 0) {
-                    logLine(
-                        `[interactive] daemon channel closed for ${moduleId}; ` +
-                            `dropped ${stale.length} stale stream(s): ${stale.join(", ")}`,
-                    );
-                }
-            },
-        },
-        outputChannel,
-    );
+    if (minimal) {
+        outputChannel.appendLine(
+            "[startup] minimal mode: gradle-only backend — daemon, data extensions and live previews disabled, renders are manual",
+        );
+    }
+    daemonGate = minimal
+        ? new GradleOnlyDaemonGate()
+        : new LiveDaemonGate(workspaceRoot, "0.1.0", outputChannel, logFilter);
+    daemonScheduler = minimal
+        ? new GradleOnlyDaemonScheduler()
+        : new LiveDaemonScheduler(
+              daemonGate,
+              {
+                  onPreviewImageReady: (moduleId, previewId, imageBase64) => {
+                      // First image after a save closes the edit→update journey
+                      // for this module. Live-stream frames from an interactive
+                      // session also funnel through this callback, but they can
+                      // only fire after the user already saw a complete render —
+                      // any pending journey timer has already been cleared, so the
+                      // `endEditJourney` no-ops in that path.
+                      endEditJourney(moduleId);
+                      if (!panel) {
+                          return;
+                      }
+                      if (
+                          activeInteractiveStreams.has(previewId) &&
+                          logFilter.shouldEmitVerbose()
+                      ) {
+                          logLine(
+                              `[interactive] frame ${previewId} bytes=${imageBase64.length}`,
+                          );
+                      }
+                      // Capture index 0 — the daemon's v1 renderFinished targets the
+                      // representative capture only. Multi-capture (animated) renders
+                      // still come through the Gradle path; the daemon's predictive
+                      // pre-warm focuses on the cheap interactive loop.
+                      panel.postMessage({
+                          command: "updateImage",
+                          previewId,
+                          captureIndex: 0,
+                          imageData: imageBase64,
+                      });
+                  },
+                  onRenderFailed: (_moduleId, previewId, message) => {
+                      if (!panel) {
+                          return;
+                      }
+                      panel.postMessage({
+                          command: "setImageError",
+                          previewId,
+                          captureIndex: 0,
+                          message,
+                          replaceExisting: false,
+                      });
+                  },
+                  onDataProductsAttached: (
+                      _moduleId,
+                      previewId,
+                      dataProducts,
+                  ) => {
+                      // D2 — route the data products attached to this render. For path-transport kinds
+                      // (`a11y/hierarchy`) we read the JSON off disk; inline kinds (`a11y/atf`) carry
+                      // their payload in `dp.payload`. The registry update fires `onDidChange`, which
+                      // the diagnostics provider already listens to. The panel receives a targeted
+                      // `updateA11y` post so its cached overlays repaint without re-emitting the entire
+                      // preview list.
+                      outputChannel.appendLine(
+                          `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
+                              .map((dp) => dp.kind)
+                              .join(
+                                  ",",
+                              )}] panel=${panel ? "live" : "missing"} transports=[${dataProducts
+                              .map(
+                                  (dp) =>
+                                      `${dp.kind}:${dp.payload !== undefined ? "inline" : dp.path ? "path" : "empty"}`,
+                              )
+                              .join(",")}]`,
+                      );
+                      const decoded = applyDataProductsToRegistry(
+                          registry,
+                          previewId,
+                          dataProducts,
+                          outputChannel,
+                      );
+                      outputChannel.appendLine(
+                          `[daemon] decoded a11y for ${previewId}: findings=${decoded?.findings?.length ?? "<none>"} nodes=${decoded?.nodes?.length ?? "<none>"}`,
+                      );
+                      if (decoded && panel) {
+                          panel.postMessage({
+                              command: "updateA11y",
+                              previewId,
+                              findings: decoded.findings ?? undefined,
+                              nodes: decoded.nodes ?? undefined,
+                          });
+                      }
+                      if (panel) {
+                          const payloads = dataProducts
+                              .map((dp) => ({
+                                  kind: dp.kind,
+                                  payload:
+                                      dp.payload ??
+                                      (isJsonDataProduct(dp)
+                                          ? readJsonPath(dp.path, outputChannel)
+                                          : isImageDataProduct(dp)
+                                            ? readBinaryDataProductPayload(
+                                                  dp,
+                                                  outputChannel,
+                                              )
+                                            : undefined),
+                              }))
+                              .filter((dp) => dp.payload !== undefined);
+                          const dropped = dataProducts.length - payloads.length;
+                          outputChannel.appendLine(
+                              `[daemon] updateDataProducts post for ${previewId}: ` +
+                                  `forwarding=${payloads.length} dropped=${dropped} ` +
+                                  `kinds=[${payloads.map((p) => p.kind).join(",")}]` +
+                                  (dropped > 0
+                                      ? ` droppedKinds=[${dataProducts
+                                            .filter(
+                                                (dp) =>
+                                                    !payloads.some(
+                                                        (p) =>
+                                                            p.kind === dp.kind,
+                                                    ),
+                                            )
+                                            .map(
+                                                (dp) =>
+                                                    `${dp.kind}(path=${dp.path ?? "<none>"})`,
+                                            )
+                                            .join(",")}]`
+                                      : ""),
+                          );
+                          if (payloads.length > 0) {
+                              panel.postMessage({
+                                  command: "updateDataProducts",
+                                  previewId,
+                                  dataProducts: payloads,
+                              });
+                          }
+                      } else {
+                          outputChannel.appendLine(
+                              `[daemon] updateDataProducts skipped for ${previewId}: panel not yet wired`,
+                          );
+                      }
+                  },
+                  onClasspathDirty: (moduleId, detail) => {
+                      outputChannel.appendLine(
+                          `[daemon] classpath dirty for ${moduleId}: ${detail} — falling back to Gradle`,
+                      );
+                      clearDaemonShownPreviewWarmScopes(moduleId);
+                      // Daemon will exit on its own (PROTOCOL.md § 6); the channel-
+                      // closed handler in DaemonGate evicts the entry. Next save runs
+                      // Gradle, which re-bootstraps a fresh daemon when the user
+                      // re-enables it via composePreviewDaemonStart.
+                      // Drop the interactive-mode availability so any open LIVE chip
+                      // disables itself instead of streaming stale frames from a
+                      // soon-to-die daemon.
+                      publishInteractiveAvailability(moduleId);
+                  },
+                  onDiscoveryUpdated: (moduleId, params) => {
+                      // Daemon emits this only when the in-memory preview index drifted
+                      // (added / removed / changed against the snapshot it held before
+                      // the save). Identity-only saves are silent. Apply the diff to
+                      // the extension-side mirror used for daemon focus computation —
+                      // we deliberately don't post a "loading" or progress message;
+                      // the user already saw the new PNG arrive via `renderFinished`,
+                      // and a webview reshape is only needed when the preview set
+                      // actually changed.
+                      applyDiscoveryDiff(moduleId, params);
+                  },
+                  onHistoryAdded: (_moduleId, params) => {
+                      // Phase H7 — daemon push: a fresh render landed and was archived. History is
+                      // now focus-view-only; the live panel resolves it on demand when the user
+                      // asks for a diff from the focused preview.
+                      void params;
+                  },
+                  onHistoryPruned: (_moduleId, params) => {
+                      // Counterpart to onHistoryAdded. Same focus-view-only policy — the live
+                      // panel re-fetches on demand, so we don't push pruned IDs anywhere. Wired
+                      // to silence "ignoring unknown notification: historyPruned" in the log and
+                      // to keep the protocol surface complete if H14's cross-module timeline
+                      // resurrects in-memory history caching.
+                      void params;
+                  },
+                  onStreamFrame: (_moduleId, params) => {
+                      // `composestream/1` — daemon emitted a frame on a live stream. Look up the
+                      // owning previewId by frameStreamId; drop frames whose stream id we never
+                      // minted (idempotent on a stale stream from a previous daemon lifetime).
+                      const previewId = streamFrameIdToPreviewId.get(
+                          params.frameStreamId,
+                      );
+                      if (!previewId) {
+                          return;
+                      }
+                      if (!panel) {
+                          return;
+                      }
+                      panel.postMessage({
+                          command: "streamFrame",
+                          previewId,
+                          frameStreamId: params.frameStreamId,
+                          seq: params.seq,
+                          ptsMillis: params.ptsMillis,
+                          widthPx: params.widthPx,
+                          heightPx: params.heightPx,
+                          codec: params.codec,
+                          keyframe: params.keyframe,
+                          final: params.final,
+                          payloadBase64: params.payloadBase64,
+                      });
+                      if (params.final === true) {
+                          streamFrameIdToPreviewId.delete(params.frameStreamId);
+                          activeStreamFrameStreams.delete(previewId);
+                      }
+                  },
+                  onChannelClosed: (moduleId) => {
+                      clearDaemonShownPreviewWarmScopes(moduleId);
+                      // Daemon's stdio channel closed (process exit, classpath dirty,
+                      // spawn died). frameStreamIds don't survive a JVM restart, so
+                      // drop every entry in `activeInteractiveStreams` whose previewId
+                      // belongs to this module. Without this, a click landing after
+                      // the daemon respawned would carry a stale streamId the new
+                      // JVM never minted, and v2 dispatch would silently drop. The
+                      // extension's `previewModuleMap` still resolves correctly post-
+                      // respawn so the lookup uses today's mapping.
+                      const stale: string[] = [];
+                      for (const previewId of activeInteractiveStreams.keys()) {
+                          if (
+                              previewModuleMap.get(previewId)?.modulePath ===
+                              moduleId
+                          ) {
+                              stale.push(previewId);
+                          }
+                      }
+                      for (const previewId of stale) {
+                          activeInteractiveStreams.delete(previewId);
+                      }
+                      // Same hygiene for `composestream/1` streams — frameStreamIds don't survive
+                      // a daemon respawn either, so a `requestStreamStop` against a stale id would
+                      // be a wasted notification at best, mis-routed at worst.
+                      for (const previewId of [
+                          ...activeStreamFrameStreams.keys(),
+                      ]) {
+                          if (
+                              previewModuleMap.get(previewId)?.modulePath !==
+                              moduleId
+                          ) {
+                              continue;
+                          }
+                          const sid = activeStreamFrameStreams.get(previewId);
+                          activeStreamFrameStreams.delete(previewId);
+                          if (sid) streamFrameIdToPreviewId.delete(sid);
+                          panel?.postMessage({
+                              command: "streamStopped",
+                              previewId,
+                          });
+                      }
+                      for (const previewId of [
+                          ...activeRecordingSessions.keys(),
+                      ]) {
+                          if (
+                              previewModuleMap.get(previewId)?.modulePath ===
+                              moduleId
+                          ) {
+                              activeRecordingSessions.delete(previewId);
+                              activeRecordingFormats.delete(previewId);
+                              panel?.postMessage({
+                                  command: "clearRecording",
+                                  previewId,
+                              });
+                          }
+                      }
+                      updateInteractiveStatus();
+                      if (stale.length > 0) {
+                          logLine(
+                              `[interactive] daemon channel closed for ${moduleId}; ` +
+                                  `dropped ${stale.length} stale stream(s): ${stale.join(", ")}`,
+                          );
+                      }
+                  },
+              },
+              outputChannel,
+          );
 
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
     // off or no module is currently warming. Surfacing the cold-bootstrap
     // pause (typically 2-4 s on first scope-in) avoids the "panel is stuck"
-    // perception on the daemon flag's first-time UX.
+    // perception on the daemon flag's first-time UX. In minimal mode the
+    // gate is the no-op gradle-only impl, so the item never gets a state
+    // to show.
     daemonStatusItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Left,
         90,
@@ -1187,16 +1304,54 @@ export async function activate(
     // Refresh applied-markers in the background so future module resolution can
     // use the authoritative `applied.json` path. Doctor stays explicit via
     // `composePreview.runDoctor`.
-    void gradleService.bootstrapAppliedMarkers((err) => {
-        // Bootstrap is fire-and-forget and the scan fallback covers most
-        // failures, but JDK-shape failures will keep biting on every render
-        // — surface them once, here, so users aren't stuck on opaque output.
-        if (err instanceof ClassVersionError) {
-            showClassVersionRemediation(err);
-        } else if (err instanceof JdkImageError) {
-            showJdkImageRemediation(err);
-        }
-    });
+    //
+    // The same bootstrap is the trigger for the post-sync mode re-evaluation:
+    // text-scan fallbacks miss version-catalog aliases / convention-plugin
+    // setups, so a workspace can boot into minimal mode and only learn that
+    // the plugin *is* applied once Gradle writes its markers. When that
+    // happens (and the user hasn't pinned the setting), prompt for a reload
+    // to flip into full mode.
+    void gradleService
+        .bootstrapAppliedMarkers((err) => {
+            if (err instanceof ClassVersionError) {
+                showClassVersionRemediation(err);
+            } else if (err instanceof JdkImageError) {
+                showJdkImageRemediation(err);
+            }
+        })
+        .then(() => {
+            if (!gradleService) {
+                return;
+            }
+            const post = resolveMode(gradleService);
+            if (
+                initialMode.mode === post.mode ||
+                post.reason === "user-setting"
+            ) {
+                return;
+            }
+            // Activation guessed minimal, but markers now show a plugin is
+            // applied — offer to reload for full mode. The opposite swing
+            // (full → minimal post-sync) shouldn't happen because the
+            // signals are monotonic: `findPreviewModules()` only grows
+            // entries after a bootstrap, never loses them.
+            outputChannel.appendLine(
+                `[startup] mode re-eval after bootstrap: ${initialMode.mode} → ${post.mode} (${post.reason}); offering reload`,
+            );
+            const RELOAD = "Reload to enable full mode";
+            void vscode.window
+                .showInformationMessage(
+                    "Compose Preview detected the plugin is applied. Reload the window to switch from minimal to full mode (daemon, data extensions, live previews).",
+                    RELOAD,
+                )
+                .then((action) => {
+                    if (action === RELOAD) {
+                        void vscode.commands.executeCommand(
+                            "workbench.action.reloadWindow",
+                        );
+                    }
+                });
+        });
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {
@@ -1349,6 +1504,14 @@ export async function activate(
             if (!isSourceFile(doc.uri.fsPath)) {
                 return;
             }
+            // Minimal mode: renders are manual — the refresh button is the
+            // only trigger. Track the file as "seen" so a later toggle of the
+            // setting doesn't fire a stale "first save" burst, but skip the
+            // refresh itself.
+            if (minimal) {
+                firstSaveSeen.add(doc.uri.fsPath);
+                return;
+            }
             // Time the user-perceived edit→update journey from the save
             // event itself so the figure includes any debounce wait. The
             // closing log fires from the gradle refresh tail or the
@@ -1385,8 +1548,12 @@ export async function activate(
     // isSourceFile so Gradle-generated files under `<module>/build/**` don't
     // feed every render back into the refresh queue — that loop is what made
     // the panel look "jumpy" with spinners reappearing over cards after each
-    // build completed.
+    // build completed. In minimal mode every render is manual, so the watcher
+    // never enqueues a refresh.
     const onWatcherEvent = (uri: vscode.Uri) => {
+        if (minimal) {
+            return;
+        }
         if (isSourceFile(uri.fsPath)) {
             enqueueSaveRefresh(uri.fsPath);
         }
@@ -2687,6 +2854,13 @@ function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
     if (!compileGateActive || !currentScopeFile) {
         return;
     }
+    // Minimal mode: every render is manual. Clearing the compile gate
+    // would otherwise sneak a fresh render in the moment the LSP republishes
+    // — exactly the kind of behind-the-scenes work the mode is meant to
+    // suppress.
+    if (inMinimalMode()) {
+        return;
+    }
     const scopeFile = currentScopeFile;
     if (!e.uris.some((u) => u.fsPath === scopeFile)) {
         return;
@@ -3618,8 +3792,11 @@ async function refresh(
         //
         // Only fires from the discover-only path: forceRender=true paths
         // just rendered, so PNGs are fresh by definition. Without that
-        // gate we'd loop on every save-driven refresh.
-        if (sourceIsStale) {
+        // gate we'd loop on every save-driven refresh. Also skipped in
+        // minimal mode — the user opted out of auto-renders, and a focus
+        // event that finds stale PNGs would otherwise sneak a render
+        // through without a refresh-button click.
+        if (sourceIsStale && !inMinimalMode()) {
             logLine(
                 `auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`,
             );

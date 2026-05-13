@@ -125,6 +125,26 @@
                     "default": "debug",
                     "description": "Build variant to use for preview rendering"
                 },
+                "composePreview.mode": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "minimal",
+                        "full"
+                    ],
+                    "default": "auto",
+                    "markdownDescription": "Backend mode for the preview pipeline.\n\n- **`auto`** _(default)_ — full mode when at least one module in the workspace applies the `ee.schimke.composeai.preview` Gradle plugin (or applies an Android / Compose Multiplatform plugin the bundled init script can inject into); otherwise minimal mode.\n- **`full`** — force the daemon backend with data extensions and live previews.\n- **`minimal`** — drive only the Gradle plugin. The preview daemon, data extensions (a11y overlays, hierarchy, focus-mode inspector layers), and live/interactive previews are all disabled, and renders do not run automatically on save — click the refresh button (or run `Compose Preview: Refresh Previews` / `Render All Previews`) to render.\n\nRequires a window reload to take effect.",
+                    "enumDescriptions": [
+                        "Pick automatically based on whether the Compose Preview plugin (or an Android / Compose plugin the init script can inject into) is applied in the workspace.",
+                        "Force minimal mode: gradle-only, manual renders.",
+                        "Force full mode: daemon + data extensions + live previews."
+                    ]
+                },
+                "composePreview.autoInject.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Pass a bundled Gradle init script via `--init-script` on every Gradle invocation. The script applies `ee.schimke.composeai.preview` to any project that applies `com.android.application`, `com.android.library`, or `org.jetbrains.compose`, so users don't have to edit `build.gradle.kts` to opt in.\n\nDisable to keep Gradle invocations untouched — the user must apply the plugin manually."
+                },
                 "composePreview.daemon.enabled": {
                     "type": "boolean",
                     "default": true,

@@ -1157,4 +1157,109 @@ describe("GradleService", () => {
             }),
         );
     });
+
+    describe("hasInjectableHostModule", () => {
+        it(
+            "matches a module that applies com.android.application",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'plugins { id("com.android.application") }',
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), true);
+            }),
+        );
+
+        it(
+            "matches org.jetbrains.compose in a Compose Multiplatform module",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "desktop"));
+                fs.writeFileSync(
+                    path.join(dir, "desktop", "build.gradle.kts"),
+                    `plugins {
+                        kotlin("multiplatform")
+                        id("org.jetbrains.compose")
+                    }`,
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), true);
+            }),
+        );
+
+        it(
+            "returns false when no module applies a host plugin",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "lib"));
+                fs.writeFileSync(
+                    path.join(dir, "lib", "build.gradle.kts"),
+                    'plugins { id("org.jetbrains.kotlin.jvm") }',
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), false);
+            }),
+        );
+
+        it(
+            "returns false for an empty workspace",
+            withTempDir((dir, api) => {
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), false);
+            }),
+        );
+
+        it(
+            "early-exits once it finds the first match (deeper modules not scanned)",
+            withTempDir((dir, api) => {
+                fs.mkdirSync(path.join(dir, "app"));
+                fs.writeFileSync(
+                    path.join(dir, "app", "build.gradle.kts"),
+                    'plugins { id("com.android.library") }',
+                );
+                // A second match deeper in the tree exists but the
+                // implementation just has to return true; we don't have a
+                // direct hook to assert "stopped scanning," but at minimum the
+                // result is correct.
+                fs.mkdirSync(path.join(dir, "samples", "wear"), {
+                    recursive: true,
+                });
+                fs.writeFileSync(
+                    path.join(dir, "samples", "wear", "build.gradle.kts"),
+                    'plugins { id("com.android.application") }',
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), true);
+            }),
+        );
+
+        it(
+            "ignores apply-false declarations at the root",
+            withTempDir((dir, api) => {
+                fs.writeFileSync(
+                    path.join(dir, "build.gradle.kts"),
+                    'plugins { id("com.android.application") apply false }',
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), false);
+            }),
+        );
+
+        it(
+            "skips SCAN_SKIP_DIRS (build / src / etc.)",
+            withTempDir((dir, api) => {
+                // A build.gradle.kts buried under `build/` should NOT be
+                // counted — those are output trees, not real modules.
+                fs.mkdirSync(path.join(dir, "build", "intermediate"), {
+                    recursive: true,
+                });
+                fs.writeFileSync(
+                    path.join(dir, "build", "intermediate", "build.gradle.kts"),
+                    'plugins { id("com.android.application") }',
+                );
+                const service = new GradleService(dir, api);
+                assert.strictEqual(service.hasInjectableHostModule(), false);
+            }),
+        );
+    });
 });

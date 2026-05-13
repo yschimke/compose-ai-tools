@@ -9,7 +9,11 @@ import {
     PreviewRenderError,
     ResourceManifest,
 } from "./types";
-import { appliesPlugin, BUILD_SCRIPT_NAMES } from "./pluginDetection";
+import {
+    appliesInjectableHostPlugin,
+    appliesPlugin,
+    BUILD_SCRIPT_NAMES,
+} from "./pluginDetection";
 import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
 import {
     ClassVersionError,
@@ -853,6 +857,72 @@ export class GradleService {
         return [...found.values()].sort((a, b) =>
             a.projectDir.localeCompare(b.projectDir),
         );
+    }
+
+    /**
+     * Synchronous workspace scan for any module that applies a plugin id the
+     * bundled auto-inject init script can attach `ee.schimke.composeai.preview`
+     * onto (Android / Compose Multiplatform — see [INJECTABLE_HOST_PLUGIN_IDS]).
+     *
+     * Used by the "auto" mode selector at activation: if the workspace already
+     * has at least one such host, the init script will apply our preview
+     * plugin to it and full mode is sensible. If nothing matches, the init
+     * script would be a no-op and we default to minimal mode.
+     *
+     * Early-exits on the first match. Same scan budget / skip-list as
+     * [findPreviewModules]. The version-catalog alias form
+     * (`alias(libs.plugins.…)`) isn't matched — same limitation as the
+     * literal-id scan in [findPreviewModules]; users on that path opt in
+     * via the `composePreview.mode` setting.
+     */
+    hasInjectableHostModule(): boolean {
+        let matched = false;
+        const walk = (relDir: string, depth: number): void => {
+            if (matched || depth > SCAN_MAX_DEPTH) {
+                return;
+            }
+            const absDir = relDir
+                ? path.join(this.workspaceRoot, relDir)
+                : this.workspaceRoot;
+            let entries: fs.Dirent[];
+            try {
+                entries = fs.readdirSync(absDir, { withFileTypes: true });
+            } catch {
+                return;
+            }
+            for (const name of BUILD_SCRIPT_NAMES) {
+                const buildFile = path.join(absDir, name);
+                try {
+                    const content = fs.readFileSync(buildFile, "utf-8");
+                    if (appliesInjectableHostPlugin(content)) {
+                        matched = true;
+                        return;
+                    }
+                } catch {
+                    /* no build script here, try the next name */
+                }
+            }
+            for (const entry of entries) {
+                if (matched) {
+                    return;
+                }
+                if (entry.name.startsWith(".")) {
+                    continue;
+                }
+                if (SCAN_SKIP_DIRS.has(entry.name)) {
+                    continue;
+                }
+                if (!entry.isDirectory() && !entry.isSymbolicLink()) {
+                    continue;
+                }
+                walk(
+                    relDir ? `${relDir}/${entry.name}` : entry.name,
+                    depth + 1,
+                );
+            }
+        };
+        walk("", 0);
+        return matched;
     }
 
     /**

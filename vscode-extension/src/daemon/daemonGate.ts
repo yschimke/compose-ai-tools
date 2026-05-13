@@ -13,6 +13,57 @@ import {
 import { DaemonLaunchDescriptor } from "./daemonProtocol";
 
 /**
+ * Snapshot of the daemon's advertised data-product / data-extension capabilities
+ * for a module, narrowed to the fields the focus-mode inspector actually renders.
+ * Returned by `DaemonGate.getCapabilitiesSnapshot`.
+ */
+export interface DaemonCapabilitiesSnapshot {
+    dataProducts: {
+        kind: string;
+        schemaVersion: number;
+        transport: "inline" | "path" | "both";
+        requiresRerender: boolean;
+        displayName?: string;
+    }[];
+    dataExtensions: { id: string; displayName?: string }[];
+}
+
+/**
+ * The daemon-gate role: spawn / track / dispose the per-module preview daemon.
+ *
+ * There are two implementations:
+ *
+ * - `LiveDaemonGate` is the production gate. Spawns a JVM per module on first
+ *   use, tracks lifetime, and surfaces capability bits from `initialize`.
+ * - `GradleOnlyDaemonGate` is the minimal-mode no-op. Every method reports
+ *   "no daemon available," so callers fall back to the Gradle render path
+ *   without needing to know which backend is wired up.
+ *
+ * Per-module build opt-out via the daemon-launch descriptor still applies to
+ * the live gate via `isBuildDisabled` — minimal mode just reports every
+ * module as disabled.
+ */
+export interface DaemonGate {
+    /** True iff this gate ever attempts to spawn daemons. Lets the
+     *  refresh-mode predicate skip the daemon path globally without checking
+     *  every module's descriptor. */
+    readonly spawnsDaemons: boolean;
+    getOrSpawn(
+        module: ModuleInfo,
+        events: DaemonClientEvents,
+    ): Promise<DaemonClient | null>;
+    bootstrap(gradleService: GradleService, module: ModuleInfo): Promise<void>;
+    isBuildDisabled(module: ModuleInfo): boolean;
+    isDaemonReady(modulePath: string): boolean;
+    isInteractiveSupported(modulePath: string): boolean;
+    getCapabilitiesSnapshot(
+        moduleId: string,
+    ): DaemonCapabilitiesSnapshot | null;
+    restartAll(): Promise<string[]>;
+    dispose(): Promise<void>;
+}
+
+/**
  * Source-of-truth for "is the daemon path live for this user/workspace?"
  *
  * The daemon path is always on; the build can still opt out by emitting a
@@ -22,7 +73,9 @@ import { DaemonLaunchDescriptor } from "./daemonProtocol";
  * One daemon per Gradle module (per `:samples:android`, etc.). Modules are
  * spawned lazily on first use and shut down on extension dispose.
  */
-export class DaemonGate {
+export class LiveDaemonGate implements DaemonGate {
+    readonly spawnsDaemons = true;
+
     private readonly daemons = new Map<string, ManagedDaemon>();
     private readonly spawns = new Map<string, Promise<DaemonClient>>();
     private disposed = false;
@@ -209,16 +262,9 @@ export class DaemonGate {
      * `DataProductCapability` carries schema bookkeeping the inspector
      * doesn't need to see.
      */
-    getCapabilitiesSnapshot(moduleId: string): {
-        dataProducts: {
-            kind: string;
-            schemaVersion: number;
-            transport: "inline" | "path" | "both";
-            requiresRerender: boolean;
-            displayName?: string;
-        }[];
-        dataExtensions: { id: string; displayName?: string }[];
-    } | null {
+    getCapabilitiesSnapshot(
+        moduleId: string,
+    ): DaemonCapabilitiesSnapshot | null {
         const existing = this.daemons.get(moduleId);
         if (existing == null || existing.client.isClosed()) {
             return null;
@@ -304,6 +350,60 @@ export class DaemonGate {
             }),
         );
         return entries.map(([moduleId]) => moduleId);
+    }
+}
+
+/**
+ * Minimal-mode counterpart to [LiveDaemonGate]. Every method reports
+ * "no daemon available" so the calling extension code falls through to the
+ * Gradle render path. `spawnsDaemons` is false so the refresh-mode predicate
+ * can short-circuit before doing per-save work.
+ *
+ * `isBuildDisabled` returns true so existing call sites that distinguish
+ * "daemon refused" from "daemon failed" classify the no-op as a clean opt-out
+ * and surface no error to the user.
+ */
+export class GradleOnlyDaemonGate implements DaemonGate {
+    readonly spawnsDaemons = false;
+
+    async getOrSpawn(
+        _module: ModuleInfo,
+        _events: DaemonClientEvents,
+    ): Promise<DaemonClient | null> {
+        return null;
+    }
+
+    async bootstrap(
+        _gradleService: GradleService,
+        _module: ModuleInfo,
+    ): Promise<void> {
+        /* no-op: gradle-only mode never bootstraps a daemon */
+    }
+
+    isBuildDisabled(_module: ModuleInfo): boolean {
+        return true;
+    }
+
+    isDaemonReady(_modulePath: string): boolean {
+        return false;
+    }
+
+    isInteractiveSupported(_modulePath: string): boolean {
+        return false;
+    }
+
+    getCapabilitiesSnapshot(
+        _moduleId: string,
+    ): DaemonCapabilitiesSnapshot | null {
+        return null;
+    }
+
+    async restartAll(): Promise<string[]> {
+        return [];
+    }
+
+    async dispose(): Promise<void> {
+        /* no-op */
     }
 }
 

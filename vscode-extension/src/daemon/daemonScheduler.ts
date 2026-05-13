@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import { GradleService, ModuleInfo } from "../gradleService";
+import { DaemonClientEvents } from "./daemonClient";
 import { DaemonGate } from "./daemonGate";
 import {
     DataProductAttachment,
@@ -110,6 +111,54 @@ export const A11Y_OVERLAY_KINDS: readonly string[] = [
 const SPECULATIVE_BUDGET = 4;
 
 /**
+ * The scheduler role: translate editor events (saves, focus, viewport) into
+ * the daemon's protocol notifications, and fan render-completion events back
+ * out to the panel via [SchedulerEvents].
+ *
+ * Two implementations:
+ *
+ * - `LiveDaemonScheduler` is the production scheduler. Talks to a live
+ *   `LiveDaemonGate` and forwards protocol traffic in both directions.
+ * - `GradleOnlyDaemonScheduler` is the minimal-mode no-op. All write methods
+ *   ignore their arguments and `warmModule` reports `'fallback'`. The events
+ *   bag returned by `daemonEvents` is inert; it can still be passed to
+ *   `GradleOnlyDaemonGate.getOrSpawn` (which never reads it) so call sites
+ *   don't branch on the backend.
+ */
+export interface DaemonScheduler {
+    ensureModule(module: ModuleInfo): Promise<boolean>;
+    warmModule(
+        gradleService: GradleService,
+        module: ModuleInfo,
+        progress?: WarmProgress,
+    ): Promise<boolean>;
+    fileChanged(
+        module: ModuleInfo,
+        absPath: string,
+        changeType?: FileChangeType,
+    ): Promise<void>;
+    setFocus(module: ModuleInfo, previewIds: string[]): Promise<void>;
+    setVisible(
+        module: ModuleInfo,
+        visible: string[],
+        predicted?: string[],
+    ): Promise<void>;
+    setDataProductSubscription(
+        module: ModuleInfo,
+        previewId: string,
+        kinds: readonly string[],
+        enabled: boolean,
+    ): Promise<void>;
+    renderNow(
+        module: ModuleInfo,
+        previewIds: string[],
+        tier?: RenderTier,
+        reason?: string,
+    ): Promise<boolean>;
+    daemonEvents(moduleId: string): DaemonClientEvents;
+}
+
+/**
  * Drives the daemon end of the editor loop:
  *   - File saves → `fileChanged` notifications (Tier-2 trigger).
  *   - Active editor change → `setFocus` for that file's previews.
@@ -127,7 +176,7 @@ const SPECULATIVE_BUDGET = 4;
  * the right hook for an additional "snapshot-on-render" sink — it already
  * has the moduleId, previewId, and pngPath that a history archiver needs.
  */
-export class DaemonScheduler {
+export class LiveDaemonScheduler implements DaemonScheduler {
     /** Last-known-visible IDs per module — let us dedup setVisible spam. */
     private lastVisible = new Map<string, string[]>();
     /** Last `setFocus` per module so editor refocus on the same file is a no-op. */
@@ -621,6 +670,69 @@ export class DaemonScheduler {
                 "render finished but PNG was unreadable",
             );
         }
+    }
+}
+
+/**
+ * Minimal-mode counterpart to [LiveDaemonScheduler]. Every write path ignores
+ * its arguments; `warmModule` reports `'fallback'`; `daemonEvents` returns an
+ * inert events bag so call sites can still hand it to
+ * `GradleOnlyDaemonGate.getOrSpawn` without branching on the backend.
+ */
+export class GradleOnlyDaemonScheduler implements DaemonScheduler {
+    async ensureModule(_module: ModuleInfo): Promise<boolean> {
+        return false;
+    }
+
+    async warmModule(
+        _gradleService: GradleService,
+        _module: ModuleInfo,
+        progress?: WarmProgress,
+    ): Promise<boolean> {
+        progress?.("fallback");
+        return false;
+    }
+
+    async fileChanged(
+        _module: ModuleInfo,
+        _absPath: string,
+        _changeType?: FileChangeType,
+    ): Promise<void> {
+        /* no-op: minimal mode never notifies the daemon */
+    }
+
+    async setFocus(_module: ModuleInfo, _previewIds: string[]): Promise<void> {
+        /* no-op */
+    }
+
+    async setVisible(
+        _module: ModuleInfo,
+        _visible: string[],
+        _predicted?: string[],
+    ): Promise<void> {
+        /* no-op */
+    }
+
+    async setDataProductSubscription(
+        _module: ModuleInfo,
+        _previewId: string,
+        _kinds: readonly string[],
+        _enabled: boolean,
+    ): Promise<void> {
+        /* no-op: data extensions are disabled in minimal mode */
+    }
+
+    async renderNow(
+        _module: ModuleInfo,
+        _previewIds: string[],
+        _tier?: RenderTier,
+        _reason?: string,
+    ): Promise<boolean> {
+        return false;
+    }
+
+    daemonEvents(_moduleId: string): DaemonClientEvents {
+        return {};
     }
 }
 
