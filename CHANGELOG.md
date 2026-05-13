@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.10](https://github.com/yschimke/compose-ai-tools/compare/v0.10.9...v0.10.10) (2026-05-13)
+
+
+### Features
+
+* add compose/recomposition and render/trace presenters ([#1063](https://github.com/yschimke/compose-ai-tools/issues/1063)) ([fd9527b](https://github.com/yschimke/compose-ai-tools/commit/fd9527b4a6fc5b1612cd4c536c603e4a0131b36b))
+* add hierarchy legend with per-node color swatches ([#1062](https://github.com/yschimke/compose-ai-tools/issues/1062)) ([f24e7f2](https://github.com/yschimke/compose-ai-tools/commit/f24e7f2aa0119d97ea4caf04804b733026441883))
+* **vscode-extension:** inspection bundle presenters (semantics, layout, uia) ([#1068](https://github.com/yschimke/compose-ai-tools/issues/1068)) ([0d6b3d9](https://github.com/yschimke/compose-ai-tools/commit/0d6b3d93a72dd36638d2b338a5a08687256c2055))
+* **vscode-extension:** resources/used table with jump-to-resource-file ([#1066](https://github.com/yschimke/compose-ai-tools/issues/1066)) ([df3af63](https://github.com/yschimke/compose-ai-tools/commit/df3af634210c08a1ff399af740eacf45e9b3ccd8))
+
 ## [0.10.9](https://github.com/yschimke/compose-ai-tools/compare/v0.10.8...v0.10.9) (2026-05-13)
 
 
