@@ -887,6 +887,7 @@ export type HistoryToWebview =
           result: { entries: HistoryEntry[]; totalCount?: number };
       }
     | { command: "entryAdded"; entry: HistoryEntry }
+    | { command: "entriesPruned"; removedIds: string[] }
     | { command: "setScopeLabel"; label: string }
     | { command: "showMessage"; text: string }
     | {

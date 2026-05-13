@@ -8,6 +8,7 @@ import {
     FileChangeType,
     FileKind,
     HistoryAddedParams,
+    HistoryPrunedParams,
     RenderFinishedParams,
     RenderTier,
     StreamFrameParams,
@@ -67,6 +68,9 @@ export interface SchedulerEvents {
     /** Phase H2 — daemon archived a render. Forwarded to the History
      *  panel; optional because the panel may not exist in test mode. */
     onHistoryAdded?: (moduleId: string, params: HistoryAddedParams) => void;
+    /** Phase H4 — daemon dropped one or more entries from disk. Subscribers
+     *  invalidate any cached IDs. Optional for the same reason. */
+    onHistoryPruned?: (moduleId: string, params: HistoryPrunedParams) => void;
     /**
      * `composestream/1` — daemon emitted a live frame. The scheduler
      * forwards it untouched; `extension.ts` routes it to the matching
@@ -500,6 +504,9 @@ export class DaemonScheduler {
             },
             onHistoryAdded: (params: HistoryAddedParams) => {
                 this.events.onHistoryAdded?.(moduleId, params);
+            },
+            onHistoryPruned: (params: HistoryPrunedParams) => {
+                this.events.onHistoryPruned?.(moduleId, params);
             },
             onStreamFrame: (params: StreamFrameParams) => {
                 this.events.onStreamFrame?.(moduleId, params);

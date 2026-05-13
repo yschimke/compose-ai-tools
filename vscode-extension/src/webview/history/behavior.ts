@@ -245,6 +245,23 @@ export function setupHistoryBehavior(): void {
                     applyFilters();
                 }
                 break;
+            case "entriesPruned": {
+                const removed = new Set(msg.removedIds);
+                if (removed.size === 0) {
+                    break;
+                }
+                const before = entries.length;
+                entries = entries.filter((e) => !(e.id && removed.has(e.id)));
+                if (entries.length !== before) {
+                    if (entries.length === 0) {
+                        setMessage("No history yet for this preview / module.");
+                    }
+                    populateBranchFilter(entries);
+                    renderTimeline();
+                    applyFilters();
+                }
+                break;
+            }
             case "showMessage":
                 setMessage(msg.text || "");
                 break;
