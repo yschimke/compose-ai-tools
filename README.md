@@ -58,7 +58,9 @@ Working examples: [`samples/android/build.gradle.kts`](samples/android/build.gra
 
 ### Zero-Code Integration (Alternative)
 
-You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is particularly useful for AI agents or when exploring the tool without committing changes to the repository.
+You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is particularly useful for AI agents on the CLI, in CI, or when exploring the tool without committing changes to the repository.
+
+> **VS Code users:** the [`Compose Preview` extension](vscode-extension/) already auto-injects via `--init-script` on every Gradle invocation it makes — you don't need a global `~/.gradle/init.d/` script. The instructions below are for command-line and CI flows that don't go through the extension.
 
 To use this method:
 1. Create a Gradle init script (e.g., `~/.gradle/init.d/compose-ai-tools.gradle`) that resolves the plugin and applies it to Android application projects.
