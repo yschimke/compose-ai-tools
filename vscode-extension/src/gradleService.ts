@@ -12,6 +12,10 @@ import {
 import { appliesPlugin, BUILD_SCRIPT_NAMES } from "./pluginDetection";
 import { JdkImageError, JdkImageErrorDetector } from "./jdkImageErrorDetector";
 import {
+    ClassVersionError,
+    ClassVersionErrorDetector,
+} from "./classVersionErrorDetector";
+import {
     KotlinCompileError,
     KotlinCompileErrorDetector,
 } from "./kotlinCompileErrorDetector";
@@ -864,13 +868,26 @@ export class GradleService {
      * Swallows failures — the scan fallback still produces a sensible list,
      * and we don't want a misconfigured workspace to fail activation.
      */
-    async bootstrapAppliedMarkers(): Promise<void> {
+    async bootstrapAppliedMarkers(
+        onTypedError?: (err: ClassVersionError | JdkImageError) => void,
+    ): Promise<void> {
         try {
             await this.runTask("composePreviewApplied");
         } catch (e) {
             this.logger.appendLine(
                 `[applied] composePreviewApplied bootstrap failed: ${(e as Error).message}`,
             );
+            // Bootstrap still swallows so the scan fallback can produce a
+            // sensible module list — but if Gradle bailed for a JDK reason
+            // that won't recover on its own, surface it to the caller. The
+            // user might never trigger a render that would otherwise raise
+            // it (e.g. activation-only sessions).
+            if (
+                onTypedError &&
+                (e instanceof ClassVersionError || e instanceof JdkImageError)
+            ) {
+                onTypedError(e);
+            }
         }
     }
 
@@ -948,6 +965,10 @@ export class GradleService {
         }
 
         const detector = new JdkImageErrorDetector();
+        // Catches the case where the JVM running Gradle is older than the
+        // JDK that compiled build-logic / the plugin — `UnsupportedClassVersionError`
+        // surfaces as an opaque "Could not execute build" without this.
+        const classVersionDetector = new ClassVersionErrorDetector();
         // Parse `e:` lines from the Kotlin compiler so the panel banner
         // can show structured errors when a build fails. Catches the
         // cross-file gap that the LSP-driven gate (compileErrors.ts)
@@ -990,6 +1011,7 @@ export class GradleService {
                         // normal level (the noisy lines are exactly the ones that
                         // contain the diagnostic).
                         detector.consume(decoded);
+                        classVersionDetector.consume(decoded);
                         kotlinDetector.consume(decoded);
                         const filtered =
                             this.logFilter.filterGradleChunk(decoded);
@@ -1020,6 +1042,7 @@ export class GradleService {
                         throw new TaskCancelledError(task);
                     }
                     detector.end();
+                    classVersionDetector.end();
                     kotlinDetector.end();
                     const finding = detector.getFinding();
                     if (finding) {
@@ -1027,6 +1050,11 @@ export class GradleService {
                         // gRPC "Could not execute build" message would just be
                         // noise next to it.
                         throw new JdkImageError(finding, task);
+                    }
+                    const classVersionFinding =
+                        classVersionDetector.getFinding();
+                    if (classVersionFinding) {
+                        throw new ClassVersionError(classVersionFinding, task);
                     }
                     const kotlinErrors = kotlinDetector.getErrors();
                     if (kotlinErrors.length > 0) {

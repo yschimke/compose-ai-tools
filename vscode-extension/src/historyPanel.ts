@@ -5,6 +5,7 @@ import { CurrentRendersHistory } from "./daemon/currentRendersHistory";
 import {
     HistoryAddedParams,
     HistoryListResult,
+    HistoryPrunedParams,
     HistoryReadResult,
     HistorySourceKind,
 } from "./daemon/daemonProtocol";
@@ -90,6 +91,19 @@ export class HistoryPanel implements vscode.WebviewViewProvider {
         this.view.webview.postMessage({
             command: "entryAdded",
             entry: params.entry,
+        });
+    }
+
+    /** Daemon push: one or more entries were pruned. Drops them from the
+     *  visible list so the user doesn't see ghost rows that resolve to
+     *  404s when they click. Drops cleanly when the panel isn't open. */
+    onHistoryPruned(params: HistoryPrunedParams): void {
+        if (!this.view || params.removedIds.length === 0) {
+            return;
+        }
+        this.view.webview.postMessage({
+            command: "entriesPruned",
+            removedIds: params.removedIds,
         });
     }
 

@@ -660,6 +660,20 @@ export interface HistoryAddedParams {
     entry: unknown;
 }
 
+/**
+ * `historyPruned` notification (HISTORY.md). Emitted after a non-empty prune
+ * pass (auto-prune that actually removed entries, or `history/prune` manual
+ * call). Auto-prune passes that removed nothing produce no notification.
+ */
+export interface HistoryPrunedParams {
+    /** IDs of the entries that were removed. */
+    removedIds: string[];
+    /** Total bytes reclaimed across all removed entries' on-disk artifacts. */
+    freedBytes: number;
+    /** Why the prune ran. */
+    reason: "auto" | "manual";
+}
+
 // Data products (phase D1) — see docs/daemon/DATA-PRODUCTS.md.
 //
 // Three methods:
