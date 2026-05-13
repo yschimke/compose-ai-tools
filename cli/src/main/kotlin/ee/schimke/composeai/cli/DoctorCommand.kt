@@ -40,6 +40,12 @@ import kotlinx.serialization.json.Json
  *   class an unfixed misconfig will surface at render time. Useful for humans first hitting a
  *   failure; noisy for agents.
  *
+ * Opt-in slow checks (off by default to keep the default invocation cheap):
+ * - `--daemon` (alias `--with-daemon`): also spawns each module's preview daemon JVM, completes the
+ *   `initialize` handshake, and tears it down. Catches descriptor / classpath / launcher
+ *   regressions that only surface at runtime. Costs ~600ms (Desktop) or 3-10s (Robolectric) per
+ *   module. Emits one `project.<module>.daemon-smoke` check per module.
+ *
  * Exits 0 when no errors (warnings OK), 1 when any check reports ERROR.
  */
 class DoctorCommand(args: List<String>) {
@@ -48,6 +54,14 @@ class DoctorCommand(args: List<String>) {
   private val explain = "--explain" in args
   private val verbose = "--verbose" in args || "-v" in args
   private val projectDirArg = args.flagValue("--project")
+
+  /**
+   * Opt-in: when set, [runProjectChecks] also spawns each module's daemon JVM, completes the
+   * `initialize` round-trip, and tears it down. Slow (~600ms desktop, 3-10s Robolectric per module)
+   * so it's a separate flag rather than part of the default battery. `--with-daemon` is the same
+   * flag — kept as an alias because both spellings turned up in early dogfooding.
+   */
+  private val checkDaemon = "--daemon" in args || "--with-daemon" in args
 
   /**
    * Version the CLI suggests in remediation messages ("install version X"). Comes from
@@ -415,6 +429,37 @@ class DoctorCommand(args: List<String>) {
       checkRenderPreviewsTask(modulePath, info)
       checkModuleCompat(modulePath, info)
       checkErrorSignatures(projectDir, modulePath)
+    }
+
+    if (checkDaemon) {
+      checkDaemonLiveness(projectDir, model.modules.keys)
+    } else if (model.modules.isNotEmpty()) {
+      addCheck(
+        DoctorCheck(
+          id = "project.daemon-smoke",
+          category = "project",
+          status = "skipped",
+          message = "daemon spawn check not run — pass `--daemon` to test it (slow)",
+          detail =
+            "spawns each module's daemon JVM and confirms `initialize` succeeds. " +
+              "Adds ~600ms (Desktop) or 3-10s (Android/Robolectric) per module.",
+        )
+      )
+    }
+  }
+
+  /**
+   * Opt-in spawn smoke test. For each [modulePaths] entry, locate the
+   * `build/compose-previews/daemon-launch.json` descriptor, fork the daemon JVM, run the
+   * `initialize` round-trip, and tear it down. Each module emits one
+   * `project.<module>.daemon-smoke` check; the per-module results are independent so a stale
+   * descriptor in one module doesn't suppress a clean spawn in another.
+   */
+  private fun checkDaemonLiveness(projectDir: File, modulePaths: Set<String>) {
+    if (modulePaths.isEmpty()) return
+    for (modulePath in modulePaths) {
+      val outcome = runDaemonSmokeTest(projectDir = projectDir, modulePath = modulePath)
+      addCheck(interpretDaemonSmoke(modulePath, outcome))
     }
   }
 
