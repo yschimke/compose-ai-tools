@@ -2263,3 +2263,245 @@ body {
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
     flex-shrink: 0;
 }
+
+/* ---------------------------------------------------------------
+ * Bundle chip bar + data tabs + data table (panel-shell #1054).
+ * The chip bar is the toggle row beneath the filter toolbar; the
+ * tab row appears only when at least one bundle is active. The
+ * close (×) on a tab is the dismiss path the user reaches when
+ * they're already focused on the data, mirroring the chip toggle.
+ * --------------------------------------------------------------- */
+.bundle-chip-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+.bundle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    background: var(--vscode-button-secondaryBackground, transparent);
+    color: var(--vscode-button-secondaryForeground, inherit);
+    font-size: 12px;
+    cursor: pointer;
+}
+.bundle-chip:hover {
+    background: var(
+        --vscode-button-secondaryHoverBackground,
+        var(--vscode-button-secondaryBackground, transparent)
+    );
+}
+.bundle-chip.bundle-chip-on {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-focusBorder, transparent);
+}
+.bundle-chip-label {
+    white-space: nowrap;
+}
+
+.data-tabs {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+.data-tab-strip {
+    display: flex;
+    gap: 2px;
+    padding: 0 4px;
+    background: var(--vscode-tab-inactiveBackground, transparent);
+}
+.data-tab-handle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 8px;
+    border-top: 2px solid transparent;
+    cursor: pointer;
+    background: transparent;
+    color: var(--vscode-tab-inactiveForeground, inherit);
+}
+.data-tab-handle-active {
+    border-top-color: var(--vscode-focusBorder, currentColor);
+    background: var(--vscode-tab-activeBackground, transparent);
+    color: var(--vscode-tab-activeForeground, inherit);
+}
+.data-tab-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 2px 4px;
+    font: inherit;
+    cursor: pointer;
+}
+.data-tab-close {
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 2px;
+    border-radius: 2px;
+    cursor: pointer;
+    opacity: 0.6;
+}
+.data-tab-close:hover {
+    background: var(--vscode-toolbar-hoverBackground, transparent);
+    opacity: 1;
+}
+.data-tab-body {
+    padding: 6px 8px;
+}
+.data-tab-placeholder {
+    opacity: 0.6;
+    padding: 8px 0;
+}
+
+.data-table-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.data-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.data-table-title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-weight: 600;
+}
+.data-table-summary {
+    opacity: 0.7;
+    font-weight: 400;
+}
+.data-table-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.data-table-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    background: var(--vscode-button-secondaryBackground, transparent);
+    color: var(--vscode-button-secondaryForeground, inherit);
+    cursor: pointer;
+    font-size: 12px;
+}
+.data-table-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.data-table-grid th,
+.data-table-grid td {
+    padding: 3px 6px;
+    text-align: left;
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+    vertical-align: top;
+}
+.data-table-row:hover,
+.data-table-row-active {
+    background: var(--vscode-list-hoverBackground, transparent);
+}
+.data-table-empty {
+    padding: 8px 0;
+    opacity: 0.6;
+}
+
+/* Shared box overlay primitive (used by every bundle with bounds). */
+.box-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.overlay-box {
+    position: absolute;
+    pointer-events: auto;
+    border: 1px solid var(--overlay-color, var(--a11y-color, #1976d2));
+    background: color-mix(
+        in srgb,
+        var(--overlay-color, var(--a11y-color, #1976d2)) 18%,
+        transparent
+    );
+    box-sizing: border-box;
+}
+.overlay-box[data-level="error"] {
+    --overlay-color: #d32f2f;
+}
+.overlay-box[data-level="warning"] {
+    --overlay-color: #f57c00;
+}
+.overlay-box[data-level="info"] {
+    --overlay-color: #1976d2;
+}
+.overlay-box.overlay-box-active {
+    outline: 2px solid var(--overlay-color, currentColor);
+    z-index: 2;
+}
+
+/* A11y bundle row styling — swatches mirror the overlay colour. */
+.a11y-swatch-cell {
+    width: 16px;
+}
+.a11y-row-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    background: var(--overlay-color, #1976d2);
+}
+.a11y-row-swatch[data-level="error"] {
+    --overlay-color: #d32f2f;
+}
+.a11y-row-swatch[data-level="warning"] {
+    --overlay-color: #f57c00;
+}
+.a11y-row-swatch[data-level="info"] {
+    --overlay-color: #1976d2;
+}
+.a11y-label-stack {
+    display: flex;
+    flex-direction: column;
+}
+.a11y-row-role {
+    opacity: 0.7;
+    font-size: 11px;
+}
+.a11y-findings-cell {
+    text-align: right;
+}
+.a11y-findings-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--overlay-color, #d32f2f);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+}
+.a11y-findings-badge[data-level="error"] {
+    --overlay-color: #d32f2f;
+}
+.a11y-findings-badge[data-level="warning"] {
+    --overlay-color: #f57c00;
+}
+.a11y-findings-badge[data-level="info"] {
+    --overlay-color: #1976d2;
+}

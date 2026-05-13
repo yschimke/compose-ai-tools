@@ -868,7 +868,15 @@ export type WebviewToExtension =
           resourceName: string;
           resolvedFile: string | null;
           packageName: string | null;
-      };
+      }
+    /**
+     * Webview asks the extension host to write [text] to the system
+     * clipboard via `vscode.env.clipboard.writeText`. Used by the
+     * `<data-table>` `Copy JSON` action — `navigator.clipboard` is
+     * unavailable in some VS Code builds, so the round-trip through
+     * the host is the portable path.
+     */
+    | { command: "copyToClipboard"; text: string };
 
 /**
  * Narrow shape the History panel reads off each sidecar JSON entry. The

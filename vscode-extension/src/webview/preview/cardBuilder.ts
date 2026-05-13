@@ -18,7 +18,6 @@
 // it touches — the shared interface is the single source of truth for
 // the card's collaborator surface.
 
-import { buildA11yLegend } from "./a11yOverlay";
 import {
     applyA11yUpdate as applyA11yUpdateImpl,
     type A11yUpdateConfig as A11yUpdateConfigBase,
@@ -317,11 +316,15 @@ export function populatePreviewCard(
     // is on; the overlay layer's boxes get computed lazily once
     // the image is loaded (see buildA11yOverlay).
     if (config.earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
+        // Stamp the empty overlay layer so `buildA11yOverlay` has a
+        // container to paint into once the image loads. The inline
+        // labelled legend moved to the A11y bundle tab (#1054) so the
+        // user has a dismiss path; only the boxes-on-image remain on
+        // the card itself.
         const overlay = document.createElement("div");
         overlay.className = "a11y-overlay";
         overlay.setAttribute("aria-hidden", "true");
         imgContainer.appendChild(overlay);
-        card.appendChild(buildA11yLegend(card, p));
     }
 
     const variantLabel = buildVariantLabel(p);

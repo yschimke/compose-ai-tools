@@ -19,7 +19,7 @@
 // in `cardBuilder.ts` (initial DOM build, which the `<preview-card>`
 // shell still reaches into during `firstUpdated`).
 
-import { buildA11yLegend, buildA11yOverlay } from "./a11yOverlay";
+import { buildA11yOverlay } from "./a11yOverlay";
 import {
     buildTooltip,
     buildVariantLabel,
@@ -110,14 +110,12 @@ export function refreshCardMetadata(
         badge.remove();
     }
 
-    // Refresh the a11y legend + overlay in place when findings
-    // change (e.g. toggling a11y on turns findings from null → list,
-    // or a fresh render updates the set). Tear down the old nodes
-    // and rebuild: simpler than reconciling row-by-row for what is
-    // a rare event.
-    const existingLegend = card.querySelector(".a11y-legend");
+    // Refresh the a11y overlay layer in place when findings change
+    // (e.g. toggling a11y on turns findings from null → list, or a
+    // fresh render updates the set). The labelled legend moved to the
+    // A11y bundle tab (#1054); the card itself keeps only the
+    // boxes-on-image overlay so spatial context survives.
     const existingOverlay = card.querySelector(".a11y-overlay");
-    if (existingLegend) existingLegend.remove();
     if (existingOverlay) existingOverlay.innerHTML = "";
     if (config.earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
         const container = card.querySelector(".image-container");
@@ -127,8 +125,6 @@ export function refreshCardMetadata(
             overlay.setAttribute("aria-hidden", "true");
             container.appendChild(overlay);
         }
-        const legend = buildA11yLegend(card, p);
-        card.appendChild(legend);
         // Repopulate box geometry if the image is already loaded —
         // otherwise `paintCardCapture`'s store-write triggers a
         // re-paint via `<preview-card>`'s mapsRevision subscription.
