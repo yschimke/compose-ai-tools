@@ -565,14 +565,12 @@ function handleSetEarlyFeatures(
         document
             .querySelectorAll(".preview-diff-overlay")
             .forEach((overlay) => overlay.remove());
-        // Tear down every a11y rendering surface — finding legends, finding-
-        // overlay boxes, and the daemon-attached hierarchy overlay — and
-        // drop the cached findings/nodes so re-enabling the feature picks
-        // up fresh data from the next setPreviews / updateA11y.
+        // Tear down every a11y rendering surface — finding-overlay boxes
+        // and the daemon-attached hierarchy overlay — and drop the cached
+        // findings/nodes so re-enabling the feature picks up fresh data
+        // from the next setPreviews / updateA11y.
         document
-            .querySelectorAll(
-                ".a11y-legend, .a11y-overlay, .a11y-hierarchy-overlay",
-            )
+            .querySelectorAll(".a11y-overlay, .a11y-hierarchy-overlay")
             .forEach((el) => el.remove());
         clearCardA11yFindings();
         clearCardA11yNodes();
