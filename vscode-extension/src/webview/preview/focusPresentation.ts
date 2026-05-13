@@ -154,6 +154,8 @@ function seedBuiltInPresenters(): void {
     registerPresenter("a11y/atf", a11yFindingsPresenter);
     registerPresenter("a11y/overlay", a11yOverlayPresenter);
     registerPresenter("compose/theme", composeThemePresenter);
+    registerPresenter("compose/recomposition", composeRecompositionPresenter);
+    registerPresenter("render/trace", renderTracePresenter);
     registerPresenter("local/render/error", renderErrorPresenter);
 }
 
@@ -371,6 +373,259 @@ function composeThemePresenter(
         report: {
             title: "Theme tokens",
             summary: "Daemon data",
+            body,
+        },
+    };
+}
+
+/**
+ * `compose/recomposition` — top-N hottest scopes by recomposition count.
+ *
+ * Wire payload (see `RecompositionModels.kt`):
+ *   { mode: "delta" | "snapshot",
+ *     sinceFrameStreamId?: string,
+ *     inputSeq?: number,
+ *     nodes: [{ nodeId: string, count: number }, ...] }
+ *
+ * Empty `nodes` returns `null` so the inspector skips the Report row
+ * when the daemon answered "nothing recomposed." Until source-locations
+ * land (slot-table-derived file:line:column keys, tracked alongside
+ * `RecompositionDataProductRegistry`), there's no overlay — the legend
+ * is the primary surface and entries are kept copy-pasteable so users
+ * can paste `nodeId` into a renderer stack-trace search.
+ */
+function composeRecompositionPresenter(
+    ctx: PresenterContext,
+): ProductPresentation | null {
+    const raw = ctx.data?.("compose/recomposition");
+    if (!raw || typeof raw !== "object") return null;
+    const payload = raw as {
+        mode?: unknown;
+        sinceFrameStreamId?: unknown;
+        inputSeq?: unknown;
+        nodes?: unknown;
+    };
+    const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+    const parsed: Array<{ nodeId: string; count: number }> = [];
+    for (const n of nodes) {
+        if (!n || typeof n !== "object") continue;
+        const node = n as { nodeId?: unknown; count?: unknown };
+        if (typeof node.nodeId !== "string" || node.nodeId.length === 0) {
+            continue;
+        }
+        if (typeof node.count !== "number" || !Number.isFinite(node.count)) {
+            continue;
+        }
+        parsed.push({ nodeId: node.nodeId, count: node.count });
+    }
+    if (parsed.length === 0) return null;
+
+    parsed.sort((a, b) => b.count - a.count);
+    const TOP_N = 10;
+    const top = parsed.slice(0, TOP_N);
+    const mode = typeof payload.mode === "string" ? payload.mode : "";
+    const inputSeq =
+        typeof payload.inputSeq === "number" &&
+        Number.isFinite(payload.inputSeq)
+            ? payload.inputSeq
+            : null;
+
+    const summaryParts: string[] = [];
+    if (mode) summaryParts.push(mode);
+    if (mode === "delta" && inputSeq !== null) {
+        summaryParts.push(`input ${inputSeq}`);
+    }
+    summaryParts.push(
+        parsed.length === 1 ? "1 node" : `${parsed.length} nodes`,
+    );
+    const summary = summaryParts.join(" · ");
+
+    const entries: LegendEntry[] = top.map((node, idx) => ({
+        id: "recomp-" + idx,
+        label: node.nodeId,
+        detail:
+            node.count === 1
+                ? "1 recomposition"
+                : `${node.count} recompositions`,
+        level: "info",
+    }));
+
+    const body = document.createElement("div");
+    body.className = "focus-report-recomposition";
+
+    const header = document.createElement("div");
+    header.className = "focus-report-recomposition-header";
+    if (mode) {
+        const badge = document.createElement("span");
+        badge.className = "focus-report-recomposition-mode";
+        badge.dataset.mode = mode;
+        badge.textContent = mode;
+        header.appendChild(badge);
+    }
+    if (mode === "delta" && inputSeq !== null) {
+        const seq = document.createElement("span");
+        seq.className = "focus-report-recomposition-inputseq";
+        seq.textContent = `inputSeq ${inputSeq}`;
+        header.appendChild(seq);
+    }
+    if (header.hasChildNodes()) body.appendChild(header);
+
+    const list = document.createElement("ol");
+    list.className = "focus-report-list focus-report-recomposition-list";
+    top.forEach((node, idx) => {
+        const li = document.createElement("li");
+        li.dataset.legendId = "recomp-" + idx;
+        const code = document.createElement("code");
+        code.className = "focus-report-recomposition-nodeid";
+        code.textContent = node.nodeId;
+        const count = document.createElement("span");
+        count.className = "focus-report-recomposition-count";
+        count.textContent = ` · ${node.count}`;
+        li.appendChild(code);
+        li.appendChild(count);
+        list.appendChild(li);
+    });
+    body.appendChild(list);
+
+    if (parsed.length > TOP_N) {
+        const more = document.createElement("div");
+        more.className = "focus-report-recomposition-more";
+        more.textContent = `+${parsed.length - TOP_N} more`;
+        body.appendChild(more);
+    }
+
+    return {
+        legend: {
+            title: "Recomposition",
+            summary,
+            entries,
+        },
+        report: {
+            title: "Recomposition",
+            summary,
+            body,
+        },
+    };
+}
+
+/**
+ * `render/trace` — phase timeline + total + metrics fallthrough.
+ *
+ * Wire payload (see `RenderTraceDataProduct.kt`):
+ *   { totalMs: number,
+ *     phases: [{ name: string, startMs: number, durationMs: number }, ...],
+ *     metrics: Record<string, number | string> }
+ *
+ * Today the daemon emits a single `render` phase covering the whole
+ * capture; multi-phase (compose / measure / draw / capture) is planned
+ * and the same code paints the breakdown when it lands. Empty `phases`
+ * AND empty `metrics` returns `null`. `metrics.tookMs` is suppressed
+ * because it's redundant with `totalMs`.
+ */
+function renderTracePresenter(
+    ctx: PresenterContext,
+): ProductPresentation | null {
+    const raw = ctx.data?.("render/trace");
+    if (!raw || typeof raw !== "object") return null;
+    const payload = raw as {
+        totalMs?: unknown;
+        phases?: unknown;
+        metrics?: unknown;
+    };
+    const totalMs =
+        typeof payload.totalMs === "number" && Number.isFinite(payload.totalMs)
+            ? payload.totalMs
+            : null;
+    const rawPhases = Array.isArray(payload.phases) ? payload.phases : [];
+    const phases: Array<{ name: string; startMs: number; durationMs: number }> =
+        [];
+    for (const p of rawPhases) {
+        if (!p || typeof p !== "object") continue;
+        const ph = p as {
+            name?: unknown;
+            startMs?: unknown;
+            durationMs?: unknown;
+        };
+        if (typeof ph.name !== "string" || ph.name.length === 0) continue;
+        if (
+            typeof ph.durationMs !== "number" ||
+            !Number.isFinite(ph.durationMs)
+        ) {
+            continue;
+        }
+        const startMs =
+            typeof ph.startMs === "number" && Number.isFinite(ph.startMs)
+                ? ph.startMs
+                : 0;
+        phases.push({ name: ph.name, startMs, durationMs: ph.durationMs });
+    }
+    const rawMetrics =
+        payload.metrics && typeof payload.metrics === "object"
+            ? (payload.metrics as Record<string, unknown>)
+            : {};
+    const metricsEntries: Array<[string, string | number]> = [];
+    for (const key of Object.keys(rawMetrics).sort()) {
+        if (key === "tookMs") continue; // redundant with totalMs
+        const value = rawMetrics[key];
+        if (typeof value === "string" || typeof value === "number") {
+            metricsEntries.push([key, value]);
+        }
+    }
+
+    if (phases.length === 0 && metricsEntries.length === 0) return null;
+
+    const body = document.createElement("div");
+    body.className = "focus-report-render-trace";
+
+    if (phases.length > 0) {
+        const maxDuration = phases.reduce(
+            (acc, p) => (p.durationMs > acc ? p.durationMs : acc),
+            0,
+        );
+        const chartScale = totalMs && totalMs > 0 ? totalMs : maxDuration;
+        const bar = document.createElement("div");
+        bar.className = "focus-report-render-trace-bar";
+        for (const phase of phases) {
+            const seg = document.createElement("div");
+            seg.className = "focus-report-render-trace-phase";
+            const pct =
+                chartScale > 0
+                    ? Math.max(
+                          0,
+                          Math.min(100, (phase.durationMs / chartScale) * 100),
+                      )
+                    : 0;
+            seg.style.width = pct + "%";
+            seg.style.background = "var(--vscode-progressBar-background)";
+            seg.title = `${phase.name}: ${phase.durationMs} ms`;
+            const label = document.createElement("span");
+            label.className = "focus-report-render-trace-phase-label";
+            label.textContent = `${phase.name} · ${phase.durationMs} ms`;
+            seg.appendChild(label);
+            bar.appendChild(seg);
+        }
+        body.appendChild(bar);
+    }
+
+    if (metricsEntries.length > 0) {
+        const dl = document.createElement("dl");
+        dl.className = "focus-report-render-trace-metrics";
+        for (const [key, value] of metricsEntries) {
+            const dt = document.createElement("dt");
+            dt.textContent = key;
+            const dd = document.createElement("dd");
+            dd.textContent = String(value);
+            dl.appendChild(dt);
+            dl.appendChild(dd);
+        }
+        body.appendChild(dl);
+    }
+
+    const summary = totalMs !== null ? `${totalMs} ms` : undefined;
+    return {
+        report: {
+            title: "Render trace",
+            summary,
             body,
         },
     };
