@@ -10,6 +10,7 @@ import {
     DiscoveryUpdatedParams,
     FileChangedParams,
     HistoryAddedParams,
+    HistoryPrunedParams,
     HistoryDiffParams,
     HistoryDiffResult,
     HistoryListParams,
@@ -83,6 +84,9 @@ export interface DaemonClientEvents {
     /** Phase H2 — daemon emits this after writing each render's sidecar +
      *  index entry. Subscribers avoid polling `history/list`. */
     onHistoryAdded?: (params: HistoryAddedParams) => void;
+    /** Phase H4 — daemon emits this after a non-empty auto- or manual-prune
+     *  pass. Subscribers drop the removed IDs from any in-memory caches. */
+    onHistoryPruned?: (params: HistoryPrunedParams) => void;
     /** `composestream/1` — one frame on a live stream. See
      *  docs/daemon/STREAMING.md. The client routes these to the active
      *  webview's painter via the StreamClient + canvas pipeline. */
@@ -466,6 +470,9 @@ export class DaemonClient {
                 break;
             case "historyAdded":
                 this.events.onHistoryAdded?.(params as HistoryAddedParams);
+                break;
+            case "historyPruned":
+                this.events.onHistoryPruned?.(params as HistoryPrunedParams);
                 break;
             case "streamFrame":
                 this.events.onStreamFrame?.(params as StreamFrameParams);

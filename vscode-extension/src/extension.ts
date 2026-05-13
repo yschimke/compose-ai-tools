@@ -9,6 +9,7 @@ import {
     TaskCancelledError,
 } from "./gradleService";
 import { JdkImageError } from "./jdkImageErrorDetector";
+import { ClassVersionError } from "./classVersionErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import {
     BUILD_SCRIPT_NAMES,
@@ -218,6 +219,9 @@ let warnedMissingPluginThisSession = false;
 /** Same idea for the jlink-missing notification: save-driven refreshes would
  *  otherwise re-surface it on every build after the user dismissed it. */
 let warnedJdkImageThisSession = false;
+/** Same idea for the class-version mismatch (build-logic compiled on a newer
+ *  JDK than Gradle is running). */
+let warnedClassVersionThisSession = false;
 // Decide whether a file "probably wants previews" with the plugin off. Kept
 // deliberately loose: the file just needs to contain the substring "Preview"
 // (covers `@Preview`, `@PreviewLightDark`, preview-tooling imports, and
@@ -289,6 +293,35 @@ function showJdkImageRemediation(err: JdkImageError): void {
                 );
             } else if (action === DOCS) {
                 void vscode.env.openExternal(vscode.Uri.parse(JDK_DOCS_URL));
+            }
+        });
+}
+
+/**
+ * Show the remediation notification for a class-version mismatch — Gradle is
+ * running on an older JDK than the one that compiled the project's build-logic
+ * / plugin classes. The "Open JDK setting" action opens
+ * `java.import.gradle.java.home`, the setting `vscjava.vscode-gradle` reads.
+ * De-duped per session.
+ */
+function showClassVersionRemediation(err: ClassVersionError): void {
+    if (warnedClassVersionThisSession) {
+        return;
+    }
+    warnedClassVersionThisSession = true;
+    const message =
+        `Compose Preview: Gradle needs Java ${err.finding.compiledJavaVersion}+ ` +
+        `to load ${err.finding.className}, but is running on Java ${err.finding.runtimeJavaVersion}. ` +
+        "Point Gradle at a newer JDK.";
+    const OPEN_SETTING = "Open JDK setting";
+    void vscode.window
+        .showErrorMessage(message, OPEN_SETTING)
+        .then((action) => {
+            if (action === OPEN_SETTING) {
+                void vscode.commands.executeCommand(
+                    "workbench.action.openSettings",
+                    "java.import.gradle.java.home",
+                );
             }
         });
 }
@@ -682,6 +715,14 @@ export async function activate(
                 // Phase H7 — daemon push: a fresh render landed and was archived. History is
                 // now focus-view-only; the live panel resolves it on demand when the user
                 // asks for a diff from the focused preview.
+                void params;
+            },
+            onHistoryPruned: (_moduleId, params) => {
+                // Counterpart to onHistoryAdded. Same focus-view-only policy — the live
+                // panel re-fetches on demand, so we don't push pruned IDs anywhere. Wired
+                // to silence "ignoring unknown notification: historyPruned" in the log and
+                // to keep the protocol surface complete if H14's cross-module timeline
+                // resurrects in-memory history caching.
                 void params;
             },
             onStreamFrame: (_moduleId, params) => {
@@ -1106,7 +1147,16 @@ export async function activate(
     // Refresh applied-markers in the background so future module resolution can
     // use the authoritative `applied.json` path. Doctor stays explicit via
     // `composePreview.runDoctor`.
-    void gradleService.bootstrapAppliedMarkers();
+    void gradleService.bootstrapAppliedMarkers((err) => {
+        // Bootstrap is fire-and-forget and the scan fallback covers most
+        // failures, but JDK-shape failures will keep biting on every render
+        // — surface them once, here, so users aren't stuck on opaque output.
+        if (err instanceof ClassVersionError) {
+            showClassVersionRemediation(err);
+        } else if (err instanceof JdkImageError) {
+            showJdkImageRemediation(err);
+        }
+    });
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {
@@ -3558,6 +3608,21 @@ async function refresh(
             });
             panel.postMessage({ command: "clearProgress" });
             showJdkImageRemediation(err);
+            return "failed";
+        }
+        if (err instanceof ClassVersionError) {
+            logLine(
+                `FAILED (class version): ${err.finding.className} needs Java ${err.finding.compiledJavaVersion}+, ` +
+                    `Gradle is on Java ${err.finding.runtimeJavaVersion}`,
+            );
+            panel.postMessage({
+                command: "showMessage",
+                text:
+                    `Gradle needs Java ${err.finding.compiledJavaVersion}+ to load this project's build classes; ` +
+                    `it is running on Java ${err.finding.runtimeJavaVersion}. Configure a newer JDK to render previews.`,
+            });
+            panel.postMessage({ command: "clearProgress" });
+            showClassVersionRemediation(err);
             return "failed";
         }
         if (err instanceof KotlinCompileError) {
