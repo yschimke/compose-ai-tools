@@ -40,6 +40,12 @@ import { BundleExpander } from "./components/BundleExpander";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
+import {
+    computePerformanceBundleData,
+    performanceTableColumns,
+    renderPerfPlaceholder,
+    renderPerformanceSections,
+} from "./performanceBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -568,6 +574,59 @@ export class PreviewApp extends LitElement {
             bundleBodies.set("a11y", b);
             return b;
         };
+        // Performance bundle body is shaped differently from the others
+        // — it stacks three sub-sections (recomposition table, render
+        // trace bar chart, Perfetto handoff) under the shared expander.
+        // We reuse the expander wiring from `buildBundleBody` but route
+        // section painting through `renderPerformanceSections` instead
+        // of the single `<data-table>` slot the other bundles use.
+        interface PerformanceBody {
+            wrapper: HTMLElement;
+            expander: BundleExpander;
+            recompTable: DataTable<unknown>;
+            host: HTMLElement;
+        }
+        let performanceCachedBody: PerformanceBody | null = null;
+        const performanceBody = (): PerformanceBody => {
+            if (performanceCachedBody) return performanceCachedBody;
+            const wrapper = document.createElement("div");
+            wrapper.className = "bundle-tab-body";
+            wrapper.dataset.bundle = "performance";
+            const expander = document.createElement(
+                "bundle-expander",
+            ) as BundleExpander;
+            expander.addEventListener("kind-toggled", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/BundleExpander").BundleKindToggledDetail
+                    >
+                ).detail;
+                bundleController.setKindEnabled(
+                    det.bundleId,
+                    det.kind,
+                    det.enabled,
+                );
+            });
+            // Recomposition uses the shared `<data-table>` so row hover
+            // and copy-JSON parity with the other bundles is automatic.
+            // Render trace + Perfetto don't fit the row model, so they
+            // paint their own DOM into `host` below.
+            const recompTable = document.createElement(
+                "data-table",
+            ) as DataTable<unknown>;
+            recompTable.heading = "Recomposition";
+            recompTable.setColumns(
+                performanceTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            const host = document.createElement("section");
+            host.className = "perf-bundle-host";
+            wrapper.appendChild(expander);
+            wrapper.appendChild(host);
+            performanceCachedBody = { wrapper, expander, recompTable, host };
+            return performanceCachedBody;
+        };
         const refreshExpanderFor = (id: BundleId): void => {
             const body = bundleBodies.get(id);
             const bundle = getBundle(id);
@@ -605,6 +664,68 @@ export class PreviewApp extends LitElement {
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
         };
+        const refreshPerformanceBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const recompPayload = byKind?.get("compose/recomposition") ?? null;
+            const tracePayload = byKind?.get("render/trace") ?? null;
+            const perfettoPayload =
+                byKind?.get("render/composeAiTrace") ?? null;
+            const data = computePerformanceBundleData(
+                recompPayload,
+                tracePayload,
+                perfettoPayload,
+            );
+            const body = performanceBody();
+            // Sync the expander row regardless of payload — it's the
+            // user's only way to turn the default-OFF kinds on.
+            // `refreshExpanderFor` needs the entry registered in
+            // `bundleBodies` so it can read the cached BundleBody, but
+            // performance has its own cache. Hand-roll the equivalent
+            // setState call here.
+            const bundleDescriptor = getBundle("performance");
+            if (bundleDescriptor) {
+                body.expander.setState({
+                    bundleId: "performance",
+                    kinds: bundleDescriptor.kinds,
+                    enabledKinds: bundleController
+                        .state()
+                        .enabledKinds("performance"),
+                });
+            }
+            const enabledKinds = bundleController
+                .state()
+                .enabledKinds("performance");
+            const hasAnyPayload =
+                data.recomposition !== null ||
+                data.renderTrace !== null ||
+                data.composeAiTrace !== null;
+            if (enabledKinds.length === 0 && !hasAnyPayload) {
+                // Placeholder hint — every kind in this bundle is
+                // medium+ cost, so we don't auto-enable one on chip
+                // press. The user opens Configure… and picks.
+                renderPerfPlaceholder(body.host);
+            } else {
+                renderPerformanceSections(
+                    body.host,
+                    data,
+                    target,
+                    body.recompTable,
+                    (text) =>
+                        vscode.postMessage({
+                            command: "copyToClipboard",
+                            text,
+                        }),
+                    {
+                        recomposition: recompPayload,
+                        renderTrace: tracePayload,
+                        composeAiTrace: perfettoPayload,
+                    },
+                );
+            }
+            dataTabs.setTabBody("performance", body.wrapper);
+        };
         const reflectBundleState = (): void => {
             const s = bundleController.state();
             bundleChipBar.setState({
@@ -617,6 +738,9 @@ export class PreviewApp extends LitElement {
                 activeTab: s.activeTab,
             });
             if (s.activeBundles.includes("a11y")) refreshA11yBundle();
+            if (s.activeBundles.includes("performance")) {
+                refreshPerformanceBundle();
+            }
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
@@ -969,13 +1093,25 @@ export class PreviewApp extends LitElement {
                     inspector.render(focused);
                 }
                 // Refresh bundle tab bodies that depend on this preview's
-                // data. Today only A11y has a bundle presenter; future
-                // clusters add their own refresh.
-                if (
-                    bundleController.state().activeBundles.includes("a11y") &&
-                    currentBundleTarget() === previewId
-                ) {
+                // data. Each bundle gates on its own active flag so a
+                // preview that ships unrelated kinds doesn't redraw
+                // every open tab.
+                const activeBundles = bundleController.state().activeBundles;
+                const matchesTarget = currentBundleTarget() === previewId;
+                if (matchesTarget && activeBundles.includes("a11y")) {
                     refreshA11yBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("performance") &&
+                    dataProducts.some(
+                        (dp) =>
+                            dp.kind === "compose/recomposition" ||
+                            dp.kind === "render/trace" ||
+                            dp.kind === "render/composeAiTrace",
+                    )
+                ) {
+                    refreshPerformanceBundle();
                 }
             },
             focusOnCard,
