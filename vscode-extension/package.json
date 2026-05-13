@@ -125,6 +125,11 @@
                     "default": "debug",
                     "description": "Build variant to use for preview rendering"
                 },
+                "composePreview.minimal.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Minimal mode: drive only the Gradle plugin. The preview daemon, data extensions (a11y overlays, hierarchy, focus-mode inspector layers) and live/interactive previews are all disabled. Renders do not run automatically on save — click the refresh button (or run `Compose Preview: Refresh Previews` / `Render All Previews`) to render. Requires a window reload to take effect."
+                },
                 "composePreview.daemon.enabled": {
                     "type": "boolean",
                     "default": true,
