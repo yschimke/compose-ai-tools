@@ -271,12 +271,21 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // unaffected.
     val normalized = normalizeRenderOutputs(deduped)
 
+    // Build the generic v2 pointer map and a single back-compat mirror for v1 consumers. Today
+    // only `a11y` produces a canned report; new entries (theme rollups, recomposition summaries)
+    // are additive — adding a key here is the whole plugin-side change, and the CLI's strategy
+    // pattern picks them up without any per-feature branching here.
+    val extensionReports = buildMap {
+      if (accessibilityEnabled.get()) put("a11y", "accessibility.json")
+    }
+    @Suppress("DEPRECATION")
     val manifest =
       PreviewManifest(
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
-        accessibilityReport = if (accessibilityEnabled.get()) "accessibility.json" else null,
+        dataExtensionReports = extensionReports,
+        accessibilityReport = extensionReports["a11y"],
       )
 
     val outFile = outputFile.get().asFile

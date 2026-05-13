@@ -70,6 +70,7 @@ fun main(args: Array<String>) {
     "list" -> ListCommand(allArgs).run()
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
+    "extensions" -> ExtensionsCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "devices" -> DevicesCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
@@ -103,6 +104,7 @@ private fun printUsage() {
       render           Render previews; with --output copies a single match to disk
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
+      extensions       Introspect registered data extensions (`extensions list`)
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
       share-gist       Create a gist from a markdown file plus image attachments

@@ -218,6 +218,7 @@ class AccessibilityAndroidFunctionalTest {
   private fun commonArgs(vararg tasks: String): Array<String> =
     arrayOf(*tasks, "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true", "--stacktrace")
 
+  @Suppress("DEPRECATION")
   @Test
   fun `renderAllPreviews produces the standard a11y artefact set`() {
     assumeTrue(
@@ -282,6 +283,10 @@ class AccessibilityAndroidFunctionalTest {
     val manifestFile = File(projectDir, "build/compose-previews/previews.json")
     assertThat(manifestFile.exists()).isTrue()
     val manifest = json.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
+    // Both wire formats: v2 strategy-keyed map (new CLI / VS Code) and legacy `accessibilityReport`
+    // mirror (one release of back-compat for older consumers). Drop the mirror assertion when the
+    // consumer floor moves past v1.
+    assertThat(manifest.dataExtensionReports).containsExactly("a11y", "accessibility.json")
     assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
 
     // 2. Aggregated `accessibility.json`. Walked through `JsonObject` rather than a typed DTO:

@@ -109,6 +109,32 @@ class AccessibilityFunctionalTest {
     return json.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
   }
 
+  @Suppress("DEPRECATION")
+  @Test
+  fun `manifest writes both v2 dataExtensionReports and the legacy alias when a11y is on`() {
+    // Regression: the wire format gained `dataExtensionReports: Map<String, String>` keyed by
+    // extension id in the strategy refactor. The plugin still writes the deprecated
+    // `accessibilityReport` field as a mirror so older CLI / VS Code consumers keep working;
+    // both should be populated when a11y is opted in, both null/empty when off.
+    val projectDir = createTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "discoverPreviews",
+          "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
+        )
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    val manifest = projectDir.readManifest()
+    assertThat(manifest.dataExtensionReports).containsExactly("a11y", "accessibility.json")
+    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
+  }
+
+  @Suppress("DEPRECATION")
   @Test
   fun `accessibilityReport pointer defaults to null when a11y is off`() {
     val projectDir = createTestProject()
@@ -123,11 +149,14 @@ class AccessibilityFunctionalTest {
     assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
-    // Default: a11y is opt-in. The CLI / VS Code treat a null pointer as "feature off" and don't
-    // probe the filesystem for a stale `accessibility.json`.
+    // Default: a11y is opt-in. The CLI / VS Code treat a null pointer / empty map as "feature
+    // off" and don't probe the filesystem for a stale `accessibility.json`. Both the v2 map and
+    // the v1 alias must be empty in the off state.
+    assertThat(manifest.dataExtensionReports).isEmpty()
     assertThat(manifest.accessibilityReport).isNull()
   }
 
+  @Suppress("DEPRECATION")
   @Test
   fun `accessibilityReport pointer is populated when a11y is opted in via Gradle property`() {
     val projectDir = createTestProject()
@@ -151,6 +180,7 @@ class AccessibilityFunctionalTest {
     assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
   }
 
+  @Suppress("DEPRECATION")
   @Test
   fun `accessibilityReport pointer is populated when generic extension form opts in`() {
     // Regression test for the snapshot-timing footgun in `resolveA11yEnabled`: an earlier draft
@@ -208,6 +238,7 @@ class AccessibilityFunctionalTest {
     assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
   }
 
+  @Suppress("DEPRECATION")
   @Test
   fun `a11y opt-in round-trips through the configuration cache`() {
     // The lazy-`Provider { project.extension.findByName(...) }` shape we briefly considered
