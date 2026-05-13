@@ -33,6 +33,7 @@ import {
     WebviewToExtension,
 } from "./types";
 import { formatRenderErrorMessage } from "./renderError";
+import { openResourceFile } from "./resourceFileResolver";
 import { captureLabel, withDataProductCaptures } from "./captureLabels";
 import { DaemonGate } from "./daemon/daemonGate";
 import { DataProductAttachment } from "./daemon/daemonProtocol";
@@ -3885,6 +3886,52 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                     msg.enabled,
                 );
             }
+            break;
+        case "openResourceFile":
+            void openResourceFile(
+                {
+                    resourceType: msg.resourceType,
+                    resourceName: msg.resourceName,
+                    resolvedFile: msg.resolvedFile,
+                    packageName: msg.packageName,
+                },
+                {
+                    fs: {
+                        findFiles: async (include, exclude, maxResults) => {
+                            const uris = await vscode.workspace.findFiles(
+                                include,
+                                exclude ?? undefined,
+                                maxResults,
+                            );
+                            return uris.map((u) => u.fsPath);
+                        },
+                        readTextFile: async (absolutePath) => {
+                            const doc =
+                                await vscode.workspace.openTextDocument(
+                                    absolutePath,
+                                );
+                            return doc.getText();
+                        },
+                        fileExists: (filePath) => {
+                            try {
+                                return fs.existsSync(filePath);
+                            } catch {
+                                return false;
+                            }
+                        },
+                        isAbsolutePath: (filePath) => path.isAbsolute(filePath),
+                    },
+                    openTextDocument: (absolutePath) =>
+                        Promise.resolve(
+                            vscode.workspace.openTextDocument(
+                                vscode.Uri.file(absolutePath),
+                            ),
+                        ),
+                    showTextDocument: (doc) =>
+                        Promise.resolve(vscode.window.showTextDocument(doc)),
+                    logLine: (message) => logLine(message),
+                },
+            );
             break;
     }
 }

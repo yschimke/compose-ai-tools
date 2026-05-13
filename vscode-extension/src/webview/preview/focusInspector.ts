@@ -70,6 +70,11 @@ export interface FocusInspectorConfig {
     getA11yNodes(previewId: string): readonly AccessibilityNode[];
     /** Latest daemon data product payload for preview/kind. */
     getDataProduct?(previewId: string, kind: string): unknown;
+    /** Forward a `WebviewToExtension` message back to the host. Used by
+     *  presenters that surface deep-links — e.g. `resources/used`'s
+     *  jump-to-resource cells. Optional so existing test harnesses
+     *  don't have to thread a stub through every case. */
+    postMessage?(msg: unknown): void;
     /** `previewId` whose a11y overlay subscription is currently on. */
     getA11yOverlayId(): string | null;
     /** Whether [previewId] is currently in the live (interactive) set. */
@@ -713,6 +718,7 @@ export class FocusInspectorController {
             nodes,
             data: (kind: string) =>
                 this.config.getDataProduct?.(previewId, kind),
+            postMessage: this.config.postMessage,
         };
         const out: { kind: string; presentation: ProductPresentation }[] = [];
         // The error presenter is implicit: we always invoke it so a

@@ -51,6 +51,7 @@ function ctx(overrides?: {
     findings?: readonly AccessibilityFinding[];
     cardDataset?: Record<string, string>;
     data?: (kind: string) => unknown;
+    postMessage?: (msg: unknown) => void;
 }) {
     const card = document.createElement("div");
     if (overrides?.cardDataset) {
@@ -62,6 +63,7 @@ function ctx(overrides?: {
         findings: overrides?.findings ?? [],
         nodes: overrides?.nodes ?? [],
         data: overrides?.data,
+        postMessage: overrides?.postMessage,
     };
 }
 
@@ -168,6 +170,111 @@ describe("focusPresentation registry", () => {
         const img = result!.report!.body.querySelector("img");
         assert.ok(img);
         assert.strictEqual(img!.src, "data:image/png;base64,AAAA");
+    });
+
+    it("resources/used presenter returns null without data", () => {
+        const presenter = getPresenter("resources/used")!;
+        assert.ok(presenter);
+        assert.strictEqual(presenter(ctx()), null);
+        // Empty / missing references → null so the inspector renders the
+        // pending placeholder rather than an empty table.
+        assert.strictEqual(
+            presenter(ctx({ data: () => ({ references: [] }) })),
+            null,
+        );
+        assert.strictEqual(
+            presenter(ctx({ data: () => ({ other: [] }) })),
+            null,
+        );
+    });
+
+    it("resources/used presenter renders a table with one row per reference", () => {
+        const presenter = getPresenter("resources/used")!;
+        const result = presenter(
+            ctx({
+                data: () => ({
+                    references: [
+                        {
+                            resourceType: "color",
+                            resourceName: "primary",
+                            packageName: "com.example.app",
+                            resolvedValue: "#FF112233",
+                            resolvedFile: "/abs/res/values/colors.xml",
+                            consumers: [{ nodeId: "a" }, { nodeId: "b" }],
+                        },
+                        {
+                            resourceType: "string",
+                            resourceName: "hello",
+                            packageName: "com.example.app",
+                            resolvedValue: "Hello",
+                            resolvedFile: null,
+                            consumers: [],
+                        },
+                    ],
+                }),
+            }),
+        );
+        assert.ok(result);
+        assert.ok(result!.report);
+        const table = result!.report!.body.querySelector("table")!;
+        assert.ok(table);
+        const rows = table.querySelectorAll("tbody tr");
+        assert.strictEqual(rows.length, 2);
+        // First row: color with swatch + value.
+        const swatch = rows[0].querySelector(".focus-report-swatch-sample");
+        assert.ok(swatch);
+        assert.strictEqual(
+            rows[0].querySelector(".focus-report-swatch-value")?.textContent,
+            "#FF112233",
+        );
+        // resolvedFile cell is a button (deep-link).
+        const fileBtn = rows[0]
+            .querySelectorAll("td")[4]
+            .querySelector("button");
+        assert.ok(fileBtn);
+        assert.strictEqual(fileBtn!.textContent, "/abs/res/values/colors.xml");
+        assert.strictEqual(rows[0].querySelectorAll("td")[5].textContent, "2");
+        // Second row: no resolvedFile → resourceName is the deep-link.
+        const nameBtn = rows[1]
+            .querySelectorAll("td")[1]
+            .querySelector("button");
+        assert.ok(nameBtn);
+        assert.strictEqual(nameBtn!.textContent, "hello");
+        assert.strictEqual(rows[1].querySelectorAll("td")[5].textContent, "");
+    });
+
+    it("resources/used presenter posts openResourceFile on cell click", () => {
+        const presenter = getPresenter("resources/used")!;
+        const posted: unknown[] = [];
+        const result = presenter(
+            ctx({
+                data: () => ({
+                    references: [
+                        {
+                            resourceType: "drawable",
+                            resourceName: "ic_launcher",
+                            packageName: "com.example.app",
+                            resolvedValue: null,
+                            resolvedFile:
+                                "/abs/res/drawable-xxhdpi/ic_launcher.png",
+                            consumers: [],
+                        },
+                    ],
+                }),
+                postMessage: (msg) => posted.push(msg),
+            }),
+        );
+        assert.ok(result);
+        const btn = result!.report!.body.querySelector("button")!;
+        btn.dispatchEvent(new Event("click"));
+        assert.strictEqual(posted.length, 1);
+        assert.deepStrictEqual(posted[0], {
+            command: "openResourceFile",
+            resourceType: "drawable",
+            resourceName: "ic_launcher",
+            resolvedFile: "/abs/res/drawable-xxhdpi/ic_launcher.png",
+            packageName: "com.example.app",
+        });
     });
 
     it("compose/recomposition returns null when no payload is cached", () => {

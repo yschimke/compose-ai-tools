@@ -51,6 +51,11 @@ export interface PresenterContext {
     nodes: readonly AccessibilityNode[];
     /** Latest daemon data-product payload for this kind, if any. */
     data?(kind: string): unknown;
+    /** Post a `WebviewToExtension` message back to the host. Optional so
+     *  presenter unit tests don't need to thread a stub through every
+     *  case — presenters that want deep-link behaviour should null-check
+     *  before calling. */
+    postMessage?(msg: unknown): void;
 }
 
 /** Bag of contributions a presenter can make to one or more surfaces.
@@ -154,6 +159,7 @@ function seedBuiltInPresenters(): void {
     registerPresenter("a11y/atf", a11yFindingsPresenter);
     registerPresenter("a11y/overlay", a11yOverlayPresenter);
     registerPresenter("compose/theme", composeThemePresenter);
+    registerPresenter("resources/used", resourcesUsedPresenter);
     registerPresenter("compose/recomposition", composeRecompositionPresenter);
     registerPresenter("render/trace", renderTracePresenter);
     registerPresenter("local/render/error", renderErrorPresenter);
@@ -379,6 +385,63 @@ function composeThemePresenter(
 }
 
 /**
+ * `resources/used` — Android resources resolved while rendering. Surfaces
+ * a single `<table>` Report keyed by `(resourceType, resourceName,
+ * packageName)`, with deep-link cells that post `openResourceFile` so the
+ * extension host can jump to the values XML entry (string/color/dimen/…)
+ * or open the binary asset (drawable/mipmap/raw).
+ *
+ * Hover-overlay box correlation is gated on `resources/consumers` joins
+ * with `compose/semantics` bounds — out of scope for this presenter
+ * today, so the Legend / overlay surfaces stay empty. The table is the
+ * useful artefact: it's the surface that turns "what did this preview
+ * pull from `res/`?" from a build-output spelunk into one click.
+ */
+function resourcesUsedPresenter(
+    ctx: PresenterContext,
+): ProductPresentation | null {
+    const raw = ctx.data?.("resources/used");
+    if (!raw || typeof raw !== "object") return null;
+    const references = (raw as { references?: unknown }).references;
+    if (!Array.isArray(references) || references.length === 0) return null;
+
+    const rows: ResourceReferenceRow[] = [];
+    for (const item of references) {
+        if (!item || typeof item !== "object") continue;
+        const ref = item as Record<string, unknown>;
+        const resourceType =
+            typeof ref.resourceType === "string" ? ref.resourceType : "";
+        const resourceName =
+            typeof ref.resourceName === "string" ? ref.resourceName : "";
+        if (!resourceType || !resourceName) continue;
+        rows.push({
+            resourceType,
+            resourceName,
+            packageName:
+                typeof ref.packageName === "string" ? ref.packageName : "",
+            resolvedValue:
+                typeof ref.resolvedValue === "string"
+                    ? ref.resolvedValue
+                    : null,
+            resolvedFile:
+                typeof ref.resolvedFile === "string" ? ref.resolvedFile : null,
+            consumerCount: countConsumers(ref.consumers),
+        });
+    }
+    if (rows.length === 0) return null;
+
+    const body = renderResourcesUsedTable(rows, ctx);
+    return {
+        report: {
+            title: "Resources used",
+            summary:
+                rows.length + " reference" + (rows.length === 1 ? "" : "s"),
+            body,
+        },
+    };
+}
+
+/**
  * `compose/recomposition` — top-N hottest scopes by recomposition count.
  *
  * Wire payload (see `RecompositionModels.kt`):
@@ -506,6 +569,175 @@ function composeRecompositionPresenter(
             body,
         },
     };
+}
+
+interface ResourceReferenceRow {
+    resourceType: string;
+    resourceName: string;
+    packageName: string;
+    resolvedValue: string | null;
+    resolvedFile: string | null;
+    consumerCount: number;
+}
+
+function countConsumers(value: unknown): number {
+    if (!Array.isArray(value)) return 0;
+    return value.length;
+}
+
+/** Hex shapes the swatch cell recognises — `#RGB`, `#RGBA`, `#RRGGBB`,
+ *  `#AARRGGBB`. The Kotlin recorder normalises colours to `#AARRGGBB`
+ *  via `"#%08X".format(value)`, but be lenient about other shapes the
+ *  daemon (or a future producer) might emit. */
+const RESOURCE_HEX_COLOUR_RE =
+    /^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+function renderResourcesUsedTable(
+    rows: readonly ResourceReferenceRow[],
+    ctx: PresenterContext,
+): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className =
+        "focus-report-generic-wrap focus-report-resources-used-wrap";
+    const table = document.createElement("table");
+    table.className = "focus-report-generic focus-report-table";
+    table.dataset.kind = "resources/used";
+
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const col of [
+        "resourceType",
+        "resourceName",
+        "packageName",
+        "resolvedValue",
+        "resolvedFile",
+        "consumers",
+    ]) {
+        const th = document.createElement("th");
+        th.textContent = col;
+        headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+        tbody.appendChild(renderResourcesRow(row, ctx));
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
+}
+
+function renderResourcesRow(
+    row: ResourceReferenceRow,
+    ctx: PresenterContext,
+): HTMLElement {
+    const tr = document.createElement("tr");
+    tr.dataset.resourceType = row.resourceType;
+    tr.dataset.resourceName = row.resourceName;
+
+    appendCell(tr, row.resourceType);
+
+    const nameCell = document.createElement("td");
+    // When no resolvedFile, fall back to making the name clickable —
+    // the host's resolver will glob the workspace for a match.
+    if (row.resolvedFile) {
+        nameCell.textContent = row.resourceName;
+    } else {
+        nameCell.appendChild(buildResourceLink(row.resourceName, row, ctx));
+    }
+    tr.appendChild(nameCell);
+
+    appendCell(tr, row.packageName);
+
+    tr.appendChild(buildResolvedValueCell(row));
+
+    const fileCell = document.createElement("td");
+    if (row.resolvedFile) {
+        fileCell.appendChild(buildResourceLink(row.resolvedFile, row, ctx));
+    } else {
+        fileCell.textContent = "";
+    }
+    tr.appendChild(fileCell);
+
+    appendCell(tr, row.consumerCount > 0 ? String(row.consumerCount) : "");
+    return tr;
+}
+
+function appendCell(tr: HTMLElement, text: string): void {
+    const td = document.createElement("td");
+    td.textContent = text;
+    tr.appendChild(td);
+}
+
+function buildResolvedValueCell(row: ResourceReferenceRow): HTMLElement {
+    const td = document.createElement("td");
+    const value = row.resolvedValue;
+    if (!value) {
+        return td;
+    }
+    if (row.resourceType === "color" && RESOURCE_HEX_COLOUR_RE.test(value)) {
+        const swatch = document.createElement("span");
+        swatch.className = "focus-report-swatch-sample";
+        swatch.style.backgroundColor = value;
+        swatch.title = value;
+        td.appendChild(swatch);
+        const text = document.createElement("span");
+        text.className = "focus-report-swatch-value";
+        text.textContent = value;
+        td.appendChild(text);
+        return td;
+    }
+    if (
+        (row.resourceType === "drawable" || row.resourceType === "mipmap") &&
+        row.resolvedFile &&
+        isRasterAsset(row.resolvedFile)
+    ) {
+        // Browsers in the webview only load images from approved URI
+        // schemes (the host's CSP). For now we stick with the path
+        // text; a future change can pre-bake a data: URI via the
+        // extension when the daemon attaches the asset bytes.
+        td.textContent = row.resolvedFile;
+        return td;
+    }
+    td.textContent = value;
+    return td;
+}
+
+function isRasterAsset(path: string): boolean {
+    const lower = path.toLowerCase();
+    return (
+        lower.endsWith(".png") ||
+        lower.endsWith(".webp") ||
+        lower.endsWith(".jpg") ||
+        lower.endsWith(".jpeg") ||
+        lower.endsWith(".gif")
+    );
+}
+
+function buildResourceLink(
+    text: string,
+    row: ResourceReferenceRow,
+    ctx: PresenterContext,
+): HTMLElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "focus-report-resource-link";
+    button.textContent = text;
+    button.title = "Open " + (row.resolvedFile || row.resourceName);
+    button.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ctx.postMessage?.({
+            command: "openResourceFile",
+            resourceType: row.resourceType,
+            resourceName: row.resourceName,
+            resolvedFile: row.resolvedFile,
+            packageName: row.packageName,
+        });
+    });
+    return button;
 }
 
 /**
