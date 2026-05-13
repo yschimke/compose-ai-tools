@@ -687,10 +687,25 @@ export class PreviewApp extends LitElement {
             const target = currentBundleTarget();
             if (!target) return;
             const byKind = dataProductsByPreview.get(target);
-            const recompPayload = byKind?.get("compose/recomposition") ?? null;
-            const tracePayload = byKind?.get("render/trace") ?? null;
-            const perfettoPayload =
-                byKind?.get("render/composeAiTrace") ?? null;
+            // Gate each cached payload on the user's current
+            // enabled-kinds set — otherwise a kind the user has just
+            // unchecked still shows its cached section, breaking the
+            // immediate-unsubscribe contract the Configure expander
+            // promises. Cache stays intact (the daemon keeps the
+            // subscription open), but we render only what's enabled.
+            const enabledKinds = bundleController
+                .state()
+                .enabledKinds("performance");
+            const enabledSet = new Set(enabledKinds);
+            const recompPayload = enabledSet.has("compose/recomposition")
+                ? (byKind?.get("compose/recomposition") ?? null)
+                : null;
+            const tracePayload = enabledSet.has("render/trace")
+                ? (byKind?.get("render/trace") ?? null)
+                : null;
+            const perfettoPayload = enabledSet.has("render/composeAiTrace")
+                ? (byKind?.get("render/composeAiTrace") ?? null)
+                : null;
             const data = computePerformanceBundleData(
                 recompPayload,
                 tracePayload,
@@ -708,14 +723,9 @@ export class PreviewApp extends LitElement {
                 body.expander.setState({
                     bundleId: "performance",
                     kinds: bundleDescriptor.kinds,
-                    enabledKinds: bundleController
-                        .state()
-                        .enabledKinds("performance"),
+                    enabledKinds,
                 });
             }
-            const enabledKinds = bundleController
-                .state()
-                .enabledKinds("performance");
             const hasAnyPayload =
                 data.recomposition !== null ||
                 data.renderTrace !== null ||
