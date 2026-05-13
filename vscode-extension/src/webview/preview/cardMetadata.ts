@@ -49,13 +49,13 @@ export interface CardMetadataConfig {
  * Refresh an existing card after a `setPreviews` for an id we already
  * have in the grid. Patches the card's dataset, title text, capture
  * cache (preserving already-received `imageData` for surviving
- * renderOutputs), variant badge, and a11y legend / overlay layer.
+ * renderOutputs), variant badge, and a11y overlay layer.
  *
  * `card` is the `<preview-card>` host element — its DOM was built up
  * front by `populatePreviewCard` so the selectors below
  * (`.card-title`, `.image-container`, `.variant-badge`,
- * `.a11y-legend`, `.a11y-overlay`) all resolve. Idempotent: subsequent
- * calls overwrite the patched fields cleanly.
+ * `.a11y-overlay`) all resolve. Idempotent: subsequent calls overwrite
+ * the patched fields cleanly.
  */
 export function refreshCardMetadata(
     card: HTMLElement,

@@ -2121,8 +2121,7 @@ body {
         background 120ms ease,
         box-shadow 120ms ease;
 }
-.a11y-hierarchy-box:hover,
-.a11y-hierarchy-box.a11y-active {
+.a11y-hierarchy-box:hover {
     background: color-mix(
         in srgb,
         var(--a11y-hier-color, rgba(80, 160, 255, 1)) 28%,
@@ -2149,69 +2148,14 @@ body {
         opacity 120ms ease,
         box-shadow 120ms ease;
 }
-.a11y-box.a11y-active {
-    opacity: 1;
-    box-shadow:
-        0 0 0 2px rgba(0, 0, 0, 0.6),
-        0 0 12px var(--a11y-color, #d32f2f);
-}
 .a11y-box .a11y-badge {
     position: absolute;
     top: -10px;
     left: -10px;
 }
 
-/* Legend under the image: one row per finding, sized for scanning at a
- * glance. Rows are hoverable — mouseenter calls highlightA11yFinding to
- * toggle .a11y-active on the matching overlay box. */
-.a11y-legend {
-    border-top: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.2));
-    padding: 8px 10px 10px;
-    font-size: calc(var(--vscode-font-size) - 1px);
-}
-.a11y-legend-header {
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: var(--text-secondary);
-    font-size: calc(var(--vscode-font-size) - 2px);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-.a11y-row {
-    display: flex;
-    gap: 8px;
-    padding: 6px;
-    border-radius: 4px;
-    cursor: default;
-    align-items: flex-start;
-    transition: background 100ms ease;
-}
-.a11y-row:hover,
-.a11y-row.a11y-active {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
-}
-.a11y-text {
-    flex: 1;
-    min-width: 0;
-}
-.a11y-title {
-    font-weight: 600;
-    font-size: calc(var(--vscode-font-size));
-}
-.a11y-msg {
-    color: var(--text-secondary);
-    margin-top: 2px;
-    line-height: 1.35;
-}
-.a11y-elt {
-    margin-top: 2px;
-    font-family: var(--vscode-editor-font-family);
-    font-size: calc(var(--vscode-font-size) - 2px);
-    opacity: 0.6;
-}
-
-/* Shared badge — used in legend rows AND inside overlay boxes. Colour
- * comes from the level modifier on the parent (.a11y-level-error etc.). */
+/* Numbered badge attached to each finding overlay box. Colour comes from
+ * the level modifier on the parent (.a11y-level-error etc.). */
 .a11y-badge {
     display: inline-flex;
     align-items: center;
@@ -2227,7 +2171,7 @@ body {
     flex-shrink: 0;
 }
 
-/* Level → colour. Applied to both overlay boxes and legend rows. */
+/* Level → colour. Applied to overlay boxes via the `a11y-level-*` modifier. */
 .a11y-level-error {
     --a11y-color: #d32f2f;
 }
@@ -2236,32 +2180,6 @@ body {
 }
 .a11y-level-info {
     --a11y-color: #1976d2;
-}
-
-/* Hierarchy legend — one row per `a11y/hierarchy` node, swatch colour
- * matches the corresponding `.a11y-hierarchy-box` via the shared
- * `--a11y-hier-color` CSS custom property set in JS. */
-.a11y-hierarchy-row {
-    align-items: center;
-}
-.a11y-hierarchy-row.a11y-hierarchy-row-unmerged {
-    opacity: 0.7;
-}
-/* Tighten the gap between consecutive plain-text nodes so adjacent
- * label-only rows visually group, mirroring the spatial pairing in
- * the preview (e.g. "Morning run · 5.2 km · 28 min"). */
-.a11y-hierarchy-row-adjacent {
-    margin-top: -4px;
-    padding-top: 2px;
-}
-.a11y-swatch {
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-    background: var(--a11y-hier-color, #888);
-    border: 1px solid rgba(0, 0, 0, 0.25);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
-    flex-shrink: 0;
 }
 
 /* ---------------------------------------------------------------
