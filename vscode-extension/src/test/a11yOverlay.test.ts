@@ -1,9 +1,11 @@
 import * as assert from "assert";
 import {
+    A11Y_HIERARCHY_PALETTE,
+    applyHierarchyOverlay,
+    buildA11yHierarchyLegend,
     buildA11yLegend,
     buildA11yOverlay,
     ensureHierarchyOverlay,
-    applyHierarchyOverlay,
 } from "../webview/preview/a11yOverlay";
 import type {
     AccessibilityFinding,
@@ -487,5 +489,194 @@ describe("applyHierarchyOverlay", () => {
             noDims.container.querySelectorAll(".a11y-hierarchy-box").length,
             0,
         );
+    });
+
+    it("stamps each box with data-node-idx and a palette-cycled --a11y-hier-color", () => {
+        const { card, container, img } = buildCardWithImage(100, 100);
+        ensureHierarchyOverlay(container);
+        const nodes = Array.from(
+            { length: A11Y_HIERARCHY_PALETTE.length + 1 },
+            (_, i) => node({ boundsInScreen: i + ",0,10,10" }),
+        );
+        applyHierarchyOverlay(card, nodes, img);
+        const boxes = container.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-box",
+        );
+        assert.strictEqual(boxes.length, nodes.length);
+        boxes.forEach((b, idx) => {
+            assert.strictEqual(b.dataset.nodeIdx, String(idx));
+            assert.strictEqual(
+                b.style.getPropertyValue("--a11y-hier-color"),
+                A11Y_HIERARCHY_PALETTE[idx % A11Y_HIERARCHY_PALETTE.length],
+            );
+        });
+        // Palette wraps — index 0 and index palette.length share a colour.
+        assert.strictEqual(
+            boxes[0].style.getPropertyValue("--a11y-hier-color"),
+            boxes[A11Y_HIERARCHY_PALETTE.length].style.getPropertyValue(
+                "--a11y-hier-color",
+            ),
+        );
+    });
+});
+
+describe("buildA11yHierarchyLegend", () => {
+    it("returns a detached .a11y-legend.a11y-hierarchy-legend with header naming the element count", () => {
+        const card = document.createElement("div");
+        const legend = buildA11yHierarchyLegend(card, [
+            node(),
+            node({ label: "Cancel" }),
+        ]);
+        assert.strictEqual(legend.parentNode, null);
+        assert.ok(legend.classList.contains("a11y-legend"));
+        assert.ok(legend.classList.contains("a11y-hierarchy-legend"));
+        assert.strictEqual(
+            legend.querySelector(".a11y-legend-header")!.textContent,
+            "Accessibility · 2 elements",
+        );
+    });
+
+    it("renders the singular 'element' form when there is exactly one node", () => {
+        const legend = buildA11yHierarchyLegend(document.createElement("div"), [
+            node(),
+        ]);
+        assert.strictEqual(
+            legend.querySelector(".a11y-legend-header")!.textContent,
+            "Accessibility · 1 element",
+        );
+    });
+
+    it("renders one .a11y-hierarchy-row per node with swatch, data-node-idx, and palette-cycled --a11y-hier-color", () => {
+        const nodes = Array.from(
+            { length: A11Y_HIERARCHY_PALETTE.length + 2 },
+            (_, i) => node({ label: "Node " + i }),
+        );
+        const legend = buildA11yHierarchyLegend(
+            document.createElement("div"),
+            nodes,
+        );
+        const rows = legend.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-row",
+        );
+        assert.strictEqual(rows.length, nodes.length);
+        rows.forEach((r, idx) => {
+            assert.strictEqual(r.dataset.nodeIdx, String(idx));
+            assert.strictEqual(
+                r.style.getPropertyValue("--a11y-hier-color"),
+                A11Y_HIERARCHY_PALETTE[idx % A11Y_HIERARCHY_PALETTE.length],
+            );
+            assert.ok(r.querySelector(".a11y-swatch"));
+        });
+    });
+
+    it("uses '(unlabelled)' fallback when label is empty/whitespace, otherwise the label as-is", () => {
+        const legend = buildA11yHierarchyLegend(document.createElement("div"), [
+            node({ label: "Submit" }),
+            node({ label: "" }),
+            node({ label: "   " }),
+        ]);
+        const titles = Array.from(
+            legend.querySelectorAll<HTMLElement>(
+                ".a11y-hierarchy-row .a11y-title",
+            ),
+        ).map((el) => el.textContent);
+        assert.deepStrictEqual(titles, [
+            "Submit",
+            "(unlabelled)",
+            "(unlabelled)",
+        ]);
+    });
+
+    it("renders subtitle joining role + states with ' · ', omitting it when both are absent", () => {
+        const legend = buildA11yHierarchyLegend(document.createElement("div"), [
+            node({ role: "Button", states: ["enabled", "focused"] }),
+            node({ role: "Image", states: [] }),
+            node({ role: null, states: ["selected"] }),
+            node({ role: null, states: [] }),
+        ]);
+        const rows = legend.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-row",
+        );
+        assert.strictEqual(
+            rows[0].querySelector(".a11y-msg")!.textContent,
+            "Button · enabled, focused",
+        );
+        assert.strictEqual(
+            rows[1].querySelector(".a11y-msg")!.textContent,
+            "Image",
+        );
+        assert.strictEqual(
+            rows[2].querySelector(".a11y-msg")!.textContent,
+            "selected",
+        );
+        assert.strictEqual(
+            rows[3].querySelector(".a11y-msg"),
+            null,
+            "no role + no states → no subtitle element",
+        );
+    });
+
+    it("tags consecutive plain-text (no role, no states) rows with a11y-hierarchy-row-adjacent", () => {
+        const legend = buildA11yHierarchyLegend(document.createElement("div"), [
+            node({ label: "Today", role: null, states: [] }),
+            node({ label: "Morning run", role: null, states: [] }),
+            node({ label: "5.2 km", role: null, states: [] }),
+            node({ label: "Done", role: "Button", states: [] }),
+            node({ label: "Trailing", role: null, states: [] }),
+        ]);
+        const rows = legend.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-row",
+        );
+        const adjacent = Array.from(rows).map((r) =>
+            r.classList.contains("a11y-hierarchy-row-adjacent"),
+        );
+        // idx 0 is first row (never adjacent), 1 & 2 follow plain-text → adjacent,
+        // 3 has role → not adjacent, 4 follows a role-bearing row → not adjacent.
+        assert.deepStrictEqual(adjacent, [false, true, true, false, false]);
+    });
+
+    it("flags unmerged nodes with .a11y-hierarchy-row-unmerged", () => {
+        const legend = buildA11yHierarchyLegend(document.createElement("div"), [
+            node({ merged: true }),
+            node({ merged: false }),
+        ]);
+        const rows = legend.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-row",
+        );
+        assert.ok(!rows[0].classList.contains("a11y-hierarchy-row-unmerged"));
+        assert.ok(rows[1].classList.contains("a11y-hierarchy-row-unmerged"));
+    });
+
+    it("hover toggles .a11y-active on matching .a11y-hierarchy-row + .a11y-hierarchy-box inside the host card", () => {
+        const { card, container, img } = buildCardWithImage(100, 100);
+        ensureHierarchyOverlay(container);
+        const nodes = [
+            node({ label: "First", boundsInScreen: "0,0,10,10" }),
+            node({ label: "Second", boundsInScreen: "10,10,20,20" }),
+        ];
+        applyHierarchyOverlay(card, nodes, img);
+        const legend = buildA11yHierarchyLegend(card, nodes);
+        card.appendChild(legend);
+
+        const rows = legend.querySelectorAll<HTMLElement>(
+            ".a11y-hierarchy-row",
+        );
+        const boxes = card.querySelectorAll<HTMLElement>(".a11y-hierarchy-box");
+
+        rows[0].dispatchEvent(new Event("mouseenter"));
+        assert.ok(rows[0].classList.contains("a11y-active"));
+        assert.ok(boxes[0].classList.contains("a11y-active"));
+        assert.ok(!rows[1].classList.contains("a11y-active"));
+        assert.ok(!boxes[1].classList.contains("a11y-active"));
+
+        rows[1].dispatchEvent(new Event("mouseenter"));
+        assert.ok(!rows[0].classList.contains("a11y-active"));
+        assert.ok(!boxes[0].classList.contains("a11y-active"));
+        assert.ok(rows[1].classList.contains("a11y-active"));
+        assert.ok(boxes[1].classList.contains("a11y-active"));
+
+        rows[1].dispatchEvent(new Event("mouseleave"));
+        assert.ok(!rows[1].classList.contains("a11y-active"));
+        assert.ok(!boxes[1].classList.contains("a11y-active"));
     });
 });

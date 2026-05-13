@@ -13,7 +13,11 @@
 // re-exports the helper bound to the real `previewStore` mutators so
 // existing call sites are unchanged.
 
-import { buildA11yLegend, ensureHierarchyOverlay } from "./a11yOverlay";
+import {
+    buildA11yHierarchyLegend,
+    buildA11yLegend,
+    ensureHierarchyOverlay,
+} from "./a11yOverlay";
 import { sanitizeId } from "./cardData";
 import type {
     AccessibilityFinding,
@@ -122,6 +126,24 @@ export function applyA11yUpdate(
     if (nodes !== undefined) {
         if (nodes && nodes.length > 0) {
             ensureHierarchyOverlay(container);
+            // Stamp the hierarchy legend so the user sees the labelled
+            // node list as soon as data lands, even before the image
+            // decodes. The boxes themselves still paint from the
+            // mapsRevision bump below.
+            const existingHierarchyLegend = card.querySelector(
+                ".a11y-hierarchy-legend",
+            );
+            if (existingHierarchyLegend) existingHierarchyLegend.remove();
+            // Only stamp the hierarchy legend when there's no findings
+            // legend taking the slot — findings take precedence (they
+            // describe actionable issues; hierarchy is the structural
+            // backdrop). Once findings clear, a follow-up update or
+            // the nodes-still-present cache will re-stamp.
+            if (
+                !card.querySelector(".a11y-legend:not(.a11y-hierarchy-legend)")
+            ) {
+                card.appendChild(buildA11yHierarchyLegend(card, nodes));
+            }
             // Same pattern as findings above: store write fires the
             // mapsRevision bump, the component re-paints the layer
             // via `applyHierarchyOverlay`.
@@ -130,6 +152,10 @@ export function applyA11yUpdate(
             config.deleteCardA11yNodes(previewId);
             const layer = card.querySelector(".a11y-hierarchy-overlay");
             if (layer) layer.remove();
+            const hierarchyLegend = card.querySelector(
+                ".a11y-hierarchy-legend",
+            );
+            if (hierarchyLegend) hierarchyLegend.remove();
         }
     }
     if (config.inFocus() && config.focusedCard() === card) {

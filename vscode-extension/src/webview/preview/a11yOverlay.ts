@@ -148,12 +148,35 @@ export function ensureHierarchyOverlay(container: Element | null): void {
 }
 
 /**
+ * Palette cycled per node index so legend swatches and overlay boxes
+ * share a colour. Eight perceptually-distinct hues — wraps with
+ * `% length` so node lists longer than the palette still get
+ * deterministic colours.
+ */
+export const A11Y_HIERARCHY_PALETTE: readonly string[] = [
+    "#e57373",
+    "#64b5f6",
+    "#81c784",
+    "#ffb74d",
+    "#ba68c8",
+    "#4db6ac",
+    "#f06292",
+    "#a1887f",
+];
+
+function colorForNodeIndex(idx: number): string {
+    return A11Y_HIERARCHY_PALETTE[idx % A11Y_HIERARCHY_PALETTE.length];
+}
+
+/**
  * Paints one translucent rectangle per accessibility-relevant node.
  * Uses the same `boundsInScreen` percent-of-natural translation as
  * the finding overlay, so the math stays trivial. Each box gets a
  * `title` summarising `label / role / states` so a hover yields the
  * same data TalkBack would announce, without baking any of it into
- * the PNG.
+ * the PNG. Per-node colour comes from `A11Y_HIERARCHY_PALETTE`
+ * (cycled by index) and is exposed via the `--a11y-hier-color` CSS
+ * custom property so `buildA11yHierarchyLegend` can match its swatch.
  */
 export function applyHierarchyOverlay(
     card: HTMLElement,
@@ -166,12 +189,14 @@ export function applyHierarchyOverlay(
     const natW = img.naturalWidth;
     const natH = img.naturalHeight;
     if (!natW || !natH) return;
-    nodes.forEach((n) => {
+    nodes.forEach((n, idx) => {
         const bounds = parseBounds(n.boundsInScreen);
         if (!bounds) return;
         const box = document.createElement("div");
         box.className =
             "a11y-hierarchy-box" + (n.merged ? "" : " a11y-hierarchy-unmerged");
+        box.dataset.nodeIdx = String(idx);
+        box.style.setProperty("--a11y-hier-color", colorForNodeIndex(idx));
         box.style.left = (bounds.left / natW) * 100 + "%";
         box.style.top = (bounds.top / natH) * 100 + "%";
         box.style.width = ((bounds.right - bounds.left) / natW) * 100 + "%";
@@ -183,6 +208,102 @@ export function applyHierarchyOverlay(
         if (tooltipParts.length) box.title = tooltipParts.join(" · ");
         overlay.appendChild(box);
     });
+}
+
+/**
+ * Builds the per-card hierarchy legend — one row per node carrying
+ * a colour swatch (matched to the corresponding `.a11y-hierarchy-box`
+ * via `--a11y-hier-color`), the node label (or "(unlabelled)" fallback),
+ * and a role/state subtitle. Parallel structure to `buildA11yLegend`;
+ * hovering a row highlights the matching overlay box via the shared
+ * `.a11y-active` class.
+ *
+ * Consecutive "plain text" nodes (label-only, no role or states) are
+ * tagged with `.a11y-hierarchy-row-adjacent` so the CSS can tighten
+ * the gap between them — mirroring how text-pairs like
+ * "Morning run · 5.2 km · 28 min" group spatially in the preview.
+ *
+ * Pre: caller has gated on `nodes.length > 0`.
+ */
+export function buildA11yHierarchyLegend(
+    card: HTMLElement,
+    nodes: readonly AccessibilityNode[],
+): HTMLElement {
+    const legend = document.createElement("div");
+    legend.className = "a11y-legend a11y-hierarchy-legend";
+    const header = document.createElement("div");
+    header.className = "a11y-legend-header";
+    const elementsWord = nodes.length === 1 ? "element" : "elements";
+    header.textContent = "Accessibility · " + nodes.length + " " + elementsWord;
+    legend.appendChild(header);
+    nodes.forEach((n, idx) => {
+        const row = document.createElement("div");
+        row.className = "a11y-row a11y-hierarchy-row";
+        if (!n.merged) row.classList.add("a11y-hierarchy-row-unmerged");
+        if (isPlainText(n) && idx > 0 && isPlainText(nodes[idx - 1])) {
+            row.classList.add("a11y-hierarchy-row-adjacent");
+        }
+        row.dataset.nodeIdx = String(idx);
+        row.style.setProperty("--a11y-hier-color", colorForNodeIndex(idx));
+
+        const swatch = document.createElement("span");
+        swatch.className = "a11y-swatch";
+        swatch.setAttribute("aria-hidden", "true");
+        row.appendChild(swatch);
+
+        const text = document.createElement("div");
+        text.className = "a11y-text";
+        const title = document.createElement("div");
+        title.className = "a11y-title";
+        title.textContent =
+            n.label && n.label.trim() ? n.label : "(unlabelled)";
+        text.appendChild(title);
+        const subtitleParts: string[] = [];
+        if (n.role) subtitleParts.push(n.role);
+        if (n.states && n.states.length)
+            subtitleParts.push(n.states.join(", "));
+        if (subtitleParts.length) {
+            const sub = document.createElement("div");
+            sub.className = "a11y-msg";
+            sub.textContent = subtitleParts.join(" · ");
+            text.appendChild(sub);
+        }
+        row.appendChild(text);
+
+        row.addEventListener("mouseenter", () =>
+            highlightA11yHierarchyNode(card, idx),
+        );
+        row.addEventListener("mouseleave", () =>
+            highlightA11yHierarchyNode(card, null),
+        );
+        legend.appendChild(row);
+    });
+    return legend;
+}
+
+function isPlainText(n: AccessibilityNode): boolean {
+    return !n.role && (!n.states || n.states.length === 0);
+}
+
+function highlightA11yHierarchyNode(
+    card: HTMLElement,
+    idx: number | null,
+): void {
+    for (const el of card.querySelectorAll(
+        ".a11y-hierarchy-row.a11y-active, .a11y-hierarchy-box.a11y-active",
+    )) {
+        el.classList.remove("a11y-active");
+    }
+    if (idx === null) return;
+    for (const el of card.querySelectorAll(
+        '.a11y-hierarchy-row[data-node-idx="' +
+            idx +
+            '"], .a11y-hierarchy-box[data-node-idx="' +
+            idx +
+            '"]',
+    )) {
+        el.classList.add("a11y-active");
+    }
 }
 
 /**
