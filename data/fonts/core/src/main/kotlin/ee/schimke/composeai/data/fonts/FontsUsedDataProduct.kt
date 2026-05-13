@@ -7,7 +7,12 @@ import kotlinx.serialization.json.Json
 /** Path-backed producer for `fonts/used`, written by backend render loops in default mode. */
 object FontsUsedDataProducer {
   const val KIND: String = "fonts/used"
-  const val SCHEMA_VERSION: Int = 1
+  // Bumped to 2 in #1057 (Cluster D) for the optional `provider` field on
+  // `FontUsedEntry`. The field is open-ended (`"google"`, `"asset"`,
+  // `"system"`, omitted) and lets the VS Code Text/i18n bundle decide
+  // whether to render a Google Fonts external-link affordance without
+  // re-doing the bundled allowlist match for every paint.
+  const val SCHEMA_VERSION: Int = 2
   const val FILE: String = "fonts-used.json"
 
   val json: Json = Json {
@@ -39,4 +44,11 @@ data class FontUsedEntry(
   val sourceFile: String? = null,
   val fellBackFrom: List<String>? = null,
   val consumerNodeIds: List<String> = emptyList(),
+  /**
+   * Open-ended provenance tag for the resolved font. Today the renderer leaves this null; the
+   * Text/i18n VS Code bundle falls back to a bundled Google Fonts allowlist when this is unset.
+   * Expected values are `"google"`, `"asset"`, `"system"`. Schema-version-gated so older renderers
+   * serialise compatible payloads.
+   */
+  val provider: String? = null,
 )

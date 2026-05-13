@@ -74,6 +74,16 @@ import {
     renderHistoryDiffHeader,
     type HistoryDiffPayload,
 } from "./historyDiffBundlePresenter";
+import {
+    computeTextBundleData,
+    textBundleFontColumns,
+    textBundleStringColumns,
+    textBundleTranslationColumns,
+    translationOpenResourcePayload,
+    type DrawnTextRow,
+    type FontRow,
+    type TranslationRow,
+} from "./textBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -655,6 +665,149 @@ export class PreviewApp extends LitElement {
             performanceCachedBody = { wrapper, expander, recompTable, host };
             return performanceCachedBody;
         };
+        // Text / i18n bundle body — three stacked sub-sections (drawn
+        // text, fonts, translations) under one expander, same shape as
+        // the Performance bundle. The expander toggles the default-OFF
+        // `i18n/translations` kind; drawn text + fonts are default-ON
+        // so they appear as soon as the chip is pressed.
+        interface TextBody {
+            wrapper: HTMLElement;
+            expander: BundleExpander;
+            stringsTable: DataTable<DrawnTextRow>;
+            fontsTable: DataTable<FontRow>;
+            translationsTable: DataTable<TranslationRow>;
+        }
+        let textCachedBody: TextBody | null = null;
+        const textBody = (): TextBody => {
+            if (textCachedBody) return textCachedBody;
+            const wrapper = document.createElement("div");
+            wrapper.className = "bundle-tab-body text-bundle-body";
+            wrapper.dataset.bundle = "text";
+            const expander = document.createElement(
+                "bundle-expander",
+            ) as BundleExpander;
+            expander.addEventListener("kind-toggled", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/BundleExpander").BundleKindToggledDetail
+                    >
+                ).detail;
+                bundleController.setKindEnabled(
+                    det.bundleId,
+                    det.kind,
+                    det.enabled,
+                );
+            });
+            const stringsTable = document.createElement(
+                "data-table",
+            ) as DataTable<DrawnTextRow>;
+            stringsTable.heading = "Drawn text";
+            stringsTable.setColumns(
+                textBundleStringColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<DrawnTextRow>
+                >,
+            );
+            const fontsTable = document.createElement(
+                "data-table",
+            ) as DataTable<FontRow>;
+            fontsTable.heading = "Fonts";
+            fontsTable.setColumns(
+                textBundleFontColumns({
+                    openExternal: (url) =>
+                        vscode.postMessage({ command: "openExternal", url }),
+                }) as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<FontRow>
+                >,
+            );
+            const translationsTable = document.createElement(
+                "data-table",
+            ) as DataTable<TranslationRow>;
+            translationsTable.heading = "Translations";
+            translationsTable.setColumns(
+                textBundleTranslationColumns({
+                    openResource: (row) =>
+                        vscode.postMessage(translationOpenResourcePayload(row)),
+                }) as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<TranslationRow>
+                >,
+            );
+            wrapper.appendChild(expander);
+            wrapper.appendChild(stringsTable);
+            wrapper.appendChild(fontsTable);
+            wrapper.appendChild(translationsTable);
+            textCachedBody = {
+                wrapper,
+                expander,
+                stringsTable,
+                fontsTable,
+                translationsTable,
+            };
+            return textCachedBody;
+        };
+        const refreshTextBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const stringsPayload = byKind?.get("text/strings") ?? null;
+            const fontsPayload = byKind?.get("fonts/used") ?? null;
+            const translationsPayload =
+                byKind?.get("i18n/translations") ?? null;
+            const data = computeTextBundleData(
+                stringsPayload,
+                fontsPayload,
+                translationsPayload,
+            );
+            const body = textBody();
+            const bundleDescriptor = getBundle("text");
+            if (bundleDescriptor) {
+                body.expander.setState({
+                    bundleId: "text",
+                    kinds: bundleDescriptor.kinds,
+                    enabledKinds: bundleController.state().enabledKinds("text"),
+                });
+            }
+            body.stringsTable.setRows(data.drawnText);
+            body.stringsTable.summary =
+                data.drawnText.length === 1
+                    ? "1 string"
+                    : data.drawnText.length + " strings";
+            body.stringsTable.setOverlayId((row) => row.id);
+            body.stringsTable.setJsonPayload(() => ({
+                previewId: target,
+                textStrings: data.jsonPayload.textStrings,
+            }));
+            body.fontsTable.setRows(data.fonts);
+            body.fontsTable.summary =
+                data.fonts.length === 1
+                    ? "1 font"
+                    : data.fonts.length + " fonts";
+            body.fontsTable.setOverlayId((row) => row.id);
+            body.fontsTable.setJsonPayload(() => ({
+                previewId: target,
+                fontsUsed: data.jsonPayload.fontsUsed,
+            }));
+            // Translations sub-table only mounts visibly when the kind is
+            // enabled. Setting rows on the cached element regardless is
+            // cheap and keeps the JSON-payload accessor in sync if the
+            // user later flips the expander on.
+            body.translationsTable.setRows(data.translations);
+            body.translationsTable.summary =
+                data.translations.length === 1
+                    ? "1 entry"
+                    : data.translations.length + " entries";
+            body.translationsTable.setOverlayId((row) => row.id);
+            body.translationsTable.setJsonPayload(() => ({
+                previewId: target,
+                i18nTranslations: data.jsonPayload.i18nTranslations,
+            }));
+            const enabledKinds = new Set(
+                bundleController.state().enabledKinds("text"),
+            );
+            body.translationsTable.hidden =
+                !enabledKinds.has("i18n/translations") &&
+                data.translations.length === 0;
+            dataTabs.setTabBody("text", body.wrapper);
+        };
         const refreshExpanderFor = (id: BundleId): void => {
             const body = bundleBodies.get(id);
             const bundle = getBundle(id);
@@ -1097,6 +1250,7 @@ export class PreviewApp extends LitElement {
             }
             if (s.activeBundles.includes("history")) refreshHistoryBundle();
             if (s.activeBundles.includes("errors")) refreshErrorsBundle();
+            if (s.activeBundles.includes("text")) refreshTextBundle();
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
@@ -1516,6 +1670,18 @@ export class PreviewApp extends LitElement {
                     )
                 ) {
                     refreshThemingBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("text") &&
+                    dataProducts.some(
+                        (dp) =>
+                            dp.kind === "text/strings" ||
+                            dp.kind === "fonts/used" ||
+                            dp.kind === "i18n/translations",
+                    )
+                ) {
+                    refreshTextBundle();
                 }
             },
             focusOnCard,
