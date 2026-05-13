@@ -2642,3 +2642,86 @@ body {
 .perf-perfetto-open:hover {
     background: var(--vscode-button-hoverBackground);
 }
+/* Theming bundle — Colors / Typography / Shapes share one table.
+ * The Section column doubles as a sub-heading; the swatch column
+ * carries the colour chip for color / seed rows. */
+.theming-section-cell {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.65;
+    white-space: nowrap;
+}
+.theming-swatch-cell {
+    width: 28px;
+    padding-right: 0;
+}
+.theming-swatch {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid rgba(127, 127, 127, 0.45);
+    background-image:
+        linear-gradient(
+            45deg,
+            rgba(127, 127, 127, 0.18) 25%,
+            transparent 25%,
+            transparent 75%,
+            rgba(127, 127, 127, 0.18) 75%
+        ),
+        linear-gradient(
+            45deg,
+            rgba(127, 127, 127, 0.18) 25%,
+            transparent 25%,
+            transparent 75%,
+            rgba(127, 127, 127, 0.18) 75%
+        );
+    background-size: 8px 8px;
+    background-position:
+        0 0,
+        4px 4px;
+}
+.theming-swatch[data-source="seed"] {
+    outline: 1px dashed currentColor;
+    outline-offset: 1px;
+}
+.theming-swatch[data-source="wallpaper"] {
+    border-style: dashed;
+}
+.theming-name-cell {
+    min-width: 120px;
+}
+.theming-name-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.theming-name-sub {
+    opacity: 0.7;
+    font-size: 11px;
+}
+.theming-hex {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    opacity: 0.85;
+}
+.theming-value-cell {
+    min-width: 160px;
+}
+.theming-typography-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 2px 12px;
+    font-size: 12px;
+}
+.theming-typography-grid em {
+    font-style: normal;
+    opacity: 0.55;
+    margin-right: 4px;
+}
+.theming-consumers-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    width: 80px;
+}

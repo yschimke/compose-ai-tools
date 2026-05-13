@@ -46,6 +46,12 @@ import {
     renderPerfPlaceholder,
     renderPerformanceSections,
 } from "./performanceBundlePresenter";
+import {
+    computeThemingBundleData,
+    themingTableColumns,
+    type ThemePayload,
+    type WallpaperPayload,
+} from "./themingBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -637,6 +643,19 @@ export class PreviewApp extends LitElement {
                 enabledKinds: bundleController.state().enabledKinds(id),
             });
         };
+        const themingBody = (): BundleBody => {
+            let b = bundleBodies.get("theming");
+            if (b) return b;
+            b = buildBundleBody(
+                "theming",
+                "Theming",
+                themingTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("theming", b);
+            return b;
+        };
         const refreshA11yBundle = (): void => {
             const target = currentBundleTarget();
             if (!target) return;
@@ -726,6 +745,54 @@ export class PreviewApp extends LitElement {
             }
             dataTabs.setTabBody("performance", body.wrapper);
         };
+        const refreshThemingBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const theme =
+                (byKind?.get("compose/theme") as ThemePayload | undefined) ??
+                null;
+            const wallpaper =
+                (byKind?.get("compose/wallpaper") as
+                    | WallpaperPayload
+                    | undefined) ?? null;
+            const data = computeThemingBundleData(theme, wallpaper, target);
+            const body = themingBody();
+            const table = body.table;
+            table.setRows(data.rows);
+            // Summary mirrors the per-section row counts so the user
+            // gets a quick feel for token volume without expanding the
+            // table. Tags on each row let us count without double-
+            // counting the seed summary as a colour.
+            const colorCount = data.rows.filter(
+                (r) => (r as { kind?: string }).kind === "color",
+            ).length;
+            const typoCount = data.rows.filter(
+                (r) => (r as { kind?: string }).kind === "typography",
+            ).length;
+            const shapeCount = data.rows.filter(
+                (r) => (r as { kind?: string }).kind === "shape",
+            ).length;
+            table.summary =
+                colorCount +
+                " colour" +
+                (colorCount === 1 ? "" : "s") +
+                " · " +
+                typoCount +
+                " type · " +
+                shapeCount +
+                " shape" +
+                (shapeCount === 1 ? "" : "s");
+            // Theme tokens are global — no per-row overlay box — but
+            // `<data-table>` still wants a stable id per row for hover
+            // correlation with any future legend element.
+            table.setOverlayId(
+                (row) => (row as { id?: string }).id ?? "theming-row",
+            );
+            table.setJsonPayload(() => data.jsonPayload);
+            refreshExpanderFor("theming");
+            dataTabs.setTabBody("theming", body.wrapper);
+        };
         const reflectBundleState = (): void => {
             const s = bundleController.state();
             bundleChipBar.setState({
@@ -741,6 +808,7 @@ export class PreviewApp extends LitElement {
             if (s.activeBundles.includes("performance")) {
                 refreshPerformanceBundle();
             }
+            if (s.activeBundles.includes("theming")) refreshThemingBundle();
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
@@ -1112,6 +1180,17 @@ export class PreviewApp extends LitElement {
                     )
                 ) {
                     refreshPerformanceBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("theming") &&
+                    dataProducts.some(
+                        (dp) =>
+                            dp.kind === "compose/theme" ||
+                            dp.kind === "compose/wallpaper",
+                    )
+                ) {
+                    refreshThemingBundle();
                 }
             },
             focusOnCard,
