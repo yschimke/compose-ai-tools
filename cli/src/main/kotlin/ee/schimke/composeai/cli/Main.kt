@@ -130,6 +130,10 @@ private fun printUsage() {
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged
                            with a pointer to issue #924 — please report the freshness gap.
+      --daemon             doctor: also spawn each module's preview daemon and confirm the
+                           `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
+                           (Android/Robolectric) per module — opt-in because plain `doctor`
+                           stays cheap.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.
