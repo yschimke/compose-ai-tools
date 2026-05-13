@@ -469,11 +469,26 @@ data class PreviewManifest(
   val variant: String,
   val previews: List<PreviewInfo>,
   /**
-   * Relative path (from this manifest's parent directory) to a sidecar accessibility report JSON,
-   * when the built-in `a11y` data-product plugin is enabled. `null` signals the feature is off —
-   * downstream tools should treat the absence of this pointer as "no a11y data" rather than probing
-   * for the file on disk.
+   * Generic per-extension report pointer map. Keys are extension ids (e.g. `"a11y"`), values are
+   * module-relative paths (from this manifest's parent directory) to that extension's aggregated
+   * sidecar JSON. Empty when no extension produced a canned report. Consumers iterate this map
+   * rather than probing for specific filenames.
+   *
+   * Wire-format note: this is the v2 shape. The legacy [accessibilityReport] field below mirrors
+   * the `"a11y"` entry (or carries it independently when the producer is still on the v1 shape) so
+   * older CLI / VS Code builds keep working. New consumers should prefer this map and treat
+   * [accessibilityReport] as a deprecated alias.
    */
+  val dataExtensionReports: Map<String, String> = emptyMap(),
+  /**
+   * **Deprecated** — relative path to the `a11y` extension's sidecar accessibility report, kept as
+   * a back-compat mirror of `dataExtensionReports["a11y"]`. New code should read the map instead;
+   * this field will be removed once the consumer floor moves past the v1 shape.
+   */
+  @Deprecated(
+    message = "Use dataExtensionReports[\"a11y\"]; this field is a back-compat mirror.",
+    replaceWith = ReplaceWith("dataExtensionReports[\"a11y\"]"),
+  )
   val accessibilityReport: String? = null,
 )
 

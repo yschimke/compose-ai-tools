@@ -93,31 +93,39 @@ data class PreviewManifest(
   val variant: String,
   val previews: List<PreviewInfo>,
   /**
-   * Relative path (from this manifest file's parent directory) to the sidecar ATF accessibility
-   * report, when the built-in `a11y` data-product plugin is enabled on this module. `null` means
-   * the feature is off.
+   * Generic per-extension report pointer map. Keys are extension ids (e.g. `"a11y"`), values are
+   * module-relative paths to that extension's aggregated sidecar JSON. Empty when no extension
+   * produced a canned report. This is the v2 shape — read it through [reportsView] so v1 manifests
+   * (which only carry [accessibilityReport]) round-trip transparently.
    */
+  val dataExtensionReports: Map<String, String> = emptyMap(),
+  /**
+   * **Deprecated** — back-compat mirror of `dataExtensionReports["a11y"]`. New CLI code reads
+   * through [reportsView]; this field stays for one release so v1 manifests written by older
+   * plugins still produce findings.
+   */
+  @Deprecated("Use dataExtensionReports[\"a11y\"]; this field is a back-compat mirror.")
   val accessibilityReport: String? = null,
-)
+) {
+  /**
+   * Effective extension-report pointers, unifying the v2 map with the legacy v1 field. When the
+   * plugin is on the v2 shape, this is just [dataExtensionReports]; when it's still on v1, the
+   * `a11y` entry is synthesised from [accessibilityReport] so the CLI strategy layer never has to
+   * special-case the wire version.
+   */
+  @Suppress("DEPRECATION")
+  val reportsView: Map<String, String>
+    get() =
+      when {
+        dataExtensionReports.isNotEmpty() -> dataExtensionReports
+        accessibilityReport != null -> mapOf("a11y" to accessibilityReport)
+        else -> emptyMap()
+      }
+}
 
-@Serializable
-data class AccessibilityFinding(
-  val level: String,
-  val type: String,
-  val message: String,
-  val viewDescription: String? = null,
-  val boundsInScreen: String? = null,
-)
-
-@Serializable
-data class AccessibilityEntry(
-  val previewId: String,
-  val findings: List<AccessibilityFinding>,
-  val annotatedPath: String? = null,
-)
-
-@Serializable
-data class AccessibilityReport(val module: String, val entries: List<AccessibilityEntry>)
+// AccessibilityFinding / AccessibilityEntry / AccessibilityReport moved to A11yReportRenderer.kt
+// as part of the per-extension strategy refactor — they're a11y-specific wire-format DTOs that
+// have no business in the shared Command base layer.
 
 /**
  * One rendered snapshot inside a [PreviewResult]. Carries the dimensional coordinates
@@ -528,42 +536,39 @@ abstract class Command(protected val args: List<String>) {
   }
 
   /**
-   * Reads each module's accessibility report IF the manifest points at one (i.e. the feature is
-   * enabled in Gradle), and returns a lookup from `"<module>/<previewId>"` to (findings,
-   * annotatedPathAbsolute). The annotated path is resolved against the report file's parent so the
-   * value we emit is an absolute filesystem path agents can open directly.
+   * Per-CLI-invocation renderer set, built once and cached. Iterated by [buildResults] (via
+   * [annotateExtensions]) so every result picks up data from every loaded extension without
+   * Command-level branching. Subcommands that want a single specific renderer ([ReportCommand])
+   * pull the same instance from this map by id so cached decoded state is shared.
    *
-   * Following the manifest pointer — rather than hard-coding `accessibility.json` — means disabling
-   * checks in Gradle cleanly makes findings disappear from CLI output; we never report stale
-   * reports from a prior opt-in run.
+   * Stateful per invocation — see [ExtensionReportRenderer] kdoc.
    */
-  protected fun readAllA11yReports(
-    manifests: List<Pair<PreviewModule, PreviewManifest>>
-  ): Map<String, Pair<List<AccessibilityFinding>, String?>> {
-    val out = mutableMapOf<String, Pair<List<AccessibilityFinding>, String?>>()
-    for ((module, manifest) in manifests) {
-      val pointer = manifest.accessibilityReport ?: continue
-      val reportFile = module.projectDir.resolve("build/compose-previews/$pointer")
-      if (!reportFile.exists()) continue
-      val report =
-        try {
-          json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
-        } catch (e: Exception) {
-          if (verbose)
-            System.err.println("Warning: unreadable a11y report ${reportFile.path}: ${e.message}")
-          continue
-        }
-      val reportDir = reportFile.parentFile
-      for (entry in report.entries) {
-        val annotatedAbs =
-          entry.annotatedPath
-            ?.let { reportDir.resolve(it).canonicalFile }
-            ?.takeIf { it.exists() }
-            ?.absolutePath
-        out["${module.gradlePath}/${entry.previewId}"] = entry.findings to annotatedAbs
-      }
+  protected val extensionRenderers: Map<String, ExtensionReportRenderer> =
+    builtInExtensionReporters().mapValues { (_, factory) -> factory() }
+
+  /**
+   * Loads every built-in extension's sidecar JSON against the merged manifest set. Each renderer
+   * caches its decoded state internally; subsequent [annotateExtensions] calls are pure dictionary
+   * lookups.
+   */
+  private fun loadExtensionReports(manifests: List<Pair<PreviewModule, PreviewManifest>>) {
+    for (renderer in extensionRenderers.values) {
+      renderer.load(manifests, verbose)
     }
-    return out
+  }
+
+  /**
+   * Runs every loaded renderer's [ExtensionReportRenderer.annotate] over [result] in registration
+   * order. Each annotator returns an immutable copy with its extension's fields set — the next
+   * annotator sees that copy, so multiple extensions can layer cleanly. Renderers whose extensions
+   * aren't enabled for [module] no-op.
+   */
+  private fun annotateExtensions(result: PreviewResult, module: PreviewModule): PreviewResult {
+    var enriched = result
+    for (renderer in extensionRenderers.values) {
+      enriched = renderer.annotate(enriched, module)
+    }
+    return enriched
   }
 
   /**
@@ -581,11 +586,9 @@ abstract class Command(protected val args: List<String>) {
   ): List<PreviewResult> {
     val results = mutableListOf<PreviewResult>()
     val imageSizeOverride = ImageSizeOverride.detect()
-    val a11yByKey = readAllA11yReports(manifests)
-    // Track which modules had a11y enabled so we can distinguish "no
-    // findings" (empty list) from "feature off" (null) in `PreviewResult`.
-    val modulesWithA11y =
-      manifests.filter { it.second.accessibilityReport != null }.map { it.first.gradlePath }.toSet()
+    // Load every registered extension's sidecar JSON up-front; the per-row [annotateExtensions]
+    // step below does pure lookups against the cached decoded state.
+    loadExtensionReports(manifests)
 
     for ((module, manifest) in manifests) {
       val prior = readState(module).shas
@@ -649,17 +652,7 @@ abstract class Command(protected val args: List<String>) {
           )
         }
         val first = captureResults.firstOrNull()
-        val a11yPair =
-          when {
-            module.gradlePath in modulesWithA11y -> a11yByKey["${module.gradlePath}/${p.id}"]
-            else -> null
-          }
-        val a11y =
-          when {
-            module.gradlePath in modulesWithA11y -> a11yPair?.first ?: emptyList()
-            else -> null
-          }
-        results +=
+        val baseResult =
           PreviewResult(
             id = p.id,
             module = module.gradlePath,
@@ -671,9 +664,11 @@ abstract class Command(protected val args: List<String>) {
             pngPath = first?.pngPath,
             sha256 = first?.sha256,
             changed = first?.changed,
-            a11yFindings = a11y,
-            a11yAnnotatedPath = a11yPair?.second,
           )
+        // Layer every registered extension's data onto the row. Today only [A11yReportRenderer]
+        // contributes (it fills `a11yFindings` / `a11yAnnotatedPath`); adding a future renderer
+        // is a registry-entry change with no edits here.
+        results += annotateExtensions(baseResult, module)
       }
 
       writeState(module, CliState(updated))
@@ -1052,27 +1047,42 @@ class RenderCommand(args: List<String>) : Command(args) {
 }
 
 /**
- * `compose-preview a11y` — thin wrapper that requests the built-in `a11y` data extension (via the
- * same `--with-extension a11y` plumbing other extensions use), runs `:renderAllPreviews`, and
- * prints the canned ATF findings report grouped by preview. Equivalent to `compose-preview show
- * --with-extension a11y` plus the report rendering.
+ * Generic "render previews with extension X enabled, print extension X's canned report" command —
+ * the shared shape behind `compose-preview a11y` and future per-extension commands. Looks up the
+ * named [ExtensionReportRenderer] from [extensionRenderers], opts the Gradle build into the
+ * extension via [implicitExtensions], runs `:renderAllPreviews`, then delegates the print + exit
+ * policy to the renderer.
  *
- * Exits non-zero if the Gradle build failed or if `--fail-on` is set at the CLI level and the
- * configured threshold trips.
+ * Subclasses exist purely to bind a name to a renderer id — the entire orchestration body lives
+ * here so adding a new canned-report command is a 3-line class plus a renderer registration.
  */
-class A11yCommand(args: List<String>) : Command(args) {
+open class ReportCommand(args: List<String>, private val extensionId: String) : Command(args) {
   private val jsonOutput = "--json" in args
   // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
   private val failOn: String? = args.flagValue("--fail-on")
 
-  override fun implicitExtensions(): List<String> = listOf("a11y")
+  override fun implicitExtensions(): List<String> = listOf(extensionId)
 
   override fun run() {
+    val renderer =
+      extensionRenderers[extensionId]
+        ?: run {
+          System.err.println(
+            "Unknown extension id '$extensionId'. Available: " +
+              "${extensionRenderers.keys.sorted().joinToString(", ")}. " +
+              "Run `compose-preview extensions list` for descriptions."
+          )
+          exitProcess(1)
+        }
+
     val outcome =
       renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
 
-    val enabledModules = outcome.manifests.filter { it.second.accessibilityReport != null }
-    if (enabledModules.isEmpty()) {
+    // `buildResults` (inside `renderAllModules`) already ran every registered renderer's
+    // `load`/`annotate` pair, so the enriched outcome.results carry this extension's data — no
+    // separate plumbing needed here.
+    val enabledFor = outcome.manifests.filter { it.second.reportsView.containsKey(extensionId) }
+    if (enabledFor.isEmpty()) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
       else println("No previews discovered.")
       exitProcess(if (outcome.buildOk) 0 else 2)
@@ -1080,76 +1090,35 @@ class A11yCommand(args: List<String>) : Command(args) {
 
     val filtered =
       outcome.results.filter {
-        matchesRequest(it) && it.a11yFindings != null && (!changedOnly || it.anyChanged())
+        matchesRequest(it) && renderer.hasData(it) && (!changedOnly || it.anyChanged())
       }
 
     if (jsonOutput) {
       println(encodeResponse(filtered, countsScope = null))
     } else {
-      val flat = filtered.flatMap { r -> (r.a11yFindings ?: emptyList()).map { f -> r to f } }
-      if (flat.isEmpty()) {
-        println("No accessibility findings.")
-      } else {
-        println("${flat.size} accessibility finding(s):")
-        // Track per-preview so we only print the annotated-PNG
-        // hint once, on the first finding for that preview.
-        var lastPreviewId: String? = null
-        for ((r, f) in flat) {
-          println("  [${f.level}] ${r.id} · ${f.type}")
-          println("      ${f.message}")
-          f.viewDescription?.let { println("      element: $it") }
-          if (r.id != lastPreviewId) {
-            r.a11yAnnotatedPath?.let { println("      annotated: $it") }
-            lastPreviewId = r.id
-          }
-        }
-      }
+      if (filtered.isEmpty()) renderer.printEmpty() else renderer.printAll(filtered)
     }
 
-    val errorCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
-    val warnCount = filtered.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
-    val exit = a11yExitCode(outcome.buildOk, errorCount, warnCount, failOn)
-    if (exit == EXIT_UNKNOWN_FAIL_ON) {
-      System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
+    // Threshold first: a renderer-set `--fail-on` always wins over a successful build. Renderer
+    // returns null when no threshold tripped and the underlying Gradle result should decide.
+    val rendererExit = renderer.thresholdExitCode(filtered, failOn)
+    when (rendererExit) {
+      EXIT_UNKNOWN_FAIL_ON -> {
+        System.err.println("Unknown --fail-on value: $failOn (expected errors|warnings|none)")
+        exitProcess(EXIT_UNKNOWN_FAIL_ON)
+      }
+      null -> exitProcess(if (outcome.buildOk) 0 else 2)
+      else -> exitProcess(rendererExit)
     }
-    exitProcess(exit)
   }
 }
-
-/** Sentinel returned by [a11yExitCode] when `failOn` is not one of the accepted values. */
-internal const val EXIT_UNKNOWN_FAIL_ON = 1
 
 /**
- * Pure exit-code policy for `compose-preview a11y`.
- *
- * Returns:
- * - `0` — clean run, build succeeded, threshold not tripped.
- * - `2` — Gradle build failed, OR the CLI-side `--fail-on` threshold tripped.
- * - [EXIT_UNKNOWN_FAIL_ON] (`1`) — `failOn` is set to something other than
- *   `errors`/`warnings`/`none`. Caller is responsible for printing the user-facing message; this
- *   helper stays free of stderr side effects so it's unit-testable.
- *
- * `failOn` semantics:
- * - `null` (default) — exit code mirrors the underlying Gradle build.
- * - `"errors"` — trip iff any `ERROR`-level finding exists.
- * - `"warnings"` — trip iff any `ERROR` or `WARNING`-level finding exists.
- * - `"none"` — never trip on findings; mirror the Gradle exit code.
+ * `compose-preview a11y` — `ReportCommand` bound to the built-in `a11y` extension id. Kept as a
+ * named subclass so `Main.kt`'s `when` dispatch stays grep-able and the help text can describe the
+ * command directly; the entire body is the constructor call.
  */
-internal fun a11yExitCode(buildOk: Boolean, errorCount: Int, warnCount: Int, failOn: String?): Int {
-  val cliFailed =
-    when (failOn) {
-      "errors" -> errorCount > 0
-      "warnings" -> errorCount > 0 || warnCount > 0
-      "none",
-      null -> false
-      else -> return EXIT_UNKNOWN_FAIL_ON
-    }
-  return when {
-    cliFailed -> 2
-    !buildOk -> 2
-    else -> 0
-  }
-}
+class A11yCommand(args: List<String>) : ReportCommand(args, "a11y")
 
 private fun sha256(bytes: ByteArray): String {
   val md = MessageDigest.getInstance("SHA-256")
