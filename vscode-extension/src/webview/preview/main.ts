@@ -31,12 +31,14 @@ import "./components/BundleChipBar";
 import "./components/DataTabs";
 import "./components/DataTable";
 import "./components/BoxOverlay";
+import "./components/BundleExpander";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { BundleChipBar } from "./components/BundleChipBar";
 import { DataTabs } from "./components/DataTabs";
 import { DataTable } from "./components/DataTable";
+import { BundleExpander } from "./components/BundleExpander";
 import { BundleController, type BundleSnapshot } from "./bundleController";
-import type { BundleId } from "./bundleRegistry";
+import { getBundle, type BundleId } from "./bundleRegistry";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
@@ -508,21 +510,73 @@ export class PreviewApp extends LitElement {
             );
             return visible?.dataset.previewId ?? null;
         };
-        // Per-bundle table elements. Created lazily on first use and
-        // re-rendered in-place on state change.
-        const bundleTables = new Map<BundleId, DataTable<unknown>>();
-        const a11yTable = (): DataTable<unknown> => {
-            let t = bundleTables.get("a11y");
-            if (t) return t;
-            t = document.createElement("data-table") as DataTable<unknown>;
-            t.heading = "Accessibility";
-            t.setColumns(
+        // Per-bundle tab bodies. Each entry holds the wrapper element
+        // we attach to `<data-tabs>` plus the `<bundle-expander>` /
+        // `<data-table>` children we refresh in place. Lazy-built on
+        // first activation so a panel that never touches a bundle
+        // doesn't pay the DOM cost.
+        interface BundleBody {
+            wrapper: HTMLElement;
+            expander: BundleExpander;
+            table: DataTable<unknown>;
+        }
+        const bundleBodies = new Map<BundleId, BundleBody>();
+        const buildBundleBody = (
+            id: BundleId,
+            heading: string,
+            columns: ReadonlyArray<
+                import("./components/DataTable").DataTableColumn<unknown>
+            >,
+        ): BundleBody => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "bundle-tab-body";
+            wrapper.dataset.bundle = id;
+            const expander = document.createElement(
+                "bundle-expander",
+            ) as BundleExpander;
+            expander.addEventListener("kind-toggled", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/BundleExpander").BundleKindToggledDetail
+                    >
+                ).detail;
+                bundleController.setKindEnabled(
+                    det.bundleId,
+                    det.kind,
+                    det.enabled,
+                );
+            });
+            const table = document.createElement(
+                "data-table",
+            ) as DataTable<unknown>;
+            table.heading = heading;
+            table.setColumns(columns);
+            wrapper.appendChild(expander);
+            wrapper.appendChild(table);
+            return { wrapper, expander, table };
+        };
+        const a11yBody = (): BundleBody => {
+            let b = bundleBodies.get("a11y");
+            if (b) return b;
+            b = buildBundleBody(
+                "a11y",
+                "Accessibility",
                 a11yTableColumns() as unknown as ReadonlyArray<
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
-            bundleTables.set("a11y", t);
-            return t;
+            bundleBodies.set("a11y", b);
+            return b;
+        };
+        const refreshExpanderFor = (id: BundleId): void => {
+            const body = bundleBodies.get(id);
+            const bundle = getBundle(id);
+            if (!body || !bundle) return;
+            body.expander.setState({
+                bundleId: id,
+                kinds: bundle.kinds,
+                enabledKinds: bundleController.state().enabledKinds(id),
+            });
         };
         const refreshA11yBundle = (): void => {
             const target = currentBundleTarget();
@@ -537,18 +591,19 @@ export class PreviewApp extends LitElement {
                 store.allPreviews.find((p) => p.id === target)?.a11yFindings ??
                 [];
             const data = computeA11yBundleData(nodes, findings);
-            const table = a11yTable();
-            table.setRows(data.rows);
-            table.summary = data.rows.length + " elements";
-            table.setOverlayId(
+            const body = a11yBody();
+            body.table.setRows(data.rows);
+            body.table.summary = data.rows.length + " elements";
+            body.table.setOverlayId(
                 (row) => (row as { id: string }).id ?? "a11y-row",
             );
-            table.setJsonPayload(() => ({
+            body.table.setJsonPayload(() => ({
                 previewId: target,
                 nodes,
                 findings,
             }));
-            dataTabs.setTabBody("a11y", table);
+            refreshExpanderFor("a11y");
+            dataTabs.setTabBody("a11y", body.wrapper);
         };
         const reflectBundleState = (): void => {
             const s = bundleController.state();
