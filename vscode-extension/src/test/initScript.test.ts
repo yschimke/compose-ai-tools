@@ -54,10 +54,13 @@ describe("renderInitScript", () => {
             "com.android.library",
             "org.jetbrains.compose",
         ]) {
-            assert.match(
-                script,
-                new RegExp(
-                    `pluginManager\\.withPlugin\\("${id.replace(/\./g, "\\.")}"\\) \\{ applyComposeAiPreview\\(\\) \\}`,
+            // Substring assertion — avoids the regex-escape bookkeeping
+            // CodeQL flagged for an incomplete `.replace(/\./g, ...)` that
+            // missed `\`, `*`, and friends. Plugin ids never carry regex
+            // metachars beyond `.`, but the static analyzer can't see that.
+            assert.ok(
+                script.includes(
+                    `pluginManager.withPlugin("${id}") { applyComposeAiPreview() }`,
                 ),
                 `expected withPlugin hook for ${id}`,
             );

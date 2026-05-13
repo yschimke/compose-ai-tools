@@ -304,6 +304,20 @@ function autoInjectEnabled(): boolean {
         .get<boolean>("autoInject.enabled", true);
 }
 
+/**
+ * True when the GradleOnly backend is wired up — i.e. we're in minimal mode.
+ * Module-scope so auto-render call sites that live outside `activate()` (e.g.
+ * [onDiagnosticsChanged], the stale-source kicker inside [refresh]) can gate
+ * themselves without reading the user setting again.
+ *
+ * `daemonGate` is set during activation and never re-assigned, so this is a
+ * stable signal for the session — matching the rest of the mode contract
+ * which requires a window reload to switch.
+ */
+function inMinimalMode(): boolean {
+    return daemonGate?.spawnsDaemons === false;
+}
+
 function autoEnableCheapEnabled(): boolean {
     return vscode.workspace
         .getConfiguration("composePreview")
@@ -2840,6 +2854,13 @@ function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
     if (!compileGateActive || !currentScopeFile) {
         return;
     }
+    // Minimal mode: every render is manual. Clearing the compile gate
+    // would otherwise sneak a fresh render in the moment the LSP republishes
+    // — exactly the kind of behind-the-scenes work the mode is meant to
+    // suppress.
+    if (inMinimalMode()) {
+        return;
+    }
     const scopeFile = currentScopeFile;
     if (!e.uris.some((u) => u.fsPath === scopeFile)) {
         return;
@@ -3771,8 +3792,11 @@ async function refresh(
         //
         // Only fires from the discover-only path: forceRender=true paths
         // just rendered, so PNGs are fresh by definition. Without that
-        // gate we'd loop on every save-driven refresh.
-        if (sourceIsStale) {
+        // gate we'd loop on every save-driven refresh. Also skipped in
+        // minimal mode — the user opted out of auto-renders, and a focus
+        // event that finds stale PNGs would otherwise sneak a render
+        // through without a refresh-button click.
+        if (sourceIsStale && !inMinimalMode()) {
             logLine(
                 `auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`,
             );
