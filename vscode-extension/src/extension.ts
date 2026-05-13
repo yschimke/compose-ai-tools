@@ -81,6 +81,8 @@ import {
     hasFreshRenderStamp,
     writeRenderFreshnessStamp,
 } from "./renderFreshness";
+import { BUNDLED_PLUGIN_VERSION, materializeInitScript } from "./initScript";
+import { ResolvedMode, resolveModeFromSettings } from "./composePreviewMode";
 
 const DEBOUNCE_MS = 1500;
 // Edits to the currently-scoped preview file (e.g. Claude Code's Edit tool
@@ -266,15 +268,40 @@ function earlyFeaturesEnabled(): boolean {
 }
 
 /**
- * Minimal mode: drive only the Gradle plugin. No daemon JVM, no data
- * extensions, no live previews, and no auto-refresh on save — the user
- * triggers renders manually via the refresh button. Read once at activation
- * because we pick between the live and gradle-only daemon backends there.
+ * Production wrapper for [resolveModeFromSettings]. Reads live VS Code
+ * settings and forwards. Called at activation and again after
+ * `bootstrapAppliedMarkers()` finishes so the post-Gradle-sync re-evaluation
+ * can prompt for a reload when the authoritative `applied.json` markers
+ * reveal a plugin module the activation-time text scan missed.
  */
-function minimalModeEnabled(): boolean {
+export function resolveMode(gradleService: {
+    findPreviewModules(): { modulePath: string }[];
+    hasInjectableHostModule(): boolean;
+}): ResolvedMode {
+    const config = vscode.workspace.getConfiguration("composePreview");
+    const mode = config.get<string>("mode", "auto");
+    return resolveModeFromSettings(
+        {
+            mode:
+                mode === "minimal" || mode === "full" || mode === "auto"
+                    ? mode
+                    : "auto",
+            autoInjectEnabled: autoInjectEnabled(),
+        },
+        gradleService,
+    );
+}
+
+/**
+ * Whether the bundled `apply-compose-ai-preview.init.gradle.kts` is passed
+ * to Gradle via `--init-script`. Off ⇒ the user must apply the preview
+ * plugin themselves; on (default) ⇒ the script auto-applies it to any
+ * Android / Compose project.
+ */
+function autoInjectEnabled(): boolean {
     return vscode.workspace
         .getConfiguration("composePreview")
-        .get<boolean>("minimal.enabled", false);
+        .get<boolean>("autoInject.enabled", true);
 }
 
 function autoEnableCheapEnabled(): boolean {
@@ -596,11 +623,35 @@ export async function activate(
               },
           };
 
+    // Auto-inject: ship a Gradle init script that applies the preview plugin
+    // to Android / Compose projects on the user's behalf. The path is added
+    // to every Gradle invocation via `argsProvider` so the consumer never has
+    // to touch their `build.gradle.kts`. Materializing here (instead of from
+    // a static media path) lets us version-pin the plugin coordinate in
+    // TypeScript and keep the rendered script in extension storage, which
+    // survives extension updates without polluting `~/.gradle/init.d/`.
+    let initScriptArgs: readonly string[] = [];
+    if (autoInjectEnabled()) {
+        try {
+            const initScriptPath = materializeInitScript(
+                context.globalStorageUri.fsPath,
+            );
+            initScriptArgs = ["--init-script", initScriptPath];
+            outputChannel.appendLine(
+                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+            );
+        } catch (err) {
+            outputChannel.appendLine(
+                `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
+            );
+        }
+    }
+
     gradleService = new GradleService(
         workspaceRoot,
         gradleApi,
         outputChannel,
-        () => [],
+        () => [...initScriptArgs],
         logFilter,
     );
 
@@ -616,7 +667,11 @@ export async function activate(
     // through `notifyDaemonOfSave`, which short-circuits to `'disabled'` on the
     // gradle-only gate; the save handler additionally skips auto-rendering in
     // minimal mode so the user drives renders manually via the refresh button.
-    const minimal = minimalModeEnabled();
+    const initialMode = resolveMode(gradleService);
+    const minimal = initialMode.mode === "minimal";
+    outputChannel.appendLine(
+        `[startup] mode=${initialMode.mode} reason=${initialMode.reason}`,
+    );
     if (minimal) {
         outputChannel.appendLine(
             "[startup] minimal mode: gradle-only backend — daemon, data extensions and live previews disabled, renders are manual",
@@ -1235,16 +1290,54 @@ export async function activate(
     // Refresh applied-markers in the background so future module resolution can
     // use the authoritative `applied.json` path. Doctor stays explicit via
     // `composePreview.runDoctor`.
-    void gradleService.bootstrapAppliedMarkers((err) => {
-        // Bootstrap is fire-and-forget and the scan fallback covers most
-        // failures, but JDK-shape failures will keep biting on every render
-        // — surface them once, here, so users aren't stuck on opaque output.
-        if (err instanceof ClassVersionError) {
-            showClassVersionRemediation(err);
-        } else if (err instanceof JdkImageError) {
-            showJdkImageRemediation(err);
-        }
-    });
+    //
+    // The same bootstrap is the trigger for the post-sync mode re-evaluation:
+    // text-scan fallbacks miss version-catalog aliases / convention-plugin
+    // setups, so a workspace can boot into minimal mode and only learn that
+    // the plugin *is* applied once Gradle writes its markers. When that
+    // happens (and the user hasn't pinned the setting), prompt for a reload
+    // to flip into full mode.
+    void gradleService
+        .bootstrapAppliedMarkers((err) => {
+            if (err instanceof ClassVersionError) {
+                showClassVersionRemediation(err);
+            } else if (err instanceof JdkImageError) {
+                showJdkImageRemediation(err);
+            }
+        })
+        .then(() => {
+            if (!gradleService) {
+                return;
+            }
+            const post = resolveMode(gradleService);
+            if (
+                initialMode.mode === post.mode ||
+                post.reason === "user-setting"
+            ) {
+                return;
+            }
+            // Activation guessed minimal, but markers now show a plugin is
+            // applied — offer to reload for full mode. The opposite swing
+            // (full → minimal post-sync) shouldn't happen because the
+            // signals are monotonic: `findPreviewModules()` only grows
+            // entries after a bootstrap, never loses them.
+            outputChannel.appendLine(
+                `[startup] mode re-eval after bootstrap: ${initialMode.mode} → ${post.mode} (${post.reason}); offering reload`,
+            );
+            const RELOAD = "Reload to enable full mode";
+            void vscode.window
+                .showInformationMessage(
+                    "Compose Preview detected the plugin is applied. Reload the window to switch from minimal to full mode (daemon, data extensions, live previews).",
+                    RELOAD,
+                )
+                .then((action) => {
+                    if (action === RELOAD) {
+                        void vscode.commands.executeCommand(
+                            "workbench.action.reloadWindow",
+                        );
+                    }
+                });
+        });
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {

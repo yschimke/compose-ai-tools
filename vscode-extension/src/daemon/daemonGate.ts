@@ -366,27 +366,35 @@ export class LiveDaemonGate implements DaemonGate {
 export class GradleOnlyDaemonGate implements DaemonGate {
     readonly spawnsDaemons = false;
 
-    async getOrSpawn(): Promise<DaemonClient | null> {
+    async getOrSpawn(
+        _module: ModuleInfo,
+        _events: DaemonClientEvents,
+    ): Promise<DaemonClient | null> {
         return null;
     }
 
-    async bootstrap(): Promise<void> {
+    async bootstrap(
+        _gradleService: GradleService,
+        _module: ModuleInfo,
+    ): Promise<void> {
         /* no-op: gradle-only mode never bootstraps a daemon */
     }
 
-    isBuildDisabled(): boolean {
+    isBuildDisabled(_module: ModuleInfo): boolean {
         return true;
     }
 
-    isDaemonReady(): boolean {
+    isDaemonReady(_modulePath: string): boolean {
         return false;
     }
 
-    isInteractiveSupported(): boolean {
+    isInteractiveSupported(_modulePath: string): boolean {
         return false;
     }
 
-    getCapabilitiesSnapshot(): DaemonCapabilitiesSnapshot | null {
+    getCapabilitiesSnapshot(
+        _moduleId: string,
+    ): DaemonCapabilitiesSnapshot | null {
         return null;
     }
 

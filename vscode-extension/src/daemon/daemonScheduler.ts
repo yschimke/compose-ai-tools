@@ -680,7 +680,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
  * `GradleOnlyDaemonGate.getOrSpawn` without branching on the backend.
  */
 export class GradleOnlyDaemonScheduler implements DaemonScheduler {
-    async ensureModule(): Promise<boolean> {
+    async ensureModule(_module: ModuleInfo): Promise<boolean> {
         return false;
     }
 
@@ -693,23 +693,41 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         return false;
     }
 
-    async fileChanged(): Promise<void> {
+    async fileChanged(
+        _module: ModuleInfo,
+        _absPath: string,
+        _changeType?: FileChangeType,
+    ): Promise<void> {
         /* no-op: minimal mode never notifies the daemon */
     }
 
-    async setFocus(): Promise<void> {
+    async setFocus(_module: ModuleInfo, _previewIds: string[]): Promise<void> {
         /* no-op */
     }
 
-    async setVisible(): Promise<void> {
+    async setVisible(
+        _module: ModuleInfo,
+        _visible: string[],
+        _predicted?: string[],
+    ): Promise<void> {
         /* no-op */
     }
 
-    async setDataProductSubscription(): Promise<void> {
+    async setDataProductSubscription(
+        _module: ModuleInfo,
+        _previewId: string,
+        _kinds: readonly string[],
+        _enabled: boolean,
+    ): Promise<void> {
         /* no-op: data extensions are disabled in minimal mode */
     }
 
-    async renderNow(): Promise<boolean> {
+    async renderNow(
+        _module: ModuleInfo,
+        _previewIds: string[],
+        _tier?: RenderTier,
+        _reason?: string,
+    ): Promise<boolean> {
         return false;
     }
 
