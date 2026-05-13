@@ -68,12 +68,12 @@ runs:
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.10.8 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.10.9 # x-release-please-version
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install@v0.10.8 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.10.9 # x-release-please-version
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
