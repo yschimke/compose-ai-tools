@@ -1796,12 +1796,12 @@ body {
 /* Surfaces "+N variants" on the surviving card when variant-collapse
    hides duplicates. Without it the only path to the siblings is
    picking the function in the toolbar dropdown — easy to miss when
-   identical-looking previews sit side by side. Anchored top-left so
-   it doesn't crowd the existing focus / animation icons on the right
-   of the title row. */
+   identical-looking previews sit side by side. Anchored bottom-left,
+   on the same row as `.variant-badge` and the long-scroll page chip,
+   so it stays clear of the title and the focus / animation icons. */
 .variant-count-chip {
     position: absolute;
-    top: 6px;
+    bottom: 6px;
     left: 6px;
     z-index: 2;
     padding: 2px 6px;
