@@ -2484,3 +2484,161 @@ body {
     font-size: 11px;
     opacity: 0.55;
 }
+
+/* Performance bundle — stacked sub-sections (recomposition, render
+ * trace, Perfetto export). Each section has its own header so the tab
+ * scrolls naturally; the trace phase bar is the only chart-style
+ * surface in any bundle today, so the styling is local rather than a
+ * shared phase-bar primitive. */
+.perf-bundle-host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 4px 0;
+}
+.perf-bundle-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.perf-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.perf-section-summary {
+    opacity: 0.7;
+    font-weight: 400;
+    font-size: 11px;
+}
+.perf-bundle-empty {
+    padding: 12px;
+    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border-radius: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+.perf-bundle-empty-title {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+.perf-bundle-empty-detail {
+    margin: 0;
+    opacity: 0.85;
+}
+.perf-recomp-rank {
+    width: 24px;
+    opacity: 0.6;
+    text-align: right;
+}
+.perf-recomp-nodeid {
+    font-family: var(--vscode-editor-font-family, "SF Mono", Menlo, monospace);
+    font-size: 11px;
+    word-break: break-all;
+}
+.perf-recomp-count {
+    text-align: right;
+    width: 64px;
+}
+.perf-recomp-count-badge {
+    display: inline-block;
+    min-width: 28px;
+    padding: 1px 6px;
+    border-radius: 9px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 11px;
+    font-weight: 700;
+}
+.perf-recomp-more {
+    opacity: 0.7;
+    font-size: 11px;
+    padding: 0 8px;
+}
+.perf-chip-row {
+    display: inline-flex;
+    gap: 4px;
+}
+.perf-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 9px;
+    font-size: 10px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border, transparent);
+}
+.perf-chip[data-mode="delta"] {
+    background: var(--vscode-statusBarItem-prominentBackground, #1976d2);
+    color: var(--vscode-statusBarItem-prominentForeground, #fff);
+}
+.perf-chip-seq {
+    opacity: 0.85;
+}
+.perf-phase-bar {
+    display: flex;
+    width: 100%;
+    height: 22px;
+    background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.1));
+    border-radius: 3px;
+    overflow: hidden;
+}
+.perf-phase-bar-segment {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    min-width: 2px;
+    background: var(--vscode-progressBar-background, #0e639c);
+    border-right: 1px solid var(--vscode-editor-background, #1e1e1e);
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--vscode-editor-background, #1e1e1e);
+    font-size: 10px;
+    font-weight: 600;
+}
+.perf-phase-bar-segment:last-child {
+    border-right: none;
+}
+.perf-phase-bar-segment-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.perf-metrics-list {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 0;
+    font-size: 11px;
+}
+.perf-metrics-list dt {
+    opacity: 0.7;
+    font-family: var(--vscode-editor-font-family, "SF Mono", Menlo, monospace);
+}
+.perf-metrics-list dd {
+    margin: 0;
+}
+.perf-perfetto-summary {
+    font-size: 11px;
+    opacity: 0.85;
+}
+.perf-perfetto-top {
+    opacity: 0.85;
+}
+.perf-perfetto-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-size: 11px;
+    cursor: pointer;
+    align-self: flex-start;
+}
+.perf-perfetto-open:hover {
+    background: var(--vscode-button-hoverBackground);
+}
