@@ -32,6 +32,8 @@ fun main(args: Array<String>) {
       "--remote",
       "--pr-number",
       "--message",
+      "--with-extension",
+      "--with",
     )
   var commandIndex = -1
   var i = 0
@@ -99,7 +101,8 @@ private fun printUsage() {
                        see also `compose-preview-show-resources/v1` JSON envelope.
       list             List discovered previews
       render           Render previews; with --output copies a single match to disk
-      a11y             Render previews and print ATF accessibility findings
+      a11y             Render previews with the a11y data extension on and
+                       print ATF findings (thin wrapper over `--with-extension a11y`)
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
       share-gist       Create a gist from a markdown file plus image attachments
@@ -126,6 +129,11 @@ private fun printUsage() {
       --verbose, -v        Show full Gradle build output (implies --progress)
       --timeout <seconds>  Gradle build timeout (default: 300)
       --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
+      --with-extension <id>
+                           Enable a data extension for this run (repeatable; comma-separated
+                           values accepted). Forwards as `-PcomposePreview.previewExtensions
+                           .<id>.enableAllChecks=true`. The `a11y` command is a thin wrapper
+                           that always sets `--with-extension a11y`. No daemon required.
       --force=<reason>     Sanctioned escape hatch when a render looks stale: passes
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged

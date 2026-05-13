@@ -565,12 +565,15 @@ abstract class RobolectricRenderTestBase(
         // between previews sharing the same Robolectric sandbox.
         org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
 
-        // ATF runs unconditionally — a11y is a normal data producer now (parity with theme,
-        // recomposition, etc.). `LocalInspectionMode` flips to `false` so Compose populates the
-        // accessibility semantics tree (inspection mode suppresses it, leaving ATF with nothing
-        // to flag). After capture we pull the `ViewRootForTest`-backed view off the still-attached
-        // SemanticsNode and hand it to [AccessibilityChecker]. Capturing before ATF keeps the PNG
-        // output stable — findings only land in *sidecar* artifacts.
+        // ATF is opt-in (see `a11yEnabled`) — gated on `composeai.a11y.enabled`, forwarded by the
+        // gradle plugin from the `previewExtensions.a11y` DSL or the matching Gradle property.
+        // The post-capture block on line 983 skips entirely when off.
+        // `LocalInspectionMode` still flips to `false` unconditionally: that's both what ATF needs
+        // for live semantics AND what most consumers expect for production-like rendering, so it's
+        // not coupled to the a11y toggle. After capture (when a11y is on) we pull the
+        // `ViewRootForTest`-backed view off the still-attached SemanticsNode and hand it to
+        // [AccessibilityChecker]. Capturing before ATF keeps the PNG output stable — findings only
+        // land in *sidecar* artifacts.
 
         // The v2 replacement (`androidx.compose.ui.test.junit4.v2.createAndroidComposeRule`)
         // that the deprecation warning suggests was added in compose-ui-test
@@ -980,7 +983,8 @@ abstract class RobolectricRenderTestBase(
                         FocusOverlay.apply(capturedView, outputFile, focus.toFocusOverride())
                     }
 
-                    if (job is CaptureRenderJob && captureIndex == a11yCaptureIndex()) {
+                    if (job is CaptureRenderJob && captureIndex == a11yCaptureIndex() &&
+                        a11yEnabled()) {
                         // `fetchSemanticsNode().root as ViewRootForTest` is the
                         // exact view roborazzi-accessibility-check's
                         // `checkRoboAccessibility` walks — it's the only view
@@ -1069,6 +1073,16 @@ abstract class RobolectricRenderTestBase(
      */
     private fun a11yCaptureIndex(): Int =
         if (preview.captures.size > 1) 1 else 0
+
+    /**
+     * Opt-in gate for the post-capture ATF + hierarchy walk. Set by the gradle plugin via
+     * `composeai.a11y.enabled` (resolved from the typed `previewExtensions.a11y` DSL or the
+     * `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property the CLI's `a11y` /
+     * `--with-extension a11y` paths forward). Default off — the cheap render path skips ATF and
+     * the per-preview JSON sidecar entirely.
+     */
+    private fun a11yEnabled(): Boolean =
+        System.getProperty("composeai.a11y.enabled")?.toBoolean() == true
 
     /**
      * Match how Roborazzi's `RoborazziComposeSizeOption` / `LocaleOption` /

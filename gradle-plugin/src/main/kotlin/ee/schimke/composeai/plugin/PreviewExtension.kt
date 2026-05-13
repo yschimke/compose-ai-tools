@@ -141,6 +141,43 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
   }
 
   /**
+   * Configure the built-in `a11y` preview extension (ATF accessibility checks + hierarchy walk).
+   * Off by default — opt in with `enableAllChecks()` (or set the
+   * `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property at the command line) so
+   * `renderPreviews` writes per-preview ATF sidecars and `aggregateAccessibility` rolls them into
+   * `accessibility.json`. With a11y disabled the renderer skips the post-capture ATF pass entirely
+   * and the manifest's `accessibilityReport` pointer is `null`.
+   */
+  val a11y: A11yPreviewExtension = objects.newInstance(A11yPreviewExtension::class.java, "a11y")
+
+  /** Configure the built-in a11y preview extension. */
+  fun a11y(action: Action<A11yPreviewExtension>) {
+    action.execute(a11y)
+  }
+
+  init {
+    // Eagerly register the built-in extension ids in the generic container so
+    // `extensions.findByName(id)` is non-null at every phase — plugin task wiring runs during
+    // plugin apply, *before* the build script's `composePreview { previewExtensions { … } }`
+    // block evaluates, and we don't want to snapshot `null` for a generic entry the user
+    // configures later via `extension("a11y") { … }`.
+    //
+    // The user's `extension(name, action)` method below routes through `maybeCreate`, which
+    // returns this pre-registered instance instead of creating a new one — so user-written
+    // generic config flows into the same Property objects the resolvers read from. Conversely,
+    // if the user only ever uses the typed peers (`composePreview { previewExtensions { a11y {
+    // … } } }`), the pre-registered generic entries stay at their (false / empty) defaults and
+    // the resolver's `||` over typed + generic short-circuits correctly. Either path works;
+    // mixing both stacks them.
+    //
+    // Configuration-cache safe: `maybeCreate` runs at extension construction time, which
+    // happens during plugin apply — pure configuration phase, never serialized. The Property
+    // values themselves are evaluated lazily by the resolvers' `zip`/`map` chains.
+    extensions.maybeCreate("composeAiTrace")
+    extensions.maybeCreate("a11y")
+  }
+
+  /**
    * Configure one preview extension by id. [PreviewExtensionConfig.enableAllChecks] enables every
    * check that extension provides; [PreviewExtensionConfig.checks] enables only named checks for
    * that extension.
@@ -197,6 +234,11 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
 }
 
 abstract class ComposeAiTracePreviewExtension
+@Inject
+constructor(extensionName: String, objects: ObjectFactory) :
+  PreviewExtensionConfig(extensionName, objects)
+
+abstract class A11yPreviewExtension
 @Inject
 constructor(extensionName: String, objects: ObjectFactory) :
   PreviewExtensionConfig(extensionName, objects)

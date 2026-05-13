@@ -287,6 +287,9 @@ internal object AndroidPreviewSupport {
         extension,
       ) {
         dependsOn(mainCompileTaskName)
+        // `accessibilityEnabled` is wired by `registerDiscoverTask` itself via
+        // `AndroidPreviewSupport.resolveA11yEnabled` — one source of truth for both Android and
+        // CMP paths.
         if (screenshotTestEnabled) {
           dependsOn(screenshotCompileTaskName)
           screenshotTestRuntimeConfig?.let { stConfig ->
@@ -1187,11 +1190,16 @@ internal object AndroidPreviewSupport {
           )
           .forEach { (k, v) -> systemProperty(k, v) }
 
-        // The renderer always writes ATF findings + ANI hierarchy artefacts; tell it which
-        // directory to land per-preview JSON sidecars in. Routed through a
-        // `CommandLineArgumentProvider` so the path is resolved at task execution time —
-        // `Test.systemProperty(name, provider)` would stringify the provider itself via
+        // a11y is opt-in: the renderer skips the post-capture ATF + hierarchy block unless
+        // `composeai.a11y.enabled=true` is set. Both knobs (enabled bit + output dir) flow
+        // through `CommandLineArgumentProvider` so paths and toggles resolve at task execution
+        // time — `Test.systemProperty(name, provider)` would stringify the provider itself via
         // `Object.toString()` (`fixed(class java.lang.String, …)`) rather than its value.
+        // Unconditionally adding the output-dir arg keeps the gradle command line stable across
+        // runs even when a11y is off; the renderer never reads it on the off path.
+        jvmArgumentProviders.add(
+          A11yEnabledProvider(enabled = resolveA11yEnabled(project, extension))
+        )
         jvmArgumentProviders.add(
           AccessibilityOutputDirProvider(
             outputDir = accessibilityPerPreviewDir.map { it.asFile.absolutePath }
@@ -1539,6 +1547,20 @@ internal object AndroidPreviewSupport {
   }
 
   /**
+   * Forwards the resolved a11y on/off bit (see [resolveA11yEnabled]) as a system property the
+   * renderer reads at capture time. Lazy `@Input` Provider so flipping
+   * `-PcomposePreview.previewExtensions.a11y.enableAllChecks` between runs doesn't invalidate the
+   * configuration cache. The renderer treats a missing / blank value as "off" so the default with
+   * no DSL or property is the cheaper render path.
+   */
+  internal class A11yEnabledProvider(
+    @get:org.gradle.api.tasks.Input val enabled: org.gradle.api.provider.Provider<Boolean>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> =
+      listOf("-Dcomposeai.a11y.enabled=${enabled.get()}")
+  }
+
+  /**
    * Forwards the `composePreview.displayFilter.filters` Gradle property as the
    * `composeai.displayfilter.filters` system property on the spawned renderer JVM. The
    * `CommandLineArgumentProvider` shape (vs `test.systemProperty(...)`) means values are resolved
@@ -1572,16 +1594,24 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
     val typed = extension.previewExtensions.composeAiTrace
-    val genericTrace = extension.previewExtensions.extensions.findByName("composeAiTrace")
+    // `findByName(...)` is safe to call eagerly because `PreviewExtensionsExtension` eagerly
+    // registers the built-in ids in its generic container — see the `init` block there.
+    // A `composePreview { previewExtensions { extension("composeAiTrace") { ... } } }` block in
+    // the build script reaches the same instance via `maybeCreate`, so the user's
+    // `enableAllChecks()` / `checks` settings flow through this Property chain regardless of
+    // whether plugin-apply runs before or after the build-script body. The lazy-`Provider` wrap
+    // we tried instead captured `project` into the lambda, which the strict configuration cache
+    // rejects.
+    val generic = extension.previewExtensions.extensions.findByName("composeAiTrace")
     val genericAllChecks =
-      genericTrace?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+      generic?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
       typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
         typedEnabled || genericEnabled
       }
     val genericChecks =
-      genericTrace?.checks
-        ?: project.objects.listProperty(String::class.java).convention(emptyList())
+      generic?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList<String>())
     val wholeExtension =
       project.providers
         .gradleProperty("composePreview.previewExtensions.composeAiTrace.enableAllChecks")
@@ -1601,6 +1631,67 @@ internal object AndroidPreviewSupport {
 
   private val COMPOSE_AI_TRACE_CHECK_IDS =
     setOf("trace", "perfetto", "perfettoTrace", "composeAiTrace", "render/composeAiTrace")
+
+  /**
+   * Mirrors [resolveComposeAiTraceEnabled] for the built-in `a11y` preview extension. Resolves true
+   * when any of:
+   * - `composePreview { previewExtensions { a11y { enableAllChecks() } } }` is set in
+   *   `build.gradle.kts`,
+   * - the generic `previewExtensions.extension("a11y") { enableAllChecks() }` form is used,
+   * - `previewExtensions.a11y.checks.add("atf"/"hierarchy"/"overlay")` (or the generic equivalent)
+   *   names a check that turns the render-side pass on,
+   * - the command-line property `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` is
+   *   passed (the CLI's `compose-preview a11y` and `--with-extension a11y` paths use this form).
+   *
+   * Defaults to false — a11y is opt-in. When false, `RobolectricRenderTest` skips the post-capture
+   * ATF/hierarchy block entirely and `discoverPreviews` writes `accessibilityReport = null` into
+   * `previews.json`.
+   */
+  internal fun resolveA11yEnabled(
+    project: org.gradle.api.Project,
+    extension: PreviewExtension,
+  ): org.gradle.api.provider.Provider<Boolean> {
+    val typed = extension.previewExtensions.a11y
+    // Same eager-registration invariant as `resolveComposeAiTraceEnabled`: the generic-container
+    // `a11y` entry is registered when `PreviewExtensionsExtension` is constructed (plugin-apply
+    // time), so this `findByName` is non-null regardless of whether the build script's
+    // `extension("a11y") { ... }` block has been evaluated yet — and the same instance is
+    // returned by `maybeCreate` when it eventually does run. No lazy-`Provider` wrap, hence no
+    // `project` capture, hence no configuration-cache failure.
+    val generic = extension.previewExtensions.extensions.findByName("a11y")
+    val genericAllChecks =
+      generic?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+    val configuredAllChecks =
+      typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
+        typedEnabled || genericEnabled
+      }
+    val genericChecks =
+      generic?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList<String>())
+    val wholeExtension =
+      project.providers
+        .gradleProperty("composePreview.previewExtensions.a11y.enableAllChecks")
+        .map { it.toBooleanStrictOrNull() ?: false }
+        .orElse(configuredAllChecks)
+    val selectedChecks =
+      project.providers
+        .gradleProperty("composePreview.previewExtensions.a11y.checks")
+        .map { raw -> parseCheckList(raw).any { it in A11Y_CHECK_IDS } }
+        .orElse(
+          typed.checks.zip(genericChecks) { typedChecks, genericChecks ->
+            (typedChecks + genericChecks).any { it in A11Y_CHECK_IDS }
+          }
+        )
+    return wholeExtension.zip(selectedChecks) { whole, selected -> whole || selected }
+  }
+
+  /**
+   * Check ids that imply "turn the a11y render pass on." `atf` / `hierarchy` / `overlay` are the
+   * three sub-products documented on `PreviewExtensionConfig.checks`; `a11y` is the bare extension
+   * id, which the CLI's `--with-extension a11y` path forwards as a `checks=a11y` value when the
+   * user wants to be explicit. All map to the same render-time gate.
+   */
+  private val A11Y_CHECK_IDS = setOf("a11y", "atf", "hierarchy", "overlay")
 
   /**
    * Resolve the active render tier from `-PcomposePreview.tier=<fast|full>`. `fast` tells the

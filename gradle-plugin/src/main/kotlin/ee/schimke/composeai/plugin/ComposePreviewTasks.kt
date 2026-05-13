@@ -442,6 +442,13 @@ internal object ComposePreviewTasks {
           .map { it.toBooleanStrictOrNull() ?: false }
           .orElse(extension.failOnEmpty)
       )
+      // a11y is opt-in for every wiring path. `resolveA11yEnabled` reads the typed
+      // `previewExtensions.a11y` DSL plus the matching Gradle property the CLI's `a11y` /
+      // `--with-extension a11y` paths forward. CMP/desktop modules have no on-disk a11y producer
+      // so the manifest pointer is still informational there — the CLI / VS Code fall through
+      // when the file doesn't exist — but pinning it to the same resolver keeps behaviour
+      // consistent across module types.
+      accessibilityEnabled.set(AndroidPreviewSupport.resolveA11yEnabled(project, extension))
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       group = "compose preview"
       description = "Discover @Preview annotations in compiled classes"
