@@ -674,6 +674,18 @@ export type WebviewToExtension =
           findingsCount: number | null;
           nodesCount: number | null;
       }
+    /**
+     * Webview reports it consumed an `updateDataProducts` payload — the
+     * generic-fallback / non-a11y counterpart to `webviewA11yState`.
+     * Carries the kinds that landed in the per-preview cache so e2e tests
+     * can cover `a11y/overlay`, `compose/theme`, `layout/inspector`, and
+     * any future kind without growing the ack surface.
+     */
+    | {
+          command: "webviewDataProductsState";
+          previewId: string;
+          kinds: string[];
+      }
     | { command: "openFile"; className: string; functionName: string }
     | { command: "selectModule"; value: string }
     /**

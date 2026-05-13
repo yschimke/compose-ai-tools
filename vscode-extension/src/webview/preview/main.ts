@@ -747,7 +747,14 @@ export class PreviewApp extends LitElement {
                     byKind.set(dp.kind, dp.payload);
                 }
                 const focused = focusController.focusedCard();
-                if (focused?.dataset.previewId === previewId) {
+                const focusedId = focused?.dataset.previewId ?? null;
+                const matches = focusedId === previewId;
+                console.log(
+                    `[compose-preview] updateDataProducts previewId=${previewId} ` +
+                        `kinds=[${dataProducts.map((dp) => dp.kind).join(",")}] ` +
+                        `focused=${focusedId ?? "<none>"} matches=${matches}`,
+                );
+                if (matches && focused) {
                     inspector.render(focused);
                 }
             },

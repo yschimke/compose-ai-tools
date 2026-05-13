@@ -144,6 +144,11 @@ const moduleManifestCache = new Map<string, PreviewInfo[]>();
  */
 const heavyRefreshOptIns = new Map<string, Set<string>>();
 let panel: PreviewPanel | null = null;
+// Captured from `activate()` so module-scoped dispatch helpers
+// (`handleWebviewMessage` etc.) can write to the same Compose Preview
+// output channel without threading it through every call site. Null
+// before activation; helpers must null-check.
+let moduleOutputChannel: vscode.OutputChannel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
@@ -516,6 +521,9 @@ export async function activate(
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const outputChannel = vscode.window.createOutputChannel("Compose Preview");
     context.subscriptions.push(outputChannel);
+    // Mirror to module scope so dispatch helpers (e.g. `handleWebviewMessage`)
+    // can write to the same channel without threading it through every call.
+    moduleOutputChannel = outputChannel;
     // `composePreview.logging.level` is read on every emit so a settings.json
     // edit takes effect immediately without a window reload.
     const logFilter = new LogFilter(() =>
@@ -642,6 +650,13 @@ export async function activate(
                 outputChannel.appendLine(
                     `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
                         .map((dp) => dp.kind)
+                        .join(
+                            ",",
+                        )}] panel=${panel ? "live" : "missing"} transports=[${dataProducts
+                        .map(
+                            (dp) =>
+                                `${dp.kind}:${dp.payload !== undefined ? "inline" : dp.path ? "path" : "empty"}`,
+                        )
                         .join(",")}]`,
                 );
                 const decoded = applyDataProductsToRegistry(
@@ -677,6 +692,26 @@ export async function activate(
                                       : undefined),
                         }))
                         .filter((dp) => dp.payload !== undefined);
+                    const dropped = dataProducts.length - payloads.length;
+                    outputChannel.appendLine(
+                        `[daemon] updateDataProducts post for ${previewId}: ` +
+                            `forwarding=${payloads.length} dropped=${dropped} ` +
+                            `kinds=[${payloads.map((p) => p.kind).join(",")}]` +
+                            (dropped > 0
+                                ? ` droppedKinds=[${dataProducts
+                                      .filter(
+                                          (dp) =>
+                                              !payloads.some(
+                                                  (p) => p.kind === dp.kind,
+                                              ),
+                                      )
+                                      .map(
+                                          (dp) =>
+                                              `${dp.kind}(path=${dp.path ?? "<none>"})`,
+                                      )
+                                      .join(",")}]`
+                                : ""),
+                    );
                     if (payloads.length > 0) {
                         panel.postMessage({
                             command: "updateDataProducts",
@@ -684,6 +719,10 @@ export async function activate(
                             dataProducts: payloads,
                         });
                     }
+                } else {
+                    outputChannel.appendLine(
+                        `[daemon] updateDataProducts skipped for ${previewId}: panel not yet wired`,
+                    );
                 }
             },
             onClasspathDirty: (moduleId, detail) => {
@@ -3687,6 +3726,33 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // No production action — this message is a test-only signal that
             // proves the webview consumed a `setPreviews` post and populated
             // the grid. The test API's `getReceivedMessages()` snapshots it.
+            break;
+        case "webviewA11yState":
+            // Round-trip diagnostic for the a11y data-product chain. The
+            // webview emits this after `applyA11yUpdate` consumes an
+            // `updateA11y` post; logging it to the daemon channel closes
+            // the loop ("host posted → webview consumed") and pairs with
+            // the test-API `getReceivedMessages()` snapshot the e2e
+            // suite asserts on.
+            moduleOutputChannel?.appendLine(
+                `[daemon] webview ack updateA11y previewId=${msg.previewId} ` +
+                    `findings=${msg.findingsCount ?? "<none>"} ` +
+                    `nodes=${msg.nodesCount ?? "<none>"}`,
+            );
+            break;
+        case "webviewDataProductsState":
+            // Round-trip diagnostic counterpart to `webviewA11yState`. Logs
+            // which kinds reached the webview cache so the daemon channel
+            // shows the full path: `[daemon] updateDataProducts post …
+            // forwarding=N` → `[daemon] webview ack updateDataProducts …
+            // kinds=[…]`. A missing ack after a non-zero forward means the
+            // message rode the host-side bridge but didn't reach the
+            // webview — the kind of regression `webviewPreviewsRendered`
+            // catches for the grid path.
+            moduleOutputChannel?.appendLine(
+                `[daemon] webview ack updateDataProducts previewId=${msg.previewId} ` +
+                    `kinds=[${msg.kinds.join(",")}]`,
+            );
             break;
         case "openFile":
             openPreviewSource(msg.className, msg.functionName);

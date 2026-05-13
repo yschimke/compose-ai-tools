@@ -552,7 +552,22 @@ export class DaemonScheduler {
             // byte-identical to the prior frame; skip the disk read + base64 + postMessage
             // hop. The card stays painted with the bytes it's already showing — that's the
             // whole point of the dedup signal.
+            //
+            // BUT: a subscription-driven re-render against a previously-rendered preview
+            // routinely produces identical pixels (the data product travels in its own
+            // file — `a11y/overlay` is a separate PNG, `a11y/hierarchy` a separate JSON —
+            // so the *primary* PNG bytes don't change). Dropping the whole notification
+            // here also drops `dataProducts`, and the focus inspector's chip never gets
+            // its payload. Forward attachments before returning so the data-product chain
+            // doesn't depend on the primary image being dirty.
             if (params.unchanged === true) {
+                if (params.dataProducts && params.dataProducts.length > 0) {
+                    this.events.onDataProductsAttached?.(
+                        moduleId,
+                        params.id,
+                        params.dataProducts,
+                    );
+                }
                 return;
             }
 

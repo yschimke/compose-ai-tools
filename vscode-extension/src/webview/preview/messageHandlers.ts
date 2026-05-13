@@ -168,6 +168,11 @@ export function handleExtensionMessage(
             return;
         case "updateDataProducts":
             ctx.updateDataProducts(msg.previewId, msg.dataProducts);
+            ctx.vscode.postMessage({
+                command: "webviewDataProductsState",
+                previewId: msg.previewId,
+                kinds: msg.dataProducts.map((dp) => dp.kind),
+            });
             return;
         case "setModules":
             // Module selector removed from UI — module is resolved from the

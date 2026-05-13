@@ -390,6 +390,49 @@ describe("DaemonScheduler", () => {
         );
     });
 
+    it("still forwards dataProducts when renderFinished carries unchanged=true", async () => {
+        // Subscription-driven re-renders (focus inspector chip → data/subscribe →
+        // renderNow) routinely produce byte-identical primary PNGs — the data
+        // product travels in its own file. The frame-dedup short-circuit must not
+        // also drop the attachments, or the chip never gets its payload.
+        // Regression for the symptom seen on PR #1050: a11y/overlay subscribed,
+        // attached on the wire, never surfaced in the panel.
+        const { gate, scheduler, images, failures, dataProducts } = build();
+        await scheduler.ensureModule(mod("mod"));
+        const evts = gate.capturedEvents.get(":mod")!;
+        evts.onRenderFinished!({
+            id: "p1",
+            pngPath: "/no/such/dedup.png",
+            tookMs: 5,
+            unchanged: true,
+            dataProducts: [
+                { kind: "a11y/overlay", path: "/tmp/a11y-overlay.png" },
+            ],
+        } as never);
+        assert.strictEqual(
+            images.length,
+            0,
+            "unchanged=true still skips the PNG repaint",
+        );
+        assert.strictEqual(
+            failures.length,
+            0,
+            "unchanged=true must not trigger an unreadable-PNG failure path",
+        );
+        assert.strictEqual(
+            dataProducts.length,
+            1,
+            "unchanged=true must still forward attached dataProducts",
+        );
+        assert.deepStrictEqual(dataProducts[0], {
+            moduleId: ":mod",
+            previewId: "p1",
+            attachments: [
+                { kind: "a11y/overlay", path: "/tmp/a11y-overlay.png" },
+            ],
+        });
+    });
+
     it("reports onRenderFailed when the renderFinished PNG path is unreadable", async () => {
         const { gate, scheduler, failures } = build();
         await scheduler.ensureModule(mod("mod"));
