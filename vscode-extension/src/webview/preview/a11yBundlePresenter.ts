@@ -84,10 +84,18 @@ export function computeA11yBundleData(
 
     // Append findings that didn't match a hierarchy node so we don't
     // silently drop them — they show in the table with no overlay box.
-    nodes.forEach((n) => matchedKeys.add(boundsKey(n.boundsInScreen)));
+    // Empty / blank bounds keys are not real bounds, so they don't
+    // enter `matchedKeys` and a finding with blank bounds never
+    // short-circuits as "matched" against a node that also happened
+    // to have blank bounds (would silently hide accessibility issues).
+    nodes.forEach((n) => {
+        const key = boundsKey(n.boundsInScreen);
+        if (key) matchedKeys.add(key);
+    });
     findings.forEach((f, idx) => {
         const fBounds = f.boundsInScreen ?? "";
-        if (matchedKeys.has(boundsKey(fBounds))) return;
+        const fKey = boundsKey(fBounds);
+        if (fKey && matchedKeys.has(fKey)) return;
         const id = "a11y-finding-orphan-" + idx;
         const bounds = parseBounds(fBounds);
         const level = normLevel(f.level);

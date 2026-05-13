@@ -444,6 +444,14 @@ export class PreviewApp extends LitElement {
                     kind,
                     enabled,
                 });
+                // Mirror the toggle into BundleController so the chip
+                // bar / tab row stay in sync with subscriptions that
+                // originated outside the new shell (focus-inspector
+                // bucket checkboxes, suggestion chips). Without this
+                // hook, deactivating the bundle later could miss
+                // unsubscribing the kind, and the chip/tab state
+                // drifts from actual daemon subscriptions.
+                bundleController.handleExternalKindToggle(kind, enabled);
             },
             getScope: () => previewStore.getState().moduleDir,
             loadMru: (scope) => state.focusMruByScope?.[scope] ?? [],
