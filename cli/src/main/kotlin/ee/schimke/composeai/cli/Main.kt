@@ -71,6 +71,7 @@ fun main(args: Array<String>) {
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
     "extensions" -> ExtensionsCommand(allArgs).run()
+    "profile" -> ProfileCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "devices" -> DevicesCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
@@ -105,6 +106,10 @@ private fun printUsage() {
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       extensions       Introspect registered data extensions (`extensions list`)
+      profile          Run a saved JSON profile: `compose-preview profile <path.json>`. A
+                       profile bundles `extensions`, `filter`, `failOn`, and a chosen `report`
+                       extension into a single file teams can re-run. Forwards through
+                       `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
       share-gist       Create a gist from a markdown file plus image attachments
