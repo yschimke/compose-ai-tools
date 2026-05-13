@@ -284,7 +284,7 @@ describe("applyA11yUpdate", () => {
         assert.strictEqual(cache.findings.get("com.example.A"), cachedBefore);
     });
 
-    it("ensures .a11y-hierarchy-overlay and writes the nodes cache when nodes are present", () => {
+    it("ensures .a11y-hierarchy-overlay, stamps the hierarchy legend, and writes the nodes cache when nodes are present", () => {
         const card = buildCard("com.example.A");
         const nodes = [buildNode("Button"), buildNode("Text")];
         const { config, cache } = buildConfig({
@@ -297,10 +297,58 @@ describe("applyA11yUpdate", () => {
         assert.ok(layer, ".a11y-hierarchy-overlay attached");
         assert.strictEqual(layer!.getAttribute("aria-hidden"), "true");
 
+        const legend = card.querySelector(".a11y-hierarchy-legend");
+        assert.ok(legend, ".a11y-hierarchy-legend stamped onto the card");
+        assert.strictEqual(
+            legend!.querySelectorAll(".a11y-hierarchy-row").length,
+            nodes.length,
+        );
+
         assert.deepStrictEqual(cache.nodes.get("com.example.A"), nodes);
     });
 
-    it("removes .a11y-hierarchy-overlay and clears the nodes cache when nodes is an empty array", () => {
+    it("re-stamps the hierarchy legend on a second nodes update rather than duplicating it", () => {
+        const card = buildCard("com.example.A");
+        const { config } = buildConfig({
+            previews: [buildPreviewInfo("com.example.A")],
+        });
+
+        applyA11yUpdate("com.example.A", undefined, [buildNode("A")], config);
+        applyA11yUpdate(
+            "com.example.A",
+            undefined,
+            [buildNode("X"), buildNode("Y"), buildNode("Z")],
+            config,
+        );
+
+        const legends = card.querySelectorAll(".a11y-hierarchy-legend");
+        assert.strictEqual(legends.length, 1);
+        assert.strictEqual(
+            legends[0].querySelectorAll(".a11y-hierarchy-row").length,
+            3,
+        );
+    });
+
+    it("does not stamp the hierarchy legend when a findings legend already exists (findings take precedence)", () => {
+        const card = buildCard("com.example.A");
+        const { config } = buildConfig({
+            previews: [buildPreviewInfo("com.example.A")],
+        });
+
+        applyA11yUpdate(
+            "com.example.A",
+            [buildFinding("ERROR", "x")],
+            [buildNode("Button")],
+            config,
+        );
+
+        assert.ok(
+            card.querySelector(".a11y-legend:not(.a11y-hierarchy-legend)"),
+        );
+        assert.strictEqual(card.querySelector(".a11y-hierarchy-legend"), null);
+    });
+
+    it("removes .a11y-hierarchy-overlay, drops the hierarchy legend, and clears the nodes cache when nodes is an empty array", () => {
         const card = buildCard("com.example.A");
         const { config, cache } = buildConfig({
             previews: [buildPreviewInfo("com.example.A")],
@@ -313,11 +361,13 @@ describe("applyA11yUpdate", () => {
             config,
         );
         assert.ok(card.querySelector(".a11y-hierarchy-overlay"));
+        assert.ok(card.querySelector(".a11y-hierarchy-legend"));
         assert.strictEqual(cache.nodes.size, 1);
 
         applyA11yUpdate("com.example.A", undefined, [], config);
 
         assert.strictEqual(card.querySelector(".a11y-hierarchy-overlay"), null);
+        assert.strictEqual(card.querySelector(".a11y-hierarchy-legend"), null);
         assert.strictEqual(cache.nodes.has("com.example.A"), false);
     });
 

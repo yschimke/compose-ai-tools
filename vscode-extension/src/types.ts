@@ -845,6 +845,29 @@ export type WebviewToExtension =
           previewId: string;
           kind: string;
           enabled: boolean;
+      }
+    /**
+     * Click on a `resources/used` table cell. The host resolves the
+     * `(resourceType, resourceName, resolvedFile, packageName)` tuple
+     * against the workspace and opens the right file in an editor:
+     *
+     *  - `string` / `color` / `dimen` / `bool` / `integer` / `array`:
+     *    open the best-match values XML file and select the matching
+     *    `<{type} name="…">` entry (or bare `name="…"` fallback).
+     *  - `drawable` / `mipmap` / `raw`: open the file directly.
+     *  - `layout` / `menu` / `xml`: open the file at the top.
+     *
+     * `resolvedFile` may be a daemon-emitted absolute path, a `res/…`
+     * project-relative path, or `null` (host falls back to a workspace
+     * glob keyed by name). `packageName` is the resource owner the
+     * daemon resolved — caller package wins over library / framework.
+     */
+    | {
+          command: "openResourceFile";
+          resourceType: string;
+          resourceName: string;
+          resolvedFile: string | null;
+          packageName: string | null;
       };
 
 /**

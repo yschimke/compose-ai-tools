@@ -174,6 +174,115 @@ fun ClickRecomposingSquare() {
 }
 
 /**
+ * D5 audit fixture — the canonical "bad recomposition" shape from
+ * `skills/compose-preview-review/design/AGENT_AUDITS.md` § "Runtime and recomposition audit": a
+ * parent owns a counter, reads it in its own body in order to pass it as a parameter to three
+ * children, and only one of those children actually depends on the value. When the parent reads
+ * `clicks` to forward as an argument, the parent's own [androidx.compose.runtime.RecomposeScope]
+ * subscribes to the snapshot state — so on every click the parent invalidates, the children's `Int`
+ * parameters change with it (parameter changes defeat skipping even for stable params), and Compose
+ * recomposes all four scopes. That's the bug the audit test catches: clicking once should recompose
+ * one thing, not the whole subtree.
+ *
+ * Whole-card `pointerInput` + `awaitFirstDown` so the click coords don't matter (same pattern as
+ * [ClickRecomposingSquare]). The two header / footer children touch `clicks` only to absorb the
+ * parameter — they don't read it — so a future "why did this scope recompose?" diagnostic that
+ * groups by "parameter changed but never read" would flag them as the surprising entries.
+ */
+@Composable
+fun BadCounterRecompositionFixture() {
+  var clicks by remember { mutableStateOf(0) }
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(Color(0xFFEF5350)).pointerInput(Unit) {
+        awaitPointerEventScope {
+          while (true) {
+            awaitFirstDown()
+            clicks += 1
+          }
+        }
+      }
+  ) {
+    // Reading `clicks` here subscribes the *parent* scope. The argument-passing reads (`clicks`
+    // inside each child call expression below) happen during the parent's composition, so the
+    // parent invalidates on every click — that's the first surprising scope. The three children
+    // each take `clicks` as a parameter; parameter changes invalidate each child scope in turn,
+    // so the runtime recomposes all four.
+    BadCounterHeader(clicks)
+    BadCounterValue(clicks)
+    BadCounterFooter(clicks)
+  }
+}
+
+@Composable
+private fun BadCounterHeader(@Suppress("UNUSED_PARAMETER") clicks: Int) {
+  // Static copy — does not actually depend on `clicks`. The parameter exists only to be
+  // surprising in the audit output. A "fix" would change the signature so this scope is
+  // not invalidated when the count changes.
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111)))
+}
+
+@Composable
+private fun BadCounterValue(clicks: Int) {
+  // The one child that legitimately reads `clicks`. After the fix, this is the only scope
+  // expected to appear in a post-click delta.
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF66BB6A.toInt() + clicks)))
+}
+
+@Composable
+private fun BadCounterFooter(@Suppress("UNUSED_PARAMETER") clicks: Int) {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF222222)))
+}
+
+/**
+ * D5 audit fixture — the "fixed" counterpart of [BadCounterRecompositionFixture]. State is hoisted
+ * into a [androidx.compose.runtime.MutableState] holder whose *reference* is passed down; the
+ * parent never reads `.value` during composition, so its own recompose scope does not subscribe to
+ * the snapshot. Only [BetterCounterValue] reads through the holder, so only that one scope
+ * invalidates per click. The header and footer take no parameter and are never re-invoked with new
+ * arguments after first composition. Expected post-click delta: exactly one scope.
+ */
+@Composable
+fun BetterCounterRecompositionFixture() {
+  val counter = remember { mutableStateOf(0) }
+  Box(
+    modifier =
+      Modifier.fillMaxSize().background(Color(0xFFEF5350)).pointerInput(Unit) {
+        awaitPointerEventScope {
+          while (true) {
+            awaitFirstDown()
+            // Read+write inside an event-time lambda — not a snapshot read in any composition
+            // scope, so neither this Box nor the parent fixture's scope subscribes.
+            counter.value += 1
+          }
+        }
+      }
+  ) {
+    BetterCounterHeader()
+    BetterCounterValue(counter)
+    BetterCounterFooter()
+  }
+}
+
+@Composable
+private fun BetterCounterHeader() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111)))
+}
+
+@Composable
+private fun BetterCounterValue(counter: androidx.compose.runtime.State<Int>) {
+  // The snapshot read happens inside *this* scope's body, so only this scope invalidates when
+  // the counter changes. The parent forwards the holder reference, not the value, so the
+  // forwarding read at the call site is just an object reference — not a snapshot subscription.
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF66BB6A.toInt() + counter.value)))
+}
+
+@Composable
+private fun BetterCounterFooter() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFF222222)))
+}
+
+/**
  * v1 recording-mode component-preview fixture — a small (120×60-typical) tri-state square that
  * cycles red → green → blue on successive clicks. Used by `DesktopRecordingSessionTest` to assert
  * that a scripted timeline of `(tMs=0, click) + (tMs=500, click)` plays back as expected:

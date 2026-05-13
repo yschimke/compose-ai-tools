@@ -51,6 +51,7 @@ function ctx(overrides?: {
     findings?: readonly AccessibilityFinding[];
     cardDataset?: Record<string, string>;
     data?: (kind: string) => unknown;
+    postMessage?: (msg: unknown) => void;
 }) {
     const card = document.createElement("div");
     if (overrides?.cardDataset) {
@@ -62,6 +63,7 @@ function ctx(overrides?: {
         findings: overrides?.findings ?? [],
         nodes: overrides?.nodes ?? [],
         data: overrides?.data,
+        postMessage: overrides?.postMessage,
     };
 }
 
@@ -168,6 +170,303 @@ describe("focusPresentation registry", () => {
         const img = result!.report!.body.querySelector("img");
         assert.ok(img);
         assert.strictEqual(img!.src, "data:image/png;base64,AAAA");
+    });
+
+    it("resources/used presenter returns null without data", () => {
+        const presenter = getPresenter("resources/used")!;
+        assert.ok(presenter);
+        assert.strictEqual(presenter(ctx()), null);
+        // Empty / missing references → null so the inspector renders the
+        // pending placeholder rather than an empty table.
+        assert.strictEqual(
+            presenter(ctx({ data: () => ({ references: [] }) })),
+            null,
+        );
+        assert.strictEqual(
+            presenter(ctx({ data: () => ({ other: [] }) })),
+            null,
+        );
+    });
+
+    it("resources/used presenter renders a table with one row per reference", () => {
+        const presenter = getPresenter("resources/used")!;
+        const result = presenter(
+            ctx({
+                data: () => ({
+                    references: [
+                        {
+                            resourceType: "color",
+                            resourceName: "primary",
+                            packageName: "com.example.app",
+                            resolvedValue: "#FF112233",
+                            resolvedFile: "/abs/res/values/colors.xml",
+                            consumers: [{ nodeId: "a" }, { nodeId: "b" }],
+                        },
+                        {
+                            resourceType: "string",
+                            resourceName: "hello",
+                            packageName: "com.example.app",
+                            resolvedValue: "Hello",
+                            resolvedFile: null,
+                            consumers: [],
+                        },
+                    ],
+                }),
+            }),
+        );
+        assert.ok(result);
+        assert.ok(result!.report);
+        const table = result!.report!.body.querySelector("table")!;
+        assert.ok(table);
+        const rows = table.querySelectorAll("tbody tr");
+        assert.strictEqual(rows.length, 2);
+        // First row: color with swatch + value.
+        const swatch = rows[0].querySelector(".focus-report-swatch-sample");
+        assert.ok(swatch);
+        assert.strictEqual(
+            rows[0].querySelector(".focus-report-swatch-value")?.textContent,
+            "#FF112233",
+        );
+        // resolvedFile cell is a button (deep-link).
+        const fileBtn = rows[0]
+            .querySelectorAll("td")[4]
+            .querySelector("button");
+        assert.ok(fileBtn);
+        assert.strictEqual(fileBtn!.textContent, "/abs/res/values/colors.xml");
+        assert.strictEqual(rows[0].querySelectorAll("td")[5].textContent, "2");
+        // Second row: no resolvedFile → resourceName is the deep-link.
+        const nameBtn = rows[1]
+            .querySelectorAll("td")[1]
+            .querySelector("button");
+        assert.ok(nameBtn);
+        assert.strictEqual(nameBtn!.textContent, "hello");
+        assert.strictEqual(rows[1].querySelectorAll("td")[5].textContent, "");
+    });
+
+    it("resources/used presenter posts openResourceFile on cell click", () => {
+        const presenter = getPresenter("resources/used")!;
+        const posted: unknown[] = [];
+        const result = presenter(
+            ctx({
+                data: () => ({
+                    references: [
+                        {
+                            resourceType: "drawable",
+                            resourceName: "ic_launcher",
+                            packageName: "com.example.app",
+                            resolvedValue: null,
+                            resolvedFile:
+                                "/abs/res/drawable-xxhdpi/ic_launcher.png",
+                            consumers: [],
+                        },
+                    ],
+                }),
+                postMessage: (msg) => posted.push(msg),
+            }),
+        );
+        assert.ok(result);
+        const btn = result!.report!.body.querySelector("button")!;
+        btn.dispatchEvent(new Event("click"));
+        assert.strictEqual(posted.length, 1);
+        assert.deepStrictEqual(posted[0], {
+            command: "openResourceFile",
+            resourceType: "drawable",
+            resourceName: "ic_launcher",
+            resolvedFile: "/abs/res/drawable-xxhdpi/ic_launcher.png",
+            packageName: "com.example.app",
+        });
+    });
+
+    it("compose/recomposition returns null when no payload is cached", () => {
+        const recomp = getPresenter("compose/recomposition")!;
+        assert.strictEqual(recomp(ctx()), null);
+    });
+
+    it("compose/recomposition returns null when nodes is empty", () => {
+        const recomp = getPresenter("compose/recomposition")!;
+        const result = recomp(
+            ctx({
+                data: (kind) =>
+                    kind === "compose/recomposition"
+                        ? { mode: "snapshot", nodes: [] }
+                        : undefined,
+            }),
+        );
+        assert.strictEqual(result, null);
+    });
+
+    it("compose/recomposition sorts nodes by count desc and surfaces mode badge", () => {
+        const recomp = getPresenter("compose/recomposition")!;
+        const result = recomp(
+            ctx({
+                data: (kind) =>
+                    kind === "compose/recomposition"
+                        ? {
+                              mode: "delta",
+                              inputSeq: 42,
+                              nodes: [
+                                  { nodeId: "0xaaa", count: 3 },
+                                  { nodeId: "0xbbb", count: 17 },
+                                  { nodeId: "0xccc", count: 9 },
+                              ],
+                          }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        assert.ok(result!.legend);
+        assert.strictEqual(result!.legend!.entries.length, 3);
+        assert.strictEqual(result!.legend!.entries[0].label, "0xbbb");
+        assert.strictEqual(result!.legend!.entries[1].label, "0xccc");
+        assert.strictEqual(result!.legend!.entries[2].label, "0xaaa");
+        assert.ok(result!.legend!.summary!.includes("delta"));
+        assert.ok(result!.legend!.summary!.includes("input 42"));
+        assert.ok(result!.report);
+        const badge = result!.report!.body.querySelector(
+            ".focus-report-recomposition-mode",
+        );
+        assert.ok(badge);
+        assert.strictEqual(badge!.textContent, "delta");
+        const code = result!.report!.body.querySelector(
+            ".focus-report-recomposition-nodeid",
+        );
+        assert.ok(code);
+        assert.strictEqual(code!.textContent, "0xbbb");
+    });
+
+    it("compose/recomposition caps the visible list at top-N with a +N more affordance", () => {
+        const recomp = getPresenter("compose/recomposition")!;
+        const nodes = Array.from({ length: 15 }, (_, i) => ({
+            nodeId: "0x" + i,
+            count: i,
+        }));
+        const result = recomp(
+            ctx({
+                data: (kind) =>
+                    kind === "compose/recomposition"
+                        ? { mode: "snapshot", nodes }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        assert.strictEqual(result!.legend!.entries.length, 10);
+        const more = result!.report!.body.querySelector(
+            ".focus-report-recomposition-more",
+        );
+        assert.ok(more);
+        assert.strictEqual(more!.textContent, "+5 more");
+    });
+
+    it("compose/recomposition skips inputSeq when not in delta mode", () => {
+        const recomp = getPresenter("compose/recomposition")!;
+        const result = recomp(
+            ctx({
+                data: (kind) =>
+                    kind === "compose/recomposition"
+                        ? {
+                              mode: "snapshot",
+                              inputSeq: 99,
+                              nodes: [{ nodeId: "0xaaa", count: 1 }],
+                          }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        assert.ok(!result!.legend!.summary!.includes("input"));
+        const seq = result!.report!.body.querySelector(
+            ".focus-report-recomposition-inputseq",
+        );
+        assert.strictEqual(seq, null);
+    });
+
+    it("render/trace returns null when both phases and metrics are empty", () => {
+        const trace = getPresenter("render/trace")!;
+        assert.strictEqual(trace(ctx()), null);
+        const result = trace(
+            ctx({
+                data: (kind) =>
+                    kind === "render/trace"
+                        ? { totalMs: 0, phases: [], metrics: {} }
+                        : undefined,
+            }),
+        );
+        assert.strictEqual(result, null);
+    });
+
+    it("render/trace renders a phase bar and a totalMs summary", () => {
+        const trace = getPresenter("render/trace")!;
+        const result = trace(
+            ctx({
+                data: (kind) =>
+                    kind === "render/trace"
+                        ? {
+                              totalMs: 412,
+                              phases: [
+                                  {
+                                      name: "render",
+                                      startMs: 0,
+                                      durationMs: 412,
+                                  },
+                              ],
+                              metrics: { tookMs: 412 },
+                          }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        assert.ok(result!.report);
+        assert.strictEqual(result!.report!.summary, "412 ms");
+        const phases = result!.report!.body.querySelectorAll(
+            ".focus-report-render-trace-phase",
+        );
+        assert.strictEqual(phases.length, 1);
+        assert.strictEqual((phases[0] as HTMLElement).style.width, "100%");
+        // tookMs is suppressed because it duplicates totalMs.
+        const metrics = result!.report!.body.querySelector(
+            ".focus-report-render-trace-metrics",
+        );
+        assert.strictEqual(metrics, null);
+    });
+
+    it("render/trace surfaces non-tookMs metrics under the phases bar", () => {
+        const trace = getPresenter("render/trace")!;
+        const result = trace(
+            ctx({
+                data: (kind) =>
+                    kind === "render/trace"
+                        ? {
+                              totalMs: 30,
+                              phases: [
+                                  {
+                                      name: "compose",
+                                      startMs: 0,
+                                      durationMs: 10,
+                                  },
+                                  {
+                                      name: "measure",
+                                      startMs: 10,
+                                      durationMs: 20,
+                                  },
+                              ],
+                              metrics: {
+                                  tookMs: 30,
+                                  allocBytes: 1234,
+                                  gcMs: 2,
+                              },
+                          }
+                        : undefined,
+            }),
+        );
+        assert.ok(result);
+        const phases = result!.report!.body.querySelectorAll(
+            ".focus-report-render-trace-phase",
+        );
+        assert.strictEqual(phases.length, 2);
+        const dts = result!.report!.body.querySelectorAll(
+            ".focus-report-render-trace-metrics dt",
+        );
+        const keys = Array.from(dts).map((n) => n.textContent);
+        assert.deepStrictEqual(keys, ["allocBytes", "gcMs"]);
     });
 
     it("renderErrorPresenter activates only when the card carries a render error", () => {
