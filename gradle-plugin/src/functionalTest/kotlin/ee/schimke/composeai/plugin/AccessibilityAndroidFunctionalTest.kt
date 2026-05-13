@@ -147,9 +147,6 @@ class AccessibilityAndroidFunctionalTest {
             debugImplementation("androidx.compose.ui:ui-tooling")
         }
 
-        composePreview {
-            previewExtensions { a11y { enableAllChecks() } }
-        }
         """
           .trimIndent()
       )

@@ -244,12 +244,8 @@ fun main(args: Array<String>) {
   }
 
   // ExtensionRegistry — every extension is registered here in the inactive state. Clients call
-  // `extensions/enable` to opt in to specific contributions. A11y registries / descriptors are
-  // wired only when `composeai.a11y.previewExtension.enabled=true` because the host doesn't ship
-  // an ATF dispatch path otherwise; if the prop is unset the extension simply isn't registered.
+  // `extensions/enable` to opt in to specific contributions.
   val renderOutputDir = System.getProperty(RenderEngine.OUTPUT_DIR_PROP)
-  val a11yPreviewExtensionEnabled =
-    System.getProperty(RenderEngine.A11Y_PREVIEW_EXTENSION_ENABLED_PROP) == "true"
   val composeTraceEnabled = renderOutputDir != null && PerfettoTraceDataProducer.enabled()
   val dataRoot: File? =
     renderOutputDir?.let { File(it).parentFile?.resolve("data") ?: File(it) }
@@ -395,16 +391,12 @@ fun main(args: Array<String>) {
               dataProductRegistry = AccessibilityDataProductRegistry(rootDir = dataRoot),
               dataExtensionDescriptors = AccessibilityRecordingScriptEvents.descriptors,
               previewExtensionDescriptors =
-                if (a11yPreviewExtensionEnabled) {
-                  listOf(
-                    AccessibilitySemanticsPreviewExtension.descriptor,
-                    AtfChecksPreviewExtension.descriptor,
-                    AccessibilityOverlayPreviewExtension.descriptor,
-                    AccessibilityAnnotatedPreviewExtension.descriptor,
-                  )
-                } else {
-                  emptyList()
-                },
+                listOf(
+                  AccessibilitySemanticsPreviewExtension.descriptor,
+                  AtfChecksPreviewExtension.descriptor,
+                  AccessibilityOverlayPreviewExtension.descriptor,
+                  AccessibilityAnnotatedPreviewExtension.descriptor,
+                ),
             )
           )
           // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.) plus the

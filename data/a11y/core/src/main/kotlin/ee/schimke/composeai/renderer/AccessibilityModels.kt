@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 // consumers that read the on-disk JSON sidecars.
 //
 // Lives in `:data-a11y-core` so the Gradle plugin's standalone path
-// ([VerifyAccessibilityTask]) and the daemon path can share a single
+// (AggregateAccessibilityTask) and the daemon path can share a single
 // definition without either depending on the other's artefact. Kept in the
 // `ee.schimke.composeai.renderer` package for source-compatibility — this is
 // where the types lived before the D2.2 extraction, and downstream consumers

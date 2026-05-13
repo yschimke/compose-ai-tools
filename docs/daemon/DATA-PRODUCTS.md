@@ -252,7 +252,7 @@ applies — clients MUST treat absent and `[]` identically.
 A `data/fetch` that needs a re-render:
 
 1. Picks the smallest render mode that produces the kind. `a11y/*`
-   wants "a11y mode" (the same `composeai.a11y.enabled` toggle);
+   wants "a11y mode" (`renderMode = "a11y"` on the `RenderSpec`);
    `compose/recomposition` wants "default mode + recomposition
    instrumentation". Modes compose: a single re-render covers as many
    requested kinds as the modes overlap.

@@ -132,15 +132,8 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
       objects.newInstance(PreviewExtensionConfig::class.java, name)
     }
 
-  val a11y: A11yPreviewExtension = objects.newInstance(A11yPreviewExtension::class.java, "a11y")
-
   val composeAiTrace: ComposeAiTracePreviewExtension =
     objects.newInstance(ComposeAiTracePreviewExtension::class.java, "composeAiTrace")
-
-  /** Configure the built-in accessibility preview extension. */
-  fun a11y(action: Action<A11yPreviewExtension>) {
-    action.execute(a11y)
-  }
 
   /** Configure the compose-ai-tools render trace preview extension. */
   fun composeAiTrace(action: Action<ComposeAiTracePreviewExtension>) {
@@ -202,11 +195,6 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
   val annotateScreenshots: Property<Boolean> =
     objects.property(Boolean::class.java).convention(true)
 }
-
-abstract class A11yPreviewExtension
-@Inject
-constructor(extensionName: String, objects: ObjectFactory) :
-  PreviewExtensionConfig(extensionName, objects)
 
 abstract class ComposeAiTracePreviewExtension
 @Inject

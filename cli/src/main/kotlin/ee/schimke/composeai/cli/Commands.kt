@@ -443,9 +443,8 @@ abstract class Command(protected val args: List<String>) {
   /**
    * Standard "discover modules → run `:renderAllPreviews` → load manifests → build results"
    * pipeline used by `show` and `a11y`. Wraps [renderModules] with the preview-manifest read
-   * + [PreviewResult] build steps. Each subcommand contributes per-feature gradle properties via
-   *   [gradleArguments] (e.g. a11y enables checks via
-   *   `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`).
+   * + [PreviewResult] build steps. Subcommands contribute per-feature gradle properties via
+   *   [gradleArguments].
    *
    * [silenceStdout] mirrors each command's `--json` flag: when on, the shared helpers redirect
    * stdout to stderr so the gradle progress output doesn't poison the JSON envelope.
@@ -1012,39 +1011,23 @@ class RenderCommand(args: List<String>) : Command(args) {
 }
 
 /**
- * `compose-preview a11y` — runs `renderAllPreviews` (which pulls in `verifyAccessibility` when
- * enabled) and prints the findings grouped by preview. Exits non-zero if the Gradle build failed
- * (i.e. the configured `failOnErrors`/`failOnWarnings` threshold tripped) or if `--fail-on`
- * overrides the threshold at the CLI level.
+ * `compose-preview a11y` — runs `renderAllPreviews` (which aggregates per-preview ATF sidecars into
+ * `accessibility.json`) and prints the findings grouped by preview. Exits non-zero if the Gradle
+ * build failed or if `--fail-on` is set at the CLI level and the configured threshold trips.
  */
-class A11yCommand(args: List<String>, private val forceEnable: Boolean = false) : Command(args) {
+class A11yCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
   // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
   private val failOn: String? = args.flagValue("--fail-on")
 
   override fun run() {
-    val a11yArgs =
-      if (forceEnable) {
-        listOf(
-          "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
-          "-PcomposePreview.previewExtensions.a11y.annotateScreenshots=true",
-        )
-      } else {
-        emptyList()
-      }
     val outcome =
-      renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce(a11yArgs))
+      renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
 
     val enabledModules = outcome.manifests.filter { it.second.accessibilityReport != null }
     if (enabledModules.isEmpty()) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
-      else {
-        println(
-          "No module has accessibility checks enabled. Add\n" +
-            "  composePreview { previewExtensions { a11y { enableAllChecks() } } }\n" +
-            "to the module's build.gradle.kts."
-        )
-      }
+      else println("No previews discovered.")
       exitProcess(if (outcome.buildOk) 0 else 2)
     }
 

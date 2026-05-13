@@ -10,19 +10,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Functional coverage for the accessibility data-product manifest wiring on the CMP / desktop path.
- *
- * Exercises the **config-time** half of the contract: when the consumer enables a11y via either
- * `composePreview { previewExtensions { a11y { enableAllChecks() } } }` or the
- * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` Gradle property,
- * `discoverPreviews` writes `PreviewManifest.accessibilityReport = "accessibility.json"` so
- * downstream tools (CLI's `A11yCommand`, VS Code extension, MCP) know the module participates in
- * accessibility output. With the feature off, the pointer stays `null`.
+ * Functional coverage for the accessibility manifest pointer on the CMP / desktop path. A11y is
+ * always-on now (no DSL, no Gradle property, no opt-in), so every module's `previews.json` is
+ * expected to carry `accessibilityReport = "accessibility.json"`.
  *
  * The renderer-side half — `AccessibilityChecker.analyze` running under Robolectric and producing
- * `a11y-atf.json` / `a11y-hierarchy.json` / `a11y-touchTargets.json` / `a11y-overlay.png` — needs
- * an Android + AGP + Robolectric synthetic project, which the functional-test classpath doesn't
- * currently scaffold. Filed as issue #733; that work pairs with this PR.
+ * sidecar artefacts — needs an Android + AGP + Robolectric synthetic project; covered by
+ * [AccessibilityAndroidFunctionalTest].
  */
 class AccessibilityFunctionalTest {
 
@@ -30,13 +24,7 @@ class AccessibilityFunctionalTest {
 
   private val json = Json { ignoreUnknownKeys = true }
 
-  /**
-   * Spins up a JVM Compose-Multiplatform synthetic project — same shape as [RenderFunctionalTest] —
-   * with a single trivial `@Preview` so discovery has something to report. The
-   * [composePreviewBlock] is interpolated verbatim inside the `composePreview { … }` extension
-   * configuration to flip a11y on/off per test case.
-   */
-  private fun createTestProject(composePreviewBlock: String = ""): File {
+  private fun createTestProject(): File {
     val projectDir = tempDir.root
 
     File(projectDir, "settings.gradle.kts")
@@ -80,9 +68,6 @@ class AccessibilityFunctionalTest {
         java {
             toolchain { languageVersion.set(JavaLanguageVersion.of(17)) }
         }
-        composePreview {
-            $composePreviewBlock
-        }
         """
           .trimIndent()
       )
@@ -124,7 +109,7 @@ class AccessibilityFunctionalTest {
   }
 
   @Test
-  fun `default extension config leaves accessibilityReport null`() {
+  fun `accessibilityReport pointer is always populated`() {
     val projectDir = createTestProject()
 
     val result =
@@ -137,74 +122,9 @@ class AccessibilityFunctionalTest {
     assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
-    assertThat(manifest.accessibilityReport).isNull()
-  }
-
-  @Test
-  fun `enableAllChecks via DSL populates the accessibilityReport pointer`() {
-    val projectDir =
-      createTestProject(composePreviewBlock = "previewExtensions { a11y { enableAllChecks() } }")
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
-      .withPluginClasspath()
-      .build()
-
-    val manifest = projectDir.readManifest()
-    // The plugin pins the relative pointer to a fixed filename; the absolute
-    // path is resolved against the manifest's parent dir at consumer-side
-    // (CLI / VS Code extension) so it tolerates `./gradlew clean`.
+    // The plugin pins the relative pointer to a fixed filename; the absolute path is resolved
+    // against the manifest's parent dir at consumer-side (CLI / VS Code extension) so it tolerates
+    // `./gradlew clean`.
     assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
-  }
-
-  @Test
-  fun `enableAllChecks via Gradle property populates the accessibilityReport pointer`() {
-    val projectDir = createTestProject()
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments(
-        "discoverPreviews",
-        "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
-      )
-      .withPluginClasspath()
-      .build()
-
-    val manifest = projectDir.readManifest()
-    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
-  }
-
-  @Test
-  fun `selecting a single a11y check via Gradle property populates the pointer`() {
-    // `-PcomposePreview.previewExtensions.a11y.checks=atf` is the targeted-checks selector;
-    // it should flip the manifest pointer the same way `enableAllChecks` does — the manifest
-    // pointer is the binary "is the feature on?" gate, finer-grained selection happens later.
-    val projectDir = createTestProject()
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments("discoverPreviews", "-PcomposePreview.previewExtensions.a11y.checks=atf")
-      .withPluginClasspath()
-      .build()
-
-    val manifest = projectDir.readManifest()
-    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
-  }
-
-  @Test
-  fun `unknown a11y check id leaves accessibilityReport null`() {
-    // Defensive: typo'd check ids (`-Pcompose…a11y.checks=atfffff`) shouldn't silently flip the
-    // feature on. Keeps the gate honest — only recognised check ids count.
-    val projectDir = createTestProject()
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments("discoverPreviews", "-PcomposePreview.previewExtensions.a11y.checks=atfffff")
-      .withPluginClasspath()
-      .build()
-
-    val manifest = projectDir.readManifest()
-    assertThat(manifest.accessibilityReport).isNull()
   }
 }
