@@ -3,12 +3,12 @@ package ee.schimke.composeai.plugin
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -19,13 +19,18 @@ import org.gradle.api.tasks.TaskAction
  * `accessibility.json` keyed by previewId. Never fails the build — findings are reported (logged,
  * written to the JSON report, surfaced as CLI / VS Code diagnostics) but the task is purely
  * informational. Runs once per Android module after `renderPreviews`.
+ *
+ * The inputs are modeled as a `@InputFiles` `FileCollection` rather than `@InputDirectory` so the
+ * task no-ops cleanly on modules whose `RobolectricRenderTest` never wrote a per-preview JSON (e.g.
+ * tile-only consumers, or modules that errored before any capture). Writes an empty
+ * `accessibility.json` in that case so the CLI's manifest-pointer follow doesn't break.
  */
 @CacheableTask
 abstract class AggregateAccessibilityTask : DefaultTask() {
 
-  @get:InputDirectory
+  @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
-  abstract val perPreviewDir: DirectoryProperty
+  abstract val perPreviewFiles: ConfigurableFileCollection
 
   @get:Input abstract val moduleName: Property<String>
 
@@ -55,10 +60,6 @@ abstract class AggregateAccessibilityTask : DefaultTask() {
   private data class A11yEntry(
     val previewId: String,
     val findings: List<A11yFinding>,
-    // Mirror of [renderer-android/RenderManifest.AccessibilityNode] —
-    // round-trips through the aggregate JSON so downstream tools (CLI,
-    // VS Code, the python report lib) can read the ANI overlay data
-    // without going through the renderer's classpath.
     val nodes: List<A11yNode> = emptyList(),
     val annotatedPath: String? = null,
   )
@@ -73,17 +74,11 @@ abstract class AggregateAccessibilityTask : DefaultTask() {
       ignoreUnknownKeys = true
     }
 
-    val dir = perPreviewDir.get().asFile
     val entries =
-      if (dir.exists()) {
-        dir
-          .listFiles { f -> f.isFile && f.name.endsWith(".json") }
-          .orEmpty()
-          .sortedBy { it.name }
-          .map { json.decodeFromString(A11yEntry.serializer(), it.readText()) }
-      } else {
-        emptyList()
-      }
+      perPreviewFiles
+        .filter { it.isFile && it.name.endsWith(".json") }
+        .sortedBy { it.name }
+        .map { json.decodeFromString(A11yEntry.serializer(), it.readText()) }
 
     val report = A11yReport(module = moduleName.get(), entries = entries)
     val out = reportFile.get().asFile

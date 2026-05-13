@@ -267,9 +267,21 @@ object AccessibilityChecker {
         // to `previews.json`). That way downstream tools can resolve it the
         // same way they resolve `renderOutput` — by joining with the
         // manifest's parent directory.
+        //
+        // String-based stripping (rather than `File.relativeTo`) keeps this
+        // safe under Robolectric, where shadowed file roots can wrap the
+        // parent dir in a `fixed(...)` wrapper and trip `relativeTo`'s
+        // root-equality check with `IllegalArgumentException: different roots`.
         val relative = annotated?.let { file ->
-            val root = outputDir.parentFile ?: return@let file.name
-            file.relativeTo(root).path
+            val rootPath =
+                outputDir.parentFile?.absolutePath?.trimEnd(java.io.File.separatorChar)
+                    ?: return@let file.name
+            val filePath = file.absolutePath
+            if (filePath.startsWith(rootPath + java.io.File.separatorChar)) {
+                filePath.substring(rootPath.length + 1)
+            } else {
+                file.name
+            }
         }
 
         val entry = AccessibilityEntry(

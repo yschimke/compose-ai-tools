@@ -28,20 +28,16 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Render previews with a11y checks enabled
+    - name: Render previews (a11y always-on)
       shell: bash
       env:
         MODULE: ${{ inputs.module }}
       run: |
         set -euo pipefail
-        # These properties override the module DSL default so `./gradlew check`
-        # stays clean while CI still exercises the a11y + ATF + overlay path.
-        # The module's `verifyAccessibility` task is always registered; the
-        # enableAllChecks property flips its `onlyIf` predicate.
-        ./gradlew ":${MODULE}:renderAllPreviews" \
-          -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
-          -PcomposePreview.previewExtensions.a11y.annotateScreenshots=true \
-          --no-daemon
+        # A11y is a normal data producer — every render writes ATF findings + an annotated
+        # overlay PNG. `renderAllPreviews` depends on `aggregateAccessibility`, so the
+        # `accessibility.json` the python helper reads below is produced as a side effect.
+        ./gradlew ":${MODULE}:renderAllPreviews" --no-daemon
 
     - name: Copy annotated PNGs and emit findings.json
       shell: bash

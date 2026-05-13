@@ -183,15 +183,6 @@ def write_fixture_files(include_failure: bool = False) -> None:
         FAILURE_KT.unlink()
 
 
-def enable_a11y_checks() -> str:
-    original = BUILD_GRADLE.read_text()
-    updated = original.replace("// enableAllChecks()", "enableAllChecks()")
-    if updated == original:
-        raise AssertionError("could not enable sample a11y checks in samples/android/build.gradle.kts")
-    BUILD_GRADLE.write_text(updated)
-    return original
-
-
 def clean_fixture_files() -> None:
     for file in (FIXTURE_KT, FAILURE_KT, VALUES, VALUES_DE):
         try:
@@ -619,10 +610,11 @@ def main() -> int:
     if not shutil.which("java"):
         raise AssertionError("java must be on PATH")
     keep = os.environ.get("KEEP_AGENT_AUDIT_FIXTURES") == "1"
-    original_build_gradle: str | None = None
     try:
+        # A11y is always-on now (no DSL toggle, no Gradle property): every render writes
+        # ATF findings + an annotated overlay alongside the PNG. No build.gradle.kts edit
+        # needed before the CLI exercises the a11y assertions below.
         write_fixture_files(include_failure=False)
-        original_build_gradle = enable_a11y_checks()
         run(["./gradlew", ":cli:installDist"], timeout=600)
         test_accessibility_cli()
         test_visual_regression_cli()
@@ -631,8 +623,6 @@ def main() -> int:
         print("Agent audit sample scripts passed.")
         return 0
     finally:
-        if original_build_gradle is not None:
-            BUILD_GRADLE.write_text(original_build_gradle)
         if not keep:
             clean_fixture_files()
 

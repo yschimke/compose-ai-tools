@@ -1137,12 +1137,14 @@ internal object AndroidPreviewSupport {
           .forEach { (k, v) -> systemProperty(k, v) }
 
         // The renderer always writes ATF findings + ANI hierarchy artefacts; tell it which
-        // directory to land per-preview JSON sidecars in. `accessibilityPerPreviewDir` is
-        // derived from `previewOutputDir` and never toggles, so a plain `systemProperty(...)`
-        // is config-cache-safe here.
-        systemProperty(
-          "composeai.a11y.outputDir",
-          accessibilityPerPreviewDir.map { it.asFile.absolutePath },
+        // directory to land per-preview JSON sidecars in. Routed through a
+        // `CommandLineArgumentProvider` so the path is resolved at task execution time —
+        // `Test.systemProperty(name, provider)` would stringify the provider itself via
+        // `Object.toString()` (`fixed(class java.lang.String, …)`) rather than its value.
+        jvmArgumentProviders.add(
+          AccessibilityOutputDirProvider(
+            outputDir = accessibilityPerPreviewDir.map { it.asFile.absolutePath }
+          )
         )
         // Display filters — lazy-input pattern so `-PcomposePreview.displayFilter
         // .filters=grayscale,invert` toggles don't invalidate the configuration cache.
@@ -1282,7 +1284,7 @@ internal object AndroidPreviewSupport {
       project.tasks.register("aggregateAccessibility", AggregateAccessibilityTask::class.java) {
         group = "compose preview"
         description = "Aggregate per-preview ATF findings into accessibility.json"
-        perPreviewDir.set(accessibilityPerPreviewDir)
+        perPreviewFiles.from(project.fileTree(accessibilityPerPreviewDir) { include("*.json") })
         reportFile.set(accessibilityReportFile)
         moduleName.set(project.name)
         dependsOn(renderTask)
@@ -1470,6 +1472,19 @@ internal object AndroidPreviewSupport {
       this.manifestPath.set(manifestFile)
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
+  }
+
+  /**
+   * Forwards the directory where `RobolectricRenderTest` writes per-preview a11y JSON sidecars.
+   * Lives in a `CommandLineArgumentProvider` (rather than `Test.systemProperty(...)`) because the
+   * provider would otherwise be stringified eagerly via `Object.toString()` — yielding `fixed(class
+   * java.lang.String, …)` instead of the path itself.
+   */
+  internal class AccessibilityOutputDirProvider(
+    @get:org.gradle.api.tasks.Input val outputDir: org.gradle.api.provider.Provider<String>
+  ) : org.gradle.process.CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> =
+      listOf("-Dcomposeai.a11y.outputDir=${outputDir.get()}")
   }
 
   /**
