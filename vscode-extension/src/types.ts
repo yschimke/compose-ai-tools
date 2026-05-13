@@ -876,7 +876,17 @@ export type WebviewToExtension =
      * unavailable in some VS Code builds, so the round-trip through
      * the host is the portable path.
      */
-    | { command: "copyToClipboard"; text: string };
+    | { command: "copyToClipboard"; text: string }
+    /**
+     * Webview asks the extension host to open [url] in the user's
+     * external browser via `vscode.env.openExternal`. Used by the
+     * Text/i18n bundle's Google Fonts cell — clicking the requested
+     * family on a `provider="google"` (or allowlist-matched) row jumps
+     * to its `fonts.google.com/specimen/<family>` page. The host
+     * validates the URL is `http(s)` before opening to avoid being used
+     * as a generic shell-out from the webview.
+     */
+    | { command: "openExternal"; url: string };
 
 /**
  * Narrow shape the History panel reads off each sidecar JSON entry. The

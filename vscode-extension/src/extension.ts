@@ -4113,6 +4113,16 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case "copyToClipboard":
             void vscode.env.clipboard.writeText(msg.text);
             break;
+        case "openExternal":
+            // Guard against arbitrary shell-outs from the webview —
+            // only `http(s)` URLs are honoured. The Text/i18n bundle's
+            // Google Fonts cell is the sole producer today; future
+            // affordances (Material Symbols, fonts.adobe.com, …) reuse
+            // this path.
+            if (typeof msg.url === "string" && /^https?:\/\//i.test(msg.url)) {
+                void vscode.env.openExternal(vscode.Uri.parse(msg.url));
+            }
+            break;
     }
 }
 

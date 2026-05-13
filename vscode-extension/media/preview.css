@@ -2873,3 +2873,171 @@ body {
     word-break: break-word;
     opacity: 0.9;
 }
+
+/* -------------------------------------------------------------------------
+ * Text / i18n bundle (#1057). Three stacked sub-tables under one expander:
+ * drawn text, fonts, translations. Mirrors the Performance bundle layout
+ * but adds:
+ *   - colour swatches for fg/bg per drawn-text row
+ *   - a Google Fonts link affordance on the requestedFamily cell
+ *   - a preview cell that renders the resolved family in that font
+ *   - translation locale chips (supported count, untranslated count + tooltip)
+ * -------------------------------------------------------------------------*/
+
+.text-bundle-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.text-bundle-text-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.text-bundle-text-rendered {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.text-bundle-flag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--vscode-inputValidation-warningBackground, #5a4400);
+    color: var(--vscode-inputValidation-warningForeground, #fff);
+    align-self: flex-start;
+}
+
+.text-bundle-locale-cell,
+.text-bundle-scale-cell,
+.text-bundle-size-cell,
+.text-bundle-overflow-cell {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.text-bundle-swatch-cell {
+    text-align: center;
+    width: 28px;
+}
+
+.text-bundle-swatch {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-panel-border, #444);
+    vertical-align: middle;
+}
+
+.text-bundle-swatch[data-kind="fg"] {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.text-bundle-nodeid {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Fonts sub-table */
+
+.text-bundle-font-requested .text-bundle-google-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font: inherit;
+}
+
+.text-bundle-google-link:hover {
+    color: var(--vscode-textLink-activeForeground);
+    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+    text-decoration: underline;
+}
+
+.text-bundle-google-link .codicon {
+    font-size: 12px;
+}
+
+.text-bundle-font-preview {
+    font-size: 14px;
+    line-height: 1.2;
+    /* `font-family` set inline so the renderer's resolved family wins
+     * over the panel's default. Falls back to system-ui in cssFontStack. */
+}
+
+.text-bundle-fallback-chain {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+.text-bundle-consumer-count {
+    display: inline-block;
+    min-width: 22px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    text-align: center;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Translations sub-table */
+
+.text-bundle-translation-text {
+    font-weight: 600;
+}
+
+.text-bundle-resource-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font: inherit;
+}
+
+.text-bundle-resource-link:hover {
+    text-decoration: underline;
+    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.text-bundle-locale-chip {
+    display: inline-block;
+    min-width: 22px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    text-align: center;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.text-bundle-locale-chip[data-tone="ok"] {
+    background: var(--vscode-testing-iconPassed, #388a34);
+    color: #fff;
+}
+
+.text-bundle-locale-chip[data-tone="warning"] {
+    background: var(--vscode-inputValidation-warningBackground, #5a4400);
+    color: var(--vscode-inputValidation-warningForeground, #fff);
+}
