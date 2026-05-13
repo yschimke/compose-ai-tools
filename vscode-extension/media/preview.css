@@ -2505,3 +2505,64 @@ body {
 .a11y-findings-badge[data-level="info"] {
     --overlay-color: #1976d2;
 }
+
+/* "Configure…" expander inside a bundle tab body. Default closed —
+ * the chip already turned on the bundle's default-ON kinds, the
+ * expander is for power users who want to add a default-OFF kind or
+ * drop a default-ON one. */
+.bundle-tab-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.bundle-expander {
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+    padding-bottom: 4px;
+}
+.bundle-expander-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 12px;
+    opacity: 0.85;
+    user-select: none;
+}
+.bundle-expander-summary:hover {
+    opacity: 1;
+}
+.bundle-expander-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 6px 2px 18px;
+}
+.bundle-expander-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.bundle-expander-row input[type="checkbox"] {
+    flex-shrink: 0;
+}
+.bundle-expander-label {
+    font-weight: 500;
+}
+.bundle-expander-default {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--vscode-badge-background, rgba(127, 127, 127, 0.25));
+    color: var(--vscode-badge-foreground, inherit);
+    opacity: 0.85;
+}
+.bundle-expander-kind {
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.55;
+}
