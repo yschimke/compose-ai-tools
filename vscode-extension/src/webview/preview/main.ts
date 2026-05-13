@@ -407,6 +407,7 @@ export class PreviewApp extends LitElement {
             },
             getDataProduct: (previewId, kind) =>
                 dataProductsByPreview.get(previewId)?.get(kind),
+            postMessage: (msg) => vscode.postMessage(msg),
             getA11yOverlayId: a11yOverlay,
             isLive: (id) => liveState.isLive(id),
             onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
