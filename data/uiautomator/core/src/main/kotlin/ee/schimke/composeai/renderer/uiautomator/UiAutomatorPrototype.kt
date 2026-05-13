@@ -687,6 +687,14 @@ public object By {
 
   public fun res(value: String): Selector = Selector().res(value)
 
+  /**
+   * Convenience alias for [res] — Compose's stable per-node id is the `Modifier.testTag(...)`
+   * value, which the renderer surfaces as `viewIdResourceName` (matched by [res]). [HierarchySelectorBuilder]
+   * emits `By.testTag("…")` snippets through this method so the copied selector is directly
+   * runnable against the prototype.
+   */
+  public fun testTag(value: String): Selector = res(value)
+
   public fun clickable(): Selector = Selector().clickable()
 
   public fun checkable(): Selector = Selector().checkable()
