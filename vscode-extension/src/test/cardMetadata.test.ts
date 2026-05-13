@@ -285,7 +285,11 @@ describe("refreshCardMetadata", () => {
         assert.strictEqual(stub.indicatorCalls, 1);
     });
 
-    it("rebuilds .a11y-legend / .a11y-overlay only when earlyFeatures is on and findings exist", () => {
+    it("rebuilds .a11y-overlay only when earlyFeatures is on and findings exist", () => {
+        // Post-#1054 the labelled legend list moved to the A11y bundle
+        // tab; only the boxes-on-image overlay layer is rebuilt on the
+        // card itself. The findings array still drives whether the
+        // overlay container exists, just without the inline legend.
         const findings: PreviewInfo["a11yFindings"] = [
             {
                 level: "WARNING",
@@ -300,26 +304,28 @@ describe("refreshCardMetadata", () => {
 
         const p1 = preview("preview:1", { a11yFindings: findings });
 
-        // earlyFeatures off — no legend / overlay even with findings.
+        // earlyFeatures off — no overlay even with findings.
         const offConfig = buildConfig({ earlyFeatures: false }).config;
         refreshCardMetadata(card, p1, offConfig);
-        assert.strictEqual(card.querySelector(".a11y-legend"), null);
         assert.strictEqual(card.querySelector(".a11y-overlay"), null);
 
-        // earlyFeatures on — legend appended, empty overlay container
-        // appended inside .image-container.
+        // earlyFeatures on — empty overlay container appended inside
+        // .image-container. No labelled legend on the card.
         const onConfig = buildConfig({ earlyFeatures: true }).config;
         refreshCardMetadata(card, p1, onConfig);
-        assert.ok(card.querySelector(".a11y-legend"));
         assert.ok(
             card.querySelector(".image-container .a11y-overlay"),
             "overlay container should be appended into .image-container",
         );
+        assert.strictEqual(
+            card.querySelector(".a11y-legend"),
+            null,
+            "labelled legend lives in the A11y bundle tab now (#1054)",
+        );
 
-        // Subsequent reseed with empty findings drops both layers.
+        // Subsequent reseed with empty findings drops the overlay.
         const p2 = preview("preview:1", { a11yFindings: [] });
         refreshCardMetadata(card, p2, onConfig);
-        assert.strictEqual(card.querySelector(".a11y-legend"), null);
         assert.strictEqual(card.querySelector(".a11y-overlay"), null);
     });
 });

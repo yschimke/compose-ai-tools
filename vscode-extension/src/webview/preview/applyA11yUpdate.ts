@@ -13,11 +13,7 @@
 // re-exports the helper bound to the real `previewStore` mutators so
 // existing call sites are unchanged.
 
-import {
-    buildA11yHierarchyLegend,
-    buildA11yLegend,
-    ensureHierarchyOverlay,
-} from "./a11yOverlay";
+import { ensureHierarchyOverlay } from "./a11yOverlay";
 import { sanitizeId } from "./cardData";
 import type {
     AccessibilityFinding,
@@ -102,13 +98,13 @@ export function applyA11yUpdate(
                 overlay.setAttribute("aria-hidden", "true");
                 container.appendChild(overlay);
             }
-            const existingLegend = card.querySelector(".a11y-legend");
-            if (existingLegend) existingLegend.remove();
+            // Mutate the manifest entry's findings so downstream surfaces
+            // (focus inspector, bundle tab, hover-on-image badges) see the
+            // fresh list. The labelled legend is no longer painted inline
+            // on the card — it now lives in the A11y bundle tab (#1054),
+            // which is the only dismissible surface for the labelled list.
             const p = config.getAllPreviews().find((pp) => pp.id === previewId);
-            if (p) {
-                p.a11yFindings = [...findings];
-                card.appendChild(buildA11yLegend(card, p));
-            }
+            if (p) p.a11yFindings = [...findings];
             // Store write last — the `mapsRevision` bump triggers the
             // component's `_repaintA11yOverlaysFromCache()` which runs
             // `buildA11yOverlay` against the fresh findings. The
@@ -119,43 +115,22 @@ export function applyA11yUpdate(
             config.deleteCardA11yFindings(previewId);
             const overlay = card.querySelector(".a11y-overlay");
             if (overlay) overlay.remove();
-            const legend = card.querySelector(".a11y-legend");
-            if (legend) legend.remove();
         }
     }
     if (nodes !== undefined) {
         if (nodes && nodes.length > 0) {
             ensureHierarchyOverlay(container);
-            // Stamp the hierarchy legend so the user sees the labelled
-            // node list as soon as data lands, even before the image
-            // decodes. The boxes themselves still paint from the
-            // mapsRevision bump below.
-            const existingHierarchyLegend = card.querySelector(
-                ".a11y-hierarchy-legend",
-            );
-            if (existingHierarchyLegend) existingHierarchyLegend.remove();
-            // Only stamp the hierarchy legend when there's no findings
-            // legend taking the slot — findings take precedence (they
-            // describe actionable issues; hierarchy is the structural
-            // backdrop). Once findings clear, a follow-up update or
-            // the nodes-still-present cache will re-stamp.
-            if (
-                !card.querySelector(".a11y-legend:not(.a11y-hierarchy-legend)")
-            ) {
-                card.appendChild(buildA11yHierarchyLegend(card, nodes));
-            }
-            // Same pattern as findings above: store write fires the
-            // mapsRevision bump, the component re-paints the layer
-            // via `applyHierarchyOverlay`.
+            // The labelled hierarchy list moved to the A11y bundle tab
+            // (#1054). The card keeps only the spatial overlay layer
+            // (`.a11y-hierarchy-overlay`) — boxes are useful context
+            // regardless of whether the user has the bundle tab open,
+            // and they share the chip's dismiss path indirectly via the
+            // bundle controller's hierarchy-overlay teardown.
             config.setCardA11yNodes(previewId, nodes);
         } else {
             config.deleteCardA11yNodes(previewId);
             const layer = card.querySelector(".a11y-hierarchy-overlay");
             if (layer) layer.remove();
-            const hierarchyLegend = card.querySelector(
-                ".a11y-hierarchy-legend",
-            );
-            if (hierarchyLegend) hierarchyLegend.remove();
         }
     }
     if (config.inFocus() && config.focusedCard() === card) {
