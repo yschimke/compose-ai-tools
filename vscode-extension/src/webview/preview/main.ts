@@ -27,7 +27,17 @@ import "./components/MessageBanner";
 import "./components/PreviewCard";
 import "./components/PreviewGrid";
 import "./components/ProgressBar";
+import "./components/BundleChipBar";
+import "./components/DataTabs";
+import "./components/DataTable";
+import "./components/BoxOverlay";
 import { PreviewGrid } from "./components/PreviewGrid";
+import { BundleChipBar } from "./components/BundleChipBar";
+import { DataTabs } from "./components/DataTabs";
+import { DataTable } from "./components/DataTable";
+import { BundleController, type BundleSnapshot } from "./bundleController";
+import type { BundleId } from "./bundleRegistry";
+import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -69,6 +79,12 @@ interface PersistedState {
      * but not extension reload — same lifecycle as `filters` / `layout`.
      */
     focusMruByScope?: Record<string, string[]>;
+    /**
+     * Bundle controller snapshot — chip ON/OFF state, per-bundle enabled
+     * kinds, and the active tab. Persists across panel hide/show so a
+     * reload doesn't snap the tab row back to "no inspector" mid-session.
+     */
+    bundles?: BundleSnapshot;
 }
 
 @customElement("preview-app")
@@ -90,6 +106,8 @@ export class PreviewApp extends LitElement {
     @query("#focus-inspector") private _focusInspector!: HTMLElement;
     @query("message-banner") private _messageBanner!: MessageBanner;
     @query("filter-toolbar") private _filterToolbar!: FilterToolbar;
+    @query("bundle-chip-bar") private _bundleChipBar!: BundleChipBar;
+    @query("data-tabs") private _dataTabs!: DataTabs;
     @query("#focus-controls") private _focusControls!: HTMLElement;
     @query("#btn-prev") private _btnPrev!: HTMLButtonElement;
     @query("#btn-next") private _btnNext!: HTMLButtonElement;
@@ -110,6 +128,8 @@ export class PreviewApp extends LitElement {
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
+            <bundle-chip-bar></bundle-chip-bar>
+            <data-tabs></data-tabs>
 
             <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
@@ -441,6 +461,122 @@ export class PreviewApp extends LitElement {
             },
         });
 
+        // Bundle controller — owns the chip ↔ tab ↔ overlay state machine
+        // for the new panel shell. Additive to the existing focus-inspector
+        // chrome; the two coexist during migration. The controller's
+        // `setKindEnabled` forwards through the same `setDataExtensionEnabled`
+        // wire message the inspector already uses, so subscriptions land in
+        // a single place.
+        const bundleChipBar = this._bundleChipBar;
+        const dataTabs = this._dataTabs;
+        const bundleController = new BundleController(
+            {
+                setKindEnabled: (kind, enabled) => {
+                    // Subscriptions are per-preview at the wire layer; we
+                    // forward against the focused preview when there is
+                    // one, otherwise the first visible card (the default
+                    // multi-preview scoping rule from the design doc).
+                    const target = currentBundleTarget();
+                    if (!target) return;
+                    vscode.postMessage({
+                        command: "setDataExtensionEnabled",
+                        previewId: target,
+                        kind,
+                        enabled,
+                    });
+                },
+                persist: (snapshot) => {
+                    state.bundles = snapshot;
+                    vscode.setState(state);
+                },
+            },
+            state.bundles,
+        );
+        const currentBundleTarget = (): string | null => {
+            const focused = focusController?.focusedCard?.();
+            if (focused?.dataset.previewId) return focused.dataset.previewId;
+            const visible = grid.querySelector<HTMLElement>(
+                ".preview-card[data-preview-id]",
+            );
+            return visible?.dataset.previewId ?? null;
+        };
+        // Per-bundle table elements. Created lazily on first use and
+        // re-rendered in-place on state change.
+        const bundleTables = new Map<BundleId, DataTable<unknown>>();
+        const a11yTable = (): DataTable<unknown> => {
+            let t = bundleTables.get("a11y");
+            if (t) return t;
+            t = document.createElement("data-table") as DataTable<unknown>;
+            t.heading = "Accessibility";
+            t.setColumns(
+                a11yTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleTables.set("a11y", t);
+            return t;
+        };
+        const refreshA11yBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const store = previewStore.getState();
+            const nodes =
+                store.cardA11yNodes.get(target) ??
+                store.allPreviews.find((p) => p.id === target)?.a11yNodes ??
+                [];
+            const findings =
+                store.cardA11yFindings.get(target) ??
+                store.allPreviews.find((p) => p.id === target)?.a11yFindings ??
+                [];
+            const data = computeA11yBundleData(nodes, findings);
+            const table = a11yTable();
+            table.setRows(data.rows);
+            table.summary = data.rows.length + " elements";
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "a11y-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                nodes,
+                findings,
+            }));
+            dataTabs.setTabBody("a11y", table);
+        };
+        const reflectBundleState = (): void => {
+            const s = bundleController.state();
+            bundleChipBar.setState({
+                bundles: s.bundles,
+                activeBundles: s.activeBundles,
+            });
+            dataTabs.setState({
+                bundles: s.bundles,
+                activeBundles: s.activeBundles,
+                activeTab: s.activeTab,
+            });
+            if (s.activeBundles.includes("a11y")) refreshA11yBundle();
+        };
+        bundleController.onChange(() => reflectBundleState());
+        reflectBundleState();
+        bundleChipBar.addEventListener("bundle-toggled", (evt) => {
+            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            bundleController.toggleBundle(detail.id);
+        });
+        dataTabs.addEventListener("tab-closed", (evt) => {
+            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            bundleController.closeTab(detail.id);
+        });
+        dataTabs.addEventListener("tab-selected", (evt) => {
+            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            bundleController.selectTab(detail.id);
+        });
+        dataTabs.addEventListener("copy-json", (evt) => {
+            const detail = (evt as CustomEvent<{ payload: unknown }>).detail;
+            vscode.postMessage({
+                command: "copyToClipboard",
+                text: JSON.stringify(detail.payload, null, 2),
+            });
+        });
+
         // Config for the interactive-input pointer machine. The predicate
         // unifies live/recording state — both forward pointer/wheel input
         // to the daemon — so the module doesn't need direct access to
@@ -736,8 +872,19 @@ export class PreviewApp extends LitElement {
             saveFilterState,
             restoreFilterState,
             ensureNotBlank,
-            applyA11yUpdate: (previewId, findings, nodes) =>
-                applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig),
+            applyA11yUpdate: (previewId, findings, nodes) => {
+                applyA11yUpdate(previewId, findings, nodes, cardBuilderConfig);
+                // Refresh the A11y bundle tab body if it's active for
+                // this preview — keeps the table in sync with the
+                // incoming hierarchy/findings without waiting for the
+                // user to re-click the chip.
+                if (
+                    bundleController.state().activeBundles.includes("a11y") &&
+                    currentBundleTarget() === previewId
+                ) {
+                    refreshA11yBundle();
+                }
+            },
             updateDataProducts: (previewId, dataProducts) => {
                 let byKind = dataProductsByPreview.get(previewId);
                 if (!byKind) {
@@ -757,6 +904,15 @@ export class PreviewApp extends LitElement {
                 );
                 if (matches && focused) {
                     inspector.render(focused);
+                }
+                // Refresh bundle tab bodies that depend on this preview's
+                // data. Today only A11y has a bundle presenter; future
+                // clusters add their own refresh.
+                if (
+                    bundleController.state().activeBundles.includes("a11y") &&
+                    currentBundleTarget() === previewId
+                ) {
+                    refreshA11yBundle();
                 }
             },
             focusOnCard,
