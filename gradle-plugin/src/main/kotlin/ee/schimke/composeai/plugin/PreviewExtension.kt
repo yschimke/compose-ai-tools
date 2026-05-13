@@ -155,6 +155,28 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
     action.execute(a11y)
   }
 
+  init {
+    // Eagerly register the built-in extension ids in the generic container so
+    // `extensions.findByName(id)` is non-null at every phase — plugin task wiring runs during
+    // plugin apply, *before* the build script's `composePreview { previewExtensions { … } }`
+    // block evaluates, and we don't want to snapshot `null` for a generic entry the user
+    // configures later via `extension("a11y") { … }`.
+    //
+    // The user's `extension(name, action)` method below routes through `maybeCreate`, which
+    // returns this pre-registered instance instead of creating a new one — so user-written
+    // generic config flows into the same Property objects the resolvers read from. Conversely,
+    // if the user only ever uses the typed peers (`composePreview { previewExtensions { a11y {
+    // … } } }`), the pre-registered generic entries stay at their (false / empty) defaults and
+    // the resolver's `||` over typed + generic short-circuits correctly. Either path works;
+    // mixing both stacks them.
+    //
+    // Configuration-cache safe: `maybeCreate` runs at extension construction time, which
+    // happens during plugin apply — pure configuration phase, never serialized. The Property
+    // values themselves are evaluated lazily by the resolvers' `zip`/`map` chains.
+    extensions.maybeCreate("composeAiTrace")
+    extensions.maybeCreate("a11y")
+  }
+
   /**
    * Configure one preview extension by id. [PreviewExtensionConfig.enableAllChecks] enables every
    * check that extension provides; [PreviewExtensionConfig.checks] enables only named checks for

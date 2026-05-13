@@ -1594,16 +1594,24 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
     val typed = extension.previewExtensions.composeAiTrace
-    val genericTrace = extension.previewExtensions.extensions.findByName("composeAiTrace")
+    // `findByName(...)` is safe to call eagerly because `PreviewExtensionsExtension` eagerly
+    // registers the built-in ids in its generic container — see the `init` block there.
+    // A `composePreview { previewExtensions { extension("composeAiTrace") { ... } } }` block in
+    // the build script reaches the same instance via `maybeCreate`, so the user's
+    // `enableAllChecks()` / `checks` settings flow through this Property chain regardless of
+    // whether plugin-apply runs before or after the build-script body. The lazy-`Provider` wrap
+    // we tried instead captured `project` into the lambda, which the strict configuration cache
+    // rejects.
+    val generic = extension.previewExtensions.extensions.findByName("composeAiTrace")
     val genericAllChecks =
-      genericTrace?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+      generic?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
       typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
         typedEnabled || genericEnabled
       }
     val genericChecks =
-      genericTrace?.checks
-        ?: project.objects.listProperty(String::class.java).convention(emptyList())
+      generic?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList<String>())
     val wholeExtension =
       project.providers
         .gradleProperty("composePreview.previewExtensions.composeAiTrace.enableAllChecks")
@@ -1644,16 +1652,22 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
   ): org.gradle.api.provider.Provider<Boolean> {
     val typed = extension.previewExtensions.a11y
-    val genericA11y = extension.previewExtensions.extensions.findByName("a11y")
+    // Same eager-registration invariant as `resolveComposeAiTraceEnabled`: the generic-container
+    // `a11y` entry is registered when `PreviewExtensionsExtension` is constructed (plugin-apply
+    // time), so this `findByName` is non-null regardless of whether the build script's
+    // `extension("a11y") { ... }` block has been evaluated yet — and the same instance is
+    // returned by `maybeCreate` when it eventually does run. No lazy-`Provider` wrap, hence no
+    // `project` capture, hence no configuration-cache failure.
+    val generic = extension.previewExtensions.extensions.findByName("a11y")
     val genericAllChecks =
-      genericA11y?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
+      generic?.allChecksEnabled ?: project.providers.provider<Boolean> { false }
     val configuredAllChecks =
       typed.allChecksEnabled.zip(genericAllChecks) { typedEnabled, genericEnabled ->
         typedEnabled || genericEnabled
       }
     val genericChecks =
-      genericA11y?.checks
-        ?: project.objects.listProperty(String::class.java).convention(emptyList())
+      generic?.checks
+        ?: project.objects.listProperty(String::class.java).convention(emptyList<String>())
     val wholeExtension =
       project.providers
         .gradleProperty("composePreview.previewExtensions.a11y.enableAllChecks")
