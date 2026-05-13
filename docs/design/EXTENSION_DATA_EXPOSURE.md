@@ -82,25 +82,58 @@ Decisions:
 
 1. **Filter chip bar stays as row 1.** Function / group / layout
    selectors remain top-of-panel.
-2. **Secondary filters collapse into a "More" tab.** Anything that's
+2. **Bundle chips are the shortcuts.** Each bundle chip is a toggle —
+   pressing it on opens its tab; pressing it again (or closing the tab)
+   turns the bundle off and returns the panel to the plain-preview
+   default state. The chip + tab are two ends of the same toggle, not
+   two independent controls.
+3. **Tabs are dismissible.** Every data tab has a close (`×`)
+   affordance in the tab header. Closing the last data tab returns the
+   panel to "no inspector" — the preview grid is visible
+   unobstructed, no surface left dangling like today's hierarchy
+   legend with no dismiss path. The `…More` tab is the only
+   non-closable tab.
+4. **"No inspector" is the resting state.** With no bundle chips
+   pressed, no tab row is shown. The card overlays (`BoxOverlay`,
+   legends) are also cleared. This is the single source of truth for
+   "I want to look at the preview without any data surface on top of
+   it."
+5. **Secondary filters collapse into a "More" tab.** Anything that's
    not in the chip bar today and isn't yet enabled is hidden behind a
    single `…` tab so disabled rows don't push enabled data below the
    fold. Once enabled, a kind earns a tab and moves to the front.
-3. **Each enabled data extension owns one tab.** Two enabled = two
+6. **Each enabled data extension owns one tab.** Two enabled = two
    tabs, in the order they were enabled. Tab order is sticky per
    scope (re-uses the MRU machinery in `focusInspector.ts`).
-4. **Active tab body is a table, not a `<details>`.** No
+7. **Active tab body is a table, not a `<details>`.** No
    click-to-expand for the default view — the data the user just
    asked for must be on screen.
-5. **Last tab is always `…More` / settings.** Stable position so the
+8. **Last tab is always `…More` / settings.** Stable position so the
    user always knows where to find the extra filters and disabled
    kinds.
-6. **Overlay + legend live on the card,** unchanged from the current
+9. **Overlay + legend live on the card,** unchanged from the current
    focus-mode inspector — but available outside focus mode too, on
    whichever previews are currently selected.
-7. **JSON is a secondary action.** Each tab has a `Copy JSON` button
-   in the top-right of the table; that's the only path. No raw-JSON
-   default rendering anywhere.
+10. **JSON is a secondary action.** Each tab has a `Copy JSON` button
+    in the top-right of the table; that's the only path. No raw-JSON
+    default rendering anywhere.
+
+### Chip ↔ tab ↔ overlay state machine
+
+For each bundle:
+
+| Chip | Tab | Card overlay/legend |
+|---|---|---|
+| OFF (default) | not shown | not painted |
+| ON | shown; user can switch between active tabs | painted on focused/selected cards |
+| OFF via chip re-press | tab removed; if it was active, the next-most-recent active tab takes over (or no tab row if it was the last) | cleared |
+| OFF via tab `×` | identical to chip re-press | cleared |
+
+This is the **missing affordance** in today's panel: once a kind's
+overlay paints, the only way to dismiss it is to scroll back to the
+focus-inspector chip row and toggle it off — easy to miss. The tab's
+own `×` + the chip's toggle-off behaviour are redundant on purpose so
+the dismissal path is always visible from wherever the user's eye lands.
 
 ### Standardising overlay + legend
 
