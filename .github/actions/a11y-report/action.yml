@@ -28,16 +28,19 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Render previews (a11y always-on)
+    - name: Render previews with a11y opted in
       shell: bash
       env:
         MODULE: ${{ inputs.module }}
       run: |
         set -euo pipefail
-        # A11y is a normal data producer — every render writes ATF findings + an annotated
-        # overlay PNG. `renderAllPreviews` depends on `aggregateAccessibility`, so the
-        # `accessibility.json` the python helper reads below is produced as a side effect.
-        ./gradlew ":${MODULE}:renderAllPreviews" --no-daemon
+        # a11y is opt-in (default off). Forward the same Gradle property the CLI's
+        # `compose-preview a11y` / `--with-extension a11y` paths set so the renderer writes
+        # ATF findings + the annotated overlay PNG, and `aggregateAccessibility` rolls them
+        # into the `accessibility.json` the python helper reads below.
+        ./gradlew ":${MODULE}:renderAllPreviews" \
+          -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
+          --no-daemon
 
     - name: Copy annotated PNGs and emit findings.json
       shell: bash

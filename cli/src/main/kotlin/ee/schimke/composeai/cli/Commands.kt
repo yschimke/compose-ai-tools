@@ -276,6 +276,41 @@ abstract class Command(protected val args: List<String>) {
    */
   protected val forceReason: String? = args.flagValue("--force")?.takeIf { it.isNotBlank() }
 
+  /**
+   * Data extensions the user explicitly requested for this run via `--with-extension`. Repeatable
+   * (`--with-extension a11y --with-extension theme`), comma-batched (`--with-extension
+   * a11y,theme`), or equals-form (`--with-extension=a11y`).
+   *
+   * Each id maps to `-PcomposePreview.previewExtensions.<id>.enableAllChecks=true` on the spawned
+   * Gradle build, the same property the typed plugin DSL writes to. Surfaces as the canned-report
+   * entry-point: `compose-preview a11y` is implemented as a thin wrapper that adds `a11y` via
+   * [implicitExtensions], and other extensions can be requested ad-hoc via `compose-preview show
+   * --with-extension <id>` without touching `build.gradle.kts`.
+   */
+  protected val requestedExtensions: List<String> =
+    (args.flagValuesAll("--with-extension") + args.flagValuesAll("--with"))
+      .flatMap { raw -> raw.split(',', ';') }
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .distinct()
+
+  /**
+   * Subclass hook — extensions a particular command always wants on regardless of whether the user
+   * passed `--with-extension`. Default empty; `A11yCommand` returns `["a11y"]` so its behaviour is
+   * "render with the built-in a11y data extension and read the canned report."
+   */
+  protected open fun implicitExtensions(): List<String> = emptyList()
+
+  /**
+   * Gradle property arguments for every extension this run wants enabled — the union of
+   * [implicitExtensions] (subclass-pinned) and [requestedExtensions] (user-requested). Deduplicated
+   * so passing `compose-preview a11y --with-extension a11y` doesn't emit two identical `-P` args.
+   */
+  protected fun extensionGradleArgs(): List<String> {
+    val all = (implicitExtensions() + requestedExtensions).distinct().filter { it.isNotEmpty() }
+    return all.map { "-PcomposePreview.previewExtensions.$it.enableAllChecks=true" }
+  }
+
   private val forceNoticePrinted = AtomicBoolean(false)
 
   /**
@@ -283,9 +318,15 @@ abstract class Command(protected val args: List<String>) {
    * [forceReason] is set so the build re-executes even if Gradle's UP-TO-DATE check would skip it.
    * Emits a one-line stderr notice the first time it's called per process so the agent (and the
    * human reading their transcript) can see the reason and the tracking-issue link.
+   *
+   * Always appends [extensionGradleArgs] so any `--with-extension` flags the user passed (and the
+   * implicit `a11y` request from `A11yCommand`) become `-PcomposePreview.previewExtensions.<id>
+   * .enableAllChecks=true` on the spawned Gradle build.
    */
   protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
-    val reason = forceReason ?: return extra
+    val extensionArgs = extensionGradleArgs()
+    val withExtras = extra + extensionArgs
+    val reason = forceReason ?: return withExtras
     if (forceNoticePrinted.compareAndSet(false, true)) {
       System.err.println(
         "compose-preview --force: reason='$reason' — passing --rerun-tasks. " +
@@ -293,7 +334,7 @@ abstract class Command(protected val args: List<String>) {
           "(do not delete build/classes/ — that's what this flag exists to replace)."
       )
     }
-    return listOf("--rerun-tasks") + extra
+    return listOf("--rerun-tasks") + withExtras
   }
 
   abstract fun run()
@@ -1011,14 +1052,20 @@ class RenderCommand(args: List<String>) : Command(args) {
 }
 
 /**
- * `compose-preview a11y` — runs `renderAllPreviews` (which aggregates per-preview ATF sidecars into
- * `accessibility.json`) and prints the findings grouped by preview. Exits non-zero if the Gradle
- * build failed or if `--fail-on` is set at the CLI level and the configured threshold trips.
+ * `compose-preview a11y` — thin wrapper that requests the built-in `a11y` data extension (via the
+ * same `--with-extension a11y` plumbing other extensions use), runs `:renderAllPreviews`, and
+ * prints the canned ATF findings report grouped by preview. Equivalent to `compose-preview show
+ * --with-extension a11y` plus the report rendering.
+ *
+ * Exits non-zero if the Gradle build failed or if `--fail-on` is set at the CLI level and the
+ * configured threshold trips.
  */
 class A11yCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
   // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
   private val failOn: String? = args.flagValue("--fail-on")
+
+  override fun implicitExtensions(): List<String> = listOf("a11y")
 
   override fun run() {
     val outcome =

@@ -210,8 +210,13 @@ class AccessibilityAndroidFunctionalTest {
    * config failures are debuggable from CI logs without a re-run. Gradle 9 removed `--no-daemon`
    * (TestKit uses an embedded daemon anyway) and the configuration cache is fine here — the
    * synthetic project rewrites its build script per-test, which invalidates the cache cleanly.
+   *
+   * a11y is opt-in (the CLI's `compose-preview a11y` / `--with-extension a11y` paths set this
+   * automatically); the test asserts the canned-report artefact set, so it forwards the same Gradle
+   * property here.
    */
-  private fun commonArgs(vararg tasks: String): Array<String> = arrayOf(*tasks, "--stacktrace")
+  private fun commonArgs(vararg tasks: String): Array<String> =
+    arrayOf(*tasks, "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true", "--stacktrace")
 
   @Test
   fun `renderAllPreviews produces the standard a11y artefact set`() {

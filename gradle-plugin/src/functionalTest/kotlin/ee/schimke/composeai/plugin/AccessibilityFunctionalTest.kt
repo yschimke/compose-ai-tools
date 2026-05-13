@@ -11,8 +11,9 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * Functional coverage for the accessibility manifest pointer on the CMP / desktop path. A11y is
- * always-on now (no DSL, no Gradle property, no opt-in), so every module's `previews.json` is
- * expected to carry `accessibilityReport = "accessibility.json"`.
+ * opt-in (off by default), so a stock `discoverPreviews` invocation is expected to write
+ * `accessibilityReport = null`. Opting in via the Gradle property surfaces the
+ * `"accessibility.json"` pointer the CLI / VS Code follow.
  *
  * The renderer-side half — `AccessibilityChecker.analyze` running under Robolectric and producing
  * sidecar artefacts — needs an Android + AGP + Robolectric synthetic project; covered by
@@ -109,13 +110,35 @@ class AccessibilityFunctionalTest {
   }
 
   @Test
-  fun `accessibilityReport pointer is always populated`() {
+  fun `accessibilityReport pointer defaults to null when a11y is off`() {
     val projectDir = createTestProject()
 
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
         .withArguments("discoverPreviews")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    val manifest = projectDir.readManifest()
+    assertThat(manifest.previews).hasSize(1)
+    // Default: a11y is opt-in. The CLI / VS Code treat a null pointer as "feature off" and don't
+    // probe the filesystem for a stale `accessibility.json`.
+    assertThat(manifest.accessibilityReport).isNull()
+  }
+
+  @Test
+  fun `accessibilityReport pointer is populated when a11y is opted in via Gradle property`() {
+    val projectDir = createTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "discoverPreviews",
+          "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
+        )
         .withPluginClasspath()
         .build()
 

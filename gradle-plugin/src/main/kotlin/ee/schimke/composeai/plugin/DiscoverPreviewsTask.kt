@@ -55,6 +55,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val failOnEmpty: Property<Boolean>
 
+  /**
+   * Mirrors the same on/off bit forwarded to the Android renderer via `composeai.a11y.enabled`.
+   * When true, the manifest's `accessibilityReport` pointer is set to `"accessibility.json"` so the
+   * CLI / VS Code follow it; when false the pointer is `null`, signalling consumers to skip the
+   * rollup file even if a stale one is left over from a previous opted-in run. Defaults to false
+   * (a11y is opt-in). Plumbed only on the Android wiring path — desktop/CMP modules don't have an
+   * a11y producer to gate, so the property is left at its default there.
+   */
+  @get:Input abstract val accessibilityEnabled: Property<Boolean>
+
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   private val json = Json {
@@ -266,7 +276,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
-        accessibilityReport = "accessibility.json",
+        accessibilityReport = if (accessibilityEnabled.get()) "accessibility.json" else null,
       )
 
     val outFile = outputFile.get().asFile

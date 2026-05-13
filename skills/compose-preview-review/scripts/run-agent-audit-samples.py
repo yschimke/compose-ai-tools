@@ -611,9 +611,10 @@ def main() -> int:
         raise AssertionError("java must be on PATH")
     keep = os.environ.get("KEEP_AGENT_AUDIT_FIXTURES") == "1"
     try:
-        # A11y is always-on now (no DSL toggle, no Gradle property): every render writes
-        # ATF findings + an annotated overlay alongside the PNG. No build.gradle.kts edit
-        # needed before the CLI exercises the a11y assertions below.
+        # `compose-preview a11y` opts the build into the a11y data extension on every
+        # invocation, so the renders this script triggers via the CLI write ATF findings +
+        # an annotated overlay alongside the PNG even though a11y is otherwise off by
+        # default. No build.gradle.kts edit required.
         write_fixture_files(include_failure=False)
         run(["./gradlew", ":cli:installDist"], timeout=600)
         test_accessibility_cli()

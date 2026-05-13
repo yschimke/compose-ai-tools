@@ -141,6 +141,21 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
   }
 
   /**
+   * Configure the built-in `a11y` preview extension (ATF accessibility checks + hierarchy walk).
+   * Off by default — opt in with `enableAllChecks()` (or set the
+   * `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property at the command line) so
+   * `renderPreviews` writes per-preview ATF sidecars and `aggregateAccessibility` rolls them into
+   * `accessibility.json`. With a11y disabled the renderer skips the post-capture ATF pass entirely
+   * and the manifest's `accessibilityReport` pointer is `null`.
+   */
+  val a11y: A11yPreviewExtension = objects.newInstance(A11yPreviewExtension::class.java, "a11y")
+
+  /** Configure the built-in a11y preview extension. */
+  fun a11y(action: Action<A11yPreviewExtension>) {
+    action.execute(a11y)
+  }
+
+  /**
    * Configure one preview extension by id. [PreviewExtensionConfig.enableAllChecks] enables every
    * check that extension provides; [PreviewExtensionConfig.checks] enables only named checks for
    * that extension.
@@ -197,6 +212,11 @@ constructor(private val extensionName: String, objects: ObjectFactory) : Named {
 }
 
 abstract class ComposeAiTracePreviewExtension
+@Inject
+constructor(extensionName: String, objects: ObjectFactory) :
+  PreviewExtensionConfig(extensionName, objects)
+
+abstract class A11yPreviewExtension
 @Inject
 constructor(extensionName: String, objects: ObjectFactory) :
   PreviewExtensionConfig(extensionName, objects)
