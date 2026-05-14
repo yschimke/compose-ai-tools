@@ -341,6 +341,7 @@ export function renderPerformanceSections(
         renderTrace: unknown;
         composeAiTrace: unknown;
     },
+    openExternal?: (url: string) => void,
 ): void {
     // Tear down prior contents — sections may have toggled off since
     // the last refresh, and we want a deterministic layout.
@@ -387,6 +388,7 @@ export function renderPerformanceSections(
                 previewId,
                 rawPayloads,
                 copyToClipboard,
+                openExternal,
             ),
         );
     }
@@ -475,6 +477,7 @@ function renderComposeAiTraceSection(
         composeAiTrace: unknown;
     },
     copyToClipboard: (text: string) => void,
+    openExternal?: (url: string) => void,
 ): HTMLElement {
     const section = document.createElement("div");
     section.className = "perf-bundle-section perf-bundle-perfetto";
@@ -509,8 +512,8 @@ function renderComposeAiTraceSection(
     button.type = "button";
     button.className = "perf-perfetto-open";
     button.title =
-        "Copies the Perfetto-importable JSON to your clipboard. " +
-        "Paste it into https://ui.perfetto.dev to open the trace.";
+        "Copies the trace to your clipboard and opens ui.perfetto.dev. " +
+        "Paste with Cmd/Ctrl-V to load.";
     const icon = document.createElement("i");
     icon.className = "codicon codicon-cloud-upload";
     icon.setAttribute("aria-hidden", "true");
@@ -518,6 +521,21 @@ function renderComposeAiTraceSection(
     const label = document.createElement("span");
     label.textContent = "Open in Perfetto";
     button.appendChild(label);
+
+    // Inline status hint below the button — `ui.perfetto.dev` won't
+    // fetch a `vscode://` or `file:` URL from disk (CORS), so the
+    // documented `?url=…` ingestion path doesn't apply to traces
+    // sourced from this extension's storage. We keep the UX
+    // one-click by pairing the clipboard write with opening the
+    // Perfetto UI in the browser, and the user pastes with
+    // Cmd/Ctrl-V on the just-opened tab.
+    const status = document.createElement("div");
+    status.className = "perf-perfetto-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    section.appendChild(button);
+    section.appendChild(status);
+
     button.addEventListener("click", () => {
         // Ship the raw Perfetto-importable trace JSON only — paste-
         // into-ui.perfetto.dev expects the trace at the document root
@@ -526,10 +544,21 @@ function renderComposeAiTraceSection(
         // as "not a trace." When the daemon hasn't attached a
         // composeAiTrace payload yet, fall through to an empty
         // string so the clipboard write is a clear no-op rather than
-        // shipping a misleading wrapper.
+        // shipping a misleading wrapper. In the no-payload case we
+        // also suppress the `openExternal` — there's nothing to
+        // paste, so opening a browser tab would be pointless.
         const trace = rawPayloads.composeAiTrace;
-        copyToClipboard(trace ? JSON.stringify(trace, null, 2) : "");
+        if (trace) {
+            copyToClipboard(JSON.stringify(trace, null, 2));
+            if (openExternal) {
+                openExternal("https://ui.perfetto.dev");
+            }
+            status.textContent =
+                "Trace copied. Paste with Cmd/Ctrl-V in the page that just opened.";
+        } else {
+            copyToClipboard("");
+            status.textContent = "";
+        }
     });
-    section.appendChild(button);
     return section;
 }
