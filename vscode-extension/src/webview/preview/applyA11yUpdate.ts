@@ -13,7 +13,6 @@
 // re-exports the helper bound to the real `previewStore` mutators so
 // existing call sites are unchanged.
 
-import { ensureHierarchyOverlay } from "./a11yOverlay";
 import { sanitizeId } from "./cardData";
 import type {
     AccessibilityFinding,
@@ -85,52 +84,26 @@ export function applyA11yUpdate(
     if (!config.earlyFeatures()) return;
     const card = document.getElementById("preview-" + sanitizeId(previewId));
     if (!card) return;
-    const container = card.querySelector(".image-container");
     if (findings !== undefined) {
         if (findings && findings.length > 0) {
-            // Ensure the empty `.a11y-overlay` container exists before
-            // bumping the store — `<preview-card>`'s mapsRevision
-            // subscription will paint into it once the per-id Map
-            // write below fires the rebroadcast.
-            if (container && !container.querySelector(".a11y-overlay")) {
-                const overlay = document.createElement("div");
-                overlay.className = "a11y-overlay";
-                overlay.setAttribute("aria-hidden", "true");
-                container.appendChild(overlay);
-            }
             // Mutate the manifest entry's findings so downstream surfaces
-            // (focus inspector, bundle tab, hover-on-image badges) see the
-            // fresh list. The labelled legend is no longer painted inline
-            // on the card — it now lives in the A11y bundle tab (#1054),
-            // which is the only dismissible surface for the labelled list.
+            // (focus inspector, A11y bundle tab) see the fresh list.
+            // The legacy `.a11y-overlay` stamp is gone — the A11y
+            // bundle owns the on-image paint via `cardBundleOverlay`
+            // after #1087; this helper just keeps caches + manifest in
+            // sync so `refreshA11yBundle` finds the latest data.
             const p = config.getAllPreviews().find((pp) => pp.id === previewId);
             if (p) p.a11yFindings = [...findings];
-            // Store write last — the `mapsRevision` bump triggers the
-            // component's `_repaintA11yOverlaysFromCache()` which runs
-            // `buildA11yOverlay` against the fresh findings. The
-            // component gates on `img.complete && img.naturalWidth > 0`
-            // exactly as the previous imperative branch did.
             config.setCardA11yFindings(previewId, findings);
         } else {
             config.deleteCardA11yFindings(previewId);
-            const overlay = card.querySelector(".a11y-overlay");
-            if (overlay) overlay.remove();
         }
     }
     if (nodes !== undefined) {
         if (nodes && nodes.length > 0) {
-            ensureHierarchyOverlay(container);
-            // The labelled hierarchy list moved to the A11y bundle tab
-            // (#1054). The card keeps only the spatial overlay layer
-            // (`.a11y-hierarchy-overlay`) — boxes are useful context
-            // regardless of whether the user has the bundle tab open,
-            // and they share the chip's dismiss path indirectly via the
-            // bundle controller's hierarchy-overlay teardown.
             config.setCardA11yNodes(previewId, nodes);
         } else {
             config.deleteCardA11yNodes(previewId);
-            const layer = card.querySelector(".a11y-hierarchy-overlay");
-            if (layer) layer.remove();
         }
     }
     if (config.inFocus() && config.focusedCard() === card) {

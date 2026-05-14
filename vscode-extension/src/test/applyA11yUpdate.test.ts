@@ -10,11 +10,12 @@ import type {
     PreviewInfo,
 } from "../webview/shared/types";
 
-// Post-#1054 the labelled legend list is no longer painted inline on
-// the card — it now lives in the A11y bundle tab. These tests pin the
-// surviving on-card surfaces (the boxes-on-image overlay layer) and
-// the cache writes that feed both the bundle presenter and the
-// existing focus inspector.
+// Post-#1087 / legacy-paint removal: `applyA11yUpdate` no longer
+// stamps `.a11y-overlay` / `.a11y-hierarchy-overlay` DOM. The A11y
+// bundle owns the on-image paint via `cardBundleOverlay` driven from
+// `refreshA11yBundle`. This helper just keeps the per-preview caches
+// + manifest a11yFindings in sync so downstream surfaces (focus
+// inspector, bundle tab) find fresh data.
 
 function buildCard(previewId: string): HTMLElement {
     const card = document.createElement("div");
@@ -72,7 +73,6 @@ interface ConfigOverrides {
     inFocus?: boolean;
     focusedCard?: HTMLElement | null;
     previews?: PreviewInfo[];
-    inspectorRender?: (card: HTMLElement) => void;
     cache?: CacheState;
 }
 
@@ -91,7 +91,6 @@ function buildConfig(overrides: ConfigOverrides = {}): {
         inspector: {
             render: (card) => {
                 inspectorCalls.push(card);
-                overrides.inspectorRender?.(card);
             },
         },
         earlyFeatures: () => overrides.earlyFeatures ?? true,
@@ -121,181 +120,108 @@ describe("applyA11yUpdate", () => {
         document.body.innerHTML = "";
     });
 
-    it("is a silent no-op when earlyFeatures() is false (no DOM mutation, no cache write)", () => {
-        const card = buildCard("com.example.A");
+    it("silent no-op when earlyFeatures is off (no cache write)", () => {
+        buildCard("com.example.A");
         const { config, cache } = buildConfig({
             earlyFeatures: false,
             previews: [buildPreviewInfo("com.example.A")],
         });
-
         applyA11yUpdate(
             "com.example.A",
-            [buildFinding("ERROR", "low contrast")],
+            [buildFinding("ERROR", "x")],
             [buildNode("Button")],
             config,
         );
-
-        assert.strictEqual(card.querySelector(".a11y-overlay"), null);
-        assert.strictEqual(card.querySelector(".a11y-hierarchy-overlay"), null);
         assert.strictEqual(cache.findings.size, 0);
         assert.strictEqual(cache.nodes.size, 0);
     });
 
-    it("is a silent no-op when the previewId has no card in the DOM", () => {
-        const other = buildCard("com.example.OTHER");
+    it("silent no-op when the previewId has no card in the DOM", () => {
+        buildCard("com.example.OTHER");
         const { config, cache } = buildConfig({
             previews: [buildPreviewInfo("com.example.GHOST")],
         });
-
         assert.doesNotThrow(() =>
             applyA11yUpdate(
                 "com.example.GHOST",
-                [buildFinding("ERROR", "missing card")],
-                [buildNode("Ghost")],
+                [buildFinding("ERROR", "x")],
+                [buildNode("X")],
                 config,
             ),
         );
-
-        assert.strictEqual(other.querySelector(".a11y-overlay"), null);
         assert.strictEqual(cache.findings.size, 0);
         assert.strictEqual(cache.nodes.size, 0);
     });
 
-    it("appends .a11y-overlay placeholder, writes cache, and mutates the matching PreviewInfo when findings are present", () => {
-        const card = buildCard("com.example.A");
+    it("writes the findings cache and mutates the matching PreviewInfo when findings are present", () => {
+        buildCard("com.example.A");
         const preview = buildPreviewInfo("com.example.A");
         const findings = [
             buildFinding("ERROR", "contrast"),
             buildFinding("WARNING", "label"),
         ];
-        const { config, cache } = buildConfig({
-            previews: [preview],
-        });
-
+        const { config, cache } = buildConfig({ previews: [preview] });
         applyA11yUpdate("com.example.A", findings, undefined, config);
-
-        const overlay = card.querySelector(".a11y-overlay");
-        assert.ok(overlay, ".a11y-overlay placeholder appended");
-        assert.strictEqual(overlay!.getAttribute("aria-hidden"), "true");
-        // The placeholder is empty — actual paint runs from the
-        // PreviewCard's mapsRevision subscription, not from this helper.
-        assert.strictEqual(overlay!.children.length, 0);
-        // Labelled legend list is no longer rendered on the card; it
-        // lives in the A11y bundle tab now.
-        assert.strictEqual(card.querySelector(".a11y-legend"), null);
-
         assert.deepStrictEqual(cache.findings.get("com.example.A"), findings);
-        // The matching PreviewInfo has its a11yFindings field replaced
-        // (with a fresh array, not the readonly arg directly).
+        // PreviewInfo gets a defensive copy so subsequent mutations
+        // of the input array don't leak into the cached manifest.
         assert.deepStrictEqual(preview.a11yFindings, [...findings]);
         assert.notStrictEqual(preview.a11yFindings, findings);
     });
 
-    it("does not duplicate the overlay placeholder on a second findings update", () => {
-        const card = buildCard("com.example.A");
-        const preview = buildPreviewInfo("com.example.A");
-        const { config } = buildConfig({ previews: [preview] });
-
-        applyA11yUpdate(
-            "com.example.A",
-            [buildFinding("ERROR", "first")],
-            undefined,
-            config,
-        );
-        applyA11yUpdate(
-            "com.example.A",
-            [
-                buildFinding("ERROR", "second-a"),
-                buildFinding("INFO", "second-b"),
-            ],
-            undefined,
-            config,
-        );
-
-        assert.strictEqual(card.querySelectorAll(".a11y-overlay").length, 1);
-    });
-
-    it("removes overlay and clears cache when findings is an empty array", () => {
-        const card = buildCard("com.example.A");
+    it("empty findings clears the cache entry", () => {
+        buildCard("com.example.A");
         const preview = buildPreviewInfo("com.example.A");
         const { config, cache } = buildConfig({ previews: [preview] });
-
         applyA11yUpdate(
             "com.example.A",
             [buildFinding("ERROR", "x")],
             undefined,
             config,
         );
-        assert.ok(card.querySelector(".a11y-overlay"));
         assert.strictEqual(cache.findings.size, 1);
-
         applyA11yUpdate("com.example.A", [], undefined, config);
-
-        assert.strictEqual(card.querySelector(".a11y-overlay"), null);
         assert.strictEqual(cache.findings.has("com.example.A"), false);
     });
 
-    it("leaves the findings side untouched when findings is undefined", () => {
-        const card = buildCard("com.example.A");
+    it("undefined findings leaves the findings cache untouched", () => {
+        buildCard("com.example.A");
         const preview = buildPreviewInfo("com.example.A");
         const { config, cache } = buildConfig({ previews: [preview] });
-
         applyA11yUpdate(
             "com.example.A",
             [buildFinding("ERROR", "seed")],
             undefined,
             config,
         );
-        assert.ok(card.querySelector(".a11y-overlay"));
-        const cachedBefore = cache.findings.get("com.example.A");
-
-        // Nodes-only update — findings side must not be touched.
+        const before = cache.findings.get("com.example.A");
         applyA11yUpdate("com.example.A", undefined, [buildNode("X")], config);
-
-        assert.ok(
-            card.querySelector(".a11y-overlay"),
-            "overlay not removed by a nodes-only update",
-        );
-        assert.strictEqual(cache.findings.get("com.example.A"), cachedBefore);
+        assert.strictEqual(cache.findings.get("com.example.A"), before);
     });
 
-    it("ensures .a11y-hierarchy-overlay layer and writes the nodes cache when nodes are present", () => {
-        const card = buildCard("com.example.A");
+    it("writes the nodes cache when nodes are present", () => {
+        buildCard("com.example.A");
         const nodes = [buildNode("Button"), buildNode("Text")];
         const { config, cache } = buildConfig({
             previews: [buildPreviewInfo("com.example.A")],
         });
-
         applyA11yUpdate("com.example.A", undefined, nodes, config);
-
-        const layer = card.querySelector(".a11y-hierarchy-overlay");
-        assert.ok(layer, ".a11y-hierarchy-overlay attached");
-        assert.strictEqual(layer!.getAttribute("aria-hidden"), "true");
-        // Labelled hierarchy legend list lives in the A11y bundle tab,
-        // not on the card.
-        assert.strictEqual(card.querySelector(".a11y-hierarchy-legend"), null);
-
         assert.deepStrictEqual(cache.nodes.get("com.example.A"), nodes);
     });
 
-    it("removes .a11y-hierarchy-overlay and clears the nodes cache when nodes is an empty array", () => {
-        const card = buildCard("com.example.A");
+    it("empty nodes clears the nodes cache entry", () => {
+        buildCard("com.example.A");
         const { config, cache } = buildConfig({
             previews: [buildPreviewInfo("com.example.A")],
         });
-
         applyA11yUpdate(
             "com.example.A",
             undefined,
             [buildNode("Button")],
             config,
         );
-        assert.ok(card.querySelector(".a11y-hierarchy-overlay"));
         assert.strictEqual(cache.nodes.size, 1);
-
         applyA11yUpdate("com.example.A", undefined, [], config);
-
-        assert.strictEqual(card.querySelector(".a11y-hierarchy-overlay"), null);
         assert.strictEqual(cache.nodes.has("com.example.A"), false);
     });
 
@@ -306,54 +232,46 @@ describe("applyA11yUpdate", () => {
             inFocus: true,
             focusedCard: card,
         });
-
         applyA11yUpdate(
             "com.example.A",
             [buildFinding("ERROR", "x")],
             undefined,
             config,
         );
-
         assert.strictEqual(inspectorCalls.length, 1);
         assert.strictEqual(inspectorCalls[0], card);
     });
 
-    it("does NOT call inspector.render when in focus mode but a different card is focused", () => {
-        const cardA = buildCard("com.example.A");
+    it("does NOT call inspector.render when a different card is focused", () => {
+        buildCard("com.example.A");
         const cardB = buildCard("com.example.B");
         const { config, inspectorCalls } = buildConfig({
             previews: [buildPreviewInfo("com.example.A")],
             inFocus: true,
             focusedCard: cardB,
         });
-
         applyA11yUpdate(
             "com.example.A",
             [buildFinding("ERROR", "x")],
             undefined,
             config,
         );
-
         assert.strictEqual(inspectorCalls.length, 0);
-        // Sanity: the matching card got its overlay placeholder regardless.
-        assert.ok(cardA.querySelector(".a11y-overlay"));
     });
 
-    it("does NOT call inspector.render when not in focus mode even if focusedCard returns the matching card", () => {
+    it("does NOT call inspector.render when not in focus mode", () => {
         const card = buildCard("com.example.A");
         const { config, inspectorCalls } = buildConfig({
             previews: [buildPreviewInfo("com.example.A")],
             inFocus: false,
             focusedCard: card,
         });
-
         applyA11yUpdate(
             "com.example.A",
             [buildFinding("ERROR", "x")],
             undefined,
             config,
         );
-
         assert.strictEqual(inspectorCalls.length, 0);
     });
 });

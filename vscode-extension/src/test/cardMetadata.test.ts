@@ -285,11 +285,12 @@ describe("refreshCardMetadata", () => {
         assert.strictEqual(stub.indicatorCalls, 1);
     });
 
-    it("rebuilds .a11y-overlay only when earlyFeatures is on and findings exist", () => {
-        // Post-#1054 the labelled legend list moved to the A11y bundle
-        // tab; only the boxes-on-image overlay layer is rebuilt on the
-        // card itself. The findings array still drives whether the
-        // overlay container exists, just without the inline legend.
+    it("does not stamp any legacy a11y DOM regardless of findings", () => {
+        // Post-#1087 the A11y bundle owns on-image overlay paint via
+        // `cardBundleOverlay` (`<box-overlay data-bundle='a11y'>`).
+        // cardMetadata stays focused on dataset / badge / capture-cache
+        // refresh; the legacy `.a11y-overlay` / `.a11y-legend` stamps
+        // are gone whether or not findings are present.
         const findings: PreviewInfo["a11yFindings"] = [
             {
                 level: "WARNING",
@@ -298,34 +299,17 @@ describe("refreshCardMetadata", () => {
                 boundsInScreen: "Rect(10, 20 - 110, 60)",
             },
         ];
-
         const p0 = preview("preview:1");
         const card = buildCard(p0);
-
         const p1 = preview("preview:1", { a11yFindings: findings });
-
-        // earlyFeatures off — no overlay even with findings.
-        const offConfig = buildConfig({ earlyFeatures: false }).config;
-        refreshCardMetadata(card, p1, offConfig);
-        assert.strictEqual(card.querySelector(".a11y-overlay"), null);
-
-        // earlyFeatures on — empty overlay container appended inside
-        // .image-container. No labelled legend on the card.
         const onConfig = buildConfig({ earlyFeatures: true }).config;
         refreshCardMetadata(card, p1, onConfig);
-        assert.ok(
-            card.querySelector(".image-container .a11y-overlay"),
-            "overlay container should be appended into .image-container",
-        );
-        assert.strictEqual(
-            card.querySelector(".a11y-legend"),
-            null,
-            "labelled legend lives in the A11y bundle tab now (#1054)",
-        );
-
-        // Subsequent reseed with empty findings drops the overlay.
-        const p2 = preview("preview:1", { a11yFindings: [] });
-        refreshCardMetadata(card, p2, onConfig);
         assert.strictEqual(card.querySelector(".a11y-overlay"), null);
+        assert.strictEqual(card.querySelector(".a11y-legend"), null);
+        assert.strictEqual(
+            card.querySelector("box-overlay[data-bundle='a11y']"),
+            null,
+            "bundle overlay is painted by refreshA11yBundle, not cardMetadata",
+        );
     });
 });
