@@ -1,5 +1,5 @@
-// `<data-tabs>` — tab row that appears below `<bundle-chip-bar>` when
-// at least one bundle is active. Each tab has a label and a close `×`
+// `<data-tabs>` — tab row that appears below `<bundle-chip-bar>`.
+// Each active bundle gets a tab with a label and a close `×`
 // affordance; the `×` and the bundle chip's re-press are two redundant
 // ways to dismiss (design doc § "Chip ↔ tab ↔ overlay state machine").
 //
@@ -9,10 +9,15 @@
 // so a slow-to-build presenter doesn't tear down on every click; only
 // the active body is `[hidden]=false`.
 //
-// When `activeBundles` is empty the component renders nothing — the
-// preview panel returns to its plain-preview resting state.
+// A trailing **`…More`** tab is always rendered in the last position,
+// even when no bundle is active. It's the only non-closable tab and
+// lists every currently-disabled bundle as a clickable row that emits
+// `bundle-toggled` — re-using the chip-bar event so the host doesn't
+// need new wiring (design doc § "UX shell", item 8: "Last tab is always
+// `…More` / settings. Stable position so the user always knows where
+// to find the extra filters and disabled kinds.").
 
-import { LitElement, html, nothing, type TemplateResult } from "lit";
+import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { BundleDescriptor, BundleId } from "../bundleRegistry";
 
@@ -21,8 +26,21 @@ export interface TabCloseDetail {
 }
 
 export interface TabSelectDetail {
+    /** `null` selects the `…More` tab (no bundle owns it). */
+    id: BundleId | null;
+}
+
+/** Re-export of the chip-bar event's detail shape — the `…More` rows
+ *  fire the same event so the host's existing `bundle-toggled` listener
+ *  handles activation without new wiring. */
+export interface BundleToggledDetail {
     id: BundleId;
 }
+
+/** Sentinel value for the `…More` tab's selection state. The host
+ *  controller's `activeTab` is a `BundleId | null`; `null` is the
+ *  `…More` tab. */
+export const MORE_TAB = null;
 
 @customElement("data-tabs")
 export class DataTabs extends LitElement {
@@ -69,11 +87,14 @@ export class DataTabs extends LitElement {
     }
 
     protected render(): TemplateResult {
-        if (this.activeBundles.length === 0) {
-            return html`${nothing}`;
-        }
         const ordered = this.bundles.filter((b) =>
             this.activeBundles.includes(b.id),
+        );
+        const moreSelected =
+            this.activeTab === null ||
+            !this.activeBundles.includes(this.activeTab);
+        const disabled = this.bundles.filter(
+            (b) => !this.activeBundles.includes(b.id),
         );
         return html`
             <div
@@ -83,9 +104,11 @@ export class DataTabs extends LitElement {
             >
                 <div class="data-tab-strip">
                     ${ordered.map((b) => this.renderTabHandle(b))}
+                    ${this.renderMoreHandle(moreSelected)}
                 </div>
                 <div class="data-tab-bodies">
                     ${ordered.map((b) => this.renderTabBody(b))}
+                    ${this.renderMoreBody(disabled, moreSelected)}
                 </div>
             </div>
         `;
@@ -126,6 +149,32 @@ export class DataTabs extends LitElement {
         `;
     }
 
+    private renderMoreHandle(selected: boolean): TemplateResult {
+        // No close button — `…More` is the stable trailing tab; the
+        // design doc makes it the only non-closable tab so the user
+        // always has somewhere to find disabled bundles.
+        return html`
+            <div
+                class=${selected
+                    ? "data-tab-handle data-tab-handle-more data-tab-handle-active"
+                    : "data-tab-handle data-tab-handle-more"}
+                role="tab"
+                aria-selected=${selected ? "true" : "false"}
+                data-bundle="__more"
+            >
+                <button
+                    type="button"
+                    class="data-tab-label"
+                    @click=${() => this.onSelect(null)}
+                    title="Show disabled bundles"
+                >
+                    <i class="codicon codicon-ellipsis" aria-hidden="true"></i>
+                    <span>More</span>
+                </button>
+            </div>
+        `;
+    }
+
     private renderTabBody(b: BundleDescriptor): TemplateResult {
         const body = this.bodies.get(b.id);
         const selected = b.id === this.activeTab;
@@ -141,13 +190,55 @@ export class DataTabs extends LitElement {
         `;
     }
 
+    private renderMoreBody(
+        disabled: readonly BundleDescriptor[],
+        selected: boolean,
+    ): TemplateResult {
+        return html`
+            <div
+                class="data-tab-body data-tab-body-more"
+                role="tabpanel"
+                data-bundle="__more"
+                ?hidden=${!selected}
+            >
+                <div class="data-tab-more-header">Disabled bundles</div>
+                ${disabled.length === 0
+                    ? html`
+                          <div class="data-table-empty">Everything's on.</div>
+                      `
+                    : html`
+                          <div class="data-tab-more-list">
+                              ${disabled.map((b) => this.renderMoreRow(b))}
+                          </div>
+                      `}
+            </div>
+        `;
+    }
+
+    private renderMoreRow(b: BundleDescriptor): TemplateResult {
+        return html`
+            <button
+                type="button"
+                class="data-tab-more-row"
+                data-bundle=${b.id}
+                title=${`Enable ${b.label}`}
+                aria-label=${`Enable ${b.label}`}
+                @click=${() => this.onMoreActivate(b.id)}
+            >
+                <i class=${"codicon codicon-" + b.icon} aria-hidden="true"></i>
+                <span class="data-tab-more-row-label">${b.label}</span>
+                <span class="data-tab-more-row-hint">click to enable</span>
+            </button>
+        `;
+    }
+
     private placeholderBody(b: BundleDescriptor): TemplateResult {
         return html`
             <div class="data-tab-placeholder">${b.label} is loading…</div>
         `;
     }
 
-    private onSelect(id: BundleId): void {
+    private onSelect(id: BundleId | null): void {
         this.dispatchEvent(
             new CustomEvent<TabSelectDetail>("tab-selected", {
                 detail: { id },
@@ -161,6 +252,20 @@ export class DataTabs extends LitElement {
         evt.stopPropagation();
         this.dispatchEvent(
             new CustomEvent<TabCloseDetail>("tab-closed", {
+                detail: { id },
+                bubbles: true,
+                composed: true,
+            }),
+        );
+    }
+
+    private onMoreActivate(id: BundleId): void {
+        // Re-use the chip-bar's `bundle-toggled` event so the host's
+        // existing controller wiring activates the bundle. Once the
+        // controller fires `bundle-state-changed`, `setState` re-renders
+        // and the bundle's own tab takes over.
+        this.dispatchEvent(
+            new CustomEvent<BundleToggledDetail>("bundle-toggled", {
                 detail: { id },
                 bubbles: true,
                 composed: true,
