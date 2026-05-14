@@ -106,16 +106,19 @@ describe("computeTextBundleData", () => {
         assert.ok(data.overlay[2].tooltip?.includes("overflow-w"));
     });
 
-    it("matches Google Fonts via the bundled allowlist when provider is missing", () => {
+    it("matches Google Fonts via the bundled allowlist", () => {
+        // The producer-side `provider` field was reverted to fix a
+        // Kotlin data-class binary-compat break against pre-#1081
+        // consumers (#1057 schema bump back to v1). The bundled
+        // allowlist is the only Google-Fonts signal today; any future
+        // provenance tag will need to land via a non-breaking shape.
         const data = computeTextBundleData(
             null,
             { fonts: [fontEntry({ requestedFamily: "Roboto" })] },
             null,
         );
         assert.strictEqual(data.fonts.length, 1);
-        const row = data.fonts[0] as FontRow;
-        assert.strictEqual(row.isGoogleFont, true);
-        assert.strictEqual(row.provider, null);
+        assert.strictEqual((data.fonts[0] as FontRow).isGoogleFont, true);
         // A truly local family that isn't in the allowlist must NOT
         // light up as a Google link.
         const data2 = computeTextBundleData(
@@ -124,45 +127,6 @@ describe("computeTextBundleData", () => {
             null,
         );
         assert.strictEqual((data2.fonts[0] as FontRow).isGoogleFont, false);
-    });
-
-    it('honours an explicit provider="google" tag even when the family is not in the allowlist', () => {
-        const data = computeTextBundleData(
-            null,
-            {
-                fonts: [
-                    fontEntry({
-                        requestedFamily: "AcmeSans",
-                        provider: "google",
-                    }),
-                ],
-            },
-            null,
-        );
-        const row = data.fonts[0] as FontRow;
-        assert.strictEqual(row.isGoogleFont, true);
-        assert.strictEqual(row.provider, "google");
-    });
-
-    it("treats an explicit non-google provider as non-Google even for allowlisted names", () => {
-        // E.g. an asset font happens to be named "Roboto" — the
-        // producer's `provider="asset"` wins over the bundled allowlist
-        // so the cell doesn't link out.
-        const data = computeTextBundleData(
-            null,
-            {
-                fonts: [
-                    fontEntry({
-                        requestedFamily: "Roboto",
-                        provider: "asset",
-                    }),
-                ],
-            },
-            null,
-        );
-        const row = data.fonts[0] as FontRow;
-        assert.strictEqual(row.isGoogleFont, false);
-        assert.strictEqual(row.provider, "asset");
     });
 
     it("emits translation rows with locale counts derived from supportedLocales", () => {
