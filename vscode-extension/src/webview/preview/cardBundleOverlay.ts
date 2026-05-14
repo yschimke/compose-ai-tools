@@ -1,18 +1,24 @@
 // Per-card bundle overlay paint — stamps `<box-overlay>` elements
-// inside a focused preview card's `.image-container` so any active
-// bundle whose data carries bounds (history-diff regions,
-// future: a11y migration off `applyHierarchyOverlay`, text overflow
-// rectangles) shows tinted boxes on the rendered preview.
+// inside a preview card's `.image-container` so any active bundle
+// whose data carries bounds (history-diff regions, a11y findings,
+// future: text-overflow rectangles) shows tinted boxes on the
+// rendered preview.
 //
-// Initial slice (#1054 follow-up) is focused-only and per-bundle:
-// the host calls `paintBundleBoxes(card, bundleId, boxes)` from each
-// bundle's refresh function, and `clearBundleBoxes(card?, bundleId)`
-// from the bundle's deactivation path. Multiple bundles can paint at
-// once — each gets its own `<box-overlay>` layer keyed on
-// `data-bundle`. Generalising to grid-mode selection (paint on every
-// visible card) is a follow-up; this slice closes the gap on the
-// focused card only, mirroring how a11y already paints today via
-// `applyHierarchyOverlay`.
+// Two host entry points:
+//   - `paintBundleBoxes(card, bundleId, boxes)` — single-card paint,
+//     used when focus mode is active and only the focused card is
+//     showing data overlays.
+//   - `paintBundleBoxesEverywhere(bundleId, perCardData)` — grid
+//     mode: paints every visible `.preview-card` with that card's
+//     own per-bundle boxes. Realises the "Open question 1 —
+//     Multi-preview selection" fallback in
+//     `docs/design/EXTENSION_DATA_EXPOSURE.md`: focused preview wins,
+//     otherwise every visible card paints.
+//
+// Multiple bundles can paint simultaneously — each owns its own
+// `<box-overlay>` layer keyed on `data-bundle`. Teardown
+// (`clearBundleBoxes(null, id)`) wipes every card the bundle touched
+// in one pass via `document.querySelectorAll`.
 
 import { BoxOverlay, type OverlayBox } from "./components/BoxOverlay";
 import { sanitizeId } from "./cardData";
@@ -93,6 +99,96 @@ export function clearBundleBoxes(
         'box-overlay[data-bundle="' + bundleId + '"]',
     );
     for (const layer of Array.from(layers)) layer.remove();
+}
+
+/**
+ * Maximum number of cards we'll stamp `<box-overlay>` layers into
+ * during a single grid-mode paint. Above this cap we abort with a
+ * `console.warn` and paint zero cards rather than blocking the main
+ * thread for an unbounded number of DOM mutations on huge previews
+ * sets. The number is intentionally generous — typical screens host
+ * a handful of cards and even dense column layouts rarely cross the
+ * dozens — but bounded so a pathological workspace doesn't freeze
+ * the panel. See `paintBundleBoxesEverywhere`.
+ */
+export const GRID_PAINT_CARD_CAP = 50;
+
+/**
+ * Return the `data-preview-id` of every `.preview-card` currently
+ * mounted in the DOM, in document order, skipping cards that are
+ * hidden via the `[hidden]` attribute or `display:none`. Used by
+ * grid-mode bundle paint to iterate cards exactly once per refresh
+ * without double-stamping hidden siblings the user can't see.
+ */
+export function getVisiblePreviewIds(): string[] {
+    const cards = document.querySelectorAll<HTMLElement>(
+        ".preview-card[data-preview-id]",
+    );
+    const ids: string[] = [];
+    for (const card of Array.from(cards)) {
+        if (isCardHidden(card)) continue;
+        const id = card.dataset.previewId;
+        if (id) ids.push(id);
+    }
+    return ids;
+}
+
+/**
+ * Paint [bundleId]'s boxes on every visible `.preview-card` in the
+ * grid. [perCardData] maps `previewId → OverlayBox[]` — cards
+ * present in the map paint those boxes, cards absent from the map
+ * get the empty-set call (clear-in-place) so a stale layer from a
+ * previous refresh doesn't linger.
+ *
+ * When the number of visible cards exceeds `GRID_PAINT_CARD_CAP`
+ * the call is a no-op apart from a single `console.warn`. The
+ * existing `previewStore` already holds every card's data; the cost
+ * a cap protects against is per-card DOM stamping, not data layout.
+ */
+export function paintBundleBoxesEverywhere(
+    bundleId: string,
+    perCardData: ReadonlyMap<string, readonly OverlayBox[]>,
+): void {
+    const cards = document.querySelectorAll<HTMLElement>(
+        ".preview-card[data-preview-id]",
+    );
+    const visibleCards: HTMLElement[] = [];
+    for (const card of Array.from(cards)) {
+        if (isCardHidden(card)) continue;
+        visibleCards.push(card);
+    }
+    if (visibleCards.length > GRID_PAINT_CARD_CAP) {
+        console.warn(
+            "[cardBundleOverlay] paintBundleBoxesEverywhere skipping " +
+                bundleId +
+                ": " +
+                visibleCards.length +
+                " visible cards exceeds cap " +
+                GRID_PAINT_CARD_CAP,
+        );
+        return;
+    }
+    for (const card of visibleCards) {
+        const id = card.dataset.previewId;
+        if (!id) continue;
+        const boxes = perCardData.get(id) ?? [];
+        paintBundleBoxes(card, bundleId, boxes);
+    }
+}
+
+function isCardHidden(card: HTMLElement): boolean {
+    if (card.hasAttribute("hidden")) return true;
+    // happy-dom doesn't run CSS layout so `getComputedStyle` only
+    // resolves the inline declaration — sufficient for our test
+    // fixtures and matches how the grid toggles cards
+    // (`card.style.display = "none"` via `FilterController`).
+    if (card.style.display === "none") return true;
+    const view = card.ownerDocument?.defaultView;
+    if (view && typeof view.getComputedStyle === "function") {
+        const computed = view.getComputedStyle(card);
+        if (computed.display === "none") return true;
+    }
+    return false;
 }
 
 function ensureBundleOverlayLayer(
