@@ -862,6 +862,16 @@ export class PreviewApp extends LitElement {
             }));
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
+            // Paint the merged hierarchy + findings overlay on the
+            // focused card via the new bundle-overlay helper. Mirrors
+            // the history-diff wiring from PR #1086 — chip dismissal
+            // clears the layer in `reflectBundleState`'s else-branch
+            // below. Coexists with the legacy `applyHierarchyOverlay`
+            // path in `PreviewCard._repaintA11yOverlaysFromCache` for
+            // now; a follow-up will remove the legacy paint once the
+            // new path is verified end-to-end.
+            const card = findCardElement(target);
+            if (card) paintBundleBoxes(card, "a11y", data.overlay);
         };
         const refreshPerformanceBundle = (): void => {
             const target = currentBundleTarget();
@@ -1241,7 +1251,11 @@ export class PreviewApp extends LitElement {
                 activeBundles: s.activeBundles,
                 activeTab: s.activeTab,
             });
-            if (s.activeBundles.includes("a11y")) refreshA11yBundle();
+            if (s.activeBundles.includes("a11y")) {
+                refreshA11yBundle();
+            } else {
+                clearBundleBoxes(null, "a11y");
+            }
             if (s.activeBundles.includes("performance")) {
                 refreshPerformanceBundle();
             }
