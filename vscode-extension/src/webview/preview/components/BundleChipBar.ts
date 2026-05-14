@@ -1,5 +1,5 @@
 // `<bundle-chip-bar>` — chip strip rendered below the preview grid in
-// focus mode. Each chip is an icon-only toggle for a data-extension
+// focus mode. Each chip is an icon + label toggle for a data-extension
 // bundle. Pressing a chip opens the matching tab in `<data-tabs>` and
 // starts subscriptions to the bundle's default-ON kinds; re-pressing
 // it tears them down. The chip + the tab `×` are deliberately
@@ -55,12 +55,12 @@ export class BundleChipBar extends LitElement {
                 type="button"
                 class=${pressed ? "bundle-chip bundle-chip-on" : "bundle-chip"}
                 aria-pressed=${pressed ? "true" : "false"}
-                aria-label=${b.label}
                 data-bundle=${b.id}
                 title=${b.label}
                 @click=${() => this.onClick(b.id)}
             >
                 <i class=${"codicon codicon-" + b.icon} aria-hidden="true"></i>
+                <span class="bundle-chip-label">${b.label}</span>
             </button>
         `;
     }
