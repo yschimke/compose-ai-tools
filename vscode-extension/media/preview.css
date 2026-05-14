@@ -2198,6 +2198,49 @@ body {
     opacity: 0.6;
     padding: 8px 0;
 }
+/* `…More` tab — stable trailing tab listing disabled bundles. */
+.data-tab-handle-more {
+    margin-left: auto;
+    opacity: 0.8;
+}
+.data-tab-handle-more.data-tab-handle-active {
+    opacity: 1;
+}
+.data-tab-body-more {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.data-tab-more-header {
+    font-weight: 600;
+    opacity: 0.8;
+    padding: 2px 0;
+}
+.data-tab-more-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.data-tab-more-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-panel-border, transparent);
+    background: var(--vscode-button-secondaryBackground, transparent);
+    color: var(--vscode-button-secondaryForeground, inherit);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+}
+.data-tab-more-row:hover {
+    background: var(--vscode-list-hoverBackground, transparent);
+}
+.data-tab-more-row-hint {
+    opacity: 0.6;
+    font-size: 11px;
+}
 
 .data-table-shell {
     display: flex;

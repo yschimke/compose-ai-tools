@@ -1368,12 +1368,19 @@ export class PreviewApp extends LitElement {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
             bundleController.toggleBundle(detail.id);
         });
+        // The `…More` tab's rows fire the same `bundle-toggled` event
+        // as the chip bar so the controller activates the bundle via
+        // the existing path — no new wiring needed.
+        dataTabs.addEventListener("bundle-toggled", (evt) => {
+            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            bundleController.toggleBundle(detail.id);
+        });
         dataTabs.addEventListener("tab-closed", (evt) => {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
             bundleController.closeTab(detail.id);
         });
         dataTabs.addEventListener("tab-selected", (evt) => {
-            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            const detail = (evt as CustomEvent<{ id: BundleId | null }>).detail;
             bundleController.selectTab(detail.id);
         });
         dataTabs.addEventListener("copy-json", (evt) => {
