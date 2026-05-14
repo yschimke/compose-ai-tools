@@ -33,6 +33,8 @@ import {
 } from "./focusPresentation";
 import { getVsCodeApi } from "../shared/vscode";
 import { buildSelectorSnippet } from "./uiaSelector";
+import type { OverlayBox } from "./components/BoxOverlay";
+import { parseBounds as parseCardBounds } from "./cardData";
 
 // ---- compose/semantics --------------------------------------------------
 
@@ -544,3 +546,289 @@ async function writeClipboard(text: string): Promise<void> {
 // tests) can format the same way the Copy JSON button does without
 // pulling in `JSON.stringify` defaults.
 export { stringify };
+
+// ---- Inspection bundle data (overlay + tree-table elements) -------------
+//
+// Parallel surface to `computeA11yBundleData` / `computeHistoryDiffBundleData`
+// — used by `main.ts`'s `refreshInspectionBundle` to paint a per-card
+// box-overlay layer via `paintBundleBoxes(card, "inspection", data.overlay)`.
+//
+// The legacy `composeSemanticsPresenter` / `layoutInspectorPresenter` /
+// `uiaHierarchyPresenter` paint their own focus-inspector overlay layers
+// and stay intact for the focus-inspector chrome. The new compute path
+// below produces the shared `OverlayBox` shape the `<box-overlay>` web
+// component renders, plus the tree-table element for the bundle tab body.
+// Node ids are namespaced by kind (`semantics-…`, `layout-…`, `uia-…`)
+// so the merge step can dedupe across kinds without colliding ids that
+// happen to repeat between e.g. semantics and layout trees.
+
+export interface InspectionKindData {
+    /** Per-kind tree-table element, slotted into the bundle tab body. */
+    body: HTMLElement;
+    /** Per-kind summary line ("3 nodes"). */
+    summary: string;
+    /** Per-kind overlay boxes (already id-namespaced). */
+    overlay: readonly OverlayBox[];
+}
+
+export interface InspectionBundleData {
+    /** Per-kind sections, in the kind order the bundle registry declares. */
+    sections: ReadonlyArray<{
+        kind: "compose/semantics" | "layout/inspector" | "uia/hierarchy";
+        data: InspectionKindData;
+    }>;
+    /**
+     * Merged + de-duped overlay across the enabled kinds. De-duped by
+     * `id` so when two kinds' nodes share a stable id (rare in practice
+     * — ids are kind-namespaced by default — but possible if a daemon
+     * starts emitting cross-kind correlated ids), only the first box
+     * is kept. Empty when no kind is enabled or every kind's payload
+     * is missing / malformed.
+     */
+    overlay: readonly OverlayBox[];
+}
+
+export type InspectionKind =
+    | "compose/semantics"
+    | "layout/inspector"
+    | "uia/hierarchy";
+
+export interface InspectionPayloadLookup {
+    (kind: InspectionKind): unknown;
+}
+
+/**
+ * Compute the inspection bundle's tab body sections + merged overlay
+ * for the focused card. [getPayload] returns the latest cached payload
+ * for each kind (or `undefined` when nothing is cached). [enabledKinds]
+ * is the user's current per-bundle enabled-kinds set — disabled kinds
+ * contribute nothing to either the body or the overlay.
+ *
+ * Each section is independent: a malformed payload for one kind doesn't
+ * suppress the others. Malformed `boundsInScreen` / `boundsInRoot`
+ * inside a kind's payload skips that node from the overlay but still
+ * emits the tree-table row (the user can still read it).
+ */
+export function computeInspectionBundleData(
+    getPayload: InspectionPayloadLookup,
+    enabledKinds: ReadonlySet<InspectionKind>,
+): InspectionBundleData {
+    const sections: Array<{
+        kind: InspectionKind;
+        data: InspectionKindData;
+    }> = [];
+
+    if (enabledKinds.has("compose/semantics")) {
+        const payload = getPayload("compose/semantics") as
+            | ComposeSemanticsPayload
+            | undefined;
+        const data = computeComposeSemanticsBundleData(payload);
+        if (data) sections.push({ kind: "compose/semantics", data });
+    }
+    if (enabledKinds.has("layout/inspector")) {
+        const payload = getPayload("layout/inspector") as
+            | LayoutInspectorPayload
+            | undefined;
+        const data = computeLayoutInspectorBundleData(payload);
+        if (data) sections.push({ kind: "layout/inspector", data });
+    }
+    if (enabledKinds.has("uia/hierarchy")) {
+        const payload = getPayload("uia/hierarchy") as
+            | UiaHierarchyPayload
+            | undefined;
+        const data = computeUiaHierarchyBundleData(payload);
+        if (data) sections.push({ kind: "uia/hierarchy", data });
+    }
+
+    const overlay = mergeOverlayBoxes(sections.map((s) => s.data.overlay));
+
+    return { sections, overlay };
+}
+
+/** Dedupe overlay boxes by `id`, preserving first-seen order. */
+function mergeOverlayBoxes(
+    groups: ReadonlyArray<readonly OverlayBox[]>,
+): readonly OverlayBox[] {
+    const seen = new Set<string>();
+    const out: OverlayBox[] = [];
+    for (const group of groups) {
+        for (const box of group) {
+            if (seen.has(box.id)) continue;
+            seen.add(box.id);
+            out.push(box);
+        }
+    }
+    return out;
+}
+
+function computeComposeSemanticsBundleData(
+    payload: ComposeSemanticsPayload | undefined,
+): InspectionKindData | null {
+    if (!payload || !payload.root) return null;
+    const flat = flattenSemantics(payload.root);
+    const overlay: OverlayBox[] = [];
+    for (const entry of flat) {
+        const bounds = parseCardBounds(entry.node.boundsInRoot);
+        if (!bounds) continue;
+        overlay.push({
+            id: nsId("semantics", entry.id),
+            bounds,
+            level: "info",
+            tooltip: semanticsTooltip(entry.node),
+        });
+    }
+    const columns: TreeColumn<ComposeSemanticsNode>[] = [
+        {
+            id: "label",
+            label: "Label",
+            render: (n) => n.label ?? n.text ?? "—",
+        },
+        { id: "role", label: "Role", render: (n) => n.role ?? "—" },
+        { id: "testTag", label: "Tag", render: (n) => n.testTag ?? "—" },
+        { id: "mergeMode", label: "Merge", render: (n) => n.mergeMode ?? "—" },
+        {
+            id: "clickable",
+            label: "Clickable",
+            render: (n) => (n.clickable ? "✓" : ""),
+        },
+    ];
+    const rows = [toTreeNode(payload.root, (n) => nsId("semantics", n.nodeId))];
+    const summary = flat.length + " node" + (flat.length === 1 ? "" : "s");
+    const body = buildInspectionTreeTable<ComposeSemanticsNode>({
+        title: "Compose semantics",
+        summary,
+        columns,
+        rows,
+        hasOverlayFor: (n) => parseCardBounds(n.boundsInRoot) !== null,
+        jsonForCopy: () => payload,
+    });
+    return { body, summary, overlay };
+}
+
+function computeLayoutInspectorBundleData(
+    payload: LayoutInspectorPayload | undefined,
+): InspectionKindData | null {
+    if (!payload || !payload.root) return null;
+    const flat = flattenLayout(payload.root);
+    const overlay: OverlayBox[] = [];
+    for (const entry of flat) {
+        const b = entry.node.bounds;
+        if (
+            !b ||
+            !Number.isFinite(b.left) ||
+            !Number.isFinite(b.top) ||
+            !Number.isFinite(b.right) ||
+            !Number.isFinite(b.bottom)
+        ) {
+            continue;
+        }
+        overlay.push({
+            id: nsId("layout", entry.id),
+            bounds: {
+                left: b.left,
+                top: b.top,
+                right: b.right,
+                bottom: b.bottom,
+            },
+            level: "info",
+            tooltip: layoutTooltip(entry.node),
+        });
+    }
+    const columns: TreeColumn<LayoutInspectorNode>[] = [
+        { id: "component", label: "Component", render: (n) => n.component },
+        {
+            id: "size",
+            label: "Size",
+            render: (n) => (n.size ? `${n.size.width}×${n.size.height}` : "—"),
+        },
+        {
+            id: "modifiers",
+            label: "Modifiers",
+            render: (n) => renderModifiers(n.modifiers ?? []),
+        },
+    ];
+    const rows = [toTreeNode(payload.root, (n) => nsId("layout", n.nodeId))];
+    const summary = flat.length + " node" + (flat.length === 1 ? "" : "s");
+    const body = buildInspectionTreeTable<LayoutInspectorNode>({
+        title: "Layout inspector",
+        summary,
+        columns,
+        rows,
+        hasOverlayFor: () => true,
+        jsonForCopy: () => payload,
+    });
+    return { body, summary, overlay };
+}
+
+function computeUiaHierarchyBundleData(
+    payload: UiaHierarchyPayload | undefined,
+): InspectionKindData | null {
+    if (!payload || !Array.isArray(payload.nodes)) return null;
+    const nodes = payload.nodes;
+    const overlay: OverlayBox[] = [];
+    const rows: TreeTableNode<UiaHierarchyNode>[] = nodes.map((n, idx) => ({
+        id: nsId("uia", idx + ""),
+        data: n,
+    }));
+    for (let i = 0; i < nodes.length; i++) {
+        const bounds = parseCardBounds(nodes[i].boundsInScreen);
+        if (!bounds) continue;
+        overlay.push({
+            id: nsId("uia", i + ""),
+            bounds,
+            level: "info",
+            tooltip: uiaTooltip(nodes[i]),
+        });
+    }
+    const columns: TreeColumn<UiaHierarchyNode>[] = [
+        { id: "text", label: "Text", render: (n) => n.text ?? "—" },
+        {
+            id: "contentDescription",
+            label: "Description",
+            render: (n) => n.contentDescription ?? "—",
+        },
+        { id: "testTag", label: "Tag", render: (n) => n.testTag ?? "—" },
+        { id: "role", label: "Role", render: (n) => n.role ?? "—" },
+    ];
+    const summary =
+        nodes.length === 0
+            ? "No actionable nodes"
+            : nodes.length + " node" + (nodes.length === 1 ? "" : "s");
+    const body = buildInspectionTreeTable<UiaHierarchyNode>({
+        title: "UI Automator hierarchy",
+        summary,
+        columns,
+        rows,
+        hasOverlayFor: (n) => parseCardBounds(n.boundsInScreen) !== null,
+        jsonForCopy: () => payload,
+    });
+    return { body, summary, overlay };
+}
+
+/** Namespace a node id with its kind so cross-kind dedupe stays clean. */
+function nsId(prefix: string, id: string): string {
+    return prefix + "-" + id;
+}
+
+function semanticsTooltip(n: ComposeSemanticsNode): string {
+    const parts: string[] = [];
+    if (n.label) parts.push(n.label);
+    if (n.role) parts.push(n.role);
+    if (n.testTag) parts.push(n.testTag);
+    return parts.join(" · ");
+}
+
+function layoutTooltip(n: LayoutInspectorNode): string {
+    const parts: string[] = [n.component];
+    if (n.size) parts.push(n.size.width + "×" + n.size.height);
+    if (n.source) parts.push(n.source);
+    return parts.join(" · ");
+}
+
+function uiaTooltip(n: UiaHierarchyNode): string {
+    const parts: string[] = [];
+    if (n.text) parts.push(n.text);
+    if (n.role) parts.push(n.role);
+    if (n.testTag) parts.push(n.testTag);
+    return parts.join(" · ");
+}
