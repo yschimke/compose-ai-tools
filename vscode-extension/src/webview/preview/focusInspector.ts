@@ -194,52 +194,16 @@ export class FocusInspectorController {
         }
         this.lastCard = card;
 
-        const products = this.resolveProducts();
-        const productByKind = new Map(products.map((p) => [p.kind, p]));
+        // Suggestion chips + per-bucket checkbox list + the presenter
+        // pipeline (legends, reports, overlay correlation) all moved
+        // to the bundle chip bar + tab row introduced in #1054. The
+        // focus inspector now hosts only the surfaces that aren't
+        // bundle-driven: render-error banner (per-capture), history
+        // diff buttons (HEAD / main), and the focused-card tools row
+        // (a11y overlay toggle, launch on device, live, record).
         const findings = this.config.getA11yFindings(previewId);
-        const scope = this.config.getScope();
-        const suggestions = suggestFor({
-            preview,
-            findingsCount: findings.length,
-            mru: this.getMru(scope),
-            available: new Set(productByKind.keys()),
-        });
-        const visibleSuggestions = suggestions.slice(0, MAX_SUGGESTIONS);
-
-        this.suggestedKinds = new Set(visibleSuggestions);
-
-        // Auto-enable cheap suggested kinds, once per scope per kind.
-        // Keeps the suggestion chip "active" without requiring a click,
-        // but never re-enables a kind the user has manually turned off
-        // since the autoEnabled map is sticky for the session.
-        if (this.config.autoEnableCheap()) {
-            const auto = this.ensureAutoEnabledSet(scope);
-            const set = this.ensureEnabledSet(previewId);
-            for (const kind of suggestions) {
-                if (auto.has(kind)) continue;
-                const p = productByKind.get(kind);
-                if (!p || p.cost !== "cheap") continue;
-                if (!set.has(kind)) {
-                    set.add(kind);
-                }
-                auto.add(kind);
-            }
-        }
-
-        const inspect = document.createElement("section");
-        inspect.className = "focus-panel focus-inspect-panel";
-        inspect.appendChild(sectionHeader("search", "Inspect"));
-        inspect.appendChild(
-            this.renderSuggestionRow(
-                visibleSuggestions,
-                productByKind,
-                preview,
-                previewId,
-                findings,
-            ),
-        );
-        inspect.appendChild(
-            this.renderBuckets(products, preview, previewId, findings),
+        const errorBanner = this.renderErrors(
+            this.collectErrorPresentationsOnly(card),
         );
 
         const controls = document.createElement("section");
@@ -278,35 +242,17 @@ export class FocusInspectorController {
         );
         controls.appendChild(toolActions);
 
-        // Presenter pipeline. Iterate every enabled kind, call its
-        // registered presenter (if any), and slot the contributions
-        // into the four surfaces: errors banner, card overlay layer,
-        // legends section, reports section. Always re-iterate from
-        // scratch — presenters are pure factories.
-        const presentations = this.collectPresentations(
-            card,
-            preview,
-            previewId,
-            findings,
-        );
-        const errorBanner = this.renderErrors(presentations);
-        const legendsSection = this.renderLegends(presentations);
-        const reportsSection = this.renderReports(presentations);
-        const overlayLayer = this.applyOverlays(card, presentations);
-
         if (errorBanner) el.appendChild(errorBanner);
-        el.appendChild(inspect);
-        if (legendsSection) el.appendChild(legendsSection);
-        if (reportsSection) el.appendChild(reportsSection);
         el.appendChild(this.historyPanel());
         el.appendChild(controls);
 
-        // Wire legend ↔ overlay correlation last so DOM is settled.
-        if (legendsSection) {
-            this.arrows.attach(legendsSection, overlayLayer);
-        } else {
-            this.arrows.detach();
-        }
+        // Suppress findings warning so it's not flagged as unused now
+        // that the suggestion ranking that consumed it is gone. Kept
+        // available in scope so a follow-up that re-introduces an
+        // a11y-only summary section in this panel doesn't have to
+        // re-thread the getter.
+        void findings;
+        this.arrows.detach();
     }
 
     /**
@@ -704,6 +650,43 @@ export class FocusInspectorController {
      * don't have presenters of their own. The presenter layer
      * complements them rather than replacing them.
      */
+    /**
+     * Run only the implicit error presenter — used by the slim render
+     * path that survives after #1054's bundle shell took over the
+     * chip/bucket UX. The full presenter pipeline lives in the
+     * (now-unused at runtime) `collectPresentations` below; the
+     * helpers it depends on stay exported / preserved during the
+     * migration window so future code can re-attach them if needed.
+     */
+    private collectErrorPresentationsOnly(
+        card: HTMLElement,
+    ): { kind: string; presentation: ProductPresentation }[] {
+        const out: { kind: string; presentation: ProductPresentation }[] = [];
+        const errorPresenter = getPresenter("local/render/error");
+        if (!errorPresenter) return out;
+        // The render-error presenter only reads `card`'s dataset
+        // (`renderError` / `renderErrorDetail`) — see the
+        // implementation in `focusPresentation.ts`. The other context
+        // fields are unused, so we pass an empty preview/findings
+        // shape rather than thread real values through.
+        const presentation = errorPresenter({
+            card,
+            preview: this.lastCard?.dataset
+                ? ({
+                      id: this.lastCard.dataset.previewId ?? "",
+                  } as unknown as PreviewInfo)
+                : ({ id: "" } as unknown as PreviewInfo),
+            findings: [],
+            nodes: [],
+            data: () => undefined,
+            postMessage: this.config.postMessage,
+        });
+        if (presentation) {
+            out.push({ kind: "local/render/error", presentation });
+        }
+        return out;
+    }
+
     private collectPresentations(
         card: HTMLElement,
         preview: PreviewInfo,
