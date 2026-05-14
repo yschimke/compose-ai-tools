@@ -1506,10 +1506,15 @@ export async function activate(
             }
             // Minimal mode: renders are manual — the refresh button is the
             // only trigger. Track the file as "seen" so a later toggle of the
-            // setting doesn't fire a stale "first save" burst, but skip the
-            // refresh itself.
+            // setting doesn't fire a stale "first save" burst, and tell the
+            // panel a save is pending so the in-view banner can explain why
+            // the existing image isn't refreshing. Crucially: do NOT post
+            // `setLoading` / `markAllLoading` / `clearAll` — those would
+            // replace the existing render with a placeholder; the panel
+            // should keep the last-good image until the user clicks Refresh.
             if (minimal) {
                 firstSaveSeen.add(doc.uri.fsPath);
+                panel?.postMessage({ command: "minimalSavePending" });
                 return;
             }
             // Time the user-perceived edit→update journey from the save
@@ -3450,11 +3455,16 @@ async function refresh(
     // If we already have previews on screen, use a stealth refresh:
     // keep the current cards visible and show per-card spinners rather than
     // clearing the view. Only show a full "Building..." message on first load.
-    const showLoadingOverlay = opts.showLoadingOverlay !== false;
+    // Minimal mode is even quieter: renders are manual and any background
+    // refresh (`webviewReady` replay, editor-focus change) must not dim or
+    // skeleton-out the existing cards. Skip both overlays so the panel keeps
+    // the last-good image until the user explicitly clicks Refresh.
+    const showLoadingOverlay =
+        opts.showLoadingOverlay !== false && !inMinimalMode();
     if (hasPreviewsLoaded && showLoadingOverlay) {
         panel.postMessage({ command: "markAllLoading" });
     } else {
-        if (!hasPreviewsLoaded) {
+        if (!hasPreviewsLoaded && !inMinimalMode()) {
             panel.postMessage({ command: "setLoading" });
         }
     }
@@ -3895,9 +3905,19 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // hidden when `onLanguage:kotlin` activated us). Replay the
             // stateful messages from current state so the grid populates even
             // when the user opens the panel after the first refresh ran.
+            //
+            // Minimal mode is manual-only: a visibility cycle that disposes
+            // the webview must not silently retrigger a Gradle round-trip
+            // (which dims cards / shows skeletons). Replay from the on-disk
+            // cache only — if there's nothing cached the panel stays empty
+            // until the user clicks Refresh.
             sendModuleList();
             if (currentScopeFile) {
-                void refresh(false, currentScopeFile);
+                if (inMinimalMode()) {
+                    void preloadCachedPreviews(currentScopeFile);
+                } else {
+                    void refresh(false, currentScopeFile);
+                }
             }
             break;
         case "webviewPreviewsRendered":
@@ -3946,7 +3966,23 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // In-view refresh button (minimal mode). Mirrors the
             // `composePreview.refresh` command path so the title-bar
             // icon and the body-level button behave identically.
+            // Clear the pending-save hint up front — the refresh that's
+            // about to fire will post `setPreviews` on success, but a
+            // failed/cancelled refresh would otherwise leave the hint
+            // stuck on a state the user just acted on.
+            panel?.postMessage({ command: "minimalSavePendingClear" });
             void refresh(true, currentScopeFile ?? undefined);
+            break;
+        case "openModuleBuildFile":
+            // Minimal-mode "Apply plugin" link in the in-view banner.
+            // Opens the active module's build script so the user can add
+            // `id("ee.schimke.composeai.preview")` and reload into full
+            // mode. Routes through the same command the missing-plugin
+            // setup notification uses so the two surfaces stay aligned.
+            void vscode.commands.executeCommand(
+                "composePreview.openModuleBuildFile",
+                currentScopeFile ?? undefined,
+            );
             break;
         case "refreshHeavy": {
             // Click on a faded heavy card opts it into full-tier renders for

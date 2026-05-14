@@ -194,20 +194,52 @@ export class PreviewApp extends LitElement {
             <data-tabs></data-tabs>
             ${minimal
                 ? html`
-                      <div class="minimal-refresh-bar">
-                          <button
-                              type="button"
-                              id="btn-minimal-refresh"
-                              class="minimal-refresh-button"
-                              title="Re-run renderAllPreviews"
-                              aria-label="Refresh previews"
-                          >
-                              <i
-                                  class="codicon codicon-refresh"
-                                  aria-hidden="true"
-                              ></i>
-                              <span>Refresh previews</span>
-                          </button>
+                      <div
+                          class="minimal-refresh-bar"
+                          id="minimal-refresh-bar"
+                          role="region"
+                          aria-label="Minimal mode"
+                      >
+                          <div class="minimal-refresh-text">
+                              <strong>Minimal mode</strong>
+                              <span class="minimal-refresh-hint"
+                                  >Renders don't auto-update on save. Click
+                                  Refresh to apply changes, or apply the Compose
+                                  Preview Gradle plugin to enable
+                                  auto-render.</span
+                              >
+                              <span
+                                  class="minimal-save-pending"
+                                  id="minimal-save-pending"
+                                  hidden
+                                  >Saved changes pending — click Refresh
+                                  previews.</span
+                              >
+                          </div>
+                          <div class="minimal-refresh-actions">
+                              <button
+                                  type="button"
+                                  id="btn-minimal-refresh"
+                                  class="minimal-refresh-button"
+                                  title="Re-run renderAllPreviews"
+                                  aria-label="Refresh previews"
+                              >
+                                  <i
+                                      class="codicon codicon-refresh"
+                                      aria-hidden="true"
+                                  ></i>
+                                  <span>Refresh previews</span>
+                              </button>
+                              <button
+                                  type="button"
+                                  id="btn-minimal-apply-plugin"
+                                  class="minimal-apply-link"
+                                  title="Open this module's build script to apply the Compose Preview plugin"
+                                  aria-label="Apply Compose Preview plugin to project"
+                              >
+                                  Apply plugin to project
+                              </button>
+                          </div>
                       </div>
                   `
                 : ""}
@@ -370,10 +402,37 @@ export class PreviewApp extends LitElement {
             // icon. The button only exists in minimal mode (rendered above
             // in `render()`); the existing title-bar refresh command stays
             // available too.
+            const pending = this.querySelector<HTMLElement>(
+                "#minimal-save-pending",
+            );
             this.querySelector<HTMLButtonElement>(
                 "#btn-minimal-refresh",
             )?.addEventListener("click", () => {
+                if (pending) pending.hidden = true;
                 vscode.postMessage({ command: "requestRefresh" });
+            });
+            this.querySelector<HTMLButtonElement>(
+                "#btn-minimal-apply-plugin",
+            )?.addEventListener("click", () => {
+                vscode.postMessage({ command: "openModuleBuildFile" });
+            });
+            // Toggle the "Saved changes pending" hint based on extension
+            // signals. The extension fires `minimalSavePending` from the
+            // save handler when it deliberately skips an auto-render so
+            // the user understands why the existing image isn't updating;
+            // a follow-up `setPreviews` (manual refresh completed) or an
+            // explicit `minimalSavePendingClear` puts the hint away.
+            window.addEventListener("message", (event: MessageEvent) => {
+                const data = event.data as { command?: string };
+                if (!pending) return;
+                if (data?.command === "minimalSavePending") {
+                    pending.hidden = false;
+                } else if (
+                    data?.command === "minimalSavePendingClear" ||
+                    data?.command === "setPreviews"
+                ) {
+                    pending.hidden = true;
+                }
             });
         }
         const state: PersistedState = vscode.getState() ?? { filters: {} };

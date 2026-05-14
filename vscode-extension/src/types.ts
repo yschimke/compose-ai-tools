@@ -469,6 +469,17 @@ export type ExtensionToWebview =
     | { command: "setModules"; modules: string[]; selected: string }
     | { command: "setFunctionFilter"; functionName: string }
     /**
+     * Minimal-mode signal: the user saved a source file but the extension
+     * deliberately did not auto-render. The webview marks the in-view
+     * minimal-mode banner with a "saved changes pending" hint so the user
+     * knows why the existing image isn't refreshing on its own. Cleared by
+     * the next `setPreviews` (a manual refresh just completed).
+     */
+    | { command: "minimalSavePending" }
+    /** Counterpart to `minimalSavePending` — clears the pending-save hint
+     *  without waiting for a refresh to complete. */
+    | { command: "minimalSavePendingClear" }
+    /**
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
      * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).
@@ -744,6 +755,14 @@ export type WebviewToExtension =
      * faded-card click.
      */
     | { command: "requestRefresh" }
+    /**
+     * Minimal-mode user clicked the "Apply plugin" link in the panel's
+     * minimal-mode banner. Extension routes to
+     * `composePreview.openModuleBuildFile` against the current scope file
+     * so the user can add `id("ee.schimke.composeai.preview")` to enable
+     * full mode (daemon + auto-render on save).
+     */
+    | { command: "openModuleBuildFile" }
     /**
      * Webview reports current geometric visibility of preview cards plus
      * cards it predicts will scroll into view next based on scroll velocity
