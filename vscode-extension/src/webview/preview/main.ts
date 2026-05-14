@@ -186,6 +186,12 @@ export class PreviewApp extends LitElement {
 
     protected render(): TemplateResult {
         const minimal = this.dataset.minimalMode === "true";
+        // When the bundled auto-inject init script handles the plugin, the
+        // "Apply plugin to project" link is misleading: the extension already
+        // applies it on every Gradle run, and the button's only effect is to
+        // open the build script. Hide it in that case so users aren't nudged
+        // toward an edit they don't need to make.
+        const autoInject = this.dataset.autoInject !== "false";
         return html`
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
@@ -228,15 +234,19 @@ export class PreviewApp extends LitElement {
                                   ></i>
                                   <span>Refresh previews</span>
                               </button>
-                              <button
-                                  type="button"
-                                  id="btn-minimal-apply-plugin"
-                                  class="minimal-apply-link"
-                                  title="Open this module's build script to apply the Compose Preview plugin"
-                                  aria-label="Apply Compose Preview plugin to project"
-                              >
-                                  Apply plugin to project
-                              </button>
+                              ${autoInject
+                                  ? ""
+                                  : html`
+                                        <button
+                                            type="button"
+                                            id="btn-minimal-apply-plugin"
+                                            class="minimal-apply-link"
+                                            title="Open this module's build script to apply the Compose Preview plugin"
+                                            aria-label="Apply Compose Preview plugin to project"
+                                        >
+                                            Apply plugin to project
+                                        </button>
+                                    `}
                           </div>
                       </div>
                   `
@@ -394,6 +404,21 @@ export class PreviewApp extends LitElement {
             this.dataset.collapseVariants !== "false";
         const minimalMode = this.dataset.minimalMode === "true";
         const vscode = getVsCodeApi<PersistedState>();
+        // Listen for runtime mode flips from the extension (post-Gradle-sync
+        // re-evaluation that upgrades minimal -> full once `applied.json`
+        // markers prove the plugin is applied). Flip the dataset attribute and
+        // request a Lit re-render so the minimal banner disappears without a
+        // window reload. The other direction is unreachable per the
+        // monotonicity argument in `extension.ts`.
+        window.addEventListener("message", (event: MessageEvent) => {
+            const data = event.data as { command?: string; minimal?: boolean };
+            if (data?.command !== "setMinimalMode") return;
+            const next = data.minimal === true ? "true" : "false";
+            if (this.dataset.minimalMode !== next) {
+                this.dataset.minimalMode = next;
+                this.requestUpdate();
+            }
+        });
         if (minimalMode) {
             // Minimal mode hides the extension chrome (bundle chip bar +
             // data tabs) since data extensions are disabled — see CSS rule.

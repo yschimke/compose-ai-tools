@@ -480,6 +480,15 @@ export type ExtensionToWebview =
      *  without waiting for a refresh to complete. */
     | { command: "minimalSavePendingClear" }
     /**
+     * Switch the panel between minimal-mode chrome (the manual-refresh banner)
+     * and full-mode chrome at runtime. Posted by the post-Gradle-sync mode
+     * re-evaluation when the bundled auto-inject init script reveals that the
+     * workspace is full-mode-eligible after all — the extension re-wires the
+     * daemon backend in place, and this message tells the webview to drop the
+     * minimal banner so the user doesn't have to reload the window.
+     */
+    | { command: "setMinimalMode"; minimal: boolean }
+    /**
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
      * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).

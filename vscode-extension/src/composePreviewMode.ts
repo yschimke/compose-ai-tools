@@ -34,11 +34,12 @@ export interface ResolvedMode {
  * gradle-service slice. Auto-mode picks `"full"` only when at least one
  * workspace module already applies `ee.schimke.composeai.preview` (text scan
  * or `applied.json` marker); otherwise it falls back to `"minimal"`. Auto-inject
- * onto an Android / Compose host doesn't preemptively flip the mode — the
- * plugin isn't actually applied until Gradle runs the init script, so spawning
- * a daemon at activation would fail (no `daemon-launch.json` yet). The
- * post-Gradle-sync re-evaluation handles the upgrade: once `applied.json`
- * markers exist, the extension offers a one-click reload into full mode.
+ * onto an Android / Compose host doesn't preemptively flip the mode here — the
+ * plugin isn't actually applied until Gradle runs the init script, so the
+ * activation-time call has no marker to read. The post-Gradle-sync
+ * re-evaluation handles the upgrade: once `applied.json` markers exist,
+ * `extension.ts` re-wires the daemon backend in place (no window reload), and
+ * the panel webview drops its minimal-mode banner via `setMinimalMode`.
  */
 export function resolveModeFromSettings(
     settings: {
