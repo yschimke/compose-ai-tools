@@ -52,20 +52,15 @@ export interface FontRow {
     fellBackFromChain: string;
     consumerCount: number;
     /**
-     * True when the font is either tagged `provider="google"` by the
-     * producer (schema v2+) or — when the producer hasn't populated
-     * `provider` — the `requestedFamily` matches the bundled allowlist.
+     * True when the `requestedFamily` matches the bundled Google Fonts
+     * allowlist. The renderer-side `provider` field that #1057
+     * originally proposed was reverted in the post-merge fix (it broke
+     * Kotlin data-class binary compat against pre-#1081 consumers) —
+     * the allowlist is the only signal today.
      * The Google Fonts cell renders as a button that posts an
      * `openExternal` message with the specimen URL.
      */
     isGoogleFont: boolean;
-    /**
-     * Source the renderer reported for the resolved font. Open-ended
-     * string; today's known values are `"google"`, `"asset"`, `"system"`,
-     * and `null` (omitted). Surfaced as a quiet chip when present so
-     * the user can tell a system fallback apart from a Google match.
-     */
-    provider: string | null;
 }
 
 export interface TranslationRow {
@@ -169,16 +164,17 @@ export function googleFontsAllowlistSize(): number {
 }
 
 /**
- * True when the given font entry should render the Google Fonts
- * external-link affordance. Honours the producer's `provider` field
- * first; falls back to the bundled allowlist when it's missing.
+ * True when the given font's `requestedFamily` matches the bundled
+ * Google Fonts allowlist. The producer-side `provider` field that
+ * #1057 originally proposed was reverted (Kotlin data-class binary
+ * compat break against pre-#1081 consumers) — the allowlist is the
+ * only signal today. Second argument kept for source-compat with
+ * earlier tests; it's ignored.
  */
 export function isGoogleFontFamily(
     requestedFamily: string,
-    provider: string | null | undefined,
+    _provider?: string | null | undefined,
 ): boolean {
-    if (provider === "google") return true;
-    if (provider) return false; // explicit non-google provider wins
     return GOOGLE_FONTS_ALLOWLIST_LOWER.has(
         (requestedFamily ?? "").toLowerCase(),
     );
@@ -620,7 +616,6 @@ function parseFonts(raw: unknown): FontRow[] {
             sourceFile?: unknown;
             fellBackFrom?: unknown;
             consumerNodeIds?: unknown;
-            provider?: unknown;
         };
         const requestedFamily =
             typeof e.requestedFamily === "string" ? e.requestedFamily : "";
@@ -629,7 +624,6 @@ function parseFonts(raw: unknown): FontRow[] {
             typeof e.resolvedFamily === "string"
                 ? e.resolvedFamily
                 : requestedFamily;
-        const provider = typeof e.provider === "string" ? e.provider : null;
         const fellBack = Array.isArray(e.fellBackFrom)
             ? (e.fellBackFrom.filter((x) => typeof x === "string") as string[])
             : [];
@@ -648,8 +642,7 @@ function parseFonts(raw: unknown): FontRow[] {
             sourceFile: typeof e.sourceFile === "string" ? e.sourceFile : null,
             fellBackFromChain: fellBack.join(" → "),
             consumerCount: consumers,
-            isGoogleFont: isGoogleFontFamily(requestedFamily, provider),
-            provider,
+            isGoogleFont: isGoogleFontFamily(requestedFamily),
         });
     });
     return rows;
