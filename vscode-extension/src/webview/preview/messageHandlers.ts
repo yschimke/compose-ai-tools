@@ -565,12 +565,12 @@ function handleSetEarlyFeatures(
         document
             .querySelectorAll(".preview-diff-overlay")
             .forEach((overlay) => overlay.remove());
-        // Tear down every a11y rendering surface — finding-overlay boxes
-        // and the daemon-attached hierarchy overlay — and drop the cached
-        // findings/nodes so re-enabling the feature picks up fresh data
-        // from the next setPreviews / updateA11y.
+        // Tear down the A11y bundle's box-overlay layer (post-#1087:
+        // the bundle owns on-image paint via `cardBundleOverlay`) and
+        // drop the cached findings / nodes so re-enabling the feature
+        // picks up fresh data from the next setPreviews / updateA11y.
         document
-            .querySelectorAll(".a11y-overlay, .a11y-hierarchy-overlay")
+            .querySelectorAll('box-overlay[data-bundle="a11y"]')
             .forEach((el) => el.remove());
         clearCardA11yFindings();
         clearCardA11yNodes();

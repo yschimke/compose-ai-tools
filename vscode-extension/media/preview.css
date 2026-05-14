@@ -2084,94 +2084,12 @@ body {
     opacity: 1;
 }
 
-/* --- Accessibility (ATF) findings --- */
-/* Overlay layer sits on top of the rendered preview image. Its children
- * (`.a11y-box`) position themselves with percentage coords computed from
- * ATF's boundsInScreen and the image's natural dimensions, so they scale
- * alongside the image without a resize handler. Layer itself is
- * pointer-events:none so the underlying image stays interactive. */
-.a11y-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 2;
-}
-/* D2 — daemon-attached `a11y/hierarchy` overlay. Sits BELOW the finding overlay so
- * findings stay legible (numbered badges + coloured borders win); shows every
- * accessibility-relevant node with a thin dotted border + translucent fill so the
- * full TalkBack-visible tree is laid out without obscuring the design. Pointer-events
- * are auto on the boxes so the `title` tooltip fires on hover. */
-.a11y-hierarchy-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-}
-.a11y-hierarchy-box {
-    position: absolute;
-    border: 1px dashed var(--a11y-hier-color, rgba(80, 160, 255, 0.7));
-    background: color-mix(
-        in srgb,
-        var(--a11y-hier-color, rgba(80, 160, 255, 1)) 12%,
-        transparent
-    );
-    border-radius: 1px;
-    pointer-events: auto;
-    transition:
-        background 120ms ease,
-        box-shadow 120ms ease;
-}
-.a11y-hierarchy-box:hover {
-    background: color-mix(
-        in srgb,
-        var(--a11y-hier-color, rgba(80, 160, 255, 1)) 28%,
-        transparent
-    );
-    border-color: var(--a11y-hier-color, rgba(80, 160, 255, 1));
-    box-shadow: 0 0 0 1px var(--a11y-hier-color, rgba(80, 160, 255, 1));
-}
-/* Nodes sitting under a focusable ancestor that already carries its own
- * contentDescription — TalkBack reads only the ancestor. Shown with a lighter
- * border so reviewers can see the structure without confusing it for "two
- * separate stops". */
-.a11y-hierarchy-box.a11y-hierarchy-unmerged {
-    border-style: dotted;
-    opacity: 0.6;
-}
-.a11y-box {
-    position: absolute;
-    border: 2px solid var(--a11y-color, #d32f2f);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
-    border-radius: 2px;
-    opacity: 0.5;
-    transition:
-        opacity 120ms ease,
-        box-shadow 120ms ease;
-}
-.a11y-box .a11y-badge {
-    position: absolute;
-    top: -10px;
-    left: -10px;
-}
-
-/* Numbered badge attached to each finding overlay box. Colour comes from
- * the level modifier on the parent (.a11y-level-error etc.). */
-.a11y-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 10px;
-    background: var(--a11y-color, #d32f2f);
-    color: white;
-    font-weight: 700;
-    font-size: 12px;
-    flex-shrink: 0;
-}
-
-/* Level → colour. Applied to overlay boxes via the `a11y-level-*` modifier. */
+/* Level → colour. Used as a fallback chain for `.overlay-box` /
+ * `.a11y-row-swatch` via `var(--a11y-color, ...)`. The on-image
+ * legacy paint (`.a11y-overlay`, `.a11y-hierarchy-overlay`, badges,
+ * boxes) moved to the shared `<box-overlay data-bundle="a11y">` layer
+ * in #1087 so most of the old surface is gone — only the colour
+ * variables stay since the new layer's CSS still references them. */
 .a11y-level-error {
     --a11y-color: #d32f2f;
 }

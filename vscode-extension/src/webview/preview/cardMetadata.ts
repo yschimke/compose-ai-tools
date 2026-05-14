@@ -19,7 +19,6 @@
 // in `cardBuilder.ts` (initial DOM build, which the `<preview-card>`
 // shell still reaches into during `firstUpdated`).
 
-import { buildA11yOverlay } from "./a11yOverlay";
 import {
     buildTooltip,
     buildVariantLabel,
@@ -110,34 +109,11 @@ export function refreshCardMetadata(
         badge.remove();
     }
 
-    // Refresh the a11y overlay layer in place when findings change
-    // (e.g. toggling a11y on turns findings from null → list, or a
-    // fresh render updates the set). The labelled legend moved to the
-    // A11y bundle tab (#1054); the card itself keeps only the
-    // boxes-on-image overlay so spatial context survives.
-    const existingOverlay = card.querySelector(".a11y-overlay");
-    if (existingOverlay) existingOverlay.innerHTML = "";
-    if (config.earlyFeatures() && p.a11yFindings && p.a11yFindings.length > 0) {
-        const container = card.querySelector(".image-container");
-        if (container && !container.querySelector(".a11y-overlay")) {
-            const overlay = document.createElement("div");
-            overlay.className = "a11y-overlay";
-            overlay.setAttribute("aria-hidden", "true");
-            container.appendChild(overlay);
-        }
-        // Repopulate box geometry if the image is already loaded —
-        // otherwise `paintCardCapture`'s store-write triggers a
-        // re-paint via `<preview-card>`'s mapsRevision subscription.
-        const img = card.querySelector<HTMLImageElement>(
-            ".image-container img",
-        );
-        if (img && img.complete && img.naturalWidth > 0) {
-            buildA11yOverlay(card, p.a11yFindings, img);
-        }
-    } else if (existingOverlay) {
-        // No findings or feature off — drop any leftover overlay
-        // div so cards stay clean when the user toggles
-        // earlyFeatures off mid-session.
-        existingOverlay.remove();
-    }
+    // A11y overlay paint moved to the A11y bundle (#1087): the chip
+    // is the gate, `refreshA11yBundle` calls
+    // `paintBundleBoxes(card, 'a11y', ...)` via the shared
+    // `cardBundleOverlay` helper, and chip dismissal tears the layer
+    // down through `clearBundleBoxes`. cardMetadata stays focused on
+    // dataset/badge/capture-cache refresh; legacy `.a11y-overlay`
+    // stamps are gone.
 }

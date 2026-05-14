@@ -43,7 +43,6 @@
 
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { applyHierarchyOverlay, buildA11yOverlay } from "../a11yOverlay";
 import type { CardBuilderConfig } from "../cardBuilder";
 import { populatePreviewCard } from "../cardBuilder";
 import { paintCardCapture } from "../cardImage";
@@ -148,62 +147,22 @@ export class PreviewCard extends LitElement {
         paintCardCapture(this, preview.id, captureIndex, imageData, config);
     }
 
-    /** Re-paint the a11y findings / hierarchy overlays from the latest
-     *  per-preview store snapshot. No-op if the cache is empty for
-     *  this preview or `earlyFeatures` is off — matches the gating in
-     *  `applyA11yUpdate`. If the `<img>` has resolved its natural
-     *  dimensions the paint runs immediately; if not (e.g. a fresh
-     *  `updateImage` just assigned a new `src` and decoding hasn't
-     *  finished) we attach a one-time `load` listener instead and
-     *  paint when the bytes land. The overlay paint helpers are
-     *  idempotent (they `innerHTML = ""` the layer before re-emitting
-     *  boxes), so calling this on every store fire is safe. The
-     *  legend rebuild stays in `applyA11yUpdate` — that side effect
-     *  lives next to the per-id store write and isn't driven by
-     *  `mapsRevision`. */
+    /**
+     * Hook for store-driven repaints. The legacy `applyHierarchyOverlay`
+     * / `buildA11yOverlay` calls used to live here and painted boxes
+     * onto the card unconditionally whenever the a11y caches bumped.
+     * After #1087 the A11y bundle owns that paint via
+     * `paintBundleBoxes(card, 'a11y', ...)` driven from
+     * `refreshA11yBundle` — the chip is the gate.
+     *
+     * The method stays in place so the `_mapsRevision` subscription
+     * (which fires `requestUpdate()` on every cache bump) has
+     * somewhere to land in `updated()`. Future bundles that want
+     * cache-driven repaints can hook in here without resurrecting the
+     * legacy paint path. Empty by design — non-empty work belongs in
+     * a per-bundle refresh function in `main.ts`.
+     */
     private _repaintA11yOverlaysFromCache(): void {
-        const preview = this.preview;
-        const config = this.config;
-        if (!preview || !config) return;
-        if (!config.earlyFeatures()) return;
-        const img = this.querySelector<HTMLImageElement>(
-            ".image-container img",
-        );
-        if (!img) return;
-        const state = previewStore.getState();
-        const findings = state.cardA11yFindings.get(preview.id);
-        const nodes = state.cardA11yNodes.get(preview.id);
-        const haveFindings = !!findings && findings.length > 0;
-        const haveNodes = !!nodes && nodes.length > 0;
-        if (!haveFindings && !haveNodes) return;
-        if (img.complete && img.naturalWidth > 0) {
-            if (haveFindings) buildA11yOverlay(this, findings, img);
-            if (haveNodes) applyHierarchyOverlay(this, nodes, img);
-            return;
-        }
-        // Image not yet decoded — defer to the next `load` event.
-        // `mapsRevision` may bump again before the image lands (e.g.
-        // a follow-up live frame), and Lit re-runs `updated()` on
-        // every fire, so guard against stacking listeners on the
-        // same `<img>` via a dataset flag. The handler clears the
-        // flag before painting so a later swap (new `<img>` element
-        // or a future `src` change once this one is loaded) can
-        // re-arm.
-        if (img.dataset.a11yPaintScheduled === "1") return;
-        img.dataset.a11yPaintScheduled = "1";
-        img.addEventListener(
-            "load",
-            () => {
-                delete img.dataset.a11yPaintScheduled;
-                // Re-read the cache at fire time — it may have been
-                // updated again between schedule and load.
-                const s = previewStore.getState();
-                const f = s.cardA11yFindings.get(preview.id);
-                const n = s.cardA11yNodes.get(preview.id);
-                if (f && f.length > 0) buildA11yOverlay(this, f, img);
-                if (n && n.length > 0) applyHierarchyOverlay(this, n, img);
-            },
-            { once: true },
-        );
+        // Intentionally empty — see docstring.
     }
 }
