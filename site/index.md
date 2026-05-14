@@ -66,13 +66,13 @@ Ctrl+Shift+X), search **Compose Preview**, click *Install*.
 Install on `$PATH` for shell or agent use via the bootstrap script:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
 ### Agent skill
 
 Point any agent that can fetch a URL at
-[`skills/compose-preview/SKILL.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/SKILL.md)
+[`skills/compose-preview/SKILL.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
 — the skill is a complete install-and-iterate playbook.
 
 ### CI / GitHub Actions

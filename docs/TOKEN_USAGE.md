@@ -20,10 +20,10 @@ a section, the corresponding doc lands in context.
 | Doc | Bytes | Tokens (in) | Loaded when |
 |---|---:|---:|---|
 | `compose-preview-review/SKILL.md` | 4 178 | ~1 050 | review skill triggered |
-| `compose-preview-review/design/AGENT_AUDITS.md` | 22 032 | ~5 510 | first audit |
+| `compose-preview-review/references/agent-audits.md` | 22 032 | ~5 510 | first audit |
 | `compose-preview/SKILL.md` | 10 019 | ~2 510 | paired skill referenced |
-| `compose-preview/design/MCP.md` | 9 571 | ~2 390 | first MCP call |
-| `compose-preview/design/DATA_PRODUCTS.md` | 7 357 | ~1 840 | first `get_preview_data` |
+| `compose-preview/references/mcp.md` | 9 571 | ~2 390 | first MCP call |
+| `compose-preview/references/data-products.md` | 7 357 | ~1 840 | first `get_preview_data` |
 
 Practical baselines:
 
@@ -39,7 +39,7 @@ caching on subsequent turns.
 
 Marginal cost of running each audit's suggested query once, on top of
 the baseline above. Numbers come from the canonical example payloads
-in `AGENT_AUDITS.md` — real responses run 1.5–3× larger because the
+in `agent-audits.md` — real responses run 1.5–3× larger because the
 doc snippets show one preview / one finding / one resource reference.
 
 | # | Audit | Suggested query | Resp. JSON (chars → tok) | PNG reads | Marginal in | Marginal out |
@@ -76,7 +76,7 @@ previews.
 
 ## Caveats
 
-- Example payloads in `AGENT_AUDITS.md` are deliberately minimal.
+- Example payloads in `agent-audits.md` are deliberately minimal.
   `text/strings`, `resources/used`, and `a11y/hierarchy` on a non-toy
   preview routinely run 2–5× larger because of more nodes / refs.
 - `list_data_products` size depends on how many producers the daemon

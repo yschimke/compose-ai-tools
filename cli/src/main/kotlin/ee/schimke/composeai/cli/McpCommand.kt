@@ -91,7 +91,7 @@ internal class McpCommand(args: List<String>) {
         --antigravity-config <path>
                              Override the Antigravity config path.
 
-      See skills/compose-preview/design/MCP.md for the full agent flow.
+      See https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/mcp.md for the full agent flow.
       """
         .trimIndent()
     )

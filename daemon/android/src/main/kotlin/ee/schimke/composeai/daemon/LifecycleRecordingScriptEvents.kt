@@ -6,7 +6,7 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
 
 /**
  * Lifecycle-driven `record_preview` script events — see
- * [`compose-preview-review/design/AGENT_AUDITS.md`](../../../../../../skills/compose-preview-review/design/AGENT_AUDITS.md)
+ * [`compose-preview-review/references/agent-audits.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/agent-audits.md)
  * § "State restoration and lifecycle audit".
  *
  * Three event ids — `lifecycle.pause`, `lifecycle.resume`, `lifecycle.stop` — each driving

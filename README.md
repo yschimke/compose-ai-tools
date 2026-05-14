@@ -9,22 +9,29 @@ agents can see what they're changing. Works with Jetpack Compose (Android,
 via Robolectric) and Compose Multiplatform Desktop (via `ImageComposeScene`).
 
 Renders include
-[paused-clock animation captures](skills/compose-preview/design/CAPTURE_MODES.md#animations-and-the-paused-frame-clock-android-only)
+[paused-clock animation captures](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/capture-modes.md#animations-and-the-paused-frame-clock-android-only)
 (GIF or single frame) and opt-in
-[ATF accessibility checks](skills/compose-preview/design/A11Y.md)
+[ATF accessibility checks](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/a11y.md)
 with annotated overlays.
 
-Also renders [Android XML resources](skills/compose-preview/design/RESOURCE_PREVIEWS.md) —
+Also renders [Android XML resources](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/resource-previews.md) —
 vector drawables, adaptive launcher icons, animated-vector drawables — and indexes the icon
 attributes in `AndroidManifest.xml` so tooling can link manifest lines to the same rendered PNG.
 Modules without any matching resources self-no-op, so this comes along for free with the plugin.
 
 ## What it ships
 
-- **Agent skill** — [`skills/compose-preview/SKILL.md`](skills/compose-preview/SKILL.md).
-  Point any agent that can fetch a URL at it; the skill is a complete
-  install-and-iterate playbook. Bootstrap a host machine with
-  [`scripts/install.sh`](scripts/install.sh).
+- **Agent skills** — the `compose-preview` and `compose-preview-review`
+  skill bundles live in
+  [`yschimke/skills`](https://github.com/yschimke/skills). Point any
+  agent that can fetch a URL at them; each skill is a complete
+  install-and-iterate playbook. Bootstrap a host machine (CLI + skills
+  in one shot) with the installer in
+  [`yschimke/skills`](https://github.com/yschimke/skills/blob/main/scripts/install.sh):
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
+  ```
 - **VS Code extension** — published to the
   [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
   and [Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)
@@ -66,7 +73,7 @@ To use this method:
 1. Create a Gradle init script (e.g., `~/.gradle/init.d/compose-ai-tools.gradle`) that resolves the plugin and applies it to Android application projects.
 2. Control its application with an environment variable (e.g., `COMPOSE_AI_TOOLS=true`).
 
-See [skills/compose-preview/SKILL.md](skills/compose-preview/SKILL.md) for a sample init script and details.
+See the [`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md) for a sample init script and details.
 
 Then:
 
@@ -110,8 +117,8 @@ Have one to add? Open a PR or [an issue](https://github.com/yschimke/compose-ai-
 - [Documentation site](https://yschimke.github.io/compose-ai-tools/) — installation, VS Code Marketplace, and the per-product data-extension reference.
 - [How it works](docs/HOW_IT_WORKS.md) — discovery, renderer, caching, project structure, plugin configuration.
 - [CI install action](.github/actions/install/README.md) — pin the CLI on `$PATH` in any GitHub Actions job, with version-catalog + Renovate recipes.
-- [Cloud sandbox setup](skills/compose-preview/design/AGENT_CLOUD.md) — Claude Code on the web, network allowlist.
-- [CI workflows](skills/compose-preview-review/design/CI_PREVIEWS.md) — `compose-preview/main` baselines, PR diff comments.
+- [Cloud sandbox setup](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md) — Claude Code on the web, network allowlist.
+- [CI workflows](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/ci-previews.md) — `compose-preview/main` baselines, PR diff comments.
 - [Development](docs/DEVELOPMENT.md) — building plugin, CLI, and extension from source; consuming `-SNAPSHOT` builds.
 - [Architecture (contributor)](docs/AGENTS.md) — class-by-class map of the four-stage pipeline.
 - [Releases](https://github.com/yschimke/compose-ai-tools/releases) ·
@@ -182,7 +189,7 @@ jobs:
 
 - Java 21 (`actions/setup-java`, `JAVA_HOME` from the action).
 - Android SDK (`android-actions/setup-android`).
-- `compose-preview-review` skill installation from `yschimke/compose-ai-tools`.
+- `compose-preview-review` skill installation from `yschimke/skills`.
 - Code diff capture (`git diff`) plus artifact download for visual review.
 
 ### Failure modes / troubleshooting

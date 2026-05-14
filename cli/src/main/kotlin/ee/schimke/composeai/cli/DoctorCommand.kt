@@ -289,9 +289,10 @@ class DoctorCommand(args: List<String>) {
               "Bootstrap the CLI + skill bundle and write JAVA_HOME/PATH to \$CLAUDE_ENV_FILE.",
             commands =
               listOf(
-                "curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash"
+                "curl -fsSL https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh | bash"
               ),
-            docs = "https://github.com/$REPO/blob/main/skills/compose-preview/design/AGENT_CLOUD.md",
+            docs =
+              "https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md",
           ),
       )
     )

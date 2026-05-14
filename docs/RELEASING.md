@@ -48,9 +48,18 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
 2. Builds the **CLI** and the standalone **MCP server** as `.zip` and `.tar.gz` distributions (`compose-preview-<ver>.{zip,tar.gz}` and `compose-preview-mcp-<ver>.{zip,tar.gz}`). The CLI tarball already implementation-bundles `:mcp`, so the MCP archive is for consumers who want to wire the server into an MCP client without dragging the CLI in.
-3. Packs each `skills/<name>/` directory into `<name>-skill-<ver>.tar.gz`.
-4. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-5. Uploads the CLI, MCP, skill, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
+4. Uploads the CLI, MCP, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+
+Skill bundles (`compose-preview`, `compose-preview-review`) and the
+canonical bootstrap installer (`scripts/install.sh`) ship from a
+separate content repo, [yschimke/skills](https://github.com/yschimke/skills),
+and are not packaged here. The installer fetches the skill bundles
+from yschimke/skills and the CLI tarball from this repo's releases.
+The `scripts/install.sh` left in this repo is a thin curl-pipe stub
+that forwards to the canonical script — kept so historical
+`raw.githubusercontent.com/yschimke/compose-ai-tools/.../scripts/install.sh`
+URLs keep resolving.
 
 The `daemon-*` artifacts are **pre-1.0**; their public API is not yet stable. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
 

@@ -23,7 +23,7 @@ plugins {
 // `ImageComposeScene` can capture without Robolectric / AGP unit-test
 // infrastructure.
 //
-// Layout convention (see `skills/compose-preview/design/CMP_SHARED.md`):
+// Layout convention (see `compose-preview/references/cmp-shared.md` in yschimke/skills):
 // previews live in `commonMain` so they compile against the multiplatform
 // compose runtime AND a JVM target ("desktop") is configured so the
 // Desktop renderer has a JVM compilation to reach for. `@Preview` functions

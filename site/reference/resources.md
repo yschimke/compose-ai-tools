@@ -71,7 +71,7 @@ Gradle output: `build/compose-previews/data/<id>/resources-used.json`.
 The plugin also separately renders Android XML resources directly
 (vector drawables, adaptive icons, animated-vector drawables) — that
 is a different feature; see
-[`skills/compose-preview/design/RESOURCE_PREVIEWS.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/design/RESOURCE_PREVIEWS.md).
+[`skills/compose-preview/references/resource-previews.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/resource-previews.md).
 
 ## Companion products
 

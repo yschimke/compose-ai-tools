@@ -6,7 +6,7 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
 
 /**
  * Accessibility-driven `record_preview` script events — see
- * [`compose-preview-review/design/AGENT_AUDITS.md`](../../../../../../skills/compose-preview-review/design/AGENT_AUDITS.md)
+ * [`compose-preview-review/references/agent-audits.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/agent-audits.md)
  * § "Accessibility-driven interaction audit".
  *
  * Each id maps to one [`AccessibilityNodeInfo`](https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo)

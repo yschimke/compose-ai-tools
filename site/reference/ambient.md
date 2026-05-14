@@ -78,4 +78,4 @@ classpath) applies the plugin.
 - [Theme](../theme) — `compose/theme` for the resolved Material 3 tokens at the active Ambient state.
 
 See also
-[`skills/compose-preview/design/WEAR_UI.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/design/WEAR_UI.md).
+[`skills/compose-preview/references/wear-ui.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/wear-ui.md).

@@ -44,7 +44,7 @@ class UpdateCommand(private val args: List<String>) {
      * tests can exercise the version-arg quoting without spawning a subprocess.
      */
     internal fun buildPipeline(targetVersion: String?): String {
-      val installUrl = "https://raw.githubusercontent.com/$REPO/main/scripts/install.sh"
+      val installUrl = "https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh"
       return buildString {
         append("curl -fsSL ")
         append(installUrl)

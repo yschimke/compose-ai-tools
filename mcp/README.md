@@ -59,7 +59,7 @@ Per-host opt-in/out flags: `--claude` / `--no-claude`, `--codex` /
 `--no-codex` / `--codex-config <path>`, `--antigravity` / `--no-antigravity`
 / `--antigravity-config <path>`. Defaults to "on if detected" for each host;
 detection rules are documented in
-[`skills/compose-preview/design/MCP.md`](../skills/compose-preview/design/MCP.md#setup).
+[`skills/compose-preview/references/mcp.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/mcp.md#setup).
 
 `compose-preview mcp serve` runs the MCP server in-process; status goes
 to stderr and stdout is reserved for JSON-RPC framing. If no `--project` is
@@ -68,9 +68,9 @@ still include an absolute `--project=...` because each host's launch
 directory is not project-scoped.
 
 The consumer-facing skill doc is
-[`skills/compose-preview/design/MCP.md`](../skills/compose-preview/design/MCP.md);
+[`skills/compose-preview/references/mcp.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/mcp.md);
 the PR-review variant (two workspaces, base + head) is
-[`skills/compose-preview-review/design/MCP_REVIEW.md`](../skills/compose-preview-review/design/MCP_REVIEW.md).
+[`skills/compose-preview-review/references/mcp-review.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/mcp-review.md).
 
 ### Path B: standalone `:mcp:installDist`
 

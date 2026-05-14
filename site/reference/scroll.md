@@ -57,7 +57,7 @@ extensions. Output paths under
 
 Annotate the preview with the matching multi-preview annotation (e.g.
 `@ScrollingPreview`) — see
-[`skills/compose-preview/design/CAPTURE_MODES.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview/design/CAPTURE_MODES.md)
+[`skills/compose-preview/references/capture-modes.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/capture-modes.md)
 for the multi-preview / scenario annotations the scroll extension
 recognises.
 

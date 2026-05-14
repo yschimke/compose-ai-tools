@@ -174,15 +174,15 @@ fun ClickRecomposingSquare() {
 }
 
 /**
- * D5 audit fixture — the canonical "bad recomposition" shape from
- * `skills/compose-preview-review/design/AGENT_AUDITS.md` § "Runtime and recomposition audit": a
- * parent owns a counter, reads it in its own body in order to pass it as a parameter to three
- * children, and only one of those children actually depends on the value. When the parent reads
- * `clicks` to forward as an argument, the parent's own [androidx.compose.runtime.RecomposeScope]
- * subscribes to the snapshot state — so on every click the parent invalidates, the children's `Int`
- * parameters change with it (parameter changes defeat skipping even for stable params), and Compose
- * recomposes all four scopes. That's the bug the audit test catches: clicking once should recompose
- * one thing, not the whole subtree.
+ * D5 audit fixture — the canonical "bad recomposition" shape from yschimke/skills
+ * `compose-preview-review/references/agent-audits.md` § "Runtime and recomposition audit": a parent
+ * owns a counter, reads it in its own body in order to pass it as a parameter to three children,
+ * and only one of those children actually depends on the value. When the parent reads `clicks` to
+ * forward as an argument, the parent's own [androidx.compose.runtime.RecomposeScope] subscribes to
+ * the snapshot state — so on every click the parent invalidates, the children's `Int` parameters
+ * change with it (parameter changes defeat skipping even for stable params), and Compose recomposes
+ * all four scopes. That's the bug the audit test catches: clicking once should recompose one thing,
+ * not the whole subtree.
  *
  * Whole-card `pointerInput` + `awaitFirstDown` so the click coords don't matter (same pattern as
  * [ClickRecomposingSquare]). The two header / footer children touch `clicks` only to absorb the

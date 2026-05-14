@@ -79,7 +79,7 @@ extension is publicly enabled. From an MCP client:
 
 For PR-review style "did this PR add unnecessary recomposition?"
 guidance, see
-[`compose-preview-review/design/AGENT_AUDITS.md`](https://github.com/yschimke/compose-ai-tools/blob/main/skills/compose-preview-review/design/AGENT_AUDITS.md).
+[`compose-preview-review/references/agent-audits.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/references/agent-audits.md).
 
 ## Companion products
 

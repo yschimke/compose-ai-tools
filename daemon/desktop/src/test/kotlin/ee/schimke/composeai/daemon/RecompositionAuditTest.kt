@@ -22,8 +22,8 @@ import org.junit.rules.TemporaryFolder
  * recompositions?"
  *
  * The test runs both halves of the canonical audit narrative from
- * `skills/compose-preview-review/design/AGENT_AUDITS.md` § "Runtime and recomposition audit"
- * against a real [DesktopHost] + [DesktopInteractiveSession]:
+ * `compose-preview-review/references/agent-audits.md` § "Runtime and recomposition audit" (in
+ * yschimke/skills) against a real [DesktopHost] + [DesktopInteractiveSession]:
  *
  * 1. **Report the problem.** Drive [BadCounterRecompositionFixture], dispatch one click, render.
  *    The post-click delta carries ≥ 3 distinct scopes — the parent (which reads `clicks` in order
