@@ -545,10 +545,9 @@ export class GradleService {
                 }
             }
             // Enrich each preview with a11y findings when the module has the sidecar report.
-            // Read through `manifestReportsView` so v1 plugins (only `accessibilityReport`
-            // populated) and v2 plugins (the `dataExtensionReports` map) both surface uniformly
-            // — the unified view returns `{}` when neither is set, and the loop naturally
-            // leaves `a11yFindings = null` on every preview.
+            // Read through `manifestReportsView` for a stable access seam — it returns `{}` when
+            // the map is absent, and the loop naturally leaves `a11yFindings = null` on every
+            // preview in that case.
             const reports = manifestReportsView(manifest);
             const a11yPointer = reports["a11y"] ?? null;
             if (a11yPointer) {

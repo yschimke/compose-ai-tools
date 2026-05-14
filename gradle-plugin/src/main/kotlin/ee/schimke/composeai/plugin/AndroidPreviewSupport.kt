@@ -1644,8 +1644,8 @@ internal object AndroidPreviewSupport {
    *   passed (the CLI's `compose-preview a11y` and `--with-extension a11y` paths use this form).
    *
    * Defaults to false — a11y is opt-in. When false, `RobolectricRenderTest` skips the post-capture
-   * ATF/hierarchy block entirely and `discoverPreviews` writes `accessibilityReport = null` into
-   * `previews.json`.
+   * ATF/hierarchy block entirely and `discoverPreviews` omits the `"a11y"` entry from the
+   * `dataExtensionReports` map in `previews.json`.
    */
   internal fun resolveA11yEnabled(
     project: org.gradle.api.Project,

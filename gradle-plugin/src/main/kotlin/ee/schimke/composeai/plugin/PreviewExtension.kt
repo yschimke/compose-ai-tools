@@ -146,7 +146,7 @@ abstract class PreviewExtensionsExtension @Inject constructor(objects: ObjectFac
    * `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property at the command line) so
    * `renderPreviews` writes per-preview ATF sidecars and `aggregateAccessibility` rolls them into
    * `accessibility.json`. With a11y disabled the renderer skips the post-capture ATF pass entirely
-   * and the manifest's `accessibilityReport` pointer is `null`.
+   * and the manifest's `dataExtensionReports["a11y"]` entry is absent.
    */
   val a11y: A11yPreviewExtension = objects.newInstance(A11yPreviewExtension::class.java, "a11y")
 

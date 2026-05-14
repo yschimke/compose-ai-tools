@@ -95,32 +95,20 @@ data class PreviewManifest(
   /**
    * Generic per-extension report pointer map. Keys are extension ids (e.g. `"a11y"`), values are
    * module-relative paths to that extension's aggregated sidecar JSON. Empty when no extension
-   * produced a canned report. This is the v2 shape — read it through [reportsView] so v1 manifests
-   * (which only carry [accessibilityReport]) round-trip transparently.
+   * produced a canned report.
+   *
+   * Strategy layer (see [ExtensionReportRenderer]) iterates this map; callers prefer [reportsView]
+   * to keep the access seam in case future wire-format evolutions need it.
    */
   val dataExtensionReports: Map<String, String> = emptyMap(),
-  /**
-   * **Deprecated** — back-compat mirror of `dataExtensionReports["a11y"]`. New CLI code reads
-   * through [reportsView]; this field stays for one release so v1 manifests written by older
-   * plugins still produce findings.
-   */
-  @Deprecated("Use dataExtensionReports[\"a11y\"]; this field is a back-compat mirror.")
-  val accessibilityReport: String? = null,
 ) {
   /**
-   * Effective extension-report pointers, unifying the v2 map with the legacy v1 field. When the
-   * plugin is on the v2 shape, this is just [dataExtensionReports]; when it's still on v1, the
-   * `a11y` entry is synthesised from [accessibilityReport] so the CLI strategy layer never has to
-   * special-case the wire version.
+   * Thin alias over [dataExtensionReports] kept as an access seam — the v1 `accessibilityReport`
+   * back-compat path used to be hidden behind it, and future wire-format changes are easier to
+   * introduce here than at every callsite. Today it's a pass-through.
    */
-  @Suppress("DEPRECATION")
   val reportsView: Map<String, String>
-    get() =
-      when {
-        dataExtensionReports.isNotEmpty() -> dataExtensionReports
-        accessibilityReport != null -> mapOf("a11y" to accessibilityReport)
-        else -> emptyMap()
-      }
+    get() = dataExtensionReports
 }
 
 // AccessibilityFinding / AccessibilityEntry / AccessibilityReport moved to A11yReportRenderer.kt
