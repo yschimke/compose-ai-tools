@@ -1015,6 +1015,11 @@ export class PreviewApp extends LitElement {
                         renderTrace: tracePayload,
                         composeAiTrace: perfettoPayload,
                     },
+                    (url) =>
+                        vscode.postMessage({
+                            command: "openExternal",
+                            url,
+                        }),
                 );
             }
             dataTabs.setTabBody("performance", body.wrapper);
