@@ -142,7 +142,9 @@ private const val UI_MODE_NIGHT_YES: Int = 0x20
 
 /**
  * Wire-shape of `previews.json`'s top-level object — only the fields the index needs. The plugin
- * also writes `module`, `variant`, and `accessibilityReport`; those are ignored on parse.
+ * also writes `module`, `variant`, `dataExtensionReports`, and the legacy `accessibilityReport`
+ * mirror; all of those are ignored on parse here (the daemon routes per-extension reports through
+ * typed data-product payloads rather than the manifest pointer).
  */
 @Serializable
 private data class PreviewManifestDto(val previews: List<PreviewInfoDto> = emptyList())
