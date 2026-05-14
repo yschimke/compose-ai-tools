@@ -113,6 +113,18 @@ export interface PreviewMessageContext {
         previewId: string,
         dataProducts: readonly { kind: string; payload: unknown }[],
     ): void;
+    /**
+     * Host responded to a `loadFontPreview` request. The behaviour
+     * layer stashes the data URI (or `null` on failure) in the
+     * panel-side cache, injects the corresponding `@font-face` when
+     * non-null, and re-renders the Text/i18n bundle so the resolved-
+     * family cell picks up the new family. Wired by main.ts.
+     */
+    applyFontPreviewBytes(
+        previewId: string,
+        fontRowId: string,
+        dataUri: string | null,
+    ): void;
     focusOnCard(card: HTMLElement): void;
 }
 
@@ -173,6 +185,13 @@ export function handleExtensionMessage(
                 previewId: msg.previewId,
                 kinds: msg.dataProducts.map((dp) => dp.kind),
             });
+            return;
+        case "fontPreviewBytes":
+            ctx.applyFontPreviewBytes(
+                msg.previewId,
+                msg.fontRowId,
+                msg.dataUri,
+            );
             return;
         case "setModules":
             // Module selector removed from UI — module is resolved from the

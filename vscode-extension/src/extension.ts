@@ -34,6 +34,7 @@ import {
 } from "./types";
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
+import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
 import { captureLabel, withDataProductCaptures } from "./captureLabels";
 import {
     DaemonGate,
@@ -4123,7 +4124,40 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void vscode.env.openExternal(vscode.Uri.parse(msg.url));
             }
             break;
+        case "loadFontPreview":
+            void handleLoadFontPreview(msg);
+            break;
     }
+}
+
+/**
+ * Reads an absolute font-file path off disk, base64-encodes it, and
+ * posts `fontPreviewBytes` back to the webview. Rejections (path
+ * outside the workspace, unsupported extension, missing file, > 5 MB,
+ * I/O error) all resolve as `dataUri: null` so the webview just leaves
+ * the system-font fallback in place — there's no user-visible error
+ * surface for "the font preview couldn't be hydrated".
+ *
+ * Validation is delegated to `resolveFontPreviewPath` (pure, unit-
+ * tested) so the wire handler stays a thin orchestrator.
+ */
+async function handleLoadFontPreview(
+    msg: Extract<WebviewToExtension, { command: "loadFontPreview" }>,
+): Promise<void> {
+    const workspaceRoot =
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+    const resolved = resolveFontPreviewPath(msg.sourceFile, workspaceRoot);
+    const dataUri = resolved
+        ? await readFontPreview(resolved, (absPath) =>
+              fs.promises.readFile(absPath),
+          )
+        : null;
+    panel?.postMessage({
+        command: "fontPreviewBytes",
+        previewId: msg.previewId,
+        fontRowId: msg.fontRowId,
+        dataUri,
+    });
 }
 
 /**

@@ -462,6 +462,84 @@ export class PreviewApp extends LitElement {
         let liveState!: LiveStateController;
         let focusController!: FocusController;
         const dataProductsByPreview = new Map<string, Map<string, unknown>>();
+        // Panel-side cache for the Text/i18n bundle's data-URI font
+        // preview path. Keyed by `(previewId, fontRowId)` because two
+        // previews owned by the same module can carry the same row id
+        // but resolve different bytes; the row-id-only fallback would
+        // race. `undefined` → not yet requested, `null` → host said no
+        // (file missing / not allowed / > 5 MB), `string` → data URI.
+        const fontPreviewBytesByPreview = new Map<
+            string,
+            Map<string, string | null>
+        >();
+        // In-flight `loadFontPreview` requests so we don't pile up
+        // duplicate messages while the host is still reading. Cleared
+        // when the response lands.
+        const fontPreviewPending = new Set<string>();
+        const fontPreviewKey = (previewId: string, rowId: string): string =>
+            previewId + " " + rowId;
+        // Idempotent `@font-face` injector — keyed on `(previewId, rowId)`
+        // so the same row's bytes only land in the document head once.
+        // Lives on a single `<style>` element with `data-font-preview`
+        // so dev-tools shows the whole set in one place.
+        const fontFaceEmitted = new Set<string>();
+        const ensureFontFaceStyleElement = (): HTMLStyleElement => {
+            let el = document.querySelector(
+                "style[data-font-preview]",
+            ) as HTMLStyleElement | null;
+            if (!el) {
+                el = document.createElement("style");
+                el.setAttribute("data-font-preview", "");
+                document.head.appendChild(el);
+            }
+            return el;
+        };
+        const injectFontFace = (
+            previewId: string,
+            rowId: string,
+            dataUri: string,
+        ): void => {
+            const key = fontPreviewKey(previewId, rowId);
+            if (fontFaceEmitted.has(key)) return;
+            fontFaceEmitted.add(key);
+            const style = ensureFontFaceStyleElement();
+            // `preview-<rowId>` is the synthetic family name the
+            // resolved-family cell renders against; rowId is internal
+            // ("font-0", "font-1", …) so no escaping needed today, but
+            // we still wrap it in a regex-safe identifier check at
+            // injection time by quoting in the CSS literal.
+            style.appendChild(
+                document.createTextNode(
+                    '@font-face { font-family: "preview-' +
+                        rowId +
+                        '"; src: url("' +
+                        dataUri +
+                        '"); }\n',
+                ),
+            );
+        };
+        const loadFontPreview = (rowId: string, sourceFile: string): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const key = fontPreviewKey(target, rowId);
+            if (fontPreviewPending.has(key)) return;
+            const bucket = fontPreviewBytesByPreview.get(target);
+            if (bucket && bucket.has(rowId)) return;
+            fontPreviewPending.add(key);
+            vscode.postMessage({
+                command: "loadFontPreview",
+                previewId: target,
+                fontRowId: rowId,
+                sourceFile,
+            });
+        };
+        const fontPreviewDataUri = (
+            rowId: string,
+        ): string | null | undefined => {
+            const target = currentBundleTarget();
+            if (!target) return undefined;
+            return fontPreviewBytesByPreview.get(target)?.get(rowId);
+        };
 
         inspector = new FocusInspectorController({
             el: focusInspector,
@@ -756,6 +834,8 @@ export class PreviewApp extends LitElement {
                 textBundleFontColumns({
                     openExternal: (url) =>
                         vscode.postMessage({ command: "openExternal", url }),
+                    loadFontPreview,
+                    fontPreviewDataUri,
                 }) as unknown as ReadonlyArray<
                     import("./components/DataTable").DataTableColumn<FontRow>
                 >,
@@ -1928,6 +2008,35 @@ export class PreviewApp extends LitElement {
                     )
                 ) {
                     refreshInspectionBundle();
+                }
+            },
+            applyFontPreviewBytes: (previewId, fontRowId, dataUri) => {
+                // Stash the response (null included — represents "host
+                // tried and the file couldn't be read"; we cache that
+                // negative result so we don't retry on every re-render).
+                let bucket = fontPreviewBytesByPreview.get(previewId);
+                if (!bucket) {
+                    bucket = new Map();
+                    fontPreviewBytesByPreview.set(previewId, bucket);
+                }
+                bucket.set(fontRowId, dataUri);
+                fontPreviewPending.delete(fontPreviewKey(previewId, fontRowId));
+                // Inject the `@font-face` rule into the document head
+                // when we have bytes. On null we leave the CSS-only
+                // fallback in place — the cell already paints in the
+                // resolved family stack.
+                if (typeof dataUri === "string" && dataUri.length > 0) {
+                    injectFontFace(previewId, fontRowId, dataUri);
+                }
+                // Re-render the Text bundle if we're showing the
+                // preview the bytes belong to. Other previews don't
+                // need a redraw — their cache entries are independent
+                // and they re-render on their own bundle target swap.
+                if (
+                    bundleController.state().activeBundles.includes("text") &&
+                    currentBundleTarget() === previewId
+                ) {
+                    refreshTextBundle();
                 }
             },
             focusOnCard,

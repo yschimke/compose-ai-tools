@@ -9,6 +9,8 @@ import * as assert from "assert";
 import {
     computeTextBundleData,
     cssFontStack,
+    cssFontStackForPreview,
+    fontPreviewFamilyName,
     googleFontsAllowlistSize,
     googleFontsSpecimenUrl,
     isGoogleFontFamily,
@@ -16,6 +18,12 @@ import {
     type FontRow,
     type TranslationRow,
 } from "../webview/preview/textBundlePresenter";
+import {
+    MAX_FONT_PREVIEW_BYTES,
+    readFontPreview,
+    resolveFontPreviewPath,
+} from "../fontPreviewLoader";
+import * as path from "path";
 
 function stringEntry(overrides: Record<string, unknown> = {}): unknown {
     return {
@@ -269,5 +277,126 @@ describe("computeTextBundleData", () => {
     it("cssFontStack passes generic families through unquoted", () => {
         assert.strictEqual(cssFontStack("monospace"), "monospace");
         assert.strictEqual(cssFontStack("serif"), "serif");
+    });
+
+    it("cssFontStackForPreview prepends the synthetic family when bytes have loaded", () => {
+        // Pins the cache lookup vs the loading state: in the loading
+        // state (no bytes yet) the cell renders against the CSS-only
+        // fallback, identical to what `cssFontStack` returns. Once the
+        // host has responded with bytes, the synthetic
+        // `preview-<rowId>` family is prepended so the `@font-face`
+        // rule wins in the font-family chain.
+        const loading = cssFontStackForPreview("font-0", "Roboto", {
+            hasBytes: false,
+        });
+        assert.strictEqual(loading, cssFontStack("Roboto"));
+        const loaded = cssFontStackForPreview("font-0", "Roboto", {
+            hasBytes: true,
+        });
+        assert.ok(
+            loaded.startsWith('"preview-font-0", '),
+            "synthetic family must be first in the stack",
+        );
+        assert.ok(
+            loaded.endsWith(cssFontStack("Roboto")),
+            "the resolved-family CSS stack must remain as a fallback",
+        );
+        assert.strictEqual(fontPreviewFamilyName("font-0"), "preview-font-0");
+    });
+});
+
+describe("fontPreviewLoader", () => {
+    const root = process.platform === "win32" ? "C:\\ws" : "/ws";
+
+    it("rejects paths outside the workspace root (no path-traversal)", () => {
+        const evil = path.join(root, "..", "etc", "passwd.ttf");
+        assert.strictEqual(resolveFontPreviewPath(evil, root), null);
+    });
+
+    it("rejects relative paths", () => {
+        assert.strictEqual(
+            resolveFontPreviewPath("res/font/roboto.ttf", root),
+            null,
+        );
+    });
+
+    it("rejects unsupported extensions", () => {
+        // `.xml` font descriptors (Android `res/font/foo.xml`) point at
+        // the real face but are NOT themselves the bytes — refuse them
+        // so the response stays `dataUri: null` and the webview keeps
+        // the CSS-only fallback.
+        const xml = path.join(root, "res", "font", "roboto.xml");
+        assert.strictEqual(resolveFontPreviewPath(xml, root), null);
+    });
+
+    it("accepts a supported font extension inside the workspace", () => {
+        const ttf = path.join(root, "app", "fonts", "Inter.ttf");
+        const resolved = resolveFontPreviewPath(ttf, root);
+        assert.ok(resolved);
+        assert.strictEqual(resolved!.mime, "font/ttf");
+        assert.strictEqual(resolved!.absolutePath, path.normalize(ttf));
+    });
+
+    it("maps each supported extension to its IANA media type", () => {
+        const cases: ReadonlyArray<[string, string]> = [
+            ["a.ttf", "font/ttf"],
+            ["a.otf", "font/otf"],
+            ["a.woff", "font/woff"],
+            ["a.woff2", "font/woff2"],
+            // Casing tolerance — Android assets occasionally ship as
+            // `Roboto-Regular.TTF`.
+            ["a.WOFF2", "font/woff2"],
+        ];
+        for (const [name, mime] of cases) {
+            const resolved = resolveFontPreviewPath(
+                path.join(root, name),
+                root,
+            );
+            assert.ok(resolved, "should resolve " + name);
+            assert.strictEqual(resolved!.mime, mime);
+        }
+    });
+
+    it("rejects null / empty sourceFile or workspaceRoot", () => {
+        assert.strictEqual(resolveFontPreviewPath(null, root), null);
+        assert.strictEqual(resolveFontPreviewPath(undefined, root), null);
+        assert.strictEqual(resolveFontPreviewPath("", root), null);
+        assert.strictEqual(
+            resolveFontPreviewPath(path.join(root, "a.ttf"), null),
+            null,
+        );
+    });
+
+    it("readFontPreview base64-encodes the bytes into a data URI", async () => {
+        const bytes = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+        const dataUri = await readFontPreview(
+            { absolutePath: "/whatever.ttf", mime: "font/ttf" },
+            async () => bytes,
+        );
+        assert.strictEqual(
+            dataUri,
+            "data:font/ttf;base64," + bytes.toString("base64"),
+        );
+    });
+
+    it("readFontPreview resolves to null on read failure", async () => {
+        const dataUri = await readFontPreview(
+            { absolutePath: "/whatever.ttf", mime: "font/ttf" },
+            async () => {
+                throw new Error("ENOENT");
+            },
+        );
+        assert.strictEqual(dataUri, null);
+    });
+
+    it("readFontPreview rejects files larger than the 5 MB cap", async () => {
+        // Synthesise an over-cap buffer cheaply by lying about its
+        // length — we never inspect the bytes past the size check.
+        const oversize = Buffer.alloc(MAX_FONT_PREVIEW_BYTES + 1);
+        const dataUri = await readFontPreview(
+            { absolutePath: "/big.ttf", mime: "font/ttf" },
+            async () => oversize,
+        );
+        assert.strictEqual(dataUri, null);
     });
 });
