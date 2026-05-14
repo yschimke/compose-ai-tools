@@ -1603,7 +1603,21 @@ export class PreviewApp extends LitElement {
         reflectBundleState();
         bundleChipBar.addEventListener("bundle-toggled", (evt) => {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
+            const wasActive = bundleController
+                .state()
+                .activeBundles.includes(detail.id);
             bundleController.toggleBundle(detail.id);
+            // Chip + tabs sit below the preview, so a fresh activation
+            // can scroll off-screen on tall previews. Bring the new tab
+            // body into view so the click has visible feedback.
+            if (!wasActive) {
+                requestAnimationFrame(() => {
+                    dataTabs.scrollIntoView({
+                        behavior: "smooth",
+                        block: "nearest",
+                    });
+                });
+            }
         });
         dataTabs.addEventListener("tab-closed", (evt) => {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
