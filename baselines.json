@@ -426,6 +426,13 @@
     "sha256": "7956a2c225f48f22a1768bd1a9584eb01466e4d4c5e7542c4ba2a64d4ecb06bb",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle Button Transparent": {
+    "captureLabel": "",
+    "functionName": "CircleButtonTransparentPreview",
+    "renderBasename": "TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle_Button_Transparent.png",
+    "sha256": "0b9a81eb4831118ca13bd9796229163744dcaf74876440cf38b47c2004ca2a80",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/TransparentBackgroundPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.TruncationPreviewsKt.FitsInBoundsPreview": {
     "captureLabel": "",
     "functionName": "FitsInBoundsPreview",
@@ -661,7 +668,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
