@@ -277,7 +277,6 @@ function earlyFeaturesEnabled(): boolean {
  */
 export function resolveMode(gradleService: {
     findPreviewModules(): { modulePath: string }[];
-    hasInjectableHostModule(): boolean;
 }): ResolvedMode {
     const config = vscode.workspace.getConfiguration("composePreview");
     const mode = config.get<string>("mode", "auto");
@@ -287,7 +286,6 @@ export function resolveMode(gradleService: {
                 mode === "minimal" || mode === "full" || mode === "auto"
                     ? mode
                     : "auto",
-            autoInjectEnabled: autoInjectEnabled(),
         },
         gradleService,
     );
