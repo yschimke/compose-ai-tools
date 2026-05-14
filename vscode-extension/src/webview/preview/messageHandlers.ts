@@ -37,16 +37,9 @@
 import type {
     AccessibilityFinding,
     AccessibilityNode,
-    DaemonDataExtensionDescriptor,
-    DaemonDataProductCapability,
     ExtensionToWebview,
     PreviewInfo,
 } from "../shared/types";
-import {
-    type ProductDescriptor,
-    bucketOf,
-    costOf,
-} from "./focusProductTaxonomy";
 import type { VsCodeApi } from "../shared/vscode";
 import { safeArrayIndex } from "../shared/safeIndex";
 import { sanitizeId } from "./cardData";
@@ -243,12 +236,11 @@ export function handleExtensionMessage(
             ctx.applyFilters();
             return;
         case "setDaemonCapabilities":
-            ctx.inspector.setProducts(
-                productsFromDaemonCapabilities(
-                    msg.dataProducts,
-                    msg.dataExtensions,
-                ),
-            );
+            // The chip/bucket pipeline that consumed these descriptors
+            // moved to the bundle shell (#1099); the slim focus
+            // inspector no longer surfaces per-capability UI. Other
+            // controllers subscribe to capability changes through
+            // their own paths, so this dispatcher drops the message.
             return;
         case "streamStarted": {
             const card = document.getElementById(
@@ -612,74 +604,4 @@ function assertNever(value: never): never {
     throw new Error(
         `Unhandled ExtensionToWebview variant: ${JSON.stringify(value)}`,
     );
-}
-
-/**
- * Translate the daemon's advertised capabilities into the inspector's
- * `ProductDescriptor` shape — the icon/label/cost the inspector
- * actually renders. The daemon side only knows wire kinds; the icon
- * mapping lives client-side because it's a UI choice that varies per
- * client (the MCP server may pick different glyphs).
- *
- * `dataExtensions` are surfaced as a one-row entry per extension that
- * isn't already represented by a `dataProducts` entry — the inspector
- * doesn't otherwise differentiate between "advertised by an extension"
- * and "advertised as a product." Display names fall back to the wire
- * `id` when the daemon didn't supply one.
- */
-export function productsFromDaemonCapabilities(
-    products: readonly DaemonDataProductCapability[],
-    extensions: readonly DaemonDataExtensionDescriptor[],
-): ProductDescriptor[] {
-    const seen = new Set<string>();
-    const out: ProductDescriptor[] = [];
-    for (const p of products) {
-        if (seen.has(p.kind)) continue;
-        seen.add(p.kind);
-        out.push({
-            kind: p.kind,
-            label: p.displayName || prettifyKind(p.kind),
-            icon: iconForBucket(bucketOf(p.kind)),
-            hint: p.transport === "path" ? "On-disk artifact" : undefined,
-            cost: costOf(p.kind, { requiresRerender: p.requiresRerender }),
-            daemonBacked: true,
-        });
-    }
-    for (const ext of extensions) {
-        const key = "ext/" + ext.id;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({
-            kind: key,
-            label: ext.displayName || ext.id,
-            icon: "extensions",
-            hint: "Extension",
-            cost: "expensive",
-            daemonBacked: true,
-        });
-    }
-    return out;
-}
-
-function prettifyKind(kind: string): string {
-    const slash = kind.lastIndexOf("/");
-    const tail = slash >= 0 ? kind.slice(slash + 1) : kind;
-    return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/[-_]/g, " ");
-}
-
-function iconForBucket(bucket: ReturnType<typeof bucketOf>): string {
-    switch (bucket) {
-        case "accessibility":
-            return "eye";
-        case "layout":
-            return "list-tree";
-        case "performance":
-            return "pulse";
-        case "theming":
-            return "symbol-color";
-        case "resources":
-            return "file-code";
-        default:
-            return "circle-outline";
-    }
 }
