@@ -276,10 +276,13 @@ export function handleExtensionMessage(
         case "clearProgress":
         case "setCompileErrors":
         case "clearCompileErrors":
+        case "minimalSavePending":
+        case "minimalSavePendingClear":
             // Handled directly by Lit components (`<message-banner>`,
-            // `<progress-bar>`, `<compile-errors-banner>`) — they listen on
-            // `window` for these and the dispatcher does not duplicate the
-            // routing.
+            // `<progress-bar>`, `<compile-errors-banner>`,
+            // `<preview-app>`'s minimal-mode banner) — they listen on
+            // `window` for these and the dispatcher does not duplicate
+            // the routing.
             return;
         default:
             return assertNever(msg);
