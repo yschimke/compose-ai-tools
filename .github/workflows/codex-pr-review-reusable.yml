@@ -121,8 +121,22 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
+      - name: Detect AI provider keys
+        id: keys
+        env:
+          CODEX_KEY: ${{ secrets.codex_api_key }}
+          CLAUDE_KEY: ${{ secrets.claude_api_key }}
+          GEMINI_KEY: ${{ secrets.gemini_api_key }}
+        run: |
+          set -euo pipefail
+          {
+            echo "has_codex=$([[ -n "$CODEX_KEY" ]] && echo true || echo false)"
+            echo "has_claude=$([[ -n "$CLAUDE_KEY" ]] && echo true || echo false)"
+            echo "has_gemini=$([[ -n "$GEMINI_KEY" ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install compose-preview-review skill (Codex)
-        if: ${{ secrets.codex_api_key != '' }}
+        if: ${{ steps.keys.outputs.has_codex == 'true' }}
         env:
           SKILL_REPO: yschimke/compose-ai-tools
         run: |

@@ -1,7 +1,7 @@
 name: Codex PR Review (Blessed)
 
 on:
-  reaction:
+  issue_comment:
     types: [created]
 
 permissions:
@@ -17,9 +17,9 @@ jobs:
   preview:
     if: >-
       github.event.action == 'created' &&
-      github.event.reaction.content == 'eyes' &&
-      github.event.sender.login == github.repository_owner &&
       github.event.issue.pull_request &&
+      github.event.sender.login == github.repository_owner &&
+      startsWith(github.event.comment.body, '/codex-review') &&
       !(github.event.issue.user.login == github.repository_owner || contains(fromJson(vars.AI_REVIEW_TRUSTED_AUTHORS_JSON || '[]'), github.event.issue.user.login))
     name: Generate previews for blessed PR review
     runs-on: ubuntu-latest
