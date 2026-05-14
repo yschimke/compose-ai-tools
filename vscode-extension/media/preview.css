@@ -1805,19 +1805,20 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
-    padding: 2px 6px;
+    padding: 4px 6px;
     border-top: 1px solid var(--vscode-panel-border, transparent);
 }
 .bundle-chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 2px 4px;
+    gap: 4px;
+    padding: 2px 6px;
     border-radius: 3px;
     border: 1px solid transparent;
     background: transparent;
     color: var(--vscode-foreground, inherit);
-    opacity: 0.65;
+    font-size: 12px;
+    opacity: 0.75;
     cursor: pointer;
 }
 .bundle-chip:hover {
@@ -1829,6 +1830,9 @@ body {
     color: var(--vscode-foreground, inherit);
     border-color: var(--vscode-focusBorder, transparent);
     opacity: 1;
+}
+.bundle-chip-label {
+    white-space: nowrap;
 }
 
 .data-tabs {
