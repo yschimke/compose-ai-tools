@@ -8,6 +8,7 @@ import {
     PreviewManifest,
     PreviewRenderError,
     ResourceManifest,
+    manifestReportsView,
 } from "./types";
 import {
     appliesInjectableHostPlugin,
@@ -543,16 +544,15 @@ export class GradleService {
                     );
                 }
             }
-            // Enrich each preview with a11y findings when the module has the
-            // sidecar report. Always follow the manifest's pointer rather than
-            // probing for the file: disabling the Gradle option must cleanly
-            // remove findings from the UI without a stale opt-in run
-            // haunting us.
-            if (manifest.accessibilityReport) {
-                const byId = this.readA11yById(
-                    module,
-                    manifest.accessibilityReport,
-                );
+            // Enrich each preview with a11y findings when the module has the sidecar report.
+            // Read through `manifestReportsView` so v1 plugins (only `accessibilityReport`
+            // populated) and v2 plugins (the `dataExtensionReports` map) both surface uniformly
+            // — the unified view returns `{}` when neither is set, and the loop naturally
+            // leaves `a11yFindings = null` on every preview.
+            const reports = manifestReportsView(manifest);
+            const a11yPointer = reports["a11y"] ?? null;
+            if (a11yPointer) {
+                const byId = this.readA11yById(module, a11yPointer);
                 for (const p of manifest.previews) {
                     const entry = byId[p.id];
                     p.a11yFindings = entry?.findings ?? [];

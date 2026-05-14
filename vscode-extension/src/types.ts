@@ -126,10 +126,9 @@ export interface PreviewInfo {
     /** Annotation-sourced data products, such as long and scrolling screenshots. */
     dataProducts?: PreviewDataProduct[];
     /**
-     * Populated by the extension from the sidecar accessibility.json referenced
-     * in [PreviewManifest.accessibilityReport]. `null`/`undefined` means
-     * accessibility checks were disabled for this module; an empty array means
-     * checks ran and found nothing.
+     * Populated by the extension from the sidecar accessibility.json pointed at by the `"a11y"`
+     * entry of [manifestReportsView]. `null`/`undefined` means accessibility checks were
+     * disabled for this module; an empty array means checks ran and found nothing.
      */
     a11yFindings?: AccessibilityFinding[] | null;
     /** Absolute path to the annotated screenshot (clean PNG + overlay legend), when findings exist. */
@@ -190,8 +189,42 @@ export interface PreviewManifest {
     module: string;
     variant: string;
     previews: PreviewInfo[];
-    /** Relative path (from `previews.json`) to the sidecar a11y report, or null. */
+    /**
+     * v2 wire format. Map of extension id (e.g. `"a11y"`) → relative path from `previews.json`
+     * to that extension's aggregated sidecar JSON. Empty/absent when no extension produced a
+     * canned report. Consumers should read through [manifestReportsView] rather than touching
+     * either field directly so a v1 plugin (only [accessibilityReport] populated) still surfaces
+     * as `{ "a11y": "accessibility.json" }`.
+     */
+    dataExtensionReports?: Record<string, string> | null;
+    /**
+     * **Deprecated** — v1 mirror of `dataExtensionReports["a11y"]`. The Gradle plugin emits both
+     * fields during the v1↔v2 transition so older clients keep working; new code reads through
+     * [manifestReportsView]. Remove once the consumer floor moves past v1.
+     */
     accessibilityReport?: string | null;
+}
+
+/**
+ * Unified view of [PreviewManifest.dataExtensionReports] + [PreviewManifest.accessibilityReport].
+ * Always prefer the v2 map when present; synthesise a single `{a11y: <path>}` entry from the v1
+ * field otherwise. Returns an empty object when neither is set — callers can iterate the keys
+ * unconditionally and let the strategy layer no-op on its absence.
+ */
+export function manifestReportsView(
+    manifest: Pick<
+        PreviewManifest,
+        "dataExtensionReports" | "accessibilityReport"
+    >,
+): Record<string, string> {
+    const v2 = manifest.dataExtensionReports;
+    if (v2 && Object.keys(v2).length > 0) {
+        return { ...v2 };
+    }
+    if (manifest.accessibilityReport) {
+        return { a11y: manifest.accessibilityReport };
+    }
+    return {};
 }
 
 export interface AccessibilityFinding {
