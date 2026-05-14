@@ -3455,11 +3455,16 @@ async function refresh(
     // If we already have previews on screen, use a stealth refresh:
     // keep the current cards visible and show per-card spinners rather than
     // clearing the view. Only show a full "Building..." message on first load.
-    const showLoadingOverlay = opts.showLoadingOverlay !== false;
+    // Minimal mode is even quieter: renders are manual and any background
+    // refresh (`webviewReady` replay, editor-focus change) must not dim or
+    // skeleton-out the existing cards. Skip both overlays so the panel keeps
+    // the last-good image until the user explicitly clicks Refresh.
+    const showLoadingOverlay =
+        opts.showLoadingOverlay !== false && !inMinimalMode();
     if (hasPreviewsLoaded && showLoadingOverlay) {
         panel.postMessage({ command: "markAllLoading" });
     } else {
-        if (!hasPreviewsLoaded) {
+        if (!hasPreviewsLoaded && !inMinimalMode()) {
             panel.postMessage({ command: "setLoading" });
         }
     }
@@ -3900,9 +3905,19 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // hidden when `onLanguage:kotlin` activated us). Replay the
             // stateful messages from current state so the grid populates even
             // when the user opens the panel after the first refresh ran.
+            //
+            // Minimal mode is manual-only: a visibility cycle that disposes
+            // the webview must not silently retrigger a Gradle round-trip
+            // (which dims cards / shows skeletons). Replay from the on-disk
+            // cache only — if there's nothing cached the panel stays empty
+            // until the user clicks Refresh.
             sendModuleList();
             if (currentScopeFile) {
-                void refresh(false, currentScopeFile);
+                if (inMinimalMode()) {
+                    void preloadCachedPreviews(currentScopeFile);
+                } else {
+                    void refresh(false, currentScopeFile);
+                }
             }
             break;
         case "webviewPreviewsRendered":
