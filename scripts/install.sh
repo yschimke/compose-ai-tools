@@ -2,7 +2,9 @@
 #
 # Bootstrap installer for the compose-preview skill bundles.
 #
-# Installs two sibling skills into the shared cross-agent skills directory
+# Installs two sibling skills (sourced from github.com/yschimke/skills)
+# and the compose-preview CLI (sourced from github.com/yschimke/compose-ai-tools
+# releases) into the shared cross-agent skills directory
 # (`~/.agents/skills/` by default). Gemini reads `~/.agents/skills/` directly;
 # Claude Code and Codex only read their own per-host dirs, so we symlink the
 # canonical bundle in for each detected host:
@@ -52,7 +54,9 @@
 #   SKILL_DIR=~/.claude/skills/compose-preview scripts/install.sh  # full path
 #   AGENTS_SKILLS_ROOT=~/.claude/skills scripts/install.sh         # parent dir
 #   PREFIX=$HOME/.local scripts/install.sh       # for the ~/.local/bin symlink
-#   REPO=yschimke/compose-ai-tools scripts/install.sh
+#   REPO=yschimke/compose-ai-tools scripts/install.sh   # CLI release source
+#   SKILLS_REPO=yschimke/skills scripts/install.sh      # skill content source
+#   SKILLS_REF=main scripts/install.sh                  # skill content ref
 #   ANDROID_HOME=$HOME/Android/Sdk scripts/install.sh --android-sdk
 #   INSTALL_ANDROID_SDK=1 scripts/install.sh     # same as --android-sdk
 #
@@ -97,6 +101,8 @@
 set -euo pipefail
 
 REPO="${REPO:-yschimke/compose-ai-tools}"
+SKILLS_REPO="${SKILLS_REPO:-yschimke/skills}"
+SKILLS_REF="${SKILLS_REF:-main}"
 SKILL_DIR="${SKILL_DIR:-}"
 PREFIX="${PREFIX:-$HOME/.local}"
 INSTALL_ANDROID_SDK="${INSTALL_ANDROID_SDK:-0}"
@@ -493,8 +499,8 @@ fi
 # re-invocation that wants the existing version can short-circuit without
 # touching the network at all.
 
-SKILL_VERSION_FILE="$SKILL_DIR/.skill-version"
-INSTALLED_VERSION="$(cat "$SKILL_VERSION_FILE" 2>/dev/null || true)"
+CLI_VERSION_FILE="$SKILL_DIR/.cli-version"
+INSTALLED_VERSION="$(cat "$CLI_VERSION_FILE" 2>/dev/null || true)"
 
 if [[ -z "$VERSION" ]]; then
   log "resolving latest release of $REPO"
@@ -520,7 +526,6 @@ SKILL_LAUNCHER="$SKILL_DIR/bin/compose-preview"
 # workflows; pairs with compose-preview but ships separately so an agent
 # loading just one of them doesn't pull in the other's content.
 REVIEW_SKILL_DIR="$(dirname "$SKILL_DIR")/compose-preview-review"
-REVIEW_SKILL_VERSION_FILE="$REVIEW_SKILL_DIR/.skill-version"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -577,47 +582,82 @@ maybe_write_env_file() {
   fi
 }
 
-# Install one skill tarball into a target dir. Best-effort: older releases
-# may not ship every skill bundle, so a missing asset only logs a warning.
-# Skip re-download when the marker matches. Otherwise wipe the specific
-# top-level paths carried by the new tarball (so stale files from an older
-# version's skill bundle don't linger) before extracting. Anything the
-# user has added outside those paths is preserved.
-install_skill_bundle() {
-  local name="$1" dir="$2"
-  local asset="${name}-skill-${VERSION}.tar.gz"
-  local url="https://github.com/$REPO/releases/download/v${VERSION}/${asset}"
-  local marker="$dir/.skill-version"
-  local tmpfile="$TMP/${name}-skill.tar.gz"
+# Resolve the upstream skills repo commit SHA via `git ls-remote`. Works
+# unauthenticated, isn't rate-limited the way api.github.com is on shared
+# sandbox IPs, and lets us short-circuit re-runs when the upstream tip is
+# unchanged. Returns empty on failure; callers treat that as "unknown" and
+# fall through to a full extract.
+resolve_skills_sha() {
+  command -v git >/dev/null 2>&1 || return 1
+  git ls-remote "https://github.com/$SKILLS_REPO" "refs/heads/$SKILLS_REF" 2>/dev/null \
+    | awk 'NR==1{print $1}'
+}
 
-  mkdir -p "$dir"
+# Install both skill bundles from a single tarball of yschimke/skills.
+# Skill content lives in a separate repo from the CLI, so we fetch once and
+# extract each `skills/<name>/` subtree into its target dir. Marker files
+# record the upstream SHA; re-runs at the same SHA are no-ops. Stale files
+# from previous installs are removed only for top-level entries the new
+# bundle carries, so `cli/` and `bin/` (added later) are left alone.
+install_skills_bundle() {
+  local sha=""
+  sha="$(resolve_skills_sha || true)"
 
-  if [[ "$(cat "$marker" 2>/dev/null || true)" == "$VERSION" ]]; then
-    log "skill bundle $name@$VERSION already extracted — skipping download"
+  local cp_marker="$SKILL_DIR/.skill-version"
+  local cpr_marker="$REVIEW_SKILL_DIR/.skill-version"
+  if [[ -n "$sha" \
+        && "$(cat "$cp_marker" 2>/dev/null || true)" == "$sha" \
+        && "$(cat "$cpr_marker" 2>/dev/null || true)" == "$sha" ]]; then
+    log "skill bundles already at $SKILLS_REPO@${sha:0:7} — skipping download"
     return 0
   fi
+
+  local url="https://codeload.github.com/$SKILLS_REPO/tar.gz/$SKILLS_REF"
+  local tmpfile="$TMP/skills.tar.gz"
+  local extract="$TMP/skills-extract"
+  log "downloading skill bundles from $SKILLS_REPO@$SKILLS_REF"
   if ! curl -fL --progress-bar -o "$tmpfile" "$url" 2>/dev/null; then
-    log "warning: $asset not found on the release; skipping"
+    log "warning: could not download $url — skipping skill bundles"
     return 1
   fi
-  log "refreshing skill bundle $name in $dir"
-  while IFS= read -r entry; do
-    [[ -n "$entry" && "$entry" != "." && "$entry" != ".." ]] || continue
-    rm -rf "$dir/$entry"
-  done < <(tar -tzf "$tmpfile" | sed -e 's|^\./||' -e 's|/.*||' | awk 'NF' | sort -u)
-  tar -xzf "$tmpfile" -C "$dir"
-  printf '%s\n' "$VERSION" > "$marker"
+  rm -rf "$extract"
+  mkdir -p "$extract"
+  tar -xzf "$tmpfile" -C "$extract"
+  # The archive root looks like `skills-<ref>/` (github's tarball wrapper).
+  local root
+  root="$(find "$extract" -mindepth 1 -maxdepth 1 -type d | head -1)"
+  [[ -d "$root" ]] || { log "warning: skills tarball was empty"; return 1; }
+
+  _extract_one_skill() {
+    local name="$1" dir="$2"
+    local src="$root/skills/$name"
+    if [[ ! -d "$src" ]]; then
+      log "warning: skill '$name' not found in $SKILLS_REPO@$SKILLS_REF; skipping"
+      return 1
+    fi
+    mkdir -p "$dir"
+    log "refreshing skill bundle $name in $dir"
+    local entry
+    while IFS= read -r entry; do
+      [[ -n "$entry" && "$entry" != "." && "$entry" != ".." ]] || continue
+      rm -rf "$dir/$entry"
+    done < <(find "$src" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort -u)
+    cp -R "$src/." "$dir/"
+    printf '%s\n' "${sha:-unknown}" > "$dir/.skill-version"
+  }
+
+  _extract_one_skill "compose-preview" "$SKILL_DIR" || true
+  _extract_one_skill "compose-preview-review" "$REVIEW_SKILL_DIR" || true
 }
 
 # ---- Same-version short-circuit ------------------------------------------
-# Refreshes any symlinks the caller might have blown away and repairs a
-# missing sibling skill bundle (cheap, install_skill_bundle is itself a
-# no-op when the per-bundle marker matches), but never re-downloads the CLI
-# tarball or the main skill.
+# Refreshes any symlinks the caller might have blown away and refreshes the
+# skill bundles from upstream (cheap — install_skills_bundle is a no-op when
+# the upstream SHA matches), but never re-downloads the CLI tarball.
 
 if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
-  log "compose-preview $VERSION already installed"
-  install_skill_bundle "compose-preview-review" "$REVIEW_SKILL_DIR" || true
+  log "compose-preview CLI $VERSION already installed"
+  install_skills_bundle || true
   mkdir -p "$SKILL_DIR/bin" "$BIN_DIR"
   ln -sfn "../cli/compose-preview-${VERSION}/bin/compose-preview" "$SKILL_LAUNCHER"
   ln -sfn "$LAUNCHER" "$BIN_DIR/compose-preview"
@@ -627,13 +667,11 @@ if [[ "$INSTALLED_VERSION" == "$VERSION" && -x "$LAUNCHER" ]]; then
   exit 0
 fi
 
-# ---- Skill tarballs ------------------------------------------------------
-# compose-preview is the primary skill (also hosts the CLI launcher).
-# compose-preview-review is the sibling skill for PR-review workflows.
+# ---- Skill bundles --------------------------------------------------------
+# Skill markdown lives in yschimke/skills (separate from the CLI). One fetch
+# covers both compose-preview and compose-preview-review.
 
-install_skill_bundle "compose-preview" "$SKILL_DIR" \
-  || log "         (CLI still installs; release predates skill packaging)"
-install_skill_bundle "compose-preview-review" "$REVIEW_SKILL_DIR" || true
+install_skills_bundle || true
 
 # ---- CLI tarball ---------------------------------------------------------
 
@@ -679,6 +717,9 @@ else
 fi
 
 [[ -x "$LAUNCHER" ]] || die "launcher not found after extract: $LAUNCHER"
+
+mkdir -p "$SKILL_DIR"
+printf '%s\n' "$VERSION" > "$CLI_VERSION_FILE"
 
 # ---- Wire up the in-bundle launcher --------------------------------------
 

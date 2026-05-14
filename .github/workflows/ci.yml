@@ -139,8 +139,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+      - name: Fetch agent audit script from yschimke/skills
+        # The script lives in the sibling skills repo since it's part of the
+        # compose-preview-review skill bundle; fetch the pinned ref so CI
+        # exercises the same harness the skill ships.
+        run: |
+          curl -fsSL -o /tmp/run-agent-audit-samples.py \
+            "https://raw.githubusercontent.com/yschimke/skills/main/skills/compose-preview-review/scripts/run-agent-audit-samples.py"
       - name: Run agent audit sample scripts
-        run: python3 skills/compose-preview-review/scripts/run-agent-audit-samples.py
+        run: python3 /tmp/run-agent-audit-samples.py
       - name: Upload agent audit outputs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

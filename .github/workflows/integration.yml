@@ -5,8 +5,8 @@ name: Integration
 # the plugin discovers and renders at least one preview without touching the
 # consumer's source tree.
 #
-# Wiring is the "Zero-Code Integration" path from skills/compose-preview/SKILL.md
-# and README.md: .github/ci/apply-compose-ai.init.gradle.kts is dropped into
+# Wiring is the "Zero-Code Integration" path documented in the compose-preview
+# skill (yschimke/skills): .github/ci/apply-compose-ai.init.gradle.kts is dropped into
 # Gradle's init.d, adds the plugin to every project's buildscript classpath
 # from mavenLocal, and applies it in `afterEvaluate` to every module with a
 # com.android.application / com.android.library / org.jetbrains.compose plugin.
@@ -26,7 +26,6 @@ on:
   pull_request:
     branches: [main]
     paths-ignore:
-      - "skills/**"
       - ".github/workflows/ci.yml"
       - ".github/workflows/integration.yml"
       - ".github/workflows/preview-comment.yml"

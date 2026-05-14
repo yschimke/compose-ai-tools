@@ -1,8 +1,8 @@
 // Gradle init script for integration tests.
 //
-// Drives the "Zero-Code Integration" path documented in
-// skills/compose-preview/SKILL.md and README.md, with two CI-specific
-// adjustments:
+// Drives the "Zero-Code Integration" path documented in the compose-preview
+// skill (https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md)
+// and README.md, with two CI-specific adjustments:
 //
 //   1. mavenLocal() is added at the settings level (pluginManagement +
 //      dependencyResolutionManagement) and at every project's buildscript

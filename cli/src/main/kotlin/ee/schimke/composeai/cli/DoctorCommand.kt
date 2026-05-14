@@ -291,7 +291,8 @@ class DoctorCommand(args: List<String>) {
               listOf(
                 "curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash"
               ),
-            docs = "https://github.com/$REPO/blob/main/skills/compose-preview/design/AGENT_CLOUD.md",
+            docs =
+              "https://github.com/yschimke/skills/blob/main/skills/compose-preview/design/AGENT_CLOUD.md",
           ),
       )
     )

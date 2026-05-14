@@ -1,8 +1,8 @@
 name: Release
 
-# Builds and publishes the CLI, MCP server, VS Code extension, skills, and
+# Builds and publishes the CLI, MCP server, VS Code extension, and
 # Gradle plugin + renderer-android for a given tag. Uploads the CLI / MCP /
-# VSIX / skill assets onto the GitHub Release (creating it if it doesn't
+# VSIX assets onto the GitHub Release (creating it if it doesn't
 # exist yet). Maven coordinates ship to Maven Central only — we do not
 # mirror to GitHub Packages, since Central is the supported consumer path.
 #
@@ -52,13 +52,14 @@ env:
 
 jobs:
   # Run gradle publish AFTER the other builds succeed so we don't orphan a
-  # published Maven Central artifact if the VSIX, CLI, MCP, or skill build
-  # fails — Central refuses to overwrite an already-published release
-  # version, so a half-released version can't be quietly rebuilt. Gating
-  # on `build-skills` here also serves as the coordination point for the
-  # `release` job: `release` only `needs` this job, so adding a builder
-  # here transitively guarantees its artifacts are uploaded before
-  # `release` downloads them.
+  # published Maven Central artifact if the VSIX, CLI, or MCP build fails —
+  # Central refuses to overwrite an already-published release version, so
+  # a half-released version can't be quietly rebuilt. Gating on the other
+  # build jobs also serves as the coordination point for the `release`
+  # job: `release` only `needs` this job, so adding a builder here
+  # transitively guarantees its artifacts are uploaded before `release`
+  # downloads them. (Skill bundles live in yschimke/skills and ship from
+  # that repo — they're no longer packaged here.)
   # `renderer-android` is published alongside the plugin so external consumers
   # that apply the plugin via Maven Central also get the Robolectric-based
   # Android renderer AAR — the plugin resolves it via matching version.
@@ -70,7 +71,7 @@ jobs:
   # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
   # captureToImage fallback if Roborazzi's API ever does break binary compat.
   publish-gradle-plugin:
-    needs: [build-applications, build-skills, build-vscode-extension]
+    needs: [build-applications, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -142,32 +143,6 @@ jobs:
           path: |
             mcp/build/distributions/compose-preview-mcp-*.zip
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
-          retention-days: 1
-
-  # Pack each `skills/<name>/` directory into its own `<name>-skill-<ver>.tar.gz`
-  # release asset so `scripts/install.sh` can drop it into ~/.claude/skills/<name>/.
-  # Iterates over every skill dir so adding a new skill needs no workflow edit.
-  build-skills:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ env.TAG_NAME }}
-          persist-credentials: false
-      - name: Pack skill bundles
-        run: |
-          ver="${TAG_NAME#v}"
-          mkdir -p dist
-          for skill_dir in skills/*/; do
-            name=$(basename "$skill_dir")
-            [[ -f "$skill_dir/SKILL.md" ]] || continue
-            tar -czf "dist/${name}-skill-${ver}.tar.gz" -C "$skill_dir" .
-            echo "packed ${name}-skill-${ver}.tar.gz"
-          done
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: skill-dist
-          path: dist/*-skill-*.tar.gz
           retention-days: 1
 
   build-vscode-extension:
@@ -272,7 +247,7 @@ jobs:
         # Each upstream upload-artifact step has a single common parent
         # directory in its `path:` list, so its LCA collapses to that dir and
         # the artifact contents are flat. After `merge-multiple: true`, every
-        # CLI / MCP / skill / VSIX file lands directly under `artifacts/`, so
+        # CLI / MCP / VSIX file lands directly under `artifacts/`, so
         # the shallow glob below is sufficient. If you ever expand the dist
         # set across two parents within a single artifact, switch back to a
         # `find artifacts -type f …` collector first.
