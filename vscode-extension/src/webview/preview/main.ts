@@ -812,6 +812,13 @@ export class PreviewApp extends LitElement {
                 !enabledKinds.has("i18n/translations") &&
                 data.translations.length === 0;
             dataTabs.setTabBody("text", body.wrapper);
+            // Paint the per-row overflow / truncation overlay on the
+            // focused card. Same wiring as A11y (#1087) + history-diff
+            // (#1086) — `cardBundleOverlay.paintBundleBoxes` keyed on
+            // the `text` bundle id. Chip dismissal clears the layer
+            // via the bundle-off branch in `reflectBundleState`.
+            const card = findCardElement(target);
+            if (card) paintBundleBoxes(card, "text", data.overlay);
         };
         const refreshExpanderFor = (id: BundleId): void => {
             const body = bundleBodies.get(id);
@@ -1276,7 +1283,11 @@ export class PreviewApp extends LitElement {
                 clearBundleBoxes(null, "history");
             }
             if (s.activeBundles.includes("errors")) refreshErrorsBundle();
-            if (s.activeBundles.includes("text")) refreshTextBundle();
+            if (s.activeBundles.includes("text")) {
+                refreshTextBundle();
+            } else {
+                clearBundleBoxes(null, "text");
+            }
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
