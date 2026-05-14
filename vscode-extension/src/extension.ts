@@ -1014,6 +1014,7 @@ export async function activate(
         undefined,
         () => autoEnableCheapEnabled(),
         () => collapseVariantsEnabled(),
+        () => inMinimalMode(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -3942,6 +3943,12 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             if (selectedModule) {
                 refresh(false);
             }
+            break;
+        case "requestRefresh":
+            // In-view refresh button (minimal mode). Mirrors the
+            // `composePreview.refresh` command path so the title-bar
+            // icon and the body-level button behave identically.
+            void refresh(true, currentScopeFile ?? undefined);
             break;
         case "refreshHeavy": {
             // Click on a faded heavy card opts it into full-tier renders for
