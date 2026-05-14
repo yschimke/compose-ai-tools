@@ -95,6 +95,10 @@ import {
     type FontRow,
     type TranslationRow,
 } from "./textBundlePresenter";
+import {
+    computeInspectionBundleData,
+    type InspectionKind,
+} from "./inspectionPresenters";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
 import {
@@ -1320,6 +1324,104 @@ export class PreviewApp extends LitElement {
             dataTabs.setTabBody("errors", host);
         };
 
+        // ---- Inspection bundle (compose/semantics, layout/inspector, uia/hierarchy) -
+        // Three stacked tree-tables (one per kind) under one expander,
+        // same shape as the Performance / Text bundles. The merged
+        // overlay paints node bounds via the shared cardBundleOverlay
+        // helper (same path as a11y / history-diff), keyed on
+        // `data-bundle="inspection"` so multiple kinds within one
+        // bundle still share one DOM layer.
+        interface InspectionBody {
+            wrapper: HTMLElement;
+            expander: BundleExpander;
+            host: HTMLElement;
+        }
+        let inspectionCachedBody: InspectionBody | null = null;
+        const inspectionBody = (): InspectionBody => {
+            if (inspectionCachedBody) return inspectionCachedBody;
+            const wrapper = document.createElement("div");
+            wrapper.className = "bundle-tab-body inspection-bundle-body";
+            wrapper.dataset.bundle = "inspection";
+            const expander = document.createElement(
+                "bundle-expander",
+            ) as BundleExpander;
+            expander.addEventListener("kind-toggled", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/BundleExpander").BundleKindToggledDetail
+                    >
+                ).detail;
+                bundleController.setKindEnabled(
+                    det.bundleId,
+                    det.kind,
+                    det.enabled,
+                );
+            });
+            const host = document.createElement("section");
+            host.className = "inspection-bundle-host";
+            wrapper.appendChild(expander);
+            wrapper.appendChild(host);
+            inspectionCachedBody = { wrapper, expander, host };
+            return inspectionCachedBody;
+        };
+        const refreshInspectionBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const enabledKindsRaw = new Set(
+                bundleController.state().enabledKinds("inspection"),
+            );
+            const enabledKinds = new Set<InspectionKind>();
+            for (const k of [
+                "compose/semantics",
+                "layout/inspector",
+                "uia/hierarchy",
+            ] as const) {
+                if (enabledKindsRaw.has(k)) enabledKinds.add(k);
+            }
+            const data = computeInspectionBundleData(
+                (kind) => byKind?.get(kind),
+                enabledKinds,
+            );
+            const body = inspectionBody();
+            const bundleDescriptor = getBundle("inspection");
+            if (bundleDescriptor) {
+                body.expander.setState({
+                    bundleId: "inspection",
+                    kinds: bundleDescriptor.kinds,
+                    enabledKinds: bundleController
+                        .state()
+                        .enabledKinds("inspection"),
+                });
+            }
+            // Repaint sections — the tree-table elements are throwaway
+            // per refresh (rebuilt by `buildInspectionTreeTable`), so we
+            // clear and re-append rather than diff in place. Cheap
+            // enough for typical inspection trees (≤ few hundred nodes).
+            body.host.replaceChildren();
+            for (const section of data.sections) {
+                const wrap = document.createElement("section");
+                wrap.className = "inspection-bundle-section";
+                wrap.dataset.kind = section.kind;
+                wrap.appendChild(section.data.body);
+                body.host.appendChild(wrap);
+            }
+            dataTabs.setTabBody("inspection", body.wrapper);
+            // Paint the merged + de-duped overlay. In focus mode only
+            // the focused card paints; in grid mode every visible card
+            // paints with its own per-card data via the grid-aware
+            // helper from #1096.
+            paintOverlaysForBundle("inspection", (previewId) => {
+                if (previewId === target) return data.overlay;
+                const cardByKind = dataProductsByPreview.get(previewId);
+                if (!cardByKind) return [];
+                return computeInspectionBundleData(
+                    (kind) => cardByKind.get(kind),
+                    enabledKinds,
+                ).overlay;
+            });
+        };
+
         const reflectBundleState = (): void => {
             const s = bundleController.state();
             bundleChipBar.setState({
@@ -1360,6 +1462,15 @@ export class PreviewApp extends LitElement {
                 refreshTextBundle();
             } else {
                 clearBundleBoxes(null, "text");
+            }
+            if (s.activeBundles.includes("inspection")) {
+                refreshInspectionBundle();
+            } else {
+                // Tear down the per-card box-overlay layer the bundle
+                // painted into. Mirrors the history-diff teardown above
+                // so chip dismissal wipes every bundle-attached card
+                // surface.
+                clearBundleBoxes(null, "inspection");
             }
         };
         bundleController.onChange(() => reflectBundleState());
@@ -1800,6 +1911,18 @@ export class PreviewApp extends LitElement {
                     )
                 ) {
                     refreshTextBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("inspection") &&
+                    dataProducts.some(
+                        (dp) =>
+                            dp.kind === "compose/semantics" ||
+                            dp.kind === "layout/inspector" ||
+                            dp.kind === "uia/hierarchy",
+                    )
+                ) {
+                    refreshInspectionBundle();
                 }
             },
             focusOnCard,
