@@ -633,6 +633,21 @@ export type ExtensionToWebview =
           moduleId: string;
           dataProducts: DaemonDataProductCapability[];
           dataExtensions: DaemonDataExtensionDescriptor[];
+      }
+    /**
+     * Host's response to `loadFontPreview`: the requested font's bytes
+     * as a base64 `data:` URI, or `null` when the file couldn't be read
+     * (path outside the workspace root, missing, unsupported extension,
+     * > 5 MB cap). The webview routes the bytes into a panel-side cache
+     * keyed by `(previewId, fontRowId)` and injects a `@font-face` rule
+     * so the resolved-family preview cell paints in the real font
+     * rather than the panel's system fallback.
+     */
+    | {
+          command: "fontPreviewBytes";
+          previewId: string;
+          fontRowId: string;
+          dataUri: string | null;
       };
 
 /**
@@ -912,7 +927,28 @@ export type WebviewToExtension =
      * validates the URL is `http(s)` before opening to avoid being used
      * as a generic shell-out from the webview.
      */
-    | { command: "openExternal"; url: string };
+    | { command: "openExternal"; url: string }
+    /**
+     * Text/i18n bundle's fonts sub-table is asking the host to read a
+     * font file from disk so the resolved-family preview cell can paint
+     * in the real face via a base64 data-URI `@font-face`. The CSS
+     * `font-family: <resolvedFamily>` fallback only works for fonts the
+     * webview already has on its system stack; asset / downloaded
+     * fonts silently render in the default. The host responds with
+     * `fontPreviewBytes { previewId, fontRowId, dataUri | null }`.
+     *
+     * `sourceFile` must be an absolute path inside the workspace root;
+     * the host rejects path-traversal and anything outside the first
+     * workspace folder. Supported extensions: `.ttf`, `.otf`, `.woff`,
+     * `.woff2`. Reads larger than 5 MB or any I/O error resolve as
+     * `dataUri: null`.
+     */
+    | {
+          command: "loadFontPreview";
+          previewId: string;
+          fontRowId: string;
+          sourceFile: string;
+      };
 
 /**
  * Narrow shape the History panel reads off each sidecar JSON entry. The

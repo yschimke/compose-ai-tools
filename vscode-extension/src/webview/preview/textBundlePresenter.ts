@@ -326,6 +326,23 @@ export interface TextBundleFontColumnCallbacks {
     /** Webview-style external-link callback. Forwarded by main.ts so the
      *  host can post `openExternal` to the extension. */
     openExternal(url: string): void;
+    /**
+     * Webview-style font-preview hydration callback. Forwarded by
+     * main.ts so the host can post `loadFontPreview` to the extension.
+     * The cell's `data-font-row-id` attribute lets the response-side
+     * `fontPreviewBytes` handler find the right `<span>` to flip from
+     * the system-font fallback to the injected `@font-face` family.
+     * Optional for backwards compat with callers that pre-date the
+     * data-URI preview path; cell falls back to CSS-only behaviour.
+     */
+    loadFontPreview?(rowId: string, sourceFile: string): void;
+    /**
+     * Cache lookup keyed by row id. Returns the data-URI the host
+     * responded with on a previous render's `loadFontPreview` (or
+     * `null` for "we tried and the file couldn't be read" — distinct
+     * from `undefined` which means "we haven't asked yet").
+     */
+    fontPreviewDataUri?(rowId: string): string | null | undefined;
 }
 
 export function textBundleFontColumns(
@@ -340,13 +357,7 @@ export function textBundleFontColumns(
         {
             header: "Resolved",
             cellClass: "text-bundle-font-resolved",
-            render: (row) =>
-                html`<span
-                    class="text-bundle-font-preview"
-                    style="font-family: ${cssFontStack(row.resolvedFamily)}"
-                    title=${row.resolvedFamily}
-                    >${row.resolvedFamily}</span
-                >`,
+            render: (row) => resolvedFamilyPreviewCell(row, callbacks),
         },
         {
             header: "Weight",
@@ -407,6 +418,76 @@ function requestedFamilyCell(
         <i class="codicon codicon-link-external" aria-hidden="true"></i>
         <span>${row.requestedFamily}</span>
     </button>`;
+}
+
+/**
+ * CSS family prefix the webview injects via `@font-face` when the host
+ * has supplied a data-URI for a given row. Kept stable so the host-
+ * side cache, the cell renderer, and the unit test all agree on the
+ * synthetic family name without re-deriving it from row state.
+ */
+export function fontPreviewFamilyName(rowId: string): string {
+    return "preview-" + rowId;
+}
+
+/**
+ * Resolved-family preview cell. When the row's bytes have been hydrated
+ * by `loadFontPreview` (the cache lookup returns a non-null/undefined
+ * data URI), we render the cell in the injected `@font-face` family —
+ * which paints in the real face even when the webview doesn't already
+ * have it on its system stack. Otherwise we render in the CSS-only
+ * `font-family: <resolvedFamily>` stack (works for system fonts, the
+ * silent fallback for asset / google-downloaded fonts that prompted
+ * this whole path).
+ *
+ * The cell carries `data-font-row-id` so the bytes-arrival handler in
+ * `main.ts` can find the right `<span>` to swap once the host
+ * responds; we also kick a load on first paint when bytes haven't been
+ * requested yet.
+ */
+function resolvedFamilyPreviewCell(
+    row: FontRow,
+    callbacks: TextBundleFontColumnCallbacks,
+): TemplateResult {
+    const cached = callbacks.fontPreviewDataUri?.(row.id);
+    const fontFamily = cssFontStackForPreview(row.id, row.resolvedFamily, {
+        hasBytes: typeof cached === "string" && cached.length > 0,
+    });
+    // Kick a load on first paint of a row that has a source file but
+    // hasn't been requested yet. `cached === undefined` means "we've
+    // never asked"; `null` means "we asked and the host said no" —
+    // don't retry in either failure mode so a broken path doesn't busy
+    // the host. Producer-side `sourceFile` is the only signal we have
+    // for "this font lives on disk and is worth hydrating".
+    if (cached === undefined && row.sourceFile && callbacks.loadFontPreview) {
+        callbacks.loadFontPreview(row.id, row.sourceFile);
+    }
+    return html`<span
+        class="text-bundle-font-preview"
+        data-font-row-id=${row.id}
+        style="font-family: ${fontFamily}"
+        title=${row.resolvedFamily}
+        >${row.resolvedFamily}</span
+    >`;
+}
+
+/**
+ * CSS `font-family` stack for the resolved-family preview cell when
+ * the host has already supplied a data-URI for [rowId]. Prepends the
+ * synthetic `preview-<rowId>` family ahead of the resolved-family
+ * fallback so the `@font-face` rule wins; falls back to the CSS-only
+ * stack when `hasBytes` is false. Exposed so tests can pin the cache-
+ * lookup-vs-loading-state behaviour without going through the cell
+ * renderer.
+ */
+export function cssFontStackForPreview(
+    rowId: string,
+    resolved: string,
+    state: { hasBytes: boolean },
+): string {
+    const fallback = cssFontStack(resolved);
+    if (!state.hasBytes) return fallback;
+    return '"' + fontPreviewFamilyName(rowId) + '", ' + fallback;
 }
 
 /**
