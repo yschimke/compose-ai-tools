@@ -2720,3 +2720,45 @@ body {
     pointer-events: none;
     z-index: 2;
 }
+
+/* -- Minimal mode ----------------------------------------------------- */
+
+/* Data extensions are disabled in minimal mode — hide the chip strip and
+   the tab row outright so the grid view doesn't show controls that can't
+   do anything. The focus-mode `bundleChipBar.hidden` toggle still runs but
+   loses against this rule via `!important`. */
+preview-app[data-minimal-mode="true"] bundle-chip-bar,
+preview-app[data-minimal-mode="true"] data-tabs {
+    display: none !important;
+}
+
+/* In-view "Refresh previews" call to action — minimal mode disables
+   auto-render on save, so we surface the manual refresh in the panel body
+   rather than relying on the title-bar icon. */
+.minimal-refresh-bar {
+    display: flex;
+    justify-content: center;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--card-border);
+}
+.minimal-refresh-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    height: var(--control-height);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 2px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--vscode-font-size);
+}
+.minimal-refresh-button:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+.minimal-refresh-button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
