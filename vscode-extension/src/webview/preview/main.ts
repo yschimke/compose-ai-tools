@@ -190,8 +190,6 @@ export class PreviewApp extends LitElement {
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
-            <bundle-chip-bar hidden></bundle-chip-bar>
-            <data-tabs hidden></data-tabs>
             ${minimal
                 ? html`
                       <div
@@ -374,6 +372,8 @@ export class PreviewApp extends LitElement {
                 role="list"
                 aria-label="Preview cards"
             ></preview-grid>
+            <bundle-chip-bar hidden></bundle-chip-bar>
+            <data-tabs hidden></data-tabs>
             <div
                 id="focus-inspector"
                 class="focus-inspector"

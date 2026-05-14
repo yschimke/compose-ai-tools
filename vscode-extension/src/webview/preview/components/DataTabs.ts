@@ -1,7 +1,8 @@
-// `<data-tabs>` — tab row that appears below `<bundle-chip-bar>`.
-// Each active bundle gets a tab with a label and a close `×`
-// affordance; the `×` and the bundle chip's re-press are two redundant
-// ways to dismiss (design doc § "Chip ↔ tab ↔ overlay state machine").
+// `<data-tabs>` — active-bundle tab row that appears below
+// `<bundle-chip-bar>` (under the preview grid in focus mode). Each
+// active bundle gets a tab with a label and a close `×` affordance;
+// the `×` and the bundle chip's re-press are two redundant ways to
+// dismiss (design doc § "Chip ↔ tab ↔ overlay state machine").
 //
 // The active tab's body is provided by the host via `setTabBody(id, el)`
 // so each bundle can ship its own table/tree presenter without the
