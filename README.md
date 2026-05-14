@@ -26,8 +26,12 @@ Modules without any matching resources self-no-op, so this comes along for free 
   [`yschimke/skills`](https://github.com/yschimke/skills). Point any
   agent that can fetch a URL at them; each skill is a complete
   install-and-iterate playbook. Bootstrap a host machine (CLI + skills
-  in one shot) with
-  [`scripts/install.sh`](scripts/install.sh).
+  in one shot) with the installer in
+  [`yschimke/skills`](https://github.com/yschimke/skills/blob/main/scripts/install.sh):
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
+  ```
 - **VS Code extension** — published to the
   [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=yuri-schimke.compose-preview)
   and [Open VSX](https://open-vsx.org/extension/yuri-schimke/compose-preview)

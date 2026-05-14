@@ -26,8 +26,16 @@ internal val BUNDLE_VERSION: String by lazy {
   props.getProperty("version") ?: error("version property missing from cli-version.properties")
 }
 
-/** GitHub repo slug used to resolve releases and the `update` subcommand bootstrap. */
+/** GitHub repo slug used to resolve CLI releases (tarballs, action tags, issue links). */
 internal const val REPO = "yschimke/compose-ai-tools"
+
+/**
+ * GitHub repo slug hosting the bootstrap installer + skill bundles. Separate from [REPO] since
+ * `scripts/install.sh` was moved out of `compose-ai-tools` (which still hosts the CLI release
+ * tarballs) into a content-only sibling repo. The `update` subcommand and doctor's remediation
+ * snippets curl their `scripts/install.sh` URL from here.
+ */
+internal const val SKILLS_REPO = "yschimke/skills"
 
 /**
  * Compare two version strings componentwise (`major.minor.patch[-suffix]`), returning -1/0/1.

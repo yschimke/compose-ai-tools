@@ -66,7 +66,7 @@ Ctrl+Shift+X), search **Compose Preview**, click *Install*.
 Install on `$PATH` for shell or agent use via the bootstrap script:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/yschimke/compose-ai-tools/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/yschimke/skills/main/scripts/install.sh | bash
 ```
 
 ### Agent skill

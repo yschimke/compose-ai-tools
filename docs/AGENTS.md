@@ -29,7 +29,7 @@ Two audiences, two doc trees. Don't conflate them:
     - [`AGENT_PR.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/design/AGENT_PR.md) — authoring agent-opened PRs and reviewing PRs opened by other agents
     - [`CI_PREVIEWS.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview-review/design/CI_PREVIEWS.md) — maintaining a `compose-preview/main` branch with rendered PNGs and a `baselines.json` for diff-on-PR workflows
 
-The bootstrap installer in `scripts/install.sh` pulls both skill bundles from `yschimke/skills` (default `main`) and the CLI tarball from this repo's releases. When you change consumer-facing behaviour (a new flag, a network requirement, a setup-script step), update `yschimke/skills`, not this file. Cross-link from here when contributors need the same information for sandbox setup (e.g. the Android SDK bootstrap referenced from "Bringing up a fresh sandbox" below).
+The bootstrap installer's canonical home is now [`yschimke/skills/scripts/install.sh`](https://github.com/yschimke/skills/blob/main/scripts/install.sh); it pulls both skill bundles from `yschimke/skills` (default `main`) and the CLI tarball from this repo's releases. A thin curl-pipe stub remains at this repo's `scripts/install.sh` so old snippets keep working. When you change consumer-facing behaviour (a new flag, a network requirement, a setup-script step), edit `yschimke/skills` — both the SKILL.md and the installer live there. Cross-link from here when contributors need the same information for sandbox setup (e.g. the Android SDK bootstrap referenced from "Bringing up a fresh sandbox" below).
 
 ## Common commands
 

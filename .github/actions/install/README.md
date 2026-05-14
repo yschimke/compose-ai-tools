@@ -2,7 +2,7 @@
 
 Composite action that downloads a release of the `compose-preview` CLI
 and prepends its `bin/` to `$GITHUB_PATH`. Use this in consumer CI
-instead of curl-piping `scripts/install.sh` — it pins to a tagged
+instead of curl-piping the bootstrap installer from yschimke/skills — it pins to a tagged
 version of this repo, so consumer CI isn't exposed to changes on `main`.
 
 ## Basic usage

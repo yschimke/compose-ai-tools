@@ -51,10 +51,15 @@ Both fallbacks share the same concurrency group as the primary path, so they can
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
 4. Uploads the CLI, MCP, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
-Skill bundles (`compose-preview`, `compose-preview-review`) ship from a
+Skill bundles (`compose-preview`, `compose-preview-review`) and the
+canonical bootstrap installer (`scripts/install.sh`) ship from a
 separate content repo, [yschimke/skills](https://github.com/yschimke/skills),
-and are not packaged here. `scripts/install.sh` fetches them from that
-repo at install time alongside the CLI tarball.
+and are not packaged here. The installer fetches the skill bundles
+from yschimke/skills and the CLI tarball from this repo's releases.
+The `scripts/install.sh` left in this repo is a thin curl-pipe stub
+that forwards to the canonical script — kept so historical
+`raw.githubusercontent.com/yschimke/compose-ai-tools/.../scripts/install.sh`
+URLs keep resolving.
 
 The `daemon-*` artifacts are **pre-1.0**; their public API is not yet stable. Expect breakage across minor versions until the surface settles. See [docs/daemon/DESIGN.md § 17](daemon/DESIGN.md) for the architectural decisions and § 19 for the captureToImage fallback path.
 

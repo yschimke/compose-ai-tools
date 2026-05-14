@@ -11,7 +11,7 @@ description: >
   PRs that change the CLI/plugin schema don't break against a stale
   released CLI. External consumers should use this action.
 
-  Scope cuts vs. scripts/install.sh: no skill bundle, no JDK install,
+  Scope cuts vs. the yschimke/skills install.sh: no skill bundle, no JDK install,
   no Android SDK. CI consumers compose actions/setup-java and
   android-actions/setup-android themselves.
 
@@ -86,7 +86,7 @@ runs:
         # Best-effort sha256 verification via the releases API. The
         # asset's `digest` field is "sha256:<hex>". On failure (network,
         # rate limit, missing digest) we warn and continue — same
-        # posture as scripts/install.sh, since the curl above already
+        # posture as the canonical installer (yschimke/skills), since the curl above already
         # rode HTTPS to github.com.
         api="https://api.github.com/repos/${repo}/releases/tags/v${VER}"
         if meta=$(curl -fsSL \
@@ -94,7 +94,7 @@ runs:
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H 'X-GitHub-Api-Version: 2022-11-28' \
             "$api" 2>/dev/null); then
-          # awk-parse to mirror scripts/install.sh:357-366 (no jq on
+          # awk-parse to mirror yschimke/skills' scripts/install.sh (no jq on
           # macos-latest by default; avoids inline-Python heredoc
           # gymnastics inside command substitution).
           want=$(printf '%s' "$meta" | awk -v asset="$asset" '
