@@ -736,6 +736,15 @@ export type WebviewToExtension =
      */
     | { command: "refreshHeavy"; previewId: string }
     /**
+     * Minimal-mode user clicked the in-view "Refresh previews" button.
+     * Extension responds with the same code path as
+     * `composePreview.refresh` — re-run discovery + render against the
+     * current scope file. Separate command from `refreshHeavy` so the
+     * extension can distinguish whole-panel manual refresh from a single
+     * faded-card click.
+     */
+    | { command: "requestRefresh" }
+    /**
      * Webview reports current geometric visibility of preview cards plus
      * cards it predicts will scroll into view next based on scroll velocity
      * and direction. Consumed by the daemon scheduler — see

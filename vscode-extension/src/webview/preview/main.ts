@@ -185,12 +185,32 @@ export class PreviewApp extends LitElement {
     @query("#focus-position") private _focusPosition!: HTMLElement;
 
     protected render(): TemplateResult {
+        const minimal = this.dataset.minimalMode === "true";
         return html`
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
             <bundle-chip-bar hidden></bundle-chip-bar>
             <data-tabs></data-tabs>
+            ${minimal
+                ? html`
+                      <div class="minimal-refresh-bar">
+                          <button
+                              type="button"
+                              id="btn-minimal-refresh"
+                              class="minimal-refresh-button"
+                              title="Re-run renderAllPreviews"
+                              aria-label="Refresh previews"
+                          >
+                              <i
+                                  class="codicon codicon-refresh"
+                                  aria-hidden="true"
+                              ></i>
+                              <span>Refresh previews</span>
+                          </button>
+                      </div>
+                  `
+                : ""}
 
             <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
@@ -340,7 +360,22 @@ export class PreviewApp extends LitElement {
         // explicit `false` opts out.
         const initialCollapseVariants =
             this.dataset.collapseVariants !== "false";
+        const minimalMode = this.dataset.minimalMode === "true";
         const vscode = getVsCodeApi<PersistedState>();
+        if (minimalMode) {
+            // Minimal mode hides the extension chrome (bundle chip bar +
+            // data tabs) since data extensions are disabled — see CSS rule.
+            // Wire the in-view "Refresh previews" button to post a refresh
+            // request so the user doesn't have to hunt for the title-bar
+            // icon. The button only exists in minimal mode (rendered above
+            // in `render()`); the existing title-bar refresh command stays
+            // available too.
+            this.querySelector<HTMLButtonElement>(
+                "#btn-minimal-refresh",
+            )?.addEventListener("click", () => {
+                vscode.postMessage({ command: "requestRefresh" });
+            });
+        }
         const state: PersistedState = vscode.getState() ?? { filters: {} };
         // `earlyFeaturesEnabled` lives in `previewStore` so future
         // components can subscribe to it without going through this
