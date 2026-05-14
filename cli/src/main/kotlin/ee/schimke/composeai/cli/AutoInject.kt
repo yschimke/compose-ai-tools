@@ -15,8 +15,12 @@ import java.security.MessageDigest
  * already applies the plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op.
  *
  * Opt-out:
- * - `--no-auto-inject` on any CLI invocation, or
- * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment.
+ * - `--no-auto-inject` on any CLI invocation,
+ * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment, or
+ * - the project root's `settings.gradle[.kts]` already includes the plugin's source build via
+ *   `includeBuild("gradle-plugin")` — i.e. this CLI is being driven against the compose-ai-tools
+ *   repo's own samples (or a fork doing the same). Adding a Maven-resolved classpath alongside an
+ *   included build would conflict.
  */
 const val INIT_SCRIPT_FILENAME = "apply-compose-ai-preview.init.gradle.kts"
 
@@ -108,7 +112,9 @@ internal fun defaultInitScriptStorageDir(version: String): File {
  *
  * Opt-out (any one of these disables auto-inject):
  * - `--no-auto-inject` in [args],
- * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment.
+ * - `COMPOSE_PREVIEW_NO_AUTO_INJECT=1` in the environment,
+ * - [projectRoot]'s `settings.gradle[.kts]` declares `includeBuild("gradle-plugin")` (the
+ *   compose-ai-tools dev-loop layout — running the CLI against its own samples).
  *
  * Failures (storage dir not writable, disk full) are swallowed with a stderr note and downgrade to
  * "no auto-inject" — the CLI continues with whatever the user has manually configured.
@@ -118,10 +124,12 @@ internal fun autoInjectInitScriptArgs(
   pluginVersion: String = BUNDLE_VERSION,
   storageDir: File = defaultInitScriptStorageDir(pluginVersion),
   env: (String) -> String? = System::getenv,
+  projectRoot: File? = null,
   stderr: (String) -> Unit = System.err::println,
 ): List<String> {
   if ("--no-auto-inject" in args) return emptyList()
   if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return emptyList()
+  if (projectRoot != null && hasIncludedPluginBuild(projectRoot)) return emptyList()
   return try {
     val path = materializeInitScript(storageDir, pluginVersion)
     listOf("--init-script", path.absolutePath)
@@ -131,4 +139,20 @@ internal fun autoInjectInitScriptArgs(
     )
     emptyList()
   }
+}
+
+/**
+ * True when [projectRoot]'s settings file declares `includeBuild("gradle-plugin")` (Kotlin or
+ * Groovy DSL, single or double quotes, with or without surrounding whitespace). Used to short-
+ * circuit auto-inject in the compose-ai-tools repo itself — the agent-audit-samples CI job and any
+ * local `./samples/...` development loop drive the CLI against this same root, and stacking a
+ * Maven-resolved classpath dep on top of the included build conflicts with it.
+ *
+ * Visible for tests.
+ */
+internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
+  val candidates =
+    listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
+  val pattern = Regex("""includeBuild\s*\(\s*["']gradle-plugin["']\s*\)""")
+  return candidates.any { it.isFile && pattern.containsMatchIn(it.readText()) }
 }

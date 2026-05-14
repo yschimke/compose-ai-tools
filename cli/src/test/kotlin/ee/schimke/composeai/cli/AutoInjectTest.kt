@@ -176,6 +176,115 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `autoInjectInitScriptArgs skips when project root includeBuilds gradle-plugin (Kotlin DSL, double quotes)`() {
+    val storage = tempDir()
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText(
+        """
+        rootProject.name = "demo"
+        includeBuild("gradle-plugin")
+        include(":app")
+        """
+          .trimIndent()
+      )
+    val out =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0.0",
+        storageDir = storage,
+        env = { null },
+        projectRoot = projectRoot,
+      )
+    assertTrue(
+      out.isEmpty(),
+      "expected no --init-script when the plugin is supplied via includeBuild; got $out",
+    )
+    assertFalse(File(storage, INIT_SCRIPT_FILENAME).exists())
+  }
+
+  @Test
+  fun `autoInjectInitScriptArgs skips when project root includeBuilds gradle-plugin (Groovy DSL, single quotes)`() {
+    val storage = tempDir()
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle").writeText("includeBuild 'gradle-plugin'\n")
+    // settings.gradle (Groovy) uses no parens for single-arg method calls — fall through to the
+    // negative case; auto-inject stays on. This documents the heuristic's known scope: parens are
+    // mandatory in our regex. Bare-call Groovy users hit the env-var or flag opt-outs instead.
+    val out =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0.0",
+        storageDir = storage,
+        env = { null },
+        projectRoot = projectRoot,
+      )
+    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+
+    // Same root with parens — should skip.
+    File(projectRoot, "settings.gradle").writeText("includeBuild('gradle-plugin')\n")
+    val out2 =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0.0",
+        storageDir = tempDir(),
+        env = { null },
+        projectRoot = projectRoot,
+      )
+    assertTrue(out2.isEmpty())
+  }
+
+  @Test
+  fun `autoInjectInitScriptArgs stays on when project root includeBuilds something else`() {
+    val storage = tempDir()
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText(
+        """
+        rootProject.name = "demo"
+        pluginManagement { includeBuild("build-logic") }
+        include(":app")
+        """
+          .trimIndent()
+      )
+    val out =
+      autoInjectInitScriptArgs(
+        args = emptyList(),
+        pluginVersion = "1.0.0",
+        storageDir = storage,
+        env = { null },
+        projectRoot = projectRoot,
+      )
+    assertEquals(listOf("--init-script", File(storage, INIT_SCRIPT_FILENAME).absolutePath), out)
+  }
+
+  @Test
+  fun `hasIncludedPluginBuild matches the compose-ai-tools repo's own settings file shape`() {
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+          includeBuild("build-logic")
+        }
+        rootProject.name = "compose-ai-tools"
+        includeBuild("gradle-plugin")
+        include(":cli")
+        include(":samples:android")
+        """
+          .trimIndent()
+      )
+    assertTrue(hasIncludedPluginBuild(projectRoot))
+  }
+
+  @Test
+  fun `hasIncludedPluginBuild returns false when no settings file mentions gradle-plugin`() {
+    val projectRoot = tempDir()
+    File(projectRoot, "settings.gradle.kts").writeText("rootProject.name = \"demo\"\n")
+    assertFalse(hasIncludedPluginBuild(projectRoot))
+  }
+
+  @Test
   fun `autoInjectInitScriptArgs swallows materialise failures and downgrades to no-inject`() {
     // Point storage at a path that can't be created: a regular file masquerading as a parent dir.
     val parent = tempDir()

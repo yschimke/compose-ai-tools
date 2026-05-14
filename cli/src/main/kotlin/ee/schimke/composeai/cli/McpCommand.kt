@@ -128,7 +128,7 @@ internal class McpCommand(args: List<String>) {
       GradleConnection(
         projectDir,
         verbose = "--verbose" in args || "-v" in args,
-        extraArguments = autoInjectInitScriptArgs(args),
+        extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
       )
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
@@ -348,7 +348,11 @@ internal class McpCommand(args: List<String>) {
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
     val connection =
-      GradleConnection(projectDir, verbose = false, extraArguments = autoInjectInitScriptArgs(args))
+      GradleConnection(
+        projectDir,
+        verbose = false,
+        extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
+      )
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
       val modules =

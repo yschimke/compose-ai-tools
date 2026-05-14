@@ -342,7 +342,7 @@ abstract class Command(protected val args: List<String>) {
           System.err.println("Cannot find Gradle project root (no gradlew found)")
           exitProcess(1)
         }
-    val injectArgs = autoInjectInitScriptArgs(args)
+    val injectArgs = autoInjectInitScriptArgs(args, projectRoot = root)
     val connection =
       withGradleStdout(silenceStdout) {
         GradleConnection(root, verbose, progress, extraArguments = injectArgs)

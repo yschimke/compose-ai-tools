@@ -311,7 +311,7 @@ class DoctorCommand(private val args: List<String>) {
         GradleConnection(
             projectDir,
             verbose = verbose,
-            extraArguments = autoInjectInitScriptArgs(args),
+            extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
           )
           .use { gc ->
             // Daemon-JVM + Gradle-version snapshot. Runs first so other
