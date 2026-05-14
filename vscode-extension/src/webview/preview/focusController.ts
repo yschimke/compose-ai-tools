@@ -49,6 +49,10 @@ export interface FocusControllerConfig {
      *  focus layout; the bundles only act on the focused preview, so the
      *  strip would mislead outside focus mode. */
     bundleChipBar: HTMLElement;
+    /** `<data-tabs>` — active-bundle tab row. Same focus-only visibility
+     *  rule as `bundleChipBar`: bundle data is per-focused-preview, so
+     *  the row would have nothing meaningful to show in grid/flow/column. */
+    dataTabs: HTMLElement;
     /** `<div id="focus-position">` — the "N / M" position indicator. */
     focusPosition: HTMLElement;
     btnPrev: HTMLButtonElement;
@@ -189,6 +193,7 @@ export class FocusController {
         this.config.grid.setLayoutMode(mode);
         this.config.focusControls.hidden = mode !== "focus";
         this.config.bundleChipBar.hidden = mode !== "focus";
+        this.config.dataTabs.hidden = mode !== "focus";
 
         if (mode === "focus") {
             const visible = this.getVisibleCards();

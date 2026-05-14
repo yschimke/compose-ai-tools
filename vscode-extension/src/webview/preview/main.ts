@@ -191,7 +191,7 @@ export class PreviewApp extends LitElement {
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
             <bundle-chip-bar hidden></bundle-chip-bar>
-            <data-tabs></data-tabs>
+            <data-tabs hidden></data-tabs>
             ${minimal
                 ? html`
                       <div
@@ -1605,13 +1605,6 @@ export class PreviewApp extends LitElement {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
             bundleController.toggleBundle(detail.id);
         });
-        // The `…More` tab's rows fire the same `bundle-toggled` event
-        // as the chip bar so the controller activates the bundle via
-        // the existing path — no new wiring needed.
-        dataTabs.addEventListener("bundle-toggled", (evt) => {
-            const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
-            bundleController.toggleBundle(detail.id);
-        });
         dataTabs.addEventListener("tab-closed", (evt) => {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
             bundleController.closeTab(detail.id);
@@ -1673,6 +1666,7 @@ export class PreviewApp extends LitElement {
             filterToolbar,
             focusControls,
             bundleChipBar,
+            dataTabs,
             focusPosition,
             btnPrev,
             btnNext,
