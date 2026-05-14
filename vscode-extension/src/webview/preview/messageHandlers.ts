@@ -278,6 +278,7 @@ export function handleExtensionMessage(
         case "clearCompileErrors":
         case "minimalSavePending":
         case "minimalSavePendingClear":
+        case "setMinimalMode":
             // Handled directly by Lit components (`<message-banner>`,
             // `<progress-bar>`, `<compile-errors-banner>`,
             // `<preview-app>`'s minimal-mode banner) — they listen on

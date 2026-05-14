@@ -55,11 +55,11 @@ describe("resolveModeFromSettings", () => {
         it("picks minimal mode when the plugin is not applied, even if an Android / Compose host is present", () => {
             // Auto-inject onto a host plugin doesn't preemptively flip to full
             // mode: the plugin is only applied once Gradle runs the bundled
-            // init script and writes `applied.json` markers. Spawning the
-            // daemon before that would fail (no `daemon-launch.json` yet) —
-            // the post-Gradle-sync re-evaluation handles the upgrade via a
-            // one-click reload notification once markers prove the plugin is
-            // applied.
+            // init script and writes `applied.json` markers. The
+            // post-Gradle-sync re-evaluation in `extension.ts` handles the
+            // upgrade by re-wiring the daemon backend in place once markers
+            // prove the plugin is applied — no window reload, and the panel
+            // webview drops its minimal banner via `setMinimalMode`.
             const result = resolveModeFromSettings(
                 { mode: "auto" },
                 gradleStub({}),
