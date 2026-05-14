@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.10.11](https://github.com/yschimke/compose-ai-tools/compare/v0.10.10...v0.10.11) (2026-05-14)
+
+
+### Features
+
+* add minimal mode for gradle-only preview rendering ([#1073](https://github.com/yschimke/compose-ai-tools/issues/1073)) ([e81e2c3](https://github.com/yschimke/compose-ai-tools/commit/e81e2c37f939a7120727d2ad6a931aa37371983a))
+* **cli:** declarative `compose-preview profile <path.json>` command ([#1085](https://github.com/yschimke/compose-ai-tools/issues/1085)) ([d02acb7](https://github.com/yschimke/compose-ai-tools/commit/d02acb7b8a2dd24b0f9112c7b2e164fa9c1b48c5))
+* **cli:** doctor --daemon spawns each module's daemon to verify it starts ([#1072](https://github.com/yschimke/compose-ai-tools/issues/1072)) ([77833ee](https://github.com/yschimke/compose-ai-tools/commit/77833ee45b5610eb403781a361499909dac661b1))
+* make a11y (accessibility) opt-in instead of always-on ([#1074](https://github.com/yschimke/compose-ai-tools/issues/1074)) ([d10a75b](https://github.com/yschimke/compose-ai-tools/commit/d10a75b58f56353f62f6fa6fbcd0225d1ab87b97))
+* move skills + install.sh to yschimke/skills ([#1101](https://github.com/yschimke/compose-ai-tools/issues/1101)) ([e1f05bc](https://github.com/yschimke/compose-ai-tools/commit/e1f05bcf1a2ec89409a8b069b86aed0120d69fae))
+* **vscode-extension:** …More tab for disabled bundles ([#1095](https://github.com/yschimke/compose-ai-tools/issues/1095)) ([71f3b73](https://github.com/yschimke/compose-ai-tools/commit/71f3b739765d849f103fb5dfdfd7a6062f3f09d3))
+* **vscode-extension:** A11y bundle paints overlay via cardBundleOverlay ([#1087](https://github.com/yschimke/compose-ai-tools/issues/1087)) ([58e69f6](https://github.com/yschimke/compose-ai-tools/commit/58e69f628c7e8e7a6410fb602be6ddcc651bdbce))
+* **vscode-extension:** add 'Configure…' expander to bundle tab bodies ([#1069](https://github.com/yschimke/compose-ai-tools/issues/1069)) ([9d0bcec](https://github.com/yschimke/compose-ai-tools/commit/9d0bcec07300cdd35ca06f43f74930d041490f16))
+* **vscode-extension:** bundle 'Configure…' expander for per-kind overrides ([#1075](https://github.com/yschimke/compose-ai-tools/issues/1075)) ([f4fcc45](https://github.com/yschimke/compose-ai-tools/commit/f4fcc4524618955b0d37947663e801dd87a3a944))
+* **vscode-extension:** consume v2 dataExtensionReports manifest map ([#1091](https://github.com/yschimke/compose-ai-tools/issues/1091)) ([9f18cc7](https://github.com/yschimke/compose-ai-tools/commit/9f18cc77016cebd471b0623ca6c0f89a88ef1a06))
+* **vscode-extension:** data-URI font preview in Text bundle ([#1102](https://github.com/yschimke/compose-ai-tools/issues/1102)) ([ded6694](https://github.com/yschimke/compose-ai-tools/commit/ded6694e8597eadfa0362c29369b0542ebb8084a))
+* **vscode-extension:** Inspection bundle paints node bounds via cardBundleOverlay ([#1097](https://github.com/yschimke/compose-ai-tools/issues/1097)) ([946b658](https://github.com/yschimke/compose-ai-tools/commit/946b658f8d026aaf16f5f1e0ea1022dbd4e667fa))
+* **vscode-extension:** misc bundles — display, watch, history-diff, errors ([#1078](https://github.com/yschimke/compose-ai-tools/issues/1078)) ([cf98f1f](https://github.com/yschimke/compose-ai-tools/commit/cf98f1f9b755f7f9cd786a3a016c1d92cea31525))
+* **vscode-extension:** one-click Perfetto handoff — copy trace and open ui.perfetto.dev ([#1100](https://github.com/yschimke/compose-ai-tools/issues/1100)) ([6ecc38b](https://github.com/yschimke/compose-ai-tools/commit/6ecc38b4e18e59bae10888034dc20936e1e2d9ec))
+* **vscode-extension:** paint bundle overlays on every visible card in grid mode ([#1096](https://github.com/yschimke/compose-ai-tools/issues/1096)) ([ddaac1b](https://github.com/yschimke/compose-ai-tools/commit/ddaac1b51c3817ce556881fc8eb8b7a384e04f87))
+* **vscode-extension:** paint history-diff overlay on focused card ([#1086](https://github.com/yschimke/compose-ai-tools/issues/1086)) ([e644094](https://github.com/yschimke/compose-ai-tools/commit/e644094618bc9d7c4030d37c3ee18abe546c02bd))
+* **vscode-extension:** performance bundle — migrate recomposition + render/trace + perfetto ([#1079](https://github.com/yschimke/compose-ai-tools/issues/1079)) ([f80bba9](https://github.com/yschimke/compose-ai-tools/commit/f80bba98de4cd6ca804e5d18f2562dce13ca8e14))
+* **vscode-extension:** Text bundle paints overflow boxes via cardBundleOverlay ([#1093](https://github.com/yschimke/compose-ai-tools/issues/1093)) ([084f11e](https://github.com/yschimke/compose-ai-tools/commit/084f11ebea1ef85c41a418e72d4857fe674c1228))
+* **vscode-extension:** text/i18n bundle — fonts (google) + drawn text + translations ([#1081](https://github.com/yschimke/compose-ai-tools/issues/1081)) ([d92fd0b](https://github.com/yschimke/compose-ai-tools/commit/d92fd0b6d8ed2b7f9e84efd3435886ed524a4f81))
+* **vscode-extension:** theming bundle — compose/theme tokens + wallpaper derived scheme ([#1077](https://github.com/yschimke/compose-ai-tools/issues/1077)) ([e9bf9e6](https://github.com/yschimke/compose-ai-tools/commit/e9bf9e6188a602a13d6acb76e78c93eca8c5dc71))
+
+
+### Bug Fixes
+
+* revert FontUsedEntry.provider field to unbreak runtime classpath ([#1089](https://github.com/yschimke/compose-ai-tools/issues/1089)) ([08a8d39](https://github.com/yschimke/compose-ai-tools/commit/08a8d39ddce71d23a29592a41cb237380ef3c542))
+* **vscode-extension:** hide data-extensions chip bar outside focus mode ([#1090](https://github.com/yschimke/compose-ai-tools/issues/1090)) ([24939ad](https://github.com/yschimke/compose-ai-tools/commit/24939adc665dc32f41c6e04de872784fca625124))
+* **vscode-extension:** perf bundle review followups from [#1079](https://github.com/yschimke/compose-ai-tools/issues/1079) (Perfetto JSON + stale sections) ([#1080](https://github.com/yschimke/compose-ai-tools/issues/1080)) ([6b483ec](https://github.com/yschimke/compose-ai-tools/commit/6b483ec161d117caf6d3d95087e81d247ec49759))
+
 ## [0.10.10](https://github.com/yschimke/compose-ai-tools/compare/v0.10.9...v0.10.10) (2026-05-13)
 
 
