@@ -57,11 +57,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
   /**
    * Mirrors the same on/off bit forwarded to the Android renderer via `composeai.a11y.enabled`.
-   * When true, the manifest's `accessibilityReport` pointer is set to `"accessibility.json"` so the
-   * CLI / VS Code follow it; when false the pointer is `null`, signalling consumers to skip the
-   * rollup file even if a stale one is left over from a previous opted-in run. Defaults to false
-   * (a11y is opt-in). Plumbed only on the Android wiring path — desktop/CMP modules don't have an
-   * a11y producer to gate, so the property is left at its default there.
+   * When true, the manifest's `dataExtensionReports` map gains an `"a11y" -> "accessibility.json"`
+   * entry so the CLI / VS Code follow it; when false the entry is absent, signalling consumers to
+   * skip the rollup file even if a stale one is left over from a previous opted-in run. Defaults to
+   * false (a11y is opt-in). Plumbed only on the Android wiring path — desktop/CMP modules don't
+   * have an a11y producer to gate, so the property is left at its default there.
    */
   @get:Input abstract val accessibilityEnabled: Property<Boolean>
 
@@ -278,14 +278,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val extensionReports = buildMap {
       if (accessibilityEnabled.get()) put("a11y", "accessibility.json")
     }
-    @Suppress("DEPRECATION")
     val manifest =
       PreviewManifest(
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
         dataExtensionReports = extensionReports,
-        accessibilityReport = extensionReports["a11y"],
       )
 
     val outFile = outputFile.get().asFile

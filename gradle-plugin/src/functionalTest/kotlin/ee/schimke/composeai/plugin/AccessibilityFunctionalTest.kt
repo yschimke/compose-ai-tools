@@ -10,10 +10,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Functional coverage for the accessibility manifest pointer on the CMP / desktop path. A11y is
- * opt-in (off by default), so a stock `discoverPreviews` invocation is expected to write
- * `accessibilityReport = null`. Opting in via the Gradle property surfaces the
- * `"accessibility.json"` pointer the CLI / VS Code follow.
+ * Functional coverage for the per-extension-reports manifest pointer on the CMP / desktop path.
+ * A11y is opt-in (off by default), so a stock `discoverPreviews` invocation is expected to write an
+ * empty `dataExtensionReports` map. Opting in via the Gradle property surfaces an `"a11y" ->
+ * "accessibility.json"` entry the CLI / VS Code follow.
  *
  * The renderer-side half — `AccessibilityChecker.analyze` running under Robolectric and producing
  * sidecar artefacts — needs an Android + AGP + Robolectric synthetic project; covered by
@@ -109,34 +109,8 @@ class AccessibilityFunctionalTest {
     return json.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
   }
 
-  @Suppress("DEPRECATION")
   @Test
-  fun `manifest writes both v2 dataExtensionReports and the legacy alias when a11y is on`() {
-    // Regression: the wire format gained `dataExtensionReports: Map<String, String>` keyed by
-    // extension id in the strategy refactor. The plugin still writes the deprecated
-    // `accessibilityReport` field as a mirror so older CLI / VS Code consumers keep working;
-    // both should be populated when a11y is opted in, both null/empty when off.
-    val projectDir = createTestProject()
-
-    val result =
-      GradleRunner.create()
-        .withProjectDir(projectDir)
-        .withArguments(
-          "discoverPreviews",
-          "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
-        )
-        .withPluginClasspath()
-        .build()
-
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
-    val manifest = projectDir.readManifest()
-    assertThat(manifest.dataExtensionReports).containsExactly("a11y", "accessibility.json")
-    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
-  }
-
-  @Suppress("DEPRECATION")
-  @Test
-  fun `accessibilityReport pointer defaults to null when a11y is off`() {
+  fun `dataExtensionReports is empty when a11y is off`() {
     val projectDir = createTestProject()
 
     val result =
@@ -149,16 +123,13 @@ class AccessibilityFunctionalTest {
     assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
-    // Default: a11y is opt-in. The CLI / VS Code treat a null pointer / empty map as "feature
-    // off" and don't probe the filesystem for a stale `accessibility.json`. Both the v2 map and
-    // the v1 alias must be empty in the off state.
+    // Default: a11y is opt-in. The CLI / VS Code treat an empty map as "feature off" and don't
+    // probe the filesystem for a stale `accessibility.json`.
     assertThat(manifest.dataExtensionReports).isEmpty()
-    assertThat(manifest.accessibilityReport).isNull()
   }
 
-  @Suppress("DEPRECATION")
   @Test
-  fun `accessibilityReport pointer is populated when a11y is opted in via Gradle property`() {
+  fun `dataExtensionReports gains an a11y entry when opted in via Gradle property`() {
     val projectDir = createTestProject()
 
     val result =
@@ -177,12 +148,11 @@ class AccessibilityFunctionalTest {
     // The plugin pins the relative pointer to a fixed filename; the absolute path is resolved
     // against the manifest's parent dir at consumer-side (CLI / VS Code extension) so it tolerates
     // `./gradlew clean`.
-    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
+    assertThat(manifest.dataExtensionReports).containsExactly("a11y", "accessibility.json")
   }
 
-  @Suppress("DEPRECATION")
   @Test
-  fun `accessibilityReport pointer is populated when generic extension form opts in`() {
+  fun `dataExtensionReports gains an a11y entry when generic extension form opts in`() {
     // Regression test for the snapshot-timing footgun in `resolveA11yEnabled`: an earlier draft
     // captured `extensions.findByName("a11y")` eagerly at task-registration time and would have
     // pinned the typed defaults if the user opted in via the generic-container form
@@ -197,7 +167,6 @@ class AccessibilityFunctionalTest {
     File(projectDir, "build.gradle.kts")
       .writeText(
         """
-        @file:Suppress("DEPRECATION")
         plugins {
             kotlin("jvm") version "2.2.21"
             kotlin("plugin.compose") version "2.2.21"
@@ -235,10 +204,9 @@ class AccessibilityFunctionalTest {
     assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
-    assertThat(manifest.accessibilityReport).isEqualTo("accessibility.json")
+    assertThat(manifest.dataExtensionReports).containsExactly("a11y", "accessibility.json")
   }
 
-  @Suppress("DEPRECATION")
   @Test
   fun `a11y opt-in round-trips through the configuration cache`() {
     // The lazy-`Provider { project.extension.findByName(...) }` shape we briefly considered
@@ -252,7 +220,6 @@ class AccessibilityFunctionalTest {
     File(projectDir, "build.gradle.kts")
       .writeText(
         """
-        @file:Suppress("DEPRECATION")
         plugins {
             kotlin("jvm") version "2.2.21"
             kotlin("plugin.compose") version "2.2.21"
@@ -294,7 +261,8 @@ class AccessibilityFunctionalTest {
         .build()
     assertThat(first.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(first.output).contains("Configuration cache entry stored")
-    assertThat(projectDir.readManifest().accessibilityReport).isEqualTo("accessibility.json")
+    assertThat(projectDir.readManifest().dataExtensionReports)
+      .containsExactly("a11y", "accessibility.json")
 
     val second =
       GradleRunner.create()
@@ -304,6 +272,7 @@ class AccessibilityFunctionalTest {
         .build()
     assertThat(second.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(second.output).contains("Configuration cache entry reused")
-    assertThat(projectDir.readManifest().accessibilityReport).isEqualTo("accessibility.json")
+    assertThat(projectDir.readManifest().dataExtensionReports)
+      .containsExactly("a11y", "accessibility.json")
   }
 }

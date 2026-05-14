@@ -185,7 +185,10 @@ class PreviewIndexTest {
   @Test
   fun `loadFromFile ignores unknown plugin-side fields`() {
     // Mirrors the plugin's actual shape: nested `params` block, `captures` array,
-    // `accessibilityReport` pointer — all fields the daemon does NOT model.
+    // `dataExtensionReports` pointer, and the legacy `accessibilityReport` alias an older plugin
+    // might emit — all fields the daemon does NOT model. The legacy alias is here as a
+    // forward-compat regression guard: even after the plugin drops the field, a manifest
+    // produced by an older plugin must still parse cleanly when read by a newer daemon.
     val tmp = Files.createTempFile("previews-extras", ".json")
     Files.writeString(
       tmp,
@@ -193,6 +196,7 @@ class PreviewIndexTest {
       {
         "module": ":samples:android",
         "variant": "debug",
+        "dataExtensionReports": {"a11y": "accessibility.json"},
         "accessibilityReport": "accessibility.json",
         "previews": [
           {
