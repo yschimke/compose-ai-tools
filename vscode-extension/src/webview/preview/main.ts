@@ -11,7 +11,11 @@
 
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, query } from "lit/decorators.js";
-import type { PreviewInfo } from "../shared/types";
+import type {
+    AccessibilityFinding,
+    AccessibilityNode,
+    PreviewInfo,
+} from "../shared/types";
 import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
@@ -39,9 +43,11 @@ import { DataTable } from "./components/DataTable";
 import { BundleExpander } from "./components/BundleExpander";
 import {
     clearBundleBoxes,
-    findCardElement,
+    getVisiblePreviewIds,
     paintBundleBoxes,
+    paintBundleBoxesEverywhere,
 } from "./cardBundleOverlay";
+import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
@@ -559,6 +565,32 @@ export class PreviewApp extends LitElement {
             );
             return visible?.dataset.previewId ?? null;
         };
+        /**
+         * Paint [bundleId]'s overlay boxes onto either the focused
+         * card (focus mode) or every visible card (grid mode), using
+         * [computeOverlay] to derive that card's `OverlayBox[]` from
+         * its own data caches. Centralises the focused-vs-grid
+         * switch the design doc promises (see
+         * `docs/design/EXTENSION_DATA_EXPOSURE.md` § "Open question
+         * 1 — Multi-preview selection") so each bundle refresh
+         * function only has to supply the per-preview compute.
+         */
+        const paintOverlaysForBundle = (
+            bundleId: string,
+            computeOverlay: (previewId: string) => readonly OverlayBox[],
+        ): void => {
+            if (focusController?.inFocus?.()) {
+                const focused = focusController.focusedCard();
+                const previewId = focused?.dataset.previewId;
+                if (!focused || !previewId) return;
+                paintBundleBoxes(focused, bundleId, computeOverlay(previewId));
+                return;
+            }
+            const ids = getVisiblePreviewIds();
+            const perCard = new Map<string, readonly OverlayBox[]>();
+            for (const id of ids) perCard.set(id, computeOverlay(id));
+            paintBundleBoxesEverywhere(bundleId, perCard);
+        };
         // Per-bundle tab bodies. Each entry holds the wrapper element
         // we attach to `<data-tabs>` plus the `<bundle-expander>` /
         // `<data-table>` children we refresh in place. Lazy-built on
@@ -812,13 +844,25 @@ export class PreviewApp extends LitElement {
                 !enabledKinds.has("i18n/translations") &&
                 data.translations.length === 0;
             dataTabs.setTabBody("text", body.wrapper);
-            // Paint the per-row overflow / truncation overlay on the
-            // focused card. Same wiring as A11y (#1087) + history-diff
-            // (#1086) — `cardBundleOverlay.paintBundleBoxes` keyed on
-            // the `text` bundle id. Chip dismissal clears the layer
-            // via the bundle-off branch in `reflectBundleState`.
-            const card = findCardElement(target);
-            if (card) paintBundleBoxes(card, "text", data.overlay);
+            // Paint per-row overflow / truncation overlays. Focus
+            // mode paints only the focused card; grid mode paints
+            // every visible card from its own
+            // `text/strings`/`fonts/used`/`i18n/translations`
+            // payloads. Chip dismissal clears the layer via the
+            // bundle-off branch in `reflectBundleState`.
+            paintOverlaysForBundle("text", (previewId) => {
+                if (previewId === target) return data.overlay;
+                const cardByKind = dataProductsByPreview.get(previewId);
+                const cardStrings = cardByKind?.get("text/strings") ?? null;
+                const cardFonts = cardByKind?.get("fonts/used") ?? null;
+                const cardTranslations =
+                    cardByKind?.get("i18n/translations") ?? null;
+                return computeTextBundleData(
+                    cardStrings,
+                    cardFonts,
+                    cardTranslations,
+                ).overlay;
+            });
         };
         const refreshExpanderFor = (id: BundleId): void => {
             const body = bundleBodies.get(id);
@@ -843,19 +887,34 @@ export class PreviewApp extends LitElement {
             bundleBodies.set("theming", b);
             return b;
         };
+        // Per-card a11y source data shared by the focused panel
+        // render and the grid-mode overlay paint. Returns the
+        // nodes/findings shape `computeA11yBundleData` consumes so
+        // panel and overlay always agree on which boxes are visible.
+        const a11yDataForCard = (
+            previewId: string,
+        ): {
+            nodes: readonly AccessibilityNode[];
+            findings: readonly AccessibilityFinding[];
+        } => {
+            const store = previewStore.getState();
+            const preview = store.allPreviews.find((p) => p.id === previewId);
+            const nodes =
+                store.cardA11yNodes.get(previewId) ?? preview?.a11yNodes ?? [];
+            const findings =
+                store.cardA11yFindings.get(previewId) ??
+                preview?.a11yFindings ??
+                [];
+            return { nodes, findings };
+        };
         const refreshA11yBundle = (): void => {
             const target = currentBundleTarget();
             if (!target) return;
-            const store = previewStore.getState();
-            const nodes =
-                store.cardA11yNodes.get(target) ??
-                store.allPreviews.find((p) => p.id === target)?.a11yNodes ??
-                [];
-            const findings =
-                store.cardA11yFindings.get(target) ??
-                store.allPreviews.find((p) => p.id === target)?.a11yFindings ??
-                [];
-            const data = computeA11yBundleData(nodes, findings);
+            const targetSrc = a11yDataForCard(target);
+            const data = computeA11yBundleData(
+                targetSrc.nodes,
+                targetSrc.findings,
+            );
             const body = a11yBody();
             body.table.setRows(data.rows);
             body.table.summary = data.rows.length + " elements";
@@ -864,21 +923,25 @@ export class PreviewApp extends LitElement {
             );
             body.table.setJsonPayload(() => ({
                 previewId: target,
-                nodes,
-                findings,
+                nodes: targetSrc.nodes,
+                findings: targetSrc.findings,
             }));
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
-            // Paint the merged hierarchy + findings overlay on the
-            // focused card via the new bundle-overlay helper. Mirrors
-            // the history-diff wiring from PR #1086 — chip dismissal
-            // clears the layer in `reflectBundleState`'s else-branch
-            // below. Coexists with the legacy `applyHierarchyOverlay`
-            // path in `PreviewCard._repaintA11yOverlaysFromCache` for
-            // now; a follow-up will remove the legacy paint once the
-            // new path is verified end-to-end.
-            const card = findCardElement(target);
-            if (card) paintBundleBoxes(card, "a11y", data.overlay);
+            // Paint the merged hierarchy + findings overlay. In focus
+            // mode only the focused card paints; in grid mode every
+            // visible card paints with its own per-card data. Realises
+            // "Open question 1" from
+            // `docs/design/EXTENSION_DATA_EXPOSURE.md`. Coexists with
+            // the legacy `applyHierarchyOverlay` path in
+            // `PreviewCard._repaintA11yOverlaysFromCache` for now; a
+            // follow-up will remove the legacy paint once the new
+            // path is verified end-to-end.
+            paintOverlaysForBundle("a11y", (previewId) => {
+                if (previewId === target) return data.overlay;
+                const src = a11yDataForCard(previewId);
+                return computeA11yBundleData(src.nodes, src.findings).overlay;
+            });
         };
         const refreshPerformanceBundle = (): void => {
             const target = currentBundleTarget();
@@ -1189,11 +1252,21 @@ export class PreviewApp extends LitElement {
             }));
             refreshExpanderFor("history");
             dataTabs.setTabBody("history", host);
-            // Paint the per-region tinted boxes on the focused card.
-            // Empty array clears in place; the bundle-deactivation
-            // path in `reflectBundleState` removes the layer entirely.
-            const card = findCardElement(target);
-            if (card) paintBundleBoxes(card, "history", data.overlay);
+            // Paint the per-region tinted boxes. Focus mode paints
+            // only the focused card; grid mode paints every visible
+            // card from its own `history/diff/regions` payload. Empty
+            // arrays clear in place; the bundle-deactivation path in
+            // `reflectBundleState` removes the layer entirely.
+            paintOverlaysForBundle("history", (previewId) => {
+                if (previewId === target) return data.overlay;
+                const cardPayload =
+                    (dataProductsByPreview
+                        .get(previewId)
+                        ?.get("history/diff/regions") as
+                        | HistoryDiffPayload
+                        | undefined) ?? null;
+                return computeHistoryDiffBundleData(cardPayload).overlay;
+            });
         };
 
         // ---- Errors bundle (test/failure) ----------------------------------
