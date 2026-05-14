@@ -48,7 +48,7 @@ import kotlinx.serialization.json.Json
  *
  * Exits 0 when no errors (warnings OK), 1 when any check reports ERROR.
  */
-class DoctorCommand(args: List<String>) {
+class DoctorCommand(private val args: List<String>) {
   private val jsonOut = "--json" in args
   private val reportOut = "--report" in args
   private val explain = "--explain" in args
@@ -308,15 +308,20 @@ class DoctorCommand(args: List<String>) {
     var gradleAccessFailure: GradleAccessFailure? = null
     val model =
       try {
-        GradleConnection(projectDir, verbose = verbose).use { gc ->
-          // Daemon-JVM + Gradle-version snapshot. Runs first so other
-          // project-scope checks can compare against the daemon's JDK
-          // (e.g. flagging test worker mismatch in #142).
-          checkGradleDaemon(gc)
-          gc.runBuildAction(GatherComposePreviewModelAction()).also {
-            gradleAccessFailure = gc.lastModelAccessFailure
+        GradleConnection(
+            projectDir,
+            verbose = verbose,
+            extraArguments = autoInjectInitScriptArgs(args),
+          )
+          .use { gc ->
+            // Daemon-JVM + Gradle-version snapshot. Runs first so other
+            // project-scope checks can compare against the daemon's JDK
+            // (e.g. flagging test worker mismatch in #142).
+            checkGradleDaemon(gc)
+            gc.runBuildAction(GatherComposePreviewModelAction()).also {
+              gradleAccessFailure = gc.lastModelAccessFailure
+            }
           }
-        }
       } catch (e: Exception) {
         addCheck(
           DoctorCheck(

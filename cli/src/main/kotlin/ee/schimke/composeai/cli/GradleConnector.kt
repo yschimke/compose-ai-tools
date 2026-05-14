@@ -38,6 +38,13 @@ class GradleConnection(
   private val projectDir: File,
   private val verbose: Boolean,
   private val progress: Boolean = false,
+  /**
+   * Arguments prepended to every Tooling-API invocation this connection makes — `withArguments` on
+   * `BuildLauncher`, `ModelBuilder`, and `BuildActionExecuter`. Today the CLI seeds this with
+   * `--init-script <path>` so the compose-preview plugin is auto-applied to projects that haven't
+   * manually wired it in their `build.gradle.kts`. See [autoInjectInitScriptArgs] for the source.
+   */
+  private val extraArguments: List<String> = emptyList(),
 ) : AutoCloseable {
   private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
   private val connection = connector.connect()
@@ -123,8 +130,9 @@ class GradleConnection(
     return try {
       val launcher =
         connection.newBuild().forTasks(*tasks).withCancellationToken(tokenSource.token())
-      if (arguments.isNotEmpty()) {
-        launcher.withArguments(arguments)
+      val combinedArguments = extraArguments + arguments
+      if (combinedArguments.isNotEmpty()) {
+        launcher.withArguments(combinedArguments)
       }
 
       if (verbose) {
@@ -313,6 +321,7 @@ class GradleConnection(
         .action(action)
         .withCancellationToken(tokenSource.token())
         .apply {
+          if (extraArguments.isNotEmpty()) withArguments(extraArguments)
           if (verbose) {
             setStandardOutput(System.err)
             setStandardError(System.err)
@@ -344,9 +353,11 @@ class GradleConnection(
    */
   fun buildEnvironment(): org.gradle.tooling.model.build.BuildEnvironment? {
     return try {
-      connection.model(org.gradle.tooling.model.build.BuildEnvironment::class.java).get().also {
-        modelAccessFailure = null
-      }
+      connection
+        .model(org.gradle.tooling.model.build.BuildEnvironment::class.java)
+        .apply { if (extraArguments.isNotEmpty()) withArguments(extraArguments) }
+        .get()
+        .also { modelAccessFailure = null }
     } catch (e: Exception) {
       recordModelAccessFailure("BuildEnvironment", e)
       if (verbose) System.err.println("Could not query BuildEnvironment: ${e.message}")
@@ -367,7 +378,11 @@ class GradleConnection(
    */
   fun findPreviewModules(): List<PreviewModule> {
     return try {
-      val model = connection.model(org.gradle.tooling.model.GradleProject::class.java).get()
+      val model =
+        connection
+          .model(org.gradle.tooling.model.GradleProject::class.java)
+          .apply { if (extraArguments.isNotEmpty()) withArguments(extraArguments) }
+          .get()
       modelAccessFailure = null
       val modules = mutableListOf<PreviewModule>()
       fun visit(project: org.gradle.tooling.model.GradleProject) {

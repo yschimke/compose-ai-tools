@@ -149,6 +149,16 @@ private fun printUsage() {
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`
                            stays cheap.
+      --no-auto-inject     Skip auto-injecting the `ee.schimke.composeai.preview` plugin
+                           via a Gradle init script. By default the CLI ships a bundled
+                           init script and passes it via `--init-script` on every Gradle
+                           invocation, so projects that already apply
+                           `com.android.application`, `com.android.library`, or
+                           `org.jetbrains.compose` pick up the preview plugin without an
+                           edit to `build.gradle.kts`. Set this when the plugin is
+                           already wired manually and you don't want the bundled
+                           classpath dependency added. `COMPOSE_PREVIEW_NO_AUTO_INJECT=1`
+                           is an equivalent environment-variable escape hatch.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.
