@@ -22,8 +22,7 @@ export type ComposePreviewMode = "minimal" | "full";
 export type ModeReason =
     | "user-setting"
     | "auto-no-plugin-applied"
-    | "auto-plugin-applied"
-    | "auto-host-injectable";
+    | "auto-plugin-applied";
 
 export interface ResolvedMode {
     mode: ComposePreviewMode;
@@ -32,20 +31,21 @@ export interface ResolvedMode {
 
 /**
  * Pure mode-selection predicate. Takes the user's settings + a minimal
- * gradle-service slice. Auto-mode picks `"full"` when at least one workspace
- * module already applies `ee.schimke.composeai.preview` (text scan or
- * `applied.json` marker), OR when auto-inject is on and at least one module
- * applies an Android / Compose Multiplatform host plugin the bundled init
- * script can attach our plugin onto. Otherwise it falls back to `"minimal"`.
+ * gradle-service slice. Auto-mode picks `"full"` only when at least one
+ * workspace module already applies `ee.schimke.composeai.preview` (text scan
+ * or `applied.json` marker); otherwise it falls back to `"minimal"`. Auto-inject
+ * onto an Android / Compose host doesn't preemptively flip the mode — the
+ * plugin isn't actually applied until Gradle runs the init script, so spawning
+ * a daemon at activation would fail (no `daemon-launch.json` yet). The
+ * post-Gradle-sync re-evaluation handles the upgrade: once `applied.json`
+ * markers exist, the extension offers a one-click reload into full mode.
  */
 export function resolveModeFromSettings(
     settings: {
         mode: "auto" | "minimal" | "full";
-        autoInjectEnabled: boolean;
     },
     gradleService: {
         findPreviewModules(): { modulePath: string }[];
-        hasInjectableHostModule(): boolean;
     },
 ): ResolvedMode {
     if (settings.mode === "minimal") {
@@ -56,9 +56,6 @@ export function resolveModeFromSettings(
     }
     if (gradleService.findPreviewModules().length > 0) {
         return { mode: "full", reason: "auto-plugin-applied" };
-    }
-    if (settings.autoInjectEnabled && gradleService.hasInjectableHostModule()) {
-        return { mode: "full", reason: "auto-host-injectable" };
     }
     return { mode: "minimal", reason: "auto-no-plugin-applied" };
 }
