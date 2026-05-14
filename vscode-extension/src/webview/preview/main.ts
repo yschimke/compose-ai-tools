@@ -37,6 +37,11 @@ import { BundleChipBar } from "./components/BundleChipBar";
 import { DataTabs } from "./components/DataTabs";
 import { DataTable } from "./components/DataTable";
 import { BundleExpander } from "./components/BundleExpander";
+import {
+    clearBundleBoxes,
+    findCardElement,
+    paintBundleBoxes,
+} from "./cardBundleOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
@@ -1167,12 +1172,11 @@ export class PreviewApp extends LitElement {
             }));
             refreshExpanderFor("history");
             dataTabs.setTabBody("history", host);
-            // The overlay array is computed via `data.overlay` and is
-            // intentionally not stamped onto the card here — the
-            // panel's per-card overlay stack is still being unified
-            // (see the A11y bundle for the matching gap). Test-side
-            // assertions cover the array shape directly.
-            void data.overlay;
+            // Paint the per-region tinted boxes on the focused card.
+            // Empty array clears in place; the bundle-deactivation
+            // path in `reflectBundleState` removes the layer entirely.
+            const card = findCardElement(target);
+            if (card) paintBundleBoxes(card, "history", data.overlay);
         };
 
         // ---- Errors bundle (test/failure) ----------------------------------
@@ -1248,7 +1252,15 @@ export class PreviewApp extends LitElement {
             } else {
                 clearAllAmbientBadges();
             }
-            if (s.activeBundles.includes("history")) refreshHistoryBundle();
+            if (s.activeBundles.includes("history")) {
+                refreshHistoryBundle();
+            } else {
+                // Tear down the per-card box-overlay layer on every
+                // card the bundle painted into. Mirrors the
+                // ambient-badge teardown above so chip dismissal
+                // wipes every bundle-attached card surface.
+                clearBundleBoxes(null, "history");
+            }
             if (s.activeBundles.includes("errors")) refreshErrorsBundle();
             if (s.activeBundles.includes("text")) refreshTextBundle();
         };

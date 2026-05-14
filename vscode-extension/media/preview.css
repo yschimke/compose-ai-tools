@@ -2497,6 +2497,7 @@ body {
     padding: 4px 0;
 }
 .perf-bundle-section {
+}
 /* ---- Display bundle (displayfilter/*) -------------------------------- */
 .displayfilter-thumb-cell {
     width: 32px;
@@ -2842,6 +2843,7 @@ body {
     text-align: right;
     font-variant-numeric: tabular-nums;
     width: 80px;
+}
 .errors-key-cell {
     width: 30%;
 }
@@ -3040,4 +3042,16 @@ body {
 .text-bundle-locale-chip[data-tone="warning"] {
     background: var(--vscode-inputValidation-warningBackground, #5a4400);
     color: var(--vscode-inputValidation-warningForeground, #fff);
+}
+
+/* Per-bundle `<box-overlay>` mounted inside `.image-container` (one
+ * layer per bundle, keyed on `data-bundle`). Sits above the image but
+ * below other DOM in the container so badges and codicons remain
+ * clickable. Pointer-events on the overlay itself stay none — the
+ * inner `.overlay-box` opts back in for hover correlation. */
+.bundle-card-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
 }
