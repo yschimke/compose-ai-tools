@@ -5484,12 +5484,10 @@ function publishInteractiveAvailability(moduleId: string): void {
 
 /**
  * Push the daemon's advertised data-product / data-extension catalogue
- * for [moduleId] to the live panel. The focus-mode inspector groups
- * these into stable buckets (`focusProductTaxonomy.bucketOf`) and
- * surfaces them as user-toggleable layers. When the daemon is down /
- * not yet up, an empty payload is sent so the inspector falls back to
- * its built-in placeholder set rather than holding stale capabilities
- * from a previous daemon lifetime.
+ * for [moduleId] to the live panel. The bundle-shell controllers consume
+ * the catalogue to drive chip / tab availability. When the daemon is
+ * down / not yet up, an empty payload is sent so the panel doesn't hold
+ * stale capabilities from a previous daemon lifetime.
  */
 function publishDaemonCapabilities(moduleId: string): void {
     if (!panel) {
