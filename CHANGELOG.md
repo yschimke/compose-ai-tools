@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.12](https://github.com/yschimke/compose-ai-tools/compare/v0.10.11...v0.10.12) (2026-05-14)
+
+
+### Bug Fixes
+
+* **ci:** drop fetched agent-audit script into expected 3-deep path ([#1107](https://github.com/yschimke/compose-ai-tools/issues/1107)) ([dec1537](https://github.com/yschimke/compose-ai-tools/commit/dec1537a36b825eab7b84a78dd0225e182cb47df))
+* **vscode-extension:** auto mode no longer starts daemon when the plugin isn't applied ([#1109](https://github.com/yschimke/compose-ai-tools/issues/1109)) ([e2ed6c1](https://github.com/yschimke/compose-ai-tools/commit/e2ed6c15a5fb96199d42ef2ccb9e7ed74b107e58))
+* **vscode-extension:** surface refresh and hide extensions UI in minimal mode ([#1106](https://github.com/yschimke/compose-ai-tools/issues/1106)) ([167b611](https://github.com/yschimke/compose-ai-tools/commit/167b61169c65830a1b76308304bbc9e442259b7c))
+
 ## [0.10.11](https://github.com/yschimke/compose-ai-tools/compare/v0.10.10...v0.10.11) (2026-05-14)
 
 
