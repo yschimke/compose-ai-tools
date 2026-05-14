@@ -45,10 +45,14 @@ export interface FocusControllerConfig {
     /** `<div id="focus-controls">` — the focus-mode toolbar container.
      *  Toggled `hidden` based on layout mode. */
     focusControls: HTMLElement;
-    /** `<bundle-chip-bar>` — data-extensions chip strip. Visible only in
-     *  focus layout; the bundles only act on the focused preview, so the
-     *  strip would mislead outside focus mode. */
+    /** `<bundle-chip-bar>` — data-extensions chip strip, rendered below
+     *  the preview grid. Visible only in focus layout; the bundles only
+     *  act on the focused preview, so the strip would mislead outside
+     *  focus mode. */
     bundleChipBar: HTMLElement;
+    /** `<data-tabs>` — active-bundle tab row, rendered below the chip
+     *  strip. Same focus-only visibility rule as `bundleChipBar`. */
+    dataTabs: HTMLElement;
     /** `<div id="focus-position">` — the "N / M" position indicator. */
     focusPosition: HTMLElement;
     btnPrev: HTMLButtonElement;
@@ -189,6 +193,7 @@ export class FocusController {
         this.config.grid.setLayoutMode(mode);
         this.config.focusControls.hidden = mode !== "focus";
         this.config.bundleChipBar.hidden = mode !== "focus";
+        this.config.dataTabs.hidden = mode !== "focus";
 
         if (mode === "focus") {
             const visible = this.getVisibleCards();

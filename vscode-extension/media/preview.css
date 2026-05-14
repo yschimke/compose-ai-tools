@@ -1804,41 +1804,36 @@ body {
 .bundle-chip-bar {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+    gap: 2px;
+    padding: 2px 6px;
+    border-top: 1px solid var(--vscode-panel-border, transparent);
 }
 .bundle-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 12px;
-    border: 1px solid var(--vscode-button-border, transparent);
-    background: var(--vscode-button-secondaryBackground, transparent);
-    color: var(--vscode-button-secondaryForeground, inherit);
-    font-size: 12px;
+    justify-content: center;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--vscode-foreground, inherit);
+    opacity: 0.65;
     cursor: pointer;
 }
 .bundle-chip:hover {
-    background: var(
-        --vscode-button-secondaryHoverBackground,
-        var(--vscode-button-secondaryBackground, transparent)
-    );
+    background: var(--vscode-toolbar-hoverBackground, transparent);
+    opacity: 1;
 }
 .bundle-chip.bundle-chip-on {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
+    background: var(--vscode-toolbar-activeBackground, transparent);
+    color: var(--vscode-foreground, inherit);
     border-color: var(--vscode-focusBorder, transparent);
-}
-.bundle-chip-label {
-    white-space: nowrap;
+    opacity: 1;
 }
 
 .data-tabs {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid var(--vscode-panel-border, transparent);
 }
 .data-tab-strip {
     display: flex;
@@ -1891,49 +1886,6 @@ body {
 .data-tab-placeholder {
     opacity: 0.6;
     padding: 8px 0;
-}
-/* `…More` tab — stable trailing tab listing disabled bundles. */
-.data-tab-handle-more {
-    margin-left: auto;
-    opacity: 0.8;
-}
-.data-tab-handle-more.data-tab-handle-active {
-    opacity: 1;
-}
-.data-tab-body-more {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.data-tab-more-header {
-    font-weight: 600;
-    opacity: 0.8;
-    padding: 2px 0;
-}
-.data-tab-more-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-}
-.data-tab-more-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: 3px;
-    border: 1px solid var(--vscode-panel-border, transparent);
-    background: var(--vscode-button-secondaryBackground, transparent);
-    color: var(--vscode-button-secondaryForeground, inherit);
-    cursor: pointer;
-    font: inherit;
-    font-size: 12px;
-}
-.data-tab-more-row:hover {
-    background: var(--vscode-list-hoverBackground, transparent);
-}
-.data-tab-more-row-hint {
-    opacity: 0.6;
-    font-size: 11px;
 }
 
 .data-table-shell {
