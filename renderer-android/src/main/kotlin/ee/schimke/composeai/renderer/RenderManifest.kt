@@ -110,12 +110,19 @@ data class RenderManifest(
     val variant: String,
     val previews: List<RenderPreviewEntry>,
     /**
-     * Relative path (from this manifest's parent directory) to a sidecar
-     * [AccessibilityReport] JSON file, when accessibility checks are enabled.
-     * `null` means the feature is off for this module — tools should treat the
-     * absence of this pointer as "no a11y data" rather than probing for the
-     * file on disk.
+     * Generic per-extension report pointer map. Keys are extension ids (e.g. `"a11y"`),
+     * values are module-relative paths from this manifest to that extension's aggregated
+     * sidecar JSON. Mirror of the plugin-side `PreviewManifest.dataExtensionReports`. The
+     * renderer doesn't consume either of these pointer fields today — they're parsed for
+     * wire-format completeness so a future renderer-side strategy lookup has the data on
+     * hand. See `PreviewManifest.reportsView` (CLI) for the unified read path.
      */
+    val dataExtensionReports: Map<String, String> = emptyMap(),
+    /**
+     * **Deprecated** — v1 mirror of `dataExtensionReports["a11y"]`, kept until the consumer
+     * floor moves past the v1 shape. New code should rely on the map instead.
+     */
+    @Deprecated("Use dataExtensionReports[\"a11y\"]; this field is a back-compat mirror.")
     val accessibilityReport: String? = null,
 )
 

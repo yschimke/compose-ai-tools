@@ -197,6 +197,11 @@ class CopyAnnotatedTest(unittest.TestCase):
                 _preview(id="x.Bad_small_round", function="Bad",
                          render="renders/Bad_small.png"),
             ],
+            # `a11y-report.py` reads `accessibility.json` directly, so neither field is
+            # strictly required for this fixture — both are written to mirror what the v2
+            # plugin emits in production so this test catches accidental drift if the
+            # script ever migrates to the manifest pointer.
+            "dataExtensionReports": {"a11y": "accessibility.json"},
             "accessibilityReport": "accessibility.json",
         }))
         (self.build / "accessibility.json").write_text(json.dumps({
