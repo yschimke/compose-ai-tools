@@ -544,31 +544,8 @@ export class PreviewApp extends LitElement {
         inspector = new FocusInspectorController({
             el: focusInspector,
             earlyFeatures,
-            autoEnableCheap: () =>
-                previewStore.getState().autoEnableCheapEnabled,
             getPreview: (id) =>
                 previewStore.getState().allPreviews.find((p) => p.id === id),
-            getA11yFindings: (id) => {
-                const store = previewStore.getState();
-                return (
-                    store.cardA11yFindings.get(id) ||
-                    store.allPreviews.find((p) => p.id === id)?.a11yFindings ||
-                    []
-                );
-            },
-            getA11yNodes: (id) => {
-                const store = previewStore.getState();
-                return (
-                    store.cardA11yNodes.get(id) ||
-                    store.allPreviews.find((p) => p.id === id)?.a11yNodes ||
-                    []
-                );
-            },
-            getDataProduct: (previewId, kind) =>
-                dataProductsByPreview.get(previewId)?.get(kind),
-            postMessage: (msg) => vscode.postMessage(msg),
-            getA11yOverlayId: a11yOverlay,
-            isLive: (id) => liveState.isLive(id),
             onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
             onToggleInteractive: (shift) => liveState.toggleInteractive(shift),
             onToggleRecording: () => liveState.toggleRecording(),
@@ -576,36 +553,6 @@ export class PreviewApp extends LitElement {
                 focusController.requestFocusedDiff(against),
             onRequestLaunchOnDevice: () =>
                 focusController.requestLaunchOnDevice(),
-            onToggleDataExtension: (previewId, kind, enabled) => {
-                vscode.postMessage({
-                    command: "setDataExtensionEnabled",
-                    previewId,
-                    kind,
-                    enabled,
-                });
-                // Mirror the toggle into BundleController so the chip
-                // bar / tab row stay in sync with subscriptions that
-                // originated outside the new shell (focus-inspector
-                // bucket checkboxes, suggestion chips). Without this
-                // hook, deactivating the bundle later could miss
-                // unsubscribing the kind, and the chip/tab state
-                // drifts from actual daemon subscriptions.
-                bundleController.handleExternalKindToggle(kind, enabled);
-            },
-            getScope: () => previewStore.getState().moduleDir,
-            loadMru: (scope) => state.focusMruByScope?.[scope] ?? [],
-            saveMru: (scope, mru) => {
-                // Persist to vscode workspace state. Same shape as the
-                // existing filter/layout fields — survives webview
-                // hide/show but not extension reload, which matches
-                // the lifetime users intuit for "ranked layers."
-                const existing = state.focusMruByScope ?? {};
-                state.focusMruByScope = {
-                    ...existing,
-                    [scope]: [...mru],
-                };
-                vscode.setState(state);
-            },
         });
 
         // Bundle controller — owns the chip ↔ tab ↔ overlay state machine
