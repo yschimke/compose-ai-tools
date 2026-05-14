@@ -175,7 +175,7 @@ fun ClickRecomposingSquare() {
 
 /**
  * D5 audit fixture — the canonical "bad recomposition" shape from yschimke/skills
- * `compose-preview-review/design/AGENT_AUDITS.md` § "Runtime and recomposition audit": a parent
+ * `compose-preview-review/references/agent-audits.md` § "Runtime and recomposition audit": a parent
  * owns a counter, reads it in its own body in order to pass it as a parameter to three children,
  * and only one of those children actually depends on the value. When the parent reads `clicks` to
  * forward as an argument, the parent's own [androidx.compose.runtime.RecomposeScope] subscribes to

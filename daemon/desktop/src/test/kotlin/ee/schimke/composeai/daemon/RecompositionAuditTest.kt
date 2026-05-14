@@ -22,7 +22,7 @@ import org.junit.rules.TemporaryFolder
  * recompositions?"
  *
  * The test runs both halves of the canonical audit narrative from
- * `compose-preview-review/design/AGENT_AUDITS.md` § "Runtime and recomposition audit" (in
+ * `compose-preview-review/references/agent-audits.md` § "Runtime and recomposition audit" (in
  * yschimke/skills) against a real [DesktopHost] + [DesktopInteractiveSession]:
  *
  * 1. **Report the problem.** Drive [BadCounterRecompositionFixture], dispatch one click, render.

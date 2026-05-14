@@ -292,7 +292,7 @@ class DoctorCommand(args: List<String>) {
                 "curl -fsSL https://raw.githubusercontent.com/$SKILLS_REPO/main/scripts/install.sh | bash"
               ),
             docs =
-              "https://github.com/yschimke/skills/blob/main/skills/compose-preview/design/AGENT_CLOUD.md",
+              "https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/agent-cloud.md",
           ),
       )
     )
