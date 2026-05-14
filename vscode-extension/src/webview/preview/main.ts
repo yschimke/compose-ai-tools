@@ -179,7 +179,7 @@ export class PreviewApp extends LitElement {
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
             <filter-toolbar></filter-toolbar>
-            <bundle-chip-bar></bundle-chip-bar>
+            <bundle-chip-bar hidden></bundle-chip-bar>
             <data-tabs></data-tabs>
 
             <message-banner></message-banner>
@@ -1344,6 +1344,7 @@ export class PreviewApp extends LitElement {
             grid,
             filterToolbar,
             focusControls,
+            bundleChipBar,
             focusPosition,
             btnPrev,
             btnNext,
