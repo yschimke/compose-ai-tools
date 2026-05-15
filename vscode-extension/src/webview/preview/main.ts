@@ -65,6 +65,15 @@ import { wireExpanderToController } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { buildA11yRowDetail } from "./a11yRowDetail";
 import {
+    buildDrawnTextRowDetail,
+    buildFontRowDetail,
+    buildTranslationRowDetail,
+} from "./textRowDetail";
+import {
+    buildInspectionRowDetail,
+    inspectionRowTitle,
+} from "./inspectionRowDetail";
+import {
     computePerformanceBundleData,
     performanceTableColumns,
     renderPerfPlaceholder,
@@ -899,6 +908,11 @@ export class PreviewApp extends LitElement {
             stringsTable: DataTable<DrawnTextRow>;
             fontsTable: DataTable<FontRow>;
             translationsTable: DataTable<TranslationRow>;
+            /** Shared `<bundle-row-detail>` panel rendered below the
+             *  three sub-tables — any of them dispatches `row-clicked`
+             *  into this panel via the listener wired in `textBody()`.
+             *  Same pattern as the a11y bundle. */
+            rowDetail: BundleRowDetail;
         }
         let textCachedBody: TextBody | null = null;
         const textBody = (): TextBody => {
@@ -945,16 +959,78 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<TranslationRow>
                 >,
             );
+            const rowDetail = document.createElement(
+                "bundle-row-detail",
+            ) as BundleRowDetail;
             wrapper.appendChild(expander);
             wrapper.appendChild(stringsTable);
             wrapper.appendChild(fontsTable);
             wrapper.appendChild(translationsTable);
+            wrapper.appendChild(rowDetail);
+            // Wire each sub-table's row-clicked event to the shared
+            // detail panel. The three tables carry different row
+            // shapes, so each listener routes to the matching
+            // `buildXxxRowDetail` helper; deselect (row=null) clears.
+            const onTextRowClick = <T extends { id: string }>(
+                evt: Event,
+                build: (row: T) => readonly BundleRowDetailSection[],
+                titleOf: (row: T) => string,
+            ): void => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/DataTable").RowClickedDetail<T>
+                    >
+                ).detail;
+                if (!det.row) {
+                    rowDetail.clear();
+                    return;
+                }
+                rowDetail.setDetail(titleOf(det.row), build(det.row));
+                // Clear any other table's pinned selection so only
+                // the just-clicked row stays highlighted.
+                if (det !== null) clearOtherTextSelections(evt.target);
+            };
+            const clearOtherTextSelections = (
+                target: EventTarget | null,
+            ): void => {
+                if (target !== stringsTable) {
+                    stringsTable.setSelectedOverlayId(null);
+                }
+                if (target !== fontsTable) {
+                    fontsTable.setSelectedOverlayId(null);
+                }
+                if (target !== translationsTable) {
+                    translationsTable.setSelectedOverlayId(null);
+                }
+            };
+            stringsTable.addEventListener("row-clicked", (evt) =>
+                onTextRowClick<DrawnTextRow>(
+                    evt,
+                    buildDrawnTextRowDetail,
+                    (r) => r.text || "(drawn text)",
+                ),
+            );
+            fontsTable.addEventListener("row-clicked", (evt) =>
+                onTextRowClick<FontRow>(
+                    evt,
+                    buildFontRowDetail,
+                    (r) => r.requestedFamily,
+                ),
+            );
+            translationsTable.addEventListener("row-clicked", (evt) =>
+                onTextRowClick<TranslationRow>(
+                    evt,
+                    buildTranslationRowDetail,
+                    (r) => r.resourceName ?? r.rendered ?? "(translation)",
+                ),
+            );
             textCachedBody = {
                 wrapper,
                 expander,
                 stringsTable,
                 fontsTable,
                 translationsTable,
+                rowDetail,
             };
             return textCachedBody;
         };
@@ -1020,6 +1096,12 @@ export class PreviewApp extends LitElement {
             body.translationsTable.hidden =
                 !enabledKinds.has("i18n/translations") &&
                 data.translations.length === 0;
+            // Drop any pinned row selection so the detail panel
+            // doesn't point at renumbered rows after the refresh.
+            body.stringsTable.setSelectedOverlayId(null);
+            body.fontsTable.setSelectedOverlayId(null);
+            body.translationsTable.setSelectedOverlayId(null);
+            body.rowDetail.clear();
             dataTabs.setTabBody("text", body.wrapper);
             bundleLegend.setBundleEntries(
                 "text",
@@ -1621,7 +1703,34 @@ export class PreviewApp extends LitElement {
             wrapper: HTMLElement;
             expander: BundleExpander;
             host: HTMLElement;
+            /** Shared `<bundle-row-detail>` panel rendered below the
+             *  per-kind tree-table sections. The inspection refresh
+             *  attaches a delegated click handler on `host` (since
+             *  tree-table rows don't dispatch `row-clicked` like
+             *  `<data-table>` does) and looks the clicked row's
+             *  node up by `data-legend-id`. */
+            rowDetail: BundleRowDetail;
         }
+        // The inspection tree-tables don't dispatch `row-clicked`
+        // (they're a bespoke primitive, not `<data-table>`), so the
+        // body-level click handler reads the freshest payload's
+        // `nodeById` lookup from here.
+        let inspectionLastNodeById: ReadonlyMap<
+            string,
+            import("./inspectionPresenters").InspectionNodeRecord
+        > | null = null;
+        let inspectionSelectedRowId: string | null = null;
+        const applyInspectionRowSelection = (row: HTMLElement | null): void => {
+            if (!inspectionCachedBody) return;
+            for (const prev of Array.from(
+                inspectionCachedBody.host.querySelectorAll<HTMLElement>(
+                    "tr.inspection-tree-row-selected",
+                ),
+            )) {
+                prev.classList.remove("inspection-tree-row-selected");
+            }
+            if (row) row.classList.add("inspection-tree-row-selected");
+        };
         let inspectionCachedBody: InspectionBody | null = null;
         const inspectionBody = (): InspectionBody => {
             if (inspectionCachedBody) return inspectionCachedBody;
@@ -1634,9 +1743,40 @@ export class PreviewApp extends LitElement {
             wireExpanderToController(expander, bundleController);
             const host = document.createElement("section");
             host.className = "inspection-bundle-host";
+            const rowDetail = document.createElement(
+                "bundle-row-detail",
+            ) as BundleRowDetail;
+            // Delegated row click handler — finds the nearest <tr>
+            // with `data-legend-id`, looks up the node record from
+            // the last refresh, and dispatches to
+            // `buildInspectionRowDetail`. Re-clicking the selected
+            // row deselects (panel cleared).
+            host.addEventListener("click", (evt) => {
+                const target = evt.target;
+                if (!(target instanceof Element)) return;
+                const row = target.closest<HTMLElement>("tr[data-legend-id]");
+                if (!row || !host.contains(row)) return;
+                const id = row.dataset.legendId ?? "";
+                if (!id) return;
+                if (inspectionSelectedRowId === id) {
+                    inspectionSelectedRowId = null;
+                    applyInspectionRowSelection(null);
+                    rowDetail.clear();
+                    return;
+                }
+                const record = inspectionLastNodeById?.get(id);
+                if (!record) return;
+                inspectionSelectedRowId = id;
+                applyInspectionRowSelection(row);
+                rowDetail.setDetail(
+                    inspectionRowTitle(record),
+                    buildInspectionRowDetail(record),
+                );
+            });
             wrapper.appendChild(expander);
             wrapper.appendChild(host);
-            inspectionCachedBody = { wrapper, expander, host };
+            wrapper.appendChild(rowDetail);
+            inspectionCachedBody = { wrapper, expander, host, rowDetail };
             return inspectionCachedBody;
         };
         const refreshInspectionBundle = (): void => {
@@ -1681,6 +1821,14 @@ export class PreviewApp extends LitElement {
                 wrap.appendChild(section.data.body);
                 body.host.appendChild(wrap);
             }
+            // Stash the per-id node lookup so the body-host click
+            // handler can dispatch the detail panel without re-
+            // walking the per-kind trees. Drop any prior selection
+            // since the new payload may have renumbered the rows.
+            inspectionLastNodeById = data.nodeById;
+            inspectionSelectedRowId = null;
+            applyInspectionRowSelection(null);
+            body.rowDetail.clear();
             dataTabs.setTabBody("inspection", body.wrapper);
             bundleLegend.setBundleEntries(
                 "inspection",

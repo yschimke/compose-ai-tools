@@ -203,6 +203,9 @@
     },
     {
       "click": "bundle-chip-bar button[data-bundle=\"text\"]"
+    },
+    {
+      "click": "[data-bundle=\"text\"] tr[data-legend-id=\"text-string-2\"]"
     }
   ]
 }
