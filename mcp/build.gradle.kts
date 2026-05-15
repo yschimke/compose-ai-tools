@@ -48,6 +48,10 @@ dependencies {
   // For DaemonClasspathDescriptor (read at supervisor spawn time) and the protocol message types
   // exchanged with daemon JVMs.
   implementation(project(":daemon:core"))
+  // Public render-session API. `SupervisedDaemon` exposes a `RenderSession` view of its private
+  // `DaemonClient` so callers that prefer the published library surface have a path. The
+  // implementation stays internal to `:mcp` for now — the supervisor owns subprocess lifecycle.
+  implementation(project(":render-session-api"))
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
