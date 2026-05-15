@@ -178,7 +178,7 @@ class DaemonA11yFetcherTest {
     override fun enableExtensions(
       ids: List<String>,
       timeout: kotlin.time.Duration,
-    ): ExtensionsEnableResult = error("unused")
+    ): ExtensionsEnableResult = ExtensionsEnableResult(newlyEnabled = ids)
 
     override fun disableExtensions(
       ids: List<String>,
