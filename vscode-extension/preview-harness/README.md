@@ -60,15 +60,28 @@ Drop `preview-harness/fixtures/<name>.json` with shape:
     "messages": [
         { "command": "setPreviews", "moduleDir": "...", "previews": [...], "heavyStaleIds": [] },
         { "command": "updateImage", "previewId": "...", "captureIndex": 0, "imageData": "<raw base64>" }
+    ],
+    "actions": [
+        { "click": ".preview-card[data-preview-id=\"...\"] .card-focus-btn" },
+        { "click": "bundle-chip-bar button[data-bundle=\"a11y\"]" }
     ]
 }
 ```
 
 `messages` are `ExtensionToWebview` payloads (see
 `src/types.ts`). `updateImage.imageData` is **raw base64** — the card
-prepends `data:<mime>;base64,` itself. For repeatable bytes, write a
-generator next to the fixture (`grid-default.gen.mjs` is the template)
-and check it into git alongside the JSON it emits.
+prepends `data:<mime>;base64,` itself.
+
+`actions` replay user-style interactions after the manifest has
+rendered, using CSS selectors against the panel's light DOM. Use
+them to drive flows that the extension would normally trigger through
+clicks — e.g. entering focus mode via `.card-focus-btn`, activating a
+data extension via the bundle chip bar. Today the only action type is
+`{ "click": "<selector>" }`.
+
+For repeatable bytes, write a generator next to the fixture
+(`grid-default.gen.mjs` is the template) and check it into git
+alongside the JSON it emits.
 
 ## Fidelity caveats
 
