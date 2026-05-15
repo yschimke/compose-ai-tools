@@ -1,19 +1,39 @@
 // A11y bundle presenter — fills the "Accessibility" tab body in
 // `<data-tabs>` using the shared `<data-table>` primitive. Combines
 // `a11y/hierarchy` (one row per node) with `a11y/atf` (findings
-// merged onto the matching row when bounds align).
+// merged onto the matching row when bounds align) and
+// `a11y/touchTargets` (per-target size + WCAG findings merged onto
+// the matching row by nodeId, or surfaced as orphan rows when the
+// target has no matching hierarchy node).
 //
 // The presenter is **stateless** — given the latest findings + nodes
-// from `previewStore` and the focused preview, it produces the table
-// rows and the overlay boxes. The caller (host shell wiring in
-// `main.ts`) is responsible for re-running this whenever the focused
-// preview, the cache, or the bundle's enabled-kinds set changes.
+// + touchTargets from `previewStore` / the per-card cache and the
+// focused preview, it produces the table rows and the overlay boxes.
+// The caller (host shell wiring in `main.ts`) is responsible for re-
+// running this whenever the focused preview, the cache, or the
+// bundle's enabled-kinds set changes.
 
 import { html, type TemplateResult } from "lit";
 import type { AccessibilityFinding, AccessibilityNode } from "../shared/types";
 import type { DataTableColumn } from "./components/DataTable";
 import type { OverlayBox } from "./components/BoxOverlay";
 import { parseBounds } from "./cardData";
+
+/**
+ * Wire shape for `a11y/touchTargets` — mirrors
+ * `AccessibilityTouchTargetsPayload` in `AccessibilityModels.kt`. A
+ * target's `findings` are rule-name strings (e.g.
+ * `"TouchTargetTooSmall"`); the presenter does not interpret them
+ * beyond "non-empty list ⇒ warn-level row".
+ */
+export interface AccessibilityTouchTarget {
+    nodeId: string;
+    boundsInScreen: string;
+    widthDp: number;
+    heightDp: number;
+    findings: readonly string[];
+    overlappingNodeIds?: readonly string[];
+}
 
 export interface A11yRow {
     id: string;
@@ -25,6 +45,10 @@ export interface A11yRow {
     topFindingLevel: "error" | "warning" | "info" | null;
     boundsInScreen: string;
     bounds: { left: number; top: number; right: number; bottom: number } | null;
+    /** Pre-formatted touch-target size, populated when this row has
+     *  a corresponding `a11y/touchTargets` entry. `null` otherwise —
+     *  the "Size" column renders a dash. */
+    touchTargetSizeDp: string | null;
 }
 
 export interface A11yBundleData {
@@ -46,11 +70,23 @@ const PALETTE = [
 export function computeA11yBundleData(
     nodes: readonly AccessibilityNode[],
     findings: readonly AccessibilityFinding[],
+    touchTargets: readonly AccessibilityTouchTarget[] = [],
 ): A11yBundleData {
     const rows: A11yRow[] = [];
     const overlay: OverlayBox[] = [];
     const findingsByBoundsKey = groupFindingsByBoundsKey(findings);
     const matchedKeys = new Set<string>();
+    // Index touch targets by bounds string — the daemon emits both
+    // the hierarchy and the targets keyed on the same source bounds,
+    // so we can merge per-node without exposing the daemon-internal
+    // nodeId (which the hierarchy nodes don't carry in this surface).
+    const targetByBounds = new Map<string, AccessibilityTouchTarget>();
+    for (const t of touchTargets) {
+        if (t && typeof t.boundsInScreen === "string") {
+            targetByBounds.set(boundsKey(t.boundsInScreen), t);
+        }
+    }
+    const consumedTargets = new Set<AccessibilityTouchTarget>();
 
     nodes.forEach((node, idx) => {
         const id = "a11y-" + idx;
@@ -58,17 +94,24 @@ export function computeA11yBundleData(
         const matchingFindings = bounds
             ? (findingsByBoundsKey.get(boundsKey(node.boundsInScreen)) ?? [])
             : [];
-        const top = topLevel(matchingFindings);
+        const target = targetByBounds.get(boundsKey(node.boundsInScreen));
+        if (target) consumedTargets.add(target);
+        const targetFindingCount = target?.findings?.length ?? 0;
+        const top = mergeLevel(
+            topLevel(matchingFindings),
+            targetFindingCount > 0 ? "warning" : null,
+        );
         const row: A11yRow = {
             id,
             label: node.label || "(unlabelled)",
             role: node.role ?? "",
             states: node.states?.join(", ") ?? "",
             merged: node.merged,
-            findingCount: matchingFindings.length,
+            findingCount: matchingFindings.length + targetFindingCount,
             topFindingLevel: top,
             boundsInScreen: node.boundsInScreen,
             bounds,
+            touchTargetSizeDp: target ? formatTargetSize(target) : null,
         };
         rows.push(row);
         if (bounds) {
@@ -77,7 +120,7 @@ export function computeA11yBundleData(
                 bounds,
                 level: top ?? "info",
                 color: top ? undefined : PALETTE[idx % PALETTE.length],
-                tooltip: tooltipFor(node),
+                tooltip: tooltipFor(node, target),
             });
         }
     });
@@ -109,6 +152,7 @@ export function computeA11yBundleData(
             topFindingLevel: level,
             boundsInScreen: fBounds,
             bounds,
+            touchTargetSizeDp: null,
         });
         if (bounds) {
             overlay.push({
@@ -120,7 +164,64 @@ export function computeA11yBundleData(
         }
     });
 
+    // Touch targets that didn't match any hierarchy node — surface
+    // them as orphan rows so the subscription isn't silently dropped.
+    // Same intuition as orphan ATF findings above: better to show "we
+    // got data here that we can't correlate" than to hide it.
+    touchTargets.forEach((t, idx) => {
+        if (!t || consumedTargets.has(t)) return;
+        const findingsCount = t.findings?.length ?? 0;
+        if (findingsCount === 0) return;
+        const tKey = boundsKey(t.boundsInScreen);
+        // If the target's bounds already match a hierarchy node we
+        // know about, the merge path above handled it; this branch is
+        // for the residual case where the bounds string differs.
+        if (tKey && matchedKeys.has(tKey)) return;
+        const id = "a11y-touchtarget-orphan-" + idx;
+        const bounds = parseBounds(t.boundsInScreen ?? "");
+        rows.push({
+            id,
+            label: t.nodeId ? "node " + t.nodeId : "(touch target)",
+            role: "TouchTarget",
+            states: t.findings.join(", "),
+            merged: true,
+            findingCount: findingsCount,
+            topFindingLevel: "warning",
+            boundsInScreen: t.boundsInScreen ?? "",
+            bounds,
+            touchTargetSizeDp: formatTargetSize(t),
+        });
+        if (bounds) {
+            overlay.push({
+                id,
+                bounds,
+                level: "warning",
+                tooltip:
+                    "Touch target · " +
+                    formatTargetSize(t) +
+                    " · " +
+                    t.findings.join(", "),
+            });
+        }
+    });
+
     return { rows, overlay };
+}
+
+function mergeLevel(
+    a: "error" | "warning" | "info" | null,
+    b: "error" | "warning" | "info" | null,
+): "error" | "warning" | "info" | null {
+    if (a === "error" || b === "error") return "error";
+    if (a === "warning" || b === "warning") return "warning";
+    if (a === "info" || b === "info") return "info";
+    return null;
+}
+
+function formatTargetSize(t: AccessibilityTouchTarget): string {
+    const w = Number.isFinite(t.widthDp) ? Math.round(t.widthDp) : 0;
+    const h = Number.isFinite(t.heightDp) ? Math.round(t.heightDp) : 0;
+    return `${w}×${h} dp`;
 }
 
 export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
@@ -150,6 +251,11 @@ export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
         {
             header: "States",
             render: (row) => row.states || "—",
+        },
+        {
+            header: "Size",
+            cellClass: "a11y-size-cell",
+            render: (row) => row.touchTargetSizeDp ?? "—",
         },
         {
             header: "Findings",
@@ -186,11 +292,18 @@ function normLevel(s: string): "error" | "warning" | "info" {
     return "info";
 }
 
-function tooltipFor(node: AccessibilityNode): string {
+function tooltipFor(
+    node: AccessibilityNode,
+    target: AccessibilityTouchTarget | undefined,
+): string {
     const parts: string[] = [];
     if (node.label) parts.push(node.label);
     if (node.role) parts.push(node.role);
     if (node.states?.length) parts.push(node.states.join(", "));
+    if (target) {
+        parts.push(formatTargetSize(target));
+        if (target.findings.length > 0) parts.push(target.findings.join(", "));
+    }
     return parts.join(" · ");
 }
 
