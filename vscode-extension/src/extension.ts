@@ -195,6 +195,14 @@ const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used to look up the
  *  owning module when the webview posts a per-preview action. */
 const previewModuleMap = new Map<string, ModuleInfo>();
+/** modulePath → set of previewIds with at least one `a11y/*` data-extension
+ *  subscription active. When the set is non-empty for a module, the next
+ *  `renderAllPreviews` invocation must pass
+ *  `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` so the
+ *  standalone Robolectric render path actually runs ATF (the daemon's
+ *  RenderEngine reads the same subscription state directly, but the
+ *  Gradle-task path has no such bridge — see PR #1074 / issue #1009). */
+const moduleA11ySubscriptions = new Map<string, Set<string>>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
 const firstSaveSeen = new Set<string>();
@@ -3576,7 +3584,12 @@ async function refresh(
             manifest =
                 manifest ??
                 (forceRender
-                    ? await gradleService.renderPreviews(mod, tier, taskOpts)
+                    ? await gradleService.renderPreviews(
+                          mod,
+                          tier,
+                          taskOpts,
+                          a11yGradleArgs(mod.modulePath),
+                      )
                     : await gradleService.discoverPreviews(mod, taskOpts));
 
             // Track tier so the webview can mark heavy cards as stale after a
@@ -4239,12 +4252,63 @@ async function handleLoadFontPreview(
 }
 
 /**
+ * Updates `moduleA11ySubscriptions` for a chip toggle and reports whether
+ * the module's overall a11y-enabled state changed. Non-a11y kinds always
+ * return `"unchanged"` (no Gradle prop is involved). The transition value
+ * tells the caller whether to kick off a new render with a different
+ * `-PcomposePreview.previewExtensions.a11y.enableAllChecks` value — the
+ * Test task's `@Input` invalidates the up-to-date cache, so a fresh
+ * Robolectric sandbox runs ATF (or doesn't) without disturbing the
+ * non-a11y render's cache when the flag is unchanged.
+ */
+function updateModuleA11ySubscription(
+    modulePath: string,
+    previewId: string,
+    kind: string,
+    enabled: boolean,
+): "enabled" | "disabled" | "unchanged" {
+    if (!kind.startsWith("a11y/")) return "unchanged";
+    let subs = moduleA11ySubscriptions.get(modulePath);
+    const wasActive = !!subs && subs.size > 0;
+    if (enabled) {
+        if (!subs) {
+            subs = new Set();
+            moduleA11ySubscriptions.set(modulePath, subs);
+        }
+        subs.add(previewId);
+    } else if (subs) {
+        subs.delete(previewId);
+        if (subs.size === 0) moduleA11ySubscriptions.delete(modulePath);
+    }
+    const isActive = (moduleA11ySubscriptions.get(modulePath)?.size ?? 0) > 0;
+    if (wasActive === isActive) return "unchanged";
+    return isActive ? "enabled" : "disabled";
+}
+
+/** Gradle args to feed `renderPreviews` so the standalone Robolectric
+ *  render path runs (or skips) ATF based on chip subscriptions. Empty
+ *  when no preview in the module has an `a11y/*` chip on. */
+function a11yGradleArgs(modulePath: string): string[] {
+    const subs = moduleA11ySubscriptions.get(modulePath);
+    if (!subs || subs.size === 0) return [];
+    return ["-PcomposePreview.previewExtensions.a11y.enableAllChecks=true"];
+}
+
+/**
  * Focus-inspector data-extension toggle. Routes a `(previewId, kind)`
  * subscription through the daemon scheduler so the daemon attaches (or
  * stops attaching) the payload on the next render. The webview already
  * paints a "Loading…" placeholder synchronously on toggle; the next
  * render swap (fed back through the existing data-product
  * notifications) replaces it with the real contribution.
+ *
+ * For `a11y/*` kinds, also tracks the module-level subscription so the
+ * standalone Gradle-task render path (which gates ATF on
+ * `-PcomposePreview.previewExtensions.a11y.enableAllChecks`) picks up
+ * the change. The chip transition kicks off a fresh fast-tier render
+ * with the new flag value — Gradle's Test fork gives us a different
+ * Robolectric sandbox per invocation, so ATF runs (or doesn't) without
+ * polluting the regular render's classloader.
  *
  * No-op when the preview's owning module isn't known yet (panel rebuild
  * race) or when the daemon scheduler isn't wired (Gradle-only mode) —
@@ -4264,12 +4328,27 @@ async function handleSetDataExtensionEnabled(
     if (!moduleId) {
         return;
     }
+    const a11yTransition = updateModuleA11ySubscription(
+        moduleId.modulePath,
+        previewId,
+        kind,
+        enabled,
+    );
     await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
         [kind],
         enabled,
     );
+    if (a11yTransition !== "unchanged") {
+        // Standalone Gradle-task render path reads ATF enablement from the
+        // `composePreview.previewExtensions.a11y.enableAllChecks` property at
+        // task-config time, so a subscription change has to re-run the task
+        // with the new value before findings appear / disappear. The
+        // GradleService memoises by manifest hash; a `forceRender` discards
+        // the cache so the next invocation actually re-executes.
+        void refresh(true, undefined, "fast");
+    }
     if (!enabled && (kind === "a11y/atf" || kind === "a11y/hierarchy")) {
         // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
         // down the cached overlay/legend immediately so the visual layer clears without
