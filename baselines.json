@@ -4,14 +4,14 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "b3a6f08828e7c5eebe3aca5bf23e2a9c270d02c1909b1a8f13fed29290b73b66",
-      "size": 93666
+      "sha256": "82186bd370e89314a95468eea2596a17e319ab70fdeaf876aa25645881fe9bc6",
+      "size": 98091
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "54ed40700fb73af6a3ed10236be92b2e918036e59a887dc33167e5899f1b1ce6",
-      "size": 90938
+      "sha256": "c7f56a6df432b490b1fd76f2dbb31dd456e7f5e810609584ab514145724680f9",
+      "size": 95272
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
