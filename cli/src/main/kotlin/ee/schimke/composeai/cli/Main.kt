@@ -138,9 +138,12 @@ private fun printUsage() {
       --fail-on <level>    a11y: exit non-zero on 'errors' or 'warnings' (default: mirror Gradle)
       --with-extension <id>
                            Enable a data extension for this run (repeatable; comma-separated
-                           values accepted). Forwards as `-PcomposePreview.previewExtensions
-                           .<id>.enableAllChecks=true`. The `a11y` command is a thin wrapper
-                           that always sets `--with-extension a11y`. No daemon required.
+                           values accepted). Forwards as `-PcomposePreview.activeExtensions
+                           =<comma-list>`. The `a11y` command is a thin wrapper that always
+                           sets `--with-extension a11y`. Note: a11y data products are now
+                           daemon-only; `compose-preview a11y` will require a temporary
+                           daemon spin-up (TODO follow-up; today the command runs but produces
+                           no findings).
       --force=<reason>     Sanctioned escape hatch when a render looks stale: passes
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged

@@ -21,14 +21,14 @@ dependencies {
   // `AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry` model classes used to
   // live in this module. They moved to `:data-a11y-core` (published as
   // `data-a11y-core`); `api` re-exposes them so existing imports of
-  // `ee.schimke.composeai.renderer.AccessibilityChecker` etc. still resolve and downstream
-  // consumers (`RobolectricRenderTest`) compile unchanged.
+  // `ee.schimke.composeai.renderer.AccessibilityChecker` etc. still resolve.
+  //
+  // The `:data-a11y-hierarchy-android` producer (the Android-specific hierarchy walk +
+  // `AccessibilityHierarchyExtension`) is NOT depended on here any more — the standalone
+  // Robolectric `renderPreviews` Test task is the "normal render only" path. A11y data products
+  // are produced exclusively by `:daemon:android`'s `RenderEngine`; consumers (VS Code chip,
+  // `compose-preview a11y`, MCP) drive a11y through the daemon, never through this Test task.
   api(project(":data-a11y-core"))
-  // Android-platform-specific hierarchy producer — RobolectricRenderTest installs
-  // AccessibilityHierarchyExtension and runs the typed extension contract for the per-preview
-  // ATF + hierarchy walk, mirroring `:daemon:android`'s RenderEngine. Pairs with
-  // `:data-a11y-core`'s consumers (TouchTargetsExtension, OverlayExtension).
-  implementation(project(":data-a11y-hierarchy-android"))
   implementation(project(":data-render-core"))
   implementation(project(":data-scroll-core"))
   // Focus / keyboard-traversal connector. Owns `KeyboardInputModeManager`, the
@@ -164,28 +164,11 @@ dependencies {
 
   implementation(libs.roborazzi)
   implementation(libs.roborazzi.compose)
-  // ATF accessibility checks. Runs unconditionally on every render (always-on, never-fail) —
-  // a11y is a normal data producer now, same footing as theme / recomposition.
-  //
-  // The a11y path uses `createAndroidComposeRule<ComponentActivity>()`
-  // + `onRoot().captureRoboImage(...)` + ATF against the `ViewRootForTest`
-  // backing the SemanticsNode. That's the same plumbing roborazzi-
-  // accessibility-check's `checkRoboAccessibility` extension uses — it's the
-  // only combination where Robolectric populates the accessibility
-  // hierarchy richly enough for ATF to surface findings. The composable-
-  // form `captureRoboImage { @Composable }` closes its ActivityScenario
-  // eagerly, which detaches the view before ATF gets to run.
-  implementation(libs.roborazzi.accessibility.check)
-  // ATF (`accessibility-test-framework`, transitively pulled in via
-  // roborazzi-accessibility-check) annotates its nullable getters with
-  // `@org.checkerframework.checker.nullness.qual.Nullable`. Without this
-  // annotation class on the compile classpath, Kotlin 2.3+ emits
-  // `INACCESSIBLE_TYPE` warnings (KT-80247 — error in language version 2.4)
-  // at every call site reading one of those getters (e.g. AccessibilityChecker's
-  // `el.className` / `el.resourceName` / etc.). compileOnly is enough — the
-  // annotations are marker-only and we don't want to widen consumers'
-  // runtime classpath.
-  compileOnly(libs.checker.qual)
+  // ATF (roborazzi-accessibility-check + the transitive
+  // `accessibility-test-framework`) is no longer wired here — the standalone Robolectric
+  // `renderPreviews` Test task does NOT run ATF. The daemon (`:daemon:android`) is the only
+  // path that produces a11y data products and depends on these libraries via
+  // `:data-a11y-hierarchy-android`.
 
   // Tiles rendering is reflection-driven at runtime (the consumer module
   // supplies the actual classes on the JUnit classpath), so we only need

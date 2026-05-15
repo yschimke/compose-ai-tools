@@ -38,9 +38,6 @@ import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.FocusDirection as ProtocolFocusDirection
 import ee.schimke.composeai.data.render.PreviewAnimationContext
-import ee.schimke.composeai.data.render.extensions.ExtensionContextData
-import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
-import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
 import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.scroll.FLING_DECAY
 import ee.schimke.composeai.scroll.FLING_MAX_DISTANCE_VIEWPORTS
@@ -565,15 +562,13 @@ abstract class RobolectricRenderTestBase(
         // between previews sharing the same Robolectric sandbox.
         org.robolectric.RuntimeEnvironment.setFontScale(params.fontScale)
 
-        // ATF is opt-in (see `a11yEnabled`) — gated on `composeai.a11y.enabled`, forwarded by the
-        // gradle plugin from the `previewExtensions.a11y` DSL or the matching Gradle property.
-        // The post-capture block on line 983 skips entirely when off.
-        // `LocalInspectionMode` still flips to `false` unconditionally: that's both what ATF needs
-        // for live semantics AND what most consumers expect for production-like rendering, so it's
-        // not coupled to the a11y toggle. After capture (when a11y is on) we pull the
-        // `ViewRootForTest`-backed view off the still-attached SemanticsNode and hand it to
-        // [AccessibilityChecker]. Capturing before ATF keeps the PNG output stable — findings only
-        // land in *sidecar* artifacts.
+        // a11y data products (ATF + hierarchy) are produced exclusively by the daemon path
+        // (`daemon/android`'s `RenderEngine` drives the post-capture walk via
+        // `AccessibilityHierarchyExtension` against the live SemanticsNode root). This
+        // standalone Robolectric `renderPreviews` task is the "normal render only" path — no
+        // accessibility sidecars are written here. `LocalInspectionMode` still flips to
+        // `false` unconditionally though: it's what most consumers expect for production-like
+        // rendering, independent of the a11y subject.
 
         // The v2 replacement (`androidx.compose.ui.test.junit4.v2.createAndroidComposeRule`)
         // that the deprecation warning suggests was added in compose-ui-test
@@ -983,53 +978,10 @@ abstract class RobolectricRenderTestBase(
                         FocusOverlay.apply(capturedView, outputFile, focus.toFocusOverride())
                     }
 
-                    if (job is CaptureRenderJob && captureIndex == a11yCaptureIndex() &&
-                        a11yEnabled()) {
-                        // `fetchSemanticsNode().root as ViewRootForTest` is the
-                        // exact view roborazzi-accessibility-check's
-                        // `checkRoboAccessibility` walks — it's the only view
-                        // under Robolectric where the compose a11y delegate
-                        // produces populated AccessibilityNodeInfo. DecorView
-                        // here returns all NOT_RUN.
-                        val view = (onRoot.fetchSemanticsNode().root as ViewRootForTest).view
-                        // Hierarchy + ATF come from a typed extension instead of a direct
-                        // AccessibilityChecker.analyze call. Symmetric with `:daemon:android`'s
-                        // RenderEngine. The extension owns the platform-specific walk;
-                        // downstream consumers in `:data-a11y-core` (TouchTargets, Overlay)
-                        // read declared inputs without re-walking the View. A future
-                        // `:data-a11y-hierarchy-desktop` (CMP semantics walk) drops in with
-                        // `targets = {Desktop}` and the same product keys.
-                        val hierarchyExtension = AccessibilityHierarchyExtension()
-                        val store = RecordingDataProductStore()
-                        hierarchyExtension.process(
-                            ExtensionPostCaptureContext(
-                                extensionId = hierarchyExtension.id,
-                                previewId = preview.id,
-                                renderMode = null,
-                                products = store.scopedFor(hierarchyExtension),
-                                data =
-                                    ExtensionContextData.of(
-                                        AccessibilityHierarchyContextKeys.ViewRoot provides view,
-                                    ),
-                            ),
-                        )
-                        val hierarchy = store.require(AccessibilityDataProducts.Hierarchy)
-                        val findings = store.require(AccessibilityDataProducts.Atf)
-                        val a11yDir = File(
-                            System.getProperty("composeai.a11y.outputDir")
-                                ?: "build/compose-previews/accessibility-per-preview",
-                        )
-                        AccessibilityChecker.writePerPreviewReport(
-                            outputDir = a11yDir,
-                            previewId = preview.id,
-                            findings = findings.findings,
-                            nodes = hierarchy.nodes,
-                            screenshot = outputFile,
-                            isRound = isRoundDevice(preview.params.device) &&
-                                (preview.params.showSystemUi ||
-                                    preview.params.kind == PreviewKind.TILE),
-                        )
-                    }
+                    // ATF / hierarchy production lives in `daemon/android`'s `RenderEngine` —
+                    // the standalone Robolectric `renderPreviews` Task is "normal render only"
+                    // and never writes accessibility sidecars. Consumers that want a11y data
+                    // run the daemon (VS Code, `compose-preview a11y`, MCP / agent flows).
 
                     // Display filters — post-capture colour-matrix variants. Gated on
                     // `composeai.displayfilter.filters` being non-empty; the gradle plugin
@@ -1064,25 +1016,8 @@ abstract class RobolectricRenderTestBase(
         rule.apply(statement, description).evaluate()
     }
 
-    /**
-     * ATF runs on a single frame per preview — for animated previews, prefer
-     * the SECOND frame (index 1) when available: frame 0 is often the t=0
-     * pre-settle state (fade-ins still transparent, AnimatedVisibility not on
-     * screen yet) which isn't a representative moment for accessibility.
-     * Static / single-capture previews fall through to index 0.
-     */
-    private fun a11yCaptureIndex(): Int =
-        if (preview.captures.size > 1) 1 else 0
-
-    /**
-     * Opt-in gate for the post-capture ATF + hierarchy walk. Set by the gradle plugin via
-     * `composeai.a11y.enabled` (resolved from the typed `previewExtensions.a11y` DSL or the
-     * `composePreview.previewExtensions.a11y.enableAllChecks` Gradle property the CLI's `a11y` /
-     * `--with-extension a11y` paths forward). Default off — the cheap render path skips ATF and
-     * the per-preview JSON sidecar entirely.
-     */
-    private fun a11yEnabled(): Boolean =
-        System.getProperty("composeai.a11y.enabled")?.toBoolean() == true
+    // a11y is no longer produced from this Robolectric path — the daemon's `RenderEngine`
+    // owns the walk; see `:daemon:android` for the post-capture hierarchy / ATF code.
 
     /**
      * Match how Roborazzi's `RoborazziComposeSizeOption` / `LocaleOption` /
