@@ -73,6 +73,7 @@ import {
     buildInspectionRowDetail,
     inspectionRowTitle,
 } from "./inspectionRowDetail";
+import { buildHistoryRowDetail } from "./historyRowDetail";
 import {
     computePerformanceBundleData,
     performanceTableColumns,
@@ -1569,6 +1570,13 @@ export class PreviewApp extends LitElement {
         };
 
         // ---- History bundle (history/diff/regions) -------------------------
+        // Captures the freshest history payload so the body's
+        // `row-clicked` listener (attached once in
+        // `historyDiffBodyBuilt`) can rebuild the detail panel —
+        // specifically the per-channel deltas, which the bundle row
+        // doesn't carry — against the current data without re-
+        // attaching on every refresh.
+        let historyLastPayload: HistoryDiffPayload | null = null;
         const historyDiffBodyBuilt = (): BundleBody => {
             let b = bundleBodies.get("history");
             if (b) return b;
@@ -1579,6 +1587,32 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Wire row click → detail panel, mirroring a11y. The
+            // bundle row carries the Euclidean Δ magnitude only;
+            // the detail builder re-joins against
+            // `historyLastPayload` for per-channel deltas plus the
+            // shared baseline-history context.
+            b.table.addEventListener("row-clicked", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/DataTable").RowClickedDetail<
+                            import("./historyDiffBundlePresenter").HistoryDiffRow
+                        >
+                    >
+                ).detail;
+                if (!det.row || det.index === null) {
+                    b!.rowDetail.clear();
+                    return;
+                }
+                b!.rowDetail.setDetail(
+                    det.row.boundsLabel || "Region " + (det.index + 1),
+                    buildHistoryRowDetail(
+                        det.row,
+                        historyLastPayload,
+                        det.index,
+                    ),
+                );
+            });
             bundleBodies.set("history", b);
             return b;
         };
@@ -1616,6 +1650,13 @@ export class PreviewApp extends LitElement {
                 previewId: target,
                 payload,
             }));
+            // Stash for the row-click listener installed once in
+            // `historyDiffBodyBuilt()`. Drop the prior selection so
+            // the detail panel doesn't point at row indices the new
+            // payload may have renumbered.
+            historyLastPayload = payload;
+            body.table.setSelectedOverlayId(null);
+            body.rowDetail.clear();
             refreshExpanderFor("history");
             dataTabs.setTabBody("history", host);
             bundleLegend.setBundleEntries(
