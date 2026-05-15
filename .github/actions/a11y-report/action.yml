@@ -28,19 +28,29 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Render previews with a11y opted in
+    - name: Build the CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The daemon-driven a11y path lives in `compose-preview a11y`; install the locally-built
+        # CLI so the action runs the same code that ships in the release tarball. Mirrors the
+        # `:cli:installDist` step the consumer install script does.
+        ./gradlew :cli:installDist --no-daemon
+
+    - name: Render previews and produce a11y findings
       shell: bash
       env:
         MODULE: ${{ inputs.module }}
       run: |
         set -euo pipefail
-        # a11y is opt-in (default off). Forward the same Gradle property the CLI's
-        # `compose-preview a11y` / `--with-extension a11y` paths set so the renderer writes
-        # ATF findings + the annotated overlay PNG, and `aggregateAccessibility` rolls them
-        # into the `accessibility.json` the python helper reads below.
-        ./gradlew ":${MODULE}:renderAllPreviews" \
-          -PcomposePreview.previewExtensions.a11y.enableAllChecks=true \
-          --no-daemon
+        # ATF findings + the annotated overlay PNG are daemon-only now (see #1127). The CLI's
+        # `compose-preview a11y` command opens a short-lived render session per module, fetches
+        # `a11y/atf` for every preview, and writes `accessibility.json` next to the renders
+        # tree — exactly the file the python helper below reads. The legacy
+        # `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` Gradle property
+        # is gone; the CLI is the only on-ramp.
+        cli/build/install/compose-preview/bin/compose-preview a11y \
+          --module ":${MODULE}"
 
     - name: Copy annotated PNGs and emit findings.json
       shell: bash
