@@ -2,29 +2,36 @@
 //
 // Each toggle in the Focus view's Configure expander travels through
 // four hops: BundleExpander dispatches `kind-toggled` → host listener
-// in `main.ts` → `BundleController.setKindEnabled` → host stub posts
-// `setDataExtensionEnabled` to the extension. Per-module unit tests
-// cover each hop in isolation; this test exercises the chain end-to-
-// end with the same wiring shape `main.ts` uses, so a regression in
-// any single link surfaces here.
+// installed by `wireExpanderToController` → `BundleController.set
+// KindEnabled` → host stub posts `setDataExtensionEnabled` to the
+// extension. Per-module unit tests cover each hop in isolation; this
+// test exercises the chain end-to-end so a regression in any single
+// link surfaces here.
 //
-// Replicates the listener pattern at `main.ts:766/821/874/1499` —
-// mirror copies of `expander.addEventListener("kind-toggled", …)`
-// that forward into the controller. We re-create that wiring in
-// the test instead of mounting `<preview-app>` because `main.ts`'s
-// `firstUpdated` pulls in the entire webview boot sequence (message
-// router, focus controller, live state, viewport tracker, …) which
-// is unavailable in happy-dom. The bug class this PR targets is
-// "click produces no observable effect"; the wiring shape under test
-// is what `main.ts` does, so a copy-paste in the same shape is
-// adequate signal.
+// Crucially, the test calls the *production* `wireExpanderToController`
+// helper — the same one `main.ts` calls at each per-bundle body
+// builder. If anyone changes the listener shape (event name, detail
+// fields, controller method, etc.) the production wiring and this
+// smoke test break together. The previous version of this file
+// hand-rolled a mirror `addEventListener("kind-toggled", …)` block,
+// which meant deleting the real listener from `main.ts` left the
+// test passing — that gap is what this rewrite closes.
 //
-// Known coverage gap: today's specific bug is in `main.ts`'s
-// `currentBundleTarget()` resolver — it returns `null` when no
-// focused card has `dataset.previewId`, silently swallowing the
-// post. That resolver lives as a closure inside `firstUpdated` and
-// is not testable without a refactor. Filed as a follow-up; see PR
-// description.
+// Residual gap: the test does not catch a future bundle id added to
+// the registry without a `wireExpanderToController` call in the new
+// body builder. Avoiding that needs either a single factory that
+// owns the expander construction (out of scope for this PR; the four
+// body builders have different shapes) or a static check that every
+// `createElement("bundle-expander")` in `main.ts` has a nearby
+// `wireExpanderToController` call. Filed for the Playwright follow-
+// up because end-to-end is the cleanest way to catch it anyway.
+//
+// Known coverage gap retained from the first revision: today's
+// specific bug is in `main.ts`'s `currentBundleTarget()` resolver —
+// returns `null` when no focused card has `dataset.previewId`,
+// silently swallowing the post. That resolver lives as a closure
+// inside `firstUpdated` and is not testable without a refactor;
+// tracked separately in the Playwright follow-up issue.
 
 import * as assert from "assert";
 import {
@@ -34,11 +41,9 @@ import {
     type BundleId,
 } from "../webview/preview/bundleRegistry";
 import { BundleController } from "../webview/preview/bundleController";
+import { wireExpanderToController } from "../webview/preview/bundleExpanderWiring";
 import "../webview/preview/components/BundleExpander";
-import type {
-    BundleExpander,
-    BundleKindToggledDetail,
-} from "../webview/preview/components/BundleExpander";
+import type { BundleExpander } from "../webview/preview/components/BundleExpander";
 
 interface CapturedPost {
     previewId: string;
@@ -71,9 +76,10 @@ function buildScenario(): Scenario {
 }
 
 /**
- * Mount `<bundle-expander>` and wire it to the controller exactly
- * like `main.ts:766` does so the test exercises the live wiring
- * shape. Returns the mounted element after its first render.
+ * Mount `<bundle-expander>` and wire it to the controller using the
+ * production helper `wireExpanderToController` — the same call
+ * `main.ts` makes at every per-bundle body builder. Returns the
+ * mounted element after its first render.
  */
 async function mountWiredExpander(
     bundleId: BundleId,
@@ -83,10 +89,7 @@ async function mountWiredExpander(
         "bundle-expander",
     ) as BundleExpander;
     document.body.appendChild(expander);
-    expander.addEventListener("kind-toggled", (evt) => {
-        const det = (evt as CustomEvent<BundleKindToggledDetail>).detail;
-        controller.setKindEnabled(det.bundleId, det.kind, det.enabled);
-    });
+    wireExpanderToController(expander, controller);
     const bundle = getBundle(bundleId);
     assert.ok(bundle, `bundle ${bundleId} missing from registry`);
     expander.setOpened(true);
@@ -124,9 +127,11 @@ describe("Focus view data-extension toggle smoke", () => {
     });
 
     // One spec per bundle. Iterating BUNDLES means a new bundle id
-    // added to the registry is automatically covered — the test
-    // fails fast if its expander wiring is missing instead of
-    // shipping a silent no-op tab.
+    // added to the registry is automatically covered for the
+    // wiring-shape check (event name, detail fields, controller
+    // method). It does NOT catch a new bundle whose body builder
+    // forgets to call `wireExpanderToController` — see the residual-
+    // gap note at the top of the file.
     for (const bundle of BUNDLES) {
         it(`forwards every ${bundle.id} kind to setDataExtensionEnabled`, async () => {
             const { controller, posts, previewId } = buildScenario();

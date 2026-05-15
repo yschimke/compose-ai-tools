@@ -50,7 +50,7 @@ import {
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
-import { on } from "../shared/eventBus";
+import { wireExpanderToController } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import {
     computePerformanceBundleData,
@@ -764,13 +764,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            on(expander, "kind-toggled", (det) => {
-                bundleController.setKindEnabled(
-                    det.bundleId,
-                    det.kind,
-                    det.enabled,
-                );
-            });
+            wireExpanderToController(expander, bundleController);
             const table = document.createElement(
                 "data-table",
             ) as DataTable<unknown>;
@@ -814,13 +808,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            on(expander, "kind-toggled", (det) => {
-                bundleController.setKindEnabled(
-                    det.bundleId,
-                    det.kind,
-                    det.enabled,
-                );
-            });
+            wireExpanderToController(expander, bundleController);
             // Recomposition uses the shared `<data-table>` so row hover
             // and copy-JSON parity with the other bundles is automatic.
             // Render trace + Perfetto don't fit the row model, so they
@@ -862,13 +850,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            on(expander, "kind-toggled", (det) => {
-                bundleController.setKindEnabled(
-                    det.bundleId,
-                    det.kind,
-                    det.enabled,
-                );
-            });
+            wireExpanderToController(expander, bundleController);
             const stringsTable = document.createElement(
                 "data-table",
             ) as DataTable<DrawnTextRow>;
@@ -1482,13 +1464,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            on(expander, "kind-toggled", (det) => {
-                bundleController.setKindEnabled(
-                    det.bundleId,
-                    det.kind,
-                    det.enabled,
-                );
-            });
+            wireExpanderToController(expander, bundleController);
             const host = document.createElement("section");
             host.className = "inspection-bundle-host";
             wrapper.appendChild(expander);
