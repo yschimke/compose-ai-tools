@@ -62,10 +62,18 @@ class A11yReportRenderer : ExtensionReportRenderer {
     val out = mutableMapOf<String, Pair<List<AccessibilityFinding>, String?>>()
     val enabled = mutableSetOf<String>()
     for ((module, manifest) in manifests) {
-      val pointer = manifest.reportsView[id] ?: continue
-      enabled += module.gradlePath
-      val reportFile = module.projectDir.resolve("build/compose-previews/$pointer")
+      // Prefer the manifest pointer when a producer stamped one (legacy gradle-aggregated reports,
+      // future daemon-stamped pointer); fall back to the conventional `accessibility.json`
+      // location so a freshly-written daemon-aggregated report is still picked up even when no
+      // producer touched the manifest. The standalone gradle plugin no longer writes the
+      // pointer at all — that's a daemon / CLI concern now — so the fallback is the primary
+      // path for `compose-preview a11y`.
+      val pointer = manifest.reportsView[id]
+      val reportFile =
+        pointer?.let { module.projectDir.resolve("build/compose-previews/$it") }
+          ?: module.projectDir.resolve("build/compose-previews/accessibility.json")
       if (!reportFile.exists()) continue
+      enabled += module.gradlePath
       val report =
         try {
           json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())

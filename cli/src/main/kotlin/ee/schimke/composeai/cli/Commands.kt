@@ -1054,11 +1054,27 @@ class RenderCommand(args: List<String>) : Command(args) {
  * here so adding a new canned-report command is a 3-line class plus a renderer registration.
  */
 open class ReportCommand(args: List<String>, private val extensionId: String) : Command(args) {
-  private val jsonOutput = "--json" in args
+  protected val jsonOutput: Boolean = "--json" in args
   // "errors" | "warnings" | "none". When not set, exit code mirrors Gradle.
-  private val failOn: String? = args.flagValue("--fail-on")
+  protected val failOn: String? = args.flagValue("--fail-on")
 
   override fun implicitExtensions(): List<String> = listOf(extensionId)
+
+  /**
+   * Subclass hook called between the gradle build and the result-building / reporting step.
+   * Subclasses use this to spin up additional production paths (the daemon-driven a11y fetch in
+   * [A11yCommand]) that write sidecar JSON the extension renderer's `load` pass then picks up when
+   * [buildResults] runs. Default no-op.
+   *
+   * At the point this is called, the standard `renderAllPreviews` gradle task has already run and
+   * each module's `previews.json` is on disk. Implementations iterate the manifests for preview
+   * ids, drive any out-of-band production, and write the resulting sidecars to the conventional
+   * `build/compose-previews/<extension>.json` locations the renderers read.
+   */
+  protected open fun produceAdditionalDataProducts(
+    modules: List<PreviewModule>,
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+  ) {}
 
   override fun run() {
     val renderer =
@@ -1072,14 +1088,22 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
           exitProcess(1)
         }
 
+    // Hand-roll the renderModules→manifests→buildResults pipeline so the subclass hook can slot
+    // between gradle finish and renderer load. `renderAllModules` is the same shape but
+    // single-shot — no hook seam — so we expand it here.
+    val raw = renderModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
+    val manifests = readAllManifests(raw.modules)
+    produceAdditionalDataProducts(raw.modules, manifests)
+    val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
     val outcome =
-      renderAllModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
+      RenderModulesOutcome(
+        buildOk = raw.buildOk,
+        modules = raw.modules,
+        manifests = manifests,
+        results = results,
+      )
 
-    // `buildResults` (inside `renderAllModules`) already ran every registered renderer's
-    // `load`/`annotate` pair, so the enriched outcome.results carry this extension's data — no
-    // separate plumbing needed here.
-    val enabledFor = outcome.manifests.filter { it.second.reportsView.containsKey(extensionId) }
-    if (enabledFor.isEmpty()) {
+    if (outcome.manifests.isEmpty()) {
       if (jsonOutput) println(encodeResponse(emptyList(), countsScope = null))
       else println("No previews discovered.")
       exitProcess(if (outcome.buildOk) 0 else 2)
@@ -1111,20 +1135,89 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
 }
 
 /**
- * `compose-preview a11y` — `ReportCommand` bound to the built-in `a11y` extension id. Kept as a
- * named subclass so `Main.kt`'s `when` dispatch stays grep-able and the help text can describe the
- * command directly; the entire body is the constructor call.
+ * `compose-preview a11y` — `ReportCommand` bound to the built-in `a11y` extension id.
  *
- * TODO(daemon): a11y data products are no longer produced by the standalone `renderAllPreviews`
- *   Gradle task — they are exclusively daemon-driven. As a result, this command currently runs the
- *   Gradle render but finds no findings on disk. The follow-up is to either (a) have this command
- *   spin up a temporary daemon per module, subscribe every preview to `a11y/atf` +
- *   `a11y/hierarchy`, render, drain the findings, and shut down; or (b) expose the daemon
- *   `RenderEngine` as a library so the CLI can drive it in-process without a JSON-RPC dance.
- *   Tracked separately — for now the CLI emits the `--with-extension a11y` request through
- *   [extensionGradleArgs] so the contract is in place but the orchestration side is a follow-up PR.
+ * Production of a11y data products moved entirely to the preview daemon, so this command opens a
+ * short-lived [ee.schimke.composeai.render.session.RenderSession] per module after the standard
+ * `renderAllPreviews` build completes, walks every preview through `data/fetch` for `a11y/atf`,
+ * aggregates the findings into the canonical `build/compose-previews/accessibility.json` shape that
+ * [A11yReportRenderer] then loads through its disk-fallback path, and closes the session. The
+ * daemon is short-lived — spawned, drained, shut down — so there's no persistent server for the
+ * agent / CI script to manage.
+ *
+ * The session is opened via the public `:render-session-api` / `:render-session-subprocess`
+ * library; everything the CLI does here is reachable from any third-party tooling that compiles
+ * against the same coordinates.
  */
-class A11yCommand(args: List<String>) : ReportCommand(args, "a11y")
+class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
+  override fun produceAdditionalDataProducts(
+    modules: List<PreviewModule>,
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+  ) {
+    if (modules.isEmpty()) return
+    // The daemon launch descriptor (`daemon-launch.json`) is written by
+    // `composePreviewDaemonStart`, which the standalone `renderAllPreviews` task does not depend
+    // on. Run it in a second gradle invocation so the descriptor is fresh against the
+    // consumer's current classpath. Gradle's daemon reuses the warm JVM started by the first
+    // invocation, so the cold-start cost is paid once per CLI run, not once per gradle task.
+    val daemonStartOk = runDaemonStartTasks(modules)
+    if (!daemonStartOk) {
+      System.err.println(
+        "compose-preview a11y: composePreviewDaemonStart failed; skipping daemon-driven a11y " +
+          "fetch. Findings will be empty."
+      )
+      return
+    }
+    val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
+    for ((module, manifest) in manifests) {
+      val previewIds = manifest.previews.map { it.id }
+      if (previewIds.isEmpty()) continue
+      val outcome =
+        fetcher.fetch(
+          projectDir = module.projectDir,
+          modulePath = module.gradlePath,
+          moduleName = manifest.module,
+          previewIds = previewIds,
+        )
+      when (outcome) {
+        is DaemonA11yFetcher.Outcome.Ok ->
+          if (verbose) {
+            System.err.println(
+              "compose-preview a11y: ${module.gradlePath} wrote ${outcome.reportFile.path} " +
+                "(${outcome.entryCount} entr${if (outcome.entryCount == 1) "y" else "ies"})"
+            )
+          }
+        is DaemonA11yFetcher.Outcome.DescriptorMissing ->
+          System.err.println(
+            "compose-preview a11y: ${module.gradlePath} missing daemon-launch.json at " +
+              "${outcome.expected.path}"
+          )
+        is DaemonA11yFetcher.Outcome.OpenFailed ->
+          System.err.println(
+            "compose-preview a11y: ${module.gradlePath} failed to open render session " +
+              "(${outcome.reason})"
+          )
+      }
+    }
+  }
+
+  /**
+   * Drive `:<modulePath>:composePreviewDaemonStart` for every module so each one has a fresh
+   * `daemon-launch.json` on disk before the per-module session opens. Returns false when the gradle
+   * task itself failed; the caller falls through to "no findings" rather than blocking the user.
+   */
+  private fun runDaemonStartTasks(modules: List<PreviewModule>): Boolean {
+    var ok = true
+    withGradle(silenceStdout = jsonOutput) { gradle ->
+      val tasks = modules.map { ":${it.gradlePath}:composePreviewDaemonStart" }.toTypedArray()
+      ok =
+        withGradleStdout(jsonOutput) {
+          runGradle(gradle, *tasks, arguments = gradleArgsWithForce())
+        }
+    }
+    return ok
+  }
+}
 
 private fun sha256(bytes: ByteArray): String {
   val md = MessageDigest.getInstance("SHA-256")
