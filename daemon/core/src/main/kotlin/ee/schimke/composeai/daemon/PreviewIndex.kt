@@ -123,6 +123,16 @@ data class PreviewParamsDto(
    * plugin's annotation reader hands back the raw `0xAARRGGBB` value.
    */
   val backgroundColor: Long? = null,
+  /**
+   * Preview flavour — mirrors `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"`).
+   * String-typed so the daemon's renderer-agnostic surface doesn't depend on the plugin's enum;
+   * `null` and `"COMPOSE"` both mean the default Compose path. `"TILE"` routes through the
+   * tile-render strategy on the Android backend (top-level
+   * `@androidx.wear.tiles.tooling.preview.Preview` functions are not `@Composable`, so the
+   * Compose-method reflection path throws `NoSuchMethodException` unless the renderer is told to
+   * dispatch differently).
+   */
+  val kind: String? = null,
 )
 
 /**

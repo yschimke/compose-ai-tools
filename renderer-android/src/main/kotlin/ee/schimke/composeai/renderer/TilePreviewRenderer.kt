@@ -35,10 +35,20 @@ import java.util.concurrent.TimeUnit
  * classes are actually present.
  */
 @Composable
-internal fun TilePreviewComposable(
-    preview: RenderPreviewEntry,
+fun TilePreviewComposable(
+    className: String,
+    functionName: String,
     widthDp: Int,
     heightDp: Int,
+    device: String? = null,
+    /**
+     * Classloader used to resolve [className]. `null` defers to the caller-thread context
+     * classloader (the standalone renderer path's user classes share the test classpath, so
+     * `Class.forName(name)` finds them). The daemon path passes the per-render child loader so
+     * tile previews resolve against freshly-recompiled user bytecode after every save instead of
+     * the parent loader's stale copy — see [RenderEngine][ee.schimke.composeai.daemon.RenderEngine].
+     */
+    classLoader: ClassLoader? = null,
 ) {
     val context = LocalContext.current
     AndroidView(
@@ -58,7 +68,7 @@ internal fun TilePreviewComposable(
                 // tile itself.
                 setBackgroundColor(Color.BLACK)
             }
-            renderTileInto(context, preview, widthDp, heightDp, parent)
+            renderTileInto(context, className, functionName, widthDp, heightDp, device, classLoader, parent)
             parent
         },
     )
@@ -66,14 +76,17 @@ internal fun TilePreviewComposable(
 
 private fun renderTileInto(
     context: Context,
-    preview: RenderPreviewEntry,
+    className: String,
+    functionName: String,
     widthDp: Int,
     heightDp: Int,
+    device: String?,
+    classLoader: ClassLoader?,
     parent: FrameLayout,
 ) {
-    val data = invokeTilePreviewFunction(context, preview)
+    val data = invokeTilePreviewFunction(context, className, functionName, classLoader)
 
-    val deviceParams = buildDeviceParameters(widthDp, heightDp, preview.params.device)
+    val deviceParams = buildDeviceParameters(widthDp, heightDp, device)
 
     val tileRequest = RequestBuilders.TileRequest.Builder()
         .setDeviceConfiguration(deviceParams)
@@ -90,7 +103,7 @@ private fun renderTileInto(
         ?.timelineEntries
         ?.firstOrNull()
         ?.layout
-        ?: error("TilePreview '${preview.functionName}' produced no layout (empty timeline)")
+        ?: error("TilePreview '$functionName' produced no layout (empty timeline)")
 
     // Inline executor — Robolectric has the main looper paused, so posting
     // to a background thread and awaiting back on main would deadlock. Inflating
@@ -107,7 +120,7 @@ private fun renderTileInto(
     val renderer = TileRenderer(context, Runnable::run) { _ -> /* no-op loader */ }
     val view = renderer.inflateAsync(layout, resources, parent)
         .get(10, TimeUnit.SECONDS)
-        ?: error("TileRenderer returned no view for preview '${preview.functionName}'")
+        ?: error("TileRenderer returned no view for preview '$functionName'")
 
     // Tile inflation defaults to WRAP_CONTENT, which collapses against an
     // AndroidView that's still measuring. Mirror `TileServiceViewAdapter`:
@@ -121,20 +134,22 @@ private fun renderTileInto(
 
 private fun invokeTilePreviewFunction(
     context: Context,
-    preview: RenderPreviewEntry,
+    className: String,
+    functionName: String,
+    classLoader: ClassLoader?,
 ): TilePreviewData {
-    val method = findTilePreviewMethod(preview.className, preview.functionName)
+    val method = findTilePreviewMethod(className, functionName, classLoader)
     method.isAccessible = true
     val result = when (method.parameterTypes.size) {
         0 -> method.invoke(null)
         1 -> method.invoke(null, context)
         else -> error(
-            "TilePreview '${preview.functionName}' has unsupported signature; " +
+            "TilePreview '$functionName' has unsupported signature; " +
                 "expected 0 or 1 (Context) parameters, found ${method.parameterTypes.size}"
         )
     }
     return result as? TilePreviewData
-        ?: error("TilePreview '${preview.functionName}' did not return TilePreviewData")
+        ?: error("TilePreview '$functionName' did not return TilePreviewData")
 }
 
 /**
@@ -142,9 +157,14 @@ private fun invokeTilePreviewFunction(
  * Kotlin compiler places top-level functions on a synthetic `${File}Kt` class
  * (matching the `className` our discovery records). We prefer an overload that
  * takes a `Context` if present, falling back to a no-arg overload.
+ *
+ * [classLoader] threads through the daemon's per-render child loader so a tile preview resolves
+ * against freshly-recompiled user bytecode after every save; `null` falls back to the
+ * default `Class.forName(name)` behaviour (caller-thread context classloader), which is what the
+ * standalone renderer needs.
  */
-private fun findTilePreviewMethod(className: String, functionName: String): Method {
-    val cls = Class.forName(className)
+private fun findTilePreviewMethod(className: String, functionName: String, classLoader: ClassLoader?): Method {
+    val cls = if (classLoader != null) Class.forName(className, true, classLoader) else Class.forName(className)
     val candidates = cls.declaredMethods.filter { it.name == functionName }
     if (candidates.isEmpty()) {
         error("No method '$functionName' on '$className'")

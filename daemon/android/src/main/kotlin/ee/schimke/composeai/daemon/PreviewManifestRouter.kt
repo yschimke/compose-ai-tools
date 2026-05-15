@@ -129,6 +129,11 @@ class PreviewManifestRouter(
       inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
       inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
       inbound["mode"]?.let { append("mode=").append(it).append(';') }
+      // Manifest-resolved kind forwards through verbatim; an inbound `kind=` override (rare —
+      // currently only test fixtures emit one) wins for parity with the other override fields.
+      (inbound["kind"] ?: resolved.kind)?.takeIf { it.isNotBlank() }?.let {
+        append("kind=").append(it).append(';')
+      }
       append("outputBaseName=").append(resolved.outputBaseName)
     }
   }
@@ -171,6 +176,7 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     backgroundColor = resolved.backgroundColor,
     device = resolved.device,
     outputBaseName = resolved.outputBaseName,
+    kind = resolved.kind,
   )
 }
 
@@ -215,6 +221,12 @@ data class PreviewManifestEntry(
    */
   val device: String? = null,
   val outputBaseName: String? = null,
+  /**
+   * Flat-schema sibling of [PreviewParamsEntry.kind] — see kdoc there. Harness fixtures that
+   * use the flat shape can supply this directly; the production gradle plugin writes it under
+   * `params.kind` instead. [resolved] consults the flat field first, then the nested one.
+   */
+  val kind: String? = null,
 ) {
   fun resolved(): ResolvedRenderParams {
     val p = params
@@ -224,6 +236,7 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
+    val kind = kind ?: p?.kind
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,
@@ -232,6 +245,7 @@ data class PreviewManifestEntry(
       backgroundColor = backgroundColor,
       device = device,
       outputBaseName = outputBaseName ?: id,
+      kind = kind,
     )
   }
 }
@@ -251,6 +265,13 @@ data class PreviewParamsEntry(
   val density: Float? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
+  /**
+   * `"COMPOSE"` / `"TILE"` — mirrors `ee.schimke.composeai.plugin.PreviewKind`. Forwarded through
+   * the router so the daemon's render path can dispatch tile previews to
+   * `renderer.TilePreviewComposable` instead of the Compose-method reflection path (which
+   * throws `NoSuchMethodException` on a non-composable tile entrypoint).
+   */
+  val kind: String? = null,
 )
 
 /** Output of [PreviewManifestEntry.resolved] — flat, fully-defaulted, ready to format into a
@@ -263,4 +284,5 @@ data class ResolvedRenderParams(
   val backgroundColor: Long,
   val device: String?,
   val outputBaseName: String,
+  val kind: String? = null,
 )
