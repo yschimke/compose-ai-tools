@@ -182,6 +182,16 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             ),
         );
 
+        // The chip toggles below send `data/subscribe` through the daemon
+        // scheduler, which requires a live daemon and therefore a
+        // `composePreviewDaemonStart`-produced launch descriptor. Activation
+        // does this automatically in production via `runActivationRefresh`,
+        // but COMPOSE_PREVIEW_TEST_MODE=1 skips that auto-refresh — without
+        // an explicit warm here the first `triggerSetDataExtensionEnabled`
+        // throws `[daemon] no launch descriptor for :samples:wear`.
+        const warmed = await api.triggerWarmDaemon(wearKotlinFile);
+        assert.ok(warmed, "wear daemon must warm before chip subscriptions");
+
         // One refresh bootstraps every `it`: the wear renderAllPreviews
         // cold path is the slowest piece of the suite, so paying for it
         // once and reusing the `setPreviews` payload keeps the total

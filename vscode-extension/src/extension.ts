@@ -435,6 +435,14 @@ export interface ComposePreviewTestApi {
         kind: string,
         enabled: boolean,
     ): Promise<void>;
+    /**
+     * Run the same `composePreviewDaemonStart` + JVM spawn the activation
+     * flow does, so chip-toggle tests can issue `data/subscribe` against a
+     * live daemon. Resolves to whether the daemon ended up ready. Used by
+     * the wear a11y e2e — the regular `triggerRefresh` only drives the
+     * Gradle-task render path and never touches the daemon gate.
+     */
+    triggerWarmDaemon(filePath: string): Promise<boolean>;
     /** Snapshot of every panel message posted since [resetMessages]. */
     getPostedMessages(): unknown[];
     /**
@@ -1677,6 +1685,9 @@ export async function activate(
                 enabled: boolean,
             ): Promise<void> {
                 return handleSetDataExtensionEnabled(previewId, kind, enabled);
+            },
+            triggerWarmDaemon(filePath: string): Promise<boolean> {
+                return warmDaemonForFile(filePath);
             },
             getPostedMessages(): unknown[] {
                 return [...postedMessageLog];
