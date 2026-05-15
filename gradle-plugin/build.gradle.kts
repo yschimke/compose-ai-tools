@@ -63,13 +63,11 @@ val functionalTestTask =
     classpath = functionalTest.runtimeClasspath
     useJUnit()
 
-    // `AccessibilityAndroidFunctionalTest` used to require a `publishToMavenLocal` pre-step so
-    // its synthetic `com.android.library` project could resolve the renderer AAR closure from
-    // `~/.m2`. That test was removed when a11y moved to be daemon-only — no remaining
-    // functional test depends on mavenLocal artefacts. The `mustRunAfter` is kept so that, if
-    // someone schedules `publishToMavenLocal` alongside `functionalTest` from CI for any
-    // reason, the publish still runs first.
-
+    // `CliA11yEndToEndFunctionalTest` (and any future Android-flavour functional test) requires
+    // a `publishToMavenLocal` pre-step so its synthetic `com.android.library` project can
+    // resolve the renderer AAR closure from `~/.m2`. The `mustRunAfter` ensures the publish
+    // runs first when both are scheduled in one Gradle invocation (the
+    // `functionalTestWithAndroid` task in the root build does exactly this).
     mustRunAfter("publishToMavenLocal")
 
     // Surface the host's `~/.m2/repository`, the plugin's compile-time version, and the Android
@@ -83,6 +81,21 @@ val functionalTestTask =
     // neither is set — the test then `assumeFalse`s out so devs without an SDK don't see a hard
     // failure.
     systemProperty("ee.schimke.composeai.functionalTest.androidSdkDir", resolveAndroidSdk(rootDir))
+    // Opt-in `cli.a11y.e2e=true` gate for the daemon-spawn round-trip
+    // (`CliA11yEndToEndFunctionalTest`). Default off — the test cold-starts a Robolectric JVM
+    // per render and a daemon JVM per module, so it's too slow for `./gradlew check`. CI runs
+    // it via the root build's `functionalTestWithAndroid` task with the flag flipped on.
+    val cliA11yE2E = providers.gradleProperty("cli.a11y.e2e").orNull == "true"
+    systemProperty("composeai.functionalTest.cliA11yE2E", cliA11yE2E.toString())
+    // Path to the compose-preview CLI binary built by `:cli:installDist`. The test invokes it
+    // directly as a subprocess — that's the actual subject of the e2e. Empty string when the
+    // binary hasn't been built; the test self-skips. The root build wires the dependency.
+    val cliBinary =
+      rootDir.parentFile?.resolve("cli/build/install/compose-preview/bin/compose-preview")
+    systemProperty(
+      "composeai.functionalTest.cliBinary",
+      if (cliBinary?.isFile == true) cliBinary.absolutePath else "",
+    )
   }
 
 tasks.check { dependsOn(functionalTestTask) }

@@ -40,14 +40,52 @@ tasks.register("ktfmtFormatAll") {
   allprojects.forEach { dependsOn(it.taskPath("ktfmtFormat")) }
 }
 
-// `functionalTestWithAndroid` previously orchestrated the publish-then-test dance for
-// `AccessibilityAndroidFunctionalTest`. That test has been removed — a11y is now produced
-// exclusively by the daemon, so there is no standalone-gradle-render path to assert on. The
-// task is kept as a no-op alias for `:gradle-plugin:functionalTest` so CI / docs that still
-// reference it don't break; future Android-flavour functional tests can re-establish the
-// publish closure here when they land.
+// Convenience entrypoint for `CliA11yEndToEndFunctionalTest`. The test runs an Android-flavour
+// synthetic project through the CLI's daemon-driven a11y flow, which needs:
+//   1. The `renderer-android` AAR closure published to mavenLocal so the synthetic Android
+//      library resolves it through its own `pluginManagement.repositories.mavenLocal()`.
+//   2. The `:gradle-plugin` itself published to mavenLocal for the same reason (the test's
+//      synthetic `plugins { id("ee.schimke.composeai.preview") version "<v>" }` block looks
+//      it up by coordinate).
+//   3. The `compose-preview` CLI binary built via `:cli:installDist` — the test shells out to
+//      it as the actual `compose-preview a11y` subject.
+//
+// Wired from the *parent* build so the `dependsOn` chain flows parent → child (the standard
+// direction); the included `gradle-plugin` build expresses the test's own data (the synthetic
+// project's source files) inline.
+//
+// The publish set is the closure of renderer-android's compile/runtime project deps:
+//   :renderer-android
+//     api :data-a11y-core
+//       api :data-render-core
+//     implementation :data-render-core
+//     implementation :data-scroll-core
+//       api :data-render-core
+//       api :data-render-compose
+//         api :data-render-core
+val androidFunctionalTestPublishTargets =
+  listOf(
+    ":renderer-android",
+    ":data-a11y-core",
+    ":data-render-core",
+    ":data-render-compose",
+    ":data-scroll-core",
+  )
+
 tasks.register("functionalTestWithAndroid") {
   group = "verification"
-  description = "Alias for :gradle-plugin:functionalTest (kept for backwards-compat)."
+  description =
+    "Publishes renderer-android (+ transitive internal modules) and the gradle plugin itself " +
+      "to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
+      "gradle-plugin's functionalTest with the opt-in `cli.a11y.e2e=true` flag set so " +
+      "`CliA11yEndToEndFunctionalTest` actually fires."
+  androidFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
+  // The synthetic Android-library project resolves our plugin through its own
+  // `plugins { id("ee.schimke.composeai.preview") version "<v>" }` block (so AGP and our plugin
+  // share one classloader hierarchy). That requires the plugin to be in mavenLocal before the
+  // functional test starts.
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
+  // The CLI binary the test invokes — built into `cli/build/install/compose-preview/bin/`.
+  dependsOn(":cli:installDist")
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
