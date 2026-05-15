@@ -19,9 +19,7 @@ export class RealGradleApi implements GradleApi {
      * @param extraArgs Extra CLI arguments appended to every `gradlew`
      *                  invocation. Used by suites that need to set Gradle
      *                  properties (`-Pfoo=bar`) without plumbing through
-     *                  `gradleService.ts`. Example: the wear a11y e2e
-     *                  passes `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true`
-     *                  until #1009 lands the always-on daemon registry.
+     *                  `gradleService.ts`.
      */
     constructor(
         private readonly gradlewDir: string,

@@ -55,15 +55,9 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    */
   @get:Input abstract val failOnEmpty: Property<Boolean>
 
-  /**
-   * Mirrors the same on/off bit forwarded to the Android renderer via `composeai.a11y.enabled`.
-   * When true, the manifest's `dataExtensionReports` map gains an `"a11y" -> "accessibility.json"`
-   * entry so the CLI / VS Code follow it; when false the entry is absent, signalling consumers to
-   * skip the rollup file even if a stale one is left over from a previous opted-in run. Defaults to
-   * false (a11y is opt-in). Plumbed only on the Android wiring path — desktop/CMP modules don't
-   * have an a11y producer to gate, so the property is left at its default there.
-   */
-  @get:Input abstract val accessibilityEnabled: Property<Boolean>
+  // a11y data products are daemon-only — the standalone Gradle path neither produces them nor
+  // stamps a manifest pointer for them. New per-extension report rollups would add their own
+  // dedicated input here when they have an on-disk artefact to point at.
 
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
@@ -271,19 +265,16 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // unaffected.
     val normalized = normalizeRenderOutputs(deduped)
 
-    // Build the generic v2 pointer map and a single back-compat mirror for v1 consumers. Today
-    // only `a11y` produces a canned report; new entries (theme rollups, recomposition summaries)
-    // are additive — adding a key here is the whole plugin-side change, and the CLI's strategy
-    // pattern picks them up without any per-feature branching here.
-    val extensionReports = buildMap {
-      if (accessibilityEnabled.get()) put("a11y", "accessibility.json")
-    }
+    // The generic per-extension reports map is empty on the standalone Gradle path — a11y
+    // (today's only canned-report producer) writes its artefacts exclusively through the
+    // daemon, which stamps the pointer at runtime when it has data on disk. Future
+    // gradle-produced rollups would populate keys here.
     val manifest =
       PreviewManifest(
         module = moduleName.get(),
         variant = variantName.get(),
         previews = normalized,
-        dataExtensionReports = extensionReports,
+        dataExtensionReports = emptyMap(),
       )
 
     val outFile = outputFile.get().asFile

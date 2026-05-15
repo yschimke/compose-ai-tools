@@ -40,42 +40,14 @@ tasks.register("ktfmtFormatAll") {
   allprojects.forEach { dependsOn(it.taskPath("ktfmtFormat")) }
 }
 
-// Convenience entrypoint for issue #733's `AccessibilityAndroidFunctionalTest`. The test runs
-// against the AAR resolved from `~/.m2`, so the renderer-android AAR + every transitively-pulled
-// internal module must land in mavenLocal before `:gradle-plugin:functionalTest`. Wiring it
-// from the *parent* build (rather than from inside the gradle-plugin included build) lets the
-// child stay decoupled — the `dependsOn` chain only flows parent → child, the standard
-// direction.
-//
-// The publish set is the closure of renderer-android's compile/runtime project deps:
-//   :renderer-android
-//     api :data-a11y-core
-//       api :data-render-core
-//     implementation :data-render-core
-//     implementation :data-scroll-core
-//       api :data-render-core
-//       api :data-render-compose
-//         api :data-render-core
-val androidFunctionalTestPublishTargets =
-  listOf(
-    ":renderer-android",
-    ":data-a11y-core",
-    ":data-render-core",
-    ":data-render-compose",
-    ":data-scroll-core",
-  )
-
+// `functionalTestWithAndroid` previously orchestrated the publish-then-test dance for
+// `AccessibilityAndroidFunctionalTest`. That test has been removed — a11y is now produced
+// exclusively by the daemon, so there is no standalone-gradle-render path to assert on. The
+// task is kept as a no-op alias for `:gradle-plugin:functionalTest` so CI / docs that still
+// reference it don't break; future Android-flavour functional tests can re-establish the
+// publish closure here when they land.
 tasks.register("functionalTestWithAndroid") {
   group = "verification"
-  description =
-    "Publishes renderer-android (+ transitive internal modules) and the gradle plugin itself to " +
-      "mavenLocal, then runs gradle-plugin's functionalTest (including the Android-flavour " +
-      "AccessibilityAndroidFunctionalTest)."
-  androidFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
-  // The synthetic Android-library project resolves our plugin through its own
-  // `plugins { id("ee.schimke.composeai.preview") version "<v>" }` block (so AGP and our plugin
-  // share one classloader hierarchy — the fix for the loader-split blocker tracked in #733).
-  // That requires the plugin to be in mavenLocal before the functional test starts.
-  dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
+  description = "Alias for :gradle-plugin:functionalTest (kept for backwards-compat)."
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }

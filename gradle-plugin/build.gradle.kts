@@ -63,24 +63,12 @@ val functionalTestTask =
     classpath = functionalTest.runtimeClasspath
     useJUnit()
 
-    // `AccessibilityAndroidFunctionalTest` exercises the full external-consumer Android render
-    // path: synthetic `com.android.library` project + AGP + Robolectric + the plugin's
-    // auto-injected `ee.schimke.composeai:renderer-android:<plugin-version>` Maven coordinate.
-    // The synthetic project resolves *both* AGP and our plugin through its own `plugins { ... }`
-    // block (`id("com.android.library") version ...`, `id("ee.schimke.composeai.preview")
-    // version ...`) so they share one classloader hierarchy — `withPluginClasspath()` is
-    // deliberately *not* used by that test class, because doing so loaded our plugin (and AGP)
-    // twice on different loaders and made `AndroidComponentsExtension` identity checks fail.
-    //
-    // The test `assumeTrue`s out cleanly when the AAR or plugin POM isn't in `~/.m2`, so the
-    // default `:gradle-plugin:check` stays fast: the caller (CI / dev) is expected to invoke
-    // `./gradlew functionalTestWithAndroid` from the parent build, which pre-publishes the
-    // renderer AAR closure *and* the plugin itself to mavenLocal.
-    //
-    // Ordering between the two parent-scheduled tasks (`:gradle-plugin:publishToMavenLocal` and
-    // `:gradle-plugin:functionalTest`, both `dependsOn`d by the root `functionalTestWithAndroid`
-    // task) is enforced via `mustRunAfter` below so plain `:gradle-plugin:functionalTest` runs
-    // don't drag in a publish.
+    // `AccessibilityAndroidFunctionalTest` used to require a `publishToMavenLocal` pre-step so
+    // its synthetic `com.android.library` project could resolve the renderer AAR closure from
+    // `~/.m2`. That test was removed when a11y moved to be daemon-only — no remaining
+    // functional test depends on mavenLocal artefacts. The `mustRunAfter` is kept so that, if
+    // someone schedules `publishToMavenLocal` alongside `functionalTest` from CI for any
+    // reason, the publish still runs first.
 
     mustRunAfter("publishToMavenLocal")
 

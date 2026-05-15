@@ -277,11 +277,11 @@ abstract class Command(protected val args: List<String>) {
    * (`--with-extension a11y --with-extension theme`), comma-batched (`--with-extension
    * a11y,theme`), or equals-form (`--with-extension=a11y`).
    *
-   * Each id maps to `-PcomposePreview.previewExtensions.<id>.enableAllChecks=true` on the spawned
-   * Gradle build, the same property the typed plugin DSL writes to. Surfaces as the canned-report
-   * entry-point: `compose-preview a11y` is implemented as a thin wrapper that adds `a11y` via
-   * [implicitExtensions], and other extensions can be requested ad-hoc via `compose-preview show
-   * --with-extension <id>` without touching `build.gradle.kts`.
+   * Forwarded to Gradle as a single `-PcomposePreview.activeExtensions=<comma-list>` argument. The
+   * gradle plugin itself currently ignores this property — a11y and other opt-in data products are
+   * daemon-only — but the property is the contract carrier the CLI keeps writing so future
+   * daemon-orchestrating logic in the CLI (spinning up a temporary daemon for `compose-preview
+   * a11y`, see TODO on [A11yCommand]) can read it back as the per-invocation subscription list.
    */
   protected val requestedExtensions: List<String> =
     (args.flagValuesAll("--with-extension") + args.flagValuesAll("--with"))
@@ -299,12 +299,17 @@ abstract class Command(protected val args: List<String>) {
 
   /**
    * Gradle property arguments for every extension this run wants enabled — the union of
-   * [implicitExtensions] (subclass-pinned) and [requestedExtensions] (user-requested). Deduplicated
-   * so passing `compose-preview a11y --with-extension a11y` doesn't emit two identical `-P` args.
+   * [implicitExtensions] (subclass-pinned) and [requestedExtensions] (user-requested), deduplicated
+   * and joined into a single `-PcomposePreview.activeExtensions=<list>` argument. Returns an empty
+   * list (no Gradle args) when neither implicit nor requested extensions are present. The gradle
+   * plugin currently does not act on this property — daemon-driven flows are where opt-in
+   * extensions actually run — but the CLI keeps emitting it as the stable record of what the
+   * invocation requested.
    */
   protected fun extensionGradleArgs(): List<String> {
     val all = (implicitExtensions() + requestedExtensions).distinct().filter { it.isNotEmpty() }
-    return all.map { "-PcomposePreview.previewExtensions.$it.enableAllChecks=true" }
+    if (all.isEmpty()) return emptyList()
+    return listOf("-PcomposePreview.activeExtensions=${all.joinToString(",")}")
   }
 
   private val forceNoticePrinted = AtomicBoolean(false)
@@ -316,8 +321,8 @@ abstract class Command(protected val args: List<String>) {
    * human reading their transcript) can see the reason and the tracking-issue link.
    *
    * Always appends [extensionGradleArgs] so any `--with-extension` flags the user passed (and the
-   * implicit `a11y` request from `A11yCommand`) become `-PcomposePreview.previewExtensions.<id>
-   * .enableAllChecks=true` on the spawned Gradle build.
+   * implicit `a11y` request from `A11yCommand`) flow through as a single
+   * `-PcomposePreview.activeExtensions=<comma-list>` argument on the spawned Gradle build.
    */
   protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
     val extensionArgs = extensionGradleArgs()
@@ -1109,6 +1114,15 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  * `compose-preview a11y` — `ReportCommand` bound to the built-in `a11y` extension id. Kept as a
  * named subclass so `Main.kt`'s `when` dispatch stays grep-able and the help text can describe the
  * command directly; the entire body is the constructor call.
+ *
+ * TODO(daemon): a11y data products are no longer produced by the standalone `renderAllPreviews`
+ *   Gradle task — they are exclusively daemon-driven. As a result, this command currently runs the
+ *   Gradle render but finds no findings on disk. The follow-up is to either (a) have this command
+ *   spin up a temporary daemon per module, subscribe every preview to `a11y/atf` +
+ *   `a11y/hierarchy`, render, drain the findings, and shut down; or (b) expose the daemon
+ *   `RenderEngine` as a library so the CLI can drive it in-process without a JSON-RPC dance.
+ *   Tracked separately — for now the CLI emits the `--with-extension a11y` request through
+ *   [extensionGradleArgs] so the contract is in place but the orchestration side is a follow-up PR.
  */
 class A11yCommand(args: List<String>) : ReportCommand(args, "a11y")
 
