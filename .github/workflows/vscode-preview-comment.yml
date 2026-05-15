@@ -1,0 +1,48 @@
+name: VS Code Preview Comment
+
+# Mirrors `preview-comment.yml` (the active per-PR diff flow) but for
+# the VS Code panel's `preview-harness`. Runs only when the PR touches
+# files that can change the panel's rendered look (extension source,
+# webview bundle, harness fixtures). Posts a sticky before/after
+# comment using `vscode-preview/main` as the baseline branch and
+# `vscode-preview/pr` as the per-PR captures branch — same shape as
+# `compose-preview/main` / `compose-preview/pr`.
+
+on:
+  pull_request:
+    paths:
+      - 'vscode-extension/src/webview/**'
+      - 'vscode-extension/media/**'
+      - 'vscode-extension/preview-harness/**'
+      - 'vscode-extension/esbuild.webview.mjs'
+      - 'vscode-extension/tsconfig.webview.json'
+      - 'vscode-extension/package.json'
+      - 'vscode-extension/package-lock.json'
+      - '.github/actions/vscode-preview-baselines/**'
+      - '.github/actions/vscode-preview-comment/**'
+      - '.github/actions/lib/vscode-preview-diff.py'
+      - '.github/workflows/vscode-preview-comment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per-PR group so a fast-follow push cancels the in-flight diff for
+  # the same PR but leaves other PRs alone — same shape as the
+  # composable preview-comment flow.
+  group: vscode-preview-comment-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Compare vscode-preview captures
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/vscode-preview-comment

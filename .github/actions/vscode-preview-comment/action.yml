@@ -1,0 +1,220 @@
+name: 'VS Code Preview Comment'
+description: >
+  Render the VS Code panel's `preview-harness` fixtures (every fixture
+  × dark/light theme), compare against the baselines on
+  `vscode-preview/main`, and post a sticky before/after comment on the
+  PR. Changed PNGs are appended as a new commit on the shared
+  `vscode-preview/pr` branch; the comment pins Before/After URLs to
+  commit SHAs so the images keep resolving after merge. Same model as
+  the composable `preview-comment` action — see that action for the
+  rationale on the appended-history / shared-PR-branch design.
+
+inputs:
+  base-branch:
+    description: 'Branch name for the baselines.'
+    default: 'vscode-preview/main'
+  head-branch:
+    description: 'Shared branch that accumulates per-PR render commits.'
+    default: 'vscode-preview/pr'
+  pr-number:
+    description: 'Pull request number (auto-detected from context if omitted).'
+    default: ''
+  comment-on-empty-diff:
+    description: >
+      When `false` (default), skip posting a fresh PR comment if there are
+      no preview changes in this run — avoids notifying reviewers about a
+      "no visual changes" comment on every push. An existing diff comment
+      is still patched in place to reflect the empty state (PATCHing
+      doesn't trigger notifications). Set to `true` to always post / update
+      the comment.
+    default: 'false'
+  node-version:
+    description: 'Node.js version for the harness.'
+    default: '20'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: vscode-extension/package-lock.json
+
+    - name: Install extension dependencies
+      shell: bash
+      working-directory: vscode-extension
+      run: npm ci
+
+    - name: Install Playwright browser
+      shell: bash
+      working-directory: vscode-extension
+      run: npx playwright install --with-deps chromium
+
+    - name: Capture harness snapshots
+      shell: bash
+      working-directory: vscode-extension
+      run: npm run harness:snapshot
+
+    - name: Fetch baselines
+      shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+      run: |
+        mkdir -p _vscode_baselines
+        if git ls-remote --exit-code origin "$BASE_BRANCH" >/dev/null 2>&1; then
+          git fetch origin "$BASE_BRANCH"
+          git show "origin/${BASE_BRANCH}:baselines.json" \
+            > _vscode_baselines/baselines.json 2>/dev/null || true
+        else
+          echo "No $BASE_BRANCH branch yet — treating all captures as new."
+        fi
+
+    - name: Resolve Before ref
+      shell: bash
+      env:
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        BASE_SHA=$(git ls-remote \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+          "refs/heads/${BASE_BRANCH}" | awk '{print $1}')
+        # First-ever run — fall back to the branch name; Before images will
+        # 404 until the first baseline push lands, after which new comments
+        # resolve to a SHA.
+        if [ -z "$BASE_SHA" ]; then
+          BASE_SHA="$BASE_BRANCH"
+        fi
+        echo "$BASE_SHA" > _vscode_base_sha
+
+    - name: Copy changed captures
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" copy-changed \
+          vscode-extension/preview-harness/out \
+          --baselines _vscode_baselines/baselines.json \
+          --output-dir _vscode_pr_renders
+
+    - name: Push PR captures
+      shell: bash
+      env:
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+
+        if [ ! -d _vscode_pr_renders/renders ] || \
+           [ -z "$(ls -A _vscode_pr_renders/renders 2>/dev/null)" ]; then
+          echo "No changed captures to push."
+          : > _vscode_head_sha
+          exit 0
+        fi
+
+        cd _vscode_pr_renders
+        git init -q
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git remote add origin \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+
+        git add -A
+        TREE=$(git write-tree)
+
+        MSG="VS Code preview captures for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
+
+        # Retry-on-race — different PRs push to the same shared branch and
+        # second-to-push hits "non-fast-forward". Same retry shape as
+        # `Push PR renders` in `preview-comment/action.yml`.
+        attempt=1
+        while :; do
+          PARENT=""
+          if git fetch --depth=1 --quiet origin "$HEAD_BRANCH" 2>/dev/null; then
+            PARENT=$(git rev-parse FETCH_HEAD)
+          fi
+          if [ -n "$PARENT" ]; then
+            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+          else
+            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+          fi
+          if git push --quiet origin "${COMMIT}:refs/heads/${HEAD_BRANCH}" 2>&1; then
+            echo "$COMMIT" > "$GITHUB_WORKSPACE/_vscode_head_sha"
+            exit 0
+          fi
+          if [ "$attempt" -ge 5 ]; then
+            echo "Push to ${HEAD_BRANCH} failed after ${attempt} attempts." >&2
+            exit 1
+          fi
+          delay=$((attempt * 2 + RANDOM % 3))
+          echo "Push to ${HEAD_BRANCH} lost the race; retry ${attempt}/5 in ${delay}s…" >&2
+          attempt=$((attempt + 1))
+          sleep "$delay"
+        done
+
+    - name: Generate comment
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        HEAD_BRANCH: ${{ inputs.head-branch }}
+      run: |
+        set -euo pipefail
+        BASE_REF=$(cat _vscode_base_sha)
+        HEAD_REF=$(cat _vscode_head_sha 2>/dev/null || true)
+        if [ -z "$HEAD_REF" ]; then
+          HEAD_REF="$HEAD_BRANCH"
+        fi
+
+        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" compare \
+          vscode-extension/preview-harness/out \
+          --baselines _vscode_baselines/baselines.json \
+          --repo "$REPO" \
+          --base-ref "$BASE_REF" \
+          --head-ref "$HEAD_REF" \
+          --base-branch "$BASE_BRANCH" \
+          > _vscode_comment_body.md
+
+    - name: Post or update PR comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        COMMENT_ON_EMPTY_DIFF: ${{ inputs.comment-on-empty-diff }}
+      run: |
+        set -euo pipefail
+        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
+        BODY=$(cat _vscode_comment_body.md)
+        MARKER="<!-- vscode-preview-diff -->"
+
+        # `gh` isn't available on this self-hosted env in some contexts, but
+        # it's preinstalled on github-hosted ubuntu-latest where this action
+        # actually runs — same as the composable preview-comment action.
+        COMMENT_ID=$(gh api \
+          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+          --paginate \
+          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
+          | head -1)
+
+        if grep -qF "No visual changes detected." _vscode_comment_body.md \
+           && [ "$COMMENT_ON_EMPTY_DIFF" != "true" ] \
+           && [ -z "$COMMENT_ID" ]; then
+          echo "No vscode-preview diff and no existing comment — skipping (comment-on-empty-diff=false)."
+          exit 0
+        fi
+
+        if [ -n "$COMMENT_ID" ]; then
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+            -X PATCH -f body="$BODY"
+        else
+          gh pr comment "$PR_NUMBER" --body "$BODY"
+        fi

@@ -57,49 +57,54 @@ function solidPngBase64(w, h, r, g, b) {
     return png.toString("base64");
 }
 
+// Mirrors the real preview functions in
+// `samples/cmp/src/main/kotlin/com/example/samplecmp/Previews.kt` so the
+// rendered panel looks like a realistic grid for someone working on the
+// CMP sample, not a `com.example` placeholder. The ids/class names match
+// the canonical id shape `${className}.${functionName}_${name}` (or just
+// `.${functionName}` when `@Preview` carries no `name`).
 const previews = [
     {
-        id: "com.example.PreviewsKt.RedBoxPreview_Red Box",
+        id: "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
         fn: "RedBoxPreview",
-        cls: "com.example.PreviewsKt",
+        cls: "com.example.samplecmp.PreviewsKt",
         file: "Previews.kt",
         name: "Red Box",
-        group: "colors",
+        group: null,
         rgb: [244, 67, 54],
     },
     {
-        id: "com.example.PreviewsKt.BlueBoxPreview_Blue Box",
+        id: "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box",
         fn: "BlueBoxPreview",
-        cls: "com.example.PreviewsKt",
+        cls: "com.example.samplecmp.PreviewsKt",
         file: "Previews.kt",
         name: "Blue Box",
-        group: "colors",
+        group: null,
         rgb: [33, 150, 243],
     },
     {
-        id: "com.example.MainKt.GreetingPreview",
-        fn: "GreetingPreview",
-        cls: "com.example.MainKt",
-        file: "Main.kt",
+        id: "com.example.samplecmp.PreviewsKt.AppPreview",
+        fn: "AppPreview",
+        cls: "com.example.samplecmp.PreviewsKt",
+        file: "Previews.kt",
         name: null,
         group: null,
         rgb: [33, 33, 33],
     },
     {
-        id: "com.example.PreviewsKt.RedBoxPreview_Dark Mode",
-        fn: "RedBoxPreview",
-        cls: "com.example.PreviewsKt",
+        id: "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
+        fn: "WallpaperDemoPreview",
+        cls: "com.example.samplecmp.PreviewsKt",
         file: "Previews.kt",
-        name: "Dark Mode",
-        group: "colors",
-        rgb: [63, 63, 63],
-        uiMode: 32,
+        name: "Wallpaper Demo",
+        group: null,
+        rgb: [103, 80, 164],
     },
 ];
 
 const setPreviews = {
     command: "setPreviews",
-    moduleDir: "/workspace/sample-android",
+    moduleDir: "/workspace/samples/cmp",
     heavyStaleIds: [],
     previews: previews.map((p) => ({
         id: p.id,

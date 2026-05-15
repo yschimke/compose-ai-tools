@@ -1,0 +1,38 @@
+name: VS Code Preview Baselines
+
+# Mirrors `preview-baselines.yml` but for the VS Code panel's
+# `preview-harness` (every fixture × dark/light theme). Pushes the
+# rendered PNGs + baselines.json to `vscode-preview/main` so the
+# branch is browsable on GitHub and serves as the "before" state for
+# `vscode-preview-comment.yml` on PRs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vscode-extension/**'
+      - '.github/actions/vscode-preview-baselines/**'
+      - '.github/actions/vscode-preview-comment/**'
+      - '.github/actions/lib/vscode-preview-diff.py'
+      - '.github/workflows/vscode-preview-baselines.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vscode-preview-baselines
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: Update vscode-preview/main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The composite action pushes via an explicit token in the
+          # remote URL (see `vscode-preview-baselines/action.yml`), so we
+          # don't need the default git credentials persisted here.
+          persist-credentials: false
+      - uses: ./.github/actions/vscode-preview-baselines
