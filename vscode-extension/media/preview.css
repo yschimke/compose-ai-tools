@@ -2188,7 +2188,27 @@ body {
 }
 .a11y-label-stack {
     display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 6px;
+}
+.a11y-label-stack-indent {
+    /* Visual indent for unmerged nodes — `↳ ` prefix + a small left
+     * pad so the role line below it also sits under the indent.
+     * The wire format is flat (no parent ids), so this is a one-
+     * level heuristic from `AccessibilityNode.merged`. */
+    padding-left: 16px;
+}
+.a11y-tree-arm {
+    color: var(--vscode-descriptionForeground, currentColor);
+    opacity: 0.6;
+    line-height: 1.2;
+    user-select: none;
+}
+.a11y-label-text {
+    display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 .a11y-row-role {
     opacity: 0.7;

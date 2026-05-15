@@ -234,4 +234,45 @@ describe("computeA11yBundleData", () => {
         );
         assert.ok(data.overlay[0].tooltip?.includes("48×48 dp"));
     });
+
+    it("annotates merged nodes with depth 0 and unmerged with depth 1", () => {
+        const data = computeA11yBundleData(
+            [
+                node({
+                    label: "Button",
+                    merged: true,
+                    boundsInScreen: "0,0,100,40",
+                }),
+                node({
+                    label: "Text inside",
+                    merged: false,
+                    boundsInScreen: "5,5,95,35",
+                }),
+            ],
+            [],
+        );
+        assert.strictEqual(data.rows.length, 2);
+        assert.strictEqual(data.rows[0].depth, 0, "merged ⇒ top-level");
+        assert.strictEqual(data.rows[1].depth, 1, "unmerged ⇒ child of merged");
+    });
+
+    it("orphan finding rows render at depth 0 regardless of hierarchy", () => {
+        // Orphan findings (no matching node) aren't bound to a
+        // merged ancestor — they should sit at the top level so
+        // they don't pretend to belong under whoever ran last.
+        const data = computeA11yBundleData(
+            [node({ boundsInScreen: "0,0,10,10", merged: true })],
+            [
+                finding({
+                    boundsInScreen: "100,100,200,200",
+                    level: "ERROR",
+                }),
+            ],
+        );
+        const orphan = data.rows.find((r) =>
+            r.id.startsWith("a11y-finding-orphan-"),
+        );
+        assert.ok(orphan);
+        assert.strictEqual(orphan!.depth, 0);
+    });
 });

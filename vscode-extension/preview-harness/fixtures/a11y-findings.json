@@ -68,7 +68,7 @@
               "label": "Welcome screen",
               "role": "container",
               "states": [],
-              "merged": false,
+              "merged": true,
               "boundsInScreen": "0,0,360,600"
             },
             {
@@ -77,7 +77,7 @@
               "states": [
                 "focusable"
               ],
-              "merged": false,
+              "merged": true,
               "boundsInScreen": "0,0,360,80"
             },
             {
@@ -87,6 +87,13 @@
                 "clickable",
                 "focusable"
               ],
+              "merged": true,
+              "boundsInScreen": "40,240,160,296"
+            },
+            {
+              "label": "Get started",
+              "role": "text",
+              "states": [],
               "merged": false,
               "boundsInScreen": "40,240,160,296"
             },
@@ -97,14 +104,14 @@
                 "clickable",
                 "focusable"
               ],
-              "merged": false,
+              "merged": true,
               "boundsInScreen": "200,240,320,296"
             },
             {
               "label": "By continuing you agree to our terms",
               "role": "text",
               "states": [],
-              "merged": false,
+              "merged": true,
               "boundsInScreen": "0,520,360,600"
             }
           ]
@@ -153,7 +160,7 @@
       "click": "bundle-chip-bar button[data-bundle=\"a11y\"]"
     },
     {
-      "click": "[data-bundle=\"a11y\"] tr[data-legend-id=\"a11y-3\"]"
+      "click": "[data-bundle=\"a11y\"] tr[data-legend-id=\"a11y-4\"]"
     }
   ]
 }

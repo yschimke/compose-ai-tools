@@ -49,6 +49,15 @@ export interface A11yRow {
      *  a corresponding `a11y/touchTargets` entry. `null` otherwise —
      *  the "Size" column renders a dash. */
     touchTargetSizeDp: string | null;
+    /** Visual indent depth (`0` for top-level / merged nodes, `1`
+     *  for unmerged children of the nearest preceding merged
+     *  ancestor in emission order). The wire format
+     *  (`AccessibilityNode`) is flat — `merged: false` is the
+     *  daemon's only hint that a node sits underneath a focusable
+     *  ancestor, so we use emission order as the heuristic parent.
+     *  Orphan finding / touch-target rows always render at depth 0
+     *  because they aren't bound to a hierarchy ancestor. */
+    depth: 0 | 1;
 }
 
 export interface A11yBundleData {
@@ -112,6 +121,10 @@ export function computeA11yBundleData(
             boundsInScreen: node.boundsInScreen,
             bounds,
             touchTargetSizeDp: target ? formatTargetSize(target) : null,
+            // Unmerged nodes sit under the nearest preceding merged
+            // ancestor in emission order; render them indented so
+            // the structure is visible without inventing parent ids.
+            depth: node.merged ? 0 : 1,
         };
         rows.push(row);
         if (bounds) {
@@ -153,6 +166,7 @@ export function computeA11yBundleData(
             boundsInScreen: fBounds,
             bounds,
             touchTargetSizeDp: null,
+            depth: 0,
         });
         if (bounds) {
             overlay.push({
@@ -190,6 +204,7 @@ export function computeA11yBundleData(
             boundsInScreen: t.boundsInScreen ?? "",
             bounds,
             touchTargetSizeDp: formatTargetSize(t),
+            depth: 0,
         });
         if (bounds) {
             overlay.push({
@@ -240,11 +255,25 @@ export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
             header: "Label",
             cellClass: "a11y-label-cell",
             render: (row) => html`
-                <div class="a11y-label-stack">
-                    <strong>${row.label}</strong>
-                    ${row.role
-                        ? html`<span class="a11y-row-role">${row.role}</span>`
+                <div
+                    class=${row.depth > 0
+                        ? "a11y-label-stack a11y-label-stack-indent"
+                        : "a11y-label-stack"}
+                    data-depth=${row.depth}
+                >
+                    ${row.depth > 0
+                        ? html`<span class="a11y-tree-arm" aria-hidden="true"
+                              >↳</span
+                          >`
                         : ""}
+                    <div class="a11y-label-text">
+                        <strong>${row.label}</strong>
+                        ${row.role
+                            ? html`<span class="a11y-row-role"
+                                  >${row.role}</span
+                              >`
+                            : ""}
+                    </div>
                 </div>
             `,
         },
