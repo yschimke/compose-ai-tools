@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.10.13](https://github.com/yschimke/compose-ai-tools/compare/v0.10.12...v0.10.13) (2026-05-15)
+
+
+### Features
+
+* add Fish shell completions for compose-preview CLI ([#1156](https://github.com/yschimke/compose-ai-tools/issues/1156)) ([8516421](https://github.com/yschimke/compose-ai-tools/commit/8516421e21c3a6f3395c115ef77d4bef9aa513c9))
+* **cli:** auto-inject the preview plugin via --init-script ([#1110](https://github.com/yschimke/compose-ai-tools/issues/1110)) ([f53f0a2](https://github.com/yschimke/compose-ai-tools/commit/f53f0a2258aac612a2b160114382d4fe8893b7f9))
+* enable a11y extension in daemon render sessions ([#1136](https://github.com/yschimke/compose-ai-tools/issues/1136)) ([2a8618c](https://github.com/yschimke/compose-ai-tools/commit/2a8618ce6c341ac7d7474009074826982fddd698))
+* **mcp:** expose RenderSession view on SupervisedDaemon ([#1147](https://github.com/yschimke/compose-ai-tools/issues/1147)) ([619aaee](https://github.com/yschimke/compose-ai-tools/commit/619aaee7dbf0af4e77f6a8b5116a757917e3b9d9))
+* **render-session:** in-process Compose Desktop backend ([#1141](https://github.com/yschimke/compose-ai-tools/issues/1141)) ([547de0c](https://github.com/yschimke/compose-ai-tools/commit/547de0ccf571a001d3fb15ca10ec9bcb9e7a5dca))
+* **render-session:** supported library for driving render sessions ([#1133](https://github.com/yschimke/compose-ai-tools/issues/1133)) ([f9f138f](https://github.com/yschimke/compose-ai-tools/commit/f9f138ff72ced15997c26f1a5c79db569ef4b3c6))
+* **vscode-extension:** add a11y-findings preview-harness fixture ([#1131](https://github.com/yschimke/compose-ai-tools/issues/1131)) ([8c5e329](https://github.com/yschimke/compose-ai-tools/commit/8c5e329fc4ca8581a001364478e8be154e5bba2f))
+* **vscode-extension:** add headless preview-harness for design iteration ([#1129](https://github.com/yschimke/compose-ai-tools/issues/1129)) ([d5b17a2](https://github.com/yschimke/compose-ai-tools/commit/d5b17a2e37714a65b13a2330f8ef4fcfed6df964))
+* **vscode-extension:** adopt bundle-legend in Inspection / Text / History bundles ([#1142](https://github.com/yschimke/compose-ai-tools/issues/1142)) ([c013afc](https://github.com/yschimke/compose-ai-tools/commit/c013afce625e08558199a9d271d7765acdc1bf7b))
+* **vscode-extension:** bridge a11y chip subscription to Gradle render ([#1117](https://github.com/yschimke/compose-ai-tools/issues/1117)) ([bf78bf1](https://github.com/yschimke/compose-ai-tools/commit/bf78bf12a921ccaee4bd5972793eaaa747c47f1b))
+* **vscode-extension:** generic bundle-legend panel beside the focused preview ([#1130](https://github.com/yschimke/compose-ai-tools/issues/1130)) ([c5db992](https://github.com/yschimke/compose-ai-tools/commit/c5db992a75e3cf54e30e6631f95dc8a9ab1068fa))
+* **vscode-extension:** render a11y/touchTargets in the Accessibility bundle tab ([#1128](https://github.com/yschimke/compose-ai-tools/issues/1128)) ([89656d1](https://github.com/yschimke/compose-ai-tools/commit/89656d1c43d264a283a4f2c491b96f865aa087cf))
+* **vscode-extension:** row-click detail for Text and Inspection bundles ([#1148](https://github.com/yschimke/compose-ai-tools/issues/1148)) ([563e598](https://github.com/yschimke/compose-ai-tools/commit/563e598ae0c4be27ab4bcac075806db6149317be))
+* **vscode-extension:** row-click detail for the History diff bundle ([#1149](https://github.com/yschimke/compose-ai-tools/issues/1149)) ([e33be16](https://github.com/yschimke/compose-ai-tools/commit/e33be1683a0bc739f633313344640b55edc5aaf3))
+* **vscode-extension:** row-click detail panel for the Accessibility bundle ([#1138](https://github.com/yschimke/compose-ai-tools/issues/1138)) ([396402c](https://github.com/yschimke/compose-ai-tools/commit/396402cd08ad6310987b12493516af7cdc1fb919))
+* **vscode-extension:** tree-indent unmerged a11y rows ([#1140](https://github.com/yschimke/compose-ai-tools/issues/1140)) ([acdfe70](https://github.com/yschimke/compose-ai-tools/commit/acdfe7010f57a56b089b010dea8ca53fadf47a6c))
+* **vscode-extension:** typed event bus for webview CustomEvents ([#1119](https://github.com/yschimke/compose-ai-tools/issues/1119)) ([f048b98](https://github.com/yschimke/compose-ai-tools/commit/f048b98733769848ada58995ad547751ce2bb138))
+
+
+### Bug Fixes
+
+* **ci:** drive a11y-report action via compose-preview a11y ([#1137](https://github.com/yschimke/compose-ai-tools/issues/1137)) ([248d734](https://github.com/yschimke/compose-ai-tools/commit/248d73451735c31d7b33fcc7fcd8049268525f2f))
+* **daemon:** route TILE-kind previews through TilePreviewComposable ([#1120](https://github.com/yschimke/compose-ai-tools/issues/1120)) ([e34f8fd](https://github.com/yschimke/compose-ai-tools/commit/e34f8fd1a0a3bccec0d00728fd94736f5c6563a3))
+* **gradle-plugin:** inject compose-ui floor on main variant for tile-only consumers ([#1134](https://github.com/yschimke/compose-ai-tools/issues/1134)) ([8dc5173](https://github.com/yschimke/compose-ai-tools/commit/8dc517315c027074425f5d664194519a7545da33))
+* **vscode-extension:** guard reflectLegendActiveTab against focusController TDZ ([#1135](https://github.com/yschimke/compose-ai-tools/issues/1135)) ([1082b28](https://github.com/yschimke/compose-ai-tools/commit/1082b2879058f9cdea388fef24390b0fdc0146fb))
+* **vscode-extension:** hide data tabs outside focus mode and drop the More tab ([#1114](https://github.com/yschimke/compose-ai-tools/issues/1114)) ([6a37ea7](https://github.com/yschimke/compose-ai-tools/commit/6a37ea706ec8e0e5280b97c5016e33f58de6521b))
+* **vscode-extension:** keep last image on minimal-mode save and add apply-plugin link ([#1112](https://github.com/yschimke/compose-ai-tools/issues/1112)) ([d7d001f](https://github.com/yschimke/compose-ai-tools/commit/d7d001f71af1cc31eed18f42090aa23474d94e19))
+* **vscode-extension:** show bundle labels next to chip icons ([#1115](https://github.com/yschimke/compose-ai-tools/issues/1115)) ([8277171](https://github.com/yschimke/compose-ai-tools/commit/8277171d1b334ec99fe6b0aa1e454003fcf3aa50))
+* **vscode-extension:** silence expected createImageBitmap noise in the stream painter (closes [#1125](https://github.com/yschimke/compose-ai-tools/issues/1125)) ([#1152](https://github.com/yschimke/compose-ai-tools/issues/1152)) ([20286fc](https://github.com/yschimke/compose-ai-tools/commit/20286fcf577660788c87f108b63683b5c4bcb591))
+* **vscode-extension:** swap minimal→full backend in place when auto-inject reveals the plugin ([#1116](https://github.com/yschimke/compose-ai-tools/issues/1116)) ([05164d3](https://github.com/yschimke/compose-ai-tools/commit/05164d34dbe6e7f129717ae4f8c0a6dcbedeca87))
+* **vscode-extension:** swap minimal→full backend in place when auto-inject reveals the plugin ([#1118](https://github.com/yschimke/compose-ai-tools/issues/1118)) ([26f1270](https://github.com/yschimke/compose-ai-tools/commit/26f1270567a031e4cd9797d854ee90a097f7a8eb))
+* **vscode-extension:** wire Resources bundle, gate bundle UI on earlyFeatures, satisfy webview CSP ([#1124](https://github.com/yschimke/compose-ai-tools/issues/1124)) ([54e7b3c](https://github.com/yschimke/compose-ai-tools/commit/54e7b3c0e0fe9c88c4e7a9e9e3d9f3b0584ffa84))
+
 ## [0.10.12](https://github.com/yschimke/compose-ai-tools/compare/v0.10.11...v0.10.12) (2026-05-14)
 
 
