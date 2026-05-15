@@ -36,7 +36,12 @@ export async function run(): Promise<void> {
     // restate file names here.
     const pattern = e2eMode ? "**/e2e*.test.js" : "**/*.test.js";
     const ignore = e2eMode ? [] : ["**/e2e*.test.js"];
-    const files = await glob(pattern, { cwd: testsRoot, ignore });
+    // Sort so execution order is deterministic across runners — glob's
+    // filesystem-order traversal otherwise puts `e2eA11y.test.js` ahead of
+    // `e2e.test.js` on the GitHub-hosted Linux image, which left the cmp
+    // suite paying the wear renderAllPreviews's tax in its own 10-minute
+    // budget. Plain lexical order runs the lighter cmp suite first.
+    const files = (await glob(pattern, { cwd: testsRoot, ignore })).sort();
     console.log(
         `[suite] discovered ${files.length} test file(s) in ${testsRoot} (e2e=${e2eMode})`,
     );
