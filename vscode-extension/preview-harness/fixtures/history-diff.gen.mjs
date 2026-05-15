@@ -85,7 +85,17 @@ const fixture = {
         "Focused card with realistic history/diff/regions payload (three regions, ~12% of pixels changed from baseline). Activates the History bundle so the diff overlay paints each region, the side legend lists them with pixel-count subtitles, and the tab body renders the diff table with the baseline header.",
     dataset: EARLY_FEATURES_DATASET,
     messages: [setPreviews, updateImage, updateDataProducts],
-    actions: [focusAction(focusId), activateBundleAction("history")],
+    actions: [
+        focusAction(focusId),
+        activateBundleAction("history"),
+        // Click the highest-Δ region (index 2) so the snapshot
+        // exercises the row → detail panel wiring. Row ids are
+        // positional in the presenter
+        // (`history-diff-region-${idx}`).
+        {
+            click: `[data-bundle="history"] tr[data-legend-id="history-diff-region-2"]`,
+        },
+    ],
 };
 
 process.stdout.write(JSON.stringify(fixture, null, 2) + "\n");
