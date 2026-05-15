@@ -45,6 +45,16 @@ runs:
       working-directory: vscode-extension
       run: npm run harness:snapshot
 
+    # Wire-side contract — same Playwright loop as the snapshot,
+    # asserts each fixture's `expectedPosts` / `forbiddenPosts`
+    # match the actual `vscode.postMessage` calls. Failing here on
+    # a baseline run flags a regression that landed without a
+    # contract violation surfacing via the per-PR action.
+    - name: Run harness contract
+      shell: bash
+      working-directory: vscode-extension
+      run: npm run harness:contract
+
     - name: Stage baselines
       shell: bash
       env:

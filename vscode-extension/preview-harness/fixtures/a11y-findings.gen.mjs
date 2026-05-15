@@ -300,10 +300,7 @@ const fixture = {
         },
     ],
     // Pinning the chip-activation wire effect: the Accessibility
-    // bundle's two default-ON kinds (per `bundleRegistry.ts`) —
-    // `a11y/touchTargets` and `a11y/overlay` are default-OFF and
-    // not subscribed by chip activation, so they're intentionally
-    // not asserted here.
+    // bundle's two default-ON kinds (per `bundleRegistry.ts`).
     expectedPosts: [
         {
             command: "setDataExtensionEnabled",
@@ -315,6 +312,25 @@ const fixture = {
             command: "setDataExtensionEnabled",
             previewId: FOCUS_ID,
             kind: "a11y/atf",
+            enabled: true,
+        },
+    ],
+    // The remaining a11y kinds are default-OFF — chip activation
+    // must not subscribe them. Touching them flips into expensive
+    // daemon work (touch-target geometry pass + Paparazzi-style
+    // PNG render) that the user should opt into via the Configure
+    // expander, never as a side-effect of pressing the chip.
+    forbiddenPosts: [
+        {
+            command: "setDataExtensionEnabled",
+            previewId: FOCUS_ID,
+            kind: "a11y/touchTargets",
+            enabled: true,
+        },
+        {
+            command: "setDataExtensionEnabled",
+            previewId: FOCUS_ID,
+            kind: "a11y/overlay",
             enabled: true,
         },
     ],

@@ -176,5 +176,19 @@
       "kind": "a11y/atf",
       "enabled": true
     }
+  ],
+  "forbiddenPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "a11y/touchTargets",
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "a11y/overlay",
+      "enabled": true
+    }
   ]
 }

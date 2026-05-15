@@ -19,6 +19,7 @@ import {
     buildPreviewPair,
     expectSetDataExtension,
     focusAction,
+    forbidSetDataExtensionEnabled,
     rectBounds,
 } from "./_utils.mjs";
 
@@ -188,6 +189,11 @@ const fixture = {
         expectSetDataExtension(focusId, "text/strings", true),
         expectSetDataExtension(focusId, "fonts/used", true),
     ],
+    // `i18n/translations` is default-OFF — chip activation must not
+    // subscribe it. The fixture preloads the payload so the
+    // Translations sub-table can render once the user opts in via
+    // the Configure expander.
+    forbiddenPosts: [forbidSetDataExtensionEnabled(focusId, "i18n/translations")],
 };
 
 process.stdout.write(JSON.stringify(fixture, null, 2) + "\n");
