@@ -6,6 +6,66 @@ JSON, and writes a PNG per `(fixture × theme)` pair. Use it to iterate on
 panel design — accessibility extension layouts, focus mode chrome, error
 states — without rebuilding the extension and reattaching to a host.
 
+## Agent workflow
+
+If you're an AI agent editing anything under `src/webview/`,
+`media/preview.css`, `media/preview-*.svg`, or any other file that
+affects what the panel looks like: render a baseline + post-change
+snapshot via this harness and surface both PNGs to the user before
+claiming the task is done. Production UI changes without a visual
+record are not done.
+
+The loop is:
+
+1. **Pick a fixture** that exercises the surface you're touching. Check
+   `fixtures/` first — `grid-default` covers the multi-card grid;
+   `a11y-findings` covers focus mode + the Accessibility bundle (chip
+   bar, data tab, on-image overlay). If neither hits your surface,
+   write a new fixture (`<surface>.gen.mjs` + emitted `.json`) and
+   commit it alongside the production change. A fixture is small and
+   future-proof — they're the design contract for the panel.
+
+2. **Baseline.** Before editing source:
+
+    ```sh
+    npm --prefix vscode-extension run harness:snapshot -- --fixture <name>
+    ```
+
+    Copy the PNG out of `preview-harness/out/` so the re-snapshot
+    doesn't clobber it (e.g. `cp out/<name>.dark.png /tmp/before.png`).
+    Skip the baseline only when you know the file is brand new with no
+    "before" — say so explicitly in your reply instead of silently
+    skipping.
+
+3. **Make the change.**
+
+4. **Re-snapshot.** Same command. The bundle rebuild is wired into the
+   npm script.
+
+5. **Diff and surface.** Send the user both PNGs (baseline + after) via
+   `SendUserFile` with a short caption pointing at what changed. The
+   user signs off on the visual, not on prose claims about it.
+
+A few specifics that come up:
+
+- `imageData` in `updateImage` messages is **raw base64** — the card
+  prepends `data:<mime>;base64,` itself. Half the cards rendering
+  blank is almost always this.
+- New `--vscode-*` tokens in `media/preview.css` need values in
+  `vscode-theme.css` (both `:root` and `[data-vscode-theme="light"]`).
+  If a token's missing, panel chrome silently falls back to
+  unstyled — check the cascade if a control suddenly looks wrong in
+  light mode only.
+- Fixtures use scripted `actions` (CSS-selector clicks) to drive flows
+  the extension normally triggers through user input — entering focus
+  mode, toggling a bundle chip, picking a filter option. Reach for the
+  `actions` array instead of trying to bake "I'm in focus mode" state
+  into the manifest.
+- The harness is a design preview, **not** a substitute for
+  `test:electron`. Use it for shape, layout, and theming; use the
+  electron suite for behavioural correctness (message routing, daemon
+  round-trips, focus traversal).
+
 ## Run
 
 ```sh
