@@ -46,6 +46,7 @@ import {
     BundleLegend,
     type BundleLegendEntry,
 } from "./components/BundleLegend";
+import { findLegendTarget } from "./bundleLegendTarget";
 import {
     clearBundleBoxes,
     getVisiblePreviewIds,
@@ -1769,17 +1770,12 @@ export class PreviewApp extends LitElement {
                     import("./components/BundleLegend").BundleLegendSelectedDetail
                 >
             ).detail;
-            // Scroll the matching row in the active bundle's table
-            // into view. `data-legend-id` matches the row's overlay
-            // id, set via `<data-table>.setOverlayId`. Falling back
-            // to the row's `id` attribute covers tables that haven't
-            // wired the legend-id mirroring.
-            const row = document.querySelector<HTMLElement>(
-                `[data-bundle="${bundleController.state().activeTab}"] ` +
-                    `[data-legend-id="${det.entryId}"], ` +
-                    `[data-bundle="${bundleController.state().activeTab}"] ` +
-                    `[data-overlay-id="${det.entryId}"]`,
-            );
+            const tab = bundleController.state().activeTab;
+            if (!tab) return;
+            // Scoped to the `<data-tabs>` subtree — see
+            // `bundleLegendTarget.ts` for why a document-wide
+            // selector picks the overlay box instead of the table row.
+            const row = findLegendTarget(dataTabs, tab, det.entryId);
             row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
         });
         bundleChipBar.addEventListener("bundle-toggled", (evt) => {
