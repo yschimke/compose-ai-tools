@@ -56,6 +56,18 @@ runs:
       working-directory: vscode-extension
       run: npm run harness:snapshot
 
+    # Wire-side contract for the bundle UI flow — asserts each
+    # fixture's `expectedPosts` / `forbiddenPosts` match the actual
+    # `vscode.postMessage` calls the fixture's actions produced.
+    # Same Playwright loop as `harness:snapshot`, no extra setup.
+    # Catches regressions where (e.g.) activating the Accessibility
+    # chip stops posting `setDataExtensionEnabled` for a default-ON
+    # kind — a visual diff alone wouldn't surface that.
+    - name: Run harness contract
+      shell: bash
+      working-directory: vscode-extension
+      run: npm run harness:contract
+
     - name: Fetch baselines
       shell: bash
       env:

@@ -211,3 +211,18 @@ export function activateBundleAction(bundleId) {
 export function expectSetDataExtension(previewId, kind, enabled) {
     return { command: "setDataExtensionEnabled", previewId, kind, enabled };
 }
+
+/**
+ * Assertion sugar for `forbiddenPosts`: assert that a chip
+ * activation did NOT subscribe a default-OFF kind. The contract
+ * runner subset-matches this against every recorded post and
+ * fails if it finds one.
+ */
+export function forbidSetDataExtensionEnabled(previewId, kind) {
+    return {
+        command: "setDataExtensionEnabled",
+        previewId,
+        kind,
+        enabled: true,
+    };
+}

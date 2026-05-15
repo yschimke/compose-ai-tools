@@ -210,5 +210,19 @@
       "kind": "compose/semantics",
       "enabled": true
     }
+  ],
+  "forbiddenPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "layout/inspector",
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "uia/hierarchy",
+      "enabled": true
+    }
   ]
 }
