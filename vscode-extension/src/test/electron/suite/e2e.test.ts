@@ -64,9 +64,11 @@ async function waitFor<T>(
 
 describeE2E("Compose Preview e2e (real Gradle)", function () {
     // Cold renderAllPreviews on `:samples:cmp` is ~30-90s on a warm machine
-    // and can spike higher on a fresh CI runner. 10 minutes is the same
-    // ceiling the gradle-plugin functional tests use.
-    this.timeout(10 * 60_000);
+    // and can spike higher on a fresh CI runner. GitHub's hosted Linux
+    // runners regularly take 9-10+ minutes from a cold Gradle cache once the
+    // sibling e2eA11y suite shares the build, so 15 minutes matches the
+    // wear suite's ceiling and leaves head room under the workflow's 60m cap.
+    this.timeout(15 * 60_000);
 
     let api: ComposePreviewTestApi;
     let kotlinFile: string;
