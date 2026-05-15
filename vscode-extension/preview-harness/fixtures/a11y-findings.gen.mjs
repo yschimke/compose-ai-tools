@@ -117,20 +117,32 @@ const nodes = [
         label: "Welcome screen",
         role: "container",
         states: [],
-        merged: false,
+        // Top-level container — its own focus target so screen
+        // readers can land on it.
+        merged: true,
         boundsInScreen: bounds(ROOT),
     },
     {
         label: "Welcome to Compose AI Tools",
         role: "headline",
         states: ["focusable"],
-        merged: false,
+        merged: true,
         boundsInScreen: bounds(HEADER),
     },
     {
         label: "Get started",
         role: "button",
         states: ["clickable", "focusable"],
+        merged: true,
+        boundsInScreen: bounds(BTN1),
+    },
+    {
+        // Inner Text inside the "Get started" button — the button
+        // owns the focus stop, so the child reads as merged:false
+        // and renders indented in the bundle tab table.
+        label: "Get started",
+        role: "text",
+        states: [],
         merged: false,
         boundsInScreen: bounds(BTN1),
     },
@@ -138,14 +150,14 @@ const nodes = [
         label: "",
         role: "button",
         states: ["clickable", "focusable"],
-        merged: false,
+        merged: true,
         boundsInScreen: bounds(BTN2),
     },
     {
         label: "By continuing you agree to our terms",
         role: "text",
         states: [],
-        merged: false,
+        merged: true,
         boundsInScreen: bounds(FOOTER),
     },
 ];
@@ -280,10 +292,11 @@ const fixture = {
         // Click the row for the ERROR finding (unlabelled image
         // button) so the snapshot exercises the row-click → detail
         // panel path. `data-legend-id` matches the bundle row's
-        // overlay id; the unlabelled-button row is the 4th node in
-        // the hierarchy so its id is `a11y-3`.
+        // overlay id; with the inner "Get started" text node now
+        // inserted at index 3, the unlabelled-button row sits at
+        // `a11y-4`.
         {
-            click: `[data-bundle="a11y"] tr[data-legend-id="a11y-3"]`,
+            click: `[data-bundle="a11y"] tr[data-legend-id="a11y-4"]`,
         },
     ],
 };

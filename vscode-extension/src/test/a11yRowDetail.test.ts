@@ -25,6 +25,7 @@ function row(over: Partial<A11yRow>): A11yRow {
         boundsInScreen: over.boundsInScreen ?? "0,0,10,10",
         bounds: over.bounds ?? { left: 0, top: 0, right: 10, bottom: 10 },
         touchTargetSizeDp: over.touchTargetSizeDp ?? null,
+        depth: over.depth ?? 0,
     };
 }
 
