@@ -9,6 +9,8 @@ import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Path
 
 /**
@@ -48,11 +50,50 @@ import java.nio.file.Path
  */
 fun main(args: Array<String>) {
   // Capture the real stdout *before* swapping. Whatever uses `System.out` after this line lands on
-  // stderr; the JSON-RPC channel is the captured `realOut`.
+  // stderr; the JSON-RPC channel is the captured `realOut`. Embedded-mode callers (see
+  // `:render-session-embedded-desktop`) skip this swap and the SIGTERM hook entirely by invoking
+  // [runDaemon] directly with their own piped streams — `main(...)` is the subprocess entry
+  // point only.
   val realOut = System.out
   System.setOut(System.err)
 
   System.err.println("compose-ai-tools desktop daemon: hello (args=${args.toList()})")
+
+  runDaemon(
+    input = System.`in`,
+    output = realOut,
+    installSigtermHook = true,
+    onExit = { code -> System.exit(code) },
+  )
+}
+
+/**
+ * Renderer / extension / host / JSON-RPC-server setup, parameterised over the transport streams and
+ * the SIGTERM-hook policy so embedded mode can drive the same daemon body in-process.
+ *
+ * **Subprocess mode** (the canonical path) is `fun main()` above: real stdio is swapped, the
+ * SIGTERM hook is installed, [runDaemon] is invoked with `System.in` and the captured `realOut`,
+ * and the JSON-RPC server blocks the calling thread until `shutdown` + `exit`.
+ *
+ * **Embedded mode** runs this function on a background thread with [input] and [output] connected
+ * to in-memory piped streams; the calling thread holds the other ends of those pipes and drives the
+ * daemon via a `DaemonClient`. SIGTERM is the caller's concern in that shape — they own the thread
+ * and can cancel it via `client.shutdownAndExit()` which causes the JSON-RPC server's read loop to
+ * return cleanly. Setting [installSigtermHook] to false on the embedded path avoids leaking a
+ * per-session hook onto the JVM's shutdown machinery.
+ *
+ * All other configuration (preview index path, history dir, classpath fingerprint sources) is read
+ * from system properties exactly as before — the embedded session is responsible for setting these
+ * from the daemon launch descriptor before invoking. This is the only constraint on multi-session
+ * reuse: sysprops are JVM-global, so two embedded sessions in the same JVM cannot point at
+ * different `previews.json` files simultaneously without external synchronisation.
+ */
+fun runDaemon(
+  input: InputStream,
+  output: OutputStream,
+  installSigtermHook: Boolean,
+  onExit: (Int) -> Unit = { code -> System.exit(code) },
+) {
 
   // D-harness.v1.5a — when the harness drives real-mode runs it sets
   // `composeai.harness.previewsManifest=<json>` so the daemon can resolve the protocol-level
@@ -336,8 +377,8 @@ fun main(args: Array<String>) {
 
   val server =
     JsonRpcServer(
-      input = System.`in`,
-      output = realOut,
+      input = input,
+      output = output,
       host = host,
       daemonVersion = DaemonVersion.value,
       classpathFingerprint = classpathFingerprint,
@@ -345,9 +386,12 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       extensions = extensions,
+      onExit = onExit,
     )
 
-  installSigtermShutdownHook(host, originalStdin = System.`in`)
+  if (installSigtermHook) {
+    installSigtermShutdownHook(host, originalStdin = input)
+  }
 
   try {
     server.run() // blocks until the client closes the wire
