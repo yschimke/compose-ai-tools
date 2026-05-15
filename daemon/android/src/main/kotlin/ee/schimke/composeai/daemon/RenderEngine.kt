@@ -323,6 +323,12 @@ class RenderEngine(
                             widthDp = pxToDp(spec.widthPx, spec.density),
                             heightDp = pxToDp(spec.heightPx, spec.density),
                             device = spec.device,
+                            // Same per-render child loader the compose path uses for
+                            // `getDeclaredComposableMethod` above; without it
+                            // `findTilePreviewMethod` would `Class.forName` against the parent
+                            // loader and either miss user classes (under isolation) or render
+                            // stale bytecode after an edit.
+                            classLoader = classLoader,
                           )
                         } else {
                           InvokeComposable(composableMethod!!)
