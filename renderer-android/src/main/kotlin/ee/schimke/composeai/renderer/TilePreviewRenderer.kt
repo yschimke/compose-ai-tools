@@ -35,10 +35,12 @@ import java.util.concurrent.TimeUnit
  * classes are actually present.
  */
 @Composable
-internal fun TilePreviewComposable(
-    preview: RenderPreviewEntry,
+fun TilePreviewComposable(
+    className: String,
+    functionName: String,
     widthDp: Int,
     heightDp: Int,
+    device: String? = null,
 ) {
     val context = LocalContext.current
     AndroidView(
@@ -58,7 +60,7 @@ internal fun TilePreviewComposable(
                 // tile itself.
                 setBackgroundColor(Color.BLACK)
             }
-            renderTileInto(context, preview, widthDp, heightDp, parent)
+            renderTileInto(context, className, functionName, widthDp, heightDp, device, parent)
             parent
         },
     )
@@ -66,14 +68,16 @@ internal fun TilePreviewComposable(
 
 private fun renderTileInto(
     context: Context,
-    preview: RenderPreviewEntry,
+    className: String,
+    functionName: String,
     widthDp: Int,
     heightDp: Int,
+    device: String?,
     parent: FrameLayout,
 ) {
-    val data = invokeTilePreviewFunction(context, preview)
+    val data = invokeTilePreviewFunction(context, className, functionName)
 
-    val deviceParams = buildDeviceParameters(widthDp, heightDp, preview.params.device)
+    val deviceParams = buildDeviceParameters(widthDp, heightDp, device)
 
     val tileRequest = RequestBuilders.TileRequest.Builder()
         .setDeviceConfiguration(deviceParams)
@@ -90,7 +94,7 @@ private fun renderTileInto(
         ?.timelineEntries
         ?.firstOrNull()
         ?.layout
-        ?: error("TilePreview '${preview.functionName}' produced no layout (empty timeline)")
+        ?: error("TilePreview '$functionName' produced no layout (empty timeline)")
 
     // Inline executor — Robolectric has the main looper paused, so posting
     // to a background thread and awaiting back on main would deadlock. Inflating
@@ -107,7 +111,7 @@ private fun renderTileInto(
     val renderer = TileRenderer(context, Runnable::run) { _ -> /* no-op loader */ }
     val view = renderer.inflateAsync(layout, resources, parent)
         .get(10, TimeUnit.SECONDS)
-        ?: error("TileRenderer returned no view for preview '${preview.functionName}'")
+        ?: error("TileRenderer returned no view for preview '$functionName'")
 
     // Tile inflation defaults to WRAP_CONTENT, which collapses against an
     // AndroidView that's still measuring. Mirror `TileServiceViewAdapter`:
@@ -121,20 +125,21 @@ private fun renderTileInto(
 
 private fun invokeTilePreviewFunction(
     context: Context,
-    preview: RenderPreviewEntry,
+    className: String,
+    functionName: String,
 ): TilePreviewData {
-    val method = findTilePreviewMethod(preview.className, preview.functionName)
+    val method = findTilePreviewMethod(className, functionName)
     method.isAccessible = true
     val result = when (method.parameterTypes.size) {
         0 -> method.invoke(null)
         1 -> method.invoke(null, context)
         else -> error(
-            "TilePreview '${preview.functionName}' has unsupported signature; " +
+            "TilePreview '$functionName' has unsupported signature; " +
                 "expected 0 or 1 (Context) parameters, found ${method.parameterTypes.size}"
         )
     }
     return result as? TilePreviewData
-        ?: error("TilePreview '${preview.functionName}' did not return TilePreviewData")
+        ?: error("TilePreview '$functionName' did not return TilePreviewData")
 }
 
 /**

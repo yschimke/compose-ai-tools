@@ -198,9 +198,16 @@ class RenderEngine(
     val slotTableCapture = PreviewSlotTableCapture()
     val themeFallbackCapture = MaterialThemeFallbackCapture()
 
+    val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
-    val composableMethod: ComposableMethod =
-      trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
+    // Tile previews are non-composable top-level functions returning
+    // `TilePreviewData`; routing them through `getDeclaredComposableMethod` would throw
+    // `NoSuchMethodException` (the Compose-method lookup expects `(Composer, Int, …)` trailing
+    // params). The tile path skips composable resolution entirely and paints the inflated tile
+    // View through [renderer.TilePreviewComposable] in the setContent body below.
+    val composableMethod: ComposableMethod? =
+      if (isTile) null
+      else trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -304,7 +311,23 @@ class RenderEngine(
                       renderMode = spec.renderMode,
                       sink = RecordingExtensionCompositionSink(),
                     ) {
-                      Box(modifier = Modifier.fillMaxSize()) { InvokeComposable(composableMethod) }
+                      Box(modifier = Modifier.fillMaxSize()) {
+                        if (isTile) {
+                          // Non-composable @Preview from `androidx.wear.tiles.tooling.preview` —
+                          // mirrors the standalone renderer's `TilePreviewStrategy`. The
+                          // inflated tile View lands inside the `Box` via `AndroidView`, so
+                          // captureRoboImage walks the same Compose tree as for composable previews.
+                          ee.schimke.composeai.renderer.TilePreviewComposable(
+                            className = spec.className,
+                            functionName = spec.functionName,
+                            widthDp = pxToDp(spec.widthPx, spec.density),
+                            heightDp = pxToDp(spec.heightPx, spec.density),
+                            device = spec.device,
+                          )
+                        } else {
+                          InvokeComposable(composableMethod!!)
+                        }
+                      }
                     }
                   }
                   InspectablePreviewContent(slotTableCapture, content)
@@ -755,6 +778,14 @@ class RenderEngine(
     const val A11Y_RENDER_MODE: String = "a11y"
 
     /**
+     * `RenderSpec.kind` value flagging a tile preview (non-composable function returning
+     * `androidx.wear.tiles.tooling.preview.TilePreviewData`). Mirrors
+     * `ee.schimke.composeai.plugin.PreviewKind.TILE` so a manifest-emitted value round-trips
+     * unchanged through the daemon's render path.
+     */
+    const val TILE_KIND: String = "TILE"
+
+    /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.
      * Mirrors `RobolectricRenderTest.CAPTURE_ADVANCE_MS` exactly so daemon-rendered PNGs match
      * the standalone JUnit path's settle point.
@@ -917,6 +948,12 @@ data class RenderSpec(
    * adding a new override-driven feature is purely a connector concern.
    */
   val overrides: PreviewOverrides? = null,
+  /**
+   * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"`).
+   * Drives renderer selection: `"TILE"` routes through [renderer.TilePreviewComposable] instead of
+   * the Compose-method reflection path. `null` and `"COMPOSE"` both render as a normal @Composable.
+   */
+  val kind: String? = null,
 ) {
 
   enum class SpecUiMode {
@@ -983,6 +1020,7 @@ data class RenderSpec(
         captureAdvanceMs = map["captureAdvanceMs"]?.toLongOrNull()?.takeIf { it > 0L },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         overrides = map["overrides"]?.decodePreviewOverrides(),
+        kind = map["kind"]?.takeIf { it.isNotBlank() },
       )
     }
 
