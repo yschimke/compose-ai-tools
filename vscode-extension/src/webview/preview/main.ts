@@ -50,6 +50,7 @@ import {
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
+import { on } from "../shared/eventBus";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import {
     computePerformanceBundleData,
@@ -763,12 +764,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            expander.addEventListener("kind-toggled", (evt) => {
-                const det = (
-                    evt as CustomEvent<
-                        import("./components/BundleExpander").BundleKindToggledDetail
-                    >
-                ).detail;
+            on(expander, "kind-toggled", (det) => {
                 bundleController.setKindEnabled(
                     det.bundleId,
                     det.kind,
@@ -818,12 +814,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            expander.addEventListener("kind-toggled", (evt) => {
-                const det = (
-                    evt as CustomEvent<
-                        import("./components/BundleExpander").BundleKindToggledDetail
-                    >
-                ).detail;
+            on(expander, "kind-toggled", (det) => {
                 bundleController.setKindEnabled(
                     det.bundleId,
                     det.kind,
@@ -871,12 +862,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            expander.addEventListener("kind-toggled", (evt) => {
-                const det = (
-                    evt as CustomEvent<
-                        import("./components/BundleExpander").BundleKindToggledDetail
-                    >
-                ).detail;
+            on(expander, "kind-toggled", (det) => {
                 bundleController.setKindEnabled(
                     det.bundleId,
                     det.kind,
@@ -1496,12 +1482,7 @@ export class PreviewApp extends LitElement {
             const expander = document.createElement(
                 "bundle-expander",
             ) as BundleExpander;
-            expander.addEventListener("kind-toggled", (evt) => {
-                const det = (
-                    evt as CustomEvent<
-                        import("./components/BundleExpander").BundleKindToggledDetail
-                    >
-                ).detail;
+            on(expander, "kind-toggled", (det) => {
                 bundleController.setKindEnabled(
                     det.bundleId,
                     det.kind,
