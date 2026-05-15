@@ -9,7 +9,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
-import { styleMap } from "lit/directives/style-map.js";
+import { ref } from "lit/directives/ref.js";
 
 interface SetProgressMessage {
     command: "setProgress";
@@ -182,8 +182,18 @@ export class ProgressBar extends LitElement {
                 <div class="progress-track">
                     <div
                         class="progress-fill"
-                        style=${styleMap({
-                            width: `${(pct * 100).toFixed(1)}%`,
+                        ${ref((el) => {
+                            // VS Code's webview CSP (`style-src
+                            // ${cspSource} 'nonce-${nonce}'`) blocks
+                            // both `style="…"` attributes and Lit's
+                            // `styleMap` directive (which writes the
+                            // attribute under the hood). Setting
+                            // `el.style.width` via the CSSOM is not
+                            // controlled by `style-src` and works
+                            // without `'unsafe-inline'`.
+                            if (!el) return;
+                            (el as HTMLDivElement).style.width =
+                                `${(pct * 100).toFixed(1)}%`;
                         })}
                     ></div>
                 </div>

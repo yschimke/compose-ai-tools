@@ -119,6 +119,13 @@ export interface PreviewMessageContext {
         dataUri: string | null,
     ): void;
     focusOnCard(card: HTMLElement): void;
+    /**
+     * Drop every active bundle. Called when
+     * `composePreview.earlyFeatures.enabled` is toggled off so the
+     * bundle UI (chip bar / tabs / per-card overlays) tears down
+     * along with the rest of the early-features surface.
+     */
+    deactivateAllBundles(): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -600,6 +607,7 @@ function handleSetEarlyFeatures(
             ctx.setA11yOverlayId(null);
         }
         ctx.liveState.handleEarlyFeaturesDisabled();
+        ctx.deactivateAllBundles();
     }
     ctx.applyLayout();
 }

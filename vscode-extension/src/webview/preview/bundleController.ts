@@ -136,6 +136,21 @@ export class BundleController {
         if (this.active.includes(id)) this.deactivate(id);
     }
 
+    /**
+     * Drop every active bundle. Used when `composePreview.early
+     * Features.enabled` is toggled off mid-session — the chip bar /
+     * tab row go `hidden`, and this unsubscribes from every kind so
+     * the daemon stops streaming data products the user can no longer
+     * see. Re-enabling the flag leaves the user back at "no active
+     * bundles" rather than restoring stale state from before the
+     * disable.
+     */
+    deactivateAll(): void {
+        for (const id of [...this.active]) {
+            this.deactivate(id);
+        }
+    }
+
     /** Switch the visible tab. */
     selectTab(id: BundleId | null): void {
         if (id === null) {

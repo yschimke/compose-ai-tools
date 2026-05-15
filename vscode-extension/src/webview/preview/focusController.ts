@@ -192,8 +192,15 @@ export class FocusController {
         const mode = this.config.filterToolbar.getLayoutValue();
         this.config.grid.setLayoutMode(mode);
         this.config.focusControls.hidden = mode !== "focus";
-        this.config.bundleChipBar.hidden = mode !== "focus";
-        this.config.dataTabs.hidden = mode !== "focus";
+        // The data-extension chip bar + tab row are an early-features
+        // surface — gating them here so the strip never paints below
+        // the preview when the setting is off. When the user toggles
+        // early features mid-session, `handleSetEarlyFeatures` calls
+        // `applyLayout` again, so visibility tracks the flag without a
+        // panel reload.
+        const showBundleUi = mode === "focus" && this.config.earlyFeatures();
+        this.config.bundleChipBar.hidden = !showBundleUi;
+        this.config.dataTabs.hidden = !showBundleUi;
 
         if (mode === "focus") {
             const visible = this.getVisibleCards();
