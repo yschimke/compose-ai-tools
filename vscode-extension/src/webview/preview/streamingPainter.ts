@@ -199,6 +199,22 @@ export class StreamingPainter {
             // leave the current bitmap in place. No paint cost.
             return;
         }
+        if (frame.payloadBase64.length === 0) {
+            // Zero-byte payload — the daemon shouldn't emit these, but
+            // handing an empty Blob to `createImageBitmap` rejects with
+            // `InvalidStateError: The source image could not be decoded`,
+            // which is alarming console noise for what is structurally
+            // a no-op. Drop the frame quietly; the next non-empty frame
+            // paints over it.
+            console.debug(
+                "compose-ai stream painter: skipping zero-byte payload",
+                {
+                    frameStreamId: frame.frameStreamId,
+                    seq: frame.seq,
+                },
+            );
+            return;
+        }
         const blob = base64ToBlob(
             frame.payloadBase64,
             mimeForCodec(frame.codec),
@@ -206,9 +222,10 @@ export class StreamingPainter {
         // createImageBitmap returns a Promise resolved on the decode worker.
         // The next rAF tick consults `entry.anchor` so the paint thread is
         // never blocked on decode.
+        const frameStreamId = frame.frameStreamId;
         void createImageBitmap(blob).then(
             (bitmap) => {
-                if (!this.entries.has(frame.frameStreamId)) {
+                if (!this.entries.has(frameStreamId)) {
                     // Detached while we were decoding — drop the bitmap.
                     bitmap.close?.();
                     return;
@@ -256,6 +273,25 @@ export class StreamingPainter {
                 }
             },
             (err) => {
+                // Detached mid-decode is an expected race — `streamStopped`
+                // arrives between the `createImageBitmap` call and its
+                // resolution, the entry vanishes, and the still-in-flight
+                // decode trips `InvalidStateError` on bytes that became
+                // orphaned. Downgrade those to `debug`; only log `error`
+                // for the genuine "the bytes that crossed the wire weren't
+                // decodable" case the user can actually do something
+                // about.
+                if (!this.entries.has(frameStreamId)) {
+                    console.debug(
+                        "compose-ai stream painter: decode rejected after detach",
+                        {
+                            frameStreamId,
+                            seq: frame.seq,
+                            err: err instanceof Error ? err.message : err,
+                        },
+                    );
+                    return;
+                }
                 console.error(
                     `compose-ai stream painter: createImageBitmap failed`,
                     err,
