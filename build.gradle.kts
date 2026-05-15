@@ -89,3 +89,18 @@ tasks.register("functionalTestWithAndroid") {
   dependsOn(":cli:installDist")
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
+
+tasks.register("functionalTestWithBundleRender") {
+  group = "verification"
+  description =
+    "Publishes the gradle plugin to mavenLocal and builds the compose-preview CLI binary " +
+      "(`:cli:installDist`), then runs gradle-plugin's functionalTest with the opt-in " +
+      "`bundle.render.e2e=true` flag set so `BundleRenderEndToEndFunctionalTest` actually fires."
+  // Synthetic Compose Desktop project resolves the plugin from mavenLocal via the same
+  // `id(...) version "<v>"` block the a11y e2e uses; pre-publish or `BUILD FAILED`.
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
+  // CLI binary at `cli/build/install/compose-preview/bin/compose-preview`, plus the
+  // `lib-renderer/` sibling dir the renderer subprocess loads.
+  dependsOn(":cli:installDist")
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
+}

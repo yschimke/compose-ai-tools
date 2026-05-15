@@ -239,6 +239,8 @@ private class ExtractSubcommand(private val args: List<String>) {
 }
 
 private class RenderSubcommand(private val args: List<String>) {
+  private val verbose: Boolean = "--verbose" in args || "-v" in args
+
   fun run() {
     val path = args.firstOrNull { !it.startsWith("-") }
     val outDir = args.flagValue("--output") ?: args.flagValue("-o")
@@ -256,36 +258,29 @@ private class RenderSubcommand(private val args: List<String>) {
         .absoluteFile
     target.mkdirs()
 
-    val zipBytes = BundleReader.extractZipBytes(file)
-    val extractDir = File(target, "_bundle").apply { mkdirs() }
-    safeExtractZip(zipBytes, extractDir)
+    val renderer = BundleRenderer(bundleFile = file, outputDir = target, verbose = verbose)
+    val result =
+      try {
+        renderer.run()
+      } catch (e: Exception) {
+        System.err.println("bundle render failed: ${e.message}")
+        if (verbose) e.printStackTrace()
+        exitProcess(1)
+      }
 
-    val meta = BundleReader.readMetadata(file)
-    println("bundle:   ${file.path}")
-    println("backend:  ${meta.manifest.backend}")
-    println("previews: ${meta.manifest.previewIds.joinToString()}")
-    println("extracted to: ${extractDir.path}")
-    println()
-    println("Resolved classpath (player would load in this order):")
-    for (entry in meta.manifest.classpath) {
-      when (entry) {
-        is BundleReader.ClasspathEntry.Module ->
-          println("  [module]  ${File(extractDir, entry.path).absolutePath}")
-        is BundleReader.ClasspathEntry.Maven ->
-          println(
-            "  [maven]   ${entry.group}:${entry.artifact}:${entry.version}@${entry.type}  (unresolved)"
-          )
-        is BundleReader.ClasspathEntry.Project ->
-          println("  [project] ${entry.path}  →  ${File(extractDir, entry.inlinedAs).absolutePath}")
+    println(
+      "rendered ${result.succeeded.size} / ${result.previewCount} preview(s) → ${target.path}"
+    )
+    for (rendered in result.succeeded) {
+      println("  ok    ${rendered.id}  →  ${rendered.outputFile.name}")
+    }
+    for (failure in result.failed) {
+      println("  FAIL  ${failure.id}  (exit=${failure.exitCode})")
+      if (verbose) {
+        for (line in failure.tail.lines()) println("        $line")
       }
     }
-    println()
-    System.err.println(
-      "bundle render: v1 stub — Maven coordinate resolution + DesktopRendererMain spawn not wired yet."
-    )
-    System.err.println(
-      "Next milestone: resolve coordinates against ~/.m2 / Maven Central, then spawn the bundled renderer-desktop."
-    )
+    if (!result.allOk) exitProcess(1)
   }
 }
 

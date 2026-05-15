@@ -46,6 +46,20 @@ tasks.named<Tar>("distTar") {
   compression = Compression.GZIP
 }
 
+// Sidecar configuration carrying the desktop renderer + its Compose Multiplatform runtime. Lives
+// OUTSIDE `runtimeClasspath` so [CheckCliDaemonLibraryBoundary] keeps holding: the CLI's own JVM
+// never loads renderer classes (no version-skew risk against consumer Compose), and the renderer
+// only runs in the subprocess spawned by `compose-preview bundle render`.
+//
+// Resolved files are copied into `cli/build/install/compose-preview/lib-renderer/` by the
+// distribution wiring below, and located at runtime via `APP_HOME/lib-renderer/` (the same env
+// var the generated `bin/compose-preview` script exports for its own classpath).
+val composePreviewRenderer =
+  configurations.create("composePreviewRenderer") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation("org.gradle:gradle-tooling-api:9.3.1")
@@ -64,7 +78,15 @@ dependencies {
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
 
+  // `compose-preview bundle render` ships the desktop renderer + its full Compose Multiplatform
+  // runtime in `lib-renderer/`. Subprocess only; never on the CLI's own classpath.
+  add("composePreviewRenderer", project(":renderer-desktop"))
+
   testImplementation(kotlin("test"))
+}
+
+distributions {
+  named("main") { contents { into("lib-renderer") { from(composePreviewRenderer) } } }
 }
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }
