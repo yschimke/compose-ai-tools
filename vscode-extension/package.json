@@ -196,7 +196,8 @@
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "test:e2e": "npm run compile && COMPOSE_PREVIEW_E2E=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
-        "package": "npm run compile && vsce package --no-dependencies"
+        "package": "npm run compile && vsce package --no-dependencies",
+        "harness:snapshot": "node esbuild.webview.mjs && node preview-harness/snapshot.mjs"
     },
     "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
@@ -211,6 +212,7 @@
         "happy-dom": "^20.9.0",
         "lit": "^3.2.0",
         "mocha": "^11.0.0",
+        "playwright": "~1.56.0",
         "prettier": "^3.8.3",
         "typescript": "^6.0.0"
     },

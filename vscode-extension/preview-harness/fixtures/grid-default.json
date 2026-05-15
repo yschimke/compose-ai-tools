@@ -1,0 +1,152 @@
+{
+    "name": "grid-default",
+    "description": "Four-card grid: three color variants plus a greeting, after setPreviews + per-card updateImage.",
+    "dataset": {
+        "earlyFeatures": "false",
+        "autoEnableCheap": "false",
+        "collapseVariants": "false",
+        "minimalMode": "false",
+        "autoInject": "true"
+    },
+    "messages": [
+        {
+            "command": "setPreviews",
+            "moduleDir": "/workspace/sample-android",
+            "heavyStaleIds": [],
+            "previews": [
+                {
+                    "id": "com.example.PreviewsKt.RedBoxPreview_Red Box",
+                    "functionName": "RedBoxPreview",
+                    "className": "com.example.PreviewsKt",
+                    "sourceFile": "Previews.kt",
+                    "params": {
+                        "name": "Red Box",
+                        "device": null,
+                        "widthDp": 0,
+                        "heightDp": 0,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 0,
+                        "locale": null,
+                        "group": "colors"
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Red Box.png",
+                            "label": ""
+                        }
+                    ]
+                },
+                {
+                    "id": "com.example.PreviewsKt.BlueBoxPreview_Blue Box",
+                    "functionName": "BlueBoxPreview",
+                    "className": "com.example.PreviewsKt",
+                    "sourceFile": "Previews.kt",
+                    "params": {
+                        "name": "Blue Box",
+                        "device": null,
+                        "widthDp": 0,
+                        "heightDp": 0,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 0,
+                        "locale": null,
+                        "group": "colors"
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.PreviewsKt.BlueBoxPreview_Blue Box.png",
+                            "label": ""
+                        }
+                    ]
+                },
+                {
+                    "id": "com.example.MainKt.GreetingPreview",
+                    "functionName": "GreetingPreview",
+                    "className": "com.example.MainKt",
+                    "sourceFile": "Main.kt",
+                    "params": {
+                        "name": null,
+                        "device": null,
+                        "widthDp": 0,
+                        "heightDp": 0,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 0,
+                        "locale": null,
+                        "group": null
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.MainKt.GreetingPreview.png",
+                            "label": ""
+                        }
+                    ]
+                },
+                {
+                    "id": "com.example.PreviewsKt.RedBoxPreview_Dark Mode",
+                    "functionName": "RedBoxPreview",
+                    "className": "com.example.PreviewsKt",
+                    "sourceFile": "Previews.kt",
+                    "params": {
+                        "name": "Dark Mode",
+                        "device": null,
+                        "widthDp": 0,
+                        "heightDp": 0,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 32,
+                        "locale": null,
+                        "group": "colors"
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.PreviewsKt.RedBoxPreview_Dark Mode.png",
+                            "label": ""
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "command": "updateImage",
+            "previewId": "com.example.PreviewsKt.RedBoxPreview_Red Box",
+            "captureIndex": 0,
+            "imageData": "iVBORw0KGgoAAAANSUhEUgAAAKAAAADICAIAAADgCn1NAAAB40lEQVR4nO3RAQkAIBDAwE9lAfu3MYApRBgHF2CwOXsRNt8LeMrgOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjLpHCQ29ortX/AAAAAElFTkSuQmCC"
+        },
+        {
+            "command": "updateImage",
+            "previewId": "com.example.PreviewsKt.BlueBoxPreview_Blue Box",
+            "captureIndex": 0,
+            "imageData": "iVBORw0KGgoAAAANSUhEUgAAAKAAAADICAIAAADgCn1NAAAB4klEQVR4nO3RAQkAIBDAwK9iaYtawBQijIMLMNisfQib7wU8ZXCcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEGxxkcZ3CcwXEXNtMOMfbvdYUAAAAASUVORK5CYII="
+        },
+        {
+            "command": "updateImage",
+            "previewId": "com.example.MainKt.GreetingPreview",
+            "captureIndex": 0,
+            "imageData": "iVBORw0KGgoAAAANSUhEUgAAAKAAAADICAIAAADgCn1NAAAB30lEQVR4nO3RAQkAMAzAsFmZf5NTcQ4lUVDoLGnzO4C3DI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOO4AQhhZ0YeLpq4AAAAASUVORK5CYII="
+        },
+        {
+            "command": "updateImage",
+            "previewId": "com.example.PreviewsKt.RedBoxPreview_Dark Mode",
+            "captureIndex": 0,
+            "imageData": "iVBORw0KGgoAAAANSUhEUgAAAKAAAADICAIAAADgCn1NAAAB30lEQVR4nO3RAQkAMAzAsDmbf1dTcQ4lUVDoLGnzO4C3DI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOO4AtBtOZQJm65QAAAAASUVORK5CYII="
+        }
+    ]
+}
