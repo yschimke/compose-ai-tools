@@ -224,3 +224,12 @@ project(":render-session-api").projectDir = file("render-session/api")
 include(":render-session-subprocess")
 
 project(":render-session-subprocess").projectDir = file("render-session/subprocess")
+
+// In-process Compose Multiplatform Desktop backend for the render-session library. Hosts the
+// daemon's `JsonRpcServer` + `DesktopHost` in the calling JVM via piped streams instead of forking
+// a subprocess. Trades classpath footprint (the calling JVM picks up Skiko + Compose Desktop) for
+// dramatically faster session startup. Embedders that don't want the runtime footprint stick with
+// `:render-session-subprocess`.
+include(":render-session-embedded-desktop")
+
+project(":render-session-embedded-desktop").projectDir = file("render-session/embedded-desktop")
