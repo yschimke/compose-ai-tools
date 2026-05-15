@@ -215,6 +215,10 @@ class DaemonSupervisor(
       },
     )
     supervised.attachSpawn(spawn)
+    // Capture the workspace root before initialize so the `session` view's
+    // `RenderSession.workspaceRoot` returns a real absolute path even if a caller reaches the
+    // session getter before the runCatching block below populates `initializeResult`.
+    supervised.workspaceRootPath = project.path.absolutePath
     runCatching {
         val result =
           spawn.client.initialize(
@@ -459,6 +463,14 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
   internal var initializeResult: ee.schimke.composeai.daemon.protocol.InitializeResult? = null
 
   /**
+   * Canonical workspace-root path the supervised daemon was spawned against — backing for the
+   * [session] view's [ee.schimke.composeai.render.session.RenderSession.workspaceRoot]. Captured
+   * from the [RegisteredProject.path] at spawn time so the public API returns a real absolute path
+   * instead of a placeholder. Cleared by [detachSpawn] when the spawn tears down.
+   */
+  @Volatile internal var workspaceRootPath: String? = null
+
+  /**
    * Notification fan-out installed by [DaemonSupervisor.spawn]. The supervisor's existing
    * `onNotification` callback dispatches both into its own [NotificationRouter] and into this
    * fanout; [session] consumers can register listeners via
@@ -491,13 +503,13 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
           ?: error(
             "SupervisedDaemon($workspaceId/$modulePath): initialize handshake hasn't completed"
           )
-      // `workspaceRoot` is reconstructible from the descriptor's working directory the supervisor
-      // owns; the supervisor itself doesn't store the canonical root on the daemon. The session
-      // view reports the workspace from the initialize round-trip's reflected fields instead —
-      // good enough for diagnostics and matches what `:render-session-subprocess` returns.
-      val workspaceRoot = ""
+      val root =
+        workspaceRootPath
+          ?: error(
+            "SupervisedDaemon($workspaceId/$modulePath): workspaceRootPath not captured at spawn"
+          )
       return DaemonClientRenderSession(
-        workspaceRoot = workspaceRoot,
+        workspaceRoot = root,
         modulePath = modulePath,
         initializeResult = init,
         client = s.client,
@@ -544,6 +556,7 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
     if (this.spawn !== s) return false
     this.spawn = null
     this.initializeResult = null
+    this.workspaceRootPath = null
     notificationFanout.clear()
     return true
   }
@@ -552,6 +565,7 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
     val s = spawn ?: return
     spawn = null
     initializeResult = null
+    workspaceRootPath = null
     notificationFanout.clear()
     runCatching { s.shutdown() }
   }
