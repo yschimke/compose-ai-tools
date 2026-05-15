@@ -1,5 +1,7 @@
 plugins { `kotlin-dsl` }
 
+kotlin { jvmToolchain(17) }
+
 dependencies {
   implementation("com.android.tools.build:gradle:${libs.versions.agp.get()}")
   implementation("com.gradleup.tapmoc:tapmoc-gradle-plugin:${libs.versions.tapmoc.get()}")
