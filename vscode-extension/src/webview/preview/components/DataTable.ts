@@ -24,6 +24,18 @@ export interface RowSelectedDetail<TRow> {
     index: number;
 }
 
+/** Click on a row — drives a persistent detail panel selection, in
+ *  contrast to `row-selected` which fires on hover and just lights
+ *  up the matching overlay box. */
+export interface RowClickedDetail<TRow> {
+    /** `null` when the user clicked the already-selected row, i.e.
+     *  the table is interpreting the click as "deselect". The host
+     *  uses this to hide / reset its detail panel. */
+    overlayId: string | null;
+    row: TRow | null;
+    index: number | null;
+}
+
 export interface CopyJsonDetail {
     payload: unknown;
 }
@@ -38,6 +50,10 @@ export class DataTable<TRow = unknown> extends LitElement {
     @state() private columns: readonly DataTableColumn<TRow>[] = [];
     @state() private rows: readonly TRow[] = [];
     @state() private hoveredOverlayId: string | null = null;
+    /** Persistent click-driven selection. Distinct from
+     *  `hoveredOverlayId` so a hover doesn't visually clear the
+     *  user's pinned row. */
+    @state() private selectedOverlayId: string | null = null;
     /** Stable id per row used to correlate with `<box-overlay>`. */
     private overlayId: (row: TRow, index: number) => string = (_row, index) =>
         "row-" + index;
@@ -68,6 +84,17 @@ export class DataTable<TRow = unknown> extends LitElement {
      */
     setHoveredOverlayId(id: string | null): void {
         this.hoveredOverlayId = id;
+    }
+
+    /**
+     * Externally driven pinned-row selection — e.g. the host wants
+     * to clear the click-selection from outside (a new bundle
+     * refresh, the user dismissing a detail panel). The opposite
+     * direction (click → host) is handled internally by dispatching
+     * `row-clicked`.
+     */
+    setSelectedOverlayId(id: string | null): void {
+        this.selectedOverlayId = id;
     }
 
     protected createRenderRoot(): HTMLElement {
@@ -132,15 +159,21 @@ export class DataTable<TRow = unknown> extends LitElement {
 
     private renderRow(row: TRow, idx: number): TemplateResult {
         const id = this.overlayId(row, idx);
-        const active = this.hoveredOverlayId === id;
+        const hovered = this.hoveredOverlayId === id;
+        const selected = this.selectedOverlayId === id;
+        // `data-table-row-selected` is intentionally orthogonal to
+        // `data-table-row-active` (hover) so the user's pinned row
+        // stays highlighted even while they hover other rows.
+        const cls = ["data-table-row"];
+        if (hovered) cls.push("data-table-row-active");
+        if (selected) cls.push("data-table-row-selected");
         return html`
             <tr
-                class=${active
-                    ? "data-table-row data-table-row-active"
-                    : "data-table-row"}
+                class=${cls.join(" ")}
                 data-legend-id=${id}
                 @mouseenter=${() => this.onRowHover(row, idx, id)}
                 @mouseleave=${() => this.onRowHover(row, idx, null)}
+                @click=${() => this.onRowClick(row, idx, id)}
             >
                 ${this.columns.map(
                     (c) =>
@@ -160,6 +193,30 @@ export class DataTable<TRow = unknown> extends LitElement {
         this.hoveredOverlayId = overlayId;
         this.dispatchEvent(
             new CustomEvent<RowSelectedDetail<TRow>>("row-selected", {
+                detail: { overlayId, row, index },
+                bubbles: true,
+                composed: true,
+            }),
+        );
+    }
+
+    private onRowClick(row: TRow, index: number, overlayId: string): void {
+        // Re-clicking the pinned row deselects (host hides the
+        // detail panel). New row = swap selection.
+        if (this.selectedOverlayId === overlayId) {
+            this.selectedOverlayId = null;
+            this.dispatchEvent(
+                new CustomEvent<RowClickedDetail<TRow>>("row-clicked", {
+                    detail: { overlayId: null, row: null, index: null },
+                    bubbles: true,
+                    composed: true,
+                }),
+            );
+            return;
+        }
+        this.selectedOverlayId = overlayId;
+        this.dispatchEvent(
+            new CustomEvent<RowClickedDetail<TRow>>("row-clicked", {
                 detail: { overlayId, row, index },
                 bubbles: true,
                 composed: true,
