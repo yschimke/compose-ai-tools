@@ -352,16 +352,24 @@ export class GradleService {
      * applies — the tier is an `@Input` on the underlying task, so flipping
      * tier between calls correctly invalidates the up-to-date cache without
      * burning a config-cache reconfigure (see `TierSystemPropProvider`).
+     *
+     * `extraArgs` forwards additional `-P` properties (currently the
+     * a11y-enable flag the chip subscription bridges through) so the caller
+     * can flip per-render gates without baking each one into the signature.
+     * Same `@Input` invalidation rules apply — Gradle re-runs the Test
+     * task in a fresh JVM (and therefore a fresh Robolectric sandbox)
+     * whenever the property value changes.
      */
     async renderPreviews(
         module: ModuleInfo,
         tier: "fast" | "full" = "full",
         opts?: TaskOptions,
+        extraArgs: readonly string[] = [],
     ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module.modulePath);
         await this.runTask(
             `${module.modulePath}:renderAllPreviews`,
-            [`-PcomposePreview.tier=${tier}`],
+            [`-PcomposePreview.tier=${tier}`, ...extraArgs],
             opts,
         );
         const manifest = this.readManifest(module);
