@@ -505,6 +505,34 @@ internal object AndroidPreviewSupport {
       // newer activity transitively, and a fix for tile-only consumers
       // that don't.
       project.dependencies.add("${variantName}Implementation", "androidx.activity:activity:1.10.0")
+      // Pin `androidx.compose.ui:ui` on the main variant for tile-only /
+      // non-Compose-UI consumers. compose-ui's
+      // `AndroidComposeViewAccessibilityDelegateCompat.<clinit>` reads
+      // `androidx.compose.ui.R.id.*` (via `accessibility_custom_action_*`
+      // / `compose_view_root_id` lookups), so the merged unit-test resource
+      // APK needs the compose-ui R class. The renderer's test classpath
+      // brings compose-ui transitively (via roborazzi-compose / ui-test-*)
+      // — but that's the JVM test classpath only; AGP builds the merged
+      // `apk-for-local-test.ap_` from the consumer's MAIN variant, so on
+      // tile-only consumers without compose-ui in main (e.g. WearTilesKotlin)
+      // the R class is missing and Robolectric crashes the moment
+      // `AndroidComposeView.<init>` triggers the accessibility delegate's
+      // class init:
+      //
+      //   `NoClassDefFoundError: Could not initialize class
+      //   androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat`
+      //   caused by `NoClassDefFoundError: androidx/compose/ui/R$id`
+      //
+      // Same `${variantName}Implementation` floor pattern as the
+      // `androidx.core:core`, `customview-poolingcontainer`, and
+      // `androidx.activity:activity` entries above — Gradle picks the max
+      // with consumer-aligned versions, so this is a no-op for Compose-app
+      // consumers that already get a newer ui via their BOM, and a fix for
+      // tile-only consumers that don't.
+      project.dependencies.add(
+        "${variantName}Implementation",
+        "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
+      )
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -550,6 +578,15 @@ internal object AndroidPreviewSupport {
         reason =
           "activity-compose 1.5+ on the renderer test classpath reads R.id.view_tree_on_back_pressed_dispatcher_owner via ViewTreeOnBackPressedDispatcherOwner.set (added in androidx.activity:activity:1.5.0); merged test APK needs the field so ComponentActivity.initializeViewTreeOwners doesn't NoSuchFieldError",
       )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
+        configuration = "${variantName}Implementation",
+        outcome = "APPLIED",
+        reason =
+          "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main",
+      )
     } else {
       recordInjectedDependency(
         project,
@@ -593,6 +630,15 @@ internal object AndroidPreviewSupport {
         outcome = "SKIPPED_BY_CONFIG",
         reason =
           "manageDependencies=false; consumer must ensure androidx.activity:activity >= 1.5.0 on the main variant so the merged test APK includes R.id.view_tree_on_back_pressed_dispatcher_owner (referenced by activity-compose's ComponentActivity.initializeViewTreeOwners)",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.compose.ui:ui",
+        configuration = "${variantName}Implementation",
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; consumer must ensure androidx.compose.ui:ui is on the main variant so the merged test APK includes its R class (referenced by AndroidComposeViewAccessibilityDelegateCompat.<clinit>)",
       )
     }
 
