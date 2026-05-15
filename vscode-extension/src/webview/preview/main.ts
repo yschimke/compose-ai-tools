@@ -1663,7 +1663,14 @@ export class PreviewApp extends LitElement {
         // and from `reflectBundleState` when the tab switches.
         const reflectLegendActiveTab = (): void => {
             const tab = bundleController.state().activeTab;
-            const showBundleUi = focusController.inFocus() && earlyFeatures();
+            // `focusController` is assigned later in `firstUpdated`,
+            // and `reflectBundleState()` runs once at the bottom of
+            // bundle setup before that assignment lands — guard so
+            // the initial call (always with no active tab) doesn't
+            // dereference an undefined controller. Subsequent
+            // refresh calls run after the assignment.
+            const inFocus = focusController?.inFocus() === true;
+            const showBundleUi = inFocus && earlyFeatures();
             if (!showBundleUi || !tab) {
                 bundleLegend.showBundle(null);
                 bundleLegend.hidden = true;
