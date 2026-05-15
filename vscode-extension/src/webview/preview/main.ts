@@ -37,6 +37,7 @@ import "./components/DataTable";
 import "./components/BoxOverlay";
 import "./components/BundleExpander";
 import "./components/BundleLegend";
+import "./components/BundleRowDetail";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { BundleChipBar } from "./components/BundleChipBar";
 import { DataTabs } from "./components/DataTabs";
@@ -46,6 +47,10 @@ import {
     BundleLegend,
     type BundleLegendEntry,
 } from "./components/BundleLegend";
+import type {
+    BundleRowDetail,
+    BundleRowDetailSection,
+} from "./components/BundleRowDetail";
 import { findLegendTarget } from "./bundleLegendTarget";
 import {
     clearBundleBoxes,
@@ -58,6 +63,7 @@ import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
 import { wireExpanderToController } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
+import { buildA11yRowDetail } from "./a11yRowDetail";
 import {
     computePerformanceBundleData,
     performanceTableColumns,
@@ -768,6 +774,12 @@ export class PreviewApp extends LitElement {
             wrapper: HTMLElement;
             expander: BundleExpander;
             table: DataTable<unknown>;
+            /** Detail panel rendered below the table when the user
+             *  clicks a row. Hidden until the host calls
+             *  `rowDetail.setDetail(...)` in the bundle's
+             *  `row-clicked` listener. Generic across bundles —
+             *  each bundle decides what fields to surface. */
+            rowDetail: BundleRowDetail;
         }
         const bundleBodies = new Map<BundleId, BundleBody>();
         const buildBundleBody = (
@@ -789,9 +801,13 @@ export class PreviewApp extends LitElement {
             ) as DataTable<unknown>;
             table.heading = heading;
             table.setColumns(columns);
+            const rowDetail = document.createElement(
+                "bundle-row-detail",
+            ) as BundleRowDetail;
             wrapper.appendChild(expander);
             wrapper.appendChild(table);
-            return { wrapper, expander, table };
+            wrapper.appendChild(rowDetail);
+            return { wrapper, expander, table, rowDetail };
         };
         const a11yBody = (): BundleBody => {
             let b = bundleBodies.get("a11y");
@@ -803,6 +819,30 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Wire row click → detail panel. The listener is attached
+            // once (body is cached for the panel lifetime) and reads
+            // the last-refresh data product context from
+            // `a11yLastRefresh`. `row-clicked` carries `row: null`
+            // when the user re-clicks the selected row to deselect.
+            b.table.addEventListener("row-clicked", (evt) => {
+                const det = (
+                    evt as CustomEvent<
+                        import("./components/DataTable").RowClickedDetail<
+                            import("./a11yBundlePresenter").A11yRow
+                        >
+                    >
+                ).detail;
+                if (!det.row) {
+                    b!.rowDetail.clear();
+                    return;
+                }
+                const sections = buildA11yRowDetail(
+                    det.row,
+                    a11yLastRefresh?.findings ?? [],
+                    a11yLastRefresh?.touchTargets ?? [],
+                );
+                b!.rowDetail.setDetail(det.row.label, sections);
+            });
             bundleBodies.set("a11y", b);
             return b;
         };
@@ -1055,6 +1095,14 @@ export class PreviewApp extends LitElement {
             if (!Array.isArray(targets)) return [];
             return targets as readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[];
         };
+        // Captures the last refresh's per-preview a11y context so the
+        // body's `row-clicked` listener (attached once in
+        // `a11yBody()`) can build the detail panel from the freshest
+        // data without re-attaching on every refresh.
+        let a11yLastRefresh: {
+            findings: readonly AccessibilityFinding[];
+            touchTargets: readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[];
+        } | null = null;
         const refreshA11yBundle = (): void => {
             const target = currentBundleTarget();
             if (!target) return;
@@ -1077,6 +1125,13 @@ export class PreviewApp extends LitElement {
                 findings: targetSrc.findings,
                 touchTargets,
             }));
+            // Stash for the row-click listener installed in
+            // `a11yBody()`. Drop any stale selection so the detail
+            // panel doesn't point at row indices the new data may
+            // have renumbered.
+            a11yLastRefresh = { findings: targetSrc.findings, touchTargets };
+            body.table.setSelectedOverlayId(null);
+            body.rowDetail.clear();
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
             // Populate the shared bundle legend with the same rows so

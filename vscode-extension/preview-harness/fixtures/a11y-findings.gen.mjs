@@ -277,6 +277,14 @@ const fixture = {
         {
             click: `bundle-chip-bar button[data-bundle="a11y"]`,
         },
+        // Click the row for the ERROR finding (unlabelled image
+        // button) so the snapshot exercises the row-click → detail
+        // panel path. `data-legend-id` matches the bundle row's
+        // overlay id; the unlabelled-button row is the 4th node in
+        // the hierarchy so its id is `a11y-3`.
+        {
+            click: `[data-bundle="a11y"] tr[data-legend-id="a11y-3"]`,
+        },
     ],
 };
 
