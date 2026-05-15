@@ -10,8 +10,8 @@
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "c7f56a6df432b490b1fd76f2dbb31dd456e7f5e810609584ab514145724680f9",
-      "size": 95272
+      "sha256": "41e5cdb92d83c7a7ce2a5365cfa50a6c208928affcd8ea9d9da765de62ea59cd",
+      "size": 96004
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
@@ -28,8 +28,8 @@
     "history-diff.dark.png": {
       "fixture": "history-diff",
       "theme": "dark",
-      "sha256": "711d91ab6b3967c7398ad994d830e4e45164a8ab10533d166d03d4f24e51e31f",
-      "size": 84436
+      "sha256": "2b645a87cecfdd1fc0c4f051d100a3d08e1be03a2b36a4742546cc4924bd5874",
+      "size": 85125
     },
     "history-diff.light.png": {
       "fixture": "history-diff",
