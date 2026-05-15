@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "captures": {
+    "a11y-findings.dark.png": {
+      "fixture": "a11y-findings",
+      "theme": "dark",
+      "sha256": "b3a6f08828e7c5eebe3aca5bf23e2a9c270d02c1909b1a8f13fed29290b73b66",
+      "size": 93666
+    },
+    "a11y-findings.light.png": {
+      "fixture": "a11y-findings",
+      "theme": "light",
+      "sha256": "54ed40700fb73af6a3ed10236be92b2e918036e59a887dc33167e5899f1b1ce6",
+      "size": 90938
+    },
+    "grid-default.dark.png": {
+      "fixture": "grid-default",
+      "theme": "dark",
+      "sha256": "cec9c94fbf03b5b3d42a87f513d80237981e4e3ed104d71b3c93de4ed7b209a2",
+      "size": 9661
+    },
+    "grid-default.light.png": {
+      "fixture": "grid-default",
+      "theme": "light",
+      "sha256": "2df5211c733f98e719d442faba42f6166db5817b78f0b6122391bdfe158ae9b2",
+      "size": 9741
+    }
+  }
+}
