@@ -18,3 +18,24 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![grid-default/dark](renders/grid-default.dark.png) |
 | `light` | ![grid-default/light](renders/grid-default.light.png) |
 
+## history-diff
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![history-diff/dark](renders/history-diff.dark.png) |
+| `light` | ![history-diff/light](renders/history-diff.light.png) |
+
+## inspection-tree
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![inspection-tree/dark](renders/inspection-tree.dark.png) |
+| `light` | ![inspection-tree/light](renders/inspection-tree.light.png) |
+
+## text-strings
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![text-strings/dark](renders/text-strings.dark.png) |
+| `light` | ![text-strings/light](renders/text-strings.light.png) |
+
