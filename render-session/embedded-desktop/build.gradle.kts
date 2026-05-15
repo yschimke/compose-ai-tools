@@ -35,7 +35,12 @@ dependencies {
   api(project(":render-session-api"))
 
   // The actual daemon entry point we run on a background thread, plus the JSON-RPC client we
-  // wrap the calling end of the pipes with.
+  // wrap the calling end of the pipes with. `:render-session-subprocess` is depended on for
+  // the shared `DaemonClientRenderSession` delegate (and the `NotificationFanout` helper) — the
+  // class is transport-agnostic, just needs a `DaemonClient` and a `closeAction` lambda. The
+  // subprocess module is currently the canonical home for the delegate; consumers stay light
+  // because they pull in its single transport-shared file plus the API jar, not its factory.
+  implementation(project(":render-session-subprocess"))
   implementation(project(":daemon:desktop"))
   implementation(project(":daemon:core"))
   implementation(project(":mcp"))
