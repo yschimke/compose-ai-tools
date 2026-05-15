@@ -162,5 +162,19 @@
     {
       "click": "[data-bundle=\"a11y\"] tr[data-legend-id=\"a11y-4\"]"
     }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "a11y/hierarchy",
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "a11y/atf",
+      "enabled": true
+    }
   ]
 }

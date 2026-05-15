@@ -82,6 +82,38 @@ To preview interactively, serve the extension root and open
 npx --yes http-server -c-1 .       # from vscode-extension/
 ```
 
+## Wire-side contract
+
+```sh
+npm run harness:contract         # assert each fixture's expectedPosts
+node preview-harness/contract.mjs --fixture a11y-findings
+```
+
+Same Playwright loop as `harness:snapshot`, but instead of writing a
+PNG it reads `window.__composePreviewHarness.postedMessageLog` after
+the fixture's actions complete and asserts each fixture's optional
+`expectedPosts` / `forbiddenPosts` arrays. Use it to pin the
+end-to-end wire effect of clicking a chip / toggling a kind /
+selecting a row, without launching real VS Code: the harness's
+`vscode-api.js` shim already captures every `vscode.postMessage`
+call, the contract just compares them against the per-fixture rules.
+
+A fixture's `expectedPosts` is an array of subset-match templates —
+every key on the template must equal the same key on some recorded
+post; extra keys on the recorded post are ignored. Helper:
+
+```js
+import { expectSetDataExtension } from "./_utils.mjs";
+
+expectedPosts: [
+    expectSetDataExtension(focusId, "compose/semantics", true),
+],
+```
+
+`forbiddenPosts` is the inverse — fail if any recorded post matches.
+Useful for "this code path must NOT subscribe `kind X` until the user
+opts in" assertions.
+
 ## How it works
 
 1. `scenario.html` is a static page that loads `media/preview.css`,
