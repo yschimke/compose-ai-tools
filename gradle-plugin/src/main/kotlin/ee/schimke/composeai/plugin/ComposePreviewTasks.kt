@@ -150,6 +150,15 @@ internal object ComposePreviewTasks {
       )
     }
 
+    registerBundleTask(
+      project = project,
+      extension = extension,
+      previewOutputDir = previewOutputDir,
+      sourceClassDirs = sourceClassDirs,
+      resolveDependencyConfigName = resolveDependencyConfigName,
+      discoverTaskName = "discoverPreviews",
+    )
+
     registerDesktopDaemonStartTask(
       project,
       extension,
@@ -157,6 +166,65 @@ internal object ComposePreviewTasks {
       sourceClassDirs,
       resolveDependencyConfigName,
     )
+  }
+
+  /**
+   * Register `composePreviewBundle` — packs the consumer module + selected previews into a portable
+   * PNG+ZIP polyglot. Inputs reuse the existing `previews.json` from `discoverPreviews` and the
+   * same module class dirs + runtime classpath that `renderPreviews` consumes; the cover PNG is
+   * read from the `renders/` directory when present (lazy — task still runs in "no-render" mode and
+   * writes a stub gray PNG cover).
+   *
+   * Selection comes from project properties (`-PbundlePreviewIds=…`) or CLI input. The bundle task
+   * does NOT depend on `renderPreviews` — bundling without pre-rendering is the common case for the
+   * CLI's "pack and share" flow. Callers who want the cover populated should run `renderPreviews`
+   * first (the CLI shells through `renderPreviews composePreviewBundle` as a single Gradle
+   * invocation).
+   */
+  private fun registerBundleTask(
+    project: Project,
+    extension: PreviewExtension,
+    previewOutputDir: Provider<Directory>,
+    sourceClassDirs: FileCollection,
+    resolveDependencyConfigName: () -> String,
+    discoverTaskName: String,
+  ) {
+    val previewIdsProperty: Provider<List<String>> =
+      project.providers.gradleProperty("bundlePreviewIds").map { raw ->
+        raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+      }
+    val outputProperty: Provider<String> = project.providers.gradleProperty("bundleOutput")
+    val pluginVersionProperty = PluginVersion.value
+
+    val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
+    val depJarFiles =
+      project.configurations.findByName(resolveDependencyConfigName())?.let { config ->
+        // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM
+        // consumers pass through. Either way we get real jars on the closure walk.
+        config.incoming.artifactView { attributes.attribute(artifactTypeAttr, "jar") }.files
+      }
+    val defaultOutput = previewOutputDir.map { it.file("bundle.png").asFile }
+    val resolvedOutput = outputProperty.map { java.io.File(it) }.orElse(defaultOutput)
+
+    project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
+      onlyIf { extension.enabled.get() }
+      previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+      moduleClassDirs.from(sourceClassDirs)
+      depJarFiles?.let { dependencyJars.from(it) }
+      // Renders dir is wired conditionally — when renderPreviews has run, the dir exists and
+      // contains PNGs. Use orNull semantics: missing dir = stub cover.
+      rendersDir.set(previewOutputDir.map { it.dir("renders") })
+      previewIds.set(previewIdsProperty.orElse(emptyList()))
+      modulePath.set(project.path)
+      backend.set("desktop")
+      producedBy.set("compose-preview $pluginVersionProperty")
+      output.set(project.layout.file(resolvedOutput))
+      group = "compose preview"
+      description = "Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot."
+      // No dependsOn renderPreviews — bundle without a render is valid (stub cover). Callers wire
+      // explicitly when they want a real cover.
+      dependsOn(discoverTaskName)
+    }
   }
 
   /**
