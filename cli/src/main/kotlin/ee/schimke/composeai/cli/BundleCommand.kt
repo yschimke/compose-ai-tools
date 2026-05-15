@@ -6,17 +6,18 @@ import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonClassDiscriminator
 
 /**
- * `compose-preview bundle <pack|inspect|extract>` — produce and inspect portable preview bundles.
+ * `compose-preview bundle <pack|inspect|extract|render>` — produce, inspect, and play portable
+ * preview bundles.
  *
  * # Bundle file shape
  *
  * The bundle is a PNG + ZIP polyglot. The leading bytes are a valid PNG (the cover preview's
  * rendered image — Finder, Preview.app, GitHub, Slack all show it as an image). The trailing bytes
- * are a standard zip archive that any tooling (this CLI, VS Code, `unzip`, your zip library) reads
- * via the EOCD signature `PK\x05\x06`. See `PreviewBundleFormat.kt` in the plugin module for the
- * in-repo schema definitions.
+ * are a standard zip archive that any tooling reads via the EOCD signature `PK\x05\x06`. See
+ * `PreviewBundleFormat.kt` in the plugin module for the in-repo schema definitions.
  *
  * # Subcommands
  *
@@ -25,10 +26,14 @@ import kotlinx.serialization.json.Json
  *   first id becomes the cover. `--no-render` skips the render step and packs with a stub gray
  *   cover.
  * - **`inspect`** — open a bundle file and print its `bundle.json` + `report.json` summary,
- *   including the minimization report (how many module classes were kept vs total, how many jars
- *   were kept vs dropped, total bytes saved). Read-only.
- * - **`extract`** — extract the zip portion of a bundle into a directory. Useful for forensic
- *   inspection and for the VS Code extension's preview opener.
+ *   including the minimization report (how many module classes were kept vs total, which Maven
+ *   coordinates contribute reachable classes). Read-only.
+ * - **`extract`** — extract the zip portion of a bundle into a directory. Each entry's path is
+ *   validated to live inside the target dir — `../` traversal in a hostile bundle is rejected.
+ * - **`render`** — re-render the bundle's previews from a packed `.png`, not from a Gradle module.
+ *   v1 is a stub: it extracts the bundle, prints the manifest + resolved classpath, and tells you
+ *   what *would* render. Actual rendering (resolving Maven coords + spawning DesktopRendererMain)
+ *   is the next milestone.
  */
 class BundleCommand(args: List<String>) : Command(args) {
 
@@ -38,6 +43,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "pack" -> PackSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "inspect" -> InspectSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "extract" -> ExtractSubcommand(args.drop(args.indexOf(sub) + 1)).run()
+      "render" -> RenderSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       null,
       "help",
       "--help",
@@ -62,14 +68,15 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render]
         compose-preview bundle inspect <bundle.png>
         compose-preview bundle extract <bundle.png> [-o <dir>]
+        compose-preview bundle render  <bundle.png> [-o <dir>]   (v1: stub — prints what would render)
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
         -o, --output <file> Output file path. Default: <module>/build/compose-previews/bundle.png.
         --no-render         Skip renderPreviews — pack with a stub gray cover.
 
-      Inspect / extract flags:
-        -o, --output <dir>  (extract only) Directory to extract into. Default: alongside the bundle.
+      Inspect / extract / render flags:
+        -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
       """
         .trimIndent()
     )
@@ -96,9 +103,6 @@ private class PackSubcommand(private val args: List<String>) {
       }
       if (verbose) add("--verbose")
     }
-    // Reuse the existing Command plumbing for module resolution. Wrap in an anonymous shim so we
-    // get `withGradle`, `resolveModules`, and the auto-inject init-script flow without duplicating
-    // 80 lines of boilerplate.
     object : Command(cmdArgs) {
         override fun run() {
           withGradle { gradle ->
@@ -138,7 +142,7 @@ private class PackSubcommand(private val args: List<String>) {
               exitProcess(1)
             }
 
-            val report =
+            val meta =
               try {
                 BundleReader.readMetadata(resolvedOutput)
               } catch (e: Exception) {
@@ -147,7 +151,7 @@ private class PackSubcommand(private val args: List<String>) {
                 )
                 exitProcess(1)
               }
-            printPackSummary(resolvedOutput, report)
+            printPackSummary(resolvedOutput, meta)
           }
         }
       }
@@ -160,7 +164,11 @@ private class PackSubcommand(private val args: List<String>) {
     println(
       "  previews:      ${meta.manifest.previewIds.size} (cover=${meta.manifest.coverPreviewId})"
     )
-    println("  classpath:     ${meta.manifest.classpath.size} entries")
+    val mavenCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Maven }
+    val projectCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Project }
+    println(
+      "  classpath:     ${meta.manifest.classpath.size} entries (Maven=$mavenCount, inlined=$projectCount)"
+    )
     val r = meta.report
     if (r != null) {
       println("  entry classes: ${r.entryClassFqns.size}")
@@ -170,9 +178,8 @@ private class PackSubcommand(private val args: List<String>) {
       println(
         "  module:        ${r.moduleClasses.reachableClasses} / ${r.moduleClasses.totalClasses} classes kept, ${r.moduleClasses.packedBytes} B packed"
       )
-      val kept = r.libraryJars.count { it.kept }
-      val droppedBytes = r.libraryJars.filter { !it.kept }.sumOf { it.originalBytes }
-      println("  jars:          $kept / ${r.libraryJars.size} kept, ${droppedBytes} B dropped")
+      val kept = r.dependencies.count { it.kept }
+      println("  deps:          $kept / ${r.dependencies.size} contributed reachable classes")
     }
   }
 }
@@ -190,7 +197,10 @@ private class InspectSubcommand(private val args: List<String>) {
       exitProcess(1)
     }
     val meta = BundleReader.readMetadata(file)
-    val pretty = Json { prettyPrint = true }
+    val pretty = Json {
+      prettyPrint = true
+      classDiscriminator = "kind"
+    }
     println("file: ${file.absolutePath}")
     println("size: ${file.length()} bytes")
     println("--- bundle.json ---")
@@ -217,24 +227,97 @@ private class ExtractSubcommand(private val args: List<String>) {
     }
     val target =
       File(
-        outDir ?: file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-extracted"
-      )
+          outDir
+            ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-extracted")
+        )
+        .absoluteFile
     target.mkdirs()
     val zipBytes = BundleReader.extractZipBytes(file)
-    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
-      while (true) {
-        val entry = zin.nextEntry ?: break
-        val out = File(target, entry.name)
-        if (entry.isDirectory) {
-          out.mkdirs()
-        } else {
-          out.parentFile?.mkdirs()
-          out.outputStream().use { sink -> zin.copyTo(sink) }
-        }
-        zin.closeEntry()
+    safeExtractZip(zipBytes, target)
+    println("extracted ${file.name} → ${target.path}")
+  }
+}
+
+private class RenderSubcommand(private val args: List<String>) {
+  fun run() {
+    val path = args.firstOrNull { !it.startsWith("-") }
+    val outDir = args.flagValue("--output") ?: args.flagValue("-o")
+    if (path == null) {
+      System.err.println("Usage: compose-preview bundle render <bundle.png> [-o <dir>]")
+      exitProcess(64)
+    }
+    val file = File(path)
+    if (!file.isFile) {
+      System.err.println("Not a file: $path")
+      exitProcess(1)
+    }
+    val target =
+      File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render"))
+        .absoluteFile
+    target.mkdirs()
+
+    val zipBytes = BundleReader.extractZipBytes(file)
+    val extractDir = File(target, "_bundle").apply { mkdirs() }
+    safeExtractZip(zipBytes, extractDir)
+
+    val meta = BundleReader.readMetadata(file)
+    println("bundle:   ${file.path}")
+    println("backend:  ${meta.manifest.backend}")
+    println("previews: ${meta.manifest.previewIds.joinToString()}")
+    println("extracted to: ${extractDir.path}")
+    println()
+    println("Resolved classpath (player would load in this order):")
+    for (entry in meta.manifest.classpath) {
+      when (entry) {
+        is BundleReader.ClasspathEntry.Module ->
+          println("  [module]  ${File(extractDir, entry.path).absolutePath}")
+        is BundleReader.ClasspathEntry.Maven ->
+          println(
+            "  [maven]   ${entry.group}:${entry.artifact}:${entry.version}@${entry.type}  (unresolved)"
+          )
+        is BundleReader.ClasspathEntry.Project ->
+          println("  [project] ${entry.path}  →  ${File(extractDir, entry.inlinedAs).absolutePath}")
       }
     }
-    println("extracted ${file.name} → ${target.path}")
+    println()
+    System.err.println(
+      "bundle render: v1 stub — Maven coordinate resolution + DesktopRendererMain spawn not wired yet."
+    )
+    System.err.println(
+      "Next milestone: resolve coordinates against ~/.m2 / Maven Central, then spawn the bundled renderer-desktop."
+    )
+  }
+}
+
+/**
+ * Extracts a zip safely — every entry's resolved target path is verified to live inside [target].
+ * Defeats Zip Slip (`../../etc/passwd`-style entry names) reported by CodeQL / Codex on the v1
+ * extract path; same call site is shared by `extract` and `render`.
+ */
+private fun safeExtractZip(zipBytes: ByteArray, target: File) {
+  val canonicalTarget = target.canonicalFile
+  ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+    while (true) {
+      val entry = zin.nextEntry ?: break
+      val candidate = File(target, entry.name).canonicalFile
+      // Reject anything resolving outside the target dir, regardless of whether the entry's name
+      // happens to be relative ("foo/..//bar") or absolute on some platforms.
+      if (
+        candidate != canonicalTarget &&
+          !candidate.path.startsWith(canonicalTarget.path + File.separator)
+      ) {
+        throw SecurityException(
+          "bundle entry escapes target dir: ${entry.name} → ${candidate.path}"
+        )
+      }
+      if (entry.isDirectory) {
+        candidate.mkdirs()
+      } else {
+        candidate.parentFile?.mkdirs()
+        candidate.outputStream().use { sink -> zin.copyTo(sink) }
+      }
+      zin.closeEntry()
+    }
   }
 }
 
@@ -253,10 +336,32 @@ internal object BundleReader {
     val backend: String,
     val previewIds: List<String>,
     val coverPreviewId: String?,
-    val classpath: List<String>,
+    val classpath: List<ClasspathEntry>,
     val modulePath: String,
     val producedBy: String,
   )
+
+  @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+  @Serializable
+  @JsonClassDiscriminator("kind")
+  sealed interface ClasspathEntry {
+    @Serializable
+    @kotlinx.serialization.SerialName("module")
+    data class Module(val path: String) : ClasspathEntry
+
+    @Serializable
+    @kotlinx.serialization.SerialName("maven")
+    data class Maven(
+      val group: String,
+      val artifact: String,
+      val version: String,
+      val type: String,
+    ) : ClasspathEntry
+
+    @Serializable
+    @kotlinx.serialization.SerialName("project")
+    data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
+  }
 
   @Serializable
   data class Report(
@@ -264,16 +369,17 @@ internal object BundleReader {
     val reachableClassCount: Int,
     val totalScannedClassCount: Int,
     val moduleClasses: ModuleClasses,
-    val libraryJars: List<LibraryJar>,
+    val dependencies: List<DependencyDecision>,
   )
 
   @Serializable
   data class ModuleClasses(val totalClasses: Int, val reachableClasses: Int, val packedBytes: Long)
 
   @Serializable
-  data class LibraryJar(
+  data class DependencyDecision(
     val sourcePath: String,
-    val bundledAs: String?,
+    val coordinate: String?,
+    val projectPath: String?,
     val totalClasses: Int,
     val reachableClasses: Int,
     val originalBytes: Long,
@@ -282,7 +388,10 @@ internal object BundleReader {
 
   data class Metadata(val manifest: Manifest, val report: Report?)
 
-  private val json = Json { ignoreUnknownKeys = true }
+  private val json = Json {
+    ignoreUnknownKeys = true
+    classDiscriminator = "kind"
+  }
 
   fun readMetadata(file: File): Metadata {
     val zipBytes = extractZipBytes(file)

@@ -14,6 +14,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
@@ -28,16 +29,27 @@ import org.gradle.api.tasks.TaskAction
 
 /**
  * Pack a portable preview bundle — a PNG+ZIP polyglot containing the selected previews' metadata,
- * the minimal set of consumer classes reachable from those previews, the runtime jars that
- * contribute to the closure, and a minimization report. See [PreviewBundleFormat] for the on-disk
- * layout.
+ * the minimal set of consumer classes reachable from those previews, a **list** of Maven
+ * coordinates the player resolves at open time, and a minimization report. See
+ * [PreviewBundleFormat] for the on-disk layout.
  *
- * The closure walk is driven by ClassGraph's inter-class dependency map: starting from each
- * selected preview's enclosing class FQN, we BFS through every class the closure references and
- * collect the set. Module classes are repacked per-class (small, ours, safe to surgically prune).
- * Third-party jars are included whole when they contribute ≥1 reachable class — stripping inside a
- * jar is risky (lambdas, kotlin metadata, resources, services) and the per-jar size win is the
- * dominant lever anyway.
+ * # Dependency strategy
+ *
+ * Only consumer-module bytecode is inlined into the bundle (`classes/app.jar`, minimized to classes
+ * reachable from the selected previews). Every Maven-resolved runtime dependency is recorded as a
+ * `ClasspathEntry.Maven` coordinate — not bundled — so the bundle stays small enough to share over
+ * chat / paste into a gist. The player resolves the coordinates from the consumer's normal Gradle
+ * repos at open time. Project deps that have no Maven coordinate (transitive `:my-lib` references
+ * inside the consumer's build) fall back to being inlined as `ClasspathEntry.Project(inlinedAs =
+ * "libs/<name>.jar")` so the bundle is still self-contained for offline use.
+ *
+ * # Closure walk
+ *
+ * Classpath minimization is driven by ClassGraph's inter-class dependency map. We BFS from each
+ * selected preview's enclosing class FQN through every class the closure references. Module classes
+ * are repacked per-class (small, ours, safe to surgically prune); third-party deps appear in
+ * `report.json` with their reachability counts but only the kept ones are recorded in the
+ * manifest's classpath (deps with no reachable class don't make it to the player at all).
  */
 abstract class BundlePreviewTask : DefaultTask() {
 
@@ -68,10 +80,24 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val moduleResourcesDir: DirectoryProperty
 
   /**
-   * Third-party runtime classpath jars. Each is included whole into `libs/` if and only if the
-   * closure walk lands on at least one of its classes.
+   * Third-party runtime classpath jars. Used to drive the ClassGraph closure walk and to look up
+   * source coordinates via [dependencyCoordinates] — jars themselves are NOT inlined into the
+   * bundle (apart from project-dep fallbacks).
    */
   @get:Classpath abstract val dependencyJars: ConfigurableFileCollection
+
+  /**
+   * Map of `dependencyJar absolute path → coordinate string`. Encoded as a single string so it
+   * round-trips through Gradle's MapProperty serialization. Format:
+   * - `"maven:<group>:<artifact>:<version>:<type>"` for Maven-resolved deps (`type` is `jar` /
+   *   `aar`).
+   * - `"project:<gradle path>"` for local project deps (these get inlined into the bundle).
+   *
+   * Jars not present in this map are treated as anonymous file-collection inputs (rare — typically
+   * a JBR / boot-classpath jar). They're inlined as `project`-style with a synthetic `:anon` path
+   * so the player can still load them, but the manifest entry is flagged.
+   */
+  @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
 
   /**
    * Renders directory from the preceding `renderPreviews` task. The cover preview's PNG is read
@@ -120,26 +146,13 @@ abstract class BundlePreviewTask : DefaultTask() {
     val moduleClassFqns = collectClassFqns(classDirsList)
     val reachableModuleClasses = moduleClassFqns intersect closure.reachable
     val keptModuleClassFiles = packModuleClasses(classDirsList, reachableModuleClasses)
-
-    val keptJars = jarsList.mapNotNull { jar ->
-      val totals = closure.perElement[jar.absolutePath]
-      val total = totals?.total ?: 0
-      val reachable = totals?.reachable ?: 0
-      val keep = reachable > 0
-      LibraryJarDecision(
-        sourcePath = jar.absolutePath,
-        bundledAs = if (keep) "libs/${dedupeJarName(jar.name)}" else null,
-        totalClasses = total,
-        reachableClasses = reachable,
-        originalBytes = jar.length(),
-        kept = keep,
-      )
-    }
-
-    val classpathOrder = mutableListOf("classes/app.jar")
-    keptJars.filter { it.kept }.forEach { classpathOrder += it.bundledAs!! }
-
     val appJarBytes = buildJar(keptModuleClassFiles, moduleResourcesDir.orNull?.asFile)
+
+    val coordMap = dependencyCoordinates.getOrElse(emptyMap())
+    val depDecisions = buildDepDecisions(jarsList, closure.perElement, coordMap)
+    val classpathEntries = buildClasspathEntries(depDecisions)
+    val inlinedProjectJars = inlinedProjectJars(jarsList, depDecisions)
+
     val report =
       MinimizationReport(
         entryClassFqns = entryClassFqns.sorted(),
@@ -151,7 +164,7 @@ abstract class BundlePreviewTask : DefaultTask() {
             reachableClasses = reachableModuleClasses.size,
             packedBytes = appJarBytes.size.toLong(),
           ),
-        libraryJars = keptJars,
+        dependencies = depDecisions,
       )
 
     val bundle =
@@ -160,7 +173,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         backend = backend.get(),
         previewIds = selected.map { it.id },
         coverPreviewId = coverId,
-        classpath = classpathOrder,
+        classpath = classpathEntries,
         modulePath = modulePath.get(),
         producedBy = producedBy.get(),
       )
@@ -171,7 +184,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
         previewsJson = JSON.encodeToString(PreviewManifest.serializer(), filteredManifest),
         appJar = appJarBytes,
-        keptJars = keptJars.filter { it.kept },
+        inlinedProjectJars = inlinedProjectJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
       )
 
@@ -179,13 +192,17 @@ abstract class BundlePreviewTask : DefaultTask() {
     val outFile = output.get().asFile
     writePngZipPolyglot(coverPng, zipBytes, outFile)
 
+    val mavenKept = classpathEntries.count { it is ClasspathEntry.Maven }
+    val projectInlined = classpathEntries.count { it is ClasspathEntry.Project }
+    val depsDropped = depDecisions.count { !it.kept }
     logger.lifecycle(
       "composePreviewBundle — wrote ${outFile.name} (${outFile.length()} bytes)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
-        "  jars kept:            ${report.libraryJars.count { it.kept }} / ${report.libraryJars.size}\n" +
-        "  bytes saved (jars):   ${report.libraryJars.filter { !it.kept }.sumOf { it.originalBytes }}"
+        "  Maven deps listed:    $mavenKept\n" +
+        "  Project deps inlined: $projectInlined\n" +
+        "  deps dropped:         $depsDropped (no reachable classes)"
     )
   }
 
@@ -259,6 +276,77 @@ abstract class BundlePreviewTask : DefaultTask() {
     return result
   }
 
+  private fun buildDepDecisions(
+    jars: List<File>,
+    perElement: Map<String, PerElementCount>,
+    coordMap: Map<String, String>,
+  ): List<DependencyDecision> = jars.map { jar ->
+    val totals = perElement[jar.absolutePath]
+    val reachable = totals?.reachable ?: 0
+    val total = totals?.total ?: 0
+    val rawCoord = coordMap[jar.absolutePath]
+    val mavenCoord = rawCoord?.takeIf { it.startsWith("maven:") }?.removePrefix("maven:")
+    val projectPath = rawCoord?.takeIf { it.startsWith("project:") }?.removePrefix("project:")
+    DependencyDecision(
+      sourcePath = jar.absolutePath,
+      coordinate = mavenCoord,
+      projectPath = projectPath,
+      totalClasses = total,
+      reachableClasses = reachable,
+      originalBytes = jar.length(),
+      kept = reachable > 0,
+    )
+  }
+
+  private fun buildClasspathEntries(deps: List<DependencyDecision>): List<ClasspathEntry> {
+    val result = mutableListOf<ClasspathEntry>(ClasspathEntry.Module(path = "classes/app.jar"))
+    for (dep in deps) {
+      if (!dep.kept) continue
+      val coord = dep.coordinate
+      if (coord != null) {
+        result += parseMavenCoord(coord)
+      } else {
+        val inlined = "libs/${dedupeJarName(File(dep.sourcePath).name)}"
+        result += ClasspathEntry.Project(path = dep.projectPath ?: ":anon", inlinedAs = inlined)
+      }
+    }
+    return result
+  }
+
+  private fun inlinedProjectJars(
+    jars: List<File>,
+    deps: List<DependencyDecision>,
+  ): Map<String, File> {
+    val byPath = jars.associateBy { it.absolutePath }
+    val result = LinkedHashMap<String, File>()
+    seenJarNames.clear()
+    for (dep in deps) {
+      if (!dep.kept) continue
+      if (dep.coordinate != null) continue
+      val src = byPath[dep.sourcePath] ?: continue
+      val inlined = "libs/${dedupeJarName(src.name)}"
+      result[inlined] = src
+    }
+    seenJarNames.clear()
+    return result
+  }
+
+  /**
+   * Parse `"<group>:<artifact>:<version>:<type>"` (the post-prefix shape produced by the plugin
+   * registration's `ResolvedArtifactResult` → coord encoder). Falls back to `type = "jar"` when the
+   * coordinate omits the trailing packaging.
+   */
+  private fun parseMavenCoord(coord: String): ClasspathEntry.Maven {
+    val parts = coord.split(':')
+    require(parts.size >= 3) { "composePreviewBundle: malformed Maven coordinate: $coord" }
+    return ClasspathEntry.Maven(
+      group = parts[0],
+      artifact = parts[1],
+      version = parts[2],
+      type = parts.getOrNull(3) ?: "jar",
+    )
+  }
+
   private fun buildJar(classes: Map<String, ByteArray>, resourcesDir: File?): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -280,23 +368,15 @@ abstract class BundlePreviewTask : DefaultTask() {
     bundleJson: String,
     previewsJson: String,
     appJar: ByteArray,
-    keptJars: List<LibraryJarDecision>,
+    inlinedProjectJars: Map<String, File>,
     report: String,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
-    val usedNames = mutableSetOf<String>()
     ZipOutputStream(baos).use { zip ->
       zip.writeFile("bundle.json", bundleJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("classes/app.jar", appJar)
-      keptJars.forEach { decision ->
-        val bundled = decision.bundledAs ?: return@forEach
-        // dedupeJarName already ran on the manifest entry, but defend against duplicates
-        // sneaking in via a renamed manifest path during refactor.
-        if (bundled in usedNames) return@forEach
-        usedNames += bundled
-        zip.writeFile(bundled, File(decision.sourcePath).readBytes())
-      }
+      inlinedProjectJars.forEach { (path, file) -> zip.writeFile(path, file.readBytes()) }
       zip.writeFile("report.json", report.toByteArray(Charsets.UTF_8))
     }
     return baos.toByteArray()
@@ -309,10 +389,9 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Two consumer dependencies can resolve to jars with the same basename (e.g. two
-   * `kotlinx-coroutines-core-jvm-…` from different configurations); dedupe by suffixing a counter
-   * when a collision is detected. Order matches the input classpath, so the renderer's load order
-   * is preserved.
+   * Two project deps can resolve to jars with the same basename; dedupe by suffixing a counter.
+   * Used only for the rare project-dep inline path — Maven coords don't collide because the
+   * resolver guarantees a unique (group, artifact, version) per file.
    */
   private val seenJarNames = mutableMapOf<String, Int>()
 
@@ -384,6 +463,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val JSON = Json {
       prettyPrint = true
       encodeDefaults = true
+      classDiscriminator = "kind"
     }
 
     /**

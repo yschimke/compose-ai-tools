@@ -2,23 +2,24 @@ package ee.schimke.composeai.plugin
 
 import java.io.File
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 
 /**
  * On-disk format for `compose-preview` bundles — portable, self-contained artefacts that record one
- * or more `@Preview` composables together with the minimal classpath needed to re-render them.
+ * or more `@Preview` composables together with the **minimal** classpath needed to re-render them.
  *
  * # File shape
  *
  * The bundle is a **PNG + ZIP polyglot**:
  * 1. Bytes `0..n` are a valid PNG (the cover image — the first selected preview's rendered output,
- *    or a placeholder when no render is available). Finder, Preview.app, browsers, GitHub, Slack —
- *    every PNG viewer renders the leading image.
+ *    or a stub gray placeholder). Finder, Preview.app, browsers, GitHub, Slack — every PNG viewer
+ *    renders the leading image.
  * 2. Bytes `n+1..EOF` are a standard ZIP archive. ZIP parsers scan backwards from EOF for the
  *    End-Of-Central-Directory signature (`PK\x05\x06`), so the leading PNG bytes are invisible to
- *    them. `unzip foo.png` works; so does any library zip reader.
+ *    them. `unzip foo.png` works.
  *
- * `file(1)` reports "PNG image data". The same file opened with `compose-preview bundle open` (or
- * via the VS Code extension) extracts the appended zip and loads the bundle.
+ * `file(1)` reports "PNG image data". The same file opened by `compose-preview bundle open` (or the
+ * VS Code extension) extracts the appended zip and rehydrates the preview.
  *
  * # ZIP layout
  *
@@ -27,11 +28,17 @@ import kotlinx.serialization.Serializable
  * previews.json            — filtered to selected preview ids; same shape as the original
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources)
- * libs/<name>.jar          — third-party jars from the runtime classpath that contain ≥1 reachable
- *                            class. Whole jars; we don't strip inside them
- * renders/<preview-id>.png — optional pre-rendered cache, off by default in v1
- * report.json              — [MinimizationReport] for transparency on what was kept vs dropped
+ * report.json              — [MinimizationReport]: which deps contributed reachable classes
  * ```
+ *
+ * **Notably absent:** there is no `libs/` directory. Maven / Google-resolvable dependencies are
+ * recorded as coordinates in [BundleManifest.classpath]; the player (`compose-preview bundle open`,
+ * VS Code extension) re-resolves them from the consumer's normal Gradle / Maven repos at open time.
+ * That keeps a one-preview bundle ~100 KB instead of dragging the whole Compose graph in.
+ *
+ * For Android backends, [ClasspathEntry.Maven.type] = `"aar"` records that the player must resolve
+ * the **unprocessed** AAR (not the extracted classes.jar) so AGP's artifact transforms run as they
+ * would in a normal build.
  */
 @Serializable
 data class BundleManifest(
@@ -43,16 +50,63 @@ data class BundleManifest(
   /** Preview id whose PNG forms the polyglot's leading bytes. Usually `previewIds[0]`. */
   val coverPreviewId: String?,
   /**
-   * Classpath entries inside the bundle, in load order. Each is a posix-style relative path —
-   * `classes/app.jar` first, then `libs/<name>.jar` for each kept third-party jar. The player
-   * extracts the zip, resolves these to absolute paths, and hands them to the renderer.
+   * Classpath in load order. First entry is always [ClasspathEntry.Module] for the inlined
+   * `classes/app.jar`; remaining entries are typically [ClasspathEntry.Maven] coordinates the
+   * player resolves at open time. [ClasspathEntry.Project] is the escape hatch for local /
+   * unresolvable artifacts that had to be inlined alongside the app jar.
    */
-  val classpath: List<String>,
+  val classpath: List<ClasspathEntry>,
   /** Source Gradle path that produced the bundle, e.g. `:samples:cmp`. */
   val modulePath: String,
   /** `BUNDLE_VERSION`-shaped identifier of the producer for diagnostics. */
   val producedBy: String,
 )
+
+/** Discriminator field `kind`, values: `module`, `maven`, `project`. */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface ClasspathEntry {
+  /** The minimized consumer-module jar inlined inside the bundle. */
+  @Serializable
+  @kotlinx.serialization.SerialName("module")
+  data class Module(
+    /** Posix relative path inside the bundle zip, e.g. `classes/app.jar`. */
+    val path: String
+  ) : ClasspathEntry
+
+  /**
+   * A Maven (or Google Maven, JitPack, …) coordinate the player resolves at open time. Encoded as
+   * separate fields rather than a `group:artifact:version` string so consumers can pick a subset
+   * (e.g. only allow certain groups) without re-parsing.
+   */
+  @Serializable
+  @kotlinx.serialization.SerialName("maven")
+  data class Maven(
+    val group: String,
+    val artifact: String,
+    val version: String,
+    /**
+     * Packaging the player must resolve. `"jar"` for pure-JVM deps (desktop), `"aar"` for Android
+     * library archives — the player resolves the unprocessed AAR so AGP can run its normal
+     * artifact-transform pipeline.
+     */
+    val type: String,
+  ) : ClasspathEntry
+
+  /**
+   * Project-local dep that had no Maven coordinate. The bundle inlines it alongside the consumer
+   * jar so the artefact stays self-contained even when consumed offline.
+   */
+  @Serializable
+  @kotlinx.serialization.SerialName("project")
+  data class Project(
+    /** Gradle path of the producing project, e.g. `:my-lib`. Informational. */
+    val path: String,
+    /** Posix relative path inside the bundle zip, e.g. `libs/my-lib.jar`. */
+    val inlinedAs: String,
+  ) : ClasspathEntry
+}
 
 const val BUNDLE_SCHEMA_VERSION: Int = 1
 
@@ -66,7 +120,8 @@ data class MinimizationReport(
   val reachableClassCount: Int,
   val totalScannedClassCount: Int,
   val moduleClasses: ModuleClassesStats,
-  val libraryJars: List<LibraryJarDecision>,
+  /** One entry per resolved runtime dep — kept ones list as [ClasspathEntry] in the manifest. */
+  val dependencies: List<DependencyDecision>,
 )
 
 @Serializable
@@ -77,15 +132,19 @@ data class ModuleClassesStats(
 )
 
 @Serializable
-data class LibraryJarDecision(
-  /** Original absolute path the jar was resolved from. Useful for forensic comparison. */
+data class DependencyDecision(
+  /** Original absolute path the dep resolved to (jar file). Useful for forensic comparison. */
   val sourcePath: String,
-  /** Posix relative path inside the bundle, or `null` when dropped. */
-  val bundledAs: String?,
+  /**
+   * Maven coordinate string `group:artifact:version[:type]` when known; `null` for project deps.
+   */
+  val coordinate: String?,
+  /** Gradle project path for project deps; `null` for Maven deps. */
+  val projectPath: String?,
   val totalClasses: Int,
   val reachableClasses: Int,
   val originalBytes: Long,
-  /** `true` when the jar contributed at least one class to the closure. */
+  /** `true` when the dep contributed at least one class to the closure (and is in `classpath`). */
   val kept: Boolean,
 )
 
@@ -119,11 +178,9 @@ internal fun extractZipBytes(file: File): ByteArray {
   if (bytes.size < 8) {
     throw IllegalArgumentException("not a bundle: ${file.path} is too small (${bytes.size}B)")
   }
-  // Plain zip — return verbatim.
   if (bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
     return bytes
   }
-  // PNG polyglot — walk chunks until IEND, return the trailing bytes as zip.
   if (isPngSignature(bytes)) {
     val zipStart = pngLength(bytes)
     return bytes.copyOfRange(zipStart, bytes.size)

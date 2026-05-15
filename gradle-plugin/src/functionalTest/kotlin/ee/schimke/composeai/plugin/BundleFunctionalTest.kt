@@ -5,6 +5,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Rule
@@ -167,10 +170,14 @@ class BundleFunctionalTest {
     val eocdIndex = indexOf(bytes, zipEocd)
     assertThat(eocdIndex).isGreaterThan(0)
 
-    // 3. Bundle entries.
+    // 3. Bundle entries — manifest + filtered previews + minimized module jar + audit report.
     val entries = listEntries(bundle)
     assertThat(entries)
       .containsAtLeast("bundle.json", "previews.json", "classes/app.jar", "report.json")
+    // 4. No `libs/` directory: third-party jars must be listed as Maven coords, not inlined.
+    //    (Project deps would land under `libs/`, but the synthetic test project has none.)
+    val libsEntries = entries.filter { it.startsWith("libs/") }
+    assertThat(libsEntries).isEmpty()
   }
 
   @Test
@@ -215,7 +222,7 @@ class BundleFunctionalTest {
   }
 
   @Test
-  fun `minimization report counts entry classes and dropped jars`() {
+  fun `minimization report counts entry classes and dropped deps`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
@@ -235,14 +242,54 @@ class BundleFunctionalTest {
     // Module: 1 kept (RedKt) out of 2 (RedKt + BlueKt).
     assertThat(report.moduleClasses.totalClasses).isEqualTo(2)
     assertThat(report.moduleClasses.reachableClasses).isEqualTo(1)
-    // Library jars: at least one was kept (compose-runtime/ui/foundation are reachable).
-    val kept = report.libraryJars.count { it.kept }
+    // Deps: at least one Maven dep contributed reachable classes (compose-runtime/ui/foundation).
+    val kept = report.dependencies.count { it.kept }
     assertThat(kept).isGreaterThan(0)
-    // And, crucially for the "small and shareable" goal: at least one jar was dropped (not every
-    // transitive dep of compose-desktop is reachable from a single coloured box). If this fires,
+    // And, crucially for the "small and shareable" goal: at least one dep was dropped — not every
+    // transitive dep of compose-desktop is reachable from a single coloured box. If this fires,
     // closure is going way too wide.
-    val dropped = report.libraryJars.count { !it.kept }
+    val dropped = report.dependencies.count { !it.kept }
     assertThat(dropped).isGreaterThan(0)
+  }
+
+  @Test
+  fun `bundle manifest lists Maven coordinates not inlined jars`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId")
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val bundleJsonBytes = readZipEntry(bundle, "bundle.json")
+    assertThat(bundleJsonBytes).isNotNull()
+    val classpathArray =
+      json
+        .parseToJsonElement(bundleJsonBytes!!.toString(Charsets.UTF_8))
+        .jsonObject["classpath"]!!
+        .jsonArray
+
+    val kinds = classpathArray.map { it.jsonObject["kind"]!!.jsonPrimitive.content }
+    // First entry is always the inlined consumer module.
+    assertThat(kinds.first()).isEqualTo("module")
+    // The rest should be Maven coords — synthetic test project has no project deps.
+    val nonModuleKinds = kinds.drop(1).toSet()
+    assertThat(nonModuleKinds).contains("maven")
+    assertThat(nonModuleKinds).doesNotContain("project")
+
+    // Spot-check at least one well-formed Maven entry (compose-runtime is a near-certainty).
+    val mavenEntries = classpathArray.filter {
+      it.jsonObject["kind"]!!.jsonPrimitive.content == "maven"
+    }
+    assertThat(mavenEntries).isNotEmpty()
+    val first = mavenEntries.first().jsonObject
+    assertThat(first["group"]!!.jsonPrimitive.content).isNotEmpty()
+    assertThat(first["artifact"]!!.jsonPrimitive.content).isNotEmpty()
+    assertThat(first["version"]!!.jsonPrimitive.content).isNotEmpty()
+    assertThat(first["type"]!!.jsonPrimitive.content).isEqualTo("jar")
   }
 
   private fun listEntries(file: File): Set<String> = listEntries(extractZipBytes(file))

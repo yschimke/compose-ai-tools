@@ -197,20 +197,63 @@ internal object ComposePreviewTasks {
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
-    val depJarFiles =
-      project.configurations.findByName(resolveDependencyConfigName())?.let { config ->
-        // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM
-        // consumers pass through. Either way we get real jars on the closure walk.
-        config.incoming.artifactView { attributes.attribute(artifactTypeAttr, "jar") }.files
-      }
+    val depConfig = project.configurations.findByName(resolveDependencyConfigName())
+    val depJarFiles = depConfig?.let { config ->
+      // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM
+      // consumers pass through. Either way we get real jars on the closure walk.
+      config.incoming.artifactView { attributes.attribute(artifactTypeAttr, "jar") }.files
+    }
+    // Map each resolved dependency jar to a coordinate string the task action can fold into
+    // `bundle.json`'s `classpath`:
+    // - `maven:<group>:<artifact>:<version>:jar` for Maven-resolved deps (the player resolves at
+    //   open time — small bundle, no inlined jars).
+    // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
+    //   since they can't be re-resolved from Maven).
+    //
+    // Resolution happens via `Provider` transformations, so this stays config-cache-safe.
+    val coordMapProvider: Provider<Map<String, String>> =
+      depConfig?.incoming?.artifacts?.resolvedArtifacts?.map { artifacts ->
+        artifacts.associate { artifact ->
+          val id = artifact.id.componentIdentifier
+          val value =
+            when (id) {
+              is org.gradle.api.artifacts.component.ModuleComponentIdentifier ->
+                "maven:${id.group}:${id.module}:${id.version}:jar"
+              is org.gradle.api.artifacts.component.ProjectComponentIdentifier ->
+                "project:${id.projectPath}"
+              else -> "unknown:${id.displayName}"
+            }
+          artifact.file.absolutePath to value
+        }
+      } ?: project.providers.provider { emptyMap<String, String>() }
+
     val defaultOutput = previewOutputDir.map { it.file("bundle.png").asFile }
     val resolvedOutput = outputProperty.map { java.io.File(it) }.orElse(defaultOutput)
+
+    // Consumer-module resources directory. The Kotlin / Compose plugins write `src/main/resources/`
+    // (string ids referenced from bytecode via Compose Resources, fonts, etc.) into the standard
+    // `build/resources/main` (kotlin("jvm")) or `build/processedResources/<sourceSet>/main` (KMP).
+    // Wire whichever exists so packed bundles still contain classpath resources the closure walk
+    // can't introspect. Task action treats a missing dir as "no resources" (the `@Optional` +
+    // `orNull?.isDirectory` check inside `buildJar`).
+    val moduleResourcesDirProvider: Provider<Directory> =
+      project.providers.provider {
+        val candidates =
+          listOf(
+            project.layout.buildDirectory.dir("resources/main").orNull,
+            project.layout.buildDirectory.dir("processedResources/jvm/main").orNull,
+            project.layout.buildDirectory.dir("processedResources/desktop/main").orNull,
+          )
+        candidates.firstOrNull { it != null && it.asFile.isDirectory }
+      }
 
     project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
       onlyIf { extension.enabled.get() }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
+      moduleResourcesDir.set(moduleResourcesDirProvider)
       depJarFiles?.let { dependencyJars.from(it) }
+      dependencyCoordinates.set(coordMapProvider)
       // Renders dir is wired conditionally — when renderPreviews has run, the dir exists and
       // contains PNGs. Use orNull semantics: missing dir = stub cover.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
