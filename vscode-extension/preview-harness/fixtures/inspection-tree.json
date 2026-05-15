@@ -1,0 +1,203 @@
+{
+  "name": "inspection-tree",
+  "description": "Focused card with realistic compose/semantics + layout/inspector payloads. Activates the Inspection bundle so the overlay layer paints over the header / primary CTA / secondary CTA / footer regions, the side legend populates with one entry per overlay box (label · role · testTag), and the inspection tab body renders the per-kind tree tables.",
+  "dataset": {
+    "earlyFeatures": "true",
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
+  },
+  "messages": [
+    {
+      "command": "setPreviews",
+      "moduleDir": "/workspace/sample-android",
+      "heavyStaleIds": [],
+      "previews": [
+        {
+          "id": "com.example.OnboardingKt.WelcomeScreenPreview",
+          "functionName": "WelcomeScreenPreview",
+          "className": "OnboardingKt",
+          "sourceFile": "Onboarding.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.OnboardingKt.WelcomeScreenPreview.png",
+              "label": ""
+            }
+          ]
+        },
+        {
+          "id": "com.example.OnboardingKt.WelcomeScreenPreviewSibling",
+          "functionName": "WelcomeScreenPreviewSibling",
+          "className": "OnboardingKt",
+          "sourceFile": "Onboarding.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.OnboardingKt.WelcomeScreenPreviewSibling.png",
+              "label": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command": "updateImage",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "captureIndex": 0,
+      "imageData": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC"
+    },
+    {
+      "command": "updateDataProducts",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "dataProducts": [
+        {
+          "kind": "compose/semantics",
+          "payload": {
+            "root": {
+              "nodeId": "root",
+              "boundsInRoot": "0,0,360,600",
+              "role": "Container",
+              "testTag": "onboarding_screen",
+              "children": [
+                {
+                  "nodeId": "header",
+                  "boundsInRoot": "0,0,360,80",
+                  "text": "Welcome to Compose AI Tools",
+                  "role": "Header",
+                  "testTag": "onboarding_header"
+                },
+                {
+                  "nodeId": "primary-cta",
+                  "boundsInRoot": "40,240,160,296",
+                  "label": "Get started",
+                  "role": "Button",
+                  "testTag": "primary_cta"
+                },
+                {
+                  "nodeId": "secondary-cta",
+                  "boundsInRoot": "200,240,320,296",
+                  "role": "Button",
+                  "testTag": "icon_cta"
+                },
+                {
+                  "nodeId": "footer",
+                  "boundsInRoot": "0,520,360,600",
+                  "text": "By continuing you agree to our terms",
+                  "role": "Text",
+                  "testTag": "terms_footer"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "layout/inspector",
+          "payload": {
+            "root": {
+              "nodeId": "layout-root",
+              "component": "OnboardingScreen",
+              "source": "Onboarding.kt:42",
+              "bounds": {
+                "left": 0,
+                "top": 0,
+                "right": 360,
+                "bottom": 600
+              },
+              "size": {
+                "width": 360,
+                "height": 600
+              },
+              "children": [
+                {
+                  "nodeId": "layout-column",
+                  "component": "Column",
+                  "source": "Onboarding.kt:48",
+                  "bounds": {
+                    "left": 0,
+                    "top": 0,
+                    "right": 360,
+                    "bottom": 600
+                  },
+                  "size": {
+                    "width": 360,
+                    "height": 600
+                  },
+                  "children": [
+                    {
+                      "nodeId": "layout-header",
+                      "component": "Surface",
+                      "source": "Onboarding.kt:56",
+                      "bounds": {
+                        "left": 0,
+                        "top": 0,
+                        "right": 360,
+                        "bottom": 80
+                      },
+                      "size": {
+                        "width": 360,
+                        "height": 80
+                      }
+                    },
+                    {
+                      "nodeId": "layout-cta",
+                      "component": "FilledButton",
+                      "source": "Onboarding.kt:72",
+                      "bounds": {
+                        "left": 40,
+                        "top": 240,
+                        "right": 160,
+                        "bottom": 296
+                      },
+                      "size": {
+                        "width": 120,
+                        "height": 56
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "click": ".preview-card[data-preview-id=\"com.example.OnboardingKt.WelcomeScreenPreview\"] .card-focus-btn"
+    },
+    {
+      "click": "bundle-chip-bar button[data-bundle=\"inspection\"]"
+    }
+  ]
+}

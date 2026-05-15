@@ -1,0 +1,208 @@
+{
+  "name": "text-strings",
+  "description": "Focused card with realistic text/strings + fonts/used + i18n/translations payloads. Activates the Text / i18n bundle so the overflow/truncation overlay paints over the footer, the side legend lists each drawn-text entry, and the tab body renders the strings + fonts sub-tables.",
+  "dataset": {
+    "earlyFeatures": "true",
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
+  },
+  "messages": [
+    {
+      "command": "setPreviews",
+      "moduleDir": "/workspace/sample-android",
+      "heavyStaleIds": [],
+      "previews": [
+        {
+          "id": "com.example.OnboardingKt.WelcomeScreenPreview",
+          "functionName": "WelcomeScreenPreview",
+          "className": "OnboardingKt",
+          "sourceFile": "Onboarding.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.OnboardingKt.WelcomeScreenPreview.png",
+              "label": ""
+            }
+          ]
+        },
+        {
+          "id": "com.example.OnboardingKt.WelcomeScreenPreviewSibling",
+          "functionName": "WelcomeScreenPreviewSibling",
+          "className": "OnboardingKt",
+          "sourceFile": "Onboarding.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.OnboardingKt.WelcomeScreenPreviewSibling.png",
+              "label": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command": "updateImage",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "captureIndex": 0,
+      "imageData": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC"
+    },
+    {
+      "command": "updateDataProducts",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "dataProducts": [
+        {
+          "kind": "text/strings",
+          "payload": {
+            "texts": [
+              {
+                "nodeId": "header-text",
+                "boundsInScreen": "0,0,360,80",
+                "text": "Welcome to Compose AI Tools",
+                "semanticsText": "Welcome to Compose AI Tools",
+                "fontSize": "22.0sp",
+                "foregroundColor": "#FFFFFFFF",
+                "backgroundColor": "#FF3C5AA8",
+                "localeTag": "en-US",
+                "truncated": false,
+                "didOverflowWidth": false,
+                "didOverflowHeight": false
+              },
+              {
+                "nodeId": "primary-cta-text",
+                "boundsInScreen": "40,240,160,296",
+                "text": "Get started",
+                "semanticsText": "Get started",
+                "fontSize": "16.0sp",
+                "foregroundColor": "#FFFFFFFF",
+                "backgroundColor": "#FF0E639C",
+                "localeTag": "en-US",
+                "truncated": false,
+                "didOverflowWidth": false,
+                "didOverflowHeight": false
+              },
+              {
+                "nodeId": "footer-text",
+                "boundsInScreen": "0,520,360,600",
+                "text": "By continuing you agree to our terms and conditions of service",
+                "semanticsText": "By continuing you agree to our terms and conditions of service",
+                "fontSize": "12.0sp",
+                "foregroundColor": "#FFC8C8C8",
+                "backgroundColor": "#FFF5F6FA",
+                "localeTag": "en-US",
+                "truncated": true,
+                "didOverflowWidth": true,
+                "didOverflowHeight": false,
+                "overflow": "ellipsis"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "fonts/used",
+          "payload": {
+            "fonts": [
+              {
+                "requestedFamily": "Inter",
+                "resolvedFamily": "Inter",
+                "weight": 400,
+                "style": "normal",
+                "sourceFile": "fonts/Inter-Regular.ttf",
+                "consumerNodeIds": [
+                  "header-text",
+                  "primary-cta-text"
+                ]
+              },
+              {
+                "requestedFamily": "Inter",
+                "resolvedFamily": "Inter",
+                "weight": 600,
+                "style": "normal",
+                "sourceFile": "fonts/Inter-SemiBold.ttf",
+                "consumerNodeIds": [
+                  "header-text"
+                ]
+              },
+              {
+                "requestedFamily": "SystemFallback",
+                "resolvedFamily": "Roboto",
+                "fellBackFrom": [
+                  "MissingFont"
+                ],
+                "weight": 400,
+                "style": "normal",
+                "consumerNodeIds": [
+                  "footer-text"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "i18n/translations",
+          "payload": {
+            "translations": [
+              {
+                "nodeId": "header-text",
+                "key": "onboarding.title",
+                "sourceLocale": "en-US",
+                "translations": {
+                  "en-US": "Welcome to Compose AI Tools",
+                  "es-ES": "Bienvenido a Compose AI Tools",
+                  "ja-JP": "Compose AI Tools へようこそ"
+                }
+              },
+              {
+                "nodeId": "primary-cta-text",
+                "key": "onboarding.cta.primary",
+                "sourceLocale": "en-US",
+                "translations": {
+                  "en-US": "Get started",
+                  "es-ES": "Empezar",
+                  "ja-JP": "始める"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "click": ".preview-card[data-preview-id=\"com.example.OnboardingKt.WelcomeScreenPreview\"] .card-focus-btn"
+    },
+    {
+      "click": "bundle-chip-bar button[data-bundle=\"text\"]"
+    }
+  ]
+}
