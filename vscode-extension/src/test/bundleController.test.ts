@@ -64,6 +64,31 @@ describe("BundleController", () => {
         );
     });
 
+    it("deactivateAll drops every active bundle and unsubscribes their kinds", () => {
+        const { controller, toggles } = build();
+        controller.toggleBundle("a11y");
+        controller.toggleBundle("theming");
+        toggles.length = 0;
+        controller.deactivateAll();
+        assert.deepStrictEqual(controller.state().activeBundles, []);
+        assert.strictEqual(controller.state().activeTab, null);
+        assert.ok(
+            toggles.length > 0,
+            "deactivateAll must unsubscribe each previously active kind",
+        );
+        assert.ok(
+            toggles.every((t) => t.enabled === false),
+            "every host call from deactivateAll must be an unsubscribe",
+        );
+    });
+
+    it("deactivateAll on an empty controller is a no-op", () => {
+        const { controller, toggles } = build();
+        controller.deactivateAll();
+        assert.deepStrictEqual(controller.state().activeBundles, []);
+        assert.strictEqual(toggles.length, 0);
+    });
+
     it("tab × is identical to chip re-press (dismiss path redundancy)", () => {
         const { controller, toggles } = build();
         controller.toggleBundle("a11y");
