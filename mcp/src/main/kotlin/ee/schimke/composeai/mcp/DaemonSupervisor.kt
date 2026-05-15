@@ -201,7 +201,13 @@ class DaemonSupervisor(
     // (1 + replicasPerDaemon) × per-sandbox-boot.
     val spawn = clientFactory.spawn(project, descriptor)
     spawn.client(
-      onNotification = { method, params -> router.dispatch(supervised, method, params) },
+      onNotification = { method, params ->
+        router.dispatch(supervised, method, params)
+        // Fan out to any RenderSession listeners registered via `supervised.session
+        // .onNotification(...)`. Mirrors the router dispatch but reaches a different
+        // subscriber pool (the public-API consumers, not the MCP-internal routing).
+        supervised.notificationFanout.dispatch(method, params)
+      },
       onClose = {
         if (supervised.detachSpawn(spawn)) {
           router.dispatchClose(supervised)
@@ -217,6 +223,10 @@ class DaemonSupervisor(
             moduleProjectDir = descriptor.workingDirectory,
             attachDataProducts = globalAttachDataProducts.takeIf { it.isNotEmpty() },
           )
+        // Cache the full result so the public RenderSession view (`supervised.session`) can
+        // expose it through `RenderSession.initializeResult`. Subsequent successful re-spawns
+        // (classpathDirty respawn path) overwrite this with the fresh handshake's result.
+        supervised.initializeResult = result
         // PROTOCOL.md § 3a — the daemon comes up with every extension inactive so
         // `initialize.capabilities.dataProducts` / `dataExtensions` / `previewExtensions` are
         // empty.
@@ -440,6 +450,62 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
     }
 
   /**
+   * Cached `initialize` round-trip result — backing for the [session] view's
+   * [RenderSession.initializeResult]. Populated by [DaemonSupervisor.spawn] right after the
+   * handshake; cleared by [detachSpawn]. `@Volatile` for the same reasons [spawn] is — read on the
+   * caller thread, written on the spawn coroutine.
+   */
+  @Volatile
+  internal var initializeResult: ee.schimke.composeai.daemon.protocol.InitializeResult? = null
+
+  /**
+   * Notification fan-out installed by [DaemonSupervisor.spawn]. The supervisor's existing
+   * `onNotification` callback dispatches both into its own [NotificationRouter] and into this
+   * fanout; [session] consumers can register listeners via
+   * [ee.schimke.composeai.render.session.RenderSession.onNotification] without disturbing the
+   * router's own subscriber set.
+   */
+  internal val notificationFanout: NotificationFanout = NotificationFanout()
+
+  /**
+   * Public [RenderSession] view of this supervised daemon. Surface-only migration of `:mcp` onto
+   * the published render-session library — third-party consumers that compile against
+   * `:render-session-api` can drive the daemon through the same contract `:render-session-
+   * subprocess` and `:render-session-embedded-desktop` expose, without seeing the internal
+   * [DaemonClient].
+   *
+   * Lifecycle is owned by the supervisor: `close()` on the returned session is a no-op (other
+   * callers may be sharing the same client). The supervisor's [shutdown] / [detachSpawn] is the
+   * single seam that tears down the daemon JVM.
+   *
+   * Each access returns a fresh view object — the underlying state ([client], [initializeResult],
+   * [notificationFanout]) is shared. Throws if the spawn / initialize handshake hasn't completed
+   * yet (same precondition as [client]).
+   */
+  val session: ee.schimke.composeai.render.session.RenderSession
+    get() {
+      val s = spawn
+      check(s != null) { "SupervisedDaemon($workspaceId/$modulePath): no spawn attached yet" }
+      val init =
+        initializeResult
+          ?: error(
+            "SupervisedDaemon($workspaceId/$modulePath): initialize handshake hasn't completed"
+          )
+      // `workspaceRoot` is reconstructible from the descriptor's working directory the supervisor
+      // owns; the supervisor itself doesn't store the canonical root on the daemon. The session
+      // view reports the workspace from the initialize round-trip's reflected fields instead —
+      // good enough for diagnostics and matches what `:render-session-subprocess` returns.
+      val workspaceRoot = ""
+      return DaemonClientRenderSession(
+        workspaceRoot = workspaceRoot,
+        modulePath = modulePath,
+        initializeResult = init,
+        client = s.client,
+        notificationFanout = notificationFanout,
+      )
+    }
+
+  /**
    * Snapshot of every active client — for fan-out APIs (e.g. `fileChanged`, `setVisible`). Always a
    * singleton list under Layer 3; kept as a list for source-compatibility with callers that iterate
    * it (they keep working unchanged).
@@ -477,12 +543,16 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
   internal fun detachSpawn(s: DaemonSpawn): Boolean {
     if (this.spawn !== s) return false
     this.spawn = null
+    this.initializeResult = null
+    notificationFanout.clear()
     return true
   }
 
   fun shutdown() {
     val s = spawn ?: return
     spawn = null
+    initializeResult = null
+    notificationFanout.clear()
     runCatching { s.shutdown() }
   }
 }
