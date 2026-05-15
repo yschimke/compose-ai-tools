@@ -37,20 +37,32 @@ internal class DaemonA11yFetcher(
   /**
    * Fetch a11y findings for [previewIds] in one module, aggregate into
    * `<projectDir>/build/compose-previews/accessibility.json`, return the result.
+   *
+   * [projectDir] is the module's project directory (i.e. [PreviewModule.projectDir]), already
+   * resolved by the Tooling API — `daemon-launch.json` sits directly under
+   * `<projectDir>/build/compose-previews/` regardless of the module's gradle path, so we don't
+   * route through [SubprocessRenderSessions.descriptorFile] (which derives the dir from a workspace
+   * root + gradle path).
+   *
+   * [workspaceRoot] is the repository root the daemon reports back through the initialize
+   * handshake; defaults to [projectDir] when the caller doesn't have a separate workspace root
+   * handy (single-module projects).
    */
   fun fetch(
     projectDir: File,
     modulePath: String,
     moduleName: String,
     previewIds: List<String>,
+    workspaceRoot: File = projectDir,
   ): Outcome {
-    val descriptorFile = SubprocessRenderSessions.descriptorFile(projectDir, modulePath)
+    val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
     if (!descriptorFile.isFile) return Outcome.DescriptorMissing(descriptorFile)
 
     val config =
       RenderSessionConfig(
         descriptorPath = descriptorFile,
-        workspaceRoot = projectDir.absoluteFile,
+        workspaceRoot = workspaceRoot.absoluteFile,
+        workspaceName = workspaceRoot.name.ifBlank { moduleName },
         logSink = onLog,
       )
 
@@ -62,6 +74,16 @@ internal class DaemonA11yFetcher(
       }
 
     return session.use { live ->
+      // The daemon registers `a11y` as inactive metadata; `extensions/enable` flips it on so
+      // `data/fetch` for `a11y/atf` resolves instead of returning `kind not advertised`. Mirrors
+      // the MCP supervisor's handshake. Failures here are logged but non-fatal — we still try
+      // the fetches so the user sees the error mode per preview rather than a single blanket
+      // open-failed message.
+      try {
+        live.enableExtensions(listOf("a11y"))
+      } catch (e: RenderSessionException) {
+        onLog("extensions/enable for 'a11y' failed: ${e.message}")
+      }
       val entries = mutableListOf<AccessibilityEntry>()
       for (previewId in previewIds) {
         val payload =
