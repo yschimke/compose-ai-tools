@@ -168,7 +168,17 @@ const fixture = {
         "Focused card with realistic text/strings + fonts/used + i18n/translations payloads. Activates the Text / i18n bundle so the overflow/truncation overlay paints over the footer, the side legend lists each drawn-text entry, and the tab body renders the strings + fonts sub-tables.",
     dataset: EARLY_FEATURES_DATASET,
     messages: [setPreviews, updateImage, updateDataProducts],
-    actions: [focusAction(focusId), activateBundleAction("text")],
+    actions: [
+        focusAction(focusId),
+        activateBundleAction("text"),
+        // Click the footer drawn-text row (the truncated / overflow
+        // one) so the snapshot exercises the row → detail panel
+        // wiring. Row ids are positional in the presenter
+        // (`text-string-${idx}`); footer is the third entry.
+        {
+            click: `[data-bundle="text"] tr[data-legend-id="text-string-2"]`,
+        },
+    ],
 };
 
 process.stdout.write(JSON.stringify(fixture, null, 2) + "\n");

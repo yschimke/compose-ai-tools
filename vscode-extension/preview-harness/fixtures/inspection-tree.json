@@ -198,6 +198,9 @@
     },
     {
       "click": "bundle-chip-bar button[data-bundle=\"inspection\"]"
+    },
+    {
+      "click": "[data-bundle=\"inspection\"] tr[data-legend-id=\"semantics-primary-cta\"]"
     }
   ]
 }
