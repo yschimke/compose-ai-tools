@@ -14,6 +14,7 @@ import {
     activateBundleAction,
     buildMobileMock,
     buildPreviewPair,
+    expectSetDataExtension,
     focusAction,
     rectBounds,
 } from "./_utils.mjs";
@@ -95,6 +96,11 @@ const fixture = {
         {
             click: `[data-bundle="history"] tr[data-legend-id="history-diff-region-2"]`,
         },
+    ],
+    // History bundle has one default-ON kind. Activating the chip
+    // posts a single subscription.
+    expectedPosts: [
+        expectSetDataExtension(focusId, "history/diff/regions", true),
     ],
 };
 

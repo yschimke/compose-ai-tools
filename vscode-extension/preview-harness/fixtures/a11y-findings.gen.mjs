@@ -299,6 +299,25 @@ const fixture = {
             click: `[data-bundle="a11y"] tr[data-legend-id="a11y-4"]`,
         },
     ],
+    // Pinning the chip-activation wire effect: the Accessibility
+    // bundle's two default-ON kinds (per `bundleRegistry.ts`) —
+    // `a11y/touchTargets` and `a11y/overlay` are default-OFF and
+    // not subscribed by chip activation, so they're intentionally
+    // not asserted here.
+    expectedPosts: [
+        {
+            command: "setDataExtensionEnabled",
+            previewId: FOCUS_ID,
+            kind: "a11y/hierarchy",
+            enabled: true,
+        },
+        {
+            command: "setDataExtensionEnabled",
+            previewId: FOCUS_ID,
+            kind: "a11y/atf",
+            enabled: true,
+        },
+    ],
 };
 
 process.stdout.write(JSON.stringify(fixture, null, 2) + "\n");

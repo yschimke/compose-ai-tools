@@ -200,3 +200,14 @@ export function focusAction(previewId) {
 export function activateBundleAction(bundleId) {
     return { click: `bundle-chip-bar button[data-bundle="${bundleId}"]` };
 }
+
+/**
+ * Assertion sugar: build an `expectedPosts` entry that matches a
+ * `setDataExtensionEnabled` call for [previewId] / [kind] / [enabled].
+ * Used by fixtures to pin the wire-side effect of activating a
+ * bundle chip (default-ON kinds) or toggling a Configure-expander
+ * checkbox.
+ */
+export function expectSetDataExtension(previewId, kind, enabled) {
+    return { command: "setDataExtensionEnabled", previewId, kind, enabled };
+}

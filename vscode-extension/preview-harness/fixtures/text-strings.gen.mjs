@@ -17,6 +17,7 @@ import {
     activateBundleAction,
     buildMobileMock,
     buildPreviewPair,
+    expectSetDataExtension,
     focusAction,
     rectBounds,
 } from "./_utils.mjs";
@@ -178,6 +179,14 @@ const fixture = {
         {
             click: `[data-bundle="text"] tr[data-legend-id="text-string-2"]`,
         },
+    ],
+    // The Text / i18n bundle's two default-ON kinds (per
+    // `bundleRegistry.ts`) — translations is default-OFF and only
+    // arrives via the Configure expander, so it is intentionally
+    // not asserted here.
+    expectedPosts: [
+        expectSetDataExtension(focusId, "text/strings", true),
+        expectSetDataExtension(focusId, "fonts/used", true),
     ],
 };
 
