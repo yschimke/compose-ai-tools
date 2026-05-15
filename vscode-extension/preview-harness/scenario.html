@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-vscode-theme="dark">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Compose Preview — scenario</title>
+
+        <!-- Match the live webview's chrome: codicons, the panel CSS, and the
+             VS Code theme tokens it depends on. preview.css ships with the
+             extension under `media/`; the harness loads it via a relative
+             path so we never diverge from production. -->
+        <link rel="stylesheet" href="../media/codicon.css" />
+        <link rel="stylesheet" href="./vscode-theme.css" />
+        <link rel="stylesheet" href="../media/preview.css" />
+
+        <!-- The shim must run before preview.js loads, so getVsCodeApi()
+             finds window.acquireVsCodeApi on its first call. -->
+        <script src="./vscode-api.js"></script>
+    </head>
+    <body>
+        <!-- Boot sequence:
+             1. Fetch the fixture.
+             2. Inject `<preview-app>` with its dataset already stamped, so
+                Lit's `firstUpdated` reads the intended boot flags (without
+                this, `data-collapse-variants` defaults to true and only the
+                first variant of each function renders).
+             3. Inject `preview.js`. The bundle's `customElements.define`
+                upgrades the existing `<preview-app>` instance, which then
+                runs `firstUpdated` and attaches the window-message listener.
+             4. After the element's first render settles, replay each fixture
+                message via `window.postMessage` exactly as VS Code does. -->
+        <script type="module">
+            const params = new URLSearchParams(location.search);
+            const fixture = params.get("fixture") ?? "grid-default";
+            const theme = params.get("theme") ?? "dark";
+            document.documentElement.dataset.vscodeTheme = theme;
+
+            const harness = (window.__composePreviewHarness ??= {});
+            harness.fixture = fixture;
+            harness.ready = false;
+
+            async function loadScript(src) {
+                return new Promise((res, rej) => {
+                    const s = document.createElement("script");
+                    s.src = src;
+                    s.onload = res;
+                    s.onerror = () => rej(new Error("failed to load " + src));
+                    document.body.appendChild(s);
+                });
+            }
+
+            async function run() {
+                const res = await fetch(`./fixtures/${fixture}.json`, {
+                    cache: "no-store",
+                });
+                if (!res.ok) {
+                    document.body.textContent = `fixture not found: ${fixture}`;
+                    return;
+                }
+                const data = await res.json();
+                harness.fixtureData = data;
+
+                const app = document.createElement("preview-app");
+                for (const [k, v] of Object.entries(data.dataset ?? {})) {
+                    app.dataset[k] = v;
+                }
+                document.body.appendChild(app);
+
+                await loadScript("../media/webview/preview.js");
+                await customElements.whenDefined("preview-app");
+                await app.updateComplete;
+
+                for (const msg of data.messages ?? []) {
+                    window.postMessage(msg, "*");
+                }
+                // Let the dispatcher run, the cards re-render, and the
+                // <img>s decode the new data URIs before signalling ready.
+                await new Promise((r) => requestAnimationFrame(r));
+                await new Promise((r) => requestAnimationFrame(r));
+                const imgs = Array.from(
+                    document.querySelectorAll(".preview-card img"),
+                );
+                await Promise.all(
+                    imgs.map((img) =>
+                        img.complete && img.naturalWidth > 0
+                            ? Promise.resolve()
+                            : new Promise((r) => {
+                                  img.addEventListener("load", r, {
+                                      once: true,
+                                  });
+                                  img.addEventListener("error", r, {
+                                      once: true,
+                                  });
+                              }),
+                    ),
+                );
+                // Wait for any in-flight CSS animations (the `fadeIn` on
+                // freshly-painted preview <img>s, transitions on bundle
+                // chips, etc.) to settle so the screenshot isn't a
+                // mid-frame grab of the 0.2s opacity ramp.
+                if (typeof document.getAnimations === "function") {
+                    await Promise.all(
+                        document
+                            .getAnimations()
+                            .map((a) => a.finished.catch(() => {})),
+                    );
+                }
+                harness.ready = true;
+            }
+            run().catch((err) => {
+                console.error(err);
+                document.body.textContent = String(err);
+            });
+        </script>
+    </body>
+</html>

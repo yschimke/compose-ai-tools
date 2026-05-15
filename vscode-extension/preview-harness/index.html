@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Compose Preview — design harness</title>
+        <style>
+            body {
+                margin: 0;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                background: #181818;
+                color: #ddd;
+            }
+            header {
+                padding: 16px 24px;
+                border-bottom: 1px solid #333;
+            }
+            header h1 {
+                margin: 0;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            header p {
+                margin: 4px 0 0;
+                color: #999;
+                font-size: 12px;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+                gap: 24px;
+                padding: 24px;
+            }
+            .card {
+                background: #1f1f1f;
+                border: 1px solid #333;
+                border-radius: 6px;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            .card h2 {
+                margin: 0;
+                padding: 8px 12px;
+                font-size: 12px;
+                font-weight: 600;
+                background: #252526;
+                border-bottom: 1px solid #333;
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .card h2 small {
+                font-weight: 400;
+                color: #999;
+            }
+            .frame {
+                width: 100%;
+                height: 520px;
+                border: 0;
+                background: #1f1f1f;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>Compose Preview — design harness</h1>
+            <p>
+                Static renders of the VS Code preview panel, driven by fixture
+                JSON. Edit a fixture in <code>fixtures/</code> and refresh.
+            </p>
+        </header>
+        <div class="grid">
+            <div class="card">
+                <h2>grid-default <small>dark · 1024×720</small></h2>
+                <iframe
+                    class="frame"
+                    src="./scenario.html?fixture=grid-default&theme=dark"
+                ></iframe>
+            </div>
+            <div class="card">
+                <h2>grid-default <small>light · 1024×720</small></h2>
+                <iframe
+                    class="frame"
+                    src="./scenario.html?fixture=grid-default&theme=light"
+                ></iframe>
+            </div>
+        </div>
+    </body>
+</html>
