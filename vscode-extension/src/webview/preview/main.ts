@@ -1029,13 +1029,26 @@ export class PreviewApp extends LitElement {
                 [];
             return { nodes, findings };
         };
+        const a11yTouchTargetsForCard = (
+            previewId: string,
+        ): readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[] => {
+            const byKind = dataProductsByPreview.get(previewId);
+            const raw = byKind?.get("a11y/touchTargets") as
+                | { targets?: unknown }
+                | undefined;
+            const targets = raw?.targets;
+            if (!Array.isArray(targets)) return [];
+            return targets as readonly import("./a11yBundlePresenter").AccessibilityTouchTarget[];
+        };
         const refreshA11yBundle = (): void => {
             const target = currentBundleTarget();
             if (!target) return;
             const targetSrc = a11yDataForCard(target);
+            const touchTargets = a11yTouchTargetsForCard(target);
             const data = computeA11yBundleData(
                 targetSrc.nodes,
                 targetSrc.findings,
+                touchTargets,
             );
             const body = a11yBody();
             body.table.setRows(data.rows);
@@ -1047,6 +1060,7 @@ export class PreviewApp extends LitElement {
                 previewId: target,
                 nodes: targetSrc.nodes,
                 findings: targetSrc.findings,
+                touchTargets,
             }));
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
@@ -1062,7 +1076,9 @@ export class PreviewApp extends LitElement {
             paintOverlaysForBundle("a11y", (previewId) => {
                 if (previewId === target) return data.overlay;
                 const src = a11yDataForCard(previewId);
-                return computeA11yBundleData(src.nodes, src.findings).overlay;
+                const tts = a11yTouchTargetsForCard(previewId);
+                return computeA11yBundleData(src.nodes, src.findings, tts)
+                    .overlay;
             });
         };
         const refreshPerformanceBundle = (): void => {
