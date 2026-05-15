@@ -28,6 +28,11 @@ base { archivesName.set("compose-preview") }
 application {
   applicationName = "compose-preview"
   mainClass.set("ee.schimke.composeai.cli.MainKt")
+  // The Tooling API loads gradle-dist's native-platform jar into our JVM, which
+  // calls `System.load`. On JDK 24+ that prints a 4-line restricted-method
+  // warning on every CLI invocation. Pre-declaring native access for the
+  // unnamed module (where Tooling API + native-platform live) silences it.
+  applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 // Note: don't set `archiveFileName` directly — Gradle's distribution plugin
