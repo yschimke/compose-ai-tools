@@ -36,7 +36,7 @@ class ExtensionsCommand(private val args: List<String>) {
             id = id,
             displayName = renderer.displayName,
             description = renderer.description,
-            enableProperty = "composePreview.previewExtensions.$id.enableAllChecks",
+            enableProperty = "composePreview.activeExtensions",
           )
         }
         .sortedBy { it.id }
@@ -56,7 +56,7 @@ class ExtensionsCommand(private val args: List<String>) {
     for (e in entries) {
       println("  ${e.id}  — ${e.displayName}")
       println("    ${e.description}")
-      println("    enable: --with-extension ${e.id}  (or -P${e.enableProperty}=true)")
+      println("    enable: --with-extension ${e.id}  (or -P${e.enableProperty}=${e.id})")
     }
     println()
     println(
@@ -88,7 +88,11 @@ internal data class ExtensionInfo(
   val id: String,
   val displayName: String,
   val description: String,
-  /** Gradle property the CLI's `--with-extension <id>` plumbing forwards as `=true`. */
+  /**
+   * Generic Gradle property the CLI's `--with-extension <id>` plumbing populates with a
+   * comma-separated id list. The plugin forwards the resolved value to the renderer JVM as
+   * `composeai.session.extensions`.
+   */
   val enableProperty: String,
 )
 

@@ -9,9 +9,10 @@ import kotlinx.serialization.Serializable
 // ([ee.schimke.composeai.daemon.AccessibilityDataProducer]), and CLI / plugin
 // consumers that read the on-disk JSON sidecars.
 //
-// Lives in `:data-a11y-core` so the Gradle plugin's standalone path
-// (AggregateAccessibilityTask) and the daemon path can share a single
-// definition without either depending on the other's artefact. Kept in the
+// Lives in `:data-a11y-core` so the daemon path and CLI / VS Code consumers
+// can share one definition. The standalone Gradle plugin path no longer
+// produces these — a11y artefacts are exclusively daemon-driven now (see
+// `:daemon:android`'s `RenderEngine`). Kept in the
 // `ee.schimke.composeai.renderer` package for source-compatibility — this is
 // where the types lived before the D2.2 extraction, and downstream consumers
 // (CLI, plugin, VS Code) keep their own structurally-identical mirrors that

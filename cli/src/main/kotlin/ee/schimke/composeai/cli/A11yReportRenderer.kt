@@ -3,7 +3,11 @@ package ee.schimke.composeai.cli
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** On-disk shape mirrors `AggregateAccessibilityTask` in `:gradle-plugin`. */
+/**
+ * On-disk shape mirrors the daemon-side aggregation in
+ * `ee.schimke.composeai.daemon.AccessibilityDataProductRegistry`. The standalone gradle path no
+ * longer produces this file; it's strictly a daemon-mode artefact now.
+ */
 @Serializable
 data class AccessibilityFinding(
   val level: String,
@@ -36,8 +40,8 @@ class A11yReportRenderer : ExtensionReportRenderer {
   override val id: String = "a11y"
   override val displayName: String = "Accessibility (ATF)"
   override val description: String =
-    "ATF findings + annotated overlay PNG. Enable with " +
-      "`previewExtensions.a11y { enableAllChecks() }` or `--with-extension a11y`."
+    "ATF findings + annotated overlay PNG. Enable with `--with-extension a11y` " +
+      "(or `compose-preview a11y`)."
 
   private val json = Json {
     ignoreUnknownKeys = true

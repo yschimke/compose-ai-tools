@@ -10,6 +10,8 @@ import ee.schimke.composeai.data.render.extensions.DataProductKey
 import ee.schimke.composeai.data.render.extensions.ExtensionContextKey
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
+import ee.schimke.composeai.data.render.extensions.RenderSession
+import ee.schimke.composeai.data.render.extensions.RenderSessionParticipant
 
 /**
  * Pure extractor — runs ATF over a View tree and returns the typed payloads. No invocation point
@@ -47,7 +49,7 @@ data class AccessibilityAnalysis(
  * `targets = {Android}` — a future Compose Multiplatform Desktop hierarchy producer would target
  * `{Desktop}` and emit the same product keys; the planner's target filter selects exactly one.
  */
-class AccessibilityHierarchyExtension : PostCaptureProcessor {
+class AccessibilityHierarchyExtension : PostCaptureProcessor, RenderSessionParticipant {
   override val id: DataExtensionId = DataExtensionId(EXTENSION_ID)
   override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AfterCapture)
   override val constraints: DataExtensionConstraints =
@@ -55,6 +57,38 @@ class AccessibilityHierarchyExtension : PostCaptureProcessor {
   override val outputs: Set<DataProductKey<*>> =
     setOf(AccessibilityDataProducts.Hierarchy, AccessibilityDataProducts.Atf)
   override val targets: Set<DataExtensionTarget> = setOf(DataExtensionTarget.Android)
+
+  /**
+   * ATF needs Compose semantics to be populated, which means [LocalInspectionMode] must be `false`
+   * for the composition. The Android renderer applies that override unconditionally today
+   * (production-like rendering happens to want the same thing), so [configureSession] is a
+   * declarative marker for now — the host reads applied participants and reflects on this
+   * requirement when assembling its CompositionLocal overrides. Concrete state lives on the
+   * platform-specific session implementation; the participant contract is the renderer-agnostic
+   * piece that any backend (desktop, future iOS) can rely on.
+   */
+  override fun configureSession(session: RenderSession) {
+    // No mutable state on the generic [RenderSession] today — the requirement that
+    // `LocalInspectionMode` is `false` is enforced at the renderer-android layer based on
+    // applied-extension membership. Kept as an explicit override (rather than relying on the
+    // default no-op) so the documented contract surfaces in code: a11y *does* depend on
+    // session-level configuration.
+  }
+
+  /**
+   * Refuses to run when the host invokes the hook without opting the a11y extension into the
+   * current [RenderSession]. The Robolectric runner gates per-preview ATF on this check, so a
+   * misconfigured plugin/CLI invocation fails loudly with a pointer to `--with-extension a11y`
+   * instead of silently emitting an `accessibility.json` from a session that wasn't set up for
+   * it.
+   */
+  override fun validateSession(session: RenderSession) {
+    check(session.isApplied(id)) {
+      "Accessibility extension '${id.value}' is registered but not applied to this render " +
+        "session (appliedExtensionIds=${session.appliedExtensionIds.map { it.value }}). " +
+        "Enable via `compose-preview a11y` or `--with-extension a11y`."
+    }
+  }
 
   override fun process(context: ExtensionPostCaptureContext) {
     val view = context.require(AccessibilityHierarchyContextKeys.ViewRoot)

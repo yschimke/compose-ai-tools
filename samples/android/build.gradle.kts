@@ -16,11 +16,10 @@ composePreview {
   // renders before asserting.
   renderBeforeUnitTests.set(true)
 
-  // a11y is opt-in (default off). The sample carries `BadButtonPreview` etc. that exist to
-  // demonstrate the ATF report shape downstream consumers see — leave it on here so the
-  // generated `accessibility.json` keeps populating the `compose-preview/a11y/main` baseline
-  // branch the README links to.
-  previewExtensions { a11y { enableAllChecks() } }
+  // a11y is daemon-only now — there's no gradle-side toggle to enable it for the sample's
+  // `renderAllPreviews` run. The sample carries `BadButtonPreview` etc. that exist to
+  // demonstrate the ATF report shape; downstream consumers exercise them through the daemon
+  // (VS Code chip toggle, `compose-preview a11y`).
 }
 
 android {

@@ -26,15 +26,13 @@ import { RealGradleApi } from "../realGradleApi";
  * overlay paint. Mirrors the `webviewPreviewsRendered` ack pattern the
  * cmp e2e already uses.
  *
- * Setup: the daemon's accessibility data-product registry is still
- * gated on `composeai.previewExtensions.a11y.enabled` (issue #1009
- * removes that gate). Until then the test passes
- * `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` via
- * `RealGradleApi.extraArgs` so the wear daemon spawns with the registry
- * registered. The focus-inspector chips themselves are gated on
- * `composePreview.earlyFeatures.enabled`; the test flips it on at
- * Global scope (isolated to `.vscode-test/user-data/`) and restores it
- * after the run.
+ * Setup: the daemon's accessibility data-product registry registers
+ * unconditionally now — a11y is driven entirely by per-preview
+ * `data/subscribe` calls coming in from the chip toggle (see
+ * `handleSetDataExtensionEnabled`). The focus-inspector chips
+ * themselves are gated on `composePreview.earlyFeatures.enabled`; the
+ * test flips it on at Global scope (isolated to
+ * `.vscode-test/user-data/`) and restores it after the run.
  */
 
 const E2E = process.env.COMPOSE_PREVIEW_E2E === "1";
@@ -170,15 +168,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             new RealGradleApi(
                 repoRoot,
                 (line) => console.log(line),
-                // Until #1009 removes the daemon-side flag, the
-                // accessibility data-product registry only registers
-                // when this property resolves true. Otherwise the
-                // `data/subscribe` call succeeds but the registry has
-                // no a11y kinds to attach, so no `updateA11y` ever
-                // reaches the webview and the test times out.
-                [
-                    "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
-                ],
+                // No extra Gradle args — the daemon registers the a11y
+                // data-product registry unconditionally now, so the
+                // chip-driven `data/subscribe` is the only enablement
+                // signal the daemon needs.
+                [],
             ),
         );
 

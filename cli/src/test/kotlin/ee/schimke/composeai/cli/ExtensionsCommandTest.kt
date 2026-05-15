@@ -46,10 +46,7 @@ class ExtensionsCommandTest {
     assertTrue("a11y" in ids, "expected built-in a11y extension, got $ids")
 
     val a11y = entries.first { it.jsonObject["id"]?.jsonPrimitive?.content == "a11y" }.jsonObject
-    assertEquals(
-      "composePreview.previewExtensions.a11y.enableAllChecks",
-      a11y["enableProperty"]?.jsonPrimitive?.content,
-    )
+    assertEquals("composePreview.activeExtensions", a11y["enableProperty"]?.jsonPrimitive?.content)
   }
 
   @Test
