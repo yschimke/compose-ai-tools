@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.14](https://github.com/yschimke/compose-ai-tools/compare/v0.10.13...v0.10.14) (2026-05-15)
+
+
+### Features
+
+* add portable preview bundle support (PNG+ZIP polyglot) ([#1159](https://github.com/yschimke/compose-ai-tools/issues/1159)) ([e575cc1](https://github.com/yschimke/compose-ai-tools/commit/e575cc1fa7497a09610677a35b5b46d2da3d3dca))
+
+
+### Bug Fixes
+
+* inject compose-foundation to fix tile preview rendering ([#1161](https://github.com/yschimke/compose-ai-tools/issues/1161)) ([a2992a1](https://github.com/yschimke/compose-ai-tools/commit/a2992a16542d20b64dce7f90892cb015365c7338))
+* suppress JDK 24+ restricted method warnings from Gradle Tooling API ([#1158](https://github.com/yschimke/compose-ai-tools/issues/1158)) ([5e1b9c3](https://github.com/yschimke/compose-ai-tools/commit/5e1b9c3577bea9bc9ea7db799d24c8b34c918ff3))
+
 ## [0.10.13](https://github.com/yschimke/compose-ai-tools/compare/v0.10.12...v0.10.13) (2026-05-15)
 
 
