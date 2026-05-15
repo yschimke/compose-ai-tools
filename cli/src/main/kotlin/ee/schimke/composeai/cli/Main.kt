@@ -76,6 +76,7 @@ fun main(args: Array<String>) {
     "devices" -> DevicesCommand(allArgs).run()
     "share-gist" -> ShareGistCommand(allArgs).run()
     "publish-images" -> PublishImagesCommand(allArgs).run()
+    "bundle" -> BundleCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
     "update" -> UpdateCommand(allArgs).run()
     "version" -> println("compose-preview $BUNDLE_VERSION")
@@ -114,6 +115,7 @@ private fun printUsage() {
       devices          List known @Preview(device=...) ids and resolved geometry
       share-gist       Create a gist from a markdown file plus image attachments
       publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
+      bundle           Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
       version          Print the installed bundle version and exit
