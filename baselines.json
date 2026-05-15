@@ -4,14 +4,14 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "404276ef6d5a0714e516338259db1fe019f87ccd28fc4f09307a73b5cc472656",
-      "size": 98801
+      "sha256": "82186bd370e89314a95468eea2596a17e319ab70fdeaf876aa25645881fe9bc6",
+      "size": 98091
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "d20294cf61e25f31d577dfdffc75f0470fac7b402ddd8b9fe497747dd14fd19c",
-      "size": 96582
+      "sha256": "c7f56a6df432b490b1fd76f2dbb31dd456e7f5e810609584ab514145724680f9",
+      "size": 95272
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
@@ -28,8 +28,8 @@
     "history-diff.dark.png": {
       "fixture": "history-diff",
       "theme": "dark",
-      "sha256": "2b645a87cecfdd1fc0c4f051d100a3d08e1be03a2b36a4742546cc4924bd5874",
-      "size": 85125
+      "sha256": "711d91ab6b3967c7398ad994d830e4e45164a8ab10533d166d03d4f24e51e31f",
+      "size": 84436
     },
     "history-diff.light.png": {
       "fixture": "history-diff",
@@ -46,20 +46,20 @@
     "inspection-tree.light.png": {
       "fixture": "inspection-tree",
       "theme": "light",
-      "sha256": "37fd9c9bbb7c078a2efae5b7b3c8c0013769e11a91130b2ed63c7b34aad5d4ee",
-      "size": 72380
+      "sha256": "d409657a0fc662e83b396eb1b1e90d158dcd843a22c1094f4263091cbc534092",
+      "size": 71867
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
       "theme": "dark",
-      "sha256": "09d5dcb2d750b85f0f4aeedca79cf65243d68c117622c4fee96fa40f1af28f66",
-      "size": 122869
+      "sha256": "48f49ccaf88843bd71da173214f0d49d1c0b815d5113980d96bb176b469175c3",
+      "size": 122271
     },
     "text-strings.light.png": {
       "fixture": "text-strings",
       "theme": "light",
-      "sha256": "33e9bf691f454b6d947969485595e2cb55b550c63b1d35b5f00a25a85a5b4d24",
-      "size": 119481
+      "sha256": "4c5971ad0194a0760f7138c7c11a3992d1b765e7d08183873789d5a693ff5c02",
+      "size": 118772
     }
   }
 }
