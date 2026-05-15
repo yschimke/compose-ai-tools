@@ -202,5 +202,13 @@
     {
       "click": "[data-bundle=\"inspection\"] tr[data-legend-id=\"semantics-primary-cta\"]"
     }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "compose/semantics",
+      "enabled": true
+    }
   ]
 }

@@ -133,5 +133,13 @@
     {
       "click": "[data-bundle=\"history\"] tr[data-legend-id=\"history-diff-region-2\"]"
     }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "history/diff/regions",
+      "enabled": true
+    }
   ]
 }

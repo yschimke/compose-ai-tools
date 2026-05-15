@@ -207,5 +207,19 @@
     {
       "click": "[data-bundle=\"text\"] tr[data-legend-id=\"text-string-2\"]"
     }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "text/strings",
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "fonts/used",
+      "enabled": true
+    }
   ]
 }

@@ -18,6 +18,7 @@ import {
     activateBundleAction,
     buildMobileMock,
     buildPreviewPair,
+    expectSetDataExtension,
     focusAction,
     rectBounds,
 } from "./_utils.mjs";
@@ -167,6 +168,15 @@ const fixture = {
         {
             click: `[data-bundle="inspection"] tr[data-legend-id="semantics-primary-cta"]`,
         },
+    ],
+    // Pinning the wire-side effect of activating the Inspection
+    // chip — `compose/semantics` is the bundle's only default-ON
+    // kind (per `bundleRegistry.ts`), so a single
+    // `setDataExtensionEnabled` post is expected. Row click is a
+    // pure UI action and posts nothing wire-side; no extra entries
+    // here.
+    expectedPosts: [
+        expectSetDataExtension(focusId, "compose/semantics", true),
     ],
 };
 
