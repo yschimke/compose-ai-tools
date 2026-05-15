@@ -15,6 +15,7 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { BundleId, BundleKind } from "../bundleRegistry";
+import { emit } from "../../shared/eventBus";
 
 export interface BundleKindToggledDetail {
     bundleId: BundleId;
@@ -112,16 +113,10 @@ export class BundleExpander extends LitElement {
     private onCheckboxChanged(evt: Event, kind: string): void {
         if (!this.bundleId) return;
         const target = evt.target as HTMLInputElement;
-        this.dispatchEvent(
-            new CustomEvent<BundleKindToggledDetail>("kind-toggled", {
-                detail: {
-                    bundleId: this.bundleId,
-                    kind,
-                    enabled: target.checked,
-                },
-                bubbles: true,
-                composed: true,
-            }),
-        );
+        emit(this, "kind-toggled", {
+            bundleId: this.bundleId,
+            kind,
+            enabled: target.checked,
+        });
     }
 }
