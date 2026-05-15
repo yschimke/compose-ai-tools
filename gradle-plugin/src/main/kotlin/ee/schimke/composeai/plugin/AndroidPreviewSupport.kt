@@ -533,6 +533,26 @@ internal object AndroidPreviewSupport {
         "${variantName}Implementation",
         "androidx.compose.ui:ui:$RENDERER_COMPOSE_FLOOR_VERSION",
       )
+      // Pin `androidx.compose.foundation:foundation` on the main variant for
+      // the same reason as compose-ui above — but for class-loading rather
+      // than R.id lookup. `TilePreviewRenderer.TilePreviewComposable` calls
+      // `Modifier.fillMaxSize()` (from `androidx.compose.foundation.layout.SizeKt`)
+      // to fill the renderer's host AndroidView. On tile-only consumers
+      // without compose-foundation in main (e.g. WearTilesKotlin), the class
+      // isn't on the user-classpath component of the merged test APK and
+      // Robolectric crashes the first time the tile compose-tree runs:
+      //
+      //   `NoClassDefFoundError: androidx/compose/foundation/layout/SizeKt`
+      //   at `TilePreviewRendererKt.TilePreviewComposable`
+      //
+      // Same `${variantName}Implementation` floor pattern as compose-ui —
+      // Gradle picks the max with consumer-aligned versions, so this is a
+      // no-op for Compose-app consumers that already get foundation via
+      // their BOM, and a fix for tile-only consumers that don't.
+      project.dependencies.add(
+        "${variantName}Implementation",
+        "androidx.compose.foundation:foundation:$RENDERER_COMPOSE_FLOOR_VERSION",
+      )
       recordInjectedDependency(
         project,
         injectedDependencies,
@@ -587,6 +607,15 @@ internal object AndroidPreviewSupport {
         reason =
           "compose-ui's AndroidComposeViewAccessibilityDelegateCompat.<clinit> reads androidx.compose.ui.R.id.*; merged test APK needs the compose-ui R class on tile-only consumers without compose-ui in main",
       )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.compose.foundation:foundation:$RENDERER_COMPOSE_FLOOR_VERSION",
+        configuration = "${variantName}Implementation",
+        outcome = "APPLIED",
+        reason =
+          "TilePreviewRenderer.TilePreviewComposable calls Modifier.fillMaxSize() from androidx.compose.foundation.layout.SizeKt; tile-only consumers without compose-foundation in main hit NoClassDefFoundError at render time",
+      )
     } else {
       recordInjectedDependency(
         project,
@@ -639,6 +668,15 @@ internal object AndroidPreviewSupport {
         outcome = "SKIPPED_BY_CONFIG",
         reason =
           "manageDependencies=false; consumer must ensure androidx.compose.ui:ui is on the main variant so the merged test APK includes its R class (referenced by AndroidComposeViewAccessibilityDelegateCompat.<clinit>)",
+      )
+      recordInjectedDependency(
+        project,
+        injectedDependencies,
+        coordinate = "androidx.compose.foundation:foundation",
+        configuration = "${variantName}Implementation",
+        outcome = "SKIPPED_BY_CONFIG",
+        reason =
+          "manageDependencies=false; consumer must ensure androidx.compose.foundation:foundation is on the main variant so SizeKt (Modifier.fillMaxSize) is class-loadable when TilePreviewRenderer runs",
       )
     }
 
