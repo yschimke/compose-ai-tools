@@ -38,7 +38,7 @@ import { parseBounds as parseCardBounds } from "./cardData";
 
 // ---- compose/semantics --------------------------------------------------
 
-interface ComposeSemanticsNode {
+export interface ComposeSemanticsNode {
     nodeId: string;
     boundsInRoot: string;
     label?: string | null;
@@ -123,7 +123,7 @@ interface LayoutInspectorModifier {
     properties?: Record<string, string>;
 }
 
-interface LayoutInspectorNode {
+export interface LayoutInspectorNode {
     nodeId: string;
     component: string;
     source?: string | null;
@@ -205,7 +205,7 @@ function layoutInspectorPresenter(
 
 // ---- uia/hierarchy ------------------------------------------------------
 
-interface UiaHierarchyNode {
+export interface UiaHierarchyNode {
     text?: string | null;
     contentDescription?: string | null;
     testTag?: string | null;
@@ -586,7 +586,26 @@ export interface InspectionBundleData {
      * is missing / malformed.
      */
     overlay: readonly OverlayBox[];
+    /**
+     * Lookup from the namespaced row id (same string used as
+     * `data-legend-id` on the tree-table row and as `data-overlay-id`
+     * on the matching overlay box) back to the originating per-kind
+     * node record. Used by the host's row-click handler to surface a
+     * detail panel via `buildInspectionRowDetail` without having to
+     * re-walk the per-kind payload trees.
+     */
+    nodeById: ReadonlyMap<string, InspectionNodeRecord>;
 }
+
+/**
+ * Discriminated record produced by each per-kind data builder so the
+ * detail panel can dispatch by `kind` without knowing the per-kind
+ * node shape.
+ */
+export type InspectionNodeRecord =
+    | { kind: "compose/semantics"; node: ComposeSemanticsNode }
+    | { kind: "layout/inspector"; node: LayoutInspectorNode }
+    | { kind: "uia/hierarchy"; node: UiaHierarchyNode };
 
 export type InspectionKind =
     | "compose/semantics"
@@ -618,31 +637,32 @@ export function computeInspectionBundleData(
         data: InspectionKindData;
     }> = [];
 
+    const nodeById = new Map<string, InspectionNodeRecord>();
     if (enabledKinds.has("compose/semantics")) {
         const payload = getPayload("compose/semantics") as
             | ComposeSemanticsPayload
             | undefined;
-        const data = computeComposeSemanticsBundleData(payload);
+        const data = computeComposeSemanticsBundleData(payload, nodeById);
         if (data) sections.push({ kind: "compose/semantics", data });
     }
     if (enabledKinds.has("layout/inspector")) {
         const payload = getPayload("layout/inspector") as
             | LayoutInspectorPayload
             | undefined;
-        const data = computeLayoutInspectorBundleData(payload);
+        const data = computeLayoutInspectorBundleData(payload, nodeById);
         if (data) sections.push({ kind: "layout/inspector", data });
     }
     if (enabledKinds.has("uia/hierarchy")) {
         const payload = getPayload("uia/hierarchy") as
             | UiaHierarchyPayload
             | undefined;
-        const data = computeUiaHierarchyBundleData(payload);
+        const data = computeUiaHierarchyBundleData(payload, nodeById);
         if (data) sections.push({ kind: "uia/hierarchy", data });
     }
 
     const overlay = mergeOverlayBoxes(sections.map((s) => s.data.overlay));
 
-    return { sections, overlay };
+    return { sections, overlay, nodeById };
 }
 
 /** Dedupe overlay boxes by `id`, preserving first-seen order. */
@@ -663,15 +683,18 @@ function mergeOverlayBoxes(
 
 function computeComposeSemanticsBundleData(
     payload: ComposeSemanticsPayload | undefined,
+    nodeById: Map<string, InspectionNodeRecord>,
 ): InspectionKindData | null {
     if (!payload || !payload.root) return null;
     const flat = flattenSemantics(payload.root);
     const overlay: OverlayBox[] = [];
     for (const entry of flat) {
+        const id = nsId("semantics", entry.id);
+        nodeById.set(id, { kind: "compose/semantics", node: entry.node });
         const bounds = parseCardBounds(entry.node.boundsInRoot);
         if (!bounds) continue;
         overlay.push({
-            id: nsId("semantics", entry.id),
+            id,
             bounds,
             level: "info",
             tooltip: semanticsTooltip(entry.node),
@@ -707,11 +730,14 @@ function computeComposeSemanticsBundleData(
 
 function computeLayoutInspectorBundleData(
     payload: LayoutInspectorPayload | undefined,
+    nodeById: Map<string, InspectionNodeRecord>,
 ): InspectionKindData | null {
     if (!payload || !payload.root) return null;
     const flat = flattenLayout(payload.root);
     const overlay: OverlayBox[] = [];
     for (const entry of flat) {
+        const id = nsId("layout", entry.id);
+        nodeById.set(id, { kind: "layout/inspector", node: entry.node });
         const b = entry.node.bounds;
         if (
             !b ||
@@ -723,7 +749,7 @@ function computeLayoutInspectorBundleData(
             continue;
         }
         overlay.push({
-            id: nsId("layout", entry.id),
+            id,
             bounds: {
                 left: b.left,
                 top: b.top,
@@ -762,6 +788,7 @@ function computeLayoutInspectorBundleData(
 
 function computeUiaHierarchyBundleData(
     payload: UiaHierarchyPayload | undefined,
+    nodeById: Map<string, InspectionNodeRecord>,
 ): InspectionKindData | null {
     if (!payload || !Array.isArray(payload.nodes)) return null;
     const nodes = payload.nodes;
@@ -771,10 +798,12 @@ function computeUiaHierarchyBundleData(
         data: n,
     }));
     for (let i = 0; i < nodes.length; i++) {
+        const id = nsId("uia", i + "");
+        nodeById.set(id, { kind: "uia/hierarchy", node: nodes[i] });
         const bounds = parseCardBounds(nodes[i].boundsInScreen);
         if (!bounds) continue;
         overlay.push({
-            id: nsId("uia", i + ""),
+            id,
             bounds,
             level: "info",
             tooltip: uiaTooltip(nodes[i]),

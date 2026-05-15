@@ -544,6 +544,22 @@ body {
  * mouse over other rows). Inset-left bar gives a clear "this row is
  * selected" anchor that survives across light / dark themes; the
  * background tint is a secondary cue. */
+/* Pinned-row visual state for the bespoke inspection tree-table.
+ * Lives alongside the `<data-table>` selection CSS (`.data-table-
+ * row-selected`) so both surfaces look consistent — the tree-table
+ * doesn't dispatch `row-clicked`, but the bundle host applies this
+ * class via a delegated click handler. */
+.inspection-tree-row-selected td {
+    background: var(
+        --vscode-list-activeSelectionBackground,
+        rgba(80, 130, 200, 0.18)
+    );
+    color: var(--vscode-list-activeSelectionForeground, currentColor);
+}
+.inspection-tree-row-selected td:first-child {
+    box-shadow: inset 3px 0 0 var(--vscode-focusBorder, #4d9fec);
+}
+
 .data-table-row-selected td {
     background: var(
         --vscode-list-activeSelectionBackground,

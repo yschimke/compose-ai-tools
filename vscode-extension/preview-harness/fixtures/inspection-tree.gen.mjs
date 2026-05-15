@@ -160,6 +160,13 @@ const fixture = {
     actions: [
         focusAction(focusId),
         activateBundleAction("inspection"),
+        // Click the primary-CTA row in the semantics tree-table so
+        // the snapshot exercises the bespoke delegated click handler
+        // wired in `inspectionBody()`. Row ids are namespaced by
+        // kind (`nsId("semantics", node.nodeId)`).
+        {
+            click: `[data-bundle="inspection"] tr[data-legend-id="semantics-primary-cta"]`,
+        },
     ],
 };
 
