@@ -20,6 +20,7 @@ import {
     buildPreviewPair,
     expectSetDataExtension,
     focusAction,
+    forbidSetDataExtensionEnabled,
     rectBounds,
 } from "./_utils.mjs";
 
@@ -177,6 +178,16 @@ const fixture = {
     // here.
     expectedPosts: [
         expectSetDataExtension(focusId, "compose/semantics", true),
+    ],
+    // The other two Inspection kinds are default-OFF in
+    // `bundleRegistry.ts` — chip activation must not subscribe
+    // them. The fixture preloads `layout/inspector` data for the
+    // tree to render once the user opts in via the Configure
+    // expander; subscribing it on chip activation would burn
+    // daemon CPU on a kind nobody asked for.
+    forbiddenPosts: [
+        forbidSetDataExtensionEnabled(focusId, "layout/inspector"),
+        forbidSetDataExtensionEnabled(focusId, "uia/hierarchy"),
     ],
 };
 

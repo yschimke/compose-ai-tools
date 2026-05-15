@@ -221,5 +221,13 @@
       "kind": "fonts/used",
       "enabled": true
     }
+  ],
+  "forbiddenPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+      "kind": "i18n/translations",
+      "enabled": true
+    }
   ]
 }
