@@ -6,11 +6,27 @@
 // bounds.
 
 import * as assert from "assert";
-import { computeA11yBundleData } from "../webview/preview/a11yBundlePresenter";
+import {
+    computeA11yBundleData,
+    type AccessibilityTouchTarget,
+} from "../webview/preview/a11yBundlePresenter";
 import type {
     AccessibilityFinding,
     AccessibilityNode,
 } from "../webview/shared/types";
+
+function touchTarget(
+    overrides: Partial<AccessibilityTouchTarget>,
+): AccessibilityTouchTarget {
+    return {
+        nodeId: overrides.nodeId ?? "node-1",
+        boundsInScreen: overrides.boundsInScreen ?? "0,0,10,10",
+        widthDp: overrides.widthDp ?? 40,
+        heightDp: overrides.heightDp ?? 40,
+        findings: overrides.findings ?? [],
+        overlappingNodeIds: overrides.overlappingNodeIds,
+    };
+}
 
 function node(
     overrides: Partial<AccessibilityNode> & { boundsInScreen?: string },
@@ -122,5 +138,100 @@ describe("computeA11yBundleData", () => {
         );
         assert.strictEqual(data.rows.length, 1);
         assert.strictEqual(data.overlay.length, 0);
+    });
+
+    it("merges a touch target's size and findings onto the matching hierarchy row", () => {
+        const data = computeA11yBundleData(
+            [node({ label: "Tap me", boundsInScreen: "0,0,10,10" })],
+            [],
+            [
+                touchTarget({
+                    boundsInScreen: "0,0,10,10",
+                    widthDp: 32,
+                    heightDp: 32,
+                    findings: ["TouchTargetTooSmall"],
+                }),
+            ],
+        );
+        assert.strictEqual(data.rows.length, 1);
+        assert.strictEqual(data.rows[0].touchTargetSizeDp, "32×32 dp");
+        // Touch-target findings bump level to "warning" (not "error" —
+        // ATF errors still dominate, but a missing-ATF target should
+        // not silently look "info").
+        assert.strictEqual(data.rows[0].topFindingLevel, "warning");
+        assert.strictEqual(data.rows[0].findingCount, 1);
+    });
+
+    it("does not downgrade an ATF error when a touch target also applies", () => {
+        const data = computeA11yBundleData(
+            [node({ boundsInScreen: "0,0,10,10" })],
+            [
+                finding({
+                    boundsInScreen: "0,0,10,10",
+                    level: "ERROR",
+                    message: "low contrast",
+                }),
+            ],
+            [
+                touchTarget({
+                    boundsInScreen: "0,0,10,10",
+                    findings: ["TouchTargetOverlap"],
+                }),
+            ],
+        );
+        // Error from ATF wins; touch-target finding adds to the count.
+        assert.strictEqual(data.rows[0].topFindingLevel, "error");
+        assert.strictEqual(data.rows[0].findingCount, 2);
+    });
+
+    it("emits an orphan row for a touch target with findings and no matching node", () => {
+        const data = computeA11yBundleData(
+            [node({ boundsInScreen: "0,0,10,10" })],
+            [],
+            [
+                touchTarget({
+                    boundsInScreen: "100,100,140,140",
+                    findings: ["TouchTargetTooSmall"],
+                }),
+            ],
+        );
+        // 1 hierarchy row + 1 touch-target orphan.
+        assert.strictEqual(data.rows.length, 2);
+        const orphan = data.rows[1];
+        assert.ok(orphan.id.startsWith("a11y-touchtarget-orphan-"));
+        assert.strictEqual(orphan.topFindingLevel, "warning");
+    });
+
+    it("ignores touch targets that have no findings (still useful in the JSON payload, not as a row)", () => {
+        // Pure-shape targets (size info, no rule trip) don't deserve
+        // their own orphan row — they'd just be noise. They DO merge
+        // onto matching hierarchy rows for the size column.
+        const data = computeA11yBundleData(
+            [],
+            [],
+            [
+                touchTarget({
+                    boundsInScreen: "0,0,10,10",
+                    findings: [],
+                }),
+            ],
+        );
+        assert.strictEqual(data.rows.length, 0);
+    });
+
+    it("includes the touch-target size in the overlay tooltip when one matches", () => {
+        const data = computeA11yBundleData(
+            [node({ label: "Btn", boundsInScreen: "0,0,10,10" })],
+            [],
+            [
+                touchTarget({
+                    boundsInScreen: "0,0,10,10",
+                    widthDp: 48,
+                    heightDp: 48,
+                    findings: [],
+                }),
+            ],
+        );
+        assert.ok(data.overlay[0].tooltip?.includes("48×48 dp"));
     });
 });
