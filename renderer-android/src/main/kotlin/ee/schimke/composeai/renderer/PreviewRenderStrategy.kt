@@ -171,6 +171,12 @@ private object TilePreviewStrategy : PreviewRenderStrategy {
         // `@PreviewParameter` doesn't apply to tile previews — discovery
         // drops the provider FQN for `PreviewKind.TILE`, so this list is
         // always empty here.
-        TilePreviewComposable(preview, widthDp, heightDp)
+        TilePreviewComposable(
+            className = preview.className,
+            functionName = preview.functionName,
+            widthDp = widthDp,
+            heightDp = heightDp,
+            device = preview.params.device,
+        )
     }
 }
