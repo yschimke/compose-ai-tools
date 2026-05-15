@@ -1021,6 +1021,12 @@ export class PreviewApp extends LitElement {
                 !enabledKinds.has("i18n/translations") &&
                 data.translations.length === 0;
             dataTabs.setTabBody("text", body.wrapper);
+            bundleLegend.setBundleEntries(
+                "text",
+                "Text / i18n",
+                overlayToLegendEntries(data.overlay),
+            );
+            reflectLegendActiveTab();
             // Paint per-row overflow / truncation overlays. Focus
             // mode paints only the focused card; grid mode paints
             // every visible card from its own
@@ -1530,6 +1536,12 @@ export class PreviewApp extends LitElement {
             }));
             refreshExpanderFor("history");
             dataTabs.setTabBody("history", host);
+            bundleLegend.setBundleEntries(
+                "history",
+                "History diff",
+                overlayToLegendEntries(data.overlay),
+            );
+            reflectLegendActiveTab();
             // Paint the per-region tinted boxes. Focus mode paints
             // only the focused card; grid mode paints every visible
             // card from its own `history/diff/regions` payload. Empty
@@ -1670,6 +1682,12 @@ export class PreviewApp extends LitElement {
                 body.host.appendChild(wrap);
             }
             dataTabs.setTabBody("inspection", body.wrapper);
+            bundleLegend.setBundleEntries(
+                "inspection",
+                "Inspection",
+                overlayToLegendEntries(data.overlay),
+            );
+            reflectLegendActiveTab();
             // Paint the merged + de-duped overlay. In focus mode only
             // the focused card paints; in grid mode every visible card
             // paints with its own per-card data via the grid-aware
@@ -1699,6 +1717,27 @@ export class PreviewApp extends LitElement {
             if (row.touchTargetSizeDp) parts.push(row.touchTargetSizeDp);
             return parts.join(" · ");
         };
+        // Generic mapping from a bundle's `OverlayBox[]` to legend
+        // entries. Tooltips on overlay boxes are already shaped as
+        // `label · detail · …`, so splitting on ` · ` gives a clean
+        // bold label + muted subtitle without bespoke per-bundle
+        // wiring. Bundles that want a richer label / detail (e.g.
+        // a11y carries `touchTargetSizeDp` separately) compose
+        // their own; this is the common case.
+        const overlayToLegendEntries = (
+            boxes: readonly OverlayBox[],
+        ): BundleLegendEntry[] =>
+            boxes.map((b) => {
+                const tooltip = b.tooltip ?? "";
+                const parts = tooltip.split(" · ");
+                return {
+                    id: b.id,
+                    label: parts[0] || b.id,
+                    detail: parts.slice(1).join(" · "),
+                    level: b.level ?? "info",
+                    color: b.color,
+                };
+            });
         // Palette colours for info-level a11y entries — keep the
         // legend swatch in sync with the overlay's per-node colour
         // pick. Matches the `PALETTE` constant in
