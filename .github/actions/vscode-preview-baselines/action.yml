@@ -1,0 +1,97 @@
+name: 'VS Code Preview Baselines'
+description: >
+  Render the VS Code panel's `preview-harness` fixtures (every fixture
+  × dark/light theme) and push the resulting PNGs + baselines.json as
+  a new commit on the `vscode-preview/main` branch. Same model as the
+  composable `compose-preview/main` baselines: the branch is browsable
+  on GitHub (README with inline images) and serves as the "before"
+  state for the per-PR diff comment. Old commit SHAs stay reachable so
+  PR comments pinned to a past baseline keep resolving forever.
+
+inputs:
+  branch:
+    description: 'Branch name for the baselines.'
+    default: 'vscode-preview/main'
+  node-version:
+    description: 'Node.js version for the harness.'
+    default: '20'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: vscode-extension/package-lock.json
+
+    - name: Install extension dependencies
+      shell: bash
+      working-directory: vscode-extension
+      run: npm ci
+
+    # Playwright's bundled chromium isn't in the standard runner image; the
+    # `--with-deps` flag pulls the apt packages chromium needs (libnss3,
+    # libxkbcommon, etc.) on the ubuntu-latest base image. Without this the
+    # `chromium.launch()` in `snapshot.mjs` fails with a missing-shared-lib
+    # error before any fixture runs.
+    - name: Install Playwright browser
+      shell: bash
+      working-directory: vscode-extension
+      run: npx playwright install --with-deps chromium
+
+    - name: Capture harness snapshots
+      shell: bash
+      working-directory: vscode-extension
+      run: npm run harness:snapshot
+
+    - name: Stage baselines
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" generate \
+          vscode-extension/preview-harness/out \
+          --output-dir _vscode_baselines
+
+    - name: Push to baselines branch
+      shell: bash
+      env:
+        BASELINE_BRANCH: ${{ inputs.branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        cd _vscode_baselines
+
+        git init -q
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git remote add origin \
+          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
+
+        git add -A
+        TREE=$(git write-tree)
+
+        # Append to history rather than force-pushing a fresh orphan each
+        # run, so PR comments pinned to a past baseline SHA stay
+        # resolvable forever — same rationale as the composable
+        # `compose-preview/main` flow.
+        PARENT=""
+        if git fetch --depth=1 --quiet origin "$BASELINE_BRANCH" 2>/dev/null; then
+          PARENT=$(git rev-parse FETCH_HEAD)
+          PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
+          if [ "$TREE" = "$PARENT_TREE" ]; then
+            echo "Baselines unchanged vs ${BASELINE_BRANCH}; skipping push."
+            exit 0
+          fi
+        fi
+
+        MSG="Update vscode-preview baselines from ${GITHUB_SHA::8}"
+        if [ -n "$PARENT" ]; then
+          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
+        else
+          COMMIT=$(git commit-tree "$TREE" -m "$MSG")
+        fi
+
+        git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"

@@ -171,6 +171,8 @@ jobs:
           persist-credentials: false
       - name: Run compare-previews tests
         run: python3 .github/actions/lib/test_compare_previews.py -v
+      - name: Run vscode-preview-diff tests
+        run: python3 .github/actions/lib/test_vscode_preview_diff.py -v
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
