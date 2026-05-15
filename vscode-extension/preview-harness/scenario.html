@@ -73,8 +73,26 @@
                 for (const msg of data.messages ?? []) {
                     window.postMessage(msg, "*");
                 }
-                // Let the dispatcher run, the cards re-render, and the
-                // <img>s decode the new data URIs before signalling ready.
+                await settle();
+
+                // After the manifest has rendered, replay user-style
+                // interactions — clicking a card's focus button, a
+                // bundle chip, a filter toolbar option, etc. Each
+                // action targets the panel's light DOM by CSS
+                // selector so fixtures don't have to know about the
+                // controller graph behind the elements.
+                for (const action of data.actions ?? []) {
+                    await runAction(action);
+                    await settle();
+                }
+
+                harness.ready = true;
+            }
+
+            async function settle() {
+                // postMessage / click handlers post microtasks then
+                // Lit re-renders on rAF. Two rAFs is enough for the
+                // dispatcher's downstream paths to land DOM.
                 await new Promise((r) => requestAnimationFrame(r));
                 await new Promise((r) => requestAnimationFrame(r));
                 const imgs = Array.from(
@@ -82,7 +100,15 @@
                 );
                 await Promise.all(
                     imgs.map((img) =>
-                        img.complete && img.naturalWidth > 0
+                        // `complete` is true once the browser has
+                        // either decoded the bytes or given up
+                        // (naturalWidth = 0 on error). Either way
+                        // there is nothing left to wait on — gating
+                        // on `naturalWidth > 0` would hang on cards
+                        // whose `<img src="renders/foo.png">` 404s
+                        // because the harness server doesn't ship
+                        // those files.
+                        img.complete
                             ? Promise.resolve()
                             : new Promise((r) => {
                                   img.addEventListener("load", r, {
@@ -94,19 +120,39 @@
                               }),
                     ),
                 );
-                // Wait for any in-flight CSS animations (the `fadeIn` on
-                // freshly-painted preview <img>s, transitions on bundle
-                // chips, etc.) to settle so the screenshot isn't a
-                // mid-frame grab of the 0.2s opacity ramp.
+                // Wait for any in-flight CSS animations (the `fadeIn`
+                // on freshly-painted preview <img>s, chip / tab
+                // transitions, etc.) to settle so the screenshot
+                // isn't a mid-frame grab. Skip infinite animations
+                // (the skeleton shimmer on cards that haven't
+                // received an `updateImage` runs forever, and
+                // `.finished` would never resolve).
                 if (typeof document.getAnimations === "function") {
+                    const finite = document.getAnimations().filter((a) => {
+                        const t = a.effect?.getTiming?.();
+                        return t && t.iterations !== Infinity;
+                    });
                     await Promise.all(
-                        document
-                            .getAnimations()
-                            .map((a) => a.finished.catch(() => {})),
+                        finite.map((a) => a.finished.catch(() => {})),
                     );
                 }
-                harness.ready = true;
             }
+
+            async function runAction(action) {
+                if (action.click) {
+                    const el = document.querySelector(action.click);
+                    if (!el) {
+                        throw new Error(
+                            "click: selector matched no element: " +
+                                action.click,
+                        );
+                    }
+                    el.click();
+                    return;
+                }
+                throw new Error("unknown action: " + JSON.stringify(action));
+            }
+
             run().catch((err) => {
                 console.error(err);
                 document.body.textContent = String(err);

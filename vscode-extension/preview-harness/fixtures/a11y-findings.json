@@ -1,0 +1,148 @@
+{
+    "name": "a11y-findings",
+    "description": "Focused card with three Accessibility Test Framework findings (one ERROR, two WARNINGs) overlaid on a stylised mobile mock. Drives focus mode and activates the Accessibility bundle so the chip bar, data tab, and on-image box-overlay all paint.",
+    "dataset": {
+        "earlyFeatures": "true",
+        "autoEnableCheap": "false",
+        "collapseVariants": "false",
+        "minimalMode": "false",
+        "autoInject": "true"
+    },
+    "messages": [
+        {
+            "command": "setPreviews",
+            "moduleDir": "/workspace/sample-android",
+            "heavyStaleIds": [],
+            "previews": [
+                {
+                    "id": "com.example.OnboardingKt.WelcomeScreenPreview",
+                    "functionName": "WelcomeScreenPreview",
+                    "className": "com.example.OnboardingKt",
+                    "sourceFile": "Onboarding.kt",
+                    "params": {
+                        "name": null,
+                        "device": null,
+                        "widthDp": 360,
+                        "heightDp": 600,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 0,
+                        "locale": null,
+                        "group": null
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.OnboardingKt.WelcomeScreenPreview.png",
+                            "label": ""
+                        }
+                    ],
+                    "a11yFindings": [
+                        {
+                            "level": "ERROR",
+                            "type": "SpeakableTextPresent",
+                            "message": "Image-only button has no contentDescription.",
+                            "viewDescription": "ImageButton",
+                            "boundsInScreen": "200,240,320,296"
+                        },
+                        {
+                            "level": "WARNING",
+                            "type": "TouchTargetSize",
+                            "message": "Touch target is 120×56dp. Material guidance recommends at least 48×48dp on each side; this clears height but the width / spacing leaves the tap area cramped on small screens.",
+                            "viewDescription": "Button",
+                            "boundsInScreen": "40,240,160,296"
+                        },
+                        {
+                            "level": "WARNING",
+                            "type": "TextContrast",
+                            "message": "Footer text uses #C8C8C8 on #F5F6FA — contrast ratio 1.4:1, below the WCAG AA 4.5:1 threshold for body copy.",
+                            "viewDescription": "TextView",
+                            "boundsInScreen": "0,520,360,600"
+                        }
+                    ],
+                    "a11yNodes": [
+                        {
+                            "label": "Welcome screen",
+                            "role": "container",
+                            "states": [],
+                            "merged": false,
+                            "boundsInScreen": "0,0,360,600"
+                        },
+                        {
+                            "label": "Welcome to Compose AI Tools",
+                            "role": "headline",
+                            "states": ["focusable"],
+                            "merged": false,
+                            "boundsInScreen": "0,0,360,80"
+                        },
+                        {
+                            "label": "Get started",
+                            "role": "button",
+                            "states": ["clickable", "focusable"],
+                            "merged": false,
+                            "boundsInScreen": "40,240,160,296"
+                        },
+                        {
+                            "label": "",
+                            "role": "button",
+                            "states": ["clickable", "focusable"],
+                            "merged": false,
+                            "boundsInScreen": "200,240,320,296"
+                        },
+                        {
+                            "label": "By continuing you agree to our terms",
+                            "role": "text",
+                            "states": [],
+                            "merged": false,
+                            "boundsInScreen": "0,520,360,600"
+                        }
+                    ]
+                },
+                {
+                    "id": "com.example.OnboardingKt.SettingsScreenPreview",
+                    "functionName": "SettingsScreenPreview",
+                    "className": "com.example.OnboardingKt",
+                    "sourceFile": "Onboarding.kt",
+                    "params": {
+                        "name": null,
+                        "device": null,
+                        "widthDp": 360,
+                        "heightDp": 600,
+                        "fontScale": 1,
+                        "showSystemUi": false,
+                        "showBackground": true,
+                        "backgroundColor": 0,
+                        "uiMode": 0,
+                        "locale": null,
+                        "group": null
+                    },
+                    "captures": [
+                        {
+                            "advanceTimeMillis": null,
+                            "scroll": null,
+                            "renderOutput": "renders/com.example.OnboardingKt.SettingsScreenPreview.png",
+                            "label": ""
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "command": "updateImage",
+            "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
+            "captureIndex": 0,
+            "imageData": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC"
+        }
+    ],
+    "actions": [
+        {
+            "click": ".preview-card[data-preview-id=\"com.example.OnboardingKt.WelcomeScreenPreview\"] .card-focus-btn"
+        },
+        {
+            "click": "bundle-chip-bar button[data-bundle=\"a11y\"]"
+        }
+    ]
+}
