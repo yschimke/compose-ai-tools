@@ -212,3 +212,15 @@ include(":daemon:desktop")
 include(":daemon:harness")
 
 include(":mcp")
+
+// Public render-session library. `:render-session-api` is the pure-interface surface every
+// consumer (CLI, MCP server, third-party tooling) compiles against; `:render-session-subprocess`
+// is the daemon-subprocess-backed implementation. Future `:render-session-embedded` will host the
+// in-process Robolectric driver once that's viable.
+include(":render-session-api")
+
+project(":render-session-api").projectDir = file("render-session/api")
+
+include(":render-session-subprocess")
+
+project(":render-session-subprocess").projectDir = file("render-session/subprocess")
