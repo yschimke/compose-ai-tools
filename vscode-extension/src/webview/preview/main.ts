@@ -36,11 +36,17 @@ import "./components/DataTabs";
 import "./components/DataTable";
 import "./components/BoxOverlay";
 import "./components/BundleExpander";
+import "./components/BundleLegend";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { BundleChipBar } from "./components/BundleChipBar";
 import { DataTabs } from "./components/DataTabs";
 import { DataTable } from "./components/DataTable";
 import { BundleExpander } from "./components/BundleExpander";
+import {
+    BundleLegend,
+    type BundleLegendEntry,
+} from "./components/BundleLegend";
+import { findLegendTarget } from "./bundleLegendTarget";
 import {
     clearBundleBoxes,
     getVisiblePreviewIds,
@@ -174,6 +180,7 @@ export class PreviewApp extends LitElement {
     @query("filter-toolbar") private _filterToolbar!: FilterToolbar;
     @query("bundle-chip-bar") private _bundleChipBar!: BundleChipBar;
     @query("data-tabs") private _dataTabs!: DataTabs;
+    @query("#bundle-legend") private _bundleLegend!: BundleLegend;
     @query("#focus-controls") private _focusControls!: HTMLElement;
     @query("#btn-prev") private _btnPrev!: HTMLButtonElement;
     @query("#btn-next") private _btnNext!: HTMLButtonElement;
@@ -382,11 +389,18 @@ export class PreviewApp extends LitElement {
                     <i class="codicon codicon-close" aria-hidden="true"></i>
                 </button>
             </div>
-            <preview-grid
-                id="preview-grid"
-                role="list"
-                aria-label="Preview cards"
-            ></preview-grid>
+            <div class="focus-stage">
+                <preview-grid
+                    id="preview-grid"
+                    role="list"
+                    aria-label="Preview cards"
+                ></preview-grid>
+                <bundle-legend
+                    id="bundle-legend"
+                    class="focus-stage-legend"
+                    hidden
+                ></bundle-legend>
+            </div>
             <bundle-chip-bar hidden></bundle-chip-bar>
             <data-tabs hidden></data-tabs>
             <div
@@ -687,6 +701,7 @@ export class PreviewApp extends LitElement {
         // a single place.
         const bundleChipBar = this._bundleChipBar;
         const dataTabs = this._dataTabs;
+        const bundleLegend = this._bundleLegend;
         const bundleController = new BundleController(
             {
                 setKindEnabled: (kind, enabled) => {
@@ -1064,6 +1079,33 @@ export class PreviewApp extends LitElement {
             }));
             refreshExpanderFor("a11y");
             dataTabs.setTabBody("a11y", body.wrapper);
+            // Populate the shared bundle legend with the same rows so
+            // the overlay-box on the preview, the legend swatch, and
+            // the data-table row all share the `id` for hover /
+            // selection correlation. Other bundles with overlay
+            // boxes (inspection, history-diff) wire their entries
+            // the same way; the legend swaps slices based on the
+            // active tab.
+            const legendEntries: BundleLegendEntry[] = data.rows
+                .filter((row) => row.bounds !== null)
+                .map((row, idx) => ({
+                    id: row.id,
+                    label: row.label,
+                    detail: a11yLegendDetail(row),
+                    level: row.topFindingLevel ?? "info",
+                    color:
+                        row.topFindingLevel === null
+                            ? A11Y_LEGEND_PALETTE[
+                                  idx % A11Y_LEGEND_PALETTE.length
+                              ]
+                            : undefined,
+                }));
+            bundleLegend.setBundleEntries(
+                "a11y",
+                "Accessibility",
+                legendEntries,
+            );
+            reflectLegendActiveTab();
             // Paint the merged hierarchy + findings overlay. In focus
             // mode only the focused card paints; in grid mode every
             // visible card paints with its own per-card data. Realises
@@ -1588,6 +1630,51 @@ export class PreviewApp extends LitElement {
             });
         };
 
+        // Compact "role · states" subtitle for the a11y legend entries.
+        // Mirror of the legacy `a11yHierarchyPresenter` detail string
+        // so users see the same short tag in both surfaces.
+        const a11yLegendDetail = (row: {
+            role: string;
+            states: string;
+            touchTargetSizeDp: string | null;
+        }): string => {
+            const parts: string[] = [];
+            if (row.role) parts.push(row.role);
+            if (row.states) parts.push(row.states);
+            if (row.touchTargetSizeDp) parts.push(row.touchTargetSizeDp);
+            return parts.join(" · ");
+        };
+        // Palette colours for info-level a11y entries — keep the
+        // legend swatch in sync with the overlay's per-node colour
+        // pick. Matches the `PALETTE` constant in
+        // `a11yBundlePresenter.ts`.
+        const A11Y_LEGEND_PALETTE: readonly string[] = [
+            "#f28b82",
+            "#aecbfa",
+            "#a8dab5",
+            "#fdd663",
+            "#d7aefb",
+            "#fcad70",
+            "#80cbc4",
+            "#f6aea9",
+        ];
+        // Show the legend slice for the currently active tab. Called
+        // from each bundle's refresh after it stashes its entries,
+        // and from `reflectBundleState` when the tab switches.
+        const reflectLegendActiveTab = (): void => {
+            const tab = bundleController.state().activeTab;
+            const showBundleUi = focusController.inFocus() && earlyFeatures();
+            if (!showBundleUi || !tab) {
+                bundleLegend.showBundle(null);
+                bundleLegend.hidden = true;
+                return;
+            }
+            const count = bundleLegend.showBundle(tab);
+            // Hidden when the active bundle has no entries (e.g. the
+            // Perf tab — no overlay boxes to legend) so the empty
+            // panel doesn't reserve layout space next to the preview.
+            bundleLegend.hidden = count === 0;
+        };
         const reflectBundleState = (): void => {
             const s = bundleController.state();
             bundleChipBar.setState({
@@ -1639,9 +1726,58 @@ export class PreviewApp extends LitElement {
                 // surface.
                 clearBundleBoxes(null, "inspection");
             }
+            // Drop legend slices for bundles that are no longer
+            // active so re-pressing the chip starts from a clean
+            // state, and refresh the visible slice to track the
+            // current tab.
+            for (const b of s.bundles) {
+                if (!s.activeBundles.includes(b.id)) {
+                    bundleLegend.clearBundle(b.id);
+                }
+            }
+            reflectLegendActiveTab();
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
+        // Mirror hover between the legend and the per-bundle overlay
+        // layer. Only the *focused* card has a `<box-overlay>`
+        // currently rendering the active bundle's boxes, so we hop to
+        // it via the focusController and call `setActiveOverlayId`
+        // on the layer that matches the active tab.
+        const overlayLayerForActiveTab = ():
+            | import("./components/BoxOverlay").BoxOverlay
+            | null => {
+            const tab = bundleController.state().activeTab;
+            if (!tab) return null;
+            const card = focusController.focusedCard();
+            if (!card) return null;
+            return card.querySelector<
+                import("./components/BoxOverlay").BoxOverlay
+            >(`box-overlay[data-bundle="${tab}"]`);
+        };
+        bundleLegend.addEventListener("legend-hovered", (evt) => {
+            const det = (
+                evt as CustomEvent<
+                    import("./components/BundleLegend").BundleLegendHoveredDetail
+                >
+            ).detail;
+            const layer = overlayLayerForActiveTab();
+            if (layer) layer.setActiveOverlayId(det.entryId);
+        });
+        bundleLegend.addEventListener("legend-selected", (evt) => {
+            const det = (
+                evt as CustomEvent<
+                    import("./components/BundleLegend").BundleLegendSelectedDetail
+                >
+            ).detail;
+            const tab = bundleController.state().activeTab;
+            if (!tab) return;
+            // Scoped to the `<data-tabs>` subtree — see
+            // `bundleLegendTarget.ts` for why a document-wide
+            // selector picks the overlay box instead of the table row.
+            const row = findLegendTarget(dataTabs, tab, det.entryId);
+            row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
         bundleChipBar.addEventListener("bundle-toggled", (evt) => {
             const detail = (evt as CustomEvent<{ id: BundleId }>).detail;
             const wasActive = bundleController

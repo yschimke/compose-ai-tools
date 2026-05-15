@@ -371,6 +371,114 @@ body {
 .preview-grid.layout-focus {
     display: block;
 }
+
+/* Focus-stage flex layout: preview-grid on the left, bundle-legend
+ * column on the right. Outside of focus mode the legend stays hidden
+ * (host gates via `[hidden]`) so the stage falls back to a plain
+ * block layout matching the pre-legend behaviour.  */
+.focus-stage {
+    display: contents;
+}
+.focus-stage:has(.focus-stage-legend:not([hidden])) {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 12px;
+}
+.focus-stage:has(.focus-stage-legend:not([hidden])) > .preview-grid {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.focus-stage-legend {
+    flex: 0 0 280px;
+    max-width: 320px;
+    max-height: 70vh;
+    overflow: auto;
+    border: 1px solid var(--card-border, rgba(127, 127, 127, 0.2));
+    border-radius: 4px;
+    background: var(--vscode-editor-background, transparent);
+}
+.focus-stage-legend[hidden] {
+    display: none;
+}
+.bundle-legend-panel {
+    display: flex;
+    flex-direction: column;
+}
+.bundle-legend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--card-border, rgba(127, 127, 127, 0.2));
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground, currentColor);
+}
+.bundle-legend-count {
+    font-weight: 400;
+    opacity: 0.7;
+}
+.bundle-legend-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+}
+.bundle-legend-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background-color 80ms ease-out;
+}
+.bundle-legend-entry:hover,
+.bundle-legend-entry-active {
+    background: var(--vscode-list-hoverBackground, rgba(127, 127, 127, 0.1));
+}
+.bundle-legend-entry:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder, currentColor);
+    outline-offset: -1px;
+}
+.bundle-legend-swatch {
+    flex: 0 0 12px;
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    border-radius: 2px;
+    background: var(--legend-swatch-color, var(--swatch-fallback, #1976d2));
+    border: 1px solid
+        var(--legend-swatch-color, var(--swatch-fallback, #1976d2));
+}
+.bundle-legend-swatch[data-level="error"] {
+    --swatch-fallback: #d32f2f;
+}
+.bundle-legend-swatch[data-level="warning"] {
+    --swatch-fallback: #f57c00;
+}
+.bundle-legend-swatch[data-level="info"] {
+    --swatch-fallback: #1976d2;
+}
+.bundle-legend-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.bundle-legend-label {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bundle-legend-detail {
+    font-size: 11px;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .preview-grid.layout-focus .preview-card.hidden-by-focus {
     display: none;
 }
