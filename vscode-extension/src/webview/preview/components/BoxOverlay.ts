@@ -14,6 +14,7 @@
 
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { ref } from "lit/directives/ref.js";
 
 export type OverlayLevel = "error" | "warning" | "info";
 
@@ -87,23 +88,34 @@ export class BoxOverlay extends LitElement {
         const height =
             ((b.bounds.bottom - b.bounds.top) / this.naturalHeight) * 100;
         const active = this.activeOverlayId === b.id;
-        const style = [
-            `left:${left}%`,
-            `top:${top}%`,
-            `width:${width}%`,
-            `height:${height}%`,
-            b.color ? `--overlay-color:${b.color}` : "",
-        ]
-            .filter(Boolean)
-            .join(";");
+        // VS Code's webview CSP rejects inline `style=` attributes
+        // (style-src lacks `'unsafe-inline'`), and Lit's `styleMap`
+        // directive sets the attribute the same way — both get
+        // blocked. Setting the styles via the CSSOM (`element.style
+        // .foo = …`) in a `ref` callback is a separate code path
+        // CSP doesn't intercept, so we apply position / size /
+        // optional colour there instead.
+        const applyStyle = (el: Element | undefined): void => {
+            if (!el) return;
+            const e = el as HTMLDivElement;
+            e.style.left = `${left}%`;
+            e.style.top = `${top}%`;
+            e.style.width = `${width}%`;
+            e.style.height = `${height}%`;
+            if (b.color) {
+                e.style.setProperty("--overlay-color", b.color);
+            } else {
+                e.style.removeProperty("--overlay-color");
+            }
+        };
         return html`
             <div
+                ${ref(applyStyle)}
                 class=${active
                     ? "overlay-box overlay-box-active"
                     : "overlay-box"}
                 data-overlay-id=${b.id}
                 data-level=${b.level ?? "info"}
-                style=${style}
                 title=${b.tooltip ?? ""}
                 @mouseenter=${() => this.onHover(b.id)}
                 @mouseleave=${() => this.onHover(null)}

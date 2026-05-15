@@ -75,6 +75,10 @@ import {
     displayFilterTableColumns,
 } from "./displayFilterBundlePresenter";
 import {
+    computeResourcesBundleData,
+    resourcesTableColumns,
+} from "./resourcesBundlePresenter";
+import {
     computeErrorsBundleData,
     errorsTableColumns,
     renderErrorsStackFrames,
@@ -1242,6 +1246,44 @@ export class PreviewApp extends LitElement {
             dataTabs.setTabBody("display", body.wrapper);
         };
 
+        // ---- Resources bundle (resources/used) -----------------------------
+        const resourcesBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("resources");
+            if (b) return b;
+            b = buildBundleBody(
+                "resources",
+                "Resources used",
+                resourcesTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            bundleBodies.set("resources", b);
+            return b;
+        };
+        const refreshResourcesBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const payload = byKind?.get("resources/used") ?? null;
+            const data = computeResourcesBundleData(payload);
+            const body = resourcesBodyBuilt();
+            const table = body.table;
+            table.setRows(data.rows);
+            table.summary =
+                data.rows.length +
+                " reference" +
+                (data.rows.length === 1 ? "" : "s");
+            table.setOverlayId(
+                (row) => (row as { id: string }).id ?? "resource-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                payload,
+            }));
+            refreshExpanderFor("resources");
+            dataTabs.setTabBody("resources", body.wrapper);
+        };
+
         // ---- Watch bundle (compose/ambient) --------------------------------
         const ambientBodyBuilt = (): BundleBody => {
             let b = bundleBodies.get("watch");
@@ -1551,6 +1593,7 @@ export class PreviewApp extends LitElement {
             }
             if (s.activeBundles.includes("theming")) refreshThemingBundle();
             if (s.activeBundles.includes("display")) refreshDisplayBundle();
+            if (s.activeBundles.includes("resources")) refreshResourcesBundle();
             if (s.activeBundles.includes("watch")) {
                 refreshWatchBundle();
             } else {
@@ -2040,6 +2083,13 @@ export class PreviewApp extends LitElement {
                 ) {
                     refreshInspectionBundle();
                 }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("resources") &&
+                    dataProducts.some((dp) => dp.kind === "resources/used")
+                ) {
+                    refreshResourcesBundle();
+                }
             },
             applyFontPreviewBytes: (previewId, fontRowId, dataUri) => {
                 // Stash the response (null included — represents "host
@@ -2071,6 +2121,7 @@ export class PreviewApp extends LitElement {
                 }
             },
             focusOnCard,
+            deactivateAllBundles: () => bundleController.deactivateAll(),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);
