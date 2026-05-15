@@ -1,0 +1,111 @@
+/* VS Code "Dark Modern" theme tokens for the preview harness.
+ * Values are the ones VS Code's built-in dark theme resolves to —
+ * good enough for design discussions outside a real webview.
+ *
+ * Toggle the dark/light root via `<html data-vscode-theme="light">` —
+ * the `[data-vscode-theme="light"]` block below overrides the dark
+ * values where they differ.
+ *
+ * Drift policy: when preview.css starts using a new --vscode-* token,
+ * add it here. There is no live link to VS Code's source. */
+
+:root {
+    color-scheme: dark;
+
+    --vscode-font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+        Helvetica, Arial, sans-serif;
+    --vscode-font-size: 13px;
+    --vscode-editor-font-family: "SF Mono", Monaco, Menlo, Consolas, monospace;
+
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-errorForeground: #f48771;
+    --vscode-focusBorder: #007fd4;
+    --vscode-icon-foreground: #c5c5c5;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-textLink-activeForeground: #3794ff;
+
+    --vscode-editor-background: #1f1f1f;
+    --vscode-editor-inactiveSelectionBackground: #3a3d41;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545;
+
+    --vscode-panel-border: #2b2b2b;
+
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-toolbar-activeBackground: rgba(99, 102, 103, 0.31);
+
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-border: transparent;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-button-secondaryForeground: #cccccc;
+
+    --vscode-dropdown-background: #3c3c3c;
+    --vscode-dropdown-foreground: #f0f0f0;
+    --vscode-dropdown-border: #3c3c3c;
+    --vscode-dropdown-listBackground: #3c3c3c;
+
+    --vscode-badge-background: #4d4d4d;
+    --vscode-badge-foreground: #ffffff;
+
+    --vscode-progressBar-background: #0e70c0;
+
+    --vscode-tab-activeBackground: #1f1f1f;
+    --vscode-tab-activeForeground: #ffffff;
+    --vscode-tab-inactiveBackground: #2d2d2d;
+    --vscode-tab-inactiveForeground: #9d9d9d;
+
+    --vscode-statusBarItem-prominentBackground: #0e639c;
+    --vscode-statusBarItem-prominentForeground: #ffffff;
+
+    --vscode-editorInfo-foreground: #3794ff;
+    --vscode-editorWarning-foreground: #cca700;
+    --vscode-notificationsWarningIcon-foreground: #cca700;
+    --vscode-testing-iconPassed: #73c991;
+    --vscode-charts-green: #89d185;
+
+    --vscode-inputValidation-errorBackground: #5a1d1d;
+    --vscode-inputValidation-errorForeground: #cccccc;
+    --vscode-inputValidation-errorBorder: #be1100;
+    --vscode-inputValidation-warningBackground: #352a05;
+    --vscode-inputValidation-warningForeground: #cccccc;
+}
+
+[data-vscode-theme="light"] {
+    color-scheme: light;
+
+    --vscode-foreground: #3b3b3b;
+    --vscode-descriptionForeground: #717171;
+    --vscode-errorForeground: #a1260d;
+    --vscode-icon-foreground: #424242;
+
+    --vscode-editor-background: #ffffff;
+    --vscode-editor-inactiveSelectionBackground: #e5ebf1;
+    --vscode-editorWidget-background: #f8f8f8;
+    --vscode-editorWidget-foreground: #3b3b3b;
+    --vscode-editorWidget-border: #c8c8c8;
+
+    --vscode-panel-border: #e5e5e5;
+    --vscode-list-hoverBackground: #e8e8e8;
+
+    --vscode-button-background: #005fb8;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #0258a8;
+    --vscode-button-secondaryBackground: #e5e5e5;
+    --vscode-button-secondaryForeground: #3b3b3b;
+
+    --vscode-dropdown-background: #ffffff;
+    --vscode-dropdown-foreground: #3b3b3b;
+    --vscode-dropdown-border: #cecece;
+    --vscode-dropdown-listBackground: #ffffff;
+
+    --vscode-tab-activeBackground: #ffffff;
+    --vscode-tab-activeForeground: #3b3b3b;
+    --vscode-tab-inactiveBackground: #ececec;
+    --vscode-tab-inactiveForeground: #717171;
+}
