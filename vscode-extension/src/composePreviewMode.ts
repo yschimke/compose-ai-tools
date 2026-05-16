@@ -11,18 +11,23 @@
  *   live previews. Drives `GradleOnlyDaemonGate` + `GradleOnlyDaemonScheduler`.
  * - `"full"` — daemon backend with all features. Drives `LiveDaemonGate` +
  *   `LiveDaemonScheduler`.
+ *
+ * The legacy `"auto"` mode is gone. The bundled `--init-script` applies the
+ * preview plugin to every workspace that applies a host plugin
+ * (`com.android.application`, `com.android.library`, `org.jetbrains.compose`),
+ * so `"full"` is safe to default to. Users on workspaces where the daemon
+ * overhead isn't wanted flip to `"minimal"` explicitly.
  */
 export type ComposePreviewMode = "minimal" | "full";
 
 /**
- * Why [resolveModeFromSettings] picked the backend it picked. Surfaced
- * through [ResolvedMode.reason] so activation + post-Gradle-sync re-evaluation
- * can decide whether to show a "switch to full mode?" reload notification.
+ * Why [resolveModeFromSettings] picked the backend it picked. Today this is
+ * always `"user-setting"` — `auto-*` reasons disappeared with auto-mode. The
+ * field is preserved so the activation log + post-sync re-evaluation paths
+ * have a stable shape; if a future heuristic mode ever returns, add reasons
+ * here rather than reshaping `ResolvedMode`.
  */
-export type ModeReason =
-    | "user-setting"
-    | "auto-no-plugin-applied"
-    | "auto-plugin-applied";
+export type ModeReason = "user-setting";
 
 export interface ResolvedMode {
     mode: ComposePreviewMode;
@@ -30,33 +35,17 @@ export interface ResolvedMode {
 }
 
 /**
- * Pure mode-selection predicate. Takes the user's settings + a minimal
- * gradle-service slice. Auto-mode picks `"full"` only when at least one
- * workspace module already applies `ee.schimke.composeai.preview` (text scan
- * or `applied.json` marker); otherwise it falls back to `"minimal"`. Auto-inject
- * onto an Android / Compose host doesn't preemptively flip the mode here — the
- * plugin isn't actually applied until Gradle runs the init script, so the
- * activation-time call has no marker to read. The post-Gradle-sync
- * re-evaluation handles the upgrade: once `applied.json` markers exist,
- * `extension.ts` re-wires the daemon backend in place (no window reload), and
- * the panel webview drops its minimal-mode banner via `setMinimalMode`.
+ * Pure mode-selection predicate. Takes the user's settings; `gradleService` is
+ * accepted for forward compatibility with any future heuristic (e.g. a "force
+ * minimal for non-Compose workspaces" guard) but unused today.
  */
 export function resolveModeFromSettings(
     settings: {
-        mode: "auto" | "minimal" | "full";
+        mode: "minimal" | "full";
     },
-    gradleService: {
+    _gradleService?: {
         findPreviewModules(): { modulePath: string }[];
     },
 ): ResolvedMode {
-    if (settings.mode === "minimal") {
-        return { mode: "minimal", reason: "user-setting" };
-    }
-    if (settings.mode === "full") {
-        return { mode: "full", reason: "user-setting" };
-    }
-    if (gradleService.findPreviewModules().length > 0) {
-        return { mode: "full", reason: "auto-plugin-applied" };
-    }
-    return { mode: "minimal", reason: "auto-no-plugin-applied" };
+    return { mode: settings.mode, reason: "user-setting" };
 }

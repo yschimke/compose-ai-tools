@@ -4,7 +4,6 @@ import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
 import javax.imageio.ImageIO
-import org.gradle.testkit.runner.GradleRunner
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,9 +36,6 @@ class BundleRenderEndToEndFunctionalTest {
 
   private val cliBinary: String = System.getProperty("composeai.functionalTest.cliBinary", "")
 
-  private val pluginVersion: String =
-    System.getProperty("ee.schimke.composeai.functionalTest.pluginVersion", "")
-
   @Test
   fun `compose-preview bundle render produces real PNGs from a packed bundle`() {
     assumeTrue("Skipping: -Pbundle.render.e2e=true not set", bundleRenderE2E)
@@ -68,22 +64,42 @@ class BundleRenderEndToEndFunctionalTest {
     val projectDir = createDesktopProject()
     val previewId = "test.PreviewsKt.SimpleBoxPreview"
 
-    // Pack the bundle via the real Gradle task — same code path users hit.
-    val pack =
-      GradleRunner.create()
-        .withProjectDir(projectDir)
-        .withArguments(
-          "renderPreviews",
-          "composePreviewBundle",
-          "-PbundlePreviewIds=$previewId",
-          "--stacktrace",
+    // Pack the bundle by driving the CLI against a project that does NOT pre-apply the preview
+    // plugin — the bundled `--init-script` is what makes the gradle tasks materialise. This is
+    // the same shape end users hit when they invoke `compose-preview bundle pack` against an
+    // unmodified Compose Desktop project. `:app` not `:` because the CLI's module discovery skips
+    // the root project (gradlePath="") — real consumer projects almost always have a subproject.
+    val bundle = File(projectDir, "app/build/compose-previews/bundle.png")
+    val packBuilder =
+      ProcessBuilder(
+          cli.absolutePath,
+          "bundle",
+          "pack",
+          "--module",
+          ":app",
+          "--id",
+          previewId,
+          "-o",
+          bundle.absolutePath,
+          "--verbose",
         )
-        .forwardOutput()
-        .build()
-    assertThat(pack.output).doesNotContain("BUILD FAILED")
-
-    val bundle = File(projectDir, "build/compose-previews/bundle.png")
-    assertWithMessage("composePreviewBundle output missing").that(bundle.isFile).isTrue()
+        .directory(projectDir)
+        .redirectErrorStream(true)
+    // Auto-inject pulls the plugin classpath off `~/.m2` (where
+    // `functionalTestWithBundleRender` publishes it). Real users wouldn't flip this on.
+    packBuilder.environment()["COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL"] = "1"
+    val packProc = packBuilder.start()
+    val packOutput = packProc.inputStream.bufferedReader().use { it.readText() }
+    val packExit = packProc.waitFor()
+    assertWithMessage("compose-preview bundle pack output:\n$packOutput")
+      .that(packExit)
+      .isEqualTo(0)
+    assertWithMessage("expected the plugin-not-applied warning in stderr:\n$packOutput")
+      .that(packOutput)
+      .contains("plugin not applied")
+    assertWithMessage("composePreviewBundle output missing\n$packOutput")
+      .that(bundle.isFile)
+      .isTrue()
 
     val renderOut = File(projectDir, "render-out").apply { mkdirs() }
 
@@ -142,19 +158,24 @@ class BundleRenderEndToEndFunctionalTest {
             }
         }
         rootProject.name = "bundle-render-e2e"
+        include(":app")
         """
           .trimIndent()
       )
 
-    File(projectDir, "build.gradle.kts")
+    val appDir = File(projectDir, "app").apply { mkdirs() }
+    File(appDir, "build.gradle.kts")
       .writeText(
         """
         @file:Suppress("DEPRECATION")
+        // No `id("ee.schimke.composeai.preview")` on purpose — the CLI's bundled `--init-script`
+        // auto-injects it onto any project that applies `org.jetbrains.compose`. Pre-applying
+        // the plugin here would mask any regression in auto-inject. See
+        // `CliA11yEndToEndFunctionalTest` for the equivalent Android-flavour coverage.
         plugins {
             kotlin("jvm") version "2.2.21"
             kotlin("plugin.compose") version "2.2.21"
             id("org.jetbrains.compose") version "1.10.3"
-            id("ee.schimke.composeai.preview") version "$pluginVersion"
         }
         dependencies {
             implementation(compose.desktop.currentOs)
@@ -171,7 +192,7 @@ class BundleRenderEndToEndFunctionalTest {
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
 
-    val srcDir = File(projectDir, "src/main/kotlin/test")
+    val srcDir = File(appDir, "src/main/kotlin/test")
     srcDir.mkdirs()
     File(srcDir, "Previews.kt")
       .writeText(

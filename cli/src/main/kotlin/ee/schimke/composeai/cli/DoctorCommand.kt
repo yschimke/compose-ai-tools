@@ -306,6 +306,7 @@ class DoctorCommand(private val args: List<String>) {
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
+    warnIfPluginNotPreApplied(args, projectRoot = projectDir)
     val model =
       try {
         GradleConnection(

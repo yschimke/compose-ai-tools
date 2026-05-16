@@ -285,6 +285,212 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `pluginAppliedInBuildScripts finds the literal id form in a root build script`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            id("com.android.library") version "9.2.0"
+            id("ee.schimke.composeai.preview") version "0.10.0"
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts finds the Groovy DSL form in a nested module`() {
+    val root = tempDir()
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle")
+      .writeText(
+        """
+        plugins {
+            id 'com.android.application'
+            id 'ee.schimke.composeai.preview' version '0.10.0'
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts skips apply false lines (root-build subprojects pattern)`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            id("ee.schimke.composeai.preview") version "0.10.0" apply false
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts returns false when only host plugins are applied`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            id("com.android.library") version "9.2.0"
+            id("org.jetbrains.kotlin.plugin.compose") version "2.3.20"
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts skips build directories`() {
+    val root = tempDir()
+    val staleBuild = File(root, "build/some-cache").apply { mkdirs() }
+    File(staleBuild, "build.gradle.kts").writeText("""id("ee.schimke.composeai.preview")""")
+    assertFalse(pluginAppliedInBuildScripts(root), "build/ scratch directories must not be scanned")
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied emits when plugin is not in any build script`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText("plugins { id(\"com.android.library\") version \"9.2.0\" }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      pluginVersion = "0.10.0",
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertEquals(1, warnings.size)
+    assertTrue(
+      warnings.single().contains("plugin not applied"),
+      "unexpected warning text: ${warnings.single()}",
+    )
+    assertTrue(
+      warnings.single().contains("0.10.0"),
+      "warning should include the plugin version to copy/paste; got: ${warnings.single()}",
+    )
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied stays silent when plugin is applied literally`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            id("com.android.library")
+            id("ee.schimke.composeai.preview") version "0.10.0"
+        }
+        """
+          .trimIndent()
+      )
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(warnings.isEmpty(), "expected no warning when plugin is applied; got $warnings")
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied honours --no-plugin-warning`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = listOf("--no-plugin-warning"),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(warnings.isEmpty())
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied honours COMPOSE_PREVIEW_NO_PLUGIN_WARNING`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      env = { name -> if (name == "COMPOSE_PREVIEW_NO_PLUGIN_WARNING") "1" else null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(warnings.isEmpty())
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied stays silent when auto-inject is disabled`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = listOf("--no-auto-inject"),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(
+      warnings.isEmpty(),
+      "no auto-inject ⇒ user has opted out of the bundled flow; don't nag them",
+    )
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied stays silent in the compose-ai-tools dev loop`() {
+    val root = tempDir()
+    File(root, "settings.gradle.kts").writeText("includeBuild(\"gradle-plugin\")")
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(warnings.isEmpty())
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied prints at most once per process`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      env = { null },
+      stderr = { warnings += it },
+    )
+    assertEquals(1, warnings.size, "second call should not re-emit; got $warnings")
+  }
+
+  @Test
   fun `autoInjectInitScriptArgs swallows materialise failures and downgrades to no-inject`() {
     // Point storage at a path that can't be created: a regular file masquerading as a parent dir.
     val parent = tempDir()

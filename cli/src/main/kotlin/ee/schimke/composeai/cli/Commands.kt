@@ -348,6 +348,7 @@ abstract class Command(protected val args: List<String>) {
           exitProcess(1)
         }
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = root)
+    warnIfPluginNotPreApplied(args, projectRoot = root)
     val connection =
       withGradleStdout(silenceStdout) {
         GradleConnection(root, verbose, progress, extraArguments = injectArgs)

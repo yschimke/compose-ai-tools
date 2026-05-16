@@ -130,6 +130,7 @@ internal class McpCommand(args: List<String>) {
         verbose = "--verbose" in args || "-v" in args,
         extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
       )
+    warnIfPluginNotPreApplied(args, projectRoot = projectDir)
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
       val modules =
@@ -353,6 +354,7 @@ internal class McpCommand(args: List<String>) {
         verbose = false,
         extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
       )
+    warnIfPluginNotPreApplied(args, projectRoot = projectDir)
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
       val modules =

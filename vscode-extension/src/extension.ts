@@ -281,25 +281,22 @@ function earlyFeaturesEnabled(): boolean {
 
 /**
  * Production wrapper for [resolveModeFromSettings]. Reads live VS Code
- * settings and forwards. Called at activation and again after
- * `bootstrapAppliedMarkers()` finishes so the post-Gradle-sync re-evaluation
- * can prompt for a reload when the authoritative `applied.json` markers
- * reveal a plugin module the activation-time text scan missed.
+ * settings and forwards. Called once at activation — `"auto"` mode is gone,
+ * so the post-Gradle-sync re-evaluation is now redundant (`"minimal"`
+ * vs. `"full"` is a user pin).
+ *
+ * Legacy `"auto"` values stored from older versions of this extension fall
+ * through to `"full"` — auto-inject means the daemon backend is safe to use
+ * on every workspace that applies a host plugin, and `"auto-no-plugin-applied"`
+ * users would otherwise be silently downgraded to `"minimal"` on upgrade.
  */
 export function resolveMode(gradleService: {
     findPreviewModules(): { modulePath: string }[];
 }): ResolvedMode {
     const config = vscode.workspace.getConfiguration("composePreview");
-    const mode = config.get<string>("mode", "auto");
-    return resolveModeFromSettings(
-        {
-            mode:
-                mode === "minimal" || mode === "full" || mode === "auto"
-                    ? mode
-                    : "auto",
-        },
-        gradleService,
-    );
+    const raw = config.get<string>("mode", "full");
+    const mode: "minimal" | "full" = raw === "minimal" ? "minimal" : "full";
+    return resolveModeFromSettings({ mode }, gradleService);
 }
 
 /**
@@ -683,11 +680,13 @@ export async function activate(
             "[startup] minimal mode: gradle-only backend — daemon, data extensions and live previews disabled, renders are manual",
         );
     }
-    // Encapsulates gate + scheduler construction so the post-Gradle-sync
-    // re-evaluation can swap the backend in place when auto-inject reveals a
-    // workspace is actually full-mode-eligible. Closures inside the
+    // Encapsulates gate + scheduler construction. Was extracted so the
+    // post-Gradle-sync re-evaluation could swap backends in place when the
+    // old `"auto"` mode upgraded from minimal → full. Auto mode is gone now —
+    // the closure-wrapped backend wiring still lives here in case a future
+    // setting-change reload-less swap revives the need. Closures inside
     // [LiveDaemonScheduler] callbacks capture activate-scope state directly,
-    // which is why this lives inline rather than as a module function.
+    // which is why this stays inline rather than moving to a module function.
     const wireBackend = (targetMode: ComposePreviewMode): void => {
         const isMinimal = targetMode === "minimal";
         daemonGate = isMinimal
@@ -1336,48 +1335,19 @@ export async function activate(
     // and scheduler is enough; no window reload is needed. Re-wiring happens
     // before the panel sees its first preview request, which keeps the swap
     // invisible to the user in the typical case.
-    void gradleService
-        .bootstrapAppliedMarkers((err) => {
-            if (err instanceof ClassVersionError) {
-                showClassVersionRemediation(err);
-            } else if (err instanceof JdkImageError) {
-                showJdkImageRemediation(err);
-            }
-        })
-        .then(async () => {
-            if (!gradleService) {
-                return;
-            }
-            const post = resolveMode(gradleService);
-            if (
-                initialMode.mode === post.mode ||
-                post.reason === "user-setting"
-            ) {
-                return;
-            }
-            // Activation guessed minimal, but markers now show a plugin
-            // is applied. The opposite swing (full → minimal post-sync)
-            // can't happen because the signals are monotonic:
-            // `findPreviewModules()` only grows entries after a
-            // bootstrap, never loses them.
-            outputChannel.appendLine(
-                `[startup] mode re-eval after bootstrap: ${initialMode.mode} → ${post.mode} (${post.reason}); re-wiring backend in place`,
-            );
-            const previousGate = daemonGate;
-            wireBackend(post.mode);
-            // Tell the panel (if already open) to drop the minimal-mode
-            // banner and re-render the full-mode chrome. The apply-plugin
-            // link disappears with the banner.
-            panel?.postMessage({
-                command: "setMinimalMode",
-                minimal: post.mode === "minimal",
-            });
-            // Dispose the old gate after the swap so any in-flight gate
-            // calls finish against their original instance. The
-            // gradle-only gate's dispose is a no-op; the reverse
-            // direction is unreachable per the monotonicity argument.
-            await previousGate?.dispose();
-        });
+    // `bootstrapAppliedMarkers` still runs so other parts of the system
+    // (panel chrome, plugin-detection caches) see the authoritative marker
+    // JSON Gradle writes. The post-sync mode re-evaluation that used to
+    // upgrade `"auto"` from `"minimal"` to `"full"` is gone: `composePreview.mode`
+    // is now a binary user pin (`"minimal"` | `"full"`), so the mode never
+    // changes mid-session except via a settings change + window reload.
+    void gradleService.bootstrapAppliedMarkers((err) => {
+        if (err instanceof ClassVersionError) {
+            showClassVersionRemediation(err);
+        } else if (err instanceof JdkImageError) {
+            showJdkImageRemediation(err);
+        }
+    });
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((event) => {
