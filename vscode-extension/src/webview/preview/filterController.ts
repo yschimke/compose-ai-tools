@@ -40,10 +40,6 @@ export interface FilterControllerConfig {
     /** Re-apply layout after filter change — focus mode needs to
      *  recompute focusIndex bounds against the narrowed visible set. */
     applyLayout(): void;
-    /** Reflects `composePreview.collapseVariants.enabled`. When `true`,
-     *  the grid hides duplicate variants of the same function while no
-     *  function/group filter is narrowing the visible set. */
-    collapseVariants(): boolean;
 }
 
 export class FilterController {
@@ -75,13 +71,10 @@ export class FilterController {
      *  mode recomputes focusIndex bounds against the narrowed visible
      *  set). */
     apply(): void {
-        const visibleCount = this.config.grid.applyFilters(
-            {
-                fn: this.config.filterToolbar.getFunctionValue(),
-                group: this.config.filterToolbar.getGroupValue(),
-            },
-            { collapseVariants: this.config.collapseVariants() },
-        );
+        const visibleCount = this.config.grid.applyFilters({
+            fn: this.config.filterToolbar.getFunctionValue(),
+            group: this.config.filterToolbar.getGroupValue(),
+        });
 
         // Only own the message when we have a filter-specific thing to
         // say. When there are no previews at all, the extension owns

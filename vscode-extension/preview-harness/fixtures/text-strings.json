@@ -3,10 +3,7 @@
   "description": "Focused card with realistic text/strings + fonts/used + i18n/translations payloads. Activates the Text / i18n bundle so the overflow/truncation overlay paints over the footer, the side legend lists each drawn-text entry, and the tab body renders the strings + fonts sub-tables.",
   "dataset": {
     "earlyFeatures": "true",
-    "autoEnableCheap": "false",
-    "collapseVariants": "false",
-    "minimalMode": "false",
-    "autoInject": "true"
+    "minimalMode": "false"
   },
   "messages": [
     {
