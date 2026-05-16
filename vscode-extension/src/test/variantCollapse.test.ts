@@ -10,20 +10,8 @@ const c = (id: string, functionKey: string): VariantCollapseCandidate => ({
 });
 
 describe("decideVariantCollapse", () => {
-    it("is inactive when the feature is disabled", () => {
-        const decision = decideVariantCollapse({
-            collapseVariants: false,
-            fnFilter: "all",
-            groupFilter: "all",
-            candidates: [c("a", "k1"), c("b", "k1"), c("d", "k2")],
-        });
-        assert.strictEqual(decision.active, false);
-        assert.strictEqual(decision.hidden.size, 0);
-    });
-
     it("is inactive when a function filter is narrowing", () => {
         const decision = decideVariantCollapse({
-            collapseVariants: true,
             fnFilter: "MyComposable",
             groupFilter: "all",
             candidates: [c("a", "k1"), c("b", "k1")],
@@ -34,7 +22,6 @@ describe("decideVariantCollapse", () => {
 
     it("is inactive when a group filter is narrowing", () => {
         const decision = decideVariantCollapse({
-            collapseVariants: true,
             fnFilter: "all",
             groupFilter: "dark",
             candidates: [c("a", "k1"), c("b", "k1")],
@@ -45,7 +32,6 @@ describe("decideVariantCollapse", () => {
 
     it("keeps the first variant per function key when active", () => {
         const decision = decideVariantCollapse({
-            collapseVariants: true,
             fnFilter: "all",
             groupFilter: "all",
             candidates: [
@@ -65,7 +51,6 @@ describe("decideVariantCollapse", () => {
 
     it("treats different className+functionName pairs as independent", () => {
         const decision = decideVariantCollapse({
-            collapseVariants: true,
             fnFilter: "all",
             groupFilter: "all",
             candidates: [
@@ -82,7 +67,6 @@ describe("decideVariantCollapse", () => {
 
     it("emits an empty hidden set when there are no candidates", () => {
         const decision = decideVariantCollapse({
-            collapseVariants: true,
             fnFilter: "all",
             groupFilter: "all",
             candidates: [],

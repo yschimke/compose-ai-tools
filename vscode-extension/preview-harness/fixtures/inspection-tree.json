@@ -3,10 +3,7 @@
   "description": "Focused card with realistic compose/semantics + layout/inspector payloads. Activates the Inspection bundle so the overlay layer paints over the header / primary CTA / secondary CTA / footer regions, the side legend populates with one entry per overlay box (label · role · testTag), and the inspection tab body renders the per-kind tree tables.",
   "dataset": {
     "earlyFeatures": "true",
-    "autoEnableCheap": "false",
-    "collapseVariants": "false",
-    "minimalMode": "false",
-    "autoInject": "true"
+    "minimalMode": "false"
   },
   "messages": [
     {

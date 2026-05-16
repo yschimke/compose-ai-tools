@@ -303,18 +303,6 @@ export function resolveMode(gradleService: {
 }
 
 /**
- * Whether the bundled `apply-compose-ai-preview.init.gradle.kts` is passed
- * to Gradle via `--init-script`. Off ⇒ the user must apply the preview
- * plugin themselves; on (default) ⇒ the script auto-applies it to any
- * Android / Compose project.
- */
-function autoInjectEnabled(): boolean {
-    return vscode.workspace
-        .getConfiguration("composePreview")
-        .get<boolean>("autoInject.enabled", true);
-}
-
-/**
  * True when the GradleOnly backend is wired up — i.e. we're in minimal mode.
  * Module-scope so auto-render call sites that live outside `activate()` (e.g.
  * [onDiagnosticsChanged], the stale-source kicker inside [refresh]) can gate
@@ -327,18 +315,6 @@ function autoInjectEnabled(): boolean {
  */
 function inMinimalMode(): boolean {
     return daemonGate?.spawnsDaemons === false;
-}
-
-function autoEnableCheapEnabled(): boolean {
-    return vscode.workspace
-        .getConfiguration("composePreview")
-        .get<boolean>("autoEnableCheap.enabled", false);
-}
-
-function collapseVariantsEnabled(): boolean {
-    return vscode.workspace
-        .getConfiguration("composePreview")
-        .get<boolean>("collapseVariants.enabled", true);
 }
 
 /**
@@ -664,20 +640,18 @@ export async function activate(
     // TypeScript and keep the rendered script in extension storage, which
     // survives extension updates without polluting `~/.gradle/init.d/`.
     let initScriptArgs: readonly string[] = [];
-    if (autoInjectEnabled()) {
-        try {
-            const initScriptPath = materializeInitScript(
-                context.globalStorageUri.fsPath,
-            );
-            initScriptArgs = ["--init-script", initScriptPath];
-            outputChannel.appendLine(
-                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
-            );
-        } catch (err) {
-            outputChannel.appendLine(
-                `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
-            );
-        }
+    try {
+        const initScriptPath = materializeInitScript(
+            context.globalStorageUri.fsPath,
+        );
+        initScriptArgs = ["--init-script", initScriptPath];
+        outputChannel.appendLine(
+            `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+        );
+    } catch (err) {
+        outputChannel.appendLine(
+            `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
+        );
     }
 
     gradleService = new GradleService(
@@ -1055,10 +1029,7 @@ export async function activate(
         onMessage,
         () => earlyFeaturesEnabled(),
         undefined,
-        () => autoEnableCheapEnabled(),
-        () => collapseVariantsEnabled(),
         () => inMinimalMode(),
-        () => autoInjectEnabled(),
     );
     if (isTestMode) {
         // Tap into every outgoing webview message so the test API can assert
@@ -1415,26 +1386,6 @@ export async function activate(
                 panel?.postMessage({
                     command: "setEarlyFeatures",
                     enabled: earlyFeaturesEnabled(),
-                });
-            }
-            if (
-                event.affectsConfiguration(
-                    "composePreview.autoEnableCheap.enabled",
-                )
-            ) {
-                panel?.postMessage({
-                    command: "setAutoEnableCheap",
-                    enabled: autoEnableCheapEnabled(),
-                });
-            }
-            if (
-                event.affectsConfiguration(
-                    "composePreview.collapseVariants.enabled",
-                )
-            ) {
-                panel?.postMessage({
-                    command: "setCollapseVariants",
-                    enabled: collapseVariantsEnabled(),
                 });
             }
         }),

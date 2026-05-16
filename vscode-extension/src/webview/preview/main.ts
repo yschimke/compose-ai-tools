@@ -214,12 +214,6 @@ export class PreviewApp extends LitElement {
 
     protected render(): TemplateResult {
         const minimal = this.dataset.minimalMode === "true";
-        // When the bundled auto-inject init script handles the plugin, the
-        // "Apply plugin to project" link is misleading: the extension already
-        // applies it on every Gradle run, and the button's only effect is to
-        // open the build script. Hide it in that case so users aren't nudged
-        // toward an edit they don't need to make.
-        const autoInject = this.dataset.autoInject !== "false";
         return html`
             <progress-bar></progress-bar>
             <compile-errors-banner></compile-errors-banner>
@@ -262,19 +256,6 @@ export class PreviewApp extends LitElement {
                                   ></i>
                                   <span>Refresh previews</span>
                               </button>
-                              ${autoInject
-                                  ? ""
-                                  : html`
-                                        <button
-                                            type="button"
-                                            id="btn-minimal-apply-plugin"
-                                            class="minimal-apply-link"
-                                            title="Open this module's build script to apply the Compose Preview plugin"
-                                            aria-label="Apply Compose Preview plugin to project"
-                                        >
-                                            Apply plugin to project
-                                        </button>
-                                    `}
                           </div>
                       </div>
                   `
@@ -431,12 +412,6 @@ export class PreviewApp extends LitElement {
     protected firstUpdated(): void {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
-        const initialAutoEnableCheap = this.dataset.autoEnableCheap === "true";
-        // Default true keeps the new collapse-by-default behaviour in
-        // ad-hoc test contexts (where the dataset attribute is missing);
-        // explicit `false` opts out.
-        const initialCollapseVariants =
-            this.dataset.collapseVariants !== "false";
         const minimalMode = this.dataset.minimalMode === "true";
         const vscode = getVsCodeApi<PersistedState>();
         // Listen for runtime mode flips from the extension (post-Gradle-sync
@@ -471,11 +446,6 @@ export class PreviewApp extends LitElement {
                 if (pending) pending.hidden = true;
                 vscode.postMessage({ command: "requestRefresh" });
             });
-            this.querySelector<HTMLButtonElement>(
-                "#btn-minimal-apply-plugin",
-            )?.addEventListener("click", () => {
-                vscode.postMessage({ command: "openModuleBuildFile" });
-            });
             // Toggle the "Saved changes pending" hint based on extension
             // signals. The extension fires `minimalSavePending` from the
             // save handler when it deliberately skips an auto-render so
@@ -502,8 +472,6 @@ export class PreviewApp extends LitElement {
         // terseness; writes go straight to `previewStore.setState`.
         previewStore.setState({
             earlyFeaturesEnabled: initialEarlyFeaturesEnabled,
-            autoEnableCheapEnabled: initialAutoEnableCheap,
-            collapseVariantsEnabled: initialCollapseVariants,
         });
         const earlyFeatures = (): boolean =>
             previewStore.getState().earlyFeaturesEnabled;
@@ -2183,8 +2151,6 @@ export class PreviewApp extends LitElement {
             messageBanner,
             getAllPreviews: () => previewStore.getState().allPreviews,
             applyLayout: () => focusController.applyLayout(),
-            collapseVariants: () =>
-                previewStore.getState().collapseVariantsEnabled,
         });
 
         const staleBadge = new StaleBadgeController(vscode);

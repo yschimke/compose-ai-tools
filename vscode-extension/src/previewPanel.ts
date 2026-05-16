@@ -8,10 +8,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private extensionUri: vscode.Uri;
     private onMessage: (msg: WebviewToExtension) => void;
     private earlyFeaturesEnabled: () => boolean;
-    private autoEnableCheapEnabled: () => boolean;
-    private collapseVariantsEnabled: () => boolean;
     private minimalModeEnabled: () => boolean;
-    private autoInjectEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
 
     constructor(
@@ -19,18 +16,12 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         onMessage: (msg: WebviewToExtension) => void,
         earlyFeaturesEnabled: () => boolean = () => false,
         shouldRestoreVisibility: () => boolean = () => false,
-        autoEnableCheapEnabled: () => boolean = () => false,
-        collapseVariantsEnabled: () => boolean = () => true,
         minimalModeEnabled: () => boolean = () => false,
-        autoInjectEnabled: () => boolean = () => true,
     ) {
         this.extensionUri = extensionUri;
         this.onMessage = onMessage;
         this.earlyFeaturesEnabled = earlyFeaturesEnabled;
-        this.autoEnableCheapEnabled = autoEnableCheapEnabled;
-        this.collapseVariantsEnabled = collapseVariantsEnabled;
         this.minimalModeEnabled = minimalModeEnabled;
-        this.autoInjectEnabled = autoInjectEnabled;
         this.shouldRestoreVisibility = shouldRestoreVisibility;
     }
 
@@ -63,10 +54,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private getHtml(webview: vscode.Webview): string {
         const nonce = getNonce();
         const earlyFeaturesEnabled = this.earlyFeaturesEnabled();
-        const autoEnableCheapEnabled = this.autoEnableCheapEnabled();
-        const collapseVariantsEnabled = this.collapseVariantsEnabled();
         const minimalModeEnabled = this.minimalModeEnabled();
-        const autoInjectEnabled = this.autoInjectEnabled();
         const styleUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this.extensionUri, "media", "preview.css"),
         );
@@ -95,10 +83,7 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 <body>
     <preview-app
         data-early-features="${earlyFeaturesEnabled ? "true" : "false"}"
-        data-auto-enable-cheap="${autoEnableCheapEnabled ? "true" : "false"}"
-        data-collapse-variants="${collapseVariantsEnabled ? "true" : "false"}"
         data-minimal-mode="${minimalModeEnabled ? "true" : "false"}"
-        data-auto-inject="${autoInjectEnabled ? "true" : "false"}"
     ></preview-app>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
