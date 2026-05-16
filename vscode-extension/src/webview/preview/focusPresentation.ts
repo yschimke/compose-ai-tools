@@ -204,7 +204,10 @@ function a11yHierarchyPresenter(
         const box = document.createElement("div");
         box.className = "focus-overlay-box";
         box.dataset.overlayId = "node-" + idx;
-        box.dataset.level = node.merged ? "warning" : "info";
+        // Daemon writes `AccessibilityNode` with `encodeDefaults = false`,
+        // so `merged: true` (the Kotlin default) is omitted from JSON;
+        // only an explicit `false` means unmerged.
+        box.dataset.level = node.merged === false ? "info" : "warning";
         // Bounds are in source-bitmap pixels; the overlay layer sizes
         // to the image's intrinsic size so % positioning lines up
         // without a resize handler.
@@ -221,7 +224,7 @@ function a11yHierarchyPresenter(
         detail:
             (node.role ? node.role : "") +
             (node.states.length > 0 ? " · " + node.states.join(", ") : ""),
-        level: node.merged ? "warning" : "info",
+        level: node.merged === false ? "info" : "warning",
     }));
 
     const reportBody = document.createElement("ol");
