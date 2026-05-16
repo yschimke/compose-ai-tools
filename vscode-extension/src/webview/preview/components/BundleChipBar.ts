@@ -23,13 +23,26 @@ export interface BundleToggledDetail {
 export class BundleChipBar extends LitElement {
     @state() private bundles: readonly BundleDescriptor[] = [];
     @state() private activeBundles: readonly BundleId[] = [];
+    /** Bundle ids the user is allowed to toggle in the current panel
+     *  configuration. When `null`, every bundle in `bundles` is shown
+     *  (the early-features-on default). When a set, only those bundles
+     *  paint chips — the rest are hidden so a basic-mode panel surfaces
+     *  just the graduated extensions (e.g. a11y) without leaking the
+     *  in-progress ones. */
+    @state() private availableBundles: ReadonlySet<BundleId> | null = null;
 
     setState(snapshot: {
         bundles: readonly BundleDescriptor[];
         activeBundles: readonly BundleId[];
+        availableBundles?: readonly BundleId[] | null;
     }): void {
         this.bundles = snapshot.bundles;
         this.activeBundles = snapshot.activeBundles;
+        this.availableBundles =
+            snapshot.availableBundles === undefined ||
+            snapshot.availableBundles === null
+                ? null
+                : new Set(snapshot.availableBundles);
     }
 
     protected createRenderRoot(): HTMLElement {
@@ -37,13 +50,18 @@ export class BundleChipBar extends LitElement {
     }
 
     protected render(): TemplateResult {
+        const visible = this.bundles.filter(
+            (b) =>
+                this.availableBundles === null ||
+                this.availableBundles.has(b.id),
+        );
         return html`
             <div
                 class="bundle-chip-bar"
                 role="toolbar"
                 aria-label="Data extensions"
             >
-                ${this.bundles.map((b) => this.renderChip(b))}
+                ${visible.map((b) => this.renderChip(b))}
             </div>
         `;
     }

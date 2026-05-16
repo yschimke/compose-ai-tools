@@ -398,7 +398,6 @@ export class PreviewApp extends LitElement {
                     hidden
                 ></bundle-legend>
             </div>
-            <bundle-chip-bar hidden></bundle-chip-bar>
             <data-tabs hidden></data-tabs>
             <div
                 id="focus-inspector"
@@ -406,6 +405,7 @@ export class PreviewApp extends LitElement {
                 hidden
                 aria-label="Focused preview data"
             ></div>
+            <bundle-chip-bar></bundle-chip-bar>
         `;
     }
 
@@ -1935,9 +1935,16 @@ export class PreviewApp extends LitElement {
         };
         const reflectBundleState = (): void => {
             const s = bundleController.state();
+            // Without early features only the graduated bundles (a11y for
+            // now) show their chip — the rest are still in-progress and
+            // shouldn't surface from the always-visible chip bar.
+            const availableBundles: BundleId[] = earlyFeatures()
+                ? s.bundles.map((b) => b.id)
+                : ["a11y"];
             bundleChipBar.setState({
                 bundles: s.bundles,
                 activeBundles: s.activeBundles,
+                availableBundles,
             });
             dataTabs.setState({
                 bundles: s.bundles,
@@ -2530,6 +2537,7 @@ export class PreviewApp extends LitElement {
             },
             focusOnCard,
             deactivateAllBundles: () => bundleController.deactivateAll(),
+            refreshBundleState: () => reflectBundleState(),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);
