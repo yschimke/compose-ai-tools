@@ -87,6 +87,11 @@ val functionalTestTask =
     // it via the root build's `functionalTestWithAndroid` task with the flag flipped on.
     val cliA11yE2E = providers.gradleProperty("cli.a11y.e2e").orNull == "true"
     systemProperty("composeai.functionalTest.cliA11yE2E", cliA11yE2E.toString())
+    // Opt-in `bundle.render.e2e=true` gate for [BundleRenderEndToEndFunctionalTest]. Spawns
+    // Compose Desktop JVM per preview (~1-2s cold start), too slow for the default check loop.
+    // Root build's `functionalTestWithBundleRender` task flips this on.
+    val bundleRenderE2E = providers.gradleProperty("bundle.render.e2e").orNull == "true"
+    systemProperty("composeai.functionalTest.cliBundleRender", bundleRenderE2E.toString())
     // Path to the compose-preview CLI binary built by `:cli:installDist`. The test invokes it
     // directly as a subprocess — that's the actual subject of the e2e. Empty string when the
     // binary hasn't been built; the test self-skips. The root build wires the dependency.
