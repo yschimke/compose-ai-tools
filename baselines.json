@@ -46,8 +46,8 @@
     "inspection-tree.light.png": {
       "fixture": "inspection-tree",
       "theme": "light",
-      "sha256": "37fd9c9bbb7c078a2efae5b7b3c8c0013769e11a91130b2ed63c7b34aad5d4ee",
-      "size": 72380
+      "sha256": "d409657a0fc662e83b396eb1b1e90d158dcd843a22c1094f4263091cbc534092",
+      "size": 71867
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
