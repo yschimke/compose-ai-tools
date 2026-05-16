@@ -26,6 +26,19 @@ body {
     color: var(--text-primary);
 }
 
+/* Anchor the bundle chip bar (the "extension bar" along the bottom) to
+   the bottom of the viewport — the strip should feel like a panel
+   footer no matter how tall or short the preview content is. The chip
+   bar element is the LAST child in `<preview-app>`'s template (after
+   focus-inspector); `margin-top: auto` inside a flex column with a
+   viewport-tall minimum height pushes it to the bottom regardless of
+   how much space the preview, tabs, and inspector consume above it. */
+preview-app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
 /* -- Top progress strip ------------------------------------------------
  * A slim two-row strip permanently pinned to the very top of the panel:
  * phase-label row on top (≈13px text), 2px progress bar beneath.
@@ -2017,6 +2030,14 @@ body {
     gap: 2px;
     padding: 4px 6px;
     border-top: 1px solid var(--vscode-panel-border, transparent);
+    background: var(--vscode-editor-background, transparent);
+}
+/* Anchor the chip bar to the bottom of `preview-app`'s flex column —
+   the empty space above it grows until the panel content (preview,
+   tabs, inspector) is reached, so the bar feels docked to the panel
+   footer even when there's no scrollable content above. */
+bundle-chip-bar {
+    margin-top: auto;
 }
 .bundle-chip {
     display: inline-flex;

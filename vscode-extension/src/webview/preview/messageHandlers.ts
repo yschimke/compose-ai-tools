@@ -126,6 +126,15 @@ export interface PreviewMessageContext {
      * along with the rest of the early-features surface.
      */
     deactivateAllBundles(): void;
+    /**
+     * Re-render the bundle chip bar / tab row from the controller's
+     * current state. The chip bar filters which bundle chips paint
+     * based on the early-features snapshot, so the host runs this
+     * after `setEarlyFeatures` flips the flag to surface (or hide)
+     * the in-progress bundles without waiting for a state-changing
+     * controller event.
+     */
+    refreshBundleState(): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -598,6 +607,9 @@ function handleSetEarlyFeatures(
         ctx.liveState.handleEarlyFeaturesDisabled();
         ctx.deactivateAllBundles();
     }
+    // Refresh the chip-bar filter so newly graduated or hidden bundles
+    // paint correctly without the user having to nudge anything else.
+    ctx.refreshBundleState();
     ctx.applyLayout();
 }
 

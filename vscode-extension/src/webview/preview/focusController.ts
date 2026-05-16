@@ -192,15 +192,18 @@ export class FocusController {
         const mode = this.config.filterToolbar.getLayoutValue();
         this.config.grid.setLayoutMode(mode);
         this.config.focusControls.hidden = mode !== "focus";
-        // The data-extension chip bar + tab row are an early-features
-        // surface — gating them here so the strip never paints below
-        // the preview when the setting is off. When the user toggles
-        // early features mid-session, `handleSetEarlyFeatures` calls
-        // `applyLayout` again, so visibility tracks the flag without a
-        // panel reload.
-        const showBundleUi = mode === "focus" && this.config.earlyFeatures();
-        this.config.bundleChipBar.hidden = !showBundleUi;
-        this.config.dataTabs.hidden = !showBundleUi;
+        // The chip bar is now always visible (anchored to the bottom of
+        // the panel). Minimal mode hides it via CSS (`preview-app[data-
+        // minimal-mode="true"] bundle-chip-bar`), so this controller
+        // just keeps the element non-hidden — the chip bar itself
+        // filters which bundle chips render based on the early-features
+        // snapshot it receives from `reflectBundleState` in `main.ts`.
+        // The tab strip stays hidden until at least one bundle is
+        // active; DataTabs.render() returns empty when no active
+        // bundles, but unhiding it lets the host show tab bodies as
+        // soon as the user toggles a chip on, regardless of layout.
+        this.config.bundleChipBar.hidden = false;
+        this.config.dataTabs.hidden = false;
 
         if (mode === "focus") {
             const visible = this.getVisibleCards();
