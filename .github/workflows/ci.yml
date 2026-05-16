@@ -131,6 +131,29 @@ jobs:
       - name: Build CLI
         run: ./gradlew :cli:build
 
+  bundle-render:
+    name: Bundle Render E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # End-to-end: pack a bundle from a synthetic Compose Desktop project, then re-render it
+      # outside of any Gradle project by spawning the actual CLI binary against the packed PNG.
+      # The aggregate task pre-publishes the plugin to mavenLocal (so the synthetic project's
+      # `id("ee.schimke.composeai.preview") version "<v>"` resolves) and builds the CLI install
+      # dist (so the `bundle render` subprocess has its `lib-renderer/` companion). Opt-in via
+      # `-Pbundle.render.e2e=true` because the test cold-starts Compose Desktop per preview.
+      - name: Bundle render e2e
+        run: ./gradlew functionalTestWithBundleRender -Pbundle.render.e2e=true --stacktrace
+      - name: Upload functionalTest reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle-render-functional-test-reports
+          path: gradle-plugin/build/reports/tests/functionalTest/
+
   agent-audit-samples:
     name: Agent Audit Samples
     runs-on: ubuntu-latest
