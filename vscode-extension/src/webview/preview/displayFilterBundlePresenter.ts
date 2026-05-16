@@ -1,13 +1,18 @@
 // Display-filter bundle presenter — fills the "Display" tab body with
 // one row per post-process colour-matrix variant the daemon emits.
-// `DisplayFilters.kt` declares the enum of filters; the bundle
-// registry's `displayfilter/*` kinds are placeholders for the per-
-// filter on/off toggles users pick from the Configure… expander.
 //
-// The presenter is **stateless** — given the set of subscribed filter
-// ids it returns the row shape `<data-table>` consumes. There is no
-// overlay layer because display filters are an image-level transform;
-// users pick a filter to swap the whole card image, not a region.
+// The daemon advertises a single wire kind, `displayfilter/variants`,
+// whose payload manifest enumerates every enabled filter:
+//
+//     { variants: [{ filter, path, mediaType }, ...] }
+//
+// (See `DisplayFilterDataProducer.VariantsManifest` and
+// `DisplayFilterDataProductRegistry.kt`.) The presenter walks the
+// manifest's `variants` array and produces one row per filter. It is
+// **stateless** — given the parsed payload it returns the row shape
+// `<data-table>` consumes. There is no overlay layer because display
+// filters are an image-level transform; users pick a filter to swap
+// the whole card image, not a region.
 //
 // Out of scope for v1: actually swapping the focused card's image
 // when a row is clicked. The daemon-side override plumbing isn't
@@ -20,43 +25,49 @@ import type { DataTableColumn } from "./components/DataTable";
 export interface DisplayFilterRow {
     /** Stable id for `<data-table>` row hover / overlay correlation. */
     id: string;
-    /** Wire kind, e.g. `displayfilter/grayscale`. */
-    kind: string;
-    /** Tail of the kind — the human-readable filter id. */
+    /** Filter id as it appears in the manifest (e.g. `grayscale`). */
     filterId: string;
-    /** Bundle label from the registry; used as the row's "name". */
+    /** Human-readable filter label (falls back to `filterId`). */
     label: string;
+    /** PNG path from the manifest, if present. */
+    path?: string;
 }
 
 export interface DisplayFilterBundleData {
     rows: readonly DisplayFilterRow[];
 }
 
-export interface DisplayFilterEntry {
-    kind: string;
-    label: string;
+/**
+ * Parsed shape of the `displayfilter/variants` payload — narrow to
+ * what the presenter reads. The daemon emits `mediaType` too; the
+ * presenter ignores it for now (everything is image/png) but the
+ * field is part of the wire contract.
+ */
+export interface DisplayFilterVariantEntry {
+    filter: string;
+    path?: string;
+    label?: string;
+}
+
+export interface DisplayFilterVariantsPayload {
+    variants?: readonly DisplayFilterVariantEntry[];
 }
 
 /**
- * Build one row per filter the bundle catalogue advertises. The
- * presenter does not subscribe to the daemon-side filter PNGs — the
- * point of the tab is the user-facing toggle UI, the actual filtered
- * image rendering is daemon-side once that plumbing lands (see file
- * header TODO).
+ * Build one row per entry in the manifest. Returns an empty list
+ * when the payload is missing or malformed; the bundle tab then
+ * renders its empty-state hint rather than a half-built table.
  */
 export function computeDisplayFilterBundleData(
-    entries: readonly DisplayFilterEntry[],
+    payload: DisplayFilterVariantsPayload | null | undefined,
 ): DisplayFilterBundleData {
-    const rows: DisplayFilterRow[] = entries.map((e) => {
-        const slash = e.kind.lastIndexOf("/");
-        const filterId = slash >= 0 ? e.kind.slice(slash + 1) : e.kind;
-        return {
-            id: "displayfilter-" + filterId,
-            kind: e.kind,
-            filterId,
-            label: e.label,
-        };
-    });
+    const variants = payload?.variants ?? [];
+    const rows: DisplayFilterRow[] = variants.map((v) => ({
+        id: "displayfilter-" + v.filter,
+        filterId: v.filter,
+        label: v.label ?? humanLabel(v.filter),
+        path: v.path,
+    }));
     return { rows };
 }
 
@@ -81,9 +92,9 @@ export function displayFilterTableColumns(): readonly DataTableColumn<DisplayFil
 
 function renderThumbnail(row: DisplayFilterRow): TemplateResult {
     // Placeholder swatch labelled with the first two chars of the
-    // filter id. Once the daemon-side display-filter producer emits
-    // a per-preview PNG path (see DisplayFilterDataProducer.kt), the
-    // swatch will swap for an actual thumbnail.
+    // filter id. Once the bundle wires the manifest's per-variant
+    // PNG path into an `<img>`, the swatch will swap for an actual
+    // thumbnail.
     return html`
         <span
             class="displayfilter-thumb"
@@ -92,4 +103,9 @@ function renderThumbnail(row: DisplayFilterRow): TemplateResult {
             >${row.filterId.slice(0, 2).toUpperCase()}</span
         >
     `;
+}
+
+function humanLabel(filterId: string): string {
+    if (filterId.length === 0) return filterId;
+    return filterId.charAt(0).toUpperCase() + filterId.slice(1);
 }
