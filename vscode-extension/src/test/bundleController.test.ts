@@ -16,21 +16,36 @@ interface CapturedToggle {
     enabled: boolean;
 }
 
+interface CapturedBatch {
+    kinds: readonly string[];
+    enabled: boolean;
+}
+
 function build(initial?: BundleSnapshot): {
     controller: BundleController;
     toggles: CapturedToggle[];
+    batches: CapturedBatch[];
     persisted: BundleSnapshot[];
 } {
     const toggles: CapturedToggle[] = [];
+    const batches: CapturedBatch[] = [];
     const persisted: BundleSnapshot[] = [];
     const controller = new BundleController(
         {
-            setKindEnabled: (kind, enabled) => toggles.push({ kind, enabled }),
+            setKindsEnabled: (kinds, enabled) => {
+                // Capture both the per-kind unrolled view (the original
+                // test surface — most assertions look at individual
+                // kinds without caring how they were batched) and the
+                // batched view used by the "single call per activate"
+                // regression test below.
+                batches.push({ kinds: [...kinds], enabled });
+                for (const kind of kinds) toggles.push({ kind, enabled });
+            },
             persist: (snap) => persisted.push(snap),
         },
         initial,
     );
-    return { controller, toggles, persisted };
+    return { controller, toggles, batches, persisted };
 }
 
 describe("BundleController", () => {
@@ -45,6 +60,46 @@ describe("BundleController", () => {
         );
         assert.deepStrictEqual(controller.state().activeBundles, ["a11y"]);
         assert.strictEqual(controller.state().activeTab, "a11y");
+    });
+
+    it("activate posts a single batched host call carrying every default-ON kind", () => {
+        // Regression: one wire message per kind raced the daemon's
+        // subscription-driven render mode — the first subscribe locked
+        // the in-flight render's data-product set, the second arrived
+        // too late, and bundles with multiple default-ON kinds (a11y,
+        // text/i18n) silently delivered partial data products. The
+        // controller must batch into one host call so the extension
+        // host issues a single `data/subscribe` sequence + one
+        // `renderNow` against the daemon.
+        const { controller, batches } = build();
+        controller.toggleBundle("a11y");
+        const activates = batches.filter((b) => b.enabled);
+        assert.strictEqual(
+            activates.length,
+            1,
+            `activate must post exactly one batched host call, got ${activates.length}`,
+        );
+        assert.deepStrictEqual(
+            [...activates[0].kinds].sort(),
+            [...defaultOnKindsFor("a11y")].sort(),
+        );
+    });
+
+    it("deactivate posts a single batched host call carrying every active kind", () => {
+        const { controller, batches } = build();
+        controller.toggleBundle("a11y");
+        batches.length = 0;
+        controller.toggleBundle("a11y");
+        const deactivates = batches.filter((b) => !b.enabled);
+        assert.strictEqual(
+            deactivates.length,
+            1,
+            `deactivate must post exactly one batched host call, got ${deactivates.length}`,
+        );
+        assert.deepStrictEqual(
+            [...deactivates[0].kinds].sort(),
+            [...defaultOnKindsFor("a11y")].sort(),
+        );
     });
 
     it("chip re-press dismisses the bundle and unsubscribes", () => {

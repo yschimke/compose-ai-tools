@@ -902,7 +902,17 @@ export type WebviewToExtension =
     | {
           command: "setDataExtensionEnabled";
           previewId: string;
-          kind: string;
+          /**
+           * Kinds toggled atomically. `BundleController.activate` /
+           * `deactivate` pass every default-ON kind in one message so the
+           * extension issues a single `data/subscribe` sequence + one
+           * `renderNow` — if we posted one message per kind the daemon
+           * would lock the render mode after the first subscribe arrived
+           * and the second kind's data product would silently miss the
+           * in-flight render. Single-kind toggles from the Configure
+           * expander pass `[kind]`.
+           */
+          kinds: readonly string[];
           enabled: boolean;
       }
     /**
