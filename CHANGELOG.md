@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.16](https://github.com/yschimke/compose-ai-tools/compare/v0.10.15...v0.10.16) (2026-05-16)
+
+
+### Features
+
+* anchor bundle chip bar to panel footer ([#1174](https://github.com/yschimke/compose-ai-tools/issues/1174)) ([9f3916c](https://github.com/yschimke/compose-ai-tools/commit/9f3916c72ea7d6afb376426439930b9ac581a1e7))
+* batch data extension subscriptions to fix partial bundle data ([#1175](https://github.com/yschimke/compose-ai-tools/issues/1175)) ([d45d7e0](https://github.com/yschimke/compose-ai-tools/commit/d45d7e0875f0fb7278b349520a113d8dc3884dd1))
+* **daemon/android:** advertise compose/recomposition kind via a stub registry ([#1186](https://github.com/yschimke/compose-ai-tools/issues/1186)) ([12fefd2](https://github.com/yschimke/compose-ai-tools/commit/12fefd22eb098fe17a167a74dd264b727b7ebc39))
+* **daemon/android:** advertise compose/recomposition kind via a stub registry ([#1188](https://github.com/yschimke/compose-ai-tools/issues/1188)) ([549d54d](https://github.com/yschimke/compose-ai-tools/commit/549d54d51845689d09627856ca7fd8f914c25c01))
+
+
+### Bug Fixes
+
+* align JSON export shape with daemon wire format ([#1178](https://github.com/yschimke/compose-ai-tools/issues/1178)) ([e61967f](https://github.com/yschimke/compose-ai-tools/commit/e61967fa9e9551f127237ff5529038963e16c95b))
+* detect pre-applied plugin via version catalog aliases ([#1183](https://github.com/yschimke/compose-ai-tools/issues/1183)) ([087d016](https://github.com/yschimke/compose-ai-tools/commit/087d01669dac5d02985e425054dc24e0b5480663))
+* filter bare-status progress noise from Gradle output ([#1182](https://github.com/yschimke/compose-ai-tools/issues/1182)) ([ff8fb4e](https://github.com/yschimke/compose-ai-tools/commit/ff8fb4e230e1bcf1c41faa611b64d6e1d77d3973))
+* gate panel data/subscribe by daemon-advertised kinds, use displayfilter/variants ([#1187](https://github.com/yschimke/compose-ai-tools/issues/1187)) ([dd049f4](https://github.com/yschimke/compose-ai-tools/commit/dd049f4a292bfce6d9ef78ae1d0bb7ffe0286250))
+* use plain console output to prevent ANSI artifacts in logs ([#1177](https://github.com/yschimke/compose-ai-tools/issues/1177)) ([08680ee](https://github.com/yschimke/compose-ai-tools/commit/08680eec072d29de18d14364ba22416aca67b98a))
+* **vscode-extension:** close the a11y-only race where caches stayed empty ([#1184](https://github.com/yschimke/compose-ai-tools/issues/1184)) ([f09d866](https://github.com/yschimke/compose-ai-tools/commit/f09d866a48cb7684c1a68f83cd76d5fc4b8ba63f))
+* **vscode-extension:** snap chip activation back to default kinds when stored set is empty ([#1185](https://github.com/yschimke/compose-ai-tools/issues/1185)) ([66247e4](https://github.com/yschimke/compose-ai-tools/commit/66247e4b72f63da966ac87f4ce0b8a6ff59b6a44))
+* **vscode-extension:** teach harness contract matcher about batched setDataExtensionEnabled ([#1181](https://github.com/yschimke/compose-ai-tools/issues/1181)) ([97cb25d](https://github.com/yschimke/compose-ai-tools/commit/97cb25d9f91d3850292bf0f6a9d9f7fa08a59c02))
+
 ## [0.10.15](https://github.com/yschimke/compose-ai-tools/compare/v0.10.14...v0.10.15) (2026-05-16)
 
 
