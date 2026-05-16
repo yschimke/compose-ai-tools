@@ -60,6 +60,19 @@ const DISCOVERED_BULLET_RE = /^ {2}\S/;
 // counterpart — we always keep that one (it's a failure).
 const BUILD_SUCCESSFUL_RE = /^BUILD SUCCESSFUL /;
 
+// Bare-status progress noise emitted by Gradle's rich console (and/or
+// vscode-gradle's own progress reporter) after ANSI cursor moves have been
+// stripped. Each task's `> Task :…` header was rendered to a column the
+// daemon later overwrote with the visible status token; with ANSI stripped,
+// only the status tokens survive — often glued together without separators,
+// and sometimes glued onto a `BUILD SUCCESSFUL in …` trailer in the same
+// physical chunk. `--console=plain` is supposed to suppress this but the
+// Tooling API path doesn't always honour it. Matches a line that is
+// **entirely** status tokens (optionally trailed by BUILD SUCCESSFUL); a
+// `FAILED` token is deliberately excluded so failure signals always survive.
+const BARE_STATUS_NOISE_RE =
+    /^\s*((UP-TO-DATE|SKIPPED|FROM-CACHE|NO-SOURCE)\s*)+(BUILD SUCCESSFUL in [^\n]*)?\s*$/;
+
 const CONFIG_CACHE_RE =
     /^(Reusing configuration cache\.|Configuration cache entry (reused|stored)\.|Calculating task graph .*)$/;
 
@@ -301,6 +314,9 @@ export class LogFilter {
         if (TASK_HEADER_RE.test(trimmed)) {
             // Already handled by the `FAILED` branch above — drop everything
             // else.
+            return "drop";
+        }
+        if (BARE_STATUS_NOISE_RE.test(trimmed)) {
             return "drop";
         }
         if (BUILD_SUCCESSFUL_RE.test(trimmed)) {
