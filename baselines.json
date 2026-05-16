@@ -4,74 +4,74 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "377b567ed83b44e5366f5f7aa658fb170ea7e07f22d3595b1ca24c5b7e05b2ed",
-      "size": 92613
+      "sha256": "b930a92db68982612e03a0e1486573303583bab29862f87a87ccb2fedc2380d8",
+      "size": 94890
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "a2e952e12d81f93a7101f8dad593b65858b66570dc419bc7c31fad179387ad06",
-      "size": 90411
+      "sha256": "3637cb913b1cf7d53d2e40d6d7add7271c2d35a0f54b21f010bd359ce9fd0d11",
+      "size": 92363
     },
     "a11y-wear.dark.png": {
       "fixture": "a11y-wear",
       "theme": "dark",
-      "sha256": "6dec658b6a578bdbe1c23c0b8b212c8ef17236fe18c0e54175120c562ac029e0",
-      "size": 120209
+      "sha256": "28a7fb51bb2a34de5b0f5eb6ba474fced17e066a2317d891345dd5f00021808e",
+      "size": 121679
     },
     "a11y-wear.light.png": {
       "fixture": "a11y-wear",
       "theme": "light",
-      "sha256": "feddae723778aec0056d406cba2b3d6ba3056c7ce1a1b80947cf3e1b5a18be5a",
-      "size": 125711
+      "sha256": "a9a44c8d003ac9438330b7f564fbf3733f41830333631646d2e4fe44b715201a",
+      "size": 128037
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
       "theme": "dark",
-      "sha256": "cec9c94fbf03b5b3d42a87f513d80237981e4e3ed104d71b3c93de4ed7b209a2",
-      "size": 9661
+      "sha256": "ecbb678bedf428f971112b49defdb788a9b54a33dd2eabbe9893c955770b6ec2",
+      "size": 11208
     },
     "grid-default.light.png": {
       "fixture": "grid-default",
       "theme": "light",
-      "sha256": "2df5211c733f98e719d442faba42f6166db5817b78f0b6122391bdfe158ae9b2",
-      "size": 9741
+      "sha256": "42b91296e86e49494bcb16656b40ddc9be5aae213d171fb2994bf9c42b5a4b34",
+      "size": 11212
     },
     "history-diff.dark.png": {
       "fixture": "history-diff",
       "theme": "dark",
-      "sha256": "6cd43f5b04276f8e8609d692ac1a06c27e7d5bae3c69dc297a198c77a0f99f3a",
-      "size": 84631
+      "sha256": "dfb4878e097c2a2e08634a7c2968751de2453c5660cef9926fee46aede4fcd1e",
+      "size": 86944
     },
     "history-diff.light.png": {
       "fixture": "history-diff",
       "theme": "light",
-      "sha256": "cb6e1b52d2b1444f26677c84cca8cd47723cc33ecbd4b27bd3f2d4d48113241e",
-      "size": 82814
+      "sha256": "80471edf67309255c94215e684cb1a4463d94a138d14607211a048668d3e8fe8",
+      "size": 85085
     },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
       "theme": "dark",
-      "sha256": "ad592a9ae562f25540e611c29db966cf73e6c70e2fe06fa26c341c7631ffdff4",
-      "size": 73158
+      "sha256": "9967010d6e1540d32887fa096de493dcbb03ab1fb9642466c93caa70fe6b453e",
+      "size": 75699
     },
     "inspection-tree.light.png": {
       "fixture": "inspection-tree",
       "theme": "light",
-      "sha256": "f9b959c84a296638811bec2e5ccd04bd6580455ef60b834b7104a5827f9ef0be",
-      "size": 71463
+      "sha256": "c00bc42ac5a85beb8d6f9df01ceef52a3c41df52176f214797a5d258d223802b",
+      "size": 73809
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
       "theme": "dark",
-      "sha256": "17c52bd4ad57c808f7e329d102a36be3dcfaf593e15cf1678e409aec6ec4f380",
-      "size": 121155
+      "sha256": "df7d5d50add90a4fc0f57d99e19d8526a577be9a690e9770d3246c34a27c6d72",
+      "size": 124743
     },
     "text-strings.light.png": {
       "fixture": "text-strings",
       "theme": "light",
-      "sha256": "b108a42d9234eb78600241b799875d39b5b46c85382ce6c139bfbeb41831bdd6",
-      "size": 117528
+      "sha256": "74f39711f323a415238f522aed1743fda040e292577d548909af5a3ffd660549",
+      "size": 120510
     }
   }
 }
