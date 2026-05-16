@@ -136,21 +136,28 @@ describe("applyA11yUpdate", () => {
         assert.strictEqual(cache.nodes.size, 0);
     });
 
-    it("silent no-op when the previewId has no card in the DOM", () => {
+    it("populates the caches even when the previewId has no card mounted yet", () => {
+        // Pre-#1180 this branch was a silent no-op, but the daemon's
+        // render-with-data-products notification can land before
+        // `setPreviews` has mounted the matching card — the bundle
+        // refresh then read an empty cache against payloads sitting
+        // unused in `dataProductsByPreview`, and the A11y table
+        // painted "No rows" stubbornly. Cache writes now run
+        // unconditionally so the refresh path sees fresh data when
+        // the card eventually mounts.
         buildCard("com.example.OTHER");
+        const finding = buildFinding("ERROR", "x");
+        const node = buildNode("X");
         const { config, cache } = buildConfig({
             previews: [buildPreviewInfo("com.example.GHOST")],
         });
         assert.doesNotThrow(() =>
-            applyA11yUpdate(
-                "com.example.GHOST",
-                [buildFinding("ERROR", "x")],
-                [buildNode("X")],
-                config,
-            ),
+            applyA11yUpdate("com.example.GHOST", [finding], [node], config),
         );
-        assert.strictEqual(cache.findings.size, 0);
-        assert.strictEqual(cache.nodes.size, 0);
+        assert.deepStrictEqual(cache.findings.get("com.example.GHOST"), [
+            finding,
+        ]);
+        assert.deepStrictEqual(cache.nodes.get("com.example.GHOST"), [node]);
     });
 
     it("writes the findings cache and mutates the matching PreviewInfo when findings are present", () => {

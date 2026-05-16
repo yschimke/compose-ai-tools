@@ -1174,10 +1174,35 @@ export class PreviewApp extends LitElement {
         } => {
             const store = previewStore.getState();
             const preview = store.allPreviews.find((p) => p.id === previewId);
+            // a11y data arrives over two parallel channels: a dedicated
+            // `updateA11y` post (consumed by `applyA11yUpdate`, which
+            // writes the `cardA11yNodes` / `cardA11yFindings` caches)
+            // and the generic `updateDataProducts` post that feeds
+            // `dataProductsByPreview` like every other bundle. The
+            // dedicated channel is gated on the preview card being in
+            // the DOM at receive time (`applyA11yUpdate.ts:85`); if a
+            // render-with-attachments lands before the card is mounted
+            // — or before `earlyFeatures()` flips on — the cache stays
+            // empty even though the payload is sitting in
+            // `dataProductsByPreview`. Fall back to the same generic
+            // cache the rest of the bundles drink from so the
+            // accessibility table doesn't paint "No rows" against a
+            // bundle whose data is already in memory.
+            const byKind = dataProductsByPreview.get(previewId);
+            const hierarchyPayload = byKind?.get("a11y/hierarchy") as
+                | { nodes?: readonly AccessibilityNode[] }
+                | undefined;
+            const atfPayload = byKind?.get("a11y/atf") as
+                | { findings?: readonly AccessibilityFinding[] }
+                | undefined;
             const nodes =
-                store.cardA11yNodes.get(previewId) ?? preview?.a11yNodes ?? [];
+                store.cardA11yNodes.get(previewId) ??
+                hierarchyPayload?.nodes ??
+                preview?.a11yNodes ??
+                [];
             const findings =
                 store.cardA11yFindings.get(previewId) ??
+                atfPayload?.findings ??
                 preview?.a11yFindings ??
                 [];
             return { nodes, findings };
