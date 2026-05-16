@@ -143,16 +143,16 @@ export const BUNDLES: readonly BundleDescriptor[] = [
         id: "display",
         label: "Display",
         icon: "device-desktop",
+        // The daemon advertises a single `displayfilter/variants` kind
+        // whose payload enumerates every enabled filter PNG. The per-
+        // filter row UI ("Grayscale", "Invert", daltonizer sims) is
+        // derived from that payload in `displayFilterBundlePresenter`;
+        // they are not separate wire kinds.
         kinds: [
             {
-                kind: "displayfilter/grayscale",
-                label: "Grayscale",
-                defaultOn: false,
-            },
-            {
-                kind: "displayfilter/invert",
-                label: "Invert",
-                defaultOn: false,
+                kind: "displayfilter/variants",
+                label: "Filter variants",
+                defaultOn: true,
             },
         ],
     },
