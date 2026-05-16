@@ -1,0 +1,243 @@
+package ee.schimke.composeai.viewer
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.reflect.ComposableMethod
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDropEvent
+import java.io.File
+
+/**
+ * Compose Preview Viewer — a one-window desktop app that opens a `compose-preview` bundle (PNG+ZIP
+ * polyglot) and renders its `@Preview` composable LIVE inside the window. State, recomposition,
+ * animations all tick as they would in the source app; the viewer is a thin Window shell around a
+ * reflective composable invocation against the bundle's classloader.
+ *
+ * # Modes
+ *
+ * - **CLI arg**: `compose-preview-viewer foo.png` opens the bundle on startup. Useful for
+ *   double-click associations and shell scripting.
+ * - **Drag-and-drop**: launching with no args opens an empty drop-target window. Dropping a `.png`
+ *   polyglot loads it, swapping the live preview and resizing the window to the preview's declared
+ *   size.
+ *
+ * # Window sizing
+ *
+ * On bundle load, [previewSize] computes a `DpSize` from the preview's `params.widthDp` /
+ * `params.heightDp` (defaulting to 400×800 dp wrap-content for previews that didn't pin a device).
+ * The window state is mutated so the OS chrome includes the preview at its declared dimensions —
+ * same shape `@Preview` viewers in Android Studio show.
+ */
+fun main(args: Array<String>) {
+  val initial = args.firstOrNull()?.let { File(it) }?.takeIf { it.isFile }
+  application {
+    var loadedBundle by remember { mutableStateOf<LoadedBundle?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val windowState = rememberWindowState(width = INITIAL_WIDTH, height = INITIAL_HEIGHT)
+
+    // Load the file the CLI handed us on first composition. Errors land in [loadError]; the
+    // window opens regardless so the user can drop a fresh bundle.
+    LaunchedEffect(Unit) {
+      if (initial != null) {
+        try {
+          loadedBundle = loadBundle(initial)
+          loadError = null
+        } catch (e: Throwable) {
+          loadError = "Could not load ${initial.path}: ${e.message}"
+        }
+      }
+    }
+
+    // Resize the window to the preview's declared size whenever a fresh bundle lands. We
+    // observe [loadedBundle]'s cover here rather than at load-site so a drop-while-running
+    // swap repaints the window without an explicit recomputation.
+    LaunchedEffect(loadedBundle) {
+      val cover = loadedBundle?.coverPreview ?: return@LaunchedEffect
+      val size = previewSize(cover)
+      windowState.size = size
+    }
+
+    val title =
+      when {
+        loadError != null -> "compose-preview viewer — error"
+        loadedBundle != null -> "compose-preview — ${loadedBundle?.coverPreview?.info?.id}"
+        else -> "compose-preview viewer — drop a bundle .png to begin"
+      }
+
+    Window(onCloseRequest = ::exitApplication, state = windowState, title = title) {
+      // Wire a Swing/AWT DropTarget once — Compose Desktop's `Modifier.dragAndDropTarget` is
+      // newer but the AWT API is universally available and works around the entire window
+      // rather than a single composable. Cleared on dispose.
+      val composeWindow = window
+      DisposableEffect(composeWindow) {
+        val target =
+          DropTarget(
+            composeWindow,
+            object : DropTargetAdapter() {
+              override fun drop(event: DropTargetDropEvent) {
+                event.acceptDrop(DnDConstants.ACTION_COPY)
+                val files =
+                  try {
+                    @Suppress("UNCHECKED_CAST")
+                    event.transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+                  } catch (e: Exception) {
+                    event.dropComplete(false)
+                    loadError = "drop: ${e.message}"
+                    return
+                  }
+                event.dropComplete(true)
+                val file = files.firstOrNull() ?: return
+                try {
+                  val next = loadBundle(file)
+                  loadedBundle?.close()
+                  loadedBundle = next
+                  loadError = null
+                } catch (e: Throwable) {
+                  loadError = "Could not load ${file.path}: ${e.message}"
+                }
+              }
+            },
+          )
+        composeWindow.dropTarget = target
+        onDispose { composeWindow.dropTarget = null }
+      }
+
+      Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        ViewerContent(loadedBundle = loadedBundle, loadError = loadError)
+      }
+    }
+  }
+}
+
+@Composable
+private fun ViewerContent(loadedBundle: LoadedBundle?, loadError: String?) {
+  when {
+    loadError != null -> ErrorPanel(loadError)
+    loadedBundle == null -> EmptyDropPanel()
+    else -> {
+      val preview = loadedBundle.coverPreview
+      val method = preview.composableMethod
+      if (method == null) {
+        ErrorPanel(preview.errorMessage ?: "Could not resolve preview.")
+      } else {
+        LivePreview(method, preview.info)
+      }
+    }
+  }
+}
+
+@Composable
+private fun LivePreview(method: ComposableMethod, info: PreviewInfo) {
+  val background =
+    if (info.params.showBackground && info.params.backgroundColor != 0L)
+      Color(info.params.backgroundColor.toULong())
+    else MaterialTheme.colorScheme.surface
+  Box(
+    modifier = Modifier.fillMaxSize().background(background),
+    contentAlignment = Alignment.Center,
+  ) {
+    InvokeComposable(method)
+  }
+}
+
+/**
+ * Reflective invocation site — the method gets called from inside an active composition so the
+ * bundle's `@Composable` function gets the composer state Compose expects. Loaded via the bundle's
+ * child classloader; the parent has the viewer's Compose runtime, so the composer symbol is shared
+ * and the call is a normal composable invocation as far as the runtime is concerned.
+ */
+@Composable
+private fun InvokeComposable(method: ComposableMethod) {
+  method.invoke(currentComposer, null)
+}
+
+@Composable
+private fun EmptyDropPanel() {
+  Column(
+    modifier = Modifier.fillMaxSize().padding(PaddingValues(32.dp)),
+    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text(
+      text = "Drop a `compose-preview` bundle here",
+      style = MaterialTheme.typography.headlineSmall,
+      textAlign = TextAlign.Center,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+      text = "Or launch with `compose-preview-viewer <bundle.png>`.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      textAlign = TextAlign.Center,
+    )
+  }
+}
+
+@Composable
+private fun ErrorPanel(message: String) {
+  Column(
+    modifier = Modifier.fillMaxSize().padding(PaddingValues(32.dp)),
+    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Text(
+      text = "Cannot show preview",
+      style = MaterialTheme.typography.headlineSmall,
+      color = MaterialTheme.colorScheme.error,
+      textAlign = TextAlign.Center,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+      text = message,
+      modifier = Modifier.fillMaxWidth(),
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurface,
+      textAlign = TextAlign.Center,
+    )
+  }
+}
+
+/**
+ * Resolve the [DpSize] the window should adopt for [preview]. Pinned dimensions from the
+ * `@Preview(widthDp = .., heightDp = ..)` annotation win; absent ones fall back to the same
+ * wrap-content sandbox (400×800 dp) the renderer uses. The 200-dp floor avoids unusable tiny
+ * windows for previews that pin extreme dimensions.
+ */
+private fun previewSize(preview: LoadedPreview): DpSize {
+  val widthDp = (preview.info.params.widthDp ?: 400).coerceAtLeast(200)
+  val heightDp = (preview.info.params.heightDp ?: 800).coerceAtLeast(200)
+  return DpSize(widthDp.dp, heightDp.dp)
+}
+
+private val INITIAL_WIDTH = 480.dp
+private val INITIAL_HEIGHT = 720.dp
