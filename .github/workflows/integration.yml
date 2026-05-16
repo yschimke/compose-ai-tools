@@ -393,10 +393,14 @@ jobs:
         if: matrix.daemon
         working-directory: external/${{ matrix.workdir }}
         env:
-          # The recompile step inside daemon-roundtrip.py only runs `compileDebugKotlin`
-          # (no plugin task), so it doesn't need --init-script. The daemon JVM is launched
-          # by the descriptor written by the previous step, which already has the plugin
-          # applied via that step's --init-script.
+          # The recompile step inside daemon-roundtrip.py runs `./gradlew
+          # compileDebugKotlin` — and the previous "Configure daemon in
+          # consumer build" step appended a `composePreview { daemon { ... } }`
+          # extension block to the consumer's build script. That block can
+          # only be evaluated when our plugin is applied, so the recompile
+          # invocation has to carry `--init-script "$COMPOSE_AI_INIT_SCRIPT"`
+          # too (threaded through `--gradle-args` below).
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
           set -euo pipefail
@@ -424,7 +428,7 @@ jobs:
             --workspace-root "$(pwd)" \
             --module-id "$module_id" \
             --gradle-recompile-cwd "$(pwd)" \
-            --gradle-args "${{ matrix.extra_gradle_args }}"
+            --gradle-args "--init-script $COMPOSE_AI_INIT_SCRIPT ${{ matrix.extra_gradle_args }}"
 
       - name: Upload daemon launch descriptor
         if: always() && matrix.daemon
