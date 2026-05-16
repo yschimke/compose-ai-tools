@@ -3478,7 +3478,16 @@ async function refresh(
         }
     }
     lastLoadedModules = modulePathList;
-    gradleService.cancel();
+    // Spare any in-flight `:<module>:discoverPreviews` for the module we're
+    // about to refresh. The silent reconcile path
+    // (`reconcilePreviewManifestAfterDaemonReady`) calls `discoverPreviews`
+    // directly, outside this coalesce gate; without the spare, every focus
+    // bounce that re-fires refresh() for the same file kills the reconcile
+    // mid-task. With the spare + the in-flight dedup in
+    // `GradleService.discoverPreviews`, the subsequent `discoverPreviews`
+    // call this refresh issues awaits the same Gradle run instead of
+    // starting a duplicate.
+    gradleService.cancel({ keepDiscoverFor: module.modulePath });
 
     // Forward progress-bar updates to the webview. Single tracker per refresh
     // — single instance feeds the Gradle phase signals (compile/discover/

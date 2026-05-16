@@ -868,6 +868,74 @@ describe("GradleService", () => {
         );
 
         it(
+            "dedupes concurrent calls into a single Gradle invocation",
+            withTempDir(async (dir) => {
+                // Two refresh paths (refresh() + the silent reconcile from
+                // refreshAfterDaemonReady) can hit discoverPreviews for the
+                // same module concurrently; without the dedupe they race two
+                // identical Gradle tasks, and the second's cancel() kills
+                // the first. The dedupe shares one promise.
+                const runCalls: string[] = [];
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        runCalls.push(opts.taskName);
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask() {},
+                };
+                fs.mkdirSync(path.join(dir, "mod"));
+                const manifestDir = path.join(
+                    dir,
+                    "mod",
+                    "build",
+                    "compose-previews",
+                );
+                fs.mkdirSync(manifestDir, { recursive: true });
+                fs.copyFileSync(
+                    path.join(
+                        __dirname,
+                        "..",
+                        "..",
+                        "src",
+                        "test",
+                        "fixtures",
+                        "previews.json",
+                    ),
+                    path.join(manifestDir, "previews.json"),
+                );
+
+                const service = new GradleService(dir, heldApi);
+                const first = service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                const second = service.discoverPreviews({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                // Release the single in-flight runTask call.
+                await new Promise((resolve) => setImmediate(resolve));
+                assert.strictEqual(
+                    runCalls.length,
+                    1,
+                    `concurrent callers must share one Gradle run, got: ${runCalls.length}`,
+                );
+                for (const r of resolvers) r();
+
+                const [firstManifest, secondManifest] = await Promise.all([
+                    first,
+                    second,
+                ]);
+                assert.notStrictEqual(firstManifest, null);
+                assert.strictEqual(firstManifest, secondManifest);
+            }),
+        );
+
+        it(
             "uses cache for repeated calls within TTL",
             withTempDir(async (dir, api) => {
                 fs.mkdirSync(path.join(dir, "mod"));
@@ -1154,6 +1222,111 @@ describe("GradleService", () => {
                 // Release both held tasks so the test cleans up.
                 for (const r of resolvers) r();
                 await Promise.all([bootstrap, render]);
+            }),
+        );
+
+        it(
+            "skips composePreviewApplied so the activation refresh can't kill the marker bootstrap mid-flight",
+            withTempDir(async (dir, api) => {
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        api.runCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask(opts) {
+                        api.cancelCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                    },
+                };
+                const service = new GradleService(dir, heldApi);
+
+                const applied = service
+                    .bootstrapAppliedMarkers()
+                    .catch(() => {});
+                const render = service
+                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .catch(() => {});
+                await new Promise((resolve) => setImmediate(resolve));
+                await new Promise((resolve) => setImmediate(resolve));
+
+                await service.cancel();
+
+                const cancelledTasks = api.cancelCalls.map((c) => c.taskName);
+                assert.ok(
+                    !cancelledTasks.some((t) => t === "composePreviewApplied"),
+                    `composePreviewApplied must not be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+                assert.ok(
+                    cancelledTasks.some((t) => t.endsWith(":discoverPreviews")),
+                    `other tasks must still be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+
+                for (const r of resolvers) r();
+                await Promise.all([applied, render]);
+            }),
+        );
+
+        it(
+            "spares the in-flight :<module>:discoverPreviews when cancel({keepDiscoverFor}) names that module",
+            withTempDir(async (dir, api) => {
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        api.runCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask(opts) {
+                        api.cancelCalls.push({
+                            taskName: opts.taskName,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                    },
+                };
+                const service = new GradleService(dir, heldApi);
+
+                // Two in-flight discoverPreviews for different modules.
+                const keepRun = service
+                    .discoverPreviews({
+                        projectDir: "keep",
+                        modulePath: ":keep",
+                    })
+                    .catch(() => {});
+                const dropRun = service
+                    .discoverPreviews({
+                        projectDir: "drop",
+                        modulePath: ":drop",
+                    })
+                    .catch(() => {});
+                await new Promise((resolve) => setImmediate(resolve));
+                await new Promise((resolve) => setImmediate(resolve));
+
+                await service.cancel({ keepDiscoverFor: ":keep" });
+
+                const cancelledTasks = api.cancelCalls.map((c) => c.taskName);
+                assert.ok(
+                    !cancelledTasks.some((t) => t === ":keep:discoverPreviews"),
+                    `:keep:discoverPreviews must not be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+                assert.ok(
+                    cancelledTasks.some((t) => t === ":drop:discoverPreviews"),
+                    `:drop:discoverPreviews must be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+
+                for (const r of resolvers) r();
+                await Promise.all([keepRun, dropRun]);
             }),
         );
     });

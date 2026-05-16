@@ -278,6 +278,18 @@ export class GradleService {
         string,
         { manifest: PreviewManifest; timestamp: number }
     >();
+    /**
+     * Tracks in-flight `:<module>:discoverPreviews` runs so concurrent callers
+     * (refresh() + the silent reconciles from daemon `discoveryUpdated` and
+     * `refreshAfterDaemonReady`) share a single Gradle invocation instead of
+     * racing two against each other — where the second would normally hit
+     * `cancel()` and kill the first. Keyed by `modulePath`. Cleared in the
+     * `finally` of the runTask wrapper.
+     */
+    private inFlightDiscover = new Map<
+        string,
+        Promise<PreviewManifest | null>
+    >();
     private taskCounter = 0;
     private activeKeys = new Set<string>();
 
@@ -299,19 +311,30 @@ export class GradleService {
         module: ModuleInfo,
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
-        const cached = this.manifestCache.get(module.modulePath);
+        const key = module.modulePath;
+        const inFlight = this.inFlightDiscover.get(key);
+        if (inFlight) {
+            return inFlight;
+        }
+        const cached = this.manifestCache.get(key);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
             return cached.manifest;
         }
-        await this.runTask(`${module.modulePath}:discoverPreviews`, [], opts);
-        const manifest = this.readManifest(module);
-        if (manifest) {
-            this.manifestCache.set(module.modulePath, {
-                manifest,
-                timestamp: Date.now(),
-            });
-        }
-        return manifest;
+        const promise = (async (): Promise<PreviewManifest | null> => {
+            await this.runTask(`${key}:discoverPreviews`, [], opts);
+            const manifest = this.readManifest(module);
+            if (manifest) {
+                this.manifestCache.set(key, {
+                    manifest,
+                    timestamp: Date.now(),
+                });
+            }
+            return manifest;
+        })().finally(() => {
+            this.inFlightDiscover.delete(key);
+        });
+        this.inFlightDiscover.set(key, promise);
+        return promise;
     }
 
     /**
@@ -696,24 +719,49 @@ export class GradleService {
         }
     }
 
-    async cancel(): Promise<void> {
-        // `composePreviewDaemonStart` is intentionally excluded from the cancel
-        // pool. It's a one-shot, cheap, idempotent task that writes the launch
-        // descriptor every subsequent refresh needs; cancelling it mid-flight
-        // when the next refresh fires creates a permanent cycle where bootstrap
-        // is killed by the refresh it was supposed to enable, leaving
-        // "no launch descriptor" / "Build cancelled" forever.
+    async cancel(opts?: { keepDiscoverFor?: string }): Promise<void> {
+        // Three task families are intentionally excluded from the cancel pool:
         //
-        // Tradeoff: a refresh that arrives while the first-time bootstrap is
-        // still running now queues behind it on the Gradle daemon (the daemon
-        // serialises clients) instead of jumping the queue. That can add a few
-        // seconds on the very first refresh of a cold module, but only once
-        // per session — the descriptor is then UP-TO-DATE and bootstrap
-        // returns instantly. Steady-state is unaffected.
+        //   - `composePreviewDaemonStart`: a one-shot, cheap, idempotent task
+        //     that writes the launch descriptor every subsequent refresh
+        //     needs. Cancelling it mid-flight when the next refresh fires
+        //     creates a permanent cycle where bootstrap is killed by the
+        //     refresh it was supposed to enable, leaving "no launch
+        //     descriptor" / "Build cancelled" forever.
+        //
+        //   - `composePreviewApplied`: the activation-time marker bootstrap.
+        //     Cancelling it (e.g. when the activation `setTimeout` fires
+        //     while bootstrap is still running) breaks `findPreviewModules`
+        //     for the rest of the session — markers stay missing until the
+        //     user reloads.
+        //
+        //   - `:<module>:discoverPreviews` for [keepDiscoverFor]: the silent
+        //     reconcile path (`reconcilePreviewManifestAfterDaemonReady`)
+        //     calls `discoverPreviews` directly outside the refresh()
+        //     coalesce gate. Without this spare, a subsequent `refresh()`
+        //     for the same module would kill it and re-run an identical
+        //     task — the dedupe in [discoverPreviews] then lets that
+        //     subsequent call await the same in-flight promise.
+        //
+        // Tradeoff: a refresh that arrives while one of these is still
+        // running queues behind it on the Gradle daemon (the daemon
+        // serialises clients) instead of jumping the queue. For the
+        // first-time bootstrap that can add a few seconds on the very
+        // first refresh of a cold module, but only once per session —
+        // the bootstrap then becomes UP-TO-DATE and returns instantly.
+        // Steady-state is unaffected.
+        const keepDiscoverTask = opts?.keepDiscoverFor
+            ? `${opts.keepDiscoverFor}:discoverPreviews`
+            : null;
         const toCancel: string[] = [];
         const toKeep = new Set<string>();
         for (const key of this.activeKeys) {
-            if (taskFromKey(key).endsWith(":composePreviewDaemonStart")) {
+            const task = taskFromKey(key);
+            if (
+                task.endsWith(":composePreviewDaemonStart") ||
+                task === "composePreviewApplied" ||
+                (keepDiscoverTask !== null && task === keepDiscoverTask)
+            ) {
                 toKeep.add(key);
             } else {
                 toCancel.push(key);
