@@ -2,7 +2,7 @@ product: jvm/app
 
 dependencies:
   - $compose.desktop.currentOs
-  - $compose.components.uiToolingPreview
+  - $compose.material3
 
 settings:
   compose: enabled
