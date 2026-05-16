@@ -2,83 +2,25 @@ import * as assert from "assert";
 import { resolveModeFromSettings } from "../composePreviewMode";
 
 /**
- * Tiny stub that satisfies the gradle-service slice [resolveModeFromSettings]
- * reads. The whole point of the predicate's signature is to make this
- * straight-line to test without a VS Code extension host.
+ * `composePreview.mode` is a binary user pin since auto mode was removed —
+ * `"minimal"` or `"full"`. The bundled `--init-script` is what makes `"full"`
+ * safe to default to on any Android / Compose workspace, so there is no
+ * longer a "look around the workspace to guess" branch to exercise here.
  */
-function gradleStub(opts: { previewModules?: string[] }): {
-    findPreviewModules(): { modulePath: string }[];
-} {
-    return {
-        findPreviewModules: () =>
-            (opts.previewModules ?? []).map((m) => ({ modulePath: m })),
-    };
-}
-
 describe("resolveModeFromSettings", () => {
-    describe("user-pinned setting", () => {
-        it("returns minimal mode when the user sets composePreview.mode=minimal", () => {
-            const result = resolveModeFromSettings(
-                { mode: "minimal" },
-                gradleStub({ previewModules: [":app"] }),
-            );
-            assert.deepStrictEqual(result, {
-                mode: "minimal",
-                reason: "user-setting",
-            });
-        });
-
-        it("returns full mode when the user sets composePreview.mode=full", () => {
-            const result = resolveModeFromSettings(
-                { mode: "full" },
-                gradleStub({}),
-            );
-            assert.deepStrictEqual(result, {
-                mode: "full",
-                reason: "user-setting",
-            });
+    it("returns minimal mode when the user sets composePreview.mode=minimal", () => {
+        const result = resolveModeFromSettings({ mode: "minimal" });
+        assert.deepStrictEqual(result, {
+            mode: "minimal",
+            reason: "user-setting",
         });
     });
 
-    describe("auto mode", () => {
-        it("picks full mode when at least one module already applies the plugin", () => {
-            const result = resolveModeFromSettings(
-                { mode: "auto" },
-                gradleStub({ previewModules: [":app"] }),
-            );
-            assert.deepStrictEqual(result, {
-                mode: "full",
-                reason: "auto-plugin-applied",
-            });
-        });
-
-        it("picks minimal mode when the plugin is not applied, even if an Android / Compose host is present", () => {
-            // Auto-inject onto a host plugin doesn't preemptively flip to full
-            // mode: the plugin is only applied once Gradle runs the bundled
-            // init script and writes `applied.json` markers. The
-            // post-Gradle-sync re-evaluation in `extension.ts` handles the
-            // upgrade by re-wiring the daemon backend in place once markers
-            // prove the plugin is applied — no window reload, and the panel
-            // webview drops its minimal banner via `setMinimalMode`.
-            const result = resolveModeFromSettings(
-                { mode: "auto" },
-                gradleStub({}),
-            );
-            assert.deepStrictEqual(result, {
-                mode: "minimal",
-                reason: "auto-no-plugin-applied",
-            });
-        });
-
-        it("picks minimal mode for an empty / non-Compose workspace", () => {
-            const result = resolveModeFromSettings(
-                { mode: "auto" },
-                gradleStub({}),
-            );
-            assert.deepStrictEqual(result, {
-                mode: "minimal",
-                reason: "auto-no-plugin-applied",
-            });
+    it("returns full mode when the user sets composePreview.mode=full", () => {
+        const result = resolveModeFromSettings({ mode: "full" });
+        assert.deepStrictEqual(result, {
+            mode: "full",
+            reason: "user-setting",
         });
     });
 });

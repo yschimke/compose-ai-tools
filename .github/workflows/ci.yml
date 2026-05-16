@@ -145,6 +145,14 @@ jobs:
       # `id("ee.schimke.composeai.preview") version "<v>"` resolves) and builds the CLI install
       # dist (so the `bundle render` subprocess has its `lib-renderer/` companion). Opt-in via
       # `-Pbundle.render.e2e=true` because the test cold-starts Compose Desktop per preview.
+      #
+      # Split into two phases to dodge a parallel-execution race: the gradle-plugin functionalTest
+      # task (in the included build) can start before `:cli:installDist` finishes copying the
+      # CLI's lib jars, so the test's first `compose-preview` subprocess crashes with
+      # `NoClassDefFoundError` against a half-populated lib dir. Pre-building the install dir
+      # serialises the two and is otherwise no-op (the second run sees up-to-date inputs).
+      - name: Pre-build CLI install + publish plugin
+        run: ./gradlew :cli:installDist :gradle-plugin:publishToMavenLocal --stacktrace
       - name: Bundle render e2e
         run: ./gradlew functionalTestWithBundleRender -Pbundle.render.e2e=true --stacktrace
       - name: Upload functionalTest reports on failure
