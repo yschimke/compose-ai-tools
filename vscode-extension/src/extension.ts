@@ -651,11 +651,21 @@ export async function activate(
         );
     }
 
+    // Force plain console output. The Tooling API defaults to Gradle's "rich"
+    // console, which uses ANSI cursor moves to overdraw per-task progress
+    // labels. vscode-gradle strips ANSI codes (`showOutputColors: false`) but
+    // not the visible status tokens those cursor moves were updating, so the
+    // labels leak through as ` SKIPPED FROM-CACHE UP-TO-DATE UP-TO-DATE…`
+    // smashed together into the output channel. Plain mode emits one
+    // `> Task :foo UP-TO-DATE\n` per task instead, which logFilter already
+    // drops at normal level.
+    const baseGradleArgs: readonly string[] = ["--console=plain"];
+
     gradleService = new GradleService(
         workspaceRoot,
         gradleApi,
         outputChannel,
-        () => [...initScriptArgs],
+        () => [...baseGradleArgs, ...initScriptArgs],
         logFilter,
     );
 
