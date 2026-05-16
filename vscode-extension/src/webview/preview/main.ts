@@ -685,6 +685,42 @@ export class PreviewApp extends LitElement {
         const bundleChipBar = this._bundleChipBar;
         const dataTabs = this._dataTabs;
         const bundleLegend = this._bundleLegend;
+        // Mirror of `(previewId, kind)` subscriptions the host has
+        // already posted to the extension. The daemon scheduler drops
+        // its side whenever a previewId leaves `setVisible`, and the
+        // chip's `setKindsEnabled` only posts at toggle time — so the
+        // bundle target drifting (focus moves, card scrolls out and
+        // back) silently desyncs intent from wire state and the
+        // panel paints "No rows" against a chip that's still pressed.
+        // We re-emit from `previewStore` focus events and from the
+        // viewport tracker's `onAfterPublish`; re-emits are idempotent
+        // on the scheduler (`subscribedPairs` short-circuits when the
+        // pair is already live) so over-posting is cheap.
+        const bundleSubscriptions = new Map<string, Set<string>>();
+        const postSetDataExtensionEnabled = (
+            previewId: string,
+            kinds: readonly string[],
+            enabled: boolean,
+        ): void => {
+            if (kinds.length === 0) return;
+            if (enabled) {
+                let set = bundleSubscriptions.get(previewId);
+                if (!set) bundleSubscriptions.set(previewId, (set = new Set()));
+                for (const k of kinds) set.add(k);
+            } else {
+                const set = bundleSubscriptions.get(previewId);
+                if (set) {
+                    for (const k of kinds) set.delete(k);
+                    if (set.size === 0) bundleSubscriptions.delete(previewId);
+                }
+            }
+            vscode.postMessage({
+                command: "setDataExtensionEnabled",
+                previewId,
+                kinds: [...kinds],
+                enabled,
+            });
+        };
         bundleController = new BundleController(
             {
                 setKindsEnabled: (kinds, enabled) => {
@@ -694,12 +730,7 @@ export class PreviewApp extends LitElement {
                     // multi-preview scoping rule from the design doc).
                     const target = currentBundleTarget();
                     if (!target || kinds.length === 0) return;
-                    vscode.postMessage({
-                        command: "setDataExtensionEnabled",
-                        previewId: target,
-                        kinds: [...kinds],
-                        enabled,
-                    });
+                    postSetDataExtensionEnabled(target, kinds, enabled);
                 },
                 persist: (snapshot) => {
                     state.bundles = snapshot;
@@ -708,6 +739,17 @@ export class PreviewApp extends LitElement {
             },
             state.bundles,
         );
+        // Desired-kinds union across every active bundle — the rebind
+        // paths below subscribe the bundle target to whatever the
+        // chip-state says it currently wants.
+        const desiredKindsForActiveBundles = (): string[] => {
+            const out = new Set<string>();
+            const snap = bundleController.state();
+            for (const b of snap.activeBundles) {
+                for (const k of snap.enabledKinds(b)) out.add(k);
+            }
+            return [...out];
+        };
         const currentBundleTarget = (): string | null => {
             const focused = focusController?.focusedCard?.();
             if (focused?.dataset.previewId) return focused.dataset.previewId;
@@ -2028,6 +2070,32 @@ export class PreviewApp extends LitElement {
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
+        // Rebind bundle subscriptions when the focused preview moves.
+        // The chip's `setKindsEnabled` only posts at toggle time
+        // against the then-current target; the daemon-side scheduler
+        // unsubscribes silently when the target leaves `setVisible`.
+        // Without this hop the chip stays pressed against a stale
+        // (previewId, kind) set and the new focus reads an empty
+        // a11y cache. The previewStore listener fires on every
+        // `setState`, so we dedupe against the last target we saw.
+        let lastBundleTarget = currentBundleTarget();
+        const rebindBundleTarget = (): void => {
+            const next = currentBundleTarget();
+            if (next === lastBundleTarget) return;
+            const prev = lastBundleTarget;
+            lastBundleTarget = next;
+            if (prev) {
+                const prevKinds = bundleSubscriptions.get(prev);
+                if (prevKinds && prevKinds.size > 0) {
+                    postSetDataExtensionEnabled(prev, [...prevKinds], false);
+                }
+            }
+            if (!next) return;
+            const desired = desiredKindsForActiveBundles();
+            if (desired.length === 0) return;
+            postSetDataExtensionEnabled(next, desired, true);
+        };
+        previewStore.subscribe(rebindBundleTarget);
         // Mirror hover between the legend and the per-bundle overlay
         // layer. Only the *focused* card has a `<box-overlay>`
         // currently rendering the active bundle's boxes, so we hop to
@@ -2358,6 +2426,29 @@ export class PreviewApp extends LitElement {
         const viewport = new ViewportTracker({
             vscode,
             onCardLeftViewport: (id) => liveState.onCardLeftViewport(id),
+            onAfterPublish: (visible, previous) => {
+                // Previews that just re-entered the viewport had their
+                // `(previewId, kind)` subscriptions dropped on the
+                // daemon side via `setVisible` cleanup. Re-issue the
+                // host's intended subscriptions for those previews so
+                // the next render attaches the bundle's data products
+                // again. The mirror persists across visibility churn
+                // (toggle is the only thing that clears it) so this
+                // hook can rely on it as the source of truth.
+                if (bundleSubscriptions.size === 0) return;
+                const prevSet = new Set(previous);
+                for (const id of visible) {
+                    if (prevSet.has(id)) continue;
+                    const kinds = bundleSubscriptions.get(id);
+                    if (!kinds || kinds.size === 0) continue;
+                    vscode.postMessage({
+                        command: "setDataExtensionEnabled",
+                        previewId: id,
+                        kinds: [...kinds],
+                        enabled: true,
+                    });
+                }
+            },
         });
 
         function observeCardForViewport(card: HTMLElement): void {
