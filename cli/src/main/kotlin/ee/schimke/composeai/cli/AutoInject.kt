@@ -43,6 +43,17 @@ internal fun renderInitScript(pluginVersion: String): String =
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so AGP
 // finalizeDsl / onVariants callbacks register before the DSL lock.
 //
+// Pre-applied detection: if any build file in the project tree declares the
+// plugin with a version — either literal `id("...") version "..."` or via
+// `alias(libs.plugins.<x>)` where the version catalog maps <x> to this
+// plugin id — we skip the buildscript classpath injection below. Gradle's
+// plugins {} DSL rejects `id(...) version "..."` when the same plugin is
+// also on the buildscript classpath ("the plugin is already on the
+// classpath with an unknown version, so compatibility cannot be checked"),
+// and the user's own declaration provides resolution via plugin marker
+// repos. The withPlugin hooks remain registered and no-op via the
+// plugins.hasPlugin(...) guard.
+//
 // `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the buildscript repos into
 // `mavenLocal()` — exercised by the gradle-plugin functional tests, which
 // resolve the plugin from `~/.m2` (where `:publishToMavenLocal` puts it)
@@ -53,19 +64,75 @@ internal fun renderInitScript(pluginVersion: String): String =
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
-allprojects {
-    buildscript {
-        repositories {
-            gradlePluginPortal()
-            mavenCentral()
-            google()
-            if (useMavenLocal) mavenLocal()
+var composeAiPreviewPreApplied = false
+
+fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
+    val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
+    if (!catalog.isFile) return emptyList()
+    val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+    val pluginsHeader = Regex("(?m)^\\[plugins\\]\\s*${'$'}").find(text) ?: return emptyList()
+    val sectionStart = pluginsHeader.range.last + 1
+    val nextSection = Regex("(?m)^\\[").find(text, sectionStart)
+    val section = text.substring(sectionStart, nextSection?.range?.first ?: text.length)
+    val entryRe = Regex(
+        "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
+            "\\{[^}]*\\bid\\s*=\\s*\"ee\\.schimke\\.composeai\\.preview\"[^}]*\\}|" +
+            "\"ee\\.schimke\\.composeai\\.preview(?::[^\"]*)?\"" +
+            ")"
+    )
+    return entryRe.findAll(section).map { match ->
+        val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+        Regex("\\blibs\\s*\\.\\s*plugins\\s*\\.\\s*" + Regex.escape(accessor) + "\\b")
+    }.toList()
+}
+
+fun scanForComposeAiPreviewDeclaration(rootDir: java.io.File): Boolean {
+    val catalogAccessors = composeAiPreviewCatalogAccessors(rootDir)
+    val literalVersionedRe = Regex(
+        "\\bid\\s*[(\\s]\\s*[\"']ee\\.schimke\\.composeai\\.preview[\"']\\s*\\)?\\s*(?:\\.\\s*)?version\\b"
+    )
+    val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
+    fun scan(dir: java.io.File, depth: Int): Boolean {
+        if (depth > 6) return false
+        val children = dir.listFiles() ?: return false
+        for (child in children) {
+            if (child.isFile && (child.name == "build.gradle.kts" || child.name == "build.gradle")) {
+                val text = runCatching { child.readText() }.getOrNull() ?: continue
+                if (literalVersionedRe.containsMatchIn(text)) return true
+                for (re in catalogAccessors) {
+                    if (re.containsMatchIn(text)) return true
+                }
+            }
         }
-        dependencies {
-            add(
-                "classpath",
-                "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
-            )
+        for (child in children) {
+            if (child.isDirectory && child.name !in skipDirs && !child.name.startsWith(".")) {
+                if (scan(child, depth + 1)) return true
+            }
+        }
+        return false
+    }
+    return scan(rootDir, 0)
+}
+
+gradle.settingsEvaluated {
+    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir)
+}
+
+allprojects {
+    if (!composeAiPreviewPreApplied) {
+        buildscript {
+            repositories {
+                gradlePluginPortal()
+                mavenCentral()
+                google()
+                if (useMavenLocal) mavenLocal()
+            }
+            dependencies {
+                add(
+                    "classpath",
+                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
+                )
+            }
         }
     }
 
@@ -177,10 +244,10 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
  * Kept in sync with the VS Code extension's `APPLIES_PLUGIN_RE` plus the extra Groovy `apply
  * plugin:` legacy form (Codex P2 review on PR #1171).
  *
- * The version-catalog alias form (`alias(libs.plugins.<x>)`) is intentionally out of scope: there's
- * no way to know from the build script alone which alias maps to which plugin id without parsing
- * `gradle/libs.versions.toml`. Consumers using catalogs see a spurious warning the first time — the
- * opt-out flag is documented in the warning text.
+ * Version-catalog `alias(libs.plugins.<x>)` declarations are handled out-of-band via
+ * [catalogPluginAccessorRegexes] / [pluginAppliedInBuildScripts] — the catalog parser resolves
+ * which accessor names map to this plugin id, then the scanner pairs them with build-file
+ * references.
  */
 private val PLUGIN_APPLIED_RE =
   Regex(
@@ -188,6 +255,36 @@ private val PLUGIN_APPLIED_RE =
   )
 
 private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
+
+/**
+ * Returns regexes matching `libs.plugins.<accessor>` for every version-catalog alias under
+ * [projectRoot]'s `gradle/libs.versions.toml` whose `id` resolves to this plugin. Empty when the
+ * catalog is missing or doesn't declare the plugin. Kept simple via regex parsing (not a full TOML
+ * parser): the entries we care about — `alias = { id = "...", version = "..." }` and `alias =
+ * "id:version"` — are stable enough that a literal scan covers the realistic cases.
+ *
+ * Visible for tests.
+ */
+internal fun catalogPluginAccessorRegexes(projectRoot: File): List<Regex> {
+  val catalog = File(projectRoot, "gradle/libs.versions.toml")
+  if (!catalog.isFile) return emptyList()
+  val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+  val header = Regex("""(?m)^\[plugins\]\s*$""").find(text) ?: return emptyList()
+  val start = header.range.last + 1
+  val nextSection = Regex("""(?m)^\[""").find(text, start)
+  val section = text.substring(start, nextSection?.range?.first ?: text.length)
+  val entryRe =
+    Regex(
+      """(?m)^[ \t]*([A-Za-z0-9_.\-]+)\s*=\s*(?:\{[^}]*\bid\s*=\s*"ee\.schimke\.composeai\.preview"[^}]*\}|"ee\.schimke\.composeai\.preview(?::[^"]*)?")"""
+    )
+  return entryRe
+    .findAll(section)
+    .map { match ->
+      val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+      Regex("""\blibs\s*\.\s*plugins\s*\.\s*${Regex.escape(accessor)}\b""")
+    }
+    .toList()
+}
 
 /**
  * True when *any* `build.gradle.kts` / `build.gradle` under [projectRoot] applies the plugin
@@ -204,6 +301,7 @@ private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
  */
 internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): Boolean {
   val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
+  val catalogAccessors = catalogPluginAccessorRegexes(projectRoot)
   fun scan(dir: File, depth: Int): Boolean {
     if (depth > maxDepth) return false
     val children = dir.listFiles() ?: return false
@@ -212,9 +310,11 @@ internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): 
         val raw = runCatching { child.readText() }.getOrNull() ?: continue
         val text = stripGradleComments(raw)
         for (line in text.lineSequence()) {
-          if (!PLUGIN_APPLIED_RE.containsMatchIn(line)) continue
           if (PLUGIN_APPLY_FALSE_RE.containsMatchIn(line)) continue
-          return true
+          if (PLUGIN_APPLIED_RE.containsMatchIn(line)) return true
+          for (re in catalogAccessors) {
+            if (re.containsMatchIn(line)) return true
+          }
         }
       }
     }

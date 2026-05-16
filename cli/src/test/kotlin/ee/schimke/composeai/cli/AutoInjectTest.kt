@@ -423,6 +423,113 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `pluginAppliedInBuildScripts finds catalog alias via libs versions toml inline table`() {
+    // The reported regression (homeassistant-remotecompose): the user declares the plugin in
+    // gradle/libs.versions.toml as an inline-table entry and references it with
+    // `alias(libs.plugins.compose.preview)` in app/build.gradle.kts. The literal-id scan misses
+    // this and the CLI then mistakenly auto-injects, which conflicts with the plugins DSL.
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        compose-preview = { id = "ee.schimke.composeai.preview", version = "0.10.8" }
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.android.application)
+            alias(libs.plugins.compose.preview)
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts finds catalog alias via libs versions toml short form`() {
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        compose_preview = "ee.schimke.composeai.preview:0.10.8"
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.compose.preview)
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts does not match catalog accessors for unrelated plugins`() {
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.3.20" }
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.kotlin.jvm)
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `catalogPluginAccessorRegexes returns empty list when catalog is missing`() {
+    val root = tempDir()
+    assertEquals(emptyList<Regex>(), catalogPluginAccessorRegexes(root))
+  }
+
+  @Test
+  fun `init script gates the buildscript classpath injection on pre-applied detection`() {
+    val script = renderInitScript("0.10.15")
+    assertTrue(
+      script.contains("var composeAiPreviewPreApplied = false"),
+      "expected the pre-applied flag declaration",
+    )
+    assertTrue(
+      script.contains("composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir)"),
+      "expected the flag to be set during settingsEvaluated",
+    )
+    assertTrue(
+      script.contains("if (!composeAiPreviewPreApplied) {"),
+      "expected the buildscript block to be guarded by the flag",
+    )
+    assertTrue(
+      script.contains("gradle/libs.versions.toml"),
+      "expected the catalog accessor scanner to read libs.versions.toml so alias(...) declarations are detected",
+    )
+  }
+
+  @Test
   fun `pluginAppliedInBuildScripts skips build directories`() {
     val root = tempDir()
     val staleBuild = File(root, "build/some-cache").apply { mkdirs() }
