@@ -800,6 +800,52 @@ describe("DaemonScheduler", () => {
             assert.deepStrictEqual(kinds, ["a11y/atf", "a11y/hierarchy"]);
         });
 
+        it("setDataProductSubscription(true) emits exactly one renderNow per call regardless of kind count", async () => {
+            // Regression for the cluster of bugs where a bundle's
+            // chip enable produced an `a11y/hierarchy` attachment but
+            // no `a11y/atf`: per-kind dispatch resulted in
+            // `dataSubscribe(a11y/hierarchy)` → `renderNow` →
+            // `dataSubscribe(a11y/atf)`, and the daemon froze the
+            // in-flight render's data-product set after the first
+            // subscribe arrived. Batched dispatch must collapse to a
+            // single trailing `renderNow` so all subscriptions land
+            // first, then one render.
+            const { gate, scheduler } = build();
+            await scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf", "a11y/hierarchy", "a11y/touchTargets"],
+                true,
+            );
+            const subs = gate.client!.calls.filter(
+                (c) => c.method === "dataSubscribe",
+            );
+            const renders = gate.client!.calls.filter(
+                (c) => c.method === "renderNow",
+            );
+            assert.strictEqual(subs.length, 3, "one subscribe per kind");
+            assert.strictEqual(
+                renders.length,
+                1,
+                `batched subscribe must emit exactly one renderNow, got ${renders.length}`,
+            );
+            // And the renderNow must be ordered AFTER all subscribes —
+            // otherwise the daemon races the same way per-kind dispatch
+            // did.
+            const lastSubscribeIdx = gate
+                .client!.calls.map((c, i) => ({ c, i }))
+                .filter((p) => p.c.method === "dataSubscribe")
+                .map((p) => p.i)
+                .reduce((a, b) => Math.max(a, b), -1);
+            const renderIdx = gate.client!.calls.findIndex(
+                (c) => c.method === "renderNow",
+            );
+            assert.ok(
+                renderIdx > lastSubscribeIdx,
+                `renderNow at index ${renderIdx} must come after the last dataSubscribe at index ${lastSubscribeIdx}`,
+            );
+        });
+
         it("setDataProductSubscription(true) twice is idempotent", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(

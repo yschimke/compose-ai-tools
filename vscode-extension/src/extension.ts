@@ -404,7 +404,7 @@ export interface ComposePreviewTestApi {
      */
     triggerSetDataExtensionEnabled(
         previewId: string,
-        kind: string,
+        kinds: readonly string[],
         enabled: boolean,
     ): Promise<void>;
     /**
@@ -1604,10 +1604,10 @@ export async function activate(
             },
             triggerSetDataExtensionEnabled(
                 previewId: string,
-                kind: string,
+                kinds: readonly string[],
                 enabled: boolean,
             ): Promise<void> {
-                return handleSetDataExtensionEnabled(previewId, kind, enabled);
+                return handleSetDataExtensionEnabled(previewId, kinds, enabled);
             },
             triggerWarmDaemon(filePath: string): Promise<boolean> {
                 return warmDaemonForFile(filePath);
@@ -4104,11 +4104,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
         case "setDataExtensionEnabled":
             if (earlyFeaturesEnabled()) {
                 moduleOutputChannel?.appendLine(
-                    `[panel] extension ${msg.kind} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+                    `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
                 );
                 void handleSetDataExtensionEnabled(
                     msg.previewId,
-                    msg.kind,
+                    msg.kinds,
                     msg.enabled,
                 );
             }
@@ -4243,12 +4243,15 @@ function updateModuleA11ySubscription(
 }
 
 /**
- * Focus-inspector data-extension toggle. Routes a `(previewId, kind)`
- * subscription through the daemon scheduler so the daemon attaches (or
- * stops attaching) the payload on the next render. The webview already
- * paints a "Loading…" placeholder synchronously on toggle; the next
- * render swap (fed back through the existing data-product
- * notifications) replaces it with the real contribution.
+ * Bundle / focus-inspector data-extension toggle. Routes one or more
+ * `(previewId, kind)` subscriptions through the daemon scheduler in a
+ * single call so `data/subscribe` per kind is followed by exactly one
+ * `renderNow`. Issuing one wire round-trip per kind raced the daemon's
+ * subscription-driven render mode: the first subscribe arrived,
+ * `renderNow` started, the in-flight render's data-product set got
+ * frozen, and the second kind's product (e.g. `a11y/atf`) silently
+ * missed it — bundle showed only `a11y/hierarchy` even though the
+ * chip subscribed to both.
  *
  * For `a11y/*` kinds, also tracks the module-level subscription so the
  * panel can detect first-on / last-off transitions and trigger a panel
@@ -4265,26 +4268,44 @@ function updateModuleA11ySubscription(
  */
 async function handleSetDataExtensionEnabled(
     previewId: string,
-    kind: string,
+    kinds: readonly string[],
     enabled: boolean,
 ): Promise<void> {
     if (!daemonScheduler) {
+        return;
+    }
+    if (kinds.length === 0) {
         return;
     }
     const moduleId = previewModuleMap.get(previewId);
     if (!moduleId) {
         return;
     }
-    const a11yTransition = updateModuleA11ySubscription(
-        moduleId.modulePath,
-        previewId,
-        kind,
-        enabled,
-    );
+    // Update the module's a11y tracker per-kind, but the
+    // first-on / last-off transition is what gates the follow-up
+    // refresh — collapse the per-kind verdicts into one. A bundle
+    // activation enables every a11y kind at once, so only the first
+    // kind in the batch can trip the transition; the rest stay
+    // "unchanged" and must not override that.
+    let a11yTransition: "enabled" | "disabled" | "unchanged" = "unchanged";
+    for (const kind of kinds) {
+        const t = updateModuleA11ySubscription(
+            moduleId.modulePath,
+            previewId,
+            kind,
+            enabled,
+        );
+        if (t !== "unchanged") a11yTransition = t;
+    }
+    // Single subscription call so the wire sees `data/subscribe` per
+    // kind followed by exactly one `renderNow`. Per-kind dispatch
+    // would interleave with the daemon's mode-lock-on-first-
+    // subscribe and the second kind's data product (e.g. `a11y/atf`)
+    // would silently miss the in-flight render.
     await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
-        [kind],
+        kinds,
         enabled,
     );
     if (a11yTransition !== "unchanged") {
@@ -4294,23 +4315,27 @@ async function handleSetDataExtensionEnabled(
         // just kicks the panel to repaint with the freshly-arrived data products.
         void refresh(true, undefined, "fast");
     }
-    if (!enabled && (kind === "a11y/atf" || kind === "a11y/hierarchy")) {
+    if (!enabled) {
         // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
         // down the cached overlay/legend immediately so the visual layer clears without
         // waiting on the next render. Empty arrays are the agreed signal: applyA11yUpdate
         // drops the corresponding cached entries and removes the layers from the DOM.
         // Other kinds (touchTargets, overlay) don't currently drive a webview overlay
         // independent of these two, so leaving them out keeps the message minimal.
-        const update: {
-            previewId: string;
-            findings?: never[];
-            nodes?: never[];
-        } = {
-            previewId,
-        };
-        if (kind === "a11y/atf") update.findings = [];
-        if (kind === "a11y/hierarchy") update.nodes = [];
-        panel?.postMessage({ command: "updateA11y", ...update });
+        const hasAtf = kinds.includes("a11y/atf");
+        const hasHierarchy = kinds.includes("a11y/hierarchy");
+        if (hasAtf || hasHierarchy) {
+            const update: {
+                previewId: string;
+                findings?: never[];
+                nodes?: never[];
+            } = {
+                previewId,
+            };
+            if (hasAtf) update.findings = [];
+            if (hasHierarchy) update.nodes = [];
+            panel?.postMessage({ command: "updateA11y", ...update });
+        }
     }
 }
 

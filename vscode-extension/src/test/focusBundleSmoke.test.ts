@@ -47,7 +47,7 @@ import type { BundleExpander } from "../webview/preview/components/BundleExpande
 
 interface CapturedPost {
     previewId: string;
-    kind: string;
+    kinds: readonly string[];
     enabled: boolean;
 }
 
@@ -67,8 +67,8 @@ function buildScenario(): Scenario {
     const posts: CapturedPost[] = [];
     const previewId = "preview-smoke-0";
     const controller = new BundleController({
-        setKindEnabled: (kind, enabled) => {
-            posts.push({ previewId, kind, enabled });
+        setKindsEnabled: (kinds, enabled) => {
+            posts.push({ previewId, kinds: [...kinds], enabled });
         },
         persist: () => {},
     });
@@ -163,7 +163,7 @@ describe("Focus view data-extension toggle smoke", () => {
                     posts[0],
                     {
                         previewId,
-                        kind: k.kind,
+                        kinds: [k.kind],
                         enabled: !wasEnabled,
                     },
                     `${bundle.id}/${k.kind} post payload mismatch`,
@@ -180,7 +180,7 @@ describe("Focus view data-extension toggle smoke", () => {
         // arrives later. Whether the host posts is unrelated to
         // the UI state of the input element.
         const controller = new BundleController({
-            setKindEnabled: () => {
+            setKindsEnabled: () => {
                 /* host black-hole */
             },
             persist: () => {},

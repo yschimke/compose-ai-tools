@@ -679,26 +679,27 @@ export class PreviewApp extends LitElement {
 
         // Bundle controller — owns the chip ↔ tab ↔ overlay state machine
         // for the new panel shell. Additive to the existing focus-inspector
-        // chrome; the two coexist during migration. The controller's
-        // `setKindEnabled` forwards through the same `setDataExtensionEnabled`
-        // wire message the inspector already uses, so subscriptions land in
-        // a single place.
+        // chrome; the two coexist during migration. The controller batches
+        // every kind in a chip activation into a single `setKindsEnabled`
+        // host call so the wire ships one `setDataExtensionEnabled`
+        // message — per-kind dispatch raced the daemon's mode-lock-on-
+        // first-subscribe and left bundles with partial data products.
         const bundleChipBar = this._bundleChipBar;
         const dataTabs = this._dataTabs;
         const bundleLegend = this._bundleLegend;
         const bundleController = new BundleController(
             {
-                setKindEnabled: (kind, enabled) => {
+                setKindsEnabled: (kinds, enabled) => {
                     // Subscriptions are per-preview at the wire layer; we
                     // forward against the focused preview when there is
                     // one, otherwise the first visible card (the default
                     // multi-preview scoping rule from the design doc).
                     const target = currentBundleTarget();
-                    if (!target) return;
+                    if (!target || kinds.length === 0) return;
                     vscode.postMessage({
                         command: "setDataExtensionEnabled",
                         previewId: target,
-                        kind,
+                        kinds: [...kinds],
                         enabled,
                     });
                 },
