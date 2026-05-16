@@ -169,6 +169,57 @@ describe("BundleController", () => {
         );
     });
 
+    it("re-activating a bundle whose stored kinds drained to empty falls back to defaults", () => {
+        // Configure-expander all-off used to persist `{a11y: []}`; the
+        // next chip activation read that empty array, the
+        // `kinds.length > 0` guard skipped `setKindsEnabled`, and the
+        // chip lit up against a bundle that never subscribed to
+        // anything — no `setDataExtensionEnabled` ever reached the
+        // extension, no `[daemon] onDataProductsAttached` log. Pin
+        // the contract that pressing the chip always produces a wire
+        // post: empty-stored snaps back to defaults rather than
+        // honouring a zero-kind preference the chip UI can't surface.
+        const { controller, toggles } = build();
+        controller.toggleBundle("a11y");
+        for (const k of ["a11y/hierarchy", "a11y/atf"]) {
+            controller.setKindEnabled("a11y", k, false);
+        }
+        // Sanity: stored kinds list is now empty.
+        assert.deepStrictEqual(controller.state().enabledKinds("a11y"), []);
+        controller.closeTab("a11y");
+        toggles.length = 0;
+        controller.toggleBundle("a11y");
+        const reactivated = toggles
+            .filter((t) => t.enabled)
+            .map((t) => t.kind)
+            .sort();
+        assert.deepStrictEqual(
+            reactivated,
+            ["a11y/atf", "a11y/hierarchy"],
+            "empty-stored kinds must snap back to defaults on re-activate",
+        );
+    });
+
+    it("activating a snapshot whose kinds drained out (registry drift) falls back to defaults", () => {
+        // Same guard as above, exercised via the snapshot path: a
+        // bundle whose persisted kinds all disappeared from the
+        // registry filters down to `[]` in the constructor, and the
+        // first activation must still subscribe defaults rather than
+        // silently no-op.
+        const { controller, toggles } = build({
+            activeBundles: [],
+            enabledKindsByBundle: { a11y: [] },
+            activeTab: null,
+        });
+        assert.deepStrictEqual(controller.state().enabledKinds("a11y"), []);
+        controller.toggleBundle("a11y");
+        const subscribed = toggles
+            .filter((t) => t.enabled)
+            .map((t) => t.kind)
+            .sort();
+        assert.deepStrictEqual(subscribed, ["a11y/atf", "a11y/hierarchy"]);
+    });
+
     it("MRU promotes the just-pressed bundle to the front of activeBundles", () => {
         const { controller } = build();
         controller.toggleBundle("a11y");
