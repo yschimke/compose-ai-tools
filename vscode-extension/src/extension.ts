@@ -4291,6 +4291,34 @@ async function handleSetDataExtensionEnabled(
     if (!moduleId) {
         return;
     }
+    // Gate against the daemon's advertised capability set so the panel
+    // doesn't fire `data/subscribe` for kinds the daemon never claimed.
+    // The bundle catalogue is static (every host sees the same one)
+    // while the advertised set is per-daemon: `compose/recomposition`
+    // is desktop-only; `render/composeAiTrace` is gated on a sysprop;
+    // `displayfilter/variants` only shows up when filters are configured.
+    // When the snapshot is null (daemon not yet up / disposed mid-flight)
+    // we pass kinds through unchanged so the schedulers' own retry path
+    // can handle the request once the daemon comes online — squelching
+    // here would silently drop every toggle during the warm-up window.
+    const snap = daemonGate?.getCapabilitiesSnapshot(moduleId.modulePath);
+    const advertised = snap
+        ? new Set(snap.dataProducts.map((p) => p.kind))
+        : null;
+    const filteredKinds: string[] = [];
+    const dropped: string[] = [];
+    for (const kind of kinds) {
+        if (advertised && !advertised.has(kind)) dropped.push(kind);
+        else filteredKinds.push(kind);
+    }
+    if (dropped.length > 0) {
+        moduleOutputChannel?.appendLine(
+            `[panel] dropped unadvertised kinds for ${previewId}: ${dropped.join(", ")}`,
+        );
+    }
+    if (filteredKinds.length === 0) {
+        return;
+    }
     // Update the module's a11y tracker per-kind, but the
     // first-on / last-off transition is what gates the follow-up
     // refresh — collapse the per-kind verdicts into one. A bundle
@@ -4298,7 +4326,7 @@ async function handleSetDataExtensionEnabled(
     // kind in the batch can trip the transition; the rest stay
     // "unchanged" and must not override that.
     let a11yTransition: "enabled" | "disabled" | "unchanged" = "unchanged";
-    for (const kind of kinds) {
+    for (const kind of filteredKinds) {
         const t = updateModuleA11ySubscription(
             moduleId.modulePath,
             previewId,
@@ -4315,7 +4343,7 @@ async function handleSetDataExtensionEnabled(
     await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
-        kinds,
+        filteredKinds,
         enabled,
     );
     if (a11yTransition !== "unchanged") {
@@ -4332,8 +4360,8 @@ async function handleSetDataExtensionEnabled(
         // drops the corresponding cached entries and removes the layers from the DOM.
         // Other kinds (touchTargets, overlay) don't currently drive a webview overlay
         // independent of these two, so leaving them out keeps the message minimal.
-        const hasAtf = kinds.includes("a11y/atf");
-        const hasHierarchy = kinds.includes("a11y/hierarchy");
+        const hasAtf = filteredKinds.includes("a11y/atf");
+        const hasHierarchy = filteredKinds.includes("a11y/hierarchy");
         if (hasAtf || hasHierarchy) {
             const update: {
                 previewId: string;

@@ -95,6 +95,7 @@ import {
 import {
     computeDisplayFilterBundleData,
     displayFilterTableColumns,
+    type DisplayFilterVariantsPayload,
 } from "./displayFilterBundlePresenter";
 import {
     computeResourcesBundleData,
@@ -1459,22 +1460,16 @@ export class PreviewApp extends LitElement {
         const refreshDisplayBundle = (): void => {
             const target = currentBundleTarget();
             if (!target) return;
-            // Build rows from the currently-subscribed kinds, not the
-            // full bundle catalog — otherwise filters show as "active"
-            // when their checkbox is off, drifting the displayed
-            // (and Copy-JSON'd) state away from actual subscriptions.
-            const bundle = getBundle("display");
-            const enabledKinds = new Set(
-                bundleController.state().enabledKinds("display"),
-            );
-            const entries =
-                bundle?.kinds
-                    .filter((k) => enabledKinds.has(k.kind))
-                    .map((k) => ({
-                        kind: k.kind,
-                        label: k.label,
-                    })) ?? [];
-            const data = computeDisplayFilterBundleData(entries);
+            // The daemon advertises a single `displayfilter/variants`
+            // kind whose payload manifest enumerates every enabled
+            // filter. Build rows from the latest attached payload, not
+            // the bundle catalog or chip state — the on-disk manifest
+            // is the source of truth for which filters actually have
+            // PNGs to display.
+            const byKind = dataProductsByPreview.get(target);
+            const payload = (byKind?.get("displayfilter/variants") ??
+                null) as DisplayFilterVariantsPayload | null;
+            const data = computeDisplayFilterBundleData(payload);
             const body = displayBodyBuilt();
             const table = body.table;
             table.setRows(data.rows);
@@ -1487,7 +1482,11 @@ export class PreviewApp extends LitElement {
             );
             table.setJsonPayload(() => ({
                 previewId: target,
-                filters: entries,
+                variants: data.rows.map((r) => ({
+                    filter: r.filterId,
+                    label: r.label,
+                    path: r.path,
+                })),
             }));
             // TODO: when daemon-side per-filter override plumbing lands,
             // forward `row-selected` events to a `requestDisplayFilter`
