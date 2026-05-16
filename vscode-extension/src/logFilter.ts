@@ -35,15 +35,30 @@ export function parseLogLevel(
     return fallback;
 }
 
-// Per-task status suffix that means "nothing happened" — the task body wasn't
-// re-executed. Drowning the user in twenty of these per refresh is what the
-// `normal` level exists to suppress.
-const NOOP_TASK_SUFFIX_RE = /\s(UP-TO-DATE|NO-SOURCE|SKIPPED|FROM-CACHE)\s*$/;
+// `> Task :module:taskname` headers — Gradle's per-task status line. Drowning
+// the user in dozens of these per refresh is what the `normal` level exists to
+// suppress. `FAILED` variants are caught by the failure-shaped branches above
+// before we get to this drop.
+const TASK_HEADER_RE = /^> Task :/;
 
 // Hides the full Gradle "1 actionable task: 1 up-to-date" / "9 actionable
 // tasks: 9 up-to-date" footer at normal+. The line is bookkeeping only —
 // `BUILD SUCCESSFUL/FAILED` (which we keep) already conveys the outcome.
 const ACTIONABLE_FOOTER_RE = /^\d+ actionable tasks?: /;
+
+// `Discovered N preview(s) in module '…':` + the indented bullet list that
+// follows it. Emitted by the gradle plugin's discoverPreviews task. Useful for
+// debugging the discovery pipeline, redundant for end users who already see
+// `[refresh] rendered N preview(s) for <file>`. The bullet continuation lines
+// start with two spaces, so we drop the header and any subsequent `  …` line
+// until a non-indented line.
+const DISCOVERED_HEADER_RE = /^Discovered \d+ preview\(s\) in module /;
+const DISCOVERED_BULLET_RE = /^ {2}\S/;
+
+// `BUILD SUCCESSFUL in 16s` is bookkeeping the user already infers from the
+// `[refresh] rendered N preview(s)` line that follows. `BUILD FAILED` is the
+// counterpart — we always keep that one (it's a failure).
+const BUILD_SUCCESSFUL_RE = /^BUILD SUCCESSFUL /;
 
 const CONFIG_CACHE_RE =
     /^(Reusing configuration cache\.|Configuration cache entry (reused|stored)\.|Calculating task graph .*)$/;
@@ -94,28 +109,62 @@ const ROBORAZZI_ACTIONBAR_FOLLOWUP_RE = new RegExp(
 
 const BUILD_SUCCESS_FAIL_RE = /^BUILD (SUCCESSFUL|FAILED) /;
 
-// Extension-side `[refresh]` / `[doctor]` / Gradle-task progress lines
-// emitted from `extension.ts` and `gradleService.ts`. These are useful at
-// normal but redundant at quiet — quiet keeps only error lines and the BUILD
-// outcome.
-const EXTENSION_INFO_PREFIXES = [
-    "[refresh] start ",
-    "[refresh] rendered ",
-    "[doctor] doctor diagnostics refreshed ",
+// Extension-side chatter that's high-volume but low-signal. At normal we keep
+// only the lines that answer "what's the panel doing right now" (focused file,
+// render outcome, panel actions, daemon readiness, failures); the rest drops
+// down to verbose. Quiet drops these too.
+//
+// Prefixes are deliberately *specific* — we don't blanket-drop `[doctor] ` or
+// `[refresh] ` because the same prefix carries failure messages (e.g.
+// `[doctor] :samples:cmp:composePreviewDoctor failed: ...`) that must survive.
+const NORMAL_CHATTER_PREFIXES = [
+    "[refresh] cache hit:",
+    "[refresh] cancelled — superseded ",
     "[daemon] spawning ",
-    "[daemon] ready for ",
+    "[daemon] webview ack ",
+    "[doctor] doctor diagnostics refreshed ",
     "[detect] ",
 ];
 
-// `> :module:task` and `> :module:task completed` are progress markers we
-// suppress at quiet. The `FAILED` / `cancelled` variants flow through their
-// own branches in GradleService and bypass [shouldEmitInformational].
-const TASK_PROGRESS_RE = /^> :[\w:.-]+( completed)?$/;
+// Lines that survive at normal (and verbose) but drop at quiet. The `[panel]`
+// prefix is reserved for user-initiated actions (preview selection, extension
+// toggle, focus); we always show those.
+const QUIET_CHATTER_PREFIXES = [
+    "[refresh] start ",
+    "[refresh] rendered ",
+    "[refresh] no module ",
+    "[refresh] done ",
+    "[refresh] auto-render: ",
+    "[startup] ",
+    "[daemon] ready for ",
+];
+
+// `> :module:task` / `> :module:task completed` / `> :module:task cancelled`
+// progress markers from gradleService.ts. The `FAILED` variant flows through a
+// separate branch in GradleService and bypasses [shouldEmitInformational].
+const TASK_PROGRESS_RE = /^> :[\w:.-]+( (completed|cancelled))?$/;
+
+// Daemon stderr — per-render phase / classloader / renderFinished chatter from
+// `RenderEngine.kt` and `UserClassLoaderHolder.kt`. Each render emits ~25 of
+// these lines (one per render phase × per data extension); a single refresh
+// can produce hundreds. Useful for daemon devs, useless for end users.
+//
+// Phase-failure lines (`phase=*.failed`) are kept — they're how a botched
+// render surfaces in the output channel without an exception stack.
+const DAEMON_RENDER_CHATTER_RE =
+    /^compose-ai-daemon: \[(render|renderFinished|classloader)\] /;
+const DAEMON_RENDER_FAILURE_RE =
+    /^compose-ai-daemon: \[render\] phase=[\w./]+\.failed\b/;
+const DAEMON_SANDBOX_POOL_RE = /^compose-ai-tools daemon: sandbox pool active /;
 
 export class LogFilter {
     private warnedOnce = new Set<string>();
     private inConfigureBlock = false;
     private inRoborazziBlock = false;
+    // Tracks the `Discovered N preview(s) in module …:` continuation — bullet
+    // lines starting with two spaces drop until a non-indented line ends the
+    // block. Persists across chunks like the configure-block flag.
+    private inDiscoveredBlock = false;
     // Tracks whether the last line we emitted from filterGradleChunk was blank,
     // so that dropping interstitial content between blanks doesn't accumulate
     // multiple consecutive blank lines in the output channel. Persists across
@@ -190,45 +239,71 @@ export class LogFilter {
             return "drop";
         }
 
+        // Discovered-preview block: header + indented bullet list. Drop the
+        // whole block at normal/quiet — it duplicates `[refresh] rendered N`.
+        if (this.inDiscoveredBlock) {
+            if (DISCOVERED_BULLET_RE.test(line)) {
+                return "drop";
+            }
+            this.inDiscoveredBlock = false;
+            // Fall through to classify this line normally.
+        }
+        if (DISCOVERED_HEADER_RE.test(line)) {
+            this.inDiscoveredBlock = true;
+            return "drop";
+        }
+
         const trimmed = line.trimEnd();
         if (trimmed.length === 0) {
             return "keep";
         }
 
+        // Failure-shaped lines survive at every non-verbose level.
+        if (/^FAILURE: /.test(trimmed)) {
+            return "keep";
+        }
+        if (/^\* What went wrong:/.test(trimmed)) {
+            return "keep";
+        }
+        if (/(^|\s)FAILED(\s|$)/.test(trimmed)) {
+            return "keep";
+        }
+        if (/^Caused by: /.test(trimmed)) {
+            return "keep";
+        }
+        if (/^[ \t]+at .+\(/.test(line)) {
+            return "keep";
+        }
+        if (/^e: /.test(trimmed)) {
+            return "keep";
+        } // kotlinc errors
+        if (/^w: /.test(trimmed)) {
+            return "keep";
+        } // kotlinc warnings
+
         if (this.level() === "quiet") {
-            // Quiet keeps only outcome lines and FAILED/error-shaped lines.
+            // Quiet keeps only outcome lines and the failure-shaped lines
+            // above. `BUILD SUCCESSFUL` survives so the user sees the outcome
+            // even when nothing went wrong.
             if (BUILD_SUCCESS_FAIL_RE.test(trimmed)) {
                 return "keep";
             }
-            if (/^FAILURE: /.test(trimmed)) {
-                return "keep";
-            }
-            if (/^\* What went wrong:/.test(trimmed)) {
-                return "keep";
-            }
-            if (/(^|\s)FAILED(\s|$)/.test(trimmed)) {
-                return "keep";
-            }
-            if (/^Caused by: /.test(trimmed)) {
-                return "keep";
-            }
-            if (/^[ \t]+at .+\(/.test(line)) {
-                return "keep";
-            }
-            if (/^e: /.test(trimmed)) {
-                return "keep";
-            } // kotlinc errors
-            if (/^w: /.test(trimmed)) {
-                return "keep";
-            } // kotlinc warnings
             return "drop";
         }
 
-        // normal level
-        if (
-            trimmed.startsWith("> Task ") &&
-            NOOP_TASK_SUFFIX_RE.test(trimmed)
-        ) {
+        // normal level — substantially less chatter than before. The
+        // per-task `> Task :module:task [STATUS]` headers, the
+        // discoverPreviews bullet list (handled above), and the bookkeeping
+        // tail (config cache, incubating, actionable footer) all drop.
+        // `BUILD SUCCESSFUL` also drops at normal — `[refresh] rendered N`
+        // already conveys success; `BUILD FAILED` survives via the
+        // failure-shaped branches above.
+        if (TASK_HEADER_RE.test(trimmed)) {
+            // Already handled by the `FAILED` branch above — drop everything
+            // else.
+            return "drop";
+        }
+        if (BUILD_SUCCESSFUL_RE.test(trimmed)) {
             return "drop";
         }
         if (CONFIG_CACHE_RE.test(trimmed)) {
@@ -311,19 +386,60 @@ export class LogFilter {
         if (DAEMON_TIMING_RE.test(line)) {
             return null;
         }
+        // Per-render phase / classloader / renderFinished chatter — hundreds
+        // of lines per refresh. Failure-shaped phase lines (`phase=*.failed`)
+        // survive so botched renders still surface.
+        if (DAEMON_RENDER_FAILURE_RE.test(line)) {
+            return line;
+        }
+        if (DAEMON_RENDER_CHATTER_RE.test(line)) {
+            return null;
+        }
+        if (DAEMON_SANDBOX_POOL_RE.test(line)) {
+            return null;
+        }
         return line;
     }
 
     /**
      * Used by extension-side `[refresh] ...` / `[doctor] ...` informational
-     * lines. Returns true at normal+ for non-error chatter, false at quiet.
-     * Errors and `FAILED` lines should bypass this and emit unconditionally.
+     * lines and gradle-task progress markers. At normal we keep only the
+     * lines that answer "what's the panel doing right now" — focused file,
+     * render outcome, panel actions, daemon readiness, failures. Quiet
+     * drops everything that isn't the [panel] action prefix or an
+     * unrecognised (likely error-shaped) line. Verbose emits unconditionally.
+     *
+     * Errors and `FAILED`-shaped lines should bypass this and emit through
+     * `outputChannel.appendLine` directly — both at quiet and normal.
      */
     shouldEmitInformational(line: string): boolean {
-        if (this.level() !== "quiet") {
+        const lvl = this.level();
+        if (lvl === "verbose") {
             return true;
         }
-        for (const prefix of EXTENSION_INFO_PREFIXES) {
+        // `[panel]` is user-initiated (preview selection, extension toggle).
+        // Always emit so the user sees what their click did.
+        if (line.startsWith("[panel] ")) {
+            return true;
+        }
+        if (lvl === "normal") {
+            for (const prefix of NORMAL_CHATTER_PREFIXES) {
+                if (line.startsWith(prefix)) {
+                    return false;
+                }
+            }
+            if (TASK_PROGRESS_RE.test(line)) {
+                return false;
+            }
+            return true;
+        }
+        // quiet
+        for (const prefix of QUIET_CHATTER_PREFIXES) {
+            if (line.startsWith(prefix)) {
+                return false;
+            }
+        }
+        for (const prefix of NORMAL_CHATTER_PREFIXES) {
             if (line.startsWith(prefix)) {
                 return false;
             }
@@ -344,6 +460,7 @@ export class LogFilter {
         this.warnedOnce.clear();
         this.inConfigureBlock = false;
         this.inRoborazziBlock = false;
+        this.inDiscoveredBlock = false;
         this.prevEmittedBlank = false;
     }
 }
