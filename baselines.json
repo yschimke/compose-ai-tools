@@ -34,8 +34,8 @@
     "grid-default.light.png": {
       "fixture": "grid-default",
       "theme": "light",
-      "sha256": "42b91296e86e49494bcb16656b40ddc9be5aae213d171fb2994bf9c42b5a4b34",
-      "size": 11212
+      "sha256": "9d1e531db17214d9e4ed826dd9a6150cc4ce4083de649b6e68a6948f2300f799",
+      "size": 11274
     },
     "history-diff.dark.png": {
       "fixture": "history-diff",
@@ -52,14 +52,14 @@
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
       "theme": "dark",
-      "sha256": "b60e8fd0bfd239de14c125d973ca28e310cb63c05d4c0a35c680a26e5fd1ab38",
-      "size": 68401
+      "sha256": "8f76e7175d97fff9f0b886bd4072363ef1e8c9d906306c0eccda5822326a8cac",
+      "size": 68399
     },
     "inspection-tree.light.png": {
       "fixture": "inspection-tree",
       "theme": "light",
-      "sha256": "e78405fa30b6be97c00bc964da5a8434582755abe0a4ae16047489b27d73e08d",
-      "size": 66502
+      "sha256": "dee337a7f94f6fc723317033af2d7214135f9f0ecb7a2a22403bd50480de1300",
+      "size": 66503
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
