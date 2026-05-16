@@ -110,6 +110,14 @@ export function computeA11yBundleData(
     const consumedTargets = new Set<AccessibilityTouchTarget>();
 
     nodes.forEach((node, idx) => {
+        // The daemon serializes `AccessibilityNode` with
+        // `encodeDefaults = false`, so `merged: true` (the Kotlin
+        // default) is omitted from the wire JSON and lands here as
+        // `undefined`. Treat anything other than an explicit `false`
+        // as merged — otherwise the `mergedOnly` filter below drops
+        // every TalkBack stop on the wire, leaving the bundle empty
+        // even when a hierarchy with 12 nodes arrived.
+        const isMerged = node.merged !== false;
         // Index-stable id so the `mergedOnly` filter below doesn't
         // renumber ids across renders — the row's overlay box, the
         // data-table row, and the legend entry all share the index-
@@ -117,7 +125,7 @@ export function computeA11yBundleData(
         // findings runs unconditionally further down, so skipping
         // here doesn't cause a finding on an unmerged child to leak
         // out as an orphan row.
-        if (mergedOnly && !node.merged) return;
+        if (mergedOnly && !isMerged) return;
         const id = "a11y-" + idx;
         const bounds = parseBounds(node.boundsInScreen);
         const matchingFindings = bounds
@@ -135,7 +143,7 @@ export function computeA11yBundleData(
             label: node.label || "(unlabelled)",
             role: node.role ?? "",
             states: node.states?.join(", ") ?? "",
-            merged: node.merged,
+            merged: isMerged,
             findingCount: matchingFindings.length + targetFindingCount,
             topFindingLevel: top,
             boundsInScreen: node.boundsInScreen,
@@ -144,7 +152,7 @@ export function computeA11yBundleData(
             // Unmerged nodes sit under the nearest preceding merged
             // ancestor in emission order; render them indented so
             // the structure is visible without inventing parent ids.
-            depth: node.merged ? 0 : 1,
+            depth: isMerged ? 0 : 1,
         };
         rows.push(row);
         if (bounds) {
