@@ -345,6 +345,57 @@ describe("ViewportTracker", () => {
         assert.deepStrictEqual(last.visible, ["com.example.B"]);
     });
 
+    it("onAfterPublish hands the host the current and previous visible sets so it can detect re-entries", () => {
+        // Pins the contract the bundle-subscription mirror relies on:
+        // the host sees the publish *after* the wire message went out
+        // and gets enough context to re-issue dropped subscriptions
+        // for previews that just returned to the viewport.
+        const fired: Array<{
+            visible: readonly string[];
+            previous: readonly string[];
+        }> = [];
+        const { api, posts } = makeVscode();
+        const tracker = new ViewportTracker({
+            vscode: api,
+            onCardLeftViewport: () => {},
+            onAfterPublish: (visible, previous) => {
+                fired.push({
+                    visible: [...visible].sort(),
+                    previous: [...previous].sort(),
+                });
+            },
+        });
+        const a = buildCard("com.example.A");
+        const b = buildCard("com.example.B");
+        tracker.observe(a);
+        tracker.observe(b);
+
+        lastObserver!.fire([fakeEntry(a, true)]);
+        flushTimers();
+
+        assert.strictEqual(posts.length, 1);
+        assert.deepStrictEqual(fired, [
+            { visible: ["com.example.A"], previous: [] },
+        ]);
+
+        // A scrolls out, then back in: the host needs to see that the
+        // previous publish DIDN'T have A so the bundle re-bind logic
+        // can fire.
+        lastObserver!.fire([fakeEntry(a, false), fakeEntry(b, true)]);
+        flushTimers();
+        lastObserver!.fire([fakeEntry(a, true)]);
+        flushTimers();
+
+        assert.deepStrictEqual(fired, [
+            { visible: ["com.example.A"], previous: [] },
+            { visible: ["com.example.B"], previous: ["com.example.A"] },
+            {
+                visible: ["com.example.A", "com.example.B"],
+                previous: ["com.example.B"],
+            },
+        ]);
+    });
+
     it("unobserveAll clears the intersecting set and unhooks every preview card", () => {
         const { api, posts } = makeVscode();
         const tracker = new ViewportTracker({

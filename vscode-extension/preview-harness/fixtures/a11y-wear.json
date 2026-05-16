@@ -303,13 +303,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview",
-      "kind": "a11y/hierarchy",
+      "kinds": {
+        "$includes": "a11y/hierarchy"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview",
-      "kind": "a11y/atf",
+      "kinds": {
+        "$includes": "a11y/atf"
+      },
       "enabled": true
     }
   ],
@@ -317,13 +321,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview",
-      "kind": "a11y/touchTargets",
+      "kinds": {
+        "$includes": "a11y/touchTargets"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.samplewear.PreviewsKt.ActivityListPreview",
-      "kind": "a11y/overlay",
+      "kinds": {
+        "$includes": "a11y/overlay"
+      },
       "enabled": true
     }
   ]

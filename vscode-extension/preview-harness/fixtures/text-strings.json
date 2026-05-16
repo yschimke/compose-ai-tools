@@ -3,7 +3,10 @@
   "description": "Focused card with realistic text/strings + fonts/used + i18n/translations payloads. Activates the Text / i18n bundle so the overflow/truncation overlay paints over the footer, the side legend lists each drawn-text entry, and the tab body renders the strings + fonts sub-tables.",
   "dataset": {
     "earlyFeatures": "true",
-    "minimalMode": "false"
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
   },
   "messages": [
     {
@@ -209,13 +212,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "text/strings",
+      "kinds": {
+        "$includes": "text/strings"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "fonts/used",
+      "kinds": {
+        "$includes": "fonts/used"
+      },
       "enabled": true
     }
   ],
@@ -223,7 +230,9 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "i18n/translations",
+      "kinds": {
+        "$includes": "i18n/translations"
+      },
       "enabled": true
     }
   ]

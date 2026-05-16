@@ -34,6 +34,21 @@ export interface ViewportTrackerConfig {
      * (`requestStreamVisibility(visible:false)`).
      */
     onCardLeftViewport(previewId: string): void;
+    /**
+     * Fired after each `viewportUpdated` post — the host receives both
+     * the snapshot just published and the previous visible set so it
+     * can detect re-entries. The daemon scheduler's `setVisible`
+     * cleanup drops `(previewId, kind)` data-product subscriptions for
+     * previews that fall out of view, and there's no symmetric
+     * re-bind when they return. The host wires this hook to mirror
+     * the bundle controller's intended subscriptions into a fresh
+     * `setDataExtensionEnabled` for any preview that just re-entered.
+     * Optional — when omitted the tracker behaves exactly as before.
+     */
+    onAfterPublish?(
+        visible: readonly string[],
+        previous: readonly string[],
+    ): void;
 }
 
 export class ViewportTracker {
@@ -43,6 +58,7 @@ export class ViewportTracker {
     private lastScrollAt = 0;
     private scrollVelocity = 0; // px/ms, positive = scrolling down
     private debounce: ReturnType<typeof setTimeout> | null = null;
+    private lastPublishedVisible: readonly string[] = [];
 
     constructor(private readonly config: ViewportTrackerConfig) {
         this.observer =
@@ -122,6 +138,9 @@ export class ViewportTracker {
             visible,
             predicted,
         });
+        const previous = this.lastPublishedVisible;
+        this.lastPublishedVisible = visible;
+        this.config.onAfterPublish?.(visible, previous);
     }
 
     /**

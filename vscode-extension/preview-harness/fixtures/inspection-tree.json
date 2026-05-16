@@ -3,7 +3,10 @@
   "description": "Focused card with realistic compose/semantics + layout/inspector payloads. Activates the Inspection bundle so the overlay layer paints over the header / primary CTA / secondary CTA / footer regions, the side legend populates with one entry per overlay box (label · role · testTag), and the inspection tab body renders the per-kind tree tables.",
   "dataset": {
     "earlyFeatures": "true",
-    "minimalMode": "false"
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
   },
   "messages": [
     {
@@ -204,7 +207,9 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "compose/semantics",
+      "kinds": {
+        "$includes": "compose/semantics"
+      },
       "enabled": true
     }
   ],
@@ -212,13 +217,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "layout/inspector",
+      "kinds": {
+        "$includes": "layout/inspector"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "uia/hierarchy",
+      "kinds": {
+        "$includes": "uia/hierarchy"
+      },
       "enabled": true
     }
   ]
