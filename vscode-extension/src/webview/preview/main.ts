@@ -583,6 +583,7 @@ export class PreviewApp extends LitElement {
         let inspector!: FocusInspectorController;
         let liveState!: LiveStateController;
         let focusController!: FocusController;
+        let bundleController!: BundleController;
         const dataProductsByPreview = new Map<string, Map<string, unknown>>();
         // Panel-side cache for the Text/i18n bundle's data-URI font
         // preview path. Keyed by `(previewId, fontRowId)` because two
@@ -668,13 +669,10 @@ export class PreviewApp extends LitElement {
             earlyFeatures,
             getPreview: (id) =>
                 previewStore.getState().allPreviews.find((p) => p.id === id),
-            onToggleA11yOverlay: () => focusController.toggleA11yOverlay(),
-            onToggleInteractive: (shift) => liveState.toggleInteractive(shift),
-            onToggleRecording: () => liveState.toggleRecording(),
+            isHistoryActive: () =>
+                bundleController.state().activeBundles.includes("history"),
             onRequestFocusedDiff: (against) =>
                 focusController.requestFocusedDiff(against),
-            onRequestLaunchOnDevice: () =>
-                focusController.requestLaunchOnDevice(),
         });
 
         // Bundle controller — owns the chip ↔ tab ↔ overlay state machine
@@ -687,7 +685,7 @@ export class PreviewApp extends LitElement {
         const bundleChipBar = this._bundleChipBar;
         const dataTabs = this._dataTabs;
         const bundleLegend = this._bundleLegend;
-        const bundleController = new BundleController(
+        bundleController = new BundleController(
             {
                 setKindsEnabled: (kinds, enabled) => {
                     // Subscriptions are per-preview at the wire layer; we
@@ -2017,6 +2015,16 @@ export class PreviewApp extends LitElement {
                 }
             }
             reflectLegendActiveTab();
+            // The focus inspector's HISTORY panel is gated on the
+            // history chip — re-render it so the panel mounts /
+            // unmounts in lockstep with the chip state. Guarded
+            // because `focusController` is initialised later in this
+            // setup body and the initial `reflectBundleState()` call
+            // below runs before it lands; the post-init `onChange`
+            // path always finds it ready.
+            if (focusController) {
+                inspector.render(focusController.focusedCard());
+            }
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
