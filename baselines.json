@@ -10,8 +10,8 @@
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "c3033b01ac86cca2509ab06c1bc421c98daf5d7aaf1408742c51f1ad1a30c3ee",
-      "size": 85658
+      "sha256": "92013714af247d9b04c4456ce00705771481a68c7423285f63e7c9fec9b3c4e6",
+      "size": 85657
     },
     "a11y-wear.dark.png": {
       "fixture": "a11y-wear",
