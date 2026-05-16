@@ -133,7 +133,27 @@ function matchesSubset(expected, actual) {
 }
 
 function findMatchingPost(log, expected) {
-    return log.find((post) => matchesSubset(expected, post));
+    return log.find((post) => {
+        if (matchesSubset(expected, post)) return true;
+        // `setDataExtensionEnabled` switched from one message per kind
+        // (`kind: "x"`) to a batched form (`kinds: ["x", "y"]`) so chip
+        // activation lands as a single `data/subscribe` sequence rather
+        // than racing the daemon's mode-lock-on-first-subscribe. Fixtures
+        // still assert one kind at a time; treat `kind: "x"` as a match
+        // for any logged post whose `kinds` array contains "x".
+        if (
+            post?.command === "setDataExtensionEnabled" &&
+            Array.isArray(post.kinds) &&
+            typeof expected?.kind === "string"
+        ) {
+            return post.kinds.some((k) => {
+                const synthetic = { ...post, kind: k };
+                delete synthetic.kinds;
+                return matchesSubset(expected, synthetic);
+            });
+        }
+        return false;
+    });
 }
 
 async function loadFixture(name) {
