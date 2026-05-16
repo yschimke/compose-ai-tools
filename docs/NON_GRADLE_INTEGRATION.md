@@ -313,6 +313,21 @@ Amper currently distributes itself through `packages.jetbrains.team`
 [AMPER-471](https://youtrack.jetbrains.com/projects/AMPER/issues/AMPER-471));
 end-to-end CI for the Amper path needs that host allowlisted.
 
+The fixture at [`samples/amper-cmp-desktop/`](../samples/amper-cmp-desktop/)
+vendors the Amper wrapper. `module.yaml` pins `jvm.release: 17` because
+the daemon JVM runs on JDK 17 — Amper's default `jvm.release: 21` produces
+class files the JDK-17 daemon refuses to load (`UnsupportedClassVersionError`,
+class version 65 ≠ 61). In a managed sandbox with a TLS-inspection proxy,
+Amper's auto-downloaded Zulu JRE additionally needs the system truststore
+wired via `AMPER_JAVA_OPTIONS`; the fixture's README documents the
+incantation.
+
+End-to-end is proven by
+[`AmperContractTest`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt):
+once `./amper build` has run, the test consumes Amper's `kotlin-output/`
+directly and renders a real PNG through the same daemon pipeline the
+Gradle plugin uses.
+
 ## Worked example: Bazel
 
 Bazel rules for Compose live in third-party space (`rules_kotlin`'s
@@ -380,3 +395,4 @@ before the renderer can load classes compiled against it.
 - Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt)
 - Sample Amper fixture: [`samples/amper-cmp-desktop/`](../samples/amper-cmp-desktop/)
 - Contract test demonstrating the recipe end-to-end: [`render-session/subprocess/src/test/.../NonGradleContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/NonGradleContractTest.kt)
+- Amper-driven end-to-end test against the fixture: [`render-session/subprocess/src/test/.../AmperContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt)
