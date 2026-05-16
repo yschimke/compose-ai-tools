@@ -96,6 +96,13 @@ function __compose_preview_using_extensions_sub
     test "$have" = "$want"
 end
 
+function __compose_preview_using_bundle_sub
+    __compose_preview_using_command bundle; or return 1
+    set -l want $argv[1]
+    set -l have (__compose_preview_subcommand)
+    test "$have" = "$want"
+end
+
 # Top-level subcommands.
 complete -c compose-preview -f -n __compose_preview_needs_command -a show \
     -d 'Render previews; print id, path, sha256, changed'
@@ -119,6 +126,8 @@ complete -c compose-preview -f -n __compose_preview_needs_command -a share-gist 
     -d 'Create a gist from markdown + images'
 complete -c compose-preview -f -n __compose_preview_needs_command -a publish-images \
     -d 'Push rendered PNGs to a shared branch'
+complete -c compose-preview -f -n __compose_preview_needs_command -a bundle \
+    -d 'Pack / inspect / render portable preview bundles (PNG+ZIP polyglot)'
 complete -c compose-preview -f -n __compose_preview_needs_command -a mcp \
     -d 'MCP server lifecycle (serve|install|doctor)'
 complete -c compose-preview -f -n __compose_preview_needs_command -a update \
@@ -242,6 +251,32 @@ complete -c compose-preview -f -n '__compose_preview_using_command publish-image
     -l allow-non-preview-branch -d 'Allow pushing to non-compose-preview/ branches'
 complete -c compose-preview -f -n '__compose_preview_using_command publish-images' \
     -l json -d 'Emit JSON envelope'
+
+# bundle subcommands.
+complete -c compose-preview -f -n '__compose_preview_using_command bundle; and not __compose_preview_subcommand' \
+    -a 'pack inspect extract render help' -d 'bundle subcommand'
+
+# bundle pack.
+complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
+    -l module -d 'Target Gradle module (e.g. :samples:cmp)'
+complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
+    -l id -d 'Preview id to include (repeatable; first is cover)'
+complete -c compose-preview -F -n '__compose_preview_using_bundle_sub pack' \
+    -l output -s o -d 'Output .png polyglot path'
+complete -c compose-preview -f -n '__compose_preview_using_bundle_sub pack' \
+    -l no-render -d 'Skip renderPreviews; pack with a stub gray cover'
+
+# bundle inspect / extract / render — positional <bundle.png> file argument.
+for sub in inspect extract render
+    complete -c compose-preview -F -n "__compose_preview_using_bundle_sub $sub" \
+        -d 'Bundle file (.png polyglot)'
+end
+
+# bundle extract / render — output dir.
+for sub in extract render
+    complete -c compose-preview -F -n "__compose_preview_using_bundle_sub $sub" \
+        -l output -s o -d 'Output directory'
+end
 
 # mcp subcommands.
 complete -c compose-preview -f -n '__compose_preview_using_command mcp; and not __compose_preview_subcommand' \
