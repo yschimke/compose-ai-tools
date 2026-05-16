@@ -143,6 +143,18 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+
+    // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
+    // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
+    // plugin classpath. Consumers with `RepositoriesMode.FAIL_ON_PROJECT_REPOS` (e.g. wear-os-
+    // samples WearTilesKotlin) refuse per-project repos, so settings-level seeding is the only
+    // path that survives. pluginManagement.repositories.mavenLocal() covers the catalog-alias /
+    // literal-`id(...) version "..."` case where resolution goes through the plugins DSL instead
+    // of our buildscript classpath injection.
+    if (useMavenLocal) {
+        pluginManagement.repositories.mavenLocal()
+        dependencyResolutionManagement.repositories.mavenLocal()
+    }
 }
 
 allprojects {

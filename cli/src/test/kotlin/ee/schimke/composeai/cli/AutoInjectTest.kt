@@ -553,6 +553,31 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script seeds settings-level mavenLocal when COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL is set`() {
+    // wear-os-samples WearTilesKotlin (and any consumer that sets
+    // `RepositoriesMode.FAIL_ON_PROJECT_REPOS` in settings.gradle.kts) refuses per-project repos —
+    // a per-project `mavenLocal()` is not enough for renderer-android AAR resolution. The
+    // settings-level seeding inside `gradle.settingsEvaluated { ... }` is the path that survives
+    // restrictive `RepositoriesMode`s and lets integration CI resolve our SNAPSHOT runtime deps
+    // from `~/.m2`. `pluginManagement.repositories.mavenLocal()` covers the plugins-DSL resolution
+    // path for the catalog-alias / literal-`id(...) version "..."` case where we skip our own
+    // buildscript classpath injection.
+    val script = renderInitScript("0.1.0-SNAPSHOT")
+    assertTrue(
+      script.contains("if (useMavenLocal) {"),
+      "expected the mavenLocal seeding to be gated on the COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL flag",
+    )
+    assertTrue(
+      script.contains("pluginManagement.repositories.mavenLocal()"),
+      "expected pluginManagement-level mavenLocal seeding for plugins-DSL resolution",
+    )
+    assertTrue(
+      script.contains("dependencyResolutionManagement.repositories.mavenLocal()"),
+      "expected dependencyResolutionManagement-level mavenLocal seeding for runtime AAR resolution",
+    )
+  }
+
+  @Test
   fun `init script strips comments before matching plugin declarations`() {
     // Codex P2 review on PR #1183: a documentation line like
     //   // id("ee.schimke.composeai.preview") version "..."
