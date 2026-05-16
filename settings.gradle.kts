@@ -22,6 +22,8 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+include(":bundle-viewer")
+
 include(":preview-annotations")
 
 include(":samples:android")
