@@ -1,0 +1,8 @@
+product: jvm/app
+
+dependencies:
+  - $compose.desktop.currentOs
+  - $compose.components.uiToolingPreview
+
+settings:
+  compose: enabled
