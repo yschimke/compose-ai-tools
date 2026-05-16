@@ -282,6 +282,34 @@ describe("computeA11yBundleData", () => {
         assert.strictEqual(data.overlay.length, 1);
     });
 
+    it("treats a missing `merged` field as merged=true (daemon JSON omits the default)", () => {
+        // `AccessibilityDataProducer` writes `a11y-hierarchy.json` with
+        // `encodeDefaults = false`, so `merged: true` (the Kotlin
+        // default) is omitted from the wire JSON. The presenter must
+        // accept the missing field as the default-true case, otherwise
+        // every TalkBack stop on the wire gets dropped by `mergedOnly`
+        // and the bundle renders "0 elements / No rows" even when the
+        // daemon delivered 12 merged nodes.
+        const wireNodes: readonly AccessibilityNode[] = [
+            {
+                label: "Today",
+                role: "header",
+                states: ["focusable"],
+                boundsInScreen: "0,0,100,40",
+            } as unknown as AccessibilityNode,
+            {
+                label: "Morning run",
+                role: "text",
+                states: [],
+                boundsInScreen: "0,40,100,80",
+            } as unknown as AccessibilityNode,
+        ];
+        const data = computeA11yBundleData(wireNodes, []);
+        assert.strictEqual(data.rows.length, 2);
+        assert.ok(data.rows.every((r) => r.merged));
+        assert.ok(data.rows.every((r) => r.depth === 0));
+    });
+
     it("does not surface a finding on an unmerged child as an orphan when the bounds match", () => {
         // The finding lives on the inner Text node's bounds, which
         // also matches the merged Button (same bounds). When we
