@@ -47,9 +47,12 @@ Both fallbacks share the same concurrency group as the primary path, so they can
    - **Data product connectors** — `ee.schimke.composeai:data-*-connector` artifacts used by daemon modules, including recomposition
 
    Maven Central is the only Maven coordinate source — we no longer mirror jars onto GitHub Packages. Consumers point Gradle at `mavenCentral()` and resolve every module from there.
-2. Builds the **CLI** and the standalone **MCP server** as `.zip` and `.tar.gz` distributions (`compose-preview-<ver>.{zip,tar.gz}` and `compose-preview-mcp-<ver>.{zip,tar.gz}`). The CLI tarball already implementation-bundles `:mcp`, so the MCP archive is for consumers who want to wire the server into an MCP client without dragging the CLI in.
+2. Builds the **CLI**, the standalone **MCP server**, and the **bundle viewer** as `.zip` and `.tar.gz` distributions:
+   - `compose-preview-<ver>.{zip,tar.gz}` — the CLI; tarball already implementation-bundles `:mcp` and the desktop renderer.
+   - `compose-preview-mcp-<ver>.{zip,tar.gz}` — the MCP server standalone for consumers who want to wire it into an MCP client without dragging the CLI in.
+   - `compose-preview-viewer-<ver>.{zip,tar.gz}` — single-window Compose Desktop app (`compose-preview-viewer <bundle.png>` or drag-and-drop) that opens a packed bundle and renders its `@Preview` composable live. Bigger than the CLI archive (~37 MB on Linux) because it ships its own Compose Multiplatform + Skiko runtime.
 3. Packages the **VS Code extension** as a `.vsix` file and publishes it to the **VS Code Marketplace** and **Open VSX** (runs alongside the Release upload, so a marketplace outage can't block the GitHub Release).
-4. Uploads the CLI, MCP, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
+4. Uploads the CLI, MCP, viewer, and VS Code extension artifacts onto the GitHub Release that release-please created (falling back to creating the Release itself if invoked outside the release-please path, e.g. from a manual tag push).
 
 Skill bundles (`compose-preview`, `compose-preview-review`) and the
 canonical bootstrap installer (`scripts/install.sh`) ship from a
