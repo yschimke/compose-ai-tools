@@ -305,6 +305,17 @@ fun main(args: Array<String>) {
             dataProductRegistry = WallpaperDataProductRegistry(),
           )
         )
+        // Stub advertisement of `compose/recomposition` so the panel's Performance bundle stops
+        // tripping `-32020 kind not advertised` when toggled on Android previews. Returns
+        // NotAvailable until the in-sandbox observer-install bridge lands; see
+        // [AndroidRecompositionStubRegistry] for the rationale.
+        add(
+          Extension(
+            id = "data/recomposition",
+            displayName = "Recomposition counts (stub)",
+            dataProductRegistry = AndroidRecompositionStubRegistry(),
+          )
+        )
         add(
           Extension(
             id = "data/ambient",
