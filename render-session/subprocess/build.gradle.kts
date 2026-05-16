@@ -25,6 +25,21 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(libs.junit)
+  testImplementation(libs.truth)
+}
+
+// `NonGradleContractTest` (see src/test/.../subprocess/NonGradleContractTest.kt) synthesises a
+// fresh `daemon-launch.json` from `:samples:cmp`'s build outputs and drives a real RenderSession
+// against it. The test self-skips when those outputs are missing, so devs running
+// `./gradlew :render-session-subprocess:test` against a clean tree don't see a hard failure; CI
+// (and anyone targeting `check`) pre-builds the inputs.
+//
+// `:samples:cmp:discoverPreviews` produces `previews.json`;
+// `:samples:cmp:composePreviewDaemonStart`
+// produces the descriptor we treat as a *parts list* (the test re-emits its own descriptor with
+// rearranged paths — the goal is to prove the schema is a contract, not to copy the file).
+tasks.named<Test>("test") {
+  dependsOn(":samples:cmp:discoverPreviews", ":samples:cmp:composePreviewDaemonStart")
 }
 
 composeAiMavenPublishing {
