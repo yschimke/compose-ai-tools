@@ -54,6 +54,11 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
+  // `compose/recomposition` kind constants. The full connector module is desktop-only
+  // (it depends on Compose Multiplatform's compose.ui for the `ImageComposeScene` reflection
+  // path); the Android registry advertises the kind from a stub that returns NotAvailable
+  // until the in-sandbox observer install lands in a follow-up.
+  implementation(project(":data-recomposition-core"))
   implementation(project(":data-fonts-connector"))
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))
