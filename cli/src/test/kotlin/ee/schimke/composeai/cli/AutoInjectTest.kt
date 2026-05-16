@@ -318,6 +318,37 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `pluginAppliedInBuildScripts matches Groovy 'apply plugin' legacy form`() {
+    // Codex P2 review on PR #1171: legacy Groovy `apply plugin: '...'` is still common in
+    // long-lived consumer projects. The detector must not misclassify these as "not pre-applied".
+    val root = tempDir()
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle")
+      .writeText(
+        """
+        apply plugin: 'com.android.library'
+        apply plugin: 'ee.schimke.composeai.preview'
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts matches Kotlin DSL apply with named plugin argument`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        apply(plugin = "com.android.library")
+        apply(plugin = "ee.schimke.composeai.preview")
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
   fun `pluginAppliedInBuildScripts skips apply false lines (root-build subprojects pattern)`() {
     val root = tempDir()
     File(root, "build.gradle.kts")
@@ -365,6 +396,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       pluginVersion = "0.10.0",
       env = { null },
       stderr = { warnings += it },
@@ -398,6 +430,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       env = { null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -413,6 +446,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = listOf("--no-plugin-warning"),
       projectRoot = root,
+      autoInjectActive = true,
       env = { null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -428,6 +462,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       env = { name -> if (name == "COMPOSE_PREVIEW_NO_PLUGIN_WARNING") "1" else null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -443,6 +478,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = listOf("--no-auto-inject"),
       projectRoot = root,
+      autoInjectActive = false,
       env = { null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -450,6 +486,28 @@ class AutoInjectTest {
     assertTrue(
       warnings.isEmpty(),
       "no auto-inject ⇒ user has opted out of the bundled flow; don't nag them",
+    )
+  }
+
+  @Test
+  fun `warnIfPluginNotPreApplied stays silent when auto-inject is on but materialisation failed`() {
+    // Codex P2 review on PR #1171: when `autoInjectInitScriptArgs` returns an empty list (e.g.
+    // unwritable cache), the CLI is not actually running via auto-inject. The warning text claims
+    // "running via auto-inject", so it must not fire — the inject-failure stderr line covers it.
+    val root = tempDir()
+    File(root, "build.gradle.kts").writeText("plugins { id(\"com.android.library\") }")
+    val warnings = mutableListOf<String>()
+    warnIfPluginNotPreApplied(
+      args = emptyList(),
+      projectRoot = root,
+      autoInjectActive = false,
+      env = { null },
+      stderr = { warnings += it },
+      resetFlag = true,
+    )
+    assertTrue(
+      warnings.isEmpty(),
+      "no init script materialised ⇒ no auto-inject claim; got $warnings",
     )
   }
 
@@ -462,6 +520,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       env = { null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -477,6 +536,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       env = { null },
       stderr = { warnings += it },
       resetFlag = true,
@@ -484,6 +544,7 @@ class AutoInjectTest {
     warnIfPluginNotPreApplied(
       args = emptyList(),
       projectRoot = root,
+      autoInjectActive = true,
       env = { null },
       stderr = { warnings += it },
     )

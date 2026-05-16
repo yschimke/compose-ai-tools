@@ -306,23 +306,23 @@ class DoctorCommand(private val args: List<String>) {
 
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
-    warnIfPluginNotPreApplied(args, projectRoot = projectDir)
+    val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
+    warnIfPluginNotPreApplied(
+      args,
+      projectRoot = projectDir,
+      autoInjectActive = injectArgs.isNotEmpty(),
+    )
     val model =
       try {
-        GradleConnection(
-            projectDir,
-            verbose = verbose,
-            extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
-          )
-          .use { gc ->
-            // Daemon-JVM + Gradle-version snapshot. Runs first so other
-            // project-scope checks can compare against the daemon's JDK
-            // (e.g. flagging test worker mismatch in #142).
-            checkGradleDaemon(gc)
-            gc.runBuildAction(GatherComposePreviewModelAction()).also {
-              gradleAccessFailure = gc.lastModelAccessFailure
-            }
+        GradleConnection(projectDir, verbose = verbose, extraArguments = injectArgs).use { gc ->
+          // Daemon-JVM + Gradle-version snapshot. Runs first so other
+          // project-scope checks can compare against the daemon's JDK
+          // (e.g. flagging test worker mismatch in #142).
+          checkGradleDaemon(gc)
+          gc.runBuildAction(GatherComposePreviewModelAction()).also {
+            gradleAccessFailure = gc.lastModelAccessFailure
           }
+        }
       } catch (e: Exception) {
         addCheck(
           DoctorCheck(

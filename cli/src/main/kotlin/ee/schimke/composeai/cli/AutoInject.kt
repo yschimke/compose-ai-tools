@@ -168,9 +168,14 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
 }
 
 /**
- * Matches the plugin being *applied* literally — `id("ee.schimke.composeai.preview")`, `id
- * "ee.schimke.composeai.preview"`, or `apply(plugin = "ee.schimke.composeai.preview")` — in any
- * build script. Kept in sync with the VS Code extension's `APPLIES_PLUGIN_RE`.
+ * Matches the plugin being *applied* literally in any build script — covers
+ * - Kotlin DSL: `id("ee.schimke.composeai.preview")`,
+ * - Groovy DSL: `id 'ee.schimke.composeai.preview'`,
+ * - Kotlin DSL legacy: `apply(plugin = "ee.schimke.composeai.preview")`,
+ * - Groovy DSL legacy: `apply plugin: 'ee.schimke.composeai.preview'`.
+ *
+ * Kept in sync with the VS Code extension's `APPLIES_PLUGIN_RE` plus the extra Groovy `apply
+ * plugin:` legacy form (Codex P2 review on PR #1171).
  *
  * The version-catalog alias form (`alias(libs.plugins.<x>)`) is intentionally out of scope: there's
  * no way to know from the build script alone which alias maps to which plugin id without parsing
@@ -178,7 +183,9 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
  * opt-out flag is documented in the warning text.
  */
 private val PLUGIN_APPLIED_RE =
-  Regex("""(?:\bid\s*[(\s]\s*|apply\s*\(\s*plugin\s*=\s*)["']ee\.schimke\.composeai\.preview["']""")
+  Regex(
+    """(?:\bid\s*[(\s]\s*|apply\s*\(\s*plugin\s*=\s*|\bapply\s+plugin\s*:\s*)["']ee\.schimke\.composeai\.preview["']"""
+  )
 
 private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
 
@@ -227,8 +234,13 @@ private val pluginWarningPrinted = AtomicBoolean(false)
  * IDE / agent integrations that read the project's static config (VS Code's marker scan, Android
  * Studio gutter icons) and avoids the per-invocation init-script materialisation cost.
  *
- * Skipped when auto-inject itself is disabled — the user has opted out of the bundled flow and the
- * warning would be noise.
+ * [autoInjectActive] must be `true` only when [autoInjectInitScriptArgs] actually returned an
+ * `--init-script` pair this run — passing the result through avoids the false-positive "running via
+ * auto-inject" warning when the init-script materialisation failed (e.g. unwritable cache dir, disk
+ * full), in which case the CLI is running with *no* plugin source at all and should not pretend
+ * auto-inject saved the day (Codex P2 review on PR #1171). The function also bails when auto-inject
+ * is disabled by flag / env opt-out — defence in depth in case a caller forgets to read
+ * [autoInjectActive] off [autoInjectInitScriptArgs].
  *
  * Suppressible via `--no-plugin-warning` on the CLI invocation or
  * `COMPOSE_PREVIEW_NO_PLUGIN_WARNING=1` in the environment.
@@ -236,12 +248,14 @@ private val pluginWarningPrinted = AtomicBoolean(false)
 internal fun warnIfPluginNotPreApplied(
   args: List<String>,
   projectRoot: File,
+  autoInjectActive: Boolean,
   pluginVersion: String = BUNDLE_VERSION,
   env: (String) -> String? = System::getenv,
   stderr: (String) -> Unit = System.err::println,
   resetFlag: Boolean = false,
 ) {
   if (resetFlag) pluginWarningPrinted.set(false)
+  if (!autoInjectActive) return
   if ("--no-auto-inject" in args) return
   if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return
   if ("--no-plugin-warning" in args) return
