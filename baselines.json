@@ -4,8 +4,8 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "377b567ed83b44e5366f5f7aa658fb170ea7e07f22d3595b1ca24c5b7e05b2ed",
-      "size": 92613
+      "sha256": "250d2d336b5c85e86103c9bc70d1624494793a90bb9391d41b1da99954af5dd9",
+      "size": 91912
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
@@ -46,8 +46,8 @@
     "history-diff.light.png": {
       "fixture": "history-diff",
       "theme": "light",
-      "sha256": "cb6e1b52d2b1444f26677c84cca8cd47723cc33ecbd4b27bd3f2d4d48113241e",
-      "size": 82814
+      "sha256": "1fb2ae24aace35ea16a4bb1a86ee6b2990b4e90c2d83435564938e600b141a12",
+      "size": 82131
     },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
