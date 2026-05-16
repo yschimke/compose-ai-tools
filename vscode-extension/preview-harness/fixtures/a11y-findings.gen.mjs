@@ -301,17 +301,21 @@ const fixture = {
     ],
     // Pinning the chip-activation wire effect: the Accessibility
     // bundle's two default-ON kinds (per `bundleRegistry.ts`).
+    // `kinds: { $includes: ... }` looks inside the batched wire
+    // post produced by `BundleController.activate` — see the
+    // `expectSetDataExtension` helper in `_utils.mjs` for the
+    // matching sugar in fixtures that import the shared utilities.
     expectedPosts: [
         {
             command: "setDataExtensionEnabled",
             previewId: FOCUS_ID,
-            kind: "a11y/hierarchy",
+            kinds: { $includes: "a11y/hierarchy" },
             enabled: true,
         },
         {
             command: "setDataExtensionEnabled",
             previewId: FOCUS_ID,
-            kind: "a11y/atf",
+            kinds: { $includes: "a11y/atf" },
             enabled: true,
         },
     ],
@@ -324,13 +328,13 @@ const fixture = {
         {
             command: "setDataExtensionEnabled",
             previewId: FOCUS_ID,
-            kind: "a11y/touchTargets",
+            kinds: { $includes: "a11y/touchTargets" },
             enabled: true,
         },
         {
             command: "setDataExtensionEnabled",
             previewId: FOCUS_ID,
-            kind: "a11y/overlay",
+            kinds: { $includes: "a11y/overlay" },
             enabled: true,
         },
     ],

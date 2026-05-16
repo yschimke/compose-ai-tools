@@ -114,9 +114,12 @@ async function listFixtures() {
  * corresponding key in [actual]. Extra keys on [actual] are
  * allowed so fixtures don't have to know about every field the
  * webview attaches (e.g. `previewId` defaults). Recurses into
- * nested objects but treats arrays as opaque (compare with
- * `JSON.stringify` for now — no fixture currently asserts on
- * an array-valued post).
+ * nested objects, compares arrays via `JSON.stringify`, and
+ * supports a `{ $includes: x }` marker that matches when the
+ * corresponding actual value is an array containing `x` — used
+ * by `setDataExtensionEnabled` assertions to peer inside the
+ * batched `kinds` array without forcing fixtures to spell out
+ * every co-subscribed kind.
  */
 function matchesSubset(expected, actual) {
     if (typeof expected !== "object" || expected === null) {
@@ -124,6 +127,9 @@ function matchesSubset(expected, actual) {
     }
     if (Array.isArray(expected)) {
         return JSON.stringify(expected) === JSON.stringify(actual);
+    }
+    if (Object.prototype.hasOwnProperty.call(expected, "$includes")) {
+        return Array.isArray(actual) && actual.includes(expected.$includes);
     }
     if (typeof actual !== "object" || actual === null) return false;
     for (const k of Object.keys(expected)) {

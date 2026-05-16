@@ -203,26 +203,35 @@ export function activateBundleAction(bundleId) {
 
 /**
  * Assertion sugar: build an `expectedPosts` entry that matches a
- * `setDataExtensionEnabled` call for [previewId] / [kind] / [enabled].
- * Used by fixtures to pin the wire-side effect of activating a
- * bundle chip (default-ON kinds) or toggling a Configure-expander
- * checkbox.
+ * `setDataExtensionEnabled` call where the wire `kinds` array
+ * contains [kind]. Bundle activation batches every default-ON kind
+ * into a single post (see `BundleController.activate` /
+ * `handleSetDataExtensionEnabled`), so the contract matcher has to
+ * look inside the `kinds` array rather than equality-check a
+ * singular `kind` field — the helper hides that with a `$includes`
+ * marker the runner understands.
  */
 export function expectSetDataExtension(previewId, kind, enabled) {
-    return { command: "setDataExtensionEnabled", previewId, kind, enabled };
+    return {
+        command: "setDataExtensionEnabled",
+        previewId,
+        kinds: { $includes: kind },
+        enabled,
+    };
 }
 
 /**
- * Assertion sugar for `forbiddenPosts`: assert that a chip
- * activation did NOT subscribe a default-OFF kind. The contract
- * runner subset-matches this against every recorded post and
- * fails if it finds one.
+ * Assertion sugar for `forbiddenPosts`: assert that [kind] was
+ * never included in any enable-side `setDataExtensionEnabled`
+ * post — i.e. the chip activation did not subscribe a default-OFF
+ * kind. Uses the same `$includes` marker as `expectSetDataExtension`
+ * so it survives the batched-kinds wire shape.
  */
 export function forbidSetDataExtensionEnabled(previewId, kind) {
     return {
         command: "setDataExtensionEnabled",
         previewId,
-        kind,
+        kinds: { $includes: kind },
         enabled: true,
     };
 }
