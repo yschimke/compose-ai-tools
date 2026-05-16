@@ -423,6 +423,177 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `pluginAppliedInBuildScripts finds catalog alias via libs versions toml inline table`() {
+    // The reported regression (homeassistant-remotecompose): the user declares the plugin in
+    // gradle/libs.versions.toml as an inline-table entry and references it with
+    // `alias(libs.plugins.compose.preview)` in app/build.gradle.kts. The literal-id scan misses
+    // this and the CLI then mistakenly auto-injects, which conflicts with the plugins DSL.
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        compose-preview = { id = "ee.schimke.composeai.preview", version = "0.10.8" }
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.android.application)
+            alias(libs.plugins.compose.preview)
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts finds catalog alias via libs versions toml short form`() {
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        compose_preview = "ee.schimke.composeai.preview:0.10.8"
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.compose.preview)
+        }
+        """
+          .trimIndent()
+      )
+    assertTrue(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts does not match catalog accessors for unrelated plugins`() {
+    val root = tempDir()
+    val gradleDir = File(root, "gradle").apply { mkdirs() }
+    File(gradleDir, "libs.versions.toml")
+      .writeText(
+        """
+        [plugins]
+        kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.3.20" }
+        """
+          .trimIndent()
+      )
+    val module = File(root, "app").apply { mkdirs() }
+    File(module, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            alias(libs.plugins.kotlin.jvm)
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `catalogPluginAccessorRegexes returns empty list when catalog is missing`() {
+    val root = tempDir()
+    assertEquals(emptyList<Regex>(), catalogPluginAccessorRegexes(root))
+  }
+
+  @Test
+  fun `init script gates the buildscript classpath injection on pre-applied detection`() {
+    val script = renderInitScript("0.10.15")
+    assertTrue(
+      script.contains("var composeAiPreviewPreApplied = false"),
+      "expected the pre-applied flag declaration",
+    )
+    assertTrue(
+      script.contains(
+        "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)"
+      ),
+      "expected the flag to be set during settingsEvaluated",
+    )
+    assertTrue(
+      script.contains("if (!composeAiPreviewPreApplied) {"),
+      "expected the buildscript block to be guarded by the flag",
+    )
+    assertTrue(
+      script.contains("gradle/libs.versions.toml"),
+      "expected the catalog accessor scanner to read libs.versions.toml so alias(...) declarations are detected",
+    )
+  }
+
+  @Test
+  fun `init script scopes the scan to settings rootProject descriptors`() {
+    // Codex P1 review on PR #1183: scanning every subdirectory under rootDir is too broad — an
+    // unrelated nested build (e.g., a tooling build or sample app checked into the workspace but
+    // not part of this settings file) can flip the pre-applied flag and break auto-inject for the
+    // real build. The descriptor-based walk only inspects modules included by this build.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains("fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor)"),
+      "expected a recursive collect() over ProjectDescriptor children",
+    )
+    assertTrue(
+      script.contains("collect(rootProject)"),
+      "expected the scan to seed from settings.rootProject",
+    )
+    assertFalse(
+      script.contains("\"node_modules\""),
+      "expected the filesystem-walk skipDirs set to be gone (legacy artefact)",
+    )
+  }
+
+  @Test
+  fun `init script seeds settings-level mavenLocal when COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL is set`() {
+    // wear-os-samples WearTilesKotlin (and any consumer that sets
+    // `RepositoriesMode.FAIL_ON_PROJECT_REPOS` in settings.gradle.kts) refuses per-project repos —
+    // a per-project `mavenLocal()` is not enough for renderer-android AAR resolution. The
+    // settings-level seeding inside `gradle.settingsEvaluated { ... }` is the path that survives
+    // restrictive `RepositoriesMode`s and lets integration CI resolve our SNAPSHOT runtime deps
+    // from `~/.m2`. `pluginManagement.repositories.mavenLocal()` covers the plugins-DSL resolution
+    // path for the catalog-alias / literal-`id(...) version "..."` case where we skip our own
+    // buildscript classpath injection.
+    val script = renderInitScript("0.1.0-SNAPSHOT")
+    assertTrue(
+      script.contains("if (useMavenLocal) {"),
+      "expected the mavenLocal seeding to be gated on the COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL flag",
+    )
+    assertTrue(
+      script.contains("pluginManagement.repositories.mavenLocal()"),
+      "expected pluginManagement-level mavenLocal seeding for plugins-DSL resolution",
+    )
+    assertTrue(
+      script.contains("dependencyResolutionManagement.repositories.mavenLocal()"),
+      "expected dependencyResolutionManagement-level mavenLocal seeding for runtime AAR resolution",
+    )
+  }
+
+  @Test
+  fun `init script strips comments before matching plugin declarations`() {
+    // Codex P2 review on PR #1183: a documentation line like
+    //   // id("ee.schimke.composeai.preview") version "..."
+    // must not flip the pre-applied flag and disable classpath injection.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains("fun composeAiPreviewStripComments(source: String): String"),
+      "expected a comment-stripper helper inside the rendered script",
+    )
+    assertTrue(
+      script.contains("composeAiPreviewStripComments(raw)"),
+      "expected the scanner to run text through the comment stripper",
+    )
+  }
+
+  @Test
   fun `pluginAppliedInBuildScripts skips build directories`() {
     val root = tempDir()
     val staleBuild = File(root, "build/some-cache").apply { mkdirs() }

@@ -11,9 +11,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Mirrors the VS Code extension's [`initScript.ts`] auto-inject path — see that file's kdoc for the
  * rationale (`pluginManager.withPlugin` over `afterEvaluate`, why we resolve via Gradle Plugin
- * Portal + Maven Central + Google) and the CI variant at
- * `.github/ci/apply-compose-ai.init.gradle.kts`. The init script is idempotent — if the user
- * already applies the plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op.
+ * Portal + Maven Central + Google). The init script is idempotent — if the user already applies the
+ * plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op. CI's integration
+ * matrix materialises this same script via `compose-preview init-script --path` rather than
+ * shipping a CI-only variant.
  *
  * Opt-out:
  * - `--no-auto-inject` on any CLI invocation,
@@ -43,6 +44,17 @@ internal fun renderInitScript(pluginVersion: String): String =
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so AGP
 // finalizeDsl / onVariants callbacks register before the DSL lock.
 //
+// Pre-applied detection: if any build file in the project tree declares the
+// plugin with a version — either literal `id("...") version "..."` or via
+// `alias(libs.plugins.<x>)` where the version catalog maps <x> to this
+// plugin id — we skip the buildscript classpath injection below. Gradle's
+// plugins {} DSL rejects `id(...) version "..."` when the same plugin is
+// also on the buildscript classpath ("the plugin is already on the
+// classpath with an unknown version, so compatibility cannot be checked"),
+// and the user's own declaration provides resolution via plugin marker
+// repos. The withPlugin hooks remain registered and no-op via the
+// plugins.hasPlugin(...) guard.
+//
 // `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the buildscript repos into
 // `mavenLocal()` — exercised by the gradle-plugin functional tests, which
 // resolve the plugin from `~/.m2` (where `:publishToMavenLocal` puts it)
@@ -53,19 +65,113 @@ internal fun renderInitScript(pluginVersion: String): String =
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
-allprojects {
-    buildscript {
-        repositories {
-            gradlePluginPortal()
-            mavenCentral()
-            google()
-            if (useMavenLocal) mavenLocal()
+var composeAiPreviewPreApplied = false
+
+fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
+    val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
+    if (!catalog.isFile) return emptyList()
+    val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+    val pluginsHeader = Regex("(?m)^\\[plugins\\]\\s*${'$'}").find(text) ?: return emptyList()
+    val sectionStart = pluginsHeader.range.last + 1
+    val nextSection = Regex("(?m)^\\[").find(text, sectionStart)
+    val section = text.substring(sectionStart, nextSection?.range?.first ?: text.length)
+    val entryRe = Regex(
+        "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
+            "\\{[^}]*\\bid\\s*=\\s*\"ee\\.schimke\\.composeai\\.preview\"[^}]*\\}|" +
+            "\"ee\\.schimke\\.composeai\\.preview(?::[^\"]*)?\"" +
+            ")"
+    )
+    return entryRe.findAll(section).map { match ->
+        val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+        Regex("\\blibs\\s*\\.\\s*plugins\\s*\\.\\s*" + Regex.escape(accessor) + "\\b")
+    }.toList()
+}
+
+// Strips // line comments and /* */ block comments so a documentation line like
+// `// id("ee.schimke.composeai.preview") version "..."` (or the alias variant)
+// doesn't get treated as a real declaration and disable classpath injection for
+// projects that actually need auto-inject.
+fun composeAiPreviewStripComments(source: String): String {
+    val sb = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+        val c = source[i]
+        val next = source.getOrNull(i + 1)
+        if (c == '/' && next == '/') {
+            val newline = source.indexOf('\n', i)
+            if (newline < 0) break
+            i = newline
+        } else if (c == '/' && next == '*') {
+            val end = source.indexOf("*/", i + 2)
+            i = if (end < 0) source.length else end + 2
+        } else {
+            sb.append(c)
+            i++
         }
-        dependencies {
-            add(
-                "classpath",
-                "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
-            )
+    }
+    return sb.toString()
+}
+
+fun scanForComposeAiPreviewDeclaration(
+    rootDir: java.io.File,
+    projectDirs: List<java.io.File>,
+): Boolean {
+    val catalogAccessors = composeAiPreviewCatalogAccessors(rootDir)
+    val literalVersionedRe = Regex(
+        "\\bid\\s*[(\\s]\\s*[\"']ee\\.schimke\\.composeai\\.preview[\"']\\s*\\)?\\s*(?:\\.\\s*)?version\\b"
+    )
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            if (literalVersionedRe.containsMatchIn(text)) return true
+            for (re in catalogAccessors) {
+                if (re.containsMatchIn(text)) return true
+            }
+        }
+    }
+    return false
+}
+
+gradle.settingsEvaluated {
+    val projectDirs = mutableListOf<java.io.File>()
+    fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+        projectDirs.add(descriptor.projectDir)
+        descriptor.children.forEach { collect(it) }
+    }
+    collect(rootProject)
+    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+
+    // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
+    // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
+    // plugin classpath. Consumers with `RepositoriesMode.FAIL_ON_PROJECT_REPOS` (e.g. wear-os-
+    // samples WearTilesKotlin) refuse per-project repos, so settings-level seeding is the only
+    // path that survives. pluginManagement.repositories.mavenLocal() covers the catalog-alias /
+    // literal-`id(...) version "..."` case where resolution goes through the plugins DSL instead
+    // of our buildscript classpath injection.
+    if (useMavenLocal) {
+        pluginManagement.repositories.mavenLocal()
+        dependencyResolutionManagement.repositories.mavenLocal()
+    }
+}
+
+allprojects {
+    if (!composeAiPreviewPreApplied) {
+        buildscript {
+            repositories {
+                gradlePluginPortal()
+                mavenCentral()
+                google()
+                if (useMavenLocal) mavenLocal()
+            }
+            dependencies {
+                add(
+                    "classpath",
+                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
+                )
+            }
         }
     }
 
@@ -177,10 +283,10 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
  * Kept in sync with the VS Code extension's `APPLIES_PLUGIN_RE` plus the extra Groovy `apply
  * plugin:` legacy form (Codex P2 review on PR #1171).
  *
- * The version-catalog alias form (`alias(libs.plugins.<x>)`) is intentionally out of scope: there's
- * no way to know from the build script alone which alias maps to which plugin id without parsing
- * `gradle/libs.versions.toml`. Consumers using catalogs see a spurious warning the first time — the
- * opt-out flag is documented in the warning text.
+ * Version-catalog `alias(libs.plugins.<x>)` declarations are handled out-of-band via
+ * [catalogPluginAccessorRegexes] / [pluginAppliedInBuildScripts] — the catalog parser resolves
+ * which accessor names map to this plugin id, then the scanner pairs them with build-file
+ * references.
  */
 private val PLUGIN_APPLIED_RE =
   Regex(
@@ -188,6 +294,36 @@ private val PLUGIN_APPLIED_RE =
   )
 
 private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
+
+/**
+ * Returns regexes matching `libs.plugins.<accessor>` for every version-catalog alias under
+ * [projectRoot]'s `gradle/libs.versions.toml` whose `id` resolves to this plugin. Empty when the
+ * catalog is missing or doesn't declare the plugin. Kept simple via regex parsing (not a full TOML
+ * parser): the entries we care about — `alias = { id = "...", version = "..." }` and `alias =
+ * "id:version"` — are stable enough that a literal scan covers the realistic cases.
+ *
+ * Visible for tests.
+ */
+internal fun catalogPluginAccessorRegexes(projectRoot: File): List<Regex> {
+  val catalog = File(projectRoot, "gradle/libs.versions.toml")
+  if (!catalog.isFile) return emptyList()
+  val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+  val header = Regex("""(?m)^\[plugins\]\s*$""").find(text) ?: return emptyList()
+  val start = header.range.last + 1
+  val nextSection = Regex("""(?m)^\[""").find(text, start)
+  val section = text.substring(start, nextSection?.range?.first ?: text.length)
+  val entryRe =
+    Regex(
+      """(?m)^[ \t]*([A-Za-z0-9_.\-]+)\s*=\s*(?:\{[^}]*\bid\s*=\s*"ee\.schimke\.composeai\.preview"[^}]*\}|"ee\.schimke\.composeai\.preview(?::[^"]*)?")"""
+    )
+  return entryRe
+    .findAll(section)
+    .map { match ->
+      val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+      Regex("""\blibs\s*\.\s*plugins\s*\.\s*${Regex.escape(accessor)}\b""")
+    }
+    .toList()
+}
 
 /**
  * True when *any* `build.gradle.kts` / `build.gradle` under [projectRoot] applies the plugin
@@ -204,6 +340,7 @@ private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
  */
 internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): Boolean {
   val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
+  val catalogAccessors = catalogPluginAccessorRegexes(projectRoot)
   fun scan(dir: File, depth: Int): Boolean {
     if (depth > maxDepth) return false
     val children = dir.listFiles() ?: return false
@@ -212,9 +349,11 @@ internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): 
         val raw = runCatching { child.readText() }.getOrNull() ?: continue
         val text = stripGradleComments(raw)
         for (line in text.lineSequence()) {
-          if (!PLUGIN_APPLIED_RE.containsMatchIn(line)) continue
           if (PLUGIN_APPLY_FALSE_RE.containsMatchIn(line)) continue
-          return true
+          if (PLUGIN_APPLIED_RE.containsMatchIn(line)) return true
+          for (re in catalogAccessors) {
+            if (re.containsMatchIn(line)) return true
+          }
         }
       }
     }

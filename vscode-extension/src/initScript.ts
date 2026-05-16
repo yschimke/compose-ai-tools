@@ -9,11 +9,11 @@ import * as crypto from "crypto";
  * Gradle via `--init-script <path>` on every invocation (see
  * `GradleService.argsProvider`).
  *
- * The script mirrors the CI variant at `.github/ci/apply-compose-ai.init.gradle.kts`
- * with one difference: production deployments resolve the plugin from Maven
- * Central rather than `mavenLocal()`, and the on/off env-var gate
- * (`COMPOSE_AI_TOOLS`) is dropped — when the extension passes the script it
- * always intends to apply.
+ * Stays in sync with the CLI's `cli/.../AutoInject.kt::renderInitScript` —
+ * same body shape, same pre-applied detector, same withPlugin hooks. CI's
+ * integration matrix drives it via `compose-preview init-script --path` so
+ * external-repo runs exercise the production code path rather than a CI-only
+ * variant.
  */
 
 // x-release-please-start-version
@@ -48,21 +48,116 @@ export function renderInitScript(
 //
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so
 // AGP finalizeDsl / onVariants callbacks register before the DSL lock.
+//
+// Pre-applied detection: if any build file in the project tree declares the
+// plugin with a version — either literal \`id("...") version "..."\` or via
+// \`alias(libs.plugins.<x>)\` where the version catalog maps <x> to this
+// plugin id — we skip the buildscript classpath injection below. Gradle's
+// plugins {} DSL rejects \`id(...) version "..."\` when the same plugin is
+// also on the buildscript classpath ("the plugin is already on the
+// classpath with an unknown version, so compatibility cannot be checked"),
+// and the user's own declaration provides resolution via plugin marker
+// repos. The withPlugin hooks remain registered and no-op via the
+// plugins.hasPlugin(...) guard.
 
 val pluginVersion = "${pluginVersion}"
 
-allprojects {
-    buildscript {
-        repositories {
-            gradlePluginPortal()
-            mavenCentral()
-            google()
+var composeAiPreviewPreApplied = false
+
+fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
+    val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
+    if (!catalog.isFile) return emptyList()
+    val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+    val pluginsHeader = Regex("(?m)^\\\\[plugins\\\\]\\\\s*$").find(text) ?: return emptyList()
+    val sectionStart = pluginsHeader.range.last + 1
+    val nextSection = Regex("(?m)^\\\\[").find(text, sectionStart)
+    val section = text.substring(sectionStart, nextSection?.range?.first ?: text.length)
+    val entryRe = Regex(
+        "(?m)^[ \\\\t]*([A-Za-z0-9_.\\\\-]+)\\\\s*=\\\\s*(?:" +
+            "\\\\{[^}]*\\\\bid\\\\s*=\\\\s*\\"ee\\\\.schimke\\\\.composeai\\\\.preview\\"[^}]*\\\\}|" +
+            "\\"ee\\\\.schimke\\\\.composeai\\\\.preview(?::[^\\"]*)?\\"" +
+            ")"
+    )
+    return entryRe.findAll(section).map { match ->
+        val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+        Regex("\\\\blibs\\\\s*\\\\.\\\\s*plugins\\\\s*\\\\.\\\\s*" + Regex.escape(accessor) + "\\\\b")
+    }.toList()
+}
+
+// Strips // line comments and /* */ block comments before the regex match so a
+// commented-out example like \`// id("ee.schimke.composeai.preview") version "..."\`
+// (or \`// alias(libs.plugins.compose.preview)\`) doesn't get treated as a real
+// declaration and disable classpath injection for projects that actually need
+// auto-inject. String-literal tracking is intentionally out of scope — Gradle
+// scripts rarely embed a comment-prefix in a string in a way that matters here.
+fun composeAiPreviewStripComments(source: String): String {
+    val sb = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+        val c = source[i]
+        val next = source.getOrNull(i + 1)
+        if (c == '/' && next == '/') {
+            val newline = source.indexOf('\\n', i)
+            if (newline < 0) break
+            i = newline
+        } else if (c == '/' && next == '*') {
+            val end = source.indexOf("*/", i + 2)
+            i = if (end < 0) source.length else end + 2
+        } else {
+            sb.append(c)
+            i++
         }
-        dependencies {
-            add(
-                "classpath",
-                "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion",
-            )
+    }
+    return sb.toString()
+}
+
+fun scanForComposeAiPreviewDeclaration(
+    rootDir: java.io.File,
+    projectDirs: List<java.io.File>,
+): Boolean {
+    val catalogAccessors = composeAiPreviewCatalogAccessors(rootDir)
+    val literalVersionedRe = Regex(
+        "\\\\bid\\\\s*[(\\\\s]\\\\s*[\\"']ee\\\\.schimke\\\\.composeai\\\\.preview[\\"']\\\\s*\\\\)?\\\\s*(?:\\\\.\\\\s*)?version\\\\b"
+    )
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            if (literalVersionedRe.containsMatchIn(text)) return true
+            for (re in catalogAccessors) {
+                if (re.containsMatchIn(text)) return true
+            }
+        }
+    }
+    return false
+}
+
+gradle.settingsEvaluated {
+    val projectDirs = mutableListOf<java.io.File>()
+    fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+        projectDirs.add(descriptor.projectDir)
+        descriptor.children.forEach { collect(it) }
+    }
+    collect(rootProject)
+    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+}
+
+allprojects {
+    if (!composeAiPreviewPreApplied) {
+        buildscript {
+            repositories {
+                gradlePluginPortal()
+                mavenCentral()
+                google()
+            }
+            dependencies {
+                add(
+                    "classpath",
+                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion",
+                )
+            }
         }
     }
 
