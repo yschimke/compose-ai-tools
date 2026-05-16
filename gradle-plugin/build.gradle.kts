@@ -93,14 +93,18 @@ val functionalTestTask =
     val bundleRenderE2E = providers.gradleProperty("bundle.render.e2e").orNull == "true"
     systemProperty("composeai.functionalTest.cliBundleRender", bundleRenderE2E.toString())
     // Path to the compose-preview CLI binary built by `:cli:installDist`. The test invokes it
-    // directly as a subprocess — that's the actual subject of the e2e. Empty string when the
-    // binary hasn't been built; the test self-skips. The root build wires the dependency.
-    val cliBinary =
+    // directly as a subprocess — that's the actual subject of the e2e. The test self-skips when
+    // the binary isn't there (an `assertWithMessage(...).isFile.isTrue()` past the opt-in gate).
+    //
+    // Pass the path unconditionally rather than running an `isFile` check at config time: with
+    // Gradle's configuration cache enabled, a config-time check captures whatever state existed
+    // when the cache was stored — typically "binary missing" on the very first run — and the
+    // cached empty string would stick across subsequent runs even after `:cli:installDist` had
+    // produced the binary. The test does its own existence check (line 50ish) with a useful
+    // message when the binary is missing.
+    val cliBinaryPath =
       rootDir.parentFile?.resolve("cli/build/install/compose-preview/bin/compose-preview")
-    systemProperty(
-      "composeai.functionalTest.cliBinary",
-      if (cliBinary?.isFile == true) cliBinary.absolutePath else "",
-    )
+    systemProperty("composeai.functionalTest.cliBinary", cliBinaryPath?.absolutePath ?: "")
   }
 
 tasks.check { dependsOn(functionalTestTask) }

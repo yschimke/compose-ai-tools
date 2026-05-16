@@ -104,3 +104,16 @@ tasks.register("functionalTestWithBundleRender") {
   dependsOn(":cli:installDist")
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
+
+// `:cli:installDist` and the included build's `functionalTest` would otherwise run in parallel
+// (Gradle's parallel scheduler doesn't serialise cross-build deps automatically). The functional
+// test invokes the CLI via `ProcessBuilder`, so it crashes with `NoClassDefFoundError` against a
+// half-populated `lib/` dir. Enforce ordering at task-graph-ready time — the test mustRunAfter the
+// install. Applies to both `functionalTestWithAndroid` and `functionalTestWithBundleRender`; both
+// drive the CLI binary out of the same `:cli:installDist` outputs.
+gradle.taskGraph.whenReady {
+  val installCli = allTasks.firstOrNull { it.path == ":cli:installDist" } ?: return@whenReady
+  allTasks
+    .filter { it.path.endsWith(":functionalTest") && it.path.contains("gradle-plugin") }
+    .forEach { it.mustRunAfter(installCli) }
+}

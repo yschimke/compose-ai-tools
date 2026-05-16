@@ -124,12 +124,18 @@ internal class McpCommand(args: List<String>) {
     val projectDir = resolveProjectDir(args)
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
+    val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val connection =
       GradleConnection(
         projectDir,
         verbose = "--verbose" in args || "-v" in args,
-        extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
+        extraArguments = injectArgs,
       )
+    warnIfPluginNotPreApplied(
+      args,
+      projectRoot = projectDir,
+      autoInjectActive = injectArgs.isNotEmpty(),
+    )
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
       val modules =
@@ -347,12 +353,13 @@ internal class McpCommand(args: List<String>) {
     val projectDir = resolveProjectDir(args)
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
-    val connection =
-      GradleConnection(
-        projectDir,
-        verbose = false,
-        extraArguments = autoInjectInitScriptArgs(args, projectRoot = projectDir),
-      )
+    val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
+    val connection = GradleConnection(projectDir, verbose = false, extraArguments = injectArgs)
+    warnIfPluginNotPreApplied(
+      args,
+      projectRoot = projectDir,
+      autoInjectActive = injectArgs.isNotEmpty(),
+    )
     connection.use { gc ->
       val allModules = gc.findPreviewModules()
       val modules =

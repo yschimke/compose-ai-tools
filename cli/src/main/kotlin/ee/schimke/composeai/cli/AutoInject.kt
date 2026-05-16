@@ -2,6 +2,7 @@ package ee.schimke.composeai.cli
 
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Auto-inject the `ee.schimke.composeai.preview` Gradle plugin into the user's build via
@@ -41,8 +42,16 @@ internal fun renderInitScript(pluginVersion: String): String =
 //
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so AGP
 // finalizeDsl / onVariants callbacks register before the DSL lock.
+//
+// `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the buildscript repos into
+// `mavenLocal()` — exercised by the gradle-plugin functional tests, which
+// resolve the plugin from `~/.m2` (where `:publishToMavenLocal` puts it)
+// rather than Maven Central. Plain users have no reason to flip this on:
+// it widens the search surface to whatever snapshots happen to be cached
+// locally and is therefore opt-in, not the default.
 
 val pluginVersion = "$pluginVersion"
+val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 allprojects {
     buildscript {
@@ -50,6 +59,7 @@ allprojects {
             gradlePluginPortal()
             mavenCentral()
             google()
+            if (useMavenLocal) mavenLocal()
         }
         dependencies {
             add(
@@ -155,4 +165,139 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
     listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
   val pattern = Regex("""includeBuild\s*\(\s*["']gradle-plugin["']\s*\)""")
   return candidates.any { it.isFile && pattern.containsMatchIn(it.readText()) }
+}
+
+/**
+ * Matches the plugin being *applied* literally in any build script — covers
+ * - Kotlin DSL: `id("ee.schimke.composeai.preview")`,
+ * - Groovy DSL: `id 'ee.schimke.composeai.preview'`,
+ * - Kotlin DSL legacy: `apply(plugin = "ee.schimke.composeai.preview")`,
+ * - Groovy DSL legacy: `apply plugin: 'ee.schimke.composeai.preview'`.
+ *
+ * Kept in sync with the VS Code extension's `APPLIES_PLUGIN_RE` plus the extra Groovy `apply
+ * plugin:` legacy form (Codex P2 review on PR #1171).
+ *
+ * The version-catalog alias form (`alias(libs.plugins.<x>)`) is intentionally out of scope: there's
+ * no way to know from the build script alone which alias maps to which plugin id without parsing
+ * `gradle/libs.versions.toml`. Consumers using catalogs see a spurious warning the first time — the
+ * opt-out flag is documented in the warning text.
+ */
+private val PLUGIN_APPLIED_RE =
+  Regex(
+    """(?:\bid\s*[(\s]\s*|apply\s*\(\s*plugin\s*=\s*|\bapply\s+plugin\s*:\s*)["']ee\.schimke\.composeai\.preview["']"""
+  )
+
+private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
+
+/**
+ * True when *any* `build.gradle.kts` / `build.gradle` under [projectRoot] applies the plugin
+ * literally. Walks the project tree (max depth 6, skipping `build/`, `.gradle/`, `.git/`,
+ * `node_modules/`) to cover deeply nested module layouts. Returns false on the first hint that the
+ * plugin is supplied entirely via auto-inject so callers can nudge the user toward a permanent
+ * `plugins { ... }` entry.
+ *
+ * Conservative on the "applied" side: a line matching [PLUGIN_APPLIED_RE] with `apply false` on the
+ * same line is skipped — that's the root-build pattern where a plugin is declared for subprojects
+ * but not applied in the current module. Single-line `// …` and block `/* … */` comments are
+ * stripped before matching: a script that *documents* the plugin in a comment shouldn't be
+ * misclassified as having applied it.
+ */
+internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): Boolean {
+  val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
+  fun scan(dir: File, depth: Int): Boolean {
+    if (depth > maxDepth) return false
+    val children = dir.listFiles() ?: return false
+    for (child in children) {
+      if (child.isFile && (child.name == "build.gradle.kts" || child.name == "build.gradle")) {
+        val raw = runCatching { child.readText() }.getOrNull() ?: continue
+        val text = stripGradleComments(raw)
+        for (line in text.lineSequence()) {
+          if (!PLUGIN_APPLIED_RE.containsMatchIn(line)) continue
+          if (PLUGIN_APPLY_FALSE_RE.containsMatchIn(line)) continue
+          return true
+        }
+      }
+    }
+    for (child in children) {
+      if (child.isDirectory && child.name !in skipDirs && !child.name.startsWith(".")) {
+        if (scan(child, depth + 1)) return true
+      }
+    }
+    return false
+  }
+  return scan(projectRoot, 0)
+}
+
+/**
+ * Removes `// …` line comments and `/* … */` block comments from a Gradle build script before the
+ * pre-application detector scans it. Doesn't try to be a full Kotlin / Groovy parser: enough to
+ * keep a `// id("ee.schimke.composeai.preview")` documentation line out of a positive match. String
+ * literals aren't tracked — a deliberately-quoted comment-prefix inside a string is rare enough in
+ * build scripts to ignore.
+ */
+internal fun stripGradleComments(source: String): String {
+  val sb = StringBuilder(source.length)
+  var i = 0
+  while (i < source.length) {
+    val c = source[i]
+    val next = source.getOrNull(i + 1)
+    if (c == '/' && next == '/') {
+      val newline = source.indexOf('\n', i)
+      if (newline < 0) break
+      i = newline
+    } else if (c == '/' && next == '*') {
+      val end = source.indexOf("*/", i + 2)
+      i = if (end < 0) source.length else end + 2
+    } else {
+      sb.append(c)
+      i++
+    }
+  }
+  return sb.toString()
+}
+
+private val pluginWarningPrinted = AtomicBoolean(false)
+
+/**
+ * Warns once per CLI process when the project relies entirely on auto-inject — i.e. no module's
+ * build script applies `ee.schimke.composeai.preview` directly. The CLI continues to function, but
+ * a permanent `plugins { id("ee.schimke.composeai.preview") version "<v>" }` declaration unlocks
+ * IDE / agent integrations that read the project's static config (VS Code's marker scan, Android
+ * Studio gutter icons) and avoids the per-invocation init-script materialisation cost.
+ *
+ * [autoInjectActive] must be `true` only when [autoInjectInitScriptArgs] actually returned an
+ * `--init-script` pair this run — passing the result through avoids the false-positive "running via
+ * auto-inject" warning when the init-script materialisation failed (e.g. unwritable cache dir, disk
+ * full), in which case the CLI is running with *no* plugin source at all and should not pretend
+ * auto-inject saved the day (Codex P2 review on PR #1171). The function also bails when auto-inject
+ * is disabled by flag / env opt-out — defence in depth in case a caller forgets to read
+ * [autoInjectActive] off [autoInjectInitScriptArgs].
+ *
+ * Suppressible via `--no-plugin-warning` on the CLI invocation or
+ * `COMPOSE_PREVIEW_NO_PLUGIN_WARNING=1` in the environment.
+ */
+internal fun warnIfPluginNotPreApplied(
+  args: List<String>,
+  projectRoot: File,
+  autoInjectActive: Boolean,
+  pluginVersion: String = BUNDLE_VERSION,
+  env: (String) -> String? = System::getenv,
+  stderr: (String) -> Unit = System.err::println,
+  resetFlag: Boolean = false,
+) {
+  if (resetFlag) pluginWarningPrinted.set(false)
+  if (!autoInjectActive) return
+  if ("--no-auto-inject" in args) return
+  if (env("COMPOSE_PREVIEW_NO_AUTO_INJECT") == "1") return
+  if ("--no-plugin-warning" in args) return
+  if (env("COMPOSE_PREVIEW_NO_PLUGIN_WARNING") == "1") return
+  if (hasIncludedPluginBuild(projectRoot)) return
+  if (pluginAppliedInBuildScripts(projectRoot)) return
+  if (!pluginWarningPrinted.compareAndSet(false, true)) return
+  stderr(
+    "compose-preview: plugin not applied in any build.gradle(.kts); running via auto-inject. " +
+      "For best IDE / agent support add to your module's plugins { } block: " +
+      "id(\"ee.schimke.composeai.preview\") version \"$pluginVersion\" " +
+      "(suppress with --no-plugin-warning or COMPOSE_PREVIEW_NO_PLUGIN_WARNING=1)."
+  )
 }
