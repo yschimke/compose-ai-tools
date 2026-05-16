@@ -250,10 +250,67 @@ describe("computeA11yBundleData", () => {
                 }),
             ],
             [],
+            [],
+            // Depth-annotation contract only matters when unmerged
+            // children are surfaced; opt back into the full hierarchy
+            // since the default `mergedOnly` filter would drop them.
+            { mergedOnly: false },
         );
         assert.strictEqual(data.rows.length, 2);
         assert.strictEqual(data.rows[0].depth, 0, "merged ⇒ top-level");
         assert.strictEqual(data.rows[1].depth, 1, "unmerged ⇒ child of merged");
+    });
+
+    it("filters unmerged nodes by default so the legend stays focused on TalkBack stops", () => {
+        const data = computeA11yBundleData(
+            [
+                node({
+                    label: "Button",
+                    merged: true,
+                    boundsInScreen: "0,0,100,40",
+                }),
+                node({
+                    label: "Text inside",
+                    merged: false,
+                    boundsInScreen: "5,5,95,35",
+                }),
+            ],
+            [],
+        );
+        assert.strictEqual(data.rows.length, 1);
+        assert.strictEqual(data.rows[0].label, "Button");
+        assert.strictEqual(data.overlay.length, 1);
+    });
+
+    it("does not surface a finding on an unmerged child as an orphan when the bounds match", () => {
+        // The finding lives on the inner Text node's bounds, which
+        // also matches the merged Button (same bounds). When we
+        // filter unmerged nodes out, the finding must still merge
+        // onto the Button row instead of looking like an orphan.
+        const data = computeA11yBundleData(
+            [
+                node({
+                    label: "Button",
+                    merged: true,
+                    boundsInScreen: "0,0,100,40",
+                }),
+                node({
+                    label: "Text inside",
+                    merged: false,
+                    boundsInScreen: "0,0,100,40",
+                }),
+            ],
+            [
+                finding({
+                    boundsInScreen: "0,0,100,40",
+                    level: "WARNING",
+                    type: "TextContrast",
+                }),
+            ],
+        );
+        assert.strictEqual(data.rows.length, 1);
+        assert.strictEqual(data.rows[0].findingCount, 1);
+        assert.strictEqual(data.rows[0].topFindingLevel, "warning");
     });
 
     it("orphan finding rows render at depth 0 regardless of hierarchy", () => {
