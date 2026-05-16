@@ -1045,7 +1045,14 @@ export class GradleService {
                     // path, not a build failure. Log it differently and throw a
                     // typed error so callers can drop it silently.
                     if (CANCELLED_RE.test(message)) {
-                        this.logger.appendLine(`> ${task} cancelled`);
+                        const cancelledLine = `> ${task} cancelled`;
+                        if (
+                            this.logFilter.shouldEmitInformational(
+                                cancelledLine,
+                            )
+                        ) {
+                            this.logger.appendLine(cancelledLine);
+                        }
                         throw new TaskCancelledError(task);
                     }
                     detector.end();

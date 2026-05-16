@@ -1181,6 +1181,9 @@ export async function activate(
                 if (!panel) {
                     return;
                 }
+                outputChannel.appendLine(
+                    `[panel] focus preview: ${functionName}`,
+                );
                 // Reveal the sidebar view. This is the stable command contributed
                 // by VS Code for any registered view (`<viewId>.focus`).
                 await vscode.commands.executeCommand(
@@ -4022,6 +4025,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "selectModule":
             selectedModule = msg.value || null;
+            moduleOutputChannel?.appendLine(
+                `[panel] module selected: ${selectedModule ?? "<none>"}`,
+            );
             sendModuleList();
             if (selectedModule) {
                 refresh(false);
@@ -4159,11 +4165,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "setA11yOverlay":
             if (earlyFeaturesEnabled()) {
+                moduleOutputChannel?.appendLine(
+                    `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+                );
                 void handleSetA11yOverlay(msg.previewId, msg.enabled);
             }
             break;
         case "setDataExtensionEnabled":
             if (earlyFeaturesEnabled()) {
+                moduleOutputChannel?.appendLine(
+                    `[panel] extension ${msg.kind} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+                );
                 void handleSetDataExtensionEnabled(
                     msg.previewId,
                     msg.kind,
