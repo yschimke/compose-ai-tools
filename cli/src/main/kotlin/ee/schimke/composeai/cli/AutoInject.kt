@@ -198,7 +198,9 @@ private val PLUGIN_APPLY_FALSE_RE = Regex("""\bapply\s+false\b""")
  *
  * Conservative on the "applied" side: a line matching [PLUGIN_APPLIED_RE] with `apply false` on the
  * same line is skipped — that's the root-build pattern where a plugin is declared for subprojects
- * but not applied in the current module.
+ * but not applied in the current module. Single-line `// …` and block `/* … */` comments are
+ * stripped before matching: a script that *documents* the plugin in a comment shouldn't be
+ * misclassified as having applied it.
  */
 internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): Boolean {
   val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
@@ -207,7 +209,8 @@ internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): 
     val children = dir.listFiles() ?: return false
     for (child in children) {
       if (child.isFile && (child.name == "build.gradle.kts" || child.name == "build.gradle")) {
-        val text = runCatching { child.readText() }.getOrNull() ?: continue
+        val raw = runCatching { child.readText() }.getOrNull() ?: continue
+        val text = stripGradleComments(raw)
         for (line in text.lineSequence()) {
           if (!PLUGIN_APPLIED_RE.containsMatchIn(line)) continue
           if (PLUGIN_APPLY_FALSE_RE.containsMatchIn(line)) continue
@@ -223,6 +226,34 @@ internal fun pluginAppliedInBuildScripts(projectRoot: File, maxDepth: Int = 6): 
     return false
   }
   return scan(projectRoot, 0)
+}
+
+/**
+ * Removes `// …` line comments and `/* … */` block comments from a Gradle build script before the
+ * pre-application detector scans it. Doesn't try to be a full Kotlin / Groovy parser: enough to
+ * keep a `// id("ee.schimke.composeai.preview")` documentation line out of a positive match. String
+ * literals aren't tracked — a deliberately-quoted comment-prefix inside a string is rare enough in
+ * build scripts to ignore.
+ */
+internal fun stripGradleComments(source: String): String {
+  val sb = StringBuilder(source.length)
+  var i = 0
+  while (i < source.length) {
+    val c = source[i]
+    val next = source.getOrNull(i + 1)
+    if (c == '/' && next == '/') {
+      val newline = source.indexOf('\n', i)
+      if (newline < 0) break
+      i = newline
+    } else if (c == '/' && next == '*') {
+      val end = source.indexOf("*/", i + 2)
+      i = if (end < 0) source.length else end + 2
+    } else {
+      sb.append(c)
+      i++
+    }
+  }
+  return sb.toString()
 }
 
 private val pluginWarningPrinted = AtomicBoolean(false)

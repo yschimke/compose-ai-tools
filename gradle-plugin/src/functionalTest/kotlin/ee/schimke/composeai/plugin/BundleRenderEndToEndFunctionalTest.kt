@@ -192,6 +192,10 @@ class BundleRenderEndToEndFunctionalTest {
 
     File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true\n")
 
+    // `compose-preview` walks up looking for `gradlew` to identify the project root. A stub is
+    // enough — the CLI drives Gradle via the Tooling API, not by `exec`-ing this script.
+    File(projectDir, "gradlew").writeText("#!/usr/bin/env bash\nexit 1\n")
+
     val srcDir = File(appDir, "src/main/kotlin/test")
     srcDir.mkdirs()
     File(srcDir, "Previews.kt")

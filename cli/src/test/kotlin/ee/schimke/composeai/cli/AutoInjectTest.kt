@@ -318,6 +318,49 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `pluginAppliedInBuildScripts ignores plugin id appearing inside a line comment`() {
+    // Synthetic test fixtures document *what they removed* in a comment so the next reader
+    // understands the intent:
+    //
+    //     // No id("ee.schimke.composeai.preview") on purpose — auto-inject handles it.
+    //     plugins { ... }
+    //
+    // Without comment stripping the detector matches the literal id inside the comment and
+    // misclassifies the project as having the plugin pre-applied — silencing the warning the
+    // tests then assert on.
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        // No id("ee.schimke.composeai.preview") on purpose — auto-inject handles it.
+        plugins {
+            id("com.android.library") version "9.2.0"
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
+  fun `pluginAppliedInBuildScripts ignores plugin id inside a block comment`() {
+    val root = tempDir()
+    File(root, "build.gradle.kts")
+      .writeText(
+        """
+        /**
+         * Apply id("ee.schimke.composeai.preview") manually if you don't want auto-inject.
+         */
+        plugins {
+            id("com.android.library") version "9.2.0"
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(pluginAppliedInBuildScripts(root))
+  }
+
+  @Test
   fun `pluginAppliedInBuildScripts matches Groovy 'apply plugin' legacy form`() {
     // Codex P2 review on PR #1171: legacy Groovy `apply plugin: '...'` is still common in
     // long-lived consumer projects. The detector must not misclassify these as "not pre-applied".

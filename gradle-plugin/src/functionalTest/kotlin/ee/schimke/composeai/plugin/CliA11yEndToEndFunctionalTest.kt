@@ -234,6 +234,10 @@ class CliA11yEndToEndFunctionalTest {
           .trimIndent()
       )
 
+    // `compose-preview` walks up looking for `gradlew` to identify the project root. A stub is
+    // enough — the CLI drives Gradle via the Tooling API, not by `exec`-ing this script.
+    File(projectDir, "gradlew").writeText("#!/usr/bin/env bash\nexit 1\n")
+
     val srcDir = File(appDir, "src/main/kotlin/ee/schimke/composeai/functionaltest/clia11y")
     srcDir.mkdirs()
     File(srcDir, "BadButtonPreview.kt")
