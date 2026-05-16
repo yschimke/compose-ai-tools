@@ -1,13 +1,20 @@
 // Focus-mode inspector — the slim side panel that appears when a single
 // preview is focused. After the chip / bucket / presenter pipeline moved
-// to the new bundle shell (#1099), this controller only owns three
-// sections, top to bottom:
+// to the new bundle shell (#1099), this controller owns two sections,
+// top to bottom:
 //
 //   1. **Error banner** — surfaces the per-card render error when one
 //      is present. Driven by the `local/render/error` presenter so the
 //      shape stays consistent with the bundle-shell renderer.
-//   2. **History** — diff buttons (HEAD / main).
-//   3. **Tools** — A11y / Device / Live / Record buttons.
+//   2. **History** — diff buttons (HEAD / main), only rendered when the
+//      History bundle chip is active. The chip is the gate; the panel
+//      stays out of the DOM otherwise so the focus area below the
+//      preview is empty until the user opts in.
+//
+// The A11y / Device / Live / Record buttons that used to live here
+// were dropped: A11y rides the bottom chip bar, and Device / Live /
+// Record sit in the focus toolbar above the preview, so a third copy
+// inside the inspector was redundant.
 //
 // Everything else (suggestion chips, bucket list, legends, reports,
 // overlay stacks, MRU plumbing) was deleted with the pipeline it served.
@@ -33,13 +40,12 @@ export interface FocusInspectorConfig {
     /** Look up the manifest entry for a preview, or `undefined` when
      *  the preview is unknown to this panel. */
     getPreview(previewId: string): PreviewInfo | undefined;
-    /** Click handlers shared with the focus toolbar. */
-    onToggleA11yOverlay(): void;
-    /** `shift = false` matches the toolbar Live button — single-target. */
-    onToggleInteractive(shift: boolean): void;
-    onToggleRecording(): void;
+    /** Whether the History bundle chip is currently pressed. The
+     *  inspector renders the HISTORY panel only when this returns
+     *  `true` — the chip is the gate. */
+    isHistoryActive(): boolean;
+    /** Click handler for the HISTORY panel's diff buttons. */
     onRequestFocusedDiff(against: "head" | "main"): void;
-    onRequestLaunchOnDevice(): void;
 }
 
 export class FocusInspectorController {
@@ -87,8 +93,9 @@ export class FocusInspectorController {
             this.collectErrorPresentationsOnly(card, preview),
         );
         if (errorBanner) el.appendChild(errorBanner);
-        el.appendChild(this.historyPanel());
-        el.appendChild(this.controlsPanel());
+        if (this.config.isHistoryActive()) {
+            el.appendChild(this.historyPanel());
+        }
     }
 
     /**
@@ -225,56 +232,6 @@ export class FocusInspectorController {
         history.appendChild(historyActions);
         return history;
     }
-
-    private controlsPanel(): HTMLElement {
-        const controls = document.createElement("section");
-        controls.className = "focus-panel focus-controls-panel";
-        controls.appendChild(sectionHeader("settings-gear", "Tools"));
-        const toolActions = document.createElement("div");
-        toolActions.className = "focus-actions";
-        toolActions.appendChild(
-            actionButton("eye", "A11y", "Toggle accessibility overlay", () =>
-                this.config.onToggleA11yOverlay(),
-            ),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "device-mobile",
-                "Device",
-                "Launch on connected Android device",
-                () => this.config.onRequestLaunchOnDevice(),
-            ),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "circle-large-outline",
-                "Live",
-                "Toggle live preview",
-                () => this.config.onToggleInteractive(false),
-            ),
-        );
-        toolActions.appendChild(
-            actionButton(
-                "record-keys",
-                "Record",
-                "Record focused preview",
-                () => this.config.onToggleRecording(),
-            ),
-        );
-        controls.appendChild(toolActions);
-        return controls;
-    }
-}
-
-function sectionHeader(icon: string, label: string): HTMLElement {
-    const header = document.createElement("div");
-    header.className = "focus-panel-header";
-    header.innerHTML =
-        '<i class="codicon codicon-' + icon + '" aria-hidden="true"></i>';
-    const span = document.createElement("span");
-    span.textContent = label;
-    header.appendChild(span);
-    return header;
 }
 
 function actionButton(
