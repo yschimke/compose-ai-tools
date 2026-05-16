@@ -1177,12 +1177,27 @@ export class PreviewApp extends LitElement {
             body.table.setOverlayId(
                 (row) => (row as { id: string }).id ?? "a11y-row",
             );
-            body.table.setJsonPayload(() => ({
-                previewId: target,
-                nodes: targetSrc.nodes,
-                findings: targetSrc.findings,
-                touchTargets,
-            }));
+            // Mirror the daemon's wire shape so Copy JSON yields the
+            // same bytes a CLI consumer would get from
+            // `dataProducts/get` for each enabled kind, rather than a
+            // UI-flattened projection. `a11y/hierarchy` and `a11y/atf`
+            // live in `previewStore` (routed via `applyA11yUpdate`)
+            // rather than the generic `dataProductsByPreview` cache, so
+            // we rewrap them into their native payload envelopes here;
+            // `a11y/touchTargets` and `a11y/overlay` come straight from
+            // the daemon payload cache. Missing kinds emit `null` so
+            // the output's shape is stable across subscription states.
+            body.table.setJsonPayload(() => {
+                const byKind = dataProductsByPreview.get(target);
+                return {
+                    previewId: target,
+                    "a11y/hierarchy": { nodes: targetSrc.nodes },
+                    "a11y/atf": { findings: targetSrc.findings },
+                    "a11y/touchTargets":
+                        byKind?.get("a11y/touchTargets") ?? null,
+                    "a11y/overlay": byKind?.get("a11y/overlay") ?? null,
+                };
+            });
             // Stash for the row-click listener installed in
             // `a11yBody()`. Drop any stale selection so the detail
             // panel doesn't point at row indices the new data may
