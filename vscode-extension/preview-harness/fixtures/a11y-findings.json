@@ -3,7 +3,10 @@
   "description": "Focused card with three Accessibility Test Framework findings (one ERROR, two WARNINGs) overlaid on a stylised mobile mock. Drives focus mode and activates the Accessibility bundle so the chip bar, data tab, and on-image box-overlay all paint.",
   "dataset": {
     "earlyFeatures": "true",
-    "minimalMode": "false"
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
   },
   "messages": [
     {
@@ -164,13 +167,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "a11y/hierarchy",
+      "kinds": {
+        "$includes": "a11y/hierarchy"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "a11y/atf",
+      "kinds": {
+        "$includes": "a11y/atf"
+      },
       "enabled": true
     }
   ],
@@ -178,13 +185,17 @@
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "a11y/touchTargets",
+      "kinds": {
+        "$includes": "a11y/touchTargets"
+      },
       "enabled": true
     },
     {
       "command": "setDataExtensionEnabled",
       "previewId": "com.example.OnboardingKt.WelcomeScreenPreview",
-      "kind": "a11y/overlay",
+      "kinds": {
+        "$includes": "a11y/overlay"
+      },
       "enabled": true
     }
   ]
