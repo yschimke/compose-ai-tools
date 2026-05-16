@@ -516,7 +516,9 @@ class AutoInjectTest {
       "expected the pre-applied flag declaration",
     )
     assertTrue(
-      script.contains("composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir)"),
+      script.contains(
+        "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)"
+      ),
       "expected the flag to be set during settingsEvaluated",
     )
     assertTrue(
@@ -526,6 +528,43 @@ class AutoInjectTest {
     assertTrue(
       script.contains("gradle/libs.versions.toml"),
       "expected the catalog accessor scanner to read libs.versions.toml so alias(...) declarations are detected",
+    )
+  }
+
+  @Test
+  fun `init script scopes the scan to settings rootProject descriptors`() {
+    // Codex P1 review on PR #1183: scanning every subdirectory under rootDir is too broad — an
+    // unrelated nested build (e.g., a tooling build or sample app checked into the workspace but
+    // not part of this settings file) can flip the pre-applied flag and break auto-inject for the
+    // real build. The descriptor-based walk only inspects modules included by this build.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains("fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor)"),
+      "expected a recursive collect() over ProjectDescriptor children",
+    )
+    assertTrue(
+      script.contains("collect(rootProject)"),
+      "expected the scan to seed from settings.rootProject",
+    )
+    assertFalse(
+      script.contains("\"node_modules\""),
+      "expected the filesystem-walk skipDirs set to be gone (legacy artefact)",
+    )
+  }
+
+  @Test
+  fun `init script strips comments before matching plugin declarations`() {
+    // Codex P2 review on PR #1183: a documentation line like
+    //   // id("ee.schimke.composeai.preview") version "..."
+    // must not flip the pre-applied flag and disable classpath injection.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains("fun composeAiPreviewStripComments(source: String): String"),
+      "expected a comment-stripper helper inside the rendered script",
+    )
+    assertTrue(
+      script.contains("composeAiPreviewStripComments(raw)"),
+      "expected the scanner to run text through the comment stripper",
     )
   }
 

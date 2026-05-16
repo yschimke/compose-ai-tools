@@ -86,36 +86,62 @@ fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     }.toList()
 }
 
-fun scanForComposeAiPreviewDeclaration(rootDir: java.io.File): Boolean {
+// Strips // line comments and /* */ block comments so a documentation line like
+// `// id("ee.schimke.composeai.preview") version "..."` (or the alias variant)
+// doesn't get treated as a real declaration and disable classpath injection for
+// projects that actually need auto-inject.
+fun composeAiPreviewStripComments(source: String): String {
+    val sb = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+        val c = source[i]
+        val next = source.getOrNull(i + 1)
+        if (c == '/' && next == '/') {
+            val newline = source.indexOf('\n', i)
+            if (newline < 0) break
+            i = newline
+        } else if (c == '/' && next == '*') {
+            val end = source.indexOf("*/", i + 2)
+            i = if (end < 0) source.length else end + 2
+        } else {
+            sb.append(c)
+            i++
+        }
+    }
+    return sb.toString()
+}
+
+fun scanForComposeAiPreviewDeclaration(
+    rootDir: java.io.File,
+    projectDirs: List<java.io.File>,
+): Boolean {
     val catalogAccessors = composeAiPreviewCatalogAccessors(rootDir)
     val literalVersionedRe = Regex(
         "\\bid\\s*[(\\s]\\s*[\"']ee\\.schimke\\.composeai\\.preview[\"']\\s*\\)?\\s*(?:\\.\\s*)?version\\b"
     )
-    val skipDirs = setOf("build", ".gradle", ".git", "node_modules", "out", ".idea")
-    fun scan(dir: java.io.File, depth: Int): Boolean {
-        if (depth > 6) return false
-        val children = dir.listFiles() ?: return false
-        for (child in children) {
-            if (child.isFile && (child.name == "build.gradle.kts" || child.name == "build.gradle")) {
-                val text = runCatching { child.readText() }.getOrNull() ?: continue
-                if (literalVersionedRe.containsMatchIn(text)) return true
-                for (re in catalogAccessors) {
-                    if (re.containsMatchIn(text)) return true
-                }
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            if (literalVersionedRe.containsMatchIn(text)) return true
+            for (re in catalogAccessors) {
+                if (re.containsMatchIn(text)) return true
             }
         }
-        for (child in children) {
-            if (child.isDirectory && child.name !in skipDirs && !child.name.startsWith(".")) {
-                if (scan(child, depth + 1)) return true
-            }
-        }
-        return false
     }
-    return scan(rootDir, 0)
+    return false
 }
 
 gradle.settingsEvaluated {
-    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir)
+    val projectDirs = mutableListOf<java.io.File>()
+    fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+        projectDirs.add(descriptor.projectDir)
+        descriptor.children.forEach { collect(it) }
+    }
+    collect(rootProject)
+    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
 }
 
 allprojects {

@@ -90,7 +90,7 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
-                "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir)",
+                "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)",
             ),
             "expected the flag to be set during settingsEvaluated",
         );
@@ -103,6 +103,51 @@ describe("renderInitScript", () => {
         assert.ok(
             script.includes("gradle/libs.versions.toml"),
             "expected the catalog accessor scanner to read libs.versions.toml",
+        );
+    });
+
+    it("limits the scan to included project descriptors, not the filesystem", () => {
+        // Codex P1 review on PR #1183: an unrelated nested build (e.g., a tooling
+        // build or sample app checked into the workspace but not part of this
+        // settings file) must not flip the pre-applied flag. The scan walks
+        // settings.rootProject's descriptor tree so only modules included by
+        // this build are inspected.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor)",
+            ),
+            "expected a recursive collect() over ProjectDescriptor children",
+        );
+        assert.ok(
+            script.includes("collect(rootProject)"),
+            "expected the scan to seed from settings.rootProject",
+        );
+        // The old filesystem-walk implementation referenced skipDirs to avoid
+        // descending into build/.gradle/etc. The new descriptor-based walk
+        // doesn't need it — assert the legacy artefact is gone so a future
+        // regression that reintroduces the broad filesystem walk fails loudly.
+        assert.ok(
+            !script.includes('"node_modules"'),
+            "expected the filesystem-walk skipDirs set to be gone",
+        );
+    });
+
+    it("strips comments before matching so commented-out declarations don't count", () => {
+        // Codex P2 review on PR #1183: a documentation line like
+        // `// id("ee.schimke.composeai.preview") version "..."` or
+        // `// alias(libs.plugins.compose.preview)` must not flip the
+        // pre-applied flag and disable classpath injection.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "fun composeAiPreviewStripComments(source: String): String",
+            ),
+            "expected a comment-stripper helper inside the rendered script",
+        );
+        assert.ok(
+            script.includes("composeAiPreviewStripComments(raw)"),
+            "expected the scanner to run text through the comment stripper",
         );
     });
 
