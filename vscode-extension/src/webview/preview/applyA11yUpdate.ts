@@ -82,8 +82,13 @@ export function applyA11yUpdate(
     config: A11yUpdateConfig,
 ): void {
     if (!config.earlyFeatures()) return;
-    const card = document.getElementById("preview-" + sanitizeId(previewId));
-    if (!card) return;
+    // Cache updates run unconditionally so the A11y bundle's `refresh`
+    // path can read fresh findings/nodes even if this `updateA11y`
+    // landed before the preview card mounted — a race the daemon-
+    // attached render path can lose when the first
+    // render-with-data-products arrives ahead of `setPreviews`. The
+    // DOM-dependent side effects (inspector render) are guarded
+    // separately below.
     if (findings !== undefined) {
         if (findings && findings.length > 0) {
             // Mutate the manifest entry's findings so downstream surfaces
@@ -106,6 +111,8 @@ export function applyA11yUpdate(
             config.deleteCardA11yNodes(previewId);
         }
     }
+    const card = document.getElementById("preview-" + sanitizeId(previewId));
+    if (!card) return;
     if (config.inFocus() && config.focusedCard() === card) {
         config.inspector.render(card);
     }
