@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.15](https://github.com/yschimke/compose-ai-tools/compare/v0.10.14...v0.10.15) (2026-05-16)
+
+
+### Features
+
+* add a11y-wear fixture and improve legend layout ([#1169](https://github.com/yschimke/compose-ai-tools/issues/1169)) ([733a55b](https://github.com/yschimke/compose-ai-tools/commit/733a55b35b9b5a321e85caef61692d26b5d99006))
+* add plugin pre-application detection and warning ([#1171](https://github.com/yschimke/compose-ai-tools/issues/1171)) ([5850bfa](https://github.com/yschimke/compose-ai-tools/commit/5850bfaa865bf3859849c03ba43b4ac775c4ad6d))
+* **bundle-viewer:** single-window desktop app that opens & renders bundles live ([#1165](https://github.com/yschimke/compose-ai-tools/issues/1165)) ([74a3064](https://github.com/yschimke/compose-ai-tools/commit/74a3064a41bcfaedf1b1e5b05b9a0666b81fe4aa))
+* **cli:** bundle render — re-render a packed .png outside any Gradle project ([#1162](https://github.com/yschimke/compose-ai-tools/issues/1162)) ([feea3f4](https://github.com/yschimke/compose-ai-tools/commit/feea3f41c3dec3922b25fa80ced904533fe0be2c))
+* **cli:** bundle render — re-render a packed .png outside any Gradle project ([#1164](https://github.com/yschimke/compose-ai-tools/issues/1164)) ([caaea9e](https://github.com/yschimke/compose-ai-tools/commit/caaea9eab8d0b43b848083afc8a50619f957cb5f))
+* **release:** ship the bundle viewer alongside the CLI and MCP ([#1167](https://github.com/yschimke/compose-ai-tools/issues/1167)) ([775ac1b](https://github.com/yschimke/compose-ai-tools/commit/775ac1b08564a7dd8f9dbcd1af90528dc756f464))
+
+
+### Bug Fixes
+
+* dedupe concurrent discoverPreviews and spare critical tasks from cancellation ([#1170](https://github.com/yschimke/compose-ai-tools/issues/1170)) ([11331ba](https://github.com/yschimke/compose-ai-tools/commit/11331ba15a11bdb1f78f933f1833a1a19aa7a2ee))
+* treat missing `merged` field as true in accessibility nodes ([#1173](https://github.com/yschimke/compose-ai-tools/issues/1173)) ([519f2dc](https://github.com/yschimke/compose-ai-tools/commit/519f2dca9be10bc3b031031252e06c7853e81665))
+
 ## [0.10.14](https://github.com/yschimke/compose-ai-tools/compare/v0.10.13...v0.10.14) (2026-05-15)
 
 
