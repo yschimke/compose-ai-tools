@@ -11,9 +11,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Mirrors the VS Code extension's [`initScript.ts`] auto-inject path — see that file's kdoc for the
  * rationale (`pluginManager.withPlugin` over `afterEvaluate`, why we resolve via Gradle Plugin
- * Portal + Maven Central + Google) and the CI variant at
- * `.github/ci/apply-compose-ai.init.gradle.kts`. The init script is idempotent — if the user
- * already applies the plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op.
+ * Portal + Maven Central + Google). The init script is idempotent — if the user already applies the
+ * plugin manually, `plugins.hasPlugin(...)` short-circuits and it's a no-op. CI's integration
+ * matrix materialises this same script via `compose-preview init-script --path` rather than
+ * shipping a CI-only variant.
  *
  * Opt-out:
  * - `--no-auto-inject` on any CLI invocation,

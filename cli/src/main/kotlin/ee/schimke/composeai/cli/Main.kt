@@ -79,6 +79,7 @@ fun main(args: Array<String>) {
     "bundle" -> BundleCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
     "update" -> UpdateCommand(allArgs).run()
+    "init-script" -> InitScriptCommand(allArgs).run()
     "version" -> println("compose-preview $BUNDLE_VERSION")
     "help" -> printUsage()
     else -> {
@@ -118,6 +119,10 @@ private fun printUsage() {
       bundle           Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
+      init-script      Materialise the bundled auto-inject init script and print the path
+                       (--path, default) or its rendered body (--print). Useful for driving
+                       Gradle directly with the same `--init-script` body the CLI uses
+                       internally.
       version          Print the installed bundle version and exit
       help             Show this help message
 

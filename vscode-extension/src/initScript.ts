@@ -9,11 +9,11 @@ import * as crypto from "crypto";
  * Gradle via `--init-script <path>` on every invocation (see
  * `GradleService.argsProvider`).
  *
- * The script mirrors the CI variant at `.github/ci/apply-compose-ai.init.gradle.kts`
- * with one difference: production deployments resolve the plugin from Maven
- * Central rather than `mavenLocal()`, and the on/off env-var gate
- * (`COMPOSE_AI_TOOLS`) is dropped — when the extension passes the script it
- * always intends to apply.
+ * Stays in sync with the CLI's `cli/.../AutoInject.kt::renderInitScript` —
+ * same body shape, same pre-applied detector, same withPlugin hooks. CI's
+ * integration matrix drives it via `compose-preview init-script --path` so
+ * external-repo runs exercise the production code path rather than a CI-only
+ * variant.
  */
 
 // x-release-please-start-version
