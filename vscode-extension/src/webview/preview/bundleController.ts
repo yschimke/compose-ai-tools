@@ -235,8 +235,21 @@ export class BundleController {
         // MRU: most-recently activated lives at index 0 so the chip
         // bar shows it first.
         this.active = [id, ...this.active.filter((x) => x !== id)];
+        // `??` falls back on null/undefined only, not on an empty
+        // list — so a snapshot that persisted `{a11y: []}` (the user
+        // turned every kind off via Configure, or a kind name drifted
+        // out of the registry and was filtered to nothing on load)
+        // would land here with `kinds = []`, skip the
+        // `setKindsEnabled` call below, and leave the chip pressed
+        // against a bundle that has no subscriptions and never paints
+        // anything. Treat empty-stored as "no preference" and snap
+        // back to the bundle's defaults — pressing the chip should
+        // always mean "I want this bundle's data."
         const previouslyEnabled = this.enabled.get(id);
-        const kinds = previouslyEnabled ?? [...defaultOnKindsFor(id)];
+        const kinds =
+            previouslyEnabled && previouslyEnabled.length > 0
+                ? previouslyEnabled
+                : [...defaultOnKindsFor(id)];
         this.enabled.set(id, kinds);
         // Batched on purpose — the extension host's
         // `handleSetDataExtensionEnabled` ships a single `data/subscribe`
