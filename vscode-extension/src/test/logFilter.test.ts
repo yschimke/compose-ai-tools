@@ -84,6 +84,38 @@ describe("LogFilter", () => {
             assert.strictEqual(out, "BUILD FAILED in 1s\n");
         });
 
+        it("drops bare-status progress noise from Gradle's rich console after ANSI stripping", () => {
+            const f = withLevel("normal");
+            // Single chunk, no internal newlines, no trailing newline — the
+            // exact shape that leaks through onOutput when vscode-gradle's
+            // progress reporter emits per-task status tokens that have lost
+            // their `> Task :…` headers to ANSI cursor moves.
+            const out = f.filterGradleChunk(
+                " UP-TO-DATE UP-TO-DATE UP-TO-DATE UP-TO-DATE SKIPPED FROM-CACHE NO-SOURCE UP-TO-DATE",
+            );
+            assert.strictEqual(out, "");
+        });
+
+        it("drops bare-status noise glued onto a BUILD SUCCESSFUL trailer", () => {
+            const f = withLevel("normal");
+            const out = f.filterGradleChunk(
+                " UP-TO-DATE UP-TO-DATE UP-TO-DATE UP-TO-DATEBUILD SUCCESSFUL in 6s",
+            );
+            assert.strictEqual(out, "");
+        });
+
+        it("keeps lines that contain FAILED even when surrounded by status tokens", () => {
+            const f = withLevel("normal");
+            // FAILED must never get swallowed by the bare-status drop.
+            const out = f.filterGradleChunk(
+                " UP-TO-DATE UP-TO-DATE FAILED UP-TO-DATE\n",
+            );
+            assert.strictEqual(
+                out,
+                " UP-TO-DATE UP-TO-DATE FAILED UP-TO-DATE\n",
+            );
+        });
+
         it("drops the multi-line configure-project warning block", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
