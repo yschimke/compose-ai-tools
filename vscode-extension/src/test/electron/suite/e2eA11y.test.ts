@@ -262,7 +262,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
 
         await api.triggerSetDataExtensionEnabled(
             target.id,
-            "a11y/hierarchy",
+            ["a11y/hierarchy"],
             true,
         );
 
@@ -298,7 +298,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         );
         api.resetMessages();
 
-        await api.triggerSetDataExtensionEnabled(target.id, "a11y/atf", true);
+        await api.triggerSetDataExtensionEnabled(target.id, ["a11y/atf"], true);
 
         const ack = await waitFor(
             `webviewA11yState with findings for ${target.id}`,
@@ -339,7 +339,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
 
         await api.triggerSetDataExtensionEnabled(
             target.id,
-            "a11y/hierarchy",
+            ["a11y/hierarchy"],
             true,
         );
         await waitFor(
@@ -358,7 +358,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
 
         await api.triggerSetDataExtensionEnabled(
             target.id,
-            "a11y/hierarchy",
+            ["a11y/hierarchy"],
             false,
         );
         const teardown = await waitFor(

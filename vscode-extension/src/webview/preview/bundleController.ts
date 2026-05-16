@@ -27,8 +27,18 @@ import {
 } from "./bundleRegistry";
 
 export interface BundleControllerHost {
-    /** Send a `setDataExtensionEnabled` to the extension host. */
-    setKindEnabled(kind: string, enabled: boolean): void;
+    /**
+     * Send a `setDataExtensionEnabled` to the extension host for one
+     * or more kinds at once. Batching matters for chip activation:
+     * issuing one wire message per kind lets the daemon lock the
+     * render mode after the first subscribe arrives, so subsequent
+     * kinds' data products miss the in-flight render (e.g.
+     * `a11y/hierarchy` attaches but `a11y/atf` doesn't). The
+     * controller routes `activate` / `deactivate` (all default-ON
+     * kinds together) and Configure-expander row toggles (single
+     * kind) through this one entry point.
+     */
+    setKindsEnabled(kinds: readonly string[], enabled: boolean): void;
     /** Persist a snapshot for restore across panel reload. */
     persist(snapshot: BundleSnapshot): void;
 }
@@ -183,7 +193,7 @@ export class BundleController {
             return;
         }
         this.enabled.set(bundleId, current);
-        this.host.setKindEnabled(kind, enabled);
+        this.host.setKindsEnabled([kind], enabled);
         this.fire();
     }
 
@@ -228,15 +238,21 @@ export class BundleController {
         const previouslyEnabled = this.enabled.get(id);
         const kinds = previouslyEnabled ?? [...defaultOnKindsFor(id)];
         this.enabled.set(id, kinds);
-        for (const k of kinds) this.host.setKindEnabled(k, true);
+        // Batched on purpose — the extension host's
+        // `handleSetDataExtensionEnabled` ships a single `data/subscribe`
+        // sequence followed by one `renderNow`, so all subscriptions
+        // land before the daemon decides which data products to attach.
+        // Per-kind dispatch races the daemon's mode-lock-on-first-
+        // subscribe; the second kind's product (e.g. `a11y/atf`)
+        // misses the render and the bundle shows partial data.
+        if (kinds.length > 0) this.host.setKindsEnabled(kinds, true);
         this.tab = id;
         this.fire();
     }
 
     private deactivate(id: BundleId): void {
-        for (const k of this.enabledKindsFor(id)) {
-            this.host.setKindEnabled(k, false);
-        }
+        const kinds = this.enabledKindsFor(id);
+        if (kinds.length > 0) this.host.setKindsEnabled([...kinds], false);
         this.active = this.active.filter((x) => x !== id);
         // Preserve the per-kind enable set on the dropped bundle so
         // a re-press restores the user's last configuration rather
