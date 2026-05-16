@@ -383,15 +383,24 @@ body {
     display: flex;
     flex-direction: row;
     align-items: stretch;
-    gap: 12px;
+    gap: 8px;
 }
 .focus-stage:has(.focus-stage-legend:not([hidden])) > .preview-grid {
-    flex: 1 1 auto;
+    /* Preview image gets the lion's share of the stage — the legend
+     * is metadata, the render is the deliverable. `flex: 3` pairs
+     * with the legend's `flex: 1` (capped via max-width) so the
+     * image keeps its priority even when the stage is narrow. */
+    flex: 3 1 auto;
     min-width: 0;
 }
 .focus-stage-legend {
-    flex: 0 0 280px;
-    max-width: 320px;
+    /* Slim column: shrinkable down to ~160px so a narrow viewport
+     * doesn't starve the preview image, capped so it doesn't sprawl
+     * on a wide one. The label/detail rows ellipsis their text, so
+     * the legend stays readable at the tighter width. */
+    flex: 1 1 200px;
+    min-width: 160px;
+    max-width: 240px;
     max-height: 70vh;
     overflow: auto;
     border: 1px solid var(--card-border, rgba(127, 127, 127, 0.2));
@@ -409,10 +418,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--card-border, rgba(127, 127, 127, 0.2));
     font-weight: 600;
-    font-size: 12px;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--vscode-descriptionForeground, currentColor);
@@ -429,10 +438,11 @@ body {
 .bundle-legend-entry {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 6px 10px;
+    gap: 6px;
+    padding: 4px 8px;
     cursor: pointer;
     transition: background-color 80ms ease-out;
+    font-size: 12px;
 }
 .bundle-legend-entry:hover,
 .bundle-legend-entry-active {
@@ -473,8 +483,8 @@ body {
     text-overflow: ellipsis;
 }
 .bundle-legend-detail {
-    font-size: 11px;
-    opacity: 0.75;
+    font-size: 10px;
+    opacity: 0.7;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2161,12 +2171,25 @@ body {
     position: absolute;
     pointer-events: auto;
     border: 1px solid var(--overlay-color, var(--a11y-color, #1976d2));
+    /* Barely-perceptible fill — the bordered outline carries the
+     * signal, the tint is just a gentle reinforcement so users
+     * scanning the image notice the region without the tint
+     * dominating the content underneath. */
     background: color-mix(
         in srgb,
-        var(--overlay-color, var(--a11y-color, #1976d2)) 18%,
+        var(--overlay-color, var(--a11y-color, #1976d2)) 6%,
         transparent
     );
     box-sizing: border-box;
+}
+.overlay-box.overlay-box-active {
+    /* Hover / selection escalates the fill so the active region is
+     * obvious even with the resting tint dialled down. */
+    background: color-mix(
+        in srgb,
+        var(--overlay-color, var(--a11y-color, #1976d2)) 22%,
+        transparent
+    );
 }
 .overlay-box[data-level="error"] {
     --overlay-color: #d32f2f;

@@ -76,11 +76,23 @@ const PALETTE = [
     "#f6aea9",
 ];
 
+export interface A11yBundleOptions {
+    /** Show only `merged: true` nodes — the focusable / screen-reader
+     *  stops. Unmerged children (e.g. inner `Text` inside a `Button`)
+     *  duplicate their merged ancestor's bounds and clutter the
+     *  overlay + legend without adding new information for most
+     *  reviews. Defaults to `true`; flip to `false` to surface the
+     *  full hierarchy when debugging a specific merge boundary. */
+    mergedOnly?: boolean;
+}
+
 export function computeA11yBundleData(
     nodes: readonly AccessibilityNode[],
     findings: readonly AccessibilityFinding[],
     touchTargets: readonly AccessibilityTouchTarget[] = [],
+    options: A11yBundleOptions = {},
 ): A11yBundleData {
+    const mergedOnly = options.mergedOnly ?? true;
     const rows: A11yRow[] = [];
     const overlay: OverlayBox[] = [];
     const findingsByBoundsKey = groupFindingsByBoundsKey(findings);
@@ -98,6 +110,14 @@ export function computeA11yBundleData(
     const consumedTargets = new Set<AccessibilityTouchTarget>();
 
     nodes.forEach((node, idx) => {
+        // Index-stable id so the `mergedOnly` filter below doesn't
+        // renumber ids across renders — the row's overlay box, the
+        // data-table row, and the legend entry all share the index-
+        // based id. The matched-bounds bookkeeping for orphan
+        // findings runs unconditionally further down, so skipping
+        // here doesn't cause a finding on an unmerged child to leak
+        // out as an orphan row.
+        if (mergedOnly && !node.merged) return;
         const id = "a11y-" + idx;
         const bounds = parseBounds(node.boundsInScreen);
         const matchingFindings = bounds
