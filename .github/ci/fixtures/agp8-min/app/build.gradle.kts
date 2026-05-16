@@ -2,12 +2,12 @@ plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.android")
   id("org.jetbrains.kotlin.plugin.compose")
-  // `compose-preview` is injected at CI time by
-  // `apply-compose-ai.init.gradle.kts` (init.d) — same path every other
-  // integration matrix entry takes. The init script seeds `mavenLocal()`
-  // for the locally-published plugin + renderer-android and auto-applies
-  // the plugin to every module with `com.android.application` when
-  // `COMPOSE_AI_TOOLS=true`.
+  // `compose-preview` is injected at CI time via the CLI-materialised
+  // `apply-compose-ai-preview.init.gradle.kts` (passed via `--init-script`
+  // — see `.github/workflows/integration.yml`). The init script seeds
+  // `mavenLocal()` for the locally-published plugin + renderer-android
+  // (via `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1`) and auto-applies the
+  // plugin to every module with `com.android.application`.
 }
 
 android {

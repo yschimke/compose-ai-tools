@@ -65,22 +65,24 @@ Working examples: [`samples/android/build.gradle.kts`](samples/android/build.gra
 
 ### Zero-Code Integration (Alternative)
 
-You can apply the plugin dynamically without modifying the project's source code by using a Gradle init script. This is particularly useful for AI agents on the CLI, in CI, or when exploring the tool without committing changes to the repository.
-
-> **VS Code users:** the [`Compose Preview` extension](vscode-extension/) already auto-injects via `--init-script` on every Gradle invocation it makes — you don't need a global `~/.gradle/init.d/` script. The instructions below are for command-line and CI flows that don't go through the extension.
-
-To use this method:
-1. Create a Gradle init script (e.g., `~/.gradle/init.d/compose-ai-tools.gradle`) that resolves the plugin and applies it to Android application projects.
-2. Control its application with an environment variable (e.g., `COMPOSE_AI_TOOLS=true`).
-
-See the [`compose-preview` skill](https://github.com/yschimke/skills/blob/main/skills/compose-preview/SKILL.md) for a sample init script and details.
-
-Then:
+You can apply the plugin dynamically without modifying the project's source code, useful for AI agents on the CLI, in CI, or when exploring the tool without committing changes. The `compose-preview` CLI ships a bundled Gradle init script and passes it via `--init-script` on every invocation, so projects that already apply `com.android.application` / `com.android.library` / `org.jetbrains.compose` pick up the preview plugin without an edit to `build.gradle.kts`:
 
 ```sh
-./gradlew :app:discoverPreviews    # scan @Preview annotations
-./gradlew :app:renderAllPreviews   # render every @Preview to PNG
+compose-preview list                # scan @Preview annotations
+compose-preview render              # render every @Preview to PNG
 ```
+
+For direct `./gradlew` use (e.g., a CI step that needs extra Gradle flags), materialise the same init script once and thread its path through each invocation:
+
+```sh
+INIT_SCRIPT="$(compose-preview init-script --path)"
+./gradlew --init-script "$INIT_SCRIPT" :app:discoverPreviews
+./gradlew --init-script "$INIT_SCRIPT" :app:renderAllPreviews
+```
+
+> **VS Code users:** the [`Compose Preview` extension](vscode-extension/) already auto-injects via `--init-script` on every Gradle invocation it makes — no extra setup needed.
+
+The CLI's [auto-inject script](cli/src/main/kotlin/ee/schimke/composeai/cli/AutoInject.kt) detects projects that already declare the plugin (either literally as `id("ee.schimke.composeai.preview") version "..."` or via a `gradle/libs.versions.toml` alias resolved through `alias(libs.plugins.<x>)`) and skips the classpath injection for those builds, so mixed setups work without conflicts.
 
 Requires Java 17+, Gradle 9.4.1+, AGP 9.1+ (Android), Kotlin 2.2.21,
 Compose Multiplatform 1.10.3 (Desktop).
