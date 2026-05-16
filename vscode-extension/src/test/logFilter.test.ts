@@ -34,15 +34,24 @@ describe("LogFilter", () => {
             assert.strictEqual(out, "");
         });
 
-        it("keeps non-noop task headers", () => {
+        it("drops non-noop task headers too — all > Task : lines are noise at normal", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
                 "> Task :samples:wear:compileDebugKotlin\n" +
                     "> Task :samples:wear:discoverPreviews\n",
             );
+            assert.strictEqual(out, "");
+        });
+
+        it("keeps task headers that FAILED", () => {
+            const f = withLevel("normal");
+            const out = f.filterGradleChunk(
+                "> Task :samples:wear:compileDebugKotlin\n" +
+                    "> Task :samples:wear:compileDebugKotlin FAILED\n",
+            );
             assert.strictEqual(
                 out,
-                "> Task :samples:wear:compileDebugKotlin\n> Task :samples:wear:discoverPreviews\n",
+                "> Task :samples:wear:compileDebugKotlin FAILED\n",
             );
         });
 
@@ -67,15 +76,12 @@ describe("LogFilter", () => {
             assert.strictEqual(out, "");
         });
 
-        it("keeps BUILD SUCCESSFUL / BUILD FAILED lines", () => {
+        it("drops BUILD SUCCESSFUL but keeps BUILD FAILED at normal", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
                 "BUILD SUCCESSFUL in 16s\nBUILD FAILED in 1s\n",
             );
-            assert.strictEqual(
-                out,
-                "BUILD SUCCESSFUL in 16s\nBUILD FAILED in 1s\n",
-            );
+            assert.strictEqual(out, "BUILD FAILED in 1s\n");
         });
 
         it("drops the multi-line configure-project warning block", () => {
@@ -109,21 +115,31 @@ describe("LogFilter", () => {
                 "> Configure project :gradle-plugin\n" +
                     "WARNING: Unsupported Kotlin plugin version.\n" +
                     "\n" +
-                    "BUILD SUCCESSFUL in 1s\n",
+                    "BUILD FAILED in 1s\n",
             );
-            assert.strictEqual(out, "BUILD SUCCESSFUL in 1s\n");
+            assert.strictEqual(out, "BUILD FAILED in 1s\n");
         });
 
-        it("keeps the discoverPreviews bullet list at normal", () => {
+        it("drops the discoverPreviews bullet list at normal", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
                 "Discovered 17 preview(s) in module 'wear':\n" +
-                    "  com.example.samplewear.PreviewsKt.ButtonPreview  [id:wearos_large_round]\n",
+                    "  com.example.samplewear.PreviewsKt.ButtonPreview  [id:wearos_large_round]\n" +
+                    "  com.example.samplewear.PreviewsKt.CardPreview  [id:wearos_large_round]\n",
+            );
+            assert.strictEqual(out, "");
+        });
+
+        it("ends the discovered block when a non-indented line appears", () => {
+            const f = withLevel("normal");
+            const out = f.filterGradleChunk(
+                "Discovered 17 preview(s) in module 'wear':\n" +
+                    "  com.example.samplewear.PreviewsKt.ButtonPreview  [id:wearos_large_round]\n" +
+                    "FAILURE: Build failed with an exception.\n",
             );
             assert.strictEqual(
                 out,
-                "Discovered 17 preview(s) in module 'wear':\n" +
-                    "  com.example.samplewear.PreviewsKt.ButtonPreview  [id:wearos_large_round]\n",
+                "FAILURE: Build failed with an exception.\n",
             );
         });
 
@@ -325,6 +341,45 @@ describe("LogFilter", () => {
                 null,
             );
         });
+
+        it("drops per-render phase / classloader / renderFinished chatter", () => {
+            const f = withLevel("normal");
+            const lines = [
+                "compose-ai-daemon: [classloader] allocate child loader parent=… loaderId=abc urls=[…]",
+                "compose-ai-daemon: [render] com.example.PreviewsKt#FooPreview loaderId=abc classFile=…",
+                "compose-ai-daemon: [render] mode=<default> effectiveRunAccessibility=false inspectionMode=true outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=evaluateRule.start outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=setContent.start outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=setContent.done outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=captureRoboImage.start outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=dataArtifact.fonts/used.start outputBaseName=Foo",
+                "compose-ai-daemon: [render] phase=dataArtifact.fonts/used.done outputBaseName=Foo tookMs=8",
+                "compose-ai-daemon: [render] phase=complete outputBaseName=Foo tookMs=900 pngPath=/tmp/foo.png",
+                "compose-ai-daemon: [renderFinished] previewId=Foo subscribedKinds=[] globalAttachKinds=[] attachments=[]",
+                "compose-ai-tools daemon: sandbox pool active (sandboxCount=5)",
+            ];
+            for (const line of lines) {
+                assert.strictEqual(
+                    f.filterDaemonStderrLine(line),
+                    null,
+                    `expected drop for: ${line}`,
+                );
+            }
+        });
+
+        it("keeps render phase failures and a11y completion lines", () => {
+            const f = withLevel("normal");
+            const failed =
+                "compose-ai-daemon: [render] phase=evaluateRule.failed outputBaseName=Foo error=RuntimeException: boom";
+            assert.strictEqual(f.filterDaemonStderrLine(failed), failed);
+            const a11yFailed =
+                "compose-ai-daemon: [render] phase=a11y.failed outputBaseName=Foo error=RuntimeException: boom";
+            assert.strictEqual(
+                f.filterDaemonStderrLine(a11yFailed),
+                a11yFailed,
+            );
+        });
     });
 
     describe("filterDaemonStderrLine at quiet", () => {
@@ -368,39 +423,127 @@ describe("LogFilter", () => {
     });
 
     describe("shouldEmitInformational", () => {
-        it("always emits at normal/verbose", () => {
-            for (const level of ["normal", "verbose"] as const) {
+        it("emits everything at verbose", () => {
+            const f = withLevel("verbose");
+            assert.strictEqual(
+                f.shouldEmitInformational("[refresh] start foo"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[doctor] anything"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[detect] anything"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("> :samples:wear:discoverPreviews"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[daemon] spawning anything"),
+                true,
+            );
+        });
+
+        it("emits the signal lines at normal", () => {
+            const f = withLevel("normal");
+            assert.strictEqual(
+                f.shouldEmitInformational("[refresh] start foo"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[refresh] rendered 13 preview(s)"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] no module — activeFile=foo",
+                ),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[daemon] ready for samples/wear"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[startup] anything"),
+                true,
+            );
+        });
+
+        it("drops high-volume chatter at normal", () => {
+            const f = withLevel("normal");
+            assert.strictEqual(
+                f.shouldEmitInformational("[refresh] cache hit: foo"),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] cancelled — superseded by a newer refresh",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[daemon] spawning foo"),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[daemon] webview ack updateDataProducts foo",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[doctor] doctor diagnostics refreshed across 9",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[detect] something"),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("> :samples:wear:discoverPreviews"),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "> :samples:wear:discoverPreviews completed",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "> :samples:wear:discoverPreviews cancelled",
+                ),
+                false,
+            );
+
+            // Error / failure shaped lines pass through.
+            assert.strictEqual(
+                f.shouldEmitInformational("> :samples:wear:foo FAILED: ..."),
+                true,
+            );
+        });
+
+        it("always emits [panel] user-action lines at every level", () => {
+            for (const level of ["quiet", "normal", "verbose"] as const) {
                 const f = withLevel(level);
                 assert.strictEqual(
-                    f.shouldEmitInformational("[refresh] start foo"),
+                    f.shouldEmitInformational("[panel] module selected: foo"),
                     true,
                 );
                 assert.strictEqual(
                     f.shouldEmitInformational(
-                        "[doctor] doctor diagnostics refreshed across 9",
+                        "[panel] extension a11y/atf enabled for foo",
                     ),
                     true,
                 );
                 assert.strictEqual(
-                    f.shouldEmitInformational("[detect] something"),
-                    true,
-                );
-                assert.strictEqual(
-                    f.shouldEmitInformational(
-                        "> :samples:wear:discoverPreviews",
-                    ),
-                    true,
-                );
-                assert.strictEqual(
-                    f.shouldEmitInformational(
-                        "> :samples:wear:discoverPreviews completed",
-                    ),
-                    true,
-                );
-                assert.strictEqual(
-                    f.shouldEmitInformational(
-                        "[daemon] ready for samples/wear",
-                    ),
+                    f.shouldEmitInformational("[panel] focus preview: foo"),
                     true,
                 );
             }
