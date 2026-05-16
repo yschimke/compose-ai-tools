@@ -104,10 +104,14 @@ jobs:
             publishAndReleaseToMavenCentral
 
   # Build the runnable applications shipped on each GitHub Release: the CLI
-  # (`compose-preview-*`) and the standalone MCP server (`compose-preview-mcp-*`).
-  # The CLI tarball already implementation-bundles `:mcp`, so the standalone
-  # MCP archive is for consumers who only want `compose-preview-mcp` on its
-  # own (e.g. wiring it into an MCP client without dragging the CLI in).
+  # (`compose-preview-*`), the standalone MCP server (`compose-preview-mcp-*`),
+  # and the desktop bundle viewer (`compose-preview-viewer-*`). The CLI tarball
+  # already implementation-bundles `:mcp`, so the standalone MCP archive is for
+  # consumers who only want `compose-preview-mcp` on its own (e.g. wiring it
+  # into an MCP client without dragging the CLI in). The viewer is a separate
+  # Compose Desktop application that opens a packed `.png` bundle and renders
+  # it live in a window; bigger than the CLI (ships its own Compose+Skiko
+  # runtime) so it's a separate download.
   #
   # Each dist is uploaded as its own artifact so `actions/upload-artifact`'s
   # lowest-common-ancestor logic collapses to the single `*/build/distributions/`
@@ -128,8 +132,12 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Build CLI and MCP distributions
-        run: ./gradlew :cli:distZip :cli:distTar :mcp:distZip :mcp:distTar
+      - name: Build CLI, MCP, and viewer distributions
+        run: |
+          ./gradlew \
+            :cli:distZip :cli:distTar \
+            :mcp:distZip :mcp:distTar \
+            :bundle-viewer:distZip :bundle-viewer:distTar
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-dist
@@ -143,6 +151,16 @@ jobs:
           path: |
             mcp/build/distributions/compose-preview-mcp-*.zip
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
+          retention-days: 1
+      # Viewer ships its full Compose Multiplatform Desktop + Skiko runtime in `lib/`, so the
+      # tarball is ~37 MB on Linux. Same single-artifact / single-parent path shape as the CLI
+      # and MCP uploads so the `release` job's flat `artifacts/*.{zip,tar.gz}` glob picks it up.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle-viewer-dist
+          path: |
+            bundle-viewer/build/distributions/compose-preview-viewer-*.zip
+            bundle-viewer/build/distributions/compose-preview-viewer-*.tar.gz
           retention-days: 1
 
   build-vscode-extension:
