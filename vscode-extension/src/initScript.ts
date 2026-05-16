@@ -44,8 +44,7 @@ export function renderInitScript(
 // ee.schimke.composeai.preview (version pinned to ${pluginVersion}) to every
 // project that already applies com.android.application,
 // com.android.library, or org.jetbrains.compose — so consumers don't have
-// to edit their build files. Disable from settings via
-// composePreview.autoInject.enabled = false.
+// to edit their build files.
 //
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so
 // AGP finalizeDsl / onVariants callbacks register before the DSL lock.

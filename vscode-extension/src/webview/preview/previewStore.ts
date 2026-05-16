@@ -41,26 +41,6 @@ export interface PreviewState {
     earlyFeaturesEnabled: boolean;
 
     /**
-     * Reflects `composePreview.autoEnableCheap.enabled`. When `true`,
-     * the focus inspector auto-enables cheap, suggestion-matched
-     * data products on first sight per scope. Default `false` — the
-     * feature is opt-in so users don't see toggles flip without their
-     * input. Updated at runtime by the `setAutoEnableCheap` extension
-     * message.
-     */
-    autoEnableCheapEnabled: boolean;
-
-    /**
-     * Reflects `composePreview.collapseVariants.enabled`. When `true`,
-     * `PreviewGrid.applyFilters` keeps only one card per function while
-     * neither the function nor the group filter is narrower than `"all"`
-     * — picking a function/group from the toolbar expands the variants
-     * for that selection. Updated at runtime by the
-     * `setCollapseVariants` extension message.
-     */
-    collapseVariantsEnabled: boolean;
-
-    /**
      * `previewId` of the card whose accessibility overlay subscription
      * is currently active, or `null` when no card is subscribed. Set by
      * `toggleA11yOverlay` and cleared on focus navigation, daemon
@@ -155,8 +135,6 @@ export interface PreviewState {
 
 const initialState: PreviewState = {
     earlyFeaturesEnabled: false,
-    autoEnableCheapEnabled: false,
-    collapseVariantsEnabled: true,
     a11yOverlayPreviewId: null,
     focusedPreviewId: null,
     allPreviews: [],

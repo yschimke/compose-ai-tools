@@ -36,15 +36,6 @@ export interface FilterValues {
     group: string;
 }
 
-export interface ApplyFiltersOptions {
-    /** When true, collapse variants of the same function (same
-     *  className+functionName) so only the first card survives. Only takes
-     *  effect when neither the function nor the group filter is narrower
-     *  than `"all"` — picking a function or group is treated as an
-     *  explicit "show all variants for this selection" signal. */
-    collapseVariants?: boolean;
-}
-
 export class PreviewGrid extends HTMLElement {
     private layoutMode: LayoutMode = "grid";
     private compileStale = false;
@@ -96,16 +87,12 @@ export class PreviewGrid extends HTMLElement {
      * picks and returns how many ended up visible — callers use that
      * count to decide whether to surface the "no matches" banner.
      *
-     * When `options.collapseVariants` is true and both filters are
-     * `"all"`, variants of the same function (matched on
-     * `data-class-name + data-function`) collapse to the first card —
-     * the rest pick up `filtered-out` (and an extra
+     * When both filters are `"all"`, variants of the same function
+     * (matched on `data-class-name + data-function`) collapse to the
+     * first card — the rest pick up `filtered-out` (and an extra
      * `collapsed-variant` class so callers can tell the two apart).
      */
-    applyFilters(
-        filters: FilterValues,
-        options: ApplyFiltersOptions = {},
-    ): number {
+    applyFilters(filters: FilterValues): number {
         const { fn, group } = filters;
         const cards = this.getCards();
         const filterEligible: HTMLElement[] = [];
@@ -120,7 +107,6 @@ export class PreviewGrid extends HTMLElement {
             if (show) filterEligible.push(card);
         }
         const decision = decideVariantCollapse({
-            collapseVariants: !!options.collapseVariants,
             fnFilter: fn,
             groupFilter: group,
             candidates: filterEligible.map((c) => ({

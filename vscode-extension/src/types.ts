@@ -615,25 +615,6 @@ export type ExtensionToWebview =
     | { command: "streamStopped"; previewId: string }
     | { command: "setEarlyFeatures"; enabled: boolean }
     /**
-     * Reflects `composePreview.autoEnableCheap.enabled` from settings.
-     * When `true` the focus inspector auto-flips on cheap, suggestion-
-     * matched data products (theme tokens, fonts, strings, layout tree)
-     * the first time it sees a preview in a given scope; expensive
-     * kinds (recomposition, render trace, a11y) stay click-to-enable.
-     * Sent at panel boot from `composePreview.autoEnableCheap.enabled`
-     * and again on settings change.
-     */
-    | { command: "setAutoEnableCheap"; enabled: boolean }
-    /**
-     * Reflects `composePreview.collapseVariants.enabled` from settings.
-     * When `true`, the preview grid shows only one card per function
-     * (`className + functionName`) while no function or group filter is
-     * active; picking a function or group from the toolbar expands all
-     * variants for that selection. Sent at panel boot and on settings
-     * change.
-     */
-    | { command: "setCollapseVariants"; enabled: boolean }
-    /**
      * Daemon capabilities for the active module — the kinds the daemon
      * can produce (`dataProducts`) and the data extensions registered
      * (`dataExtensions`). The focus inspector groups these into its

@@ -24,7 +24,6 @@ export interface VariantCollapseDecision {
 }
 
 export interface VariantCollapseInput {
-    collapseVariants: boolean;
     /** Current function filter value — `"all"` means no narrowing. */
     fnFilter: string;
     /** Current group filter value — `"all"` means no narrowing. */
@@ -45,10 +44,7 @@ export interface VariantCollapseInput {
 export function decideVariantCollapse(
     input: VariantCollapseInput,
 ): VariantCollapseDecision {
-    const active =
-        input.collapseVariants &&
-        input.fnFilter === "all" &&
-        input.groupFilter === "all";
+    const active = input.fnFilter === "all" && input.groupFilter === "all";
     if (!active) {
         return { active: false, hidden: new Set() };
     }

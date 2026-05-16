@@ -144,10 +144,7 @@ Drop `preview-harness/fixtures/<name>.json` with shape:
     "description": "What this scenario shows",
     "dataset": {
         "earlyFeatures": "false",
-        "autoEnableCheap": "false",
-        "collapseVariants": "false",
-        "minimalMode": "false",
-        "autoInject": "true"
+        "minimalMode": "false"
     },
     "messages": [
         { "command": "setPreviews", "moduleDir": "...", "previews": [...], "heavyStaleIds": [] },
