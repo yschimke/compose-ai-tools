@@ -11,6 +11,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![a11y-findings/dark](renders/a11y-findings.dark.png) |
 | `light` | ![a11y-findings/light](renders/a11y-findings.light.png) |
 
+## a11y-wear
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![a11y-wear/dark](renders/a11y-wear.dark.png) |
+| `light` | ![a11y-wear/light](renders/a11y-wear.light.png) |
+
 ## grid-default
 
 | Theme | Capture |
