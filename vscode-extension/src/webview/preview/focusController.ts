@@ -378,4 +378,25 @@ export class FocusController {
             previewId,
         });
     }
+
+    /**
+     * Early-feature export: pack the focused preview into a portable
+     * PNG+ZIP polyglot via the consumer module's `composePreviewBundle`
+     * task. The host shows a save dialog and then runs the Gradle task
+     * with `-PbundlePreviewIds=<focused>` so the resulting file contains
+     * just this one preview (cover = its rendered image).
+     */
+    requestExportPreviewBundle(): void {
+        if (!this.config.earlyFeatures()) return;
+        if (!this.inFocus()) return;
+        const visible = this.getVisibleCards();
+        const card = visible[this.config.getFocusIndex()];
+        if (!card) return;
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        this.config.vscode.postMessage({
+            command: "requestExportPreviewBundle",
+            previewId,
+        });
+    }
 }

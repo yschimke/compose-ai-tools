@@ -191,7 +191,7 @@ internal object ComposePreviewTasks {
   ) {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
-        raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        BundlePreviewIds.parse(raw)
       }
     val outputProperty: Provider<String> = project.providers.gradleProperty("bundleOutput")
     val pluginVersionProperty = PluginVersion.value

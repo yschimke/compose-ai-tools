@@ -30,6 +30,7 @@ export interface FocusToolbarElements {
     btnInteractive: HTMLButtonElement;
     btnStopInteractive: HTMLButtonElement;
     btnRecording: HTMLButtonElement;
+    btnExportBundle: HTMLButtonElement;
     btnExitFocus: HTMLButtonElement;
     recordingFormat: HTMLSelectElement;
     focusInspector: HTMLElement;
@@ -87,6 +88,7 @@ export class FocusToolbarController {
         this.el.btnA11yOverlay.hidden = !s.earlyFeatures || !s.inFocus;
         this.el.btnRecording.hidden = !s.earlyFeatures || !s.inFocus;
         this.el.recordingFormat.hidden = !s.earlyFeatures || !s.inFocus;
+        this.el.btnExportBundle.hidden = !s.earlyFeatures || !s.inFocus;
         if (!s.earlyFeatures) {
             this.el.focusInspector.hidden = true;
         }
