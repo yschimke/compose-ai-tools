@@ -127,9 +127,27 @@
             "problemMatcher": []
         },
         {
+            "label": "git: pull current branch",
+            "type": "shell",
+            "command": "git",
+            "args": [
+                "pull",
+                "--ff-only"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "build: F5 artifacts",
             "dependsOrder": "sequence",
             "dependsOn": [
+                "git: pull current branch",
                 "npm: compile",
                 "gradle: F5 publish + install",
                 "extension: prepare artifact folder",
