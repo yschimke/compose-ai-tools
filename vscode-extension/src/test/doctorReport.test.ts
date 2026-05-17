@@ -87,7 +87,7 @@ describe("renderDoctorReport", () => {
         assert.ok(out.includes("⚠️ **robolectric-jar-stale**"));
         assert.ok(out.includes("→ Bump the dependency."));
         assert.ok(out.includes("`./gradlew :app:dependencies`"));
-        assert.ok(out.includes("https://example.com/docs"));
+        assert.ok(out.includes("docs: https://example.com/docs"));
     });
 
     it("marks the doctor section as failed when an error was captured", () => {
