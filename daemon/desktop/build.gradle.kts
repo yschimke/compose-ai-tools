@@ -68,6 +68,14 @@ dependencies {
   // NotAvailable when no producer has written. This removes the "kind not advertised" symptom
   // on the panel's Performance / Fonts chips for CMP-desktop sessions.
   implementation(project(":data-fonts-connector"))
+  // Layoutinspector / strings connectors — issue #1201 phase 2. Both modules were migrated from
+  // `android.library` to Compose Multiplatform JVM so `:daemon:desktop` can depend on them; their
+  // file-based registries (`compose/semantics`, `layout/inspector`, `text/strings`,
+  // `i18n/translations`) return `NotAvailable` on desktop until a CMP-portable producer ports,
+  // but advertising them removes the wire-level "kind not advertised" symptom that the panel's
+  // Layout / Strings / Translations chips trip on today.
+  implementation(project(":data-layoutinspector-connector"))
+  implementation(project(":data-strings-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,

@@ -41,10 +41,7 @@ class I18nTranslationsDataProductRegistryTest {
   fun `fetch returns path by default and payload when inline requested`() {
     val previewId = "com.example.I18nPreview"
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(I18nTranslationsDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(I18nTranslationsDataProducer.FILE)
     file.writeText(
       """{"supportedLocales":["en","de"],"renderedLocale":"en","defaultLocale":"en","strings":[{"nodeId":"1","boundsInScreen":"0,0,10,10","resourceName":"R.string.sign_in","rendered":"Sign in","translations":{"en":"Sign in","de":"Anmelden"}}]}"""
     )
@@ -75,8 +72,7 @@ class I18nTranslationsDataProductRegistryTest {
     assertNotNull(inlineResult.payload)
     assertEquals(
       "R.string.sign_in",
-      inlineResult
-        .payload!!
+      inlineResult.payload!!
         .jsonObject["strings"]!!
         .jsonArray
         .single()
@@ -142,11 +138,10 @@ class I18nTranslationsDataProductRegistryTest {
     assertEquals(emptyList<Any>(), registry.attachmentsFor(previewId, setOf("i18n/translations")))
 
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(I18nTranslationsDataProducer.FILE)
-    file.writeText("""{"supportedLocales":["en"],"renderedLocale":"en","defaultLocale":"en","strings":[]}""")
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(I18nTranslationsDataProducer.FILE)
+    file.writeText(
+      """{"supportedLocales":["en"],"renderedLocale":"en","defaultLocale":"en","strings":[]}"""
+    )
 
     val attachment = registry.attachmentsFor(previewId, setOf("i18n/translations")).single()
     assertEquals("i18n/translations", attachment.kind)

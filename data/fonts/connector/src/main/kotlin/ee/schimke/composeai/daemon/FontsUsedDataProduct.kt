@@ -1,7 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import java.io.File
@@ -13,60 +11,33 @@ typealias FontsUsedDataProducer = ee.schimke.composeai.data.fonts.FontsUsedDataP
 
 typealias FontsUsedPayload = ee.schimke.composeai.data.fonts.FontsUsedPayload
 
-/** Daemon registry adapter for the path-backed `fonts/used` product. */
-class FontsUsedDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = FontsUsedDataProducer.KIND,
-        schemaVersion = FontsUsedDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.INLINE,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != FontsUsedDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val payload =
-      try {
-        FontsUsedDataProducer.readPayload(rootDir, previewId)
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
+/**
+ * Daemon registry adapter for the inline-transport `fonts/used` product. The on-disk format is
+ * typed (`FontsUsedPayload`), so the inline read path defers to [FontsUsedDataProducer.readPayload]
+ * rather than the default raw-JSON decode; everything else (capabilities table, missing-file →
+ * NotAvailable, attach-on-render plumbing) comes from [FileBackedDataProductRegistry].
+ */
+class FontsUsedDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = FontsUsedDataProducer.KIND,
+          schemaVersion = FontsUsedDataProducer.SCHEMA_VERSION,
+          transport = DataProductTransport.INLINE,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
         )
-      } ?: return DataProductRegistry.Outcome.NotAvailable
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = FontsUsedDataProducer.KIND,
-        schemaVersion = FontsUsedDataProducer.SCHEMA_VERSION,
-        payload =
-          FontsUsedDataProducer.json.encodeToJsonElement(FontsUsedPayload.serializer(), payload),
       )
-    )
-  }
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == FontsUsedDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(FontsUsedDataProducer.FILE)
+    else null
 
-  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (FontsUsedDataProducer.KIND !in kinds) return emptyList()
-    val payload =
-      try {
-        FontsUsedDataProducer.readPayload(rootDir, previewId)
-      } catch (_: Throwable) {
-        null
-      } ?: return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = FontsUsedDataProducer.KIND,
-        schemaVersion = FontsUsedDataProducer.SCHEMA_VERSION,
-        payload =
-          FontsUsedDataProducer.json.encodeToJsonElement(FontsUsedPayload.serializer(), payload),
-      )
-    )
+  override fun readInlinePayload(previewId: String, kind: String, file: File): JsonElement? {
+    val payload = FontsUsedDataProducer.readPayload(rootDir, previewId) ?: return null
+    return FontsUsedDataProducer.json.encodeToJsonElement(FontsUsedPayload.serializer(), payload)
   }
 }
