@@ -76,6 +76,12 @@ dependencies {
   // Layout / Strings / Translations chips trip on today.
   implementation(project(":data-layoutinspector-connector"))
   implementation(project(":data-strings-connector"))
+  // Navigation registry — issue #1201 phase 4. The registry was extracted from `:daemon:android`
+  // into `:data-navigation-connector` so desktop can advertise the kind. Producer side is still
+  // Android-only (Intent reflection); the registry returns `NotAvailable` on desktop until a
+  // CMP-portable producer ports (Compose Navigation is multiplatform; the wire payload would only
+  // need a portable replacement for the Intent reader).
+  implementation(project(":data-navigation-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
