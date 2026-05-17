@@ -27,6 +27,15 @@ class FakeClient {
      * mimicking a pre-D2 daemon. Tests that don't set this get a successful resolution.
      */
     public dataSubscribeRejects = false;
+    /**
+     * When set, every `dataSubscribe` call returns a pending promise instead of
+     * resolving synchronously. Each call appends a `resolve` function to
+     * [pendingSubscribeResolvers] so the test can decide when to settle them —
+     * this is what lets `awaitPendingSubscribes` regression tests assert the
+     * drain barrier without time-based hacks.
+     */
+    public deferDataSubscribe = false;
+    public pendingSubscribeResolvers: (() => void)[] = [];
 
     fileChanged(args: unknown): void {
         this.calls.push({ method: "fileChanged", args });
@@ -45,6 +54,13 @@ class FakeClient {
         this.calls.push({ method: "dataSubscribe", args });
         if (this.dataSubscribeRejects) {
             return Promise.reject(new Error("-32020 DataProductUnknown"));
+        }
+        if (this.deferDataSubscribe) {
+            return new Promise<{ ok: true }>((resolve) => {
+                this.pendingSubscribeResolvers.push(() =>
+                    resolve({ ok: true }),
+                );
+            });
         }
         return Promise.resolve({ ok: true });
     }
@@ -1032,6 +1048,128 @@ describe("DaemonScheduler", () => {
                 (c) => c.method === "dataSubscribe",
             );
             assert.strictEqual(subsAfter.length, 2);
+        });
+
+        it("awaitPendingSubscribes resolves immediately when no subscribe is in flight", async () => {
+            const { scheduler } = build();
+            // No subscribes ever issued — drain should be cheap and synchronous.
+            await scheduler.awaitPendingSubscribes(":mod");
+        });
+
+        it("awaitPendingSubscribes blocks until in-flight dataSubscribe settles", async () => {
+            // Regression for the "first preview after daemon spawn never gets
+            // extensions" bug: the warm-up renderNow in
+            // `warmShownPreviewsForFile` raced the panel's chip-driven
+            // data/subscribe calls. The daemon's
+            // `subscriptionDrivenRenderMode` lock only injects mode tags on
+            // *subsequent* renders, so a renderNow that ran before
+            // subscribe was acknowledged came back without extension data
+            // products attached — fixed only when the user navigated away
+            // and back. `awaitPendingSubscribes` is the barrier the warm-up
+            // path uses to serialise subscribes-before-render.
+            const { gate, scheduler } = build();
+            gate.client!.deferDataSubscribe = true;
+            // Issue a subscribe but don't await it — mimic the panel's
+            // chip activation handler running concurrently with the
+            // warm-up render path.
+            void scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf"],
+                true,
+            );
+            // Yield once so the scheduler's internal `client.dataSubscribe`
+            // call has actually been issued.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            // Drain must not resolve until the subscribe settles. Use a
+            // race with a resolved sentinel: if the drain wins, the test
+            // fails because we resolved before the subscribe was settled.
+            const drain = scheduler.awaitPendingSubscribes(":mod");
+            let drained = false;
+            void drain.then(() => {
+                drained = true;
+            });
+            // Yield a few times to give a buggy implementation a chance
+            // to resolve early.
+            for (let i = 0; i < 5; i++) {
+                await new Promise<void>((resolve) => setImmediate(resolve));
+            }
+            assert.strictEqual(
+                drained,
+                false,
+                "awaitPendingSubscribes resolved while dataSubscribe was still in flight",
+            );
+            // Settle the subscribe; drain should resolve now.
+            gate.client!.pendingSubscribeResolvers.splice(0).forEach((fn) =>
+                fn(),
+            );
+            await drain;
+            assert.strictEqual(drained, true);
+        });
+
+        it("awaitPendingSubscribes lets a parallel renderNow land after subscribe acknowledgement", async () => {
+            // End-to-end ordering check for the warm-up race fix: when
+            // `setDataProductSubscription` is in flight and a caller
+            // drains via `awaitPendingSubscribes` before issuing
+            // renderNow, the dataSubscribe must appear on the wire (and
+            // be acknowledged) before the warm-up renderNow.
+            const { gate, scheduler } = build();
+            gate.client!.deferDataSubscribe = true;
+            // Fire the panel-side chip activation: subscribe is queued
+            // but its promise is pending.
+            void scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf"],
+                true,
+            );
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            // Mimic the warm-up render path: drain pending subscribes
+            // before issuing renderNow.
+            const warmup = (async () => {
+                await scheduler.awaitPendingSubscribes(":mod");
+                await scheduler.renderNow(
+                    mod("mod"),
+                    ["a"],
+                    "fast",
+                    "view-open",
+                );
+            })();
+            // The warm-up renderNow must not have been dispatched yet
+            // because the subscribe is still in flight.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            const earlyRenderCalls = gate.client!.calls.filter(
+                (c) =>
+                    c.method === "renderNow" &&
+                    (c.args as { reason?: string }).reason === "view-open",
+            );
+            assert.strictEqual(
+                earlyRenderCalls.length,
+                0,
+                "warm-up renderNow leaked past the awaitPendingSubscribes barrier",
+            );
+            // Settle the subscribe; the warm-up renderNow can now go.
+            gate.client!.pendingSubscribeResolvers.splice(0).forEach((fn) =>
+                fn(),
+            );
+            await warmup;
+            // Final wire order: dataSubscribe, post-subscribe renderNow
+            // (from setDataProductSubscription), warm-up renderNow.
+            const wire = gate.client!.calls.map((c) => c.method);
+            const subIdx = wire.indexOf("dataSubscribe");
+            const warmRenderIdx = gate.client!.calls.findIndex(
+                (c) =>
+                    c.method === "renderNow" &&
+                    (c.args as { reason?: string }).reason === "view-open",
+            );
+            assert.ok(
+                subIdx !== -1 && warmRenderIdx !== -1,
+                `expected both dataSubscribe and warm-up renderNow on the wire; got ${wire.join(", ")}`,
+            );
+            assert.ok(
+                warmRenderIdx > subIdx,
+                `warm-up renderNow at ${warmRenderIdx} must come after dataSubscribe at ${subIdx}; wire was ${wire.join(", ")}`,
+            );
         });
     });
 });

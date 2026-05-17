@@ -30,11 +30,24 @@ export class BundleChipBar extends LitElement {
      *  just the graduated extensions (e.g. a11y) without leaking the
      *  in-progress ones. */
     @state() private availableBundles: ReadonlySet<BundleId> | null = null;
+    /** Whether the daemon for the focused module is up. Until the
+     *  daemon is ready, none of the chip-driven subscriptions can
+     *  produce data products — so the chips paint disabled with an
+     *  explanatory tooltip rather than appearing clickable. Clicks
+     *  during that window would queue subscriptions whose follow-up
+     *  renderNow would race the warm-up render (the bug
+     *  `awaitPendingSubscribes` exists to mitigate); greying the chip
+     *  surfaces the wait directly to the user. Defaults to `true` so
+     *  test fixtures and any code path that hasn't piped through
+     *  `setInteractiveAvailability` yet keep the legacy "always
+     *  enabled" behaviour. */
+    @state() private daemonReady = true;
 
     setState(snapshot: {
         bundles: readonly BundleDescriptor[];
         activeBundles: readonly BundleId[];
         availableBundles?: readonly BundleId[] | null;
+        daemonReady?: boolean;
     }): void {
         this.bundles = snapshot.bundles;
         this.activeBundles = snapshot.activeBundles;
@@ -43,6 +56,9 @@ export class BundleChipBar extends LitElement {
             snapshot.availableBundles === null
                 ? null
                 : new Set(snapshot.availableBundles);
+        if (snapshot.daemonReady !== undefined) {
+            this.daemonReady = snapshot.daemonReady;
+        }
     }
 
     protected createRenderRoot(): HTMLElement {
@@ -68,14 +84,23 @@ export class BundleChipBar extends LitElement {
 
     private renderChip(b: BundleDescriptor): TemplateResult {
         const pressed = this.activeBundles.includes(b.id);
+        const disabled = !this.daemonReady && !pressed;
+        const classes = ["bundle-chip"];
+        if (pressed) classes.push("bundle-chip-on");
+        if (disabled) classes.push("bundle-chip-disabled");
+        const title = disabled
+            ? `${b.label} — waiting for preview daemon`
+            : b.label;
         return html`
             <button
                 type="button"
-                class=${pressed ? "bundle-chip bundle-chip-on" : "bundle-chip"}
+                class=${classes.join(" ")}
                 aria-pressed=${pressed ? "true" : "false"}
+                aria-disabled=${disabled ? "true" : "false"}
+                ?disabled=${disabled}
                 data-bundle=${b.id}
-                title=${b.label}
-                @click=${() => this.onClick(b.id)}
+                title=${title}
+                @click=${() => this.onClick(b.id, disabled)}
             >
                 <i class=${"codicon codicon-" + b.icon} aria-hidden="true"></i>
                 <span class="bundle-chip-label">${b.label}</span>
@@ -83,7 +108,8 @@ export class BundleChipBar extends LitElement {
         `;
     }
 
-    private onClick(id: BundleId): void {
+    private onClick(id: BundleId, disabled: boolean): void {
+        if (disabled) return;
         this.dispatchEvent(
             new CustomEvent<BundleToggledDetail>("bundle-toggled", {
                 detail: { id },

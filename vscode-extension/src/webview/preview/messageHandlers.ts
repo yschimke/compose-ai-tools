@@ -552,6 +552,10 @@ function handleSetInteractiveAvailability(
         ctx.applyInteractiveButtonState();
         ctx.applyRecordingButtonState();
     }
+    // Repaint the chip bar so its daemon-ready gate flips along with
+    // the live-toolbar buttons. The chips ungrey on `ready=true` and
+    // grey again if the daemon channel closes mid-session.
+    ctx.refreshBundleState();
 }
 
 function handlePreviewMainRefChanged(ctx: PreviewMessageContext): void {
