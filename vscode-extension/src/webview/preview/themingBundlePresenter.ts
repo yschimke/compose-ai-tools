@@ -15,6 +15,7 @@
 // id is enough to keep `setOverlayId` happy for the shared primitive.
 
 import { html, type TemplateResult } from "lit";
+import { ref } from "lit/directives/ref.js";
 import type { DataTableColumn } from "./components/DataTable";
 
 /** Wire shape for one Material 3 typography token. Mirrors
@@ -110,6 +111,16 @@ export interface ThemingTypographyRow {
     style: string;
     lineHeight: string;
     letterSpacing: string;
+    /** CSS `font-family` stack derived from the daemon's `FontFamily.X`
+     *  toString. Used by the inline sample so the user sees the actual
+     *  glyph shape rather than just the token name. */
+    cssFontFamily: string;
+    /** Numeric CSS `font-weight` extracted from `FontWeight(weight=N)`,
+     *  or null when the daemon couldn't resolve one. */
+    cssFontWeight: number | null;
+    /** `"italic"` when the resolved style was Italic; `"normal"`
+     *  otherwise. */
+    cssFontStyle: "italic" | "normal";
 }
 
 export interface ThemingShapeRow {
@@ -118,6 +129,10 @@ export interface ThemingShapeRow {
     kind: "shape";
     name: string;
     value: string;
+    /** CSS `border-radius` string derived from the shape value so the
+     *  preview swatch paints the actual corner geometry. `null` when
+     *  the shape couldn't be parsed (e.g. CutCornerShape, custom). */
+    previewBorderRadius: string | null;
 }
 
 /** Seed-color summary row prepended to Colors when wallpaper is
@@ -231,17 +246,26 @@ export function computeThemingBundleData(
                 tok.letterSpacing,
                 tok.letterSpacingUnit,
             ),
+            cssFontFamily: cssFontFamily(tok.fontFamily),
+            cssFontWeight: parseFontWeight(tok.fontWeight),
+            cssFontStyle:
+                typeof tok.fontStyle === "string" &&
+                /italic/i.test(tok.fontStyle)
+                    ? "italic"
+                    : "normal",
         });
     }
 
     const shapes = theme?.resolvedTokens?.shapes ?? {};
     for (const name of Object.keys(shapes).sort()) {
+        const value = shapes[name];
         rows.push({
             id: "theming-shape-" + name,
             section: "Shapes",
             kind: "shape",
             name,
-            value: shapes[name],
+            value,
+            previewBorderRadius: parseShapeBorderRadius(value),
         });
     }
 
@@ -299,16 +323,51 @@ function sectionLabel(row: ThemingRow): string {
 
 function renderSwatch(row: ThemingRow): TemplateResult | string {
     if (row.kind === "color" || row.kind === "seed") {
+        // VS Code's webview CSP rejects inline `style=` attributes —
+        // including the ones lit's `styleMap` directive emits — so the
+        // swatch colour has to land via the CSSOM in a ref callback
+        // instead. Same dance `BoxOverlay.renderBox` does for overlay
+        // boxes; see that file for the CSP rationale.
+        const css = row.swatchCss;
+        const apply = (el: Element | undefined): void => {
+            if (!el) return;
+            (el as HTMLElement).style.backgroundColor = css;
+        };
         return html`<span
             class="theming-swatch"
             data-source=${row.kind === "seed"
                 ? "seed"
                 : (row as ThemingColorRow).source}
-            style=${"background-color: " + row.swatchCss}
+            ${ref(apply)}
             title=${row.hex}
         ></span>`;
     }
+    if (row.kind === "shape") {
+        const radius = row.previewBorderRadius;
+        if (radius === null) return "";
+        const apply = (el: Element | undefined): void => {
+            if (!el) return;
+            (el as HTMLElement).style.borderRadius = radius;
+        };
+        return html`<span
+            class="theming-shape-preview"
+            ${ref(apply)}
+            title=${row.value}
+        ></span>`;
+    }
     return "";
+}
+
+function applyTypographyFont(row: ThemingTypographyRow) {
+    return (el: Element | undefined): void => {
+        if (!el) return;
+        const e = el as HTMLElement;
+        e.style.fontFamily = row.cssFontFamily;
+        if (row.cssFontWeight !== null) {
+            e.style.fontWeight = String(row.cssFontWeight);
+        }
+        e.style.fontStyle = row.cssFontStyle;
+    };
 }
 
 function renderName(row: ThemingRow): TemplateResult {
@@ -329,6 +388,17 @@ function renderName(row: ThemingRow): TemplateResult {
                 ? html`<span class="theming-name-sub">from wallpaper</span>`
                 : ""}
         </div>`;
+    }
+    if (row.kind === "typography") {
+        // Paint the token name itself in the resolved font so the user
+        // sees the typeface at a glance. CSP blocks inline `style=` and
+        // lit's `styleMap`, so the font is applied via a CSSOM ref
+        // callback — same trick the swatch uses.
+        return html`<strong
+            class="theming-typography-name"
+            ${ref(applyTypographyFont(row))}
+            >${row.name}</strong
+        >`;
     }
     return html`<strong>${row.name}</strong>`;
 }
@@ -388,6 +458,125 @@ function formatScalar(
 function formatContrast(level: number): string {
     if (Number.isInteger(level)) return level.toFixed(1);
     return level.toFixed(2);
+}
+
+/**
+ * Map the Kotlin `FontFamily.X.toString()` shapes the daemon emits to
+ * a CSS font-family stack. The webview head loads Roboto / Roboto
+ * Serif / Roboto Mono / Caveat from Google Fonts so these stacks
+ * resolve to a real glyph rather than the system fallback.
+ */
+export function cssFontFamily(name: string | null | undefined): string {
+    if (!name) return "var(--vscode-font-family)";
+    const s = name.trim();
+    if (/SansSerif/i.test(s)) return "'Roboto', sans-serif";
+    if (/Serif/i.test(s) && !/SansSerif/i.test(s))
+        return "'Roboto Serif', serif";
+    if (/Monospace/i.test(s)) return "'Roboto Mono', monospace";
+    if (/Cursive/i.test(s)) return "'Caveat', cursive";
+    // Fall back to whatever the daemon reported — quoted defensively so
+    // a custom family name with spaces still resolves.
+    return `'${s.replace(/'/g, "")}', var(--vscode-font-family)`;
+}
+
+/**
+ * Pull the numeric weight out of `FontWeight(weight=400)` (the
+ * canonical Compose toString). Returns null when the shape doesn't
+ * match — e.g. `Normal`, `Bold`, an em-dash placeholder.
+ */
+export function parseFontWeight(
+    weight: string | null | undefined,
+): number | null {
+    if (!weight) return null;
+    const m = weight.match(/weight\s*=\s*(\d{2,3})/);
+    if (m) {
+        const n = parseInt(m[1], 10);
+        if (n >= 100 && n <= 900) return n;
+    }
+    // Named weights — Compose may toString to `Bold` / `Normal` for
+    // some inputs. Surface the canonical CSS numeric so the sample
+    // renders at the expected weight even without `weight=…`.
+    const lookup: Record<string, number> = {
+        thin: 100,
+        extralight: 200,
+        light: 300,
+        normal: 400,
+        regular: 400,
+        medium: 500,
+        semibold: 600,
+        bold: 700,
+        extrabold: 800,
+        black: 900,
+    };
+    const key = weight.trim().toLowerCase();
+    return lookup[key] ?? null;
+}
+
+/**
+ * Best-effort parse of the Material 3 shape token's toString into a
+ * CSS `border-radius` value. Handles `RoundedCornerShape(size.dp)`,
+ * the four-corner form `RoundedCornerShape(topStart = CornerSize(size
+ * = 8.0.dp), …)`, and the percent variants. Returns null for shapes
+ * we can't safely visualise (CutCornerShape, custom polygons) — the
+ * caller suppresses the preview swatch in that case.
+ *
+ * Numbers are emitted as `px` directly: the swatch is a fixed 20×20px
+ * box in the webview, so 1 dp ≈ 1 px is the only sensible scale for a
+ * scaled-down preview. Percent values pass through unchanged.
+ */
+export function parseShapeBorderRadius(
+    value: string | null | undefined,
+): string | null {
+    if (!value || typeof value !== "string") return null;
+    // CutCornerShape would render as bevelled corners, which CSS
+    // border-radius can't express. Skip rather than mis-paint.
+    if (/CutCornerShape/i.test(value)) return null;
+    if (!/RoundedCornerShape/i.test(value)) return null;
+    const corners: Record<string, string | null> = {
+        topStart: null,
+        topEnd: null,
+        bottomEnd: null,
+        bottomStart: null,
+    };
+    let matchedAnyCorner = false;
+    for (const corner of Object.keys(corners)) {
+        const re = new RegExp(
+            corner +
+                "\\s*=\\s*CornerSize\\(size\\s*=\\s*([0-9.]+)(\\.dp|dp|%)?",
+            "i",
+        );
+        const m = value.match(re);
+        if (m) {
+            corners[corner] = formatCornerSize(m[1], m[2]);
+            matchedAnyCorner = true;
+        }
+    }
+    if (matchedAnyCorner) {
+        // CSS order: top-left top-right bottom-right bottom-left. The
+        // Compose corner names map onto LTR layout (start = left).
+        const tl = corners.topStart ?? "0";
+        const tr = corners.topEnd ?? "0";
+        const br = corners.bottomEnd ?? "0";
+        const bl = corners.bottomStart ?? "0";
+        return `${tl} ${tr} ${br} ${bl}`;
+    }
+    // Single-arg form: `RoundedCornerShape(16.dp)` or
+    // `RoundedCornerShape(50)` (percent shorthand).
+    const single = value.match(
+        /RoundedCornerShape\(\s*([0-9.]+)(\.dp|dp|%)?\s*\)/i,
+    );
+    if (single) return formatCornerSize(single[1], single[2]);
+    return null;
+}
+
+function formatCornerSize(num: string, unit: string | undefined): string {
+    const parsed = parseFloat(num);
+    if (!Number.isFinite(parsed)) return "0";
+    if (unit === "%") return parsed + "%";
+    // 1 dp → 1 px in the scaled preview. CSS clamps `border-radius` at
+    // 50% of the side anyway, so a 28 dp radius on a 20 px swatch just
+    // reads as "fully rounded" — the intended affordance.
+    return parsed + "px";
 }
 
 /**

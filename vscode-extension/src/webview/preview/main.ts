@@ -1405,13 +1405,24 @@ export class PreviewApp extends LitElement {
             const target = currentBundleTarget();
             if (!target) return;
             const byKind = dataProductsByPreview.get(target);
-            const theme =
-                (byKind?.get("compose/theme") as ThemePayload | undefined) ??
-                null;
-            const wallpaper =
-                (byKind?.get("compose/wallpaper") as
-                    | WallpaperPayload
-                    | undefined) ?? null;
+            // The cached payload outlives a Configure-expander toggle:
+            // the daemon stops streaming new updates once we unsubscribe,
+            // but the last payload sits in `dataProductsByPreview`. If
+            // we feed it into the presenter unconditionally the checkbox
+            // looks broken — the rows persist even though the kind is
+            // off. Honour the enabled-kinds set so unchecking "Theme
+            // tokens" or "Wallpaper" actually clears the corresponding
+            // section.
+            const enabled = bundleController.state().enabledKinds("theming");
+            const theme = enabled.includes("compose/theme")
+                ? ((byKind?.get("compose/theme") as ThemePayload | undefined) ??
+                  null)
+                : null;
+            const wallpaper = enabled.includes("compose/wallpaper")
+                ? ((byKind?.get("compose/wallpaper") as
+                      | WallpaperPayload
+                      | undefined) ?? null)
+                : null;
             const data = computeThemingBundleData(theme, wallpaper, target);
             const body = themingBody();
             const table = body.table;

@@ -2732,6 +2732,28 @@ bundle-chip-bar {
 .theming-swatch[data-source="wallpaper"] {
     border-style: dashed;
 }
+/* Scaled-down 20x20 preview for shape tokens — the corner-radius
+ * geometry is the affordance, so a translucent fill with a subtle
+ * outline is enough. CSS clamps `border-radius` at 50% of the side
+ * which makes 28 dp on a 20 px swatch render as a full circle —
+ * intentional, that's the "fully rounded" visual the spec implies. */
+.theming-shape-preview {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    opacity: 0.22;
+    border: 1px solid currentColor;
+    box-sizing: border-box;
+}
+/* Typography rows render the token name itself in the resolved font
+ * (loaded from Google Fonts in the panel head) so the user sees the
+ * typeface at a glance. Sized a touch larger than the row's body text
+ * to give glyph variation room to breathe. */
+.theming-typography-name {
+    font-size: 15px;
+    line-height: 1.1;
+}
 .theming-name-cell {
     min-width: 120px;
 }
