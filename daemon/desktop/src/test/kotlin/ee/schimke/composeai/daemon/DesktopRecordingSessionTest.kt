@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -736,9 +737,183 @@ class DesktopRecordingSessionTest {
     return matches.toDouble() / total.toDouble()
   }
 
+  /**
+   * Issue #1203 — scripted `input.keyDown` against the held composition. Mirrors the click test's
+   * contract for the new keyboard surface:
+   *
+   * 1. **Frame 0 paints green** — the `input.keyDown` event at `tMs = 0` drains before the first
+   *    render tick, flipping `KeyPressColorSquare.pressed = true` via the new
+   *    `keyHandler(KeyEventType.KeyDown)` registry entry.
+   * 2. **State holds across frames** — frame 5 (between event drain and stop) still paints green.
+   *    Without held-scene state the `mutableStateOf` would reset between renders.
+   * 3. **Script evidence reports APPLIED** — `RecordingScriptEvidence.status` for the
+   *    `input.keyDown` event comes back `APPLIED`, not `UNSUPPORTED`. This is the contract the
+   *    descriptor's `supported = true` advertises to clients — flipping it to `UNSUPPORTED` again
+   *    would be a regression on the `recording/script` wire shape.
+   *
+   * Counterpart to the harness scenario `SRecordingKeyDispatch` from the issue's acceptance
+   * criteria. Run in-process here so the test exercises both the script handler registry and the
+   * Skiko translation table without paying the harness's subprocess cost.
+   */
+  @Test
+  fun scripted_keyDown_flips_state_and_emits_applied_evidence() {
+    val outputDir = tempFolder.newFolder("recording-key-renders")
+    val recordingsRoot = tempFolder.newFolder("recordings-key-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == KEY_PRESS_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "KeyPressColorSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "key-press-recording-square",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = KEY_PRESS_PREVIEW_ID,
+          recordingId = "test-rec-key-1",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        session.postScript(
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "input.keyDown",
+              keyCode = "29", // KEYCODE_A
+            )
+          )
+        )
+
+        val result = session.stop()
+        assertTrue("frame count must be ≥ 1", result.frameCount >= 1)
+
+        // Frame 0 — keyDown drained at tMs = 0, the fixture flipped to green.
+        val frame0 = readPng(File(result.framesDir, "frame-00000.png"))
+        val greenAt0 = pixelMatchPct(frame0, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "frame 0 expected ≥ 95% green pixels (pressed = true after input.keyDown@0); got " +
+            "${"%.2f".format(greenAt0 * 100)}% — load-bearing for issue #1203's recording wire.",
+          greenAt0 >= 0.95,
+        )
+
+        // Script evidence — `RecordingScriptEvidence.status` for the keyDown event must be
+        // APPLIED, not the pre-#1203 UNSUPPORTED. This is the contract a recording client
+        // (panel, MCP) keys off when grading the playback.
+        val keyEvidence = result.scriptEvents.find { it.kind == "input.keyDown" }
+        assertNotNull(
+          "every scripted event must have an evidence entry; got: ${result.scriptEvents}",
+          keyEvidence,
+        )
+        assertEquals(
+          "input.keyDown evidence must be APPLIED on the desktop backend post-#1203",
+          RecordingScriptEventStatus.APPLIED,
+          keyEvidence!!.status,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * Issue #1203 — recording counterpart to the interactive "unmapped keycode is a silent no-op". An
+   * unknown wire keycode should surface as `UNSUPPORTED` evidence with a clear reason rather than
+   * crashing the script playback or being silently dropped.
+   */
+  @Test
+  fun scripted_keyDown_with_unmapped_keycode_emits_unsupported_evidence() {
+    val outputDir = tempFolder.newFolder("recording-key-unmapped-renders")
+    val recordingsRoot = tempFolder.newFolder("recordings-key-unmapped-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == KEY_PRESS_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "KeyPressColorSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "key-press-unmapped-recording",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = KEY_PRESS_PREVIEW_ID,
+          recordingId = "test-rec-key-unmapped",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        session.postScript(
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "input.keyDown",
+              keyCode = "183", // KEYCODE_F13 — outside the desktop translation table
+            )
+          )
+        )
+
+        val result = session.stop()
+        val keyEvidence = result.scriptEvents.find { it.kind == "input.keyDown" }
+        assertNotNull(keyEvidence)
+        assertEquals(
+          "unmapped keycode must surface UNSUPPORTED evidence so the agent learns which key " +
+            "didn't make it through",
+          RecordingScriptEventStatus.UNSUPPORTED,
+          keyEvidence!!.status,
+        )
+        assertNotNull(
+          "UNSUPPORTED evidence must carry a human-readable message",
+          keyEvidence.message,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   companion object {
     private const val FIXTURE_PREVIEW_ID = "tristate-click-square"
     private const val FAILURE_PREVIEW_ID = "click-to-boom-square"
+    private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
     // Component-preview-sized sandbox — a button-ish 120x60 surface, deliberately NOT phone-sized.
     private const val COMPONENT_WIDTH_PX = 120
     private const val COMPONENT_HEIGHT_PX = 60
