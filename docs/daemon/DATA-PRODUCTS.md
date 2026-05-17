@@ -287,6 +287,31 @@ A `data/fetch` that needs a re-render:
 | `history/diff/regions` | default | low | Per-pixel bbox of changed regions vs. another history entry. |
 | `test/failure` | failed render | low | Postmortem bundle: phase, error type/message/stack, fallback fields for what's not yet captured. Fetch-only after `renderFailed`. |
 
+## Per-backend support matrix (issue #1201)
+
+Which kinds each backend's `extensions/list` advertises and serves through `data/fetch` / `data/subscribe`. Read this together with `initialize.capabilities.dataProducts`: the daemon never lies about what it can advertise, so a kind that shows up in `extensions/list` will round-trip through `data/fetch` (possibly returning `NotAvailable` when no producer has written yet, but **never** `-32020 DataProductUnknown`).
+
+| Kind | Android | Desktop (CMP) | Notes |
+|---|---|---|---|
+| `device/clip` / `device/background` | ✅ | ✅ | Renderer-agnostic device-bound previewer. |
+| `render/trace` / `render/test-failure` / `render/overlay-legend` | ✅ | ✅ | Renderer-agnostic. |
+| `data/theme` / `data/wallpaper` / `data/pseudolocale` | ✅ | ✅ | Override-extension shapes. Pseudolocale has separate Android / Desktop planner modules — see `:data-pseudolocale-connector{-desktop}`. |
+| `data/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
+| `compose/trace` | ✅ | ✅ | Both backends, gated on `composeai.perfetto.enabled` + `composeai.render.outputDir`. |
+| `displayfilter` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
+| `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
+| `compose/semantics` / `layout/inspector` | ✅ producer | 📁 registry-only | Android producer reads the Robolectric semantics tree. Desktop registry serves the file once a CMP-portable producer driving `LocalView` / `SemanticsOwner` lands. |
+| `text/strings` | ✅ producer | 📁 registry-only | Synthesised from `compose/semantics`; ports along with that kind. |
+| `i18n/translations` | ✅ producer | 📁 registry-only | Reads `values*/strings.xml`. Desktop equivalent reads `org.jetbrains.compose.resources.ResourceEnvironment` once that producer ports. |
+| `data/navigation` | ✅ producer | 📁 registry-only | Android producer reads `Activity.intent` + `OnBackPressedDispatcher`. Desktop equivalent watches `NavController`; same registry file shape. |
+| `history/diff/regions` + history JSON-RPC | 🔒 1.1 | 🔒 1.1 | Both backends gated behind `HistoryFeature.ENABLED` (post-1.0). See `daemon/core/.../HistoryFeature.kt`. |
+| `a11y/atf` + `a11y/hierarchy` + `a11y/touchTargets` + `a11y/overlay` | ✅ | ❌ Android-only | Producer depends on ATF + Robolectric `AccessibilityNodeInfo` walks. CMP-portable subset (geometric touch-target + contrast against `SemanticsNode`) is a future track; not blocked on registry. |
+| `resources/used` | ✅ | ❌ Android-only | Producer intercepts `Resources.getValue`; no Compose-Multiplatform analogue ships. |
+| `uia/hierarchy` (uiautomator) | ✅ | ❌ Android-only | UIAutomator is Android-API surface; CMP-desktop panel chips should grey out on `serverCapabilities.backend == "desktop"`. |
+| `data/ambient` | ✅ Wear-only | ❌ | Robolectric shadow of `AmbientLifecycleObserver` — Wear OS only. |
+
+Legend: ✅ producer = backend writes the artefact each render. 📁 registry-only = backend advertises the kind and serves `data/fetch` against the file when present; producer has not ported yet, so the kind returns `NotAvailable` until either a port lands or an Android render writes into the same `dataRoot` (which only happens if Android and Desktop daemons share an output dir — an unusual deployment). ❌ = not advertised; panel should grey out on `serverCapabilities.backend == "desktop"`. 🔒 = gated behind a feature flag.
+
 ## Worked example: `a11y/hierarchy`
 
 The first kind to ship; mirrors the renderer-side type:
