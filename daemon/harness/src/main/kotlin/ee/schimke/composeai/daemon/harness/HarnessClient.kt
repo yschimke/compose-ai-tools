@@ -2,6 +2,10 @@ package ee.schimke.composeai.daemon.harness
 
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.ClientCapabilities
+import ee.schimke.composeai.daemon.protocol.DataSubscribeParams
+import ee.schimke.composeai.daemon.protocol.DataSubscribeResult
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableParams
+import ee.schimke.composeai.daemon.protocol.ExtensionsEnableResult
 import ee.schimke.composeai.daemon.protocol.FileChangedParams
 import ee.schimke.composeai.daemon.protocol.FileKind
 import ee.schimke.composeai.daemon.protocol.HistoryDiffMode
@@ -15,6 +19,11 @@ import ee.schimke.composeai.daemon.protocol.HistoryReadParams
 import ee.schimke.composeai.daemon.protocol.HistoryReadResultDto
 import ee.schimke.composeai.daemon.protocol.InitializeParams
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
+import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.InteractiveStartParams
+import ee.schimke.composeai.daemon.protocol.InteractiveStartResult
+import ee.schimke.composeai.daemon.protocol.InteractiveStopParams
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
@@ -99,7 +108,7 @@ private constructor(
         method = "initialize",
         params = json.encodeToJsonElement(InitializeParams.serializer(), params),
       )
-    val response = sendAndPoll(id, request, 30.seconds)
+    val response = sendAndPoll(id, request, 120.seconds)
     val resultElem =
       response["result"]
         ?: error("initialize: no result in response — error=${response["error"]}, full=${response}")
@@ -251,6 +260,135 @@ private constructor(
         params = json.encodeToJsonElement(HistoryReadParams.serializer(), params),
       )
     return sendAndPoll(rpcId, request, 10.seconds)
+  }
+
+  /**
+   * Drives `extensions/enable` for the given extension ids; returns the daemon's
+   * [ExtensionsEnableResult] so tests can introspect newly-enabled / pulled-in / unknown ids.
+   * Extensions registered by the daemon are inactive by default — features like
+   * `compose/recomposition` only appear in `initialize.capabilities.dataProducts` once the client
+   * opts in.
+   */
+  fun extensionsEnable(ids: List<String>): ExtensionsEnableResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = ExtensionsEnableParams(ids = ids)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "extensions/enable",
+        params = json.encodeToJsonElement(ExtensionsEnableParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("extensions/enable: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(ExtensionsEnableResult.serializer(), resultElem)
+  }
+
+  /**
+   * Issue #1204 — drives `data/subscribe` with a per-kind options bag. The [params] argument is the
+   * `params.params` sub-bag that producers like `compose/recomposition` read (`frameStreamId` /
+   * `mode`); pass `null` for kinds whose subscribe payload is empty.
+   */
+  fun dataSubscribe(
+    previewId: String,
+    kind: String,
+    params: JsonObject? = null,
+  ): DataSubscribeResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = DataSubscribeParams(previewId = previewId, kind = kind, params = params)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "data/subscribe",
+        params = json.encodeToJsonElement(DataSubscribeParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("data/subscribe: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(DataSubscribeResult.serializer(), resultElem)
+  }
+
+  /** Issue #1204 — drives `data/unsubscribe`; pairs with [dataSubscribe]. */
+  fun dataUnsubscribe(previewId: String, kind: String): DataSubscribeResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = DataSubscribeParams(previewId = previewId, kind = kind, params = null)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "data/unsubscribe",
+        params = json.encodeToJsonElement(DataSubscribeParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 10.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("data/unsubscribe: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(DataSubscribeResult.serializer(), resultElem)
+  }
+
+  /**
+   * Issue #1204 — drives `interactive/start` and returns the daemon's [InteractiveStartResult] so
+   * tests can branch on `heldSession` / capture the daemon-allocated `frameStreamId`. Generous
+   * timeout because the Android backend's first `interactive/start` triggers slot 1's first sandbox
+   * dispatch (`createAndroidComposeRule` + `setContent`), which can run into seconds on a cold
+   * cache.
+   */
+  fun interactiveStart(previewId: String, inspectionMode: Boolean? = null): InteractiveStartResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = InteractiveStartParams(previewId = previewId, inspectionMode = inspectionMode)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "interactive/start",
+        params = json.encodeToJsonElement(InteractiveStartParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 180.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("interactive/start: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(InteractiveStartResult.serializer(), resultElem)
+  }
+
+  /**
+   * Issue #1204 — fires an `interactive/input` notification (no response expected). The daemon
+   * routes the input into the held session keyed by [frameStreamId] and emits a fresh
+   * `renderFinished` (poll for it via [pollRenderFinishedFor]).
+   */
+  fun interactiveInput(
+    frameStreamId: String,
+    kind: InteractiveInputKind,
+    pixelX: Int? = null,
+    pixelY: Int? = null,
+    scrollDeltaY: Float? = null,
+    keyCode: String? = null,
+  ) {
+    val payload =
+      InteractiveInputParams(
+        frameStreamId = frameStreamId,
+        kind = kind,
+        pixelX = pixelX,
+        pixelY = pixelY,
+        scrollDeltaY = scrollDeltaY,
+        keyCode = keyCode,
+      )
+    sendNotificationFrame(
+      "interactive/input",
+      json.encodeToJsonElement(InteractiveInputParams.serializer(), payload),
+    )
+  }
+
+  /** Issue #1204 — drives `interactive/stop` for the held session keyed by [frameStreamId]. */
+  fun interactiveStop(frameStreamId: String) {
+    val rpcId = nextId.getAndIncrement()
+    val payload = InteractiveStopParams(frameStreamId = frameStreamId)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "interactive/stop",
+        params = json.encodeToJsonElement(InteractiveStopParams.serializer(), payload),
+      )
+    sendAndPoll(rpcId, request, 30.seconds)
   }
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */
