@@ -264,6 +264,19 @@ export interface GradleApi {
     }): Promise<void>;
 }
 
+/**
+ * Encodes a preview id for the `-PbundlePreviewIds=…` Gradle property used
+ * by `composePreviewBundle`. Escapes `\\` and `,` so the plugin's
+ * comma-split parser (with backslash escapes — see `BundlePreviewIds.kt`
+ * in `:gradle-plugin`) reconstructs the original id. Preview ids carry
+ * the `@Preview(name = …)` suffix verbatim and `,` is not in the
+ * sanitiser's strip set, so the unescaped form would mis-split for any
+ * preview whose name contains a comma.
+ */
+export function encodeBundlePreviewId(id: string): string {
+    return id.replace(/\\/g, "\\\\").replace(/,/g, "\\,");
+}
+
 export class GradleService {
     /** Absolute path to the workspace root. Read-only — exposed for callers that need to resolve
      *  module-relative artifact paths (e.g. the Android manifest CodeLens, which jumps to a
@@ -418,9 +431,14 @@ export class GradleService {
 
     /**
      * Runs `:<module>:renderPreviews` then `:<module>:composePreviewBundle`
-     * with `-PbundlePreviewIds=<previewId>` and `-PbundleOutput=<outputPath>`.
+     * with `-PbundlePreviewIds=<encoded id>` and `-PbundleOutput=<outputPath>`.
      * The render step keeps the bundle's cover PNG fresh; the bundle step
      * produces a PNG+ZIP polyglot at [outputPath]. Throws on failure.
+     *
+     * [previewId] is encoded via [encodeBundlePreviewId] before being
+     * joined into the property value — `@Preview(name = "Phone, dark")`
+     * produces an id whose name suffix carries a literal comma, which
+     * would otherwise be mis-split by the plugin's CSV-style parser.
      */
     async exportPreviewBundle(
         module: ModuleInfo,
@@ -429,7 +447,7 @@ export class GradleService {
         opts?: TaskOptions,
     ): Promise<void> {
         const extraArgs = [
-            `-PbundlePreviewIds=${previewId}`,
+            `-PbundlePreviewIds=${encodeBundlePreviewId(previewId)}`,
             `-PbundleOutput=${outputPath}`,
         ];
         await this.runTask(

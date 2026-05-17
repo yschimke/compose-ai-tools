@@ -2,7 +2,12 @@ import * as assert from "assert";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { GradleService, GradleApi, TaskCancelledError } from "../gradleService";
+import {
+    GradleService,
+    GradleApi,
+    TaskCancelledError,
+    encodeBundlePreviewId,
+} from "../gradleService";
 import { JdkImageError } from "../jdkImageErrorDetector";
 
 /** Stub GradleApi that records invocations and allows test control. */
@@ -1329,5 +1334,32 @@ describe("GradleService", () => {
                 await Promise.all([keepRun, dropRun]);
             }),
         );
+    });
+});
+
+describe("encodeBundlePreviewId", () => {
+    it("leaves comma-free ids untouched", () => {
+        assert.strictEqual(
+            encodeBundlePreviewId("com.example.Foo.Bar"),
+            "com.example.Foo.Bar",
+        );
+    });
+
+    it("escapes commas with a leading backslash", () => {
+        // `@Preview(name = "Phone, dark")` lands the comma verbatim in the
+        // preview id, so the wire form must mark it as a literal rather
+        // than a separator.
+        assert.strictEqual(
+            encodeBundlePreviewId("com.example.Foo.Bar_Phone, dark"),
+            "com.example.Foo.Bar_Phone\\, dark",
+        );
+    });
+
+    it("escapes backslashes ahead of commas so escapes nest cleanly", () => {
+        // A preview id containing a backslash must double it; otherwise the
+        // plugin parser would consume the `\` as the prefix of whatever
+        // came next (e.g. `\,` would lose the literal `\`).
+        assert.strictEqual(encodeBundlePreviewId("a\\b"), "a\\\\b");
+        assert.strictEqual(encodeBundlePreviewId("a\\,b"), "a\\\\\\,b");
     });
 });
