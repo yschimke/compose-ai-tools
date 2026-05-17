@@ -235,7 +235,11 @@ fun realModeScenario(name: String, previews: List<RealModePreview>): RealModeSce
  * `"real-android"` (vs `"real"` for desktop) so failure diagnostics in [HarnessClient]'s reader
  * threads make obvious which target produced the failure.
  */
-fun realAndroidModeScenario(name: String, previews: List<RealModePreview>): RealModeScenarioPaths {
+fun realAndroidModeScenario(
+  name: String,
+  previews: List<RealModePreview>,
+  extraJvmArgs: List<String> = emptyList(),
+): RealModeScenarioPaths {
   val (rendersDir, reportsDir, manifestFile, _) = prepareRealModeScenarioPaths(name, previews)
   // The Android daemon needs its runtime classpath resolved through AGP's variant model — the
   // harness's plain JVM `java.class.path` doesn't include AAR-derived JARs (e.g. roborazzi,
@@ -254,6 +258,7 @@ fun realAndroidModeScenario(name: String, previews: List<RealModePreview>): Real
       rendersDir = rendersDir,
       previewsManifest = manifestFile,
       classpath = androidClasspath,
+      extraJvmArgs = extraJvmArgs,
     )
   return RealModeScenarioPaths(
     name = name,
