@@ -40,7 +40,16 @@ class PreviewManifestRouter(
   private val manifest: PreviewManifest,
   engine: RenderEngine = RenderEngine(),
   userClassloaderHolder: UserClassLoaderHolder? = null,
-) : DesktopHost(engine = engine, userClassloaderHolder = userClassloaderHolder) {
+) :
+  DesktopHost(
+    engine = engine,
+    userClassloaderHolder = userClassloaderHolder,
+    // Issue #1203 — wire a manifest-backed `previewSpecResolver` so harness real-mode tests can
+    // drive `interactive/start` + `recording/start` against the same fixtures `submit` already
+    // routes by id. Without this the parent `DesktopHost` advertises `supportsInteractive = false`
+    // and `interactive/start` falls back to v1, which the new key-dispatch scenarios can't use.
+    previewSpecResolver = manifestPreviewSpecResolver(manifest.previews.associateBy { it.id }),
+  ) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }
 
@@ -130,6 +139,31 @@ class PreviewManifestRouter(
     fun loadManifest(file: File): PreviewManifest {
       require(file.isFile) { "PreviewManifestRouter: manifest '$file' does not exist" }
       return json.decodeFromString(PreviewManifest.serializer(), file.readText())
+    }
+
+    /**
+     * Issue #1203 — build a `previewSpecResolver` lambda from the manifest's entries so the parent
+     * `DesktopHost` can advertise interactive / recording support. Returns `null` for unknown ids,
+     * which collapses cleanly into the host's existing "no resolver match → throw
+     * UnsupportedOperationException" path.
+     */
+    private fun manifestPreviewSpecResolver(
+      byId: Map<String, PreviewManifestEntry>
+    ): (String) -> RenderSpec? = { previewId ->
+      byId[previewId]?.let { entry ->
+        val resolved = entry.resolved()
+        RenderSpec(
+          className = entry.className,
+          functionName = entry.functionName,
+          widthPx = resolved.widthPx,
+          heightPx = resolved.heightPx,
+          density = resolved.density,
+          outputBaseName = resolved.outputBaseName,
+          showBackground = resolved.showBackground,
+          backgroundColor = resolved.backgroundColor,
+          device = resolved.device,
+        )
+      }
     }
   }
 }
