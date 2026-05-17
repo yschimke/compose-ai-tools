@@ -610,6 +610,17 @@ internal fun buildDesktopExtensions(
         dataProductRegistry = I18nTranslationsDataProductRegistry(rootDir = dataRoot),
       )
     )
+    // Phase 4 (#1201): navigation registry. Producer side stays in `:daemon:android`
+    // (`Intent` reflection); the registry returns `NotAvailable` on desktop until a CMP-portable
+    // producer driving `NavController` lands. Advertising it is enough to stop the panel's
+    // navigation chip tripping `-32020 kind not advertised`.
+    add(
+      Extension(
+        id = "data/navigation",
+        displayName = "Navigation snapshot",
+        dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
+      )
+    )
     if (displayFilterEnabled) {
       add(
         Extension(
