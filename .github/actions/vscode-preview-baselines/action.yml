@@ -55,6 +55,33 @@ runs:
       working-directory: vscode-extension
       run: npm run harness:contract
 
+    - name: Fetch prior baselines
+      shell: bash
+      env:
+        BASELINE_BRANCH: ${{ inputs.branch }}
+      run: |
+        # Pull the prior `renders/` tree from the baseline branch so the
+        # generate step can reuse pixelmatch-clean PNGs verbatim. Without
+        # this, every push lands a no-op baseline commit when Chromium AA
+        # jitter flips the bytes of an otherwise-unchanged capture. Absent
+        # branch (first-ever run) falls back to a strict regenerate.
+        mkdir -p _vscode_prior
+        if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
+          git fetch --depth=1 --quiet origin "$BASELINE_BRANCH"
+          git archive FETCH_HEAD renders 2>/dev/null \
+            | tar -x -C _vscode_prior/ 2>/dev/null || true
+        fi
+
+    - name: Install perceptual-diff dependencies
+      shell: bash
+      run: |
+        # pixelmatch (Mapbox; AA-aware) collapses the antialiased-edge
+        # jitter the harness emits between runs. Install failure falls
+        # back to strict-bytes generate, which restores the previous
+        # noisy-history behaviour but doesn't break the workflow.
+        python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
+          || echo "pixelmatch install failed; falling back to strict-bytes generate" >&2
+
     - name: Stage baselines
       shell: bash
       env:
@@ -62,6 +89,7 @@ runs:
       run: |
         python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" generate \
           vscode-extension/preview-harness/out \
+          --prior-renders _vscode_prior/renders \
           --output-dir _vscode_baselines
 
     - name: Push to baselines branch
