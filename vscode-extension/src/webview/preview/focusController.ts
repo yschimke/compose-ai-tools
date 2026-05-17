@@ -62,6 +62,10 @@ export interface FocusControllerConfig {
      *  layout transitions. */
     state: FocusControllerPersistedState;
     earlyFeatures(): boolean;
+    /** When true the panel is a bundle viewer with no daemon / Gradle
+     *  module behind it; toolbar buttons that depend on either are
+     *  forced hidden. Optional so non-bundle hosts can omit it. */
+    bundleMode?(): boolean;
     getA11yOverlayId(): string | null;
     setA11yOverlayId(id: string | null): void;
     getFocusIndex(): number;
@@ -95,6 +99,7 @@ export class FocusController {
         this.config.focusToolbar.applyEarlyFeatureVisibility({
             earlyFeatures: this.config.earlyFeatures(),
             inFocus: this.inFocus(),
+            bundleMode: this.config.bundleMode?.() ?? false,
         });
     }
 

@@ -39,6 +39,11 @@ export interface FocusToolbarElements {
 export interface EarlyFeatureVisibilityState {
     earlyFeatures: boolean;
     inFocus: boolean;
+    /** Hosted by `BundleViewerPanel` — there's no Gradle module, no
+     *  daemon, and no history, so any button that depends on one
+     *  (launch on device, diff vs HEAD/main, recording, a11y overlay,
+     *  export bundle) is hidden. Only prev / next / exit-focus remain. */
+    bundleMode: boolean;
 }
 
 export interface InteractiveButtonState {
@@ -82,13 +87,17 @@ export class FocusToolbarController {
     constructor(private readonly el: FocusToolbarElements) {}
 
     applyEarlyFeatureVisibility(s: EarlyFeatureVisibilityState): void {
-        this.el.btnDiffHead.hidden = !s.earlyFeatures;
-        this.el.btnDiffMain.hidden = !s.earlyFeatures;
-        this.el.btnLaunchDevice.hidden = !s.earlyFeatures;
-        this.el.btnA11yOverlay.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.btnRecording.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.recordingFormat.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.btnExportBundle.hidden = !s.earlyFeatures || !s.inFocus;
+        const bundle = s.bundleMode;
+        this.el.btnDiffHead.hidden = bundle || !s.earlyFeatures;
+        this.el.btnDiffMain.hidden = bundle || !s.earlyFeatures;
+        this.el.btnLaunchDevice.hidden = bundle || !s.earlyFeatures;
+        this.el.btnA11yOverlay.hidden =
+            bundle || !s.earlyFeatures || !s.inFocus;
+        this.el.btnRecording.hidden = bundle || !s.earlyFeatures || !s.inFocus;
+        this.el.recordingFormat.hidden =
+            bundle || !s.earlyFeatures || !s.inFocus;
+        this.el.btnExportBundle.hidden =
+            bundle || !s.earlyFeatures || !s.inFocus;
         if (!s.earlyFeatures) {
             this.el.focusInspector.hidden = true;
         }

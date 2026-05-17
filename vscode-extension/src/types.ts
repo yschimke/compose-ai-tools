@@ -836,6 +836,18 @@ export type WebviewToExtension =
      */
     | { command: "requestExportPreviewBundle"; previewId: string }
     /**
+     * User dragged a file onto the sidebar preview panel. The host
+     * checks that [fsPath] is a `composePreviewBundle` polyglot
+     * (PNG+ZIP) and opens it in a `BundleViewerPanel`. Non-bundle
+     * files surface a warning toast.
+     *
+     * [fsPath] is the path the host OS provided to the webview's drop
+     * handler. Some platforms / VS Code builds expose only the file
+     * name, in which case [fsPath] is empty and the host falls back to
+     * showing a quick-pick rooted at the workspace folder.
+     */
+    | { command: "bundleDropped"; fsPath: string; fileName: string }
+    /**
      * `composestream/1` — open a live frame stream for [previewId]. The
      * extension acquires a held interactive session and pumps `streamFrame`
      * notifications down to the webview, where the canvas painter consumes
