@@ -2047,9 +2047,24 @@ export class PreviewApp extends LitElement {
             // bundle body the user would otherwise see. Active chips
             // stay enabled so the user can still turn an in-flight
             // bundle off if they want.
-            const daemonReady = isFocusedModuleReady(
-                liveState.getModuleDaemonReady(),
-            );
+            //
+            // `liveState` is late-bound via `let liveState!`, and the
+            // initial `reflectBundleState()` call below runs *before*
+            // the controller is constructed (bundle setup happens
+            // earlier in `firstUpdated`). Skip the readiness probe on
+            // that pre-init pass so the synchronous deref doesn't
+            // throw and torpedo the rest of `firstUpdated` — including
+            // the `webviewPreviewsRendered` ack the e2e suite waits
+            // for. Leaving `daemonReady` undefined keeps the
+            // `BundleChipBar`'s `true` default in effect for harness
+            // fixtures + code paths that never pipe through
+            // `setInteractiveAvailability`; subsequent `onChange`
+            // calls (always after liveState is constructed) supply
+            // the real value.
+            const daemonReady =
+                typeof liveState !== "undefined"
+                    ? isFocusedModuleReady(liveState.getModuleDaemonReady())
+                    : undefined;
             bundleChipBar.setState({
                 bundles: s.bundles,
                 activeBundles: s.activeBundles,
