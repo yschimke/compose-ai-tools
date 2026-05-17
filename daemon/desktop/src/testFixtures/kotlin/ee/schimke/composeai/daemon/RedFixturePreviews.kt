@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +15,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
@@ -376,4 +384,39 @@ fun FontScaleAwareSquare() {
 @Composable
 fun WallpaperAwareSquare() {
   Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary))
+}
+
+/**
+ * Issue #1203 — fixture for the desktop keyboard-dispatch integration tests.
+ *
+ * Paints red on first composition; flips green when the `Key.A` key down event reaches the
+ * composition's focused node. The fixture installs a [FocusRequester] and requests focus inside a
+ * [LaunchedEffect] so the held scene's key-event pipeline has a target by the time the test
+ * dispatches its first `KEY_DOWN(KEYCODE_A)`. Without focus, `BaseComposeScene. sendKeyEvent` has
+ * nowhere to deliver the event and the assertion would fail spuriously.
+ *
+ * Used by `DesktopInteractiveSessionTest.key_down_input_flips_state_and_repaints` and
+ * `DesktopRecordingSessionTest.scripted_keyDown_flips_state_and_emits_applied_evidence`. Both
+ * backends share the fixture so a wire-level mix-up between interactive and recording paths would
+ * surface as the same colour transition test.
+ */
+@Composable
+fun KeyPressColorSquare() {
+  var pressed by remember { mutableStateOf(false) }
+  val color = if (pressed) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  val focusRequester = remember { FocusRequester() }
+  LaunchedEffect(Unit) { focusRequester.requestFocus() }
+  Box(
+    modifier =
+      Modifier.fillMaxSize()
+        .background(color)
+        .focusRequester(focusRequester)
+        .focusable()
+        .onKeyEvent { event ->
+          if (event.type == KeyEventType.KeyDown && event.key == Key.A) {
+            pressed = true
+            true
+          } else false
+        }
+  )
 }
