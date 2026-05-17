@@ -181,39 +181,36 @@ fun runDaemon(
       IncrementalDiscovery(classpath = classpath)
     } else null
 
-  // H1+H2 — wire the per-render history archive. Path comes from `composeai.daemon.historyDir`
-  // (the gradle plugin's daemon launch descriptor will emit this in a future task; for now agents
-  // and ad-hoc launches set it manually). The default is null = no history written. Workspace
-  // root for git-provenance resolution comes from `composeai.daemon.workspaceRoot`, with the JVM
-  // CWD as the fallback. See HISTORY.md § "What this PR lands § H1".
-  val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
-  val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
-  val gitProvenance =
-    if (historyDirProp != null) {
-      GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+  // History feature gated to 1.1 (see [HistoryFeature]). Until then `historyManager` is null on
+  // every launch — `composeai.daemon.historyDir`, the git-ref read sources, prune budgets, and the
+  // `historyManager?.setPruneListener` wire in `JsonRpcServer` all elide because the const-folded
+  // branch goes dead. HISTORY.md describes the original H1+H2 wiring this block preserves
+  // verbatim for the 1.1 re-enable.
+  val historyManager: HistoryManager? =
+    if (HistoryFeature.ENABLED) {
+      val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
+      val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
+      val gitProvenance =
+        if (historyDirProp != null) {
+          GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+        } else null
+      val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+      val pruneConfig = HistoryPruneConfig.fromSysprops()
+      historyDirProp?.let { dir ->
+        System.err.println(
+          "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
+            "gitRefs=${gitRefHistoryRefs}, pruneConfig=$pruneConfig)"
+        )
+        HistoryManager.forLocalFsAndGitRefs(
+          historyDir = Path.of(dir),
+          module = System.getProperty(MODULE_ID_PROP) ?: "",
+          gitProvenance = gitProvenance,
+          gitRefs = gitRefHistoryRefs,
+          repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+          pruneConfig = pruneConfig,
+        )
+      }
     } else null
-  // H10-read — when `composeai.daemon.gitRefHistory` is set (comma-separated list of full ref
-  // names like `refs/heads/preview/main`), each ref produces a read-only [GitRefHistorySource]
-  // alongside the writable [LocalFsHistorySource]. Refs that don't exist locally trigger a
-  // one-time warn-level `log` notification with a hint for the human and degrade gracefully
-  // (no entries in `history/list`). See HISTORY.md § "GitRefHistorySource".
-  val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
-  // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
-  val pruneConfig = HistoryPruneConfig.fromSysprops()
-  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
-    System.err.println(
-      "compose-ai-tools desktop daemon: HistoryManager active (dir=$dir, " +
-        "gitRefs=${gitRefHistoryRefs}, pruneConfig=$pruneConfig)"
-    )
-    HistoryManager.forLocalFsAndGitRefs(
-      historyDir = Path.of(dir),
-      module = System.getProperty(MODULE_ID_PROP) ?: "",
-      gitProvenance = gitProvenance,
-      gitRefs = gitRefHistoryRefs,
-      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-      pruneConfig = pruneConfig,
-    )
-  }
 
   // `dataRoot` follows the same layout as `:daemon:android` — `<renderOutputDir>/../data` when
   // `composeai.render.outputDir` is set, else null. Producers that write to disk land their

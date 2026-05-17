@@ -19,6 +19,12 @@ plugins {
 allprojects {
   apply(plugin = "com.ncorti.ktfmt.gradle")
   extensions.configure<com.ncorti.ktfmt.gradle.KtfmtExtension>("ktfmt") { googleStyle() }
+
+  // History feature gate (`HistoryFeature.ENABLED`, post-1.0). Test JVMs run with the gate
+  // flipped on so the history implementation stays green and unbroken for the 1.1 re-enable —
+  // production daemons leave the property unset and the const-default `false` keeps the
+  // wire-up dead. Re-evaluate (and drop) when the 1.1 cut flips the default to `true`.
+  tasks.withType<Test>().configureEach { systemProperty("composeai.history.enabled", "true") }
 }
 
 // `./gradlew ktfmtCheck` already fans out to every project that applies the

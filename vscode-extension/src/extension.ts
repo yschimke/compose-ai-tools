@@ -56,6 +56,7 @@ import {
     HistoryScope,
     HistorySource,
 } from "./historyPanel";
+import { HISTORY_FEATURE_ENABLED } from "./historyFeature";
 import {
     disposePreviewMainBatches,
     readPreviewMainPng,
@@ -1151,10 +1152,15 @@ export async function activate(
 
     // Phase H7 — preview history source. The standalone History view is not
     // contributed; history is surfaced from the focus view alongside data products.
+    // History feature gated to 1.1 (see `historyFeature.ts`). When disabled, `historySource`
+    // stays null and every call site already guards on it; the focus webview's history section
+    // hides, and `composePreview.diffAllVsMain` / `diffVsHead` short-circuit to the same
+    // "not ready" branch the daemon-unavailable path already covers.
     historyScopeRef.current = null;
     const moduleInfoFromScope = (modulePath: string): ModuleInfo | null =>
         gradleService?.findModuleByPath(modulePath) ?? null;
-    historySource = buildHistorySource({
+    historySource = HISTORY_FEATURE_ENABLED
+        ? buildHistorySource({
         isDaemonReady: (moduleId) =>
             daemonGate?.isDaemonReady(moduleId) ?? false,
         daemonList: async (scope) => {
@@ -1219,7 +1225,8 @@ export async function activate(
         },
         getCurrentScope: () => historyScopeRef.current,
         logger: outputChannel,
-    });
+    })
+        : null;
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.refresh", () =>
             refresh(true, currentScopeFile ?? undefined),
