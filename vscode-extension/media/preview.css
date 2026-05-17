@@ -3014,6 +3014,21 @@ preview-app[data-minimal-mode="true"] data-tabs {
     display: none !important;
 }
 
+/* Bundle viewer mode: hosted by `BundleViewerPanel`, the panel shows
+   re-rendered previews from a `composePreviewBundle` file with no Gradle
+   module behind them. Drop the filter toolbar (function/group/layout
+   selectors don't apply to a single bundle), the compile-errors banner,
+   the progress bar (the host already shows a notification), and the data
+   tabs (no daemon to supply data products yet). Focus mode is forced from
+   the boot path so the carousel-style chrome is the only one visible. */
+preview-app[data-bundle-mode="true"] filter-toolbar,
+preview-app[data-bundle-mode="true"] compile-errors-banner,
+preview-app[data-bundle-mode="true"] progress-bar,
+preview-app[data-bundle-mode="true"] data-tabs,
+preview-app[data-bundle-mode="true"] bundle-chip-bar {
+    display: none !important;
+}
+
 /* In-view minimal-mode banner — surfaces the manual refresh, explains why
    saves don't auto-render, and links to the build script so the user can
    apply the Compose Preview plugin (which enables full mode). */

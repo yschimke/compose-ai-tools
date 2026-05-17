@@ -297,11 +297,12 @@ export function handleExtensionMessage(
         case "minimalSavePending":
         case "minimalSavePendingClear":
         case "setMinimalMode":
+        case "bundleDaemonReady":
             // Handled directly by Lit components (`<message-banner>`,
             // `<progress-bar>`, `<compile-errors-banner>`,
-            // `<preview-app>`'s minimal-mode banner) — they listen on
-            // `window` for these and the dispatcher does not duplicate
-            // the routing.
+            // `<preview-app>`'s minimal-mode banner / bundle-mode
+            // toolbar gate) — they listen on `window` for these and
+            // the dispatcher does not duplicate the routing.
             return;
         default:
             return assertNever(msg);

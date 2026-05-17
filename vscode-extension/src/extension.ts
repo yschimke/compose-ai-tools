@@ -16,6 +16,8 @@ import {
     findPluginAppliedAncestor,
 } from "./pluginDetection";
 import { PreviewPanel } from "./previewPanel";
+import { BundleViewerPanel } from "./bundleViewerPanel";
+import { isLikelyBundle } from "./bundleFormat";
 import { PreviewRegistry } from "./previewRegistry";
 import { PreviewGutterDecorations } from "./previewGutterDecorations";
 import { PreviewHoverProvider } from "./previewHoverProvider";
@@ -1450,6 +1452,19 @@ export async function activate(
         vscode.commands.registerCommand(
             "composePreview.launchOnDevice",
             (previewId?: string) => launchOnDevice(previewId),
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.openBundle",
+            (resource?: vscode.Uri) => {
+                if (!earlyFeaturesEnabled()) {
+                    void vscode.window.showInformationMessage(
+                        "Compose Preview: enable composePreview.earlyFeatures.enabled to open preview bundles.",
+                    );
+                    return;
+                }
+                const fsPath = resource?.fsPath ?? "";
+                void handleBundleDropped(fsPath, path.basename(fsPath) || "");
+            },
         ),
     );
     // Refresh applied-markers in the background so future module resolution can
@@ -4366,6 +4381,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void exportPreviewBundle(msg.previewId);
             }
             break;
+        case "bundleDropped":
+            if (earlyFeaturesEnabled()) {
+                void handleBundleDropped(msg.fsPath, msg.fileName);
+            }
+            break;
         case "requestStreamStart":
             void handleRequestStreamStart(msg.previewId);
             break;
@@ -5517,6 +5537,52 @@ async function exportPreviewBundle(previewId: string): Promise<void> {
             vscode.Uri.file(outputPath),
         );
     }
+}
+
+/**
+ * Webview drop / `composePreview.openBundle` command entry. Resolves
+ * [fsPath] (or shows a quick-open if absent), validates that the file
+ * looks like a `composePreviewBundle` PNG+ZIP polyglot, and routes to
+ * [BundleViewerPanel] in a separate editor tab.
+ */
+async function handleBundleDropped(
+    fsPath: string,
+    fileName: string,
+): Promise<void> {
+    let resolved = fsPath;
+    if (!resolved || resolved.length === 0) {
+        const picked = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: `Open bundle (${fileName})`,
+            filters: { "Bundle PNG": ["png"] },
+        });
+        if (!picked || picked.length === 0) return;
+        resolved = picked[0].fsPath;
+    }
+    if (!resolved.toLowerCase().endsWith(".png")) {
+        void vscode.window.showWarningMessage(
+            `Compose Preview: ${path.basename(resolved)} is not a .png file.`,
+        );
+        return;
+    }
+    if (!(await isLikelyBundle(resolved))) {
+        void vscode.window.showWarningMessage(
+            `Compose Preview: ${path.basename(resolved)} doesn't look like a preview bundle (no zip trailer).`,
+        );
+        return;
+    }
+    await BundleViewerPanel.open(resolved, {
+        extensionUri: getExtensionUri(),
+        earlyFeaturesEnabled,
+        logLine,
+    });
+}
+
+function getExtensionUri(): vscode.Uri {
+    if (!extensionContext) {
+        throw new Error("compose-preview extension is not activated");
+    }
+    return extensionContext.extensionUri;
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {

@@ -39,6 +39,17 @@ export interface FocusToolbarElements {
 export interface EarlyFeatureVisibilityState {
     earlyFeatures: boolean;
     inFocus: boolean;
+    /** Hosted by `BundleViewerPanel`. There's never a Gradle module nor
+     *  history behind a bundle, so launch-on-device + diff buttons stay
+     *  hidden regardless of daemon state. Daemon-driven buttons (a11y
+     *  overlay, recording, focus inspector chips) follow [bundleDaemonReady]
+     *  — they only surface once the per-bundle daemon JVM has
+     *  initialised. */
+    bundleMode: boolean;
+    /** True once `bundleDaemonReady` has been observed (or always true in
+     *  non-bundle mode). Drives the daemon-backed toolbar buttons in
+     *  bundle viewer panels. */
+    bundleDaemonReady: boolean;
 }
 
 export interface InteractiveButtonState {
@@ -82,13 +93,25 @@ export class FocusToolbarController {
     constructor(private readonly el: FocusToolbarElements) {}
 
     applyEarlyFeatureVisibility(s: EarlyFeatureVisibilityState): void {
-        this.el.btnDiffHead.hidden = !s.earlyFeatures;
-        this.el.btnDiffMain.hidden = !s.earlyFeatures;
-        this.el.btnLaunchDevice.hidden = !s.earlyFeatures;
-        this.el.btnA11yOverlay.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.btnRecording.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.recordingFormat.hidden = !s.earlyFeatures || !s.inFocus;
-        this.el.btnExportBundle.hidden = !s.earlyFeatures || !s.inFocus;
+        const bundle = s.bundleMode;
+        // Buttons that intrinsically need a Gradle module — stay hidden
+        // in bundle mode regardless of daemon state.
+        this.el.btnDiffHead.hidden = bundle || !s.earlyFeatures;
+        this.el.btnDiffMain.hidden = bundle || !s.earlyFeatures;
+        this.el.btnLaunchDevice.hidden = bundle || !s.earlyFeatures;
+        this.el.btnExportBundle.hidden =
+            bundle || !s.earlyFeatures || !s.inFocus;
+        // Daemon-backed buttons — visible in either host once the
+        // backing daemon is ready (or, in non-bundle mode, always —
+        // sidebar panels gate daemon-readiness per-button via the
+        // individual `applyXxxButtonState` hooks).
+        const daemonHidden = bundle && !s.bundleDaemonReady;
+        this.el.btnA11yOverlay.hidden =
+            daemonHidden || !s.earlyFeatures || !s.inFocus;
+        this.el.btnRecording.hidden =
+            daemonHidden || !s.earlyFeatures || !s.inFocus;
+        this.el.recordingFormat.hidden =
+            daemonHidden || !s.earlyFeatures || !s.inFocus;
         if (!s.earlyFeatures) {
             this.el.focusInspector.hidden = true;
         }

@@ -60,6 +60,19 @@ val composePreviewRenderer =
     isCanBeConsumed = false
   }
 
+// Sidecar configuration carrying the desktop daemon module (`:daemon:desktop`) plus its
+// Compose Multiplatform runtime. Same isolation story as `composePreviewRenderer` above —
+// never on the CLI's own classpath; only loaded by the subprocess JVM that
+// `compose-preview bundle daemon` spawns.
+//
+// Resolved into `cli/build/install/compose-preview/lib-daemon-desktop/` and located at
+// runtime via `APP_HOME/lib-daemon-desktop/`.
+val composePreviewDaemonDesktop =
+  configurations.create("composePreviewDaemonDesktop") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
   implementation(libs.kotlinx.serialization.json)
   implementation("org.gradle:gradle-tooling-api:9.3.1")
@@ -82,11 +95,22 @@ dependencies {
   // runtime in `lib-renderer/`. Subprocess only; never on the CLI's own classpath.
   add("composePreviewRenderer", project(":renderer-desktop"))
 
+  // `compose-preview bundle daemon` ships the desktop daemon in `lib-daemon-desktop/`. Same
+  // subprocess-only isolation. The Compose Multiplatform runtime (incl. Skiko) is *not*
+  // bundled here — the subprocess classpath joins `lib-daemon-desktop/*` + `lib-renderer/*`
+  // at launch time, and the renderer sidecar already carries the per-OS Compose stack.
+  add("composePreviewDaemonDesktop", project(":daemon:desktop"))
+
   testImplementation(kotlin("test"))
 }
 
 distributions {
-  named("main") { contents { into("lib-renderer") { from(composePreviewRenderer) } } }
+  named("main") {
+    contents {
+      into("lib-renderer") { from(composePreviewRenderer) }
+      into("lib-daemon-desktop") { from(composePreviewDaemonDesktop) }
+    }
+  }
 }
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }

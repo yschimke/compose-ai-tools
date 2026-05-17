@@ -398,7 +398,57 @@ export class PreviewApp extends LitElement {
         const initialEarlyFeaturesEnabled =
             this.dataset.earlyFeatures === "true";
         const minimalMode = this.dataset.minimalMode === "true";
+        const bundleMode = this.dataset.bundleMode === "true";
+        // Bundle viewer panels gate daemon-driven focus-mode buttons
+        // (a11y overlay, recording, focus inspector chips) on this flag
+        // — it flips true when the host posts `bundleDaemonReady` after
+        // the per-bundle daemon JVM finishes `initialize`. Sidebar
+        // panels never see that message and ignore this flag entirely.
+        let bundleDaemonReady = false;
         const vscode = getVsCodeApi<PersistedState>();
+        // Bundle mode: this <preview-app> is hosted by `BundleViewerPanel`
+        // showing previews re-rendered from a `composePreviewBundle` file.
+        // There's no daemon, no Gradle module, and no history — clamp the
+        // layout to focus mode and let the rest of the wiring degrade
+        // gracefully. Toolbar buttons that need a module
+        // (launch-on-device, diff, recording, export) hide themselves via
+        // their own gates; filter toolbar would otherwise let the user
+        // pick a layout that doesn't make sense for a single bundle.
+        if (bundleMode) {
+            this.classList.add("bundle-mode");
+        }
+        // Drag-and-drop entry point: dropping a bundle PNG onto the
+        // panel asks the host to open it in a new editor tab. Prevent
+        // default so the webview doesn't try to navigate to the file URL.
+        // Bundle-mode panels don't accept drops themselves — re-opening
+        // a bundle is a top-level action that belongs to the sidebar
+        // panel + command palette.
+        if (!bundleMode) {
+            this.addEventListener("dragover", (evt: DragEvent) => {
+                if (!hasFileTransfer(evt.dataTransfer)) return;
+                evt.preventDefault();
+                if (evt.dataTransfer) {
+                    evt.dataTransfer.dropEffect = "copy";
+                }
+            });
+            this.addEventListener("drop", (evt: DragEvent) => {
+                const files = evt.dataTransfer?.files;
+                if (!files || files.length === 0) return;
+                evt.preventDefault();
+                // VS Code's webview shim exposes `.path` on the File
+                // object for drops from the host OS; in environments
+                // where it's absent (older VS Code, web), fall back to
+                // the name and let the host warn that it can't resolve
+                // an absolute path.
+                const file = files[0] as File & { path?: string };
+                const fsPath = file.path ?? "";
+                vscode.postMessage({
+                    command: "bundleDropped",
+                    fsPath,
+                    fileName: file.name,
+                });
+            });
+        }
         // Listen for runtime mode flips from the extension (post-Gradle-sync
         // re-evaluation that upgrades minimal -> full once `applied.json`
         // markers prove the plugin is applied). Flip the dataset attribute and
@@ -414,6 +464,28 @@ export class PreviewApp extends LitElement {
                 this.requestUpdate();
             }
         });
+        // Bundle-mode panels listen for the host's `bundleDaemonReady`
+        // signal; once seen, daemon-backed focus-mode buttons stop
+        // hiding. The flag is set before the focus controller is
+        // constructed, but the message may also arrive later (the
+        // daemon spawn is async); re-apply visibility on each event so
+        // the toolbar reflects readiness without a layout change.
+        if (bundleMode) {
+            window.addEventListener("message", (event: MessageEvent) => {
+                const data = event.data as { command?: string };
+                if (data?.command !== "bundleDaemonReady") return;
+                if (bundleDaemonReady) return;
+                bundleDaemonReady = true;
+                // `focusController` is initialised later in this
+                // function; the let-binding above closes over it.
+                // Guard against the message arriving before init.
+                try {
+                    focusController?.applyEarlyFeatureVisibility();
+                } catch {
+                    /* not yet constructed; first applyLayout will pick it up */
+                }
+            });
+        }
         if (minimalMode) {
             // Minimal mode hides the extension chrome (bundle chip bar +
             // data tabs) since data extensions are disabled — see CSS rule.
@@ -2279,6 +2351,8 @@ export class PreviewApp extends LitElement {
             diffOverlayConfig,
             state,
             earlyFeatures,
+            bundleMode: () => bundleMode,
+            bundleDaemonReady: () => bundleDaemonReady,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
             getFocusIndex: () => previewStore.getState().focusIndex,
@@ -2320,8 +2394,14 @@ export class PreviewApp extends LitElement {
             interactiveInputConfig,
         });
 
-        // Restore layout preference
-        if (
+        // Restore layout preference. Bundle-mode panels (hosted by
+        // `BundleViewerPanel`) clamp to focus mode — the filter toolbar
+        // is hidden and the persisted layout from the sidebar panel
+        // shouldn't carry over.
+        if (bundleMode) {
+            filterToolbar.setLayoutValue("focus");
+            state.layout = "focus";
+        } else if (
             state.layout &&
             ["grid", "flow", "column", "focus"].includes(state.layout)
         ) {
@@ -2721,4 +2801,15 @@ export class PreviewApp extends LitElement {
         // stateful messages so the grid isn't permanently empty.
         getVsCodeApi().postMessage({ command: "webviewReady" });
     }
+}
+
+/** Does this DataTransfer carry one or more files? Browser `dataTransfer.files`
+ *  is always defined but reports `length === 0` for non-file drags (e.g.
+ *  dragging selected text). The `.types` set is populated synchronously even
+ *  during `dragover`, where `.files` is masked until the actual drop.
+ */
+function hasFileTransfer(dt: DataTransfer | null): boolean {
+    if (!dt) return false;
+    if (dt.types && Array.from(dt.types).includes("Files")) return true;
+    return dt.files != null && dt.files.length > 0;
 }
