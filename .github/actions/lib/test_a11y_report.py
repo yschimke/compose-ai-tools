@@ -185,17 +185,25 @@ class CopyAnnotatedTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.build = self.tmp / "build"
         self.build.mkdir()
-        # Lay out the on-disk shape the plugin produces.
+        # Lay out the on-disk shape the daemon produces. The annotated overlay
+        # for every preview lives at `data/<previewId>/a11y-overlay.png`, so
+        # every annotatedPath shares the same basename — copy-annotated has
+        # to rename on the way out or overlays overwrite each other.
         (self.build / "renders").mkdir()
-        (self.build / "renders" / "Bad_small.png").write_bytes(b"clean")
-        (self.build / "accessibility-per-preview").mkdir()
-        (self.build / "accessibility-per-preview" / "Bad_small.a11y.png").write_bytes(b"annotated")
+        (self.build / "renders" / "Bad_small.png").write_bytes(b"clean-bad")
+        (self.build / "renders" / "Good_large.png").write_bytes(b"clean-good")
+        (self.build / "data" / "x.Bad_small_round").mkdir(parents=True)
+        (self.build / "data" / "x.Bad_small_round" / "a11y-overlay.png").write_bytes(b"overlay-bad")
+        (self.build / "data" / "x.Good_large_round").mkdir(parents=True)
+        (self.build / "data" / "x.Good_large_round" / "a11y-overlay.png").write_bytes(b"overlay-good")
         (self.build / "previews.json").write_text(json.dumps({
             "module": "sample-wear",
             "variant": "debug",
             "previews": [
                 _preview(id="x.Bad_small_round", function="Bad",
                          render="renders/Bad_small.png"),
+                _preview(id="x.Good_large_round", function="Good",
+                         render="renders/Good_large.png"),
             ],
             # `a11y-report.py` reads `accessibility.json` directly, so this field isn't
             # strictly required for this fixture — it's written to mirror what the plugin
@@ -205,11 +213,18 @@ class CopyAnnotatedTest(unittest.TestCase):
         }))
         (self.build / "accessibility.json").write_text(json.dumps({
             "module": "sample-wear",
-            "entries": [{
-                "previewId": "x.Bad_small_round",
-                "findings": [_finding()],
-                "annotatedPath": "accessibility-per-preview/Bad_small.a11y.png",
-            }],
+            "entries": [
+                {
+                    "previewId": "x.Bad_small_round",
+                    "findings": [_finding()],
+                    "annotatedPath": "data/x.Bad_small_round/a11y-overlay.png",
+                },
+                {
+                    "previewId": "x.Good_large_round",
+                    "findings": [],
+                    "annotatedPath": "data/x.Good_large_round/a11y-overlay.png",
+                },
+            ],
         }))
 
     def test_copies_clean_and_annotated(self):
@@ -219,14 +234,25 @@ class CopyAnnotatedTest(unittest.TestCase):
             build_dir=str(self.build),
             output_dir=str(out),
         ))
-        self.assertTrue((out / "renders" / "sample-wear" / "Bad_small.png").exists())
-        self.assertTrue((out / "renders" / "sample-wear" / "Bad_small.a11y.png").exists())
+        renders_out = out / "renders" / "sample-wear"
+        self.assertTrue((renders_out / "Bad_small.png").exists())
+        self.assertTrue((renders_out / "Bad_small.a11y.png").exists())
+        self.assertTrue((renders_out / "Good_large.png").exists())
+        self.assertTrue((renders_out / "Good_large.a11y.png").exists())
+        # Each preview's overlay must keep its own bytes — the production
+        # source basenames collide, so a naive copy would let one preview's
+        # overlay overwrite another's.
+        self.assertEqual((renders_out / "Bad_small.a11y.png").read_bytes(), b"overlay-bad")
+        self.assertEqual((renders_out / "Good_large.a11y.png").read_bytes(), b"overlay-good")
         findings = json.loads((out / "findings.json").read_text())
-        self.assertEqual(len(findings["entries"]), 1)
-        entry = findings["entries"][0]
-        self.assertEqual(entry["cleanBasename"], "Bad_small.png")
-        self.assertEqual(entry["annotatedBasename"], "Bad_small.a11y.png")
-        self.assertEqual(len(entry["findings"]), 1)
+        self.assertEqual(len(findings["entries"]), 2)
+        by_fn = {e["functionName"]: e for e in findings["entries"]}
+        self.assertEqual(by_fn["Bad"]["cleanBasename"], "Bad_small.png")
+        self.assertEqual(by_fn["Bad"]["annotatedBasename"], "Bad_small.a11y.png")
+        self.assertEqual(len(by_fn["Bad"]["findings"]), 1)
+        self.assertEqual(by_fn["Good"]["cleanBasename"], "Good_large.png")
+        self.assertEqual(by_fn["Good"]["annotatedBasename"], "Good_large.a11y.png")
+        self.assertEqual(by_fn["Good"]["findings"], [])
 
 
 class ReadmeTest(unittest.TestCase):
