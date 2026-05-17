@@ -139,9 +139,18 @@ fun main(args: Array<String>) {
       // production shape we must preserve the warm-spare pool and per-slot user classloaders;
       // otherwise the router silently downgrades the daemon to v1 interactive mode and scroll/click
       // inputs only trigger stateless re-renders. Standalone harness launchers have no preview
-      // index/user class dirs, so they keep the old single-sandbox route.
+      // index/user class dirs, so they default to the single-sandbox route — but an explicit
+      // `composeai.daemon.sandboxCount=N` sysprop wins so harness scenarios that need interactive
+      // sessions (issue #1204's `compose/recomposition` real-mode wire test) can opt into the
+      // pool without paying the warm-spare-default cost for every other harness scenario.
       val productionManifestRoute = previewIndex.size > 0 || hasUserClasses
-      val routerSandboxCount = if (productionManifestRoute) sandboxCount else 1
+      val explicitSandboxCount = System.getProperty(SANDBOX_COUNT_PROP)?.toIntOrNull() != null
+      val routerSandboxCount =
+        when {
+          productionManifestRoute -> sandboxCount
+          explicitSandboxCount -> sandboxCount
+          else -> 1
+        }
       val singletonHolder: UserClassLoaderHolder? =
         if (routerSandboxCount == 1)
           userClassloaderHolderFactory?.let { factory ->
