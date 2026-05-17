@@ -4,14 +4,14 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "3eda740bdf5f954cef35e3243fa7c552749a773e35d9e817164ece8530c7a38f",
-      "size": 88077
+      "sha256": "8d2b9945c909e9fdf1af543250ec0d9c4179c5fea1a0b8a479cb88b3fada9474",
+      "size": 88079
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "c3033b01ac86cca2509ab06c1bc421c98daf5d7aaf1408742c51f1ad1a30c3ee",
-      "size": 85658
+      "sha256": "92013714af247d9b04c4456ce00705771481a68c7423285f63e7c9fec9b3c4e6",
+      "size": 85657
     },
     "a11y-wear.dark.png": {
       "fixture": "a11y-wear",
@@ -34,8 +34,8 @@
     "grid-default.light.png": {
       "fixture": "grid-default",
       "theme": "light",
-      "sha256": "42b91296e86e49494bcb16656b40ddc9be5aae213d171fb2994bf9c42b5a4b34",
-      "size": 11212
+      "sha256": "9d1e531db17214d9e4ed826dd9a6150cc4ce4083de649b6e68a6948f2300f799",
+      "size": 11274
     },
     "history-diff.dark.png": {
       "fixture": "history-diff",
