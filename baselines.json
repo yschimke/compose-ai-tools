@@ -4,86 +4,86 @@
     "a11y-findings.dark.png": {
       "fixture": "a11y-findings",
       "theme": "dark",
-      "sha256": "094b34f7a2228077fea07ddbd11672e93c756de79377848bc3702387cde03e2b",
-      "size": 91301
+      "sha256": "792e7fb13d31bdfd06072085720ffead4126cff36a08b5f4d93ac223f5bfce3b",
+      "size": 86975
     },
     "a11y-findings.light.png": {
       "fixture": "a11y-findings",
       "theme": "light",
-      "sha256": "3efb294d71c445c3f2f5c566591658451356420340321dddcae1580ddc0c9763",
-      "size": 89127
+      "sha256": "dd4b302536f02f12486a2f4560f61c01b0579e12a15895747b7603c6e145484d",
+      "size": 84931
     },
     "a11y-wear.dark.png": {
       "fixture": "a11y-wear",
       "theme": "dark",
-      "sha256": "4d3f65bcaa4a6377b23e4cadb55b6d2907628f3f2aef6a751b074996de2b7091",
-      "size": 123713
+      "sha256": "25aac600c1a5ec9ada19994879bec225faf50863e9059f586406da29903c1df6",
+      "size": 117893
     },
     "a11y-wear.light.png": {
       "fixture": "a11y-wear",
       "theme": "light",
-      "sha256": "505f7aa2445e6b04b1fd30a95d46c0f44889824fd73750871129c989a139b1ec",
-      "size": 130174
+      "sha256": "c793fd718cd99ebcf3024d16825422ac08cd590fdcea5ad326d075ebd6099917",
+      "size": 124432
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
       "theme": "dark",
-      "sha256": "ecbb678bedf428f971112b49defdb788a9b54a33dd2eabbe9893c955770b6ec2",
-      "size": 11208
+      "sha256": "cec9c94fbf03b5b3d42a87f513d80237981e4e3ed104d71b3c93de4ed7b209a2",
+      "size": 9661
     },
     "grid-default.light.png": {
       "fixture": "grid-default",
       "theme": "light",
-      "sha256": "9d1e531db17214d9e4ed826dd9a6150cc4ce4083de649b6e68a6948f2300f799",
-      "size": 11274
+      "sha256": "2df5211c733f98e719d442faba42f6166db5817b78f0b6122391bdfe158ae9b2",
+      "size": 9741
     },
     "history-diff.dark.png": {
       "fixture": "history-diff",
       "theme": "dark",
-      "sha256": "b81cdc5ec9614efe2852bd601da3318b5474c2163cc1833c70730d71268340a5",
-      "size": 81168
+      "sha256": "1308bf93f13c2c8a390f44c590722d811068deeb144a09251ad1fdcfbb55fd73",
+      "size": 76634
     },
     "history-diff.light.png": {
       "fixture": "history-diff",
       "theme": "light",
-      "sha256": "9ea2b0e1d2806ae312a45f768352715d4f7cb45f97f35646fd12dede989602aa",
-      "size": 79634
+      "sha256": "1b60b7f039e6b482d9d587c49d6b13dc7c8527153ba6cde6da010beb3b241e1b",
+      "size": 75402
     },
     "inspection-tree.dark.png": {
       "fixture": "inspection-tree",
       "theme": "dark",
-      "sha256": "56054b9b99329703364a71ec4bfbb18257e27af587bd8139fac67f9d05f9d508",
-      "size": 68158
+      "sha256": "83af2a460567e67b773645aeaf88ba71652f15125f34068beffac3e42dbba228",
+      "size": 63538
     },
     "inspection-tree.light.png": {
       "fixture": "inspection-tree",
       "theme": "light",
-      "sha256": "62b4fa5411f0fb855b6cf7f3d9428ca5a8ba309c254a45b7c874bb1837bb138d",
-      "size": 66582
+      "sha256": "564f376d34a4878a31cb4cb33f2933fe572e9a09a05a72f7622e4c6150d374b4",
+      "size": 62372
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
       "theme": "dark",
-      "sha256": "e8c113f6dcc6dd4fe900268da44b21bad4981961ef6e4d20afa6b6310960c267",
-      "size": 117069
+      "sha256": "2030dd9874dcd20f5efda0a3c2cea93a691f3555a72aac3333c5cab4732b9385",
+      "size": 112672
     },
     "text-strings.light.png": {
       "fixture": "text-strings",
       "theme": "light",
-      "sha256": "eeb7d5ddb156756421a9be1469c47e6fabbcf47581ddaf70d2d9a95893a2738a",
-      "size": 113188
+      "sha256": "efdde71b79fbfd6f295f2a33940a070e4104c18fc6b76752e2f39a226263b091",
+      "size": 109011
     },
     "theming.dark.png": {
       "fixture": "theming",
       "theme": "dark",
-      "sha256": "a29191034e086e862afce84b3031f8cf1fedd5e53acfefa62450998784e2c4dc",
-      "size": 280489
+      "sha256": "2d4c27e7e012baf2c4d77a367363ea4ad3d173b9b529c36955867ebf7c262aef",
+      "size": 276293
     },
     "theming.light.png": {
       "fixture": "theming",
       "theme": "light",
-      "sha256": "2a481f5d81e4112014f3dd332a13277c4263e4ffef24d5e4573a017a1d760378",
-      "size": 277770
+      "sha256": "7f7dafbb07588c5ee97d76933e7c69222037a1f7cf957b979ad028ed92cbb195",
+      "size": 273744
     }
   }
 }
