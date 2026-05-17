@@ -201,8 +201,6 @@ internal constructor(
 
   override fun dispatch(input: InteractiveInputParams) {
     if (closed) return
-    val px = input.pixelX
-    val py = input.pixelY
     val kind =
       when (input.kind) {
         InteractiveInputKind.CLICK -> "click"
@@ -210,13 +208,17 @@ internal constructor(
         InteractiveInputKind.POINTER_MOVE -> "pointerMove"
         InteractiveInputKind.POINTER_UP -> "pointerUp"
         InteractiveInputKind.ROTARY_SCROLL -> "rotaryScroll"
-        // Key events are no-op on Android v3 — same shape as desktop v2's silent drop. Wire shape
-        // accepts them so a forward-looking client doesn't get rejected; the dispatch lands in
-        // the sandbox loop and is intentionally ignored there.
-        InteractiveInputKind.KEY_DOWN,
-        InteractiveInputKind.KEY_UP -> return
+        // Issue #1203 — key events route through the held rule's `performKeyInput` in the sandbox
+        // loop. Coordinates are unused; `keyCode` carries the Android `KEYCODE_*` int as a decimal
+        // string (see `InteractiveKeyCodes`). Wire shape unchanged for pointer/rotary events.
+        InteractiveInputKind.KEY_DOWN -> "keyDown"
+        InteractiveInputKind.KEY_UP -> "keyUp"
       }
-    if (px == null || py == null) return
+    val isKey = input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP
+    val px = input.pixelX
+    val py = input.pixelY
+    if (!isKey && (px == null || py == null)) return
+    if (isKey && input.keyCode.isNullOrBlank()) return
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
@@ -224,9 +226,10 @@ internal constructor(
       InteractiveCommand.Dispatch(
         streamId = streamId,
         kind = kind,
-        pixelX = px,
-        pixelY = py,
+        pixelX = px ?: 0,
+        pixelY = py ?: 0,
         scrollDeltaY = input.scrollDeltaY,
+        keyCode = input.keyCode,
         replyLatch = replyLatch,
         replyError = replyError,
       )
@@ -234,7 +237,8 @@ internal constructor(
     if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
       error(
         "AndroidInteractiveSession.dispatch timed out after ${DISPATCH_TIMEOUT_SEC}s for stream " +
-          "'$streamId' (kind=$kind, px=$px, py=$py). Held-rule loop may be stuck."
+          "'$streamId' (kind=$kind, px=$px, py=$py, keyCode=${input.keyCode}). " +
+          "Held-rule loop may be stuck."
       )
     }
     replyError.get()?.let { throw it }

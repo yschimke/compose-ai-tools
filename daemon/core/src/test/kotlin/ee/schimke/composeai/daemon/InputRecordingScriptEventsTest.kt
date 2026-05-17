@@ -48,10 +48,11 @@ class InputRecordingScriptEventsTest {
   }
 
   @Test
-  fun `input keyboard advertises both keys as roadmap`() {
-    val descriptor = InputKeyboardRecordingScriptEvents.descriptor
-    assertEquals("input.keyboard", descriptor.id.value)
-    val ids = descriptor.recordingScriptEvents.map { it.id }.toSet()
+  fun `input keyboard descriptor advertises both keys with host-supplied supported flag`() {
+    val unsupported = InputKeyboardRecordingScriptEvents.descriptor(supported = false)
+    val supported = InputKeyboardRecordingScriptEvents.descriptor(supported = true)
+    assertEquals("input.keyboard", unsupported.id.value)
+    val ids = unsupported.recordingScriptEvents.map { it.id }.toSet()
     assertEquals(
       setOf(
         InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT,
@@ -59,10 +60,13 @@ class InputRecordingScriptEventsTest {
       ),
       ids,
     )
-    val anySupported = descriptor.recordingScriptEvents.any { it.supported }
     assertFalse(
-      "input.keyboard must stay supported = false until key dispatch lands on either backend",
-      anySupported,
+      "descriptor(false) must produce supported = false on every event",
+      unsupported.recordingScriptEvents.any { it.supported },
+    )
+    assertTrue(
+      "descriptor(true) must produce supported = true on every event",
+      supported.recordingScriptEvents.all { it.supported },
     )
   }
 

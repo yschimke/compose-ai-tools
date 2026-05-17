@@ -135,6 +135,20 @@ interface RenderHost {
     get() = null
 
   /**
+   * Interactive input kinds (beyond pointer / click) this host can actually dispatch into a held
+   * composition. Wire-spellings match [protocol.InteractiveInputKind]'s `@SerialName`s — `keyDown`,
+   * `keyUp`, `rotaryScroll`. Pointer-family kinds are always supported when [supportsInteractive]
+   * is `true` and MUST NOT appear here.
+   *
+   * Surfaced verbatim (sorted) as `InitializeResult.capabilities.interactiveControlKinds` so
+   * clients can decide whether to surface controls (panel keyboard listener, rotary affordance,
+   * etc.) instead of probing each kind. The default empty set is the pre-#1203 contract — clients
+   * treat absent and `[]` identically and assume only pointer events are dispatchable.
+   */
+  val supportedInteractiveControlKinds: Set<String>
+    get() = emptySet()
+
+  /**
    * Allocate an [InteractiveSession] for [previewId] — the v2 click-into-composition surface
    * documented in
    * [INTERACTIVE.md § 9](../../../../../../docs/daemon/INTERACTIVE.md#9-v2--click-dispatch-into-composition).

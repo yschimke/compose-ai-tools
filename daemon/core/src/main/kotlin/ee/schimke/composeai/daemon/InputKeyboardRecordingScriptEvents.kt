@@ -6,21 +6,25 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptEventDescripto
 
 /**
  * Keyboard `record_preview` script events. One descriptor — `input.keyboard` — advertising
- * `input.keyDown` and `input.keyUp` as **roadmap** (`supported = false`) on every host today.
- * Desktop's `ImageComposeScene.sendKeyEvent` and Android's held-rule `KeyEvent.dispatchKeyEvent`
- * are both wirable but neither is implemented yet — the existing input handlers register these as
- * unsupported so the wire shape is documented while the dispatch side remains a follow-up.
+ * `input.keyDown` and `input.keyUp`. Each host calls [descriptor] with its own `supported` flag:
+ * hosts that have wired the dispatch (Desktop via `ImageComposeScene.sendKeyEvent`, Android via the
+ * held-rule `performKeyInput`) pass `supported = true`; backends still on the no-op path pass
+ * `supported = false` so the wire shape is documented while the dispatch side remains a follow-up.
  *
- * Lives in `:daemon:core` because the descriptor is renderer-agnostic — both backends will
- * eventually advertise it from `recordingScriptEventDescriptors()` with `supported = true` once
- * dispatch lands.
+ * Lives in `:daemon:core` because the descriptor is renderer-agnostic — both backends advertise it
+ * from `recordingScriptEventDescriptors()`. Issue #1203 closed the desktop/Android no-op gaps.
  */
 object InputKeyboardRecordingScriptEvents {
 
   const val KEY_DOWN_EVENT: String = "input.keyDown"
   const val KEY_UP_EVENT: String = "input.keyUp"
 
-  val descriptor: DataExtensionDescriptor =
+  /**
+   * Build the descriptor with [supported] set on each script event. Hosts call this with `supported
+   * = true` once they've wired real dispatch; the pre-#1203 default (`supported = false`) remains
+   * available for backends that haven't yet.
+   */
+  fun descriptor(supported: Boolean): DataExtensionDescriptor =
     DataExtensionDescriptor(
       id = DataExtensionId("input.keyboard"),
       displayName = "Keyboard input",
@@ -30,19 +34,25 @@ object InputKeyboardRecordingScriptEvents {
             id = KEY_DOWN_EVENT,
             displayName = "Key down",
             summary =
-              "Reserved for keyboard dispatch. Wire shape carries `keyCode`; daemon-side " +
-                "dispatch (Skiko `sendKeyEvent` on desktop, held-rule key event on Android) is " +
-                "a follow-up — both backends register this as unsupported today.",
-            supported = false,
+              "Synthesise a keyDown via the wire's Android `KEYCODE_*` int (decimal string). " +
+                "Desktop translates through `DesktopKeyDispatch` to a Compose `Key`; Android " +
+                "dispatches via the held-rule `performKeyInput` block.",
+            supported = supported,
           ),
           RecordingScriptEventDescriptor(
             id = KEY_UP_EVENT,
             displayName = "Key up",
-            summary = "Counterpart to keyDown; same dispatch follow-up.",
-            supported = false,
+            summary = "Counterpart to keyDown; same wire shape, mirrors dispatch.",
+            supported = supported,
           ),
         ),
     )
+
+  /** Convenience for hosts whose dispatch path is wired. */
+  val supportedDescriptor: DataExtensionDescriptor = descriptor(supported = true)
+
+  /** Legacy const-style alias retained for backends that haven't wired key dispatch yet. */
+  val descriptor: DataExtensionDescriptor = descriptor(supported = false)
 
   /** Convenience for the host's `recordingScriptEventDescriptors()` override. */
   val descriptors: List<DataExtensionDescriptor> = listOf(descriptor)

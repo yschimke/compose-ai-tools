@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -19,10 +24,13 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
  * - `CLICK` → `Press` then `Release` at the same position. Mirrors the Compose-test convention
  *   (`SemanticsNodeInteraction.performClick`) and what a real mouse click materialises into.
  * - `POINTER_DOWN` / `POINTER_UP` → single `Press` / `Release`.
- * - `KEY_DOWN` / `KEY_UP` → no-op for v2 — `BaseComposeScene.sendKeyEvent` requires a fully
- *   constructed `KeyEvent` whose factory is platform-specific (Skiko key codes diverge from AWT).
- *   Reserved on the wire; the v2 desktop body deliberately doesn't synthesise key events. v3 takes
- *   them on with a proper key-code translation table.
+ * - `KEY_DOWN` / `KEY_UP` → Compose `KeyEvent(key, KeyEventType.KeyDown/KeyUp)` via
+ *   [androidKeycodeToComposeKey] — wire `keyCode` is the decimal-string Android `KEYCODE_*` value
+ *   (issue #1203). Unmapped codes drop silently so a forward-looking client can't crash the
+ *   dispatch loop.
+ * - `ROTARY_SCROLL` → `Scroll` pointer event at the supplied pixel coords with `scrollDelta.y =
+ *   scrollDeltaY`. Reuses the existing pointer pipeline; positive deltaY means wheel-down (same
+ *   convention as a browser wheel).
  *
  * **Pixel coords.** `interactive/input` carries image-natural pixel coords (the same pixel space
  * the renderer renders to — see `INTERACTIVE.md § 6/§ 7`). `ImageComposeScene.sendPointerEvent`
@@ -116,12 +124,22 @@ class DesktopInteractiveSession(
           buttons = PointerButtons(),
         )
       }
-      InteractiveInputKind.ROTARY_SCROLL,
-      InteractiveInputKind.KEY_DOWN,
+      InteractiveInputKind.ROTARY_SCROLL -> {
+        if (px == null || py == null) return
+        val deltaY = input.scrollDeltaY ?: return
+        state.scene.sendPointerEvent(
+          eventType = PointerEventType.Scroll,
+          position = sceneOffset(px, py),
+          scrollDelta = Offset(0f, deltaY),
+        )
+      }
+      InteractiveInputKind.KEY_DOWN -> {
+        val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyDown))
+      }
       InteractiveInputKind.KEY_UP -> {
-        // No-op for v2 — see class KDoc. Wire shape accepts the input so the daemon doesn't reject
-        // a forward-looking client; the dispatch is silently dropped here until v3 wires
-        // sendKeyEvent.
+        val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyUp))
       }
     }
   }

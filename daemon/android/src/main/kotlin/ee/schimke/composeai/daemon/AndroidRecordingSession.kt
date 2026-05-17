@@ -243,10 +243,11 @@ class AndroidRecordingSession(
    * [stopScripted]'s loop just calls `scriptHandlers.dispatch(...)` and never branches on event
    * kind directly.
    *
-   * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`) all
-   * route through the held-rule loop's [InteractiveSession.dispatch] — same path the live tick loop
-   * uses. `keyDown` / `keyUp` register as unsupported (Robolectric key dispatch is a follow-up).
-   * The probe extension handler appears once, here, instead of as a dispatch-loop special case.
+   * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`, `rotaryScroll`,
+   * `keyDown`, `keyUp`) all route through the held-rule loop's [InteractiveSession.dispatch] —
+   * same path the live tick loop uses. Issue #1203 closed the keyboard no-op gap; the dispatch
+   * lands inside the sandbox via `rule.onRoot().performKeyInput { … }`. The probe extension
+   * handler appears once, here, instead of as a dispatch-loop special case.
    */
   private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
 
@@ -273,8 +274,14 @@ class AndroidRecordingSession(
           InputRsbRecordingScriptEvents.ROTARY_SCROLL_EVENT,
           interactiveDispatchHandler(InteractiveInputKind.ROTARY_SCROLL),
         )
-        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, androidUnsupported("keyDown"))
-        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, androidUnsupported("keyUp"))
+        put(
+          InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.KEY_DOWN),
+        )
+        put(
+          InputKeyboardRecordingScriptEvents.KEY_UP_EVENT,
+          interactiveDispatchHandler(InteractiveInputKind.KEY_UP),
+        )
         put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
           appliedEvidence(e, "probe marker reached")
         })
@@ -348,11 +355,6 @@ class AndroidRecordingSession(
         )
       )
       appliedEvidence(event)
-    }
-
-  private fun androidUnsupported(label: String): RecordingScriptEventHandler =
-    RecordingScriptEventHandler { event, _ ->
-      unsupportedEvidence(event, "$label dispatch is not implemented for Android recording")
     }
 
   /**
