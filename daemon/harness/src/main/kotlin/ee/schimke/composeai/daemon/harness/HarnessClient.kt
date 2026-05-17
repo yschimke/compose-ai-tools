@@ -26,6 +26,12 @@ import ee.schimke.composeai.daemon.protocol.InteractiveStartResult
 import ee.schimke.composeai.daemon.protocol.InteractiveStopParams
 import ee.schimke.composeai.daemon.protocol.JsonRpcNotification
 import ee.schimke.composeai.daemon.protocol.JsonRpcRequest
+import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
+import ee.schimke.composeai.daemon.protocol.RecordingScriptParams
+import ee.schimke.composeai.daemon.protocol.RecordingStartParams
+import ee.schimke.composeai.daemon.protocol.RecordingStartResult
+import ee.schimke.composeai.daemon.protocol.RecordingStopParams
+import ee.schimke.composeai.daemon.protocol.RecordingStopResult
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
 import ee.schimke.composeai.daemon.protocol.RenderNowResult
 import ee.schimke.composeai.daemon.protocol.RenderTier
@@ -389,6 +395,65 @@ private constructor(
         params = json.encodeToJsonElement(InteractiveStopParams.serializer(), payload),
       )
     sendAndPoll(rpcId, request, 30.seconds)
+  }
+
+  // ----------------------------------------------------------------------------
+  // Recording sessions — `recording/start` (request), `recording/script`
+  // (notification), `recording/stop` (request). See RECORDING.md.
+  // Added for issue #1203's real-mode key-dispatch scenarios; matches the wire
+  // shape JsonRpcServer routes through `handleRecording*`.
+  // ----------------------------------------------------------------------------
+
+  /** Drives `recording/start`. Returns the recordingId the daemon allocates. */
+  fun recordingStart(
+    previewId: String,
+    fps: Int? = null,
+    scale: Float? = null,
+    live: Boolean = false,
+  ): RecordingStartResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = RecordingStartParams(previewId = previewId, fps = fps, scale = scale, live = live)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "recording/start",
+        params = json.encodeToJsonElement(RecordingStartParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 30.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("recording/start: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(RecordingStartResult.serializer(), resultElem)
+  }
+
+  /**
+   * Sends a `recording/script` notification with the given timeline events. Each event's `kind` is
+   * a wire-spelled script event id (`input.keyDown`, `input.click`, …) and the payload fields
+   * (`keyCode`, `pixelX` / `pixelY`, …) match the daemon-side dispatch registry's expectations.
+   */
+  fun recordingScript(recordingId: String, events: List<RecordingScriptEvent>) {
+    val payload = RecordingScriptParams(recordingId = recordingId, events = events)
+    sendNotificationFrame(
+      "recording/script",
+      json.encodeToJsonElement(RecordingScriptParams.serializer(), payload),
+    )
+  }
+
+  /** Drives `recording/stop`. Returns frame count + framesDir + per-event evidence. */
+  fun recordingStop(recordingId: String): RecordingStopResult {
+    val rpcId = nextId.getAndIncrement()
+    val payload = RecordingStopParams(recordingId = recordingId)
+    val request =
+      JsonRpcRequest(
+        id = rpcId,
+        method = "recording/stop",
+        params = json.encodeToJsonElement(RecordingStopParams.serializer(), payload),
+      )
+    val response = sendAndPoll(rpcId, request, 60.seconds)
+    val resultElem =
+      response["result"]
+        ?: error("recording/stop: no result — error=${response["error"]}, full=$response")
+    return json.decodeFromJsonElement(RecordingStopResult.serializer(), resultElem)
   }
 
   /** Drives `renderNow` for the given preview ids at the given [tier]. */
