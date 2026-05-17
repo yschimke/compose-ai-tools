@@ -8,43 +8,43 @@ Browse inline; image URLs are pinned to the commit SHA on the baseline branch so
 
 ### `ActivityListFontScalesPreview` · `wearos_small_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.a11y.png" width="400" />
 
 _No findings._
 
 ### `ActivityListGifPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
 ### `ActivityListLongPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
 ### `ActivityListPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListPreview_Devices_-_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
 ### `AmbientStatusAmbientPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png" width="400" />
 
 _No findings._
 
 ### `AmbientStatusInteractivePreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png" width="400" />
 
 _No findings._
 
 ### `BadWearButtonPreview` · `wearos_small_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.a11y.png" width="400" />
 
 | # | Level | Rule | Element | Message |
 |--:|---|---|---|---|
@@ -52,7 +52,7 @@ _No findings._
 
 ### `ButtonPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/a11y-overlay.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ButtonPreview_Devices_-_Large_Round.a11y.png" width="400" />
 
 _No findings._
 
