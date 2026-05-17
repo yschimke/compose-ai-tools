@@ -1,0 +1,293 @@
+{
+  "name": "theming",
+  "description": "Focused card with a baseline Material 3 light colour scheme, eight typography tokens (sans / serif-italic / cursive), and six shape tokens. Activates the Theming bundle so the Colors swatches paint via CSSOM, the Typography rows render their token names in the resolved Google Fonts family, and the Shapes column shows the 20×20 corner-radius preview square. Wallpaper payload is preloaded but its kind is default-OFF, so it stays available behind the Configure expander.",
+  "dataset": {
+    "earlyFeatures": "true",
+    "autoEnableCheap": "false",
+    "collapseVariants": "false",
+    "minimalMode": "false",
+    "autoInject": "true"
+  },
+  "messages": [
+    {
+      "command": "setPreviews",
+      "moduleDir": "/workspace/sample-android",
+      "heavyStaleIds": [],
+      "previews": [
+        {
+          "id": "com.example.ThemeShowcaseKt.LightThemePreview",
+          "functionName": "LightThemePreview",
+          "className": "ThemeShowcaseKt",
+          "sourceFile": "ThemeShowcase.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.ThemeShowcaseKt.LightThemePreview.png",
+              "label": ""
+            }
+          ]
+        },
+        {
+          "id": "com.example.ThemeShowcaseKt.LightThemePreviewSibling",
+          "functionName": "LightThemePreviewSibling",
+          "className": "ThemeShowcaseKt",
+          "sourceFile": "ThemeShowcase.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.ThemeShowcaseKt.LightThemePreviewSibling.png",
+              "label": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command": "updateImage",
+      "previewId": "com.example.ThemeShowcaseKt.LightThemePreview",
+      "captureIndex": 0,
+      "imageData": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC"
+    },
+    {
+      "command": "updateDataProducts",
+      "previewId": "com.example.ThemeShowcaseKt.LightThemePreview",
+      "dataProducts": [
+        {
+          "kind": "compose/theme",
+          "payload": {
+            "resolvedTokens": {
+              "colorScheme": {
+                "primary": "#FF6750A4",
+                "onPrimary": "#FFFFFFFF",
+                "primaryContainer": "#FFEADDFF",
+                "onPrimaryContainer": "#FF21005D",
+                "secondary": "#FF625B71",
+                "onSecondary": "#FFFFFFFF",
+                "secondaryContainer": "#FFE8DEF8",
+                "onSecondaryContainer": "#FF1D192B",
+                "tertiary": "#FF7D5260",
+                "onTertiary": "#FFFFFFFF",
+                "tertiaryContainer": "#FFFFD8E4",
+                "onTertiaryContainer": "#FF31111D",
+                "error": "#FFB3261E",
+                "onError": "#FFFFFFFF",
+                "errorContainer": "#FFF9DEDC",
+                "onErrorContainer": "#FF410E0B",
+                "background": "#FFFEF7FF",
+                "onBackground": "#FF1D1B20",
+                "surface": "#FFFEF7FF",
+                "onSurface": "#FF1D1B20",
+                "surfaceVariant": "#FFE7E0EC",
+                "onSurfaceVariant": "#FF49454F",
+                "outline": "#FF79747E",
+                "outlineVariant": "#FFCAC4D0",
+                "inverseSurface": "#FF322F35",
+                "inverseOnSurface": "#FFF5EFF7",
+                "inversePrimary": "#FFD0BCFF",
+                "scrim": "#FF000000",
+                "surfaceTint": "#FF6750A4"
+              },
+              "typography": {
+                "displayLarge": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 57,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=400)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 64,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": -0.25,
+                  "letterSpacingUnit": "sp"
+                },
+                "displayMedium": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 45,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=400)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 52,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0,
+                  "letterSpacingUnit": "sp"
+                },
+                "headlineLarge": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 32,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=400)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 40,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0,
+                  "letterSpacingUnit": "sp"
+                },
+                "titleLarge": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 22,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=500)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 28,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0,
+                  "letterSpacingUnit": "sp"
+                },
+                "bodyLarge": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 16,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=400)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 24,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0.5,
+                  "letterSpacingUnit": "sp"
+                },
+                "labelSmall": {
+                  "fontFamily": "FontFamily.SansSerif",
+                  "fontSize": 11,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=500)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 16,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0.5,
+                  "letterSpacingUnit": "sp"
+                },
+                "displayItalic": {
+                  "fontFamily": "FontFamily.Serif",
+                  "fontSize": 24,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=700)",
+                  "fontStyle": "Italic",
+                  "lineHeight": 32,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0,
+                  "letterSpacingUnit": "sp"
+                },
+                "displayCursive": {
+                  "fontFamily": "FontFamily.Cursive",
+                  "fontSize": 20,
+                  "fontSizeUnit": "sp",
+                  "fontWeight": "FontWeight(weight=400)",
+                  "fontStyle": "Normal",
+                  "lineHeight": 28,
+                  "lineHeightUnit": "sp",
+                  "letterSpacing": 0,
+                  "letterSpacingUnit": "sp"
+                }
+              },
+              "shapes": {
+                "extraSmall": "RoundedCornerShape(topStart = CornerSize(size = 4.0.dp), topEnd = CornerSize(size = 4.0.dp), bottomEnd = CornerSize(size = 4.0.dp), bottomStart = CornerSize(size = 4.0.dp))",
+                "small": "RoundedCornerShape(8.0.dp)",
+                "medium": "RoundedCornerShape(12.0.dp)",
+                "large": "RoundedCornerShape(16.0.dp)",
+                "asymmetric": "RoundedCornerShape(topStart = CornerSize(size = 16.0.dp), topEnd = CornerSize(size = 4.0.dp), bottomEnd = CornerSize(size = 16.0.dp), bottomStart = CornerSize(size = 4.0.dp))",
+                "extraLarge": "RoundedCornerShape(28.0.dp)",
+                "full": "RoundedCornerShape(50)"
+              }
+            },
+            "consumers": [
+              {
+                "nodeId": "header-container",
+                "tokens": [
+                  "primary",
+                  "onPrimary",
+                  "titleLarge"
+                ]
+              },
+              {
+                "nodeId": "primary-button",
+                "tokens": [
+                  "primary",
+                  "onPrimary",
+                  "labelSmall",
+                  "small"
+                ]
+              },
+              {
+                "nodeId": "body-text",
+                "tokens": [
+                  "onSurface",
+                  "bodyLarge"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "compose/wallpaper",
+          "payload": {
+            "seedColor": "#FF6750A4",
+            "isDark": false,
+            "paletteStyle": "TONAL_SPOT",
+            "contrastLevel": 0,
+            "derivedColorScheme": {
+              "primary": "#FF6750A4",
+              "onPrimary": "#FFFFFFFF",
+              "secondary": "#FF625B71",
+              "tertiary": "#FF7D5260",
+              "background": "#FFFEF7FF"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "click": ".preview-card[data-preview-id=\"com.example.ThemeShowcaseKt.LightThemePreview\"] .card-focus-btn"
+    },
+    {
+      "click": "bundle-chip-bar button[data-bundle=\"theming\"]"
+    }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.ThemeShowcaseKt.LightThemePreview",
+      "kinds": {
+        "$includes": "compose/theme"
+      },
+      "enabled": true
+    }
+  ],
+  "forbiddenPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.ThemeShowcaseKt.LightThemePreview",
+      "kinds": {
+        "$includes": "compose/wallpaper"
+      },
+      "enabled": true
+    }
+  ]
+}

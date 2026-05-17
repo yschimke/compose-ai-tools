@@ -6,8 +6,12 @@
 import * as assert from "assert";
 import {
     computeThemingBundleData,
+    cssFontFamily,
+    parseFontWeight,
+    parseShapeBorderRadius,
     type ThemePayload,
     type ThemingColorRow,
+    type ThemingShapeRow,
     type ThemingTypographyRow,
     type ThemingSeedRow,
     type WallpaperPayload,
@@ -248,5 +252,110 @@ describe("computeThemingBundleData", () => {
             (r) => r.kind === "color" && r.source === "wallpaper",
         );
         assert.strictEqual(derived.length, 2);
+    });
+
+    it("derives CSS font + weight + style for typography rows", () => {
+        const data = computeThemingBundleData(
+            theme({
+                resolvedTokens: {
+                    colorScheme: {},
+                    typography: {
+                        displayLarge: {
+                            fontFamily: "FontFamily.SansSerif",
+                            fontWeight: "FontWeight(weight=500)",
+                            fontStyle: "Italic",
+                        },
+                    },
+                    shapes: {},
+                },
+            }),
+            null,
+        );
+        const typo = data.rows[0] as ThemingTypographyRow;
+        // Sans-serif maps to Roboto so the Google-Fonts-loaded family
+        // is the one the swatch paints with.
+        assert.ok(typo.cssFontFamily.includes("Roboto"));
+        assert.strictEqual(typo.cssFontWeight, 500);
+        assert.strictEqual(typo.cssFontStyle, "italic");
+    });
+
+    it("emits a CSS border-radius for shape rows when parseable", () => {
+        const data = computeThemingBundleData(
+            theme({
+                resolvedTokens: {
+                    colorScheme: {},
+                    typography: {},
+                    shapes: {
+                        large: "RoundedCornerShape(16.dp)",
+                        asymmetric:
+                            "RoundedCornerShape(topStart = CornerSize(size = 4.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 4.0.dp))",
+                    },
+                },
+            }),
+            null,
+        );
+        const byName = (n: string) =>
+            data.rows.find(
+                (r) => r.kind === "shape" && r.name === n,
+            ) as ThemingShapeRow;
+        assert.strictEqual(byName("large").previewBorderRadius, "16px");
+        assert.strictEqual(
+            byName("asymmetric").previewBorderRadius,
+            "4px 12px 12px 4px",
+        );
+    });
+});
+
+describe("cssFontFamily", () => {
+    it("maps generic Compose families onto Google-Fonts stacks", () => {
+        assert.ok(cssFontFamily("FontFamily.SansSerif").includes("Roboto"));
+        assert.ok(cssFontFamily("FontFamily.Serif").includes("Roboto Serif"));
+        assert.ok(
+            cssFontFamily("FontFamily.Monospace").includes("Roboto Mono"),
+        );
+        assert.ok(cssFontFamily("FontFamily.Cursive").includes("Caveat"));
+    });
+    it("falls back to the system font when the family is missing", () => {
+        assert.strictEqual(cssFontFamily(null), "var(--vscode-font-family)");
+    });
+});
+
+describe("parseFontWeight", () => {
+    it("extracts the numeric weight from `FontWeight(weight=N)`", () => {
+        assert.strictEqual(parseFontWeight("FontWeight(weight=400)"), 400);
+        assert.strictEqual(parseFontWeight("FontWeight(weight=700)"), 700);
+    });
+    it("maps named weights onto CSS numerics", () => {
+        assert.strictEqual(parseFontWeight("Bold"), 700);
+        assert.strictEqual(parseFontWeight("Medium"), 500);
+    });
+    it("returns null for unparseable input", () => {
+        assert.strictEqual(parseFontWeight("—"), null);
+        assert.strictEqual(parseFontWeight(null), null);
+    });
+});
+
+describe("parseShapeBorderRadius", () => {
+    it("handles the single-value `RoundedCornerShape(N.dp)` shape", () => {
+        assert.strictEqual(
+            parseShapeBorderRadius("RoundedCornerShape(8.dp)"),
+            "8px",
+        );
+    });
+    it("preserves CSS-percentage shorthand", () => {
+        assert.strictEqual(
+            parseShapeBorderRadius("RoundedCornerShape(50%)"),
+            "50%",
+        );
+    });
+    it("returns null for CutCornerShape (CSS can't bevel)", () => {
+        assert.strictEqual(
+            parseShapeBorderRadius("CutCornerShape(4.dp)"),
+            null,
+        );
+    });
+    it("returns null for shapes outside our parser's scope", () => {
+        assert.strictEqual(parseShapeBorderRadius("GenericShape(...)"), null);
+        assert.strictEqual(parseShapeBorderRadius(null), null);
     });
 });
