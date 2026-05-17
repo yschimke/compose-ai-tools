@@ -2265,6 +2265,32 @@ bundle-chip-bar {
     line-height: 1.2;
     user-select: none;
 }
+.a11y-tree-pip {
+    /* Filled bullet marks a merged node (TalkBack focusable / screen-
+     * reader stop). Sits in the same gutter as `↳` so merged rows and
+     * unmerged child rows align vertically in the tree column. */
+    color: var(--vscode-charts-blue, currentColor);
+    opacity: 0.85;
+    line-height: 1.2;
+    font-size: 9px;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    min-width: 10px;
+}
+.a11y-label-stack-merged .a11y-label-text strong {
+    font-weight: 600;
+}
+.a11y-label-stack-unmerged {
+    /* Unmerged children of a merged ancestor — visually subordinate
+     * to the focusable parent above them. The lighter italic style
+     * makes the merge boundary obvious at a glance. */
+    color: var(--vscode-descriptionForeground, inherit);
+}
+.a11y-label-unmerged-text {
+    font-style: italic;
+    font-weight: 400;
+}
 .a11y-label-text {
     display: flex;
     flex-direction: column;

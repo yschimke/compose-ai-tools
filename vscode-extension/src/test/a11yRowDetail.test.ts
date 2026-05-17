@@ -14,9 +14,11 @@ import type {
 import type { AccessibilityFinding } from "../webview/shared/types";
 
 function row(over: Partial<A11yRow>): A11yRow {
+    const label = over.label ?? "Title";
     return {
         id: over.id ?? "a11y-0",
-        label: over.label ?? "Title",
+        label,
+        displayLabel: over.displayLabel ?? label,
         role: over.role ?? "Button",
         states: over.states ?? "",
         merged: over.merged ?? true,
