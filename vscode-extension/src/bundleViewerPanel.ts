@@ -507,7 +507,17 @@ export class BundleViewerPanel {
             );
             // Roll the webview's optimistic LIVE state back so the
             // button isn't stuck "on" against a stream that never
-            // started.
+            // started. `streamStopped` alone only detaches the
+            // `<canvas>` painter — `clearInteractive` is what unwinds
+            // `LiveStateController`'s live-set so the toolbar gating
+            // and pointer-event masking revert. The sidebar's
+            // `handleRequestStreamStart` falls back to a legacy
+            // interactive path here that keeps the card LIVE; bundle
+            // mode has no such fallback.
+            this.panel.webview.postMessage({
+                command: "clearInteractive",
+                previewId,
+            });
             this.panel.webview.postMessage({
                 command: "streamStopped",
                 previewId,
