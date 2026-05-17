@@ -130,27 +130,46 @@ const BUILD_SUCCESS_FAIL_RE = /^BUILD (SUCCESSFUL|FAILED) /;
 // Prefixes are deliberately *specific* — we don't blanket-drop `[doctor] ` or
 // `[refresh] ` because the same prefix carries failure messages (e.g.
 // `[doctor] :samples:cmp:composePreviewDoctor failed: ...`) that must survive.
+//
+// `[refresh] [interactive] ...` / `[refresh] [stream] ...` shapes come from
+// logLine() wrapping `[interactive] …` / `[stream] …` messages with the
+// `[refresh] ` prefix — interactive scroll/click events and stream
+// start/stop fire per user gesture and would otherwise drown the channel.
 const NORMAL_CHATTER_PREFIXES = [
     "[refresh] cache hit:",
     "[refresh] cancelled — superseded ",
+    "[refresh] [interactive] ",
+    "[refresh] [stream] ",
+    "[refresh] daemon: skip ",
+    "[interactive] ",
+    "[stream] started ",
+    "[stream] stopped ",
     "[daemon] spawning ",
     "[daemon] webview ack ",
+    "[daemon] onDataProductsAttached ",
+    "[daemon] decoded a11y ",
+    "[daemon] updateDataProducts ",
     "[doctor] doctor diagnostics refreshed ",
     "[detect] ",
 ];
 
 // Lines that survive at normal (and verbose) but drop at quiet. The `[panel]`
-// prefix is reserved for user-initiated actions (preview selection, extension
-// toggle, focus); we always show those.
+// prefix carries user-initiated actions (preview selection, extension toggle,
+// focus). They survive at normal but drop at quiet — quiet is reserved for
+// "loading, daemon running, errors" only.
 const QUIET_CHATTER_PREFIXES = [
     "[refresh] start ",
     "[refresh] rendered ",
     "[refresh] no module ",
     "[refresh] done ",
     "[refresh] auto-render: ",
-    "[startup] ",
-    "[daemon] ready for ",
+    "[panel] ",
 ];
+
+// Lines that survive at every level (including quiet) because they answer
+// "is the extension loaded and is the daemon up". Used by the quiet branch of
+// `shouldEmitInformational`.
+const QUIET_KEEP_PREFIXES = ["[startup] ", "[daemon] ready for "];
 
 // `> :module:task` / `> :module:task completed` / `> :module:task cancelled`
 // progress markers from gradleService.ts. The `FAILED` variant flows through a
@@ -339,15 +358,20 @@ export class LogFilter {
      * current level. The line is passed without the `[daemon stderr] ` prefix.
      */
     filterDaemonStderrLine(line: string): string | null {
-        if (this.level() === "verbose") {
+        const lvl = this.level();
+        if (lvl === "verbose") {
             return line;
         }
 
-        // Roborazzi ActionBar block — first line shows once, follow-ups are
-        // always suppressed at normal/quiet. The block is line-by-line so we
-        // track our way through it with a flag.
+        // Roborazzi ActionBar block — at normal the first line shows once and
+        // follow-ups are always suppressed; at quiet the entire block drops
+        // (it's neither loading, daemon-ready, nor an error). The block is
+        // line-by-line so we track our way through it with a flag.
         if (ROBORAZZI_ACTIONBAR_FIRST_LINE_RE.test(line)) {
             this.inRoborazziBlock = true;
+            if (lvl === "quiet") {
+                return null;
+            }
             if (this.warnedOnce.has("roborazzi-actionbar")) {
                 return null;
             }
@@ -375,7 +399,7 @@ export class LogFilter {
             return line;
         }
 
-        if (this.level() === "quiet") {
+        if (lvl === "quiet") {
             // Drop everything that isn't an exception or stack frame.
             if (
                 line.startsWith("Exception ") ||
@@ -433,12 +457,12 @@ export class LogFilter {
         if (lvl === "verbose") {
             return true;
         }
-        // `[panel]` is user-initiated (preview selection, extension toggle).
-        // Always emit so the user sees what their click did.
-        if (line.startsWith("[panel] ")) {
-            return true;
-        }
         if (lvl === "normal") {
+            // `[panel]` is user-initiated (preview selection, extension toggle).
+            // Always emit at normal so the user sees what their click did.
+            if (line.startsWith("[panel] ")) {
+                return true;
+            }
             for (const prefix of NORMAL_CHATTER_PREFIXES) {
                 if (line.startsWith(prefix)) {
                     return false;
@@ -449,7 +473,14 @@ export class LogFilter {
             }
             return true;
         }
-        // quiet
+        // quiet — "loading, daemon running, errors" only. Allow-list the few
+        // signals that always survive, then deny-list the known chatter, and
+        // keep anything else (unfamiliar lines are likely error-shaped).
+        for (const prefix of QUIET_KEEP_PREFIXES) {
+            if (line.startsWith(prefix)) {
+                return true;
+            }
+        }
         for (const prefix of QUIET_CHATTER_PREFIXES) {
             if (line.startsWith(prefix)) {
                 return false;

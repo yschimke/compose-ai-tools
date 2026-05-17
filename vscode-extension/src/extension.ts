@@ -158,11 +158,6 @@ const moduleManifestCache = new Map<string, PreviewInfo[]>();
  */
 const heavyRefreshOptIns = new Map<string, Set<string>>();
 let panel: PreviewPanel | null = null;
-// Captured from `activate()` so module-scoped dispatch helpers
-// (`handleWebviewMessage` etc.) can write to the same Compose Preview
-// output channel without threading it through every call site. Null
-// before activation; helpers must null-check.
-let moduleOutputChannel: vscode.OutputChannel | null = null;
 let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
@@ -237,6 +232,12 @@ let extensionContext: vscode.ExtensionContext | null = null;
  *  bugs are hard to diagnose from logs unless we explicitly announce each
  *  message we send to the webview. */
 let logLine: (msg: string) => void = () => {
+    /* noop pre-activate */
+};
+/** Like {@link logLine} but emits the message without the `[refresh] ` prefix,
+ *  so daemon/panel informational lines flow through `shouldEmitInformational`
+ *  with their own bracket-prefix (`[daemon] …`, `[panel] …`) intact. */
+let logInfo: (msg: string) => void = () => {
     /* noop pre-activate */
 };
 /** Guard against firing the "plugin not applied" notification more than once
@@ -573,9 +574,6 @@ export async function activate(
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     const outputChannel = vscode.window.createOutputChannel("Compose Preview");
     context.subscriptions.push(outputChannel);
-    // Mirror to module scope so dispatch helpers (e.g. `handleWebviewMessage`)
-    // can write to the same channel without threading it through every call.
-    moduleOutputChannel = outputChannel;
     // `composePreview.logging.level` is read on every emit so a settings.json
     // edit takes effect immediately without a window reload.
     const logFilter = new LogFilter(() =>
@@ -589,6 +587,11 @@ export async function activate(
         const line = `[refresh] ${msg}`;
         if (logFilter.shouldEmitInformational(line)) {
             outputChannel.appendLine(line);
+        }
+    };
+    logInfo = (msg: string) => {
+        if (logFilter.shouldEmitInformational(msg)) {
+            outputChannel.appendLine(msg);
         }
     };
 
@@ -769,7 +772,7 @@ export async function activate(
                           // the diagnostics provider already listens to. The panel receives a targeted
                           // `updateA11y` post so its cached overlays repaint without re-emitting the entire
                           // preview list.
-                          outputChannel.appendLine(
+                          logInfo(
                               `[daemon] onDataProductsAttached ${previewId} kinds=[${dataProducts
                                   .map((dp) => dp.kind)
                                   .join(
@@ -787,7 +790,7 @@ export async function activate(
                               dataProducts,
                               outputChannel,
                           );
-                          outputChannel.appendLine(
+                          logInfo(
                               `[daemon] decoded a11y for ${previewId}: findings=${decoded?.findings?.length ?? "<none>"} nodes=${decoded?.nodes?.length ?? "<none>"}`,
                           );
                           if (decoded && panel) {
@@ -819,7 +822,7 @@ export async function activate(
                                   .filter((dp) => dp.payload !== undefined);
                               const dropped =
                                   dataProducts.length - payloads.length;
-                              outputChannel.appendLine(
+                              logInfo(
                                   `[daemon] updateDataProducts post for ${previewId}: ` +
                                       `forwarding=${payloads.length} dropped=${dropped} ` +
                                       `kinds=[${payloads.map((p) => p.kind).join(",")}]` +
@@ -848,7 +851,7 @@ export async function activate(
                                   });
                               }
                           } else {
-                              outputChannel.appendLine(
+                              logInfo(
                                   `[daemon] updateDataProducts skipped for ${previewId}: panel not yet wired`,
                               );
                           }
@@ -1161,9 +1164,7 @@ export async function activate(
                 if (!panel) {
                     return;
                 }
-                outputChannel.appendLine(
-                    `[panel] focus preview: ${functionName}`,
-                );
+                logInfo(`[panel] focus preview: ${functionName}`);
                 // Reveal the sidebar view. This is the stable command contributed
                 // by VS Code for any registered view (`<viewId>.focus`).
                 await vscode.commands.executeCommand(
@@ -3940,7 +3941,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // the loop ("host posted → webview consumed") and pairs with
             // the test-API `getReceivedMessages()` snapshot the e2e
             // suite asserts on.
-            moduleOutputChannel?.appendLine(
+            logInfo(
                 `[daemon] webview ack updateA11y previewId=${msg.previewId} ` +
                     `findings=${msg.findingsCount ?? "<none>"} ` +
                     `nodes=${msg.nodesCount ?? "<none>"}`,
@@ -3955,7 +3956,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // message rode the host-side bridge but didn't reach the
             // webview — the kind of regression `webviewPreviewsRendered`
             // catches for the grid path.
-            moduleOutputChannel?.appendLine(
+            logInfo(
                 `[daemon] webview ack updateDataProducts previewId=${msg.previewId} ` +
                     `kinds=[${msg.kinds.join(",")}]`,
             );
@@ -3965,9 +3966,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "selectModule":
             selectedModule = msg.value || null;
-            moduleOutputChannel?.appendLine(
-                `[panel] module selected: ${selectedModule ?? "<none>"}`,
-            );
+            logInfo(`[panel] module selected: ${selectedModule ?? "<none>"}`);
             sendModuleList();
             if (selectedModule) {
                 refresh(false);
@@ -4105,7 +4104,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "setA11yOverlay":
             if (earlyFeaturesEnabled()) {
-                moduleOutputChannel?.appendLine(
+                logInfo(
                     `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
                 );
                 void handleSetA11yOverlay(msg.previewId, msg.enabled);
@@ -4113,7 +4112,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "setDataExtensionEnabled":
             if (earlyFeaturesEnabled()) {
-                moduleOutputChannel?.appendLine(
+                logInfo(
                     `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
                 );
                 void handleSetDataExtensionEnabled(
@@ -4312,7 +4311,7 @@ async function handleSetDataExtensionEnabled(
         else filteredKinds.push(kind);
     }
     if (dropped.length > 0) {
-        moduleOutputChannel?.appendLine(
+        logInfo(
             `[panel] dropped unadvertised kinds for ${previewId}: ${dropped.join(", ")}`,
         );
     }

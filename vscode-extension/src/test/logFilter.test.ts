@@ -561,8 +561,8 @@ describe("LogFilter", () => {
             );
         });
 
-        it("always emits [panel] user-action lines at every level", () => {
-            for (const level of ["quiet", "normal", "verbose"] as const) {
+        it("emits [panel] user-action lines at normal and verbose", () => {
+            for (const level of ["normal", "verbose"] as const) {
                 const f = withLevel(level);
                 assert.strictEqual(
                     f.shouldEmitInformational("[panel] module selected: foo"),
@@ -579,6 +579,92 @@ describe("LogFilter", () => {
                     true,
                 );
             }
+        });
+
+        it("drops [panel] lines at quiet — quiet is loading/daemon/errors only", () => {
+            const f = withLevel("quiet");
+            assert.strictEqual(
+                f.shouldEmitInformational("[panel] module selected: foo"),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[panel] extension a11y/atf enabled for foo",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[panel] focus preview: foo"),
+                false,
+            );
+        });
+
+        it("drops interactive/stream chatter at normal", () => {
+            const f = withLevel("normal");
+            // logLine() wraps `[interactive] …` and `[stream] …` with the
+            // `[refresh] ` prefix; both shapes must drop.
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] [interactive] rotaryScroll com.example.Preview px=235,312 image=454x454 deltaY=-30",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] [stream] started for com.example.Preview (module=:samples:wear, streamId=fstream-1, codec=png, heldSession=true)",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] [stream] stopped for com.example.Preview (streamId=fstream-1)",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[refresh] daemon: skip post-warm refresh for :samples:wear; refresh already active",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[daemon] onDataProductsAttached com.example.Preview kinds=[a11y/hierarchy] panel=live transports=[a11y/hierarchy:path]",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[daemon] decoded a11y for com.example.Preview: findings=0 nodes=12",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[daemon] updateDataProducts post for com.example.Preview: forwarding=2 dropped=0 kinds=[a11y/hierarchy,a11y/atf]",
+                ),
+                false,
+            );
+        });
+
+        it("keeps loading/daemon-ready signals at quiet", () => {
+            const f = withLevel("quiet");
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[startup] compose-preview v0.0.0 loaded from /path",
+                ),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational("[startup] mode=full reason=auto"),
+                true,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "[daemon] ready for :samples:wear (daemonVersion=1, previews=17)",
+                ),
+                true,
+            );
         });
 
         it("drops chatter at quiet but keeps unknown / error-shaped lines", () => {
@@ -611,9 +697,12 @@ describe("LogFilter", () => {
                 ),
                 false,
             );
+            // `[daemon] ready ` survives at quiet — the user explicitly
+            // asked for "loading, daemon running, errors". `[daemon] spawning`
+            // is still chatter.
             assert.strictEqual(
                 f.shouldEmitInformational("[daemon] ready for samples/wear"),
-                false,
+                true,
             );
             assert.strictEqual(
                 f.shouldEmitInformational("[daemon] spawning foo"),
