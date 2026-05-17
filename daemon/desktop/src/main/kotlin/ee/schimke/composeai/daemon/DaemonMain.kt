@@ -215,120 +215,33 @@ fun runDaemon(
     )
   }
 
-  val composeTraceEnabled =
-    PerfettoTraceDataProducer.enabled() && System.getProperty(RenderEngine.OUTPUT_DIR_PROP) != null
+  // `dataRoot` follows the same layout as `:daemon:android` — `<renderOutputDir>/../data` when
+  // `composeai.render.outputDir` is set, else null. Producers that write to disk land their
+  // per-render JSON / PNG artefacts under `dataRoot/<previewId>/...`; the matching registries read
+  // back from the same location. Computed unconditionally so file-based registries (`fonts/used`,
+  // `displayfilter`, ...) can be advertised even when no producer has written yet — `data/fetch`
+  // returns `NotAvailable` instead of `-32020 kind not advertised`. See issue #1201.
+  val dataRoot: File? =
+    System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
+      File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
+    }
+  val composeTraceEnabled = dataRoot != null && PerfettoTraceDataProducer.enabled()
 
   // ExtensionRegistry — every contribution the daemon can expose is registered here, all inactive
   // by default. Clients call `extensions/enable` to opt in (typically the MCP supervisor enables a
   // configured allowlist on connect). See docs/daemon/PROTOCOL.md § 3a.
-  val perfettoDataRoot =
-    if (composeTraceEnabled) {
-      System.getProperty(RenderEngine.OUTPUT_DIR_PROP)?.let { renderOutputDir ->
-        File(renderOutputDir).parentFile?.resolve("data") ?: File(renderOutputDir)
-      }
-    } else null
   val extensions =
     ExtensionRegistry(
-      buildList {
-        add(
-          Extension(
-            id = "device/clip",
-            displayName = "Device clip",
-            dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
-            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
-          )
-        )
-        add(
-          Extension(
-            id = "device/background",
-            displayName = "Device background",
-            dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
-            previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
-          )
-        )
-        add(
-          Extension(
-            id = "render/trace",
-            displayName = "Render trace",
-            dataProductRegistry = RenderTraceDataProductRegistry(),
-            previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
-          )
-        )
-        add(
-          Extension(
-            id = "render/test-failure",
-            displayName = "Test failure",
-            dataProductRegistry = TestFailureDataProductRegistry(),
-          )
-        )
-        add(
-          Extension(
-            id = "render/overlay-legend",
-            displayName = "Render overlay legend",
-            previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
-          )
-        )
-        add(
-          Extension(
-            id = "data/theme",
-            displayName = "Material 3 theme override",
-            dataProductRegistry = themeRegistry,
-            previewOverrideExtensions = listOf(Material3ThemePreviewOverrideExtension()),
-          )
-        )
-        add(
-          Extension(
-            id = "data/wallpaper",
-            displayName = "Wallpaper override",
-            dataProductRegistry = wallpaperRegistry,
-            previewOverrideExtensions = listOf(WallpaperPreviewOverrideExtension()),
-          )
-        )
-        add(
-          Extension(
-            id = "data/pseudolocale",
-            displayName = "Pseudolocale (desktop)",
-            previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
-          )
-        )
-        add(
-          Extension(
-            id = "data/recomposition",
-            displayName = "Recomposition counters",
-            dataProductRegistry = recompositionRegistry,
-          )
-        )
-        if (composeTraceEnabled && perfettoDataRoot != null) {
-          add(
-            Extension(
-              id = "compose/trace",
-              displayName = "Compose Perfetto trace",
-              dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = perfettoDataRoot),
-              previewExtensionDescriptors = listOf(RenderPreviewExtension.composeTraceDescriptor),
-            )
-          )
-        }
-        if (historyManager != null) {
-          add(
-            Extension(
-              id = "history/diff-regions",
-              displayName = "History diff regions",
-              dataProductRegistry =
-                HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
-            )
-          )
-        }
-        // Recording-script extensions are descriptor-only on the daemon side — the host's session
-        // registry decides what's actually dispatchable. The roadmap descriptors are advertised so
-        // panels can grey out unimplemented actions.
-        add(
-          Extension(
-            id = "recording/script",
-            displayName = "Recording-script extensions",
-            dataExtensionDescriptors = RecordingScriptDataExtensions.roadmapDescriptors,
-          )
-        )
-      }
+      buildDesktopExtensions(
+        previewIndex = previewIndex,
+        recompositionRegistry = recompositionRegistry,
+        themeRegistry = themeRegistry,
+        wallpaperRegistry = wallpaperRegistry,
+        historyManager = historyManager,
+        dataRoot = dataRoot,
+        composeTraceEnabled = composeTraceEnabled,
+        displayFilterEnabled = DisplayFilterConfig.fromSystemProperties().isNotEmpty(),
+      )
     )
 
   // Render engine consumes the registry's live override aggregator so `extensions/enable` mid-
@@ -558,4 +471,151 @@ private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.
         "compose-ai-daemon-sigterm-hook",
       )
     )
+}
+
+/**
+ * Builds the extension list registered on the desktop daemon. Extracted from [runDaemon] so unit
+ * tests can assert the registered ids without spinning up a full JSON-RPC server.
+ *
+ * **Per-backend parity with `:daemon:android`'s `DaemonMain`** (issue #1201). The two backends
+ * register different subsets because some producers are Android-API-bound (`uiautomator`,
+ * Robolectric ATF a11y, `Resources.getValue` interception). The registries below are file-based and
+ * portable: when no producer has written, `data/fetch` returns `NotAvailable` rather than the wire
+ * `-32020 kind not advertised`, which is what the panel needs to gate its chips correctly.
+ *
+ * Kinds whose producer is genuinely Android-bound (`resources/used`, `i18n/translations`, `a11y`,
+ * `uiautomator`, `data/navigation`) are NOT registered here — see issue #1201 for the per-kind
+ * portability triage. They stay unadvertised on desktop; the panel should honour
+ * `ServerCapabilities.backend == "desktop"` to grey out the corresponding chips.
+ */
+internal fun buildDesktopExtensions(
+  previewIndex: PreviewIndex,
+  recompositionRegistry: RecompositionDataProductRegistry,
+  themeRegistry: ThemeDataProductRegistry,
+  wallpaperRegistry: WallpaperDataProductRegistry,
+  historyManager: HistoryManager?,
+  dataRoot: File?,
+  composeTraceEnabled: Boolean,
+  displayFilterEnabled: Boolean,
+): List<Extension> = buildList {
+  add(
+    Extension(
+      id = "device/clip",
+      displayName = "Device clip",
+      dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
+      previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
+    )
+  )
+  add(
+    Extension(
+      id = "device/background",
+      displayName = "Device background",
+      dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
+      previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
+    )
+  )
+  add(
+    Extension(
+      id = "render/trace",
+      displayName = "Render trace",
+      dataProductRegistry = RenderTraceDataProductRegistry(),
+      previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
+    )
+  )
+  add(
+    Extension(
+      id = "render/test-failure",
+      displayName = "Test failure",
+      dataProductRegistry = TestFailureDataProductRegistry(),
+    )
+  )
+  add(
+    Extension(
+      id = "render/overlay-legend",
+      displayName = "Render overlay legend",
+      previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
+    )
+  )
+  add(
+    Extension(
+      id = "data/theme",
+      displayName = "Material 3 theme override",
+      dataProductRegistry = themeRegistry,
+      previewOverrideExtensions = listOf(Material3ThemePreviewOverrideExtension()),
+    )
+  )
+  add(
+    Extension(
+      id = "data/wallpaper",
+      displayName = "Wallpaper override",
+      dataProductRegistry = wallpaperRegistry,
+      previewOverrideExtensions = listOf(WallpaperPreviewOverrideExtension()),
+    )
+  )
+  add(
+    Extension(
+      id = "data/pseudolocale",
+      displayName = "Pseudolocale (desktop)",
+      previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
+    )
+  )
+  add(
+    Extension(
+      id = "data/recomposition",
+      displayName = "Recomposition counters",
+      dataProductRegistry = recompositionRegistry,
+    )
+  )
+  if (dataRoot != null) {
+    // Issue #1201 — file-based registries that are portable to desktop. The producer side is
+    // currently Android-only for `fonts/used` (the GoogleFontInterceptor / Typeface accounting
+    // path); the registry returns NotAvailable on desktop until a Skia-side font producer lands.
+    // `displayfilter` is fully portable (BufferedImage post-capture) and gated on the same sysprop
+    // the Android side reads.
+    add(
+      Extension(
+        id = "fonts/used",
+        displayName = "Fonts used",
+        dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
+      )
+    )
+    if (displayFilterEnabled) {
+      add(
+        Extension(
+          id = "displayfilter",
+          displayName = "Display filter variants",
+          dataProductRegistry = DisplayFilterDataProductRegistry(rootDir = dataRoot),
+        )
+      )
+    }
+    if (composeTraceEnabled) {
+      add(
+        Extension(
+          id = "compose/trace",
+          displayName = "Compose Perfetto trace",
+          dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = dataRoot),
+          previewExtensionDescriptors = listOf(RenderPreviewExtension.composeTraceDescriptor),
+        )
+      )
+    }
+  }
+  if (historyManager != null) {
+    add(
+      Extension(
+        id = "history/diff-regions",
+        displayName = "History diff regions",
+        dataProductRegistry = HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
+      )
+    )
+  }
+  // Recording-script extensions are descriptor-only on the daemon side — the host's session
+  // registry decides what's actually dispatchable. The roadmap descriptors are advertised so
+  // panels can grey out unimplemented actions.
+  add(
+    Extension(
+      id = "recording/script",
+      displayName = "Recording-script extensions",
+      dataExtensionDescriptors = RecordingScriptDataExtensions.roadmapDescriptors,
+    )
+  )
 }
