@@ -244,18 +244,48 @@ class BundleDaemonEndToEndFunctionalTest {
   }
 
   /**
-   * Read one LSP-framed JSON-RPC message from [stream]. Blocks up to [timeoutMs] in aggregate
-   * (header + body); the daemon's cold-start can run several seconds on first request, so the
-   * initialize timeout is generous. Returns the decoded body as a string.
+   * Read one LSP-framed JSON-RPC message from [stream]. Bound to [timeoutMs] in wall-clock — the
+   * blocking [InputStream.read] runs on a worker thread and we wait via
+   * [java.util.concurrent.Future.get] so a wedged daemon surfaces as a deterministic timeout rather
+   * than hanging this test until Gradle's outer cancel kicks in. The daemon's cold-start can run
+   * several seconds on first request, so the initialize timeout is generous.
    */
   private fun readFrameWithTimeoutMs(stream: InputStream, timeoutMs: Long): String {
-    val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+    // Single-shot executor + daemon thread so a cancelled read can't keep the JVM alive past
+    // teardown — the parent kills the daemon process in `finally` either way, but cancelling
+    // the read here lets the assertion message describe the timeout rather than blocking on
+    // GC of the lingering worker.
+    val executor =
+      java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "bundle-daemon-frame-reader").apply { isDaemon = true }
+      }
+    try {
+      val future = executor.submit<String> { readFrameBlocking(stream) }
+      try {
+        return future.get(timeoutMs, TimeUnit.MILLISECONDS)
+      } catch (_: java.util.concurrent.TimeoutException) {
+        future.cancel(true)
+        error("timeout (${timeoutMs}ms) reading daemon frame on stdio")
+      } catch (e: java.util.concurrent.ExecutionException) {
+        // Unwrap the worker's failure so the assertion message points at the inner
+        // `daemon stdout closed mid-header` / malformed-header diagnostic instead of an opaque
+        // `ExecutionException`.
+        throw e.cause ?: e
+      }
+    } finally {
+      executor.shutdownNow()
+    }
+  }
+
+  /**
+   * Blocking single-frame reader. Runs on a worker thread submitted by [readFrameWithTimeoutMs] —
+   * the wait there enforces the timeout, this just does the I/O. The daemon may interleave stderr
+   * (redirected to a file in the caller so it doesn't pollute this stream) or fire-and-forget log
+   * lines on stdout in future; v1 doesn't, and the framing decoder catches violations.
+   */
+  private fun readFrameBlocking(stream: InputStream): String {
     val header = StringBuilder()
-    // Parse `Content-Length: N\r\n\r\n` one byte at a time — the daemon may interleave stderr
-    // (redirected to a file above, so it doesn't pollute this stream) or fire-and-forget log
-    // lines on stdout in future; v1 doesn't, and the framing decoder catches violations.
     while (true) {
-      checkDeadline(deadline)
       val ch = stream.read()
       check(ch != -1) { "daemon stdout closed mid-header. partial=${header}" }
       header.append(ch.toChar())
@@ -267,18 +297,11 @@ class BundleDaemonEndToEndFunctionalTest {
     val buf = ByteArray(contentLength)
     var read = 0
     while (read < contentLength) {
-      checkDeadline(deadline)
       val n = stream.read(buf, read, contentLength - read)
       check(n != -1) { "daemon stdout closed mid-body. expected=$contentLength got=$read" }
       read += n
     }
     return String(buf, Charsets.UTF_8)
-  }
-
-  private fun checkDeadline(deadlineNanos: Long) {
-    if (System.nanoTime() > deadlineNanos) {
-      error("timeout reading daemon frame")
-    }
   }
 
   private fun File.readTextOrEmpty(): String =
