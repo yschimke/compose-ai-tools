@@ -156,9 +156,36 @@ def cmd_generate(args: argparse.Namespace) -> int:
     renders = output_dir / "renders"
     renders.mkdir(parents=True, exist_ok=True)
 
+    raw_prior = getattr(args, "prior_renders", None)
+    prior_renders = Path(raw_prior) if raw_prior else None
+
     entries = _scan(input_dir)
-    for name in entries:
+    reused = 0
+    for name, meta in entries.items():
+        # When the freshly-rendered PNG is perceptually identical to the
+        # prior baseline copy, prefer the prior bytes. That way the staged
+        # tree stays bit-identical for noop renders and the action's
+        # `TREE == PARENT_TREE` skip suppresses the empty baseline
+        # commit. Without this every push to `main` adds a no-op commit
+        # to `vscode-preview/main` (Chromium AA jitter, see
+        # `_perceptually_changed`).
+        if prior_renders is not None:
+            prior_png = prior_renders / name
+            if prior_png.exists() and not _perceptually_changed(
+                prior_png, input_dir / name
+            ):
+                shutil.copy2(prior_png, renders / name)
+                meta["sha256"] = _sha256(renders / name)
+                meta["size"] = (renders / name).stat().st_size
+                reused += 1
+                continue
         shutil.copy2(input_dir / name, renders / name)
+    if prior_renders is not None:
+        print(
+            f"reused {reused}/{len(entries)} prior captures as "
+            f"perceptually-identical",
+            file=sys.stderr,
+        )
 
     baselines = {
         "schema": 1,
@@ -321,6 +348,12 @@ def main(argv: list[str]) -> int:
     g = sub.add_parser("generate", help="Build baselines.json + README.md from an out/ dir")
     g.add_argument("input_dir")
     g.add_argument("--output-dir", required=True)
+    # Optional. Path to the prior baseline `renders/` tree (typically
+    # extracted from `vscode-preview/main` via `git archive`). When
+    # supplied, any freshly-rendered PNG that's pixelmatch-clean against
+    # its prior copy is re-staged using the prior bytes, so AA jitter
+    # doesn't append a no-op commit to the baseline history.
+    g.add_argument("--prior-renders", default=None)
     g.set_defaults(func=cmd_generate)
 
     cp = sub.add_parser("copy-changed", help="Copy only new/changed PNGs into a staging dir")

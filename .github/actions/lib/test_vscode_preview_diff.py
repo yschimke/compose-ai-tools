@@ -154,6 +154,50 @@ class TestPerceptualFilter(unittest.TestCase):
                 img.putpixel((x, y), fn(x, y))
         img.save(path)
 
+    def test_generate_reuses_prior_bytes_when_perceptually_identical(self) -> None:
+        self._require_pixelmatch()
+        with tempfile.TemporaryDirectory() as td:
+            prior_in = Path(td) / "prior-in"
+            fresh_in = Path(td) / "fresh-in"
+            prior_out = Path(td) / "prior-out"
+            fresh_out = Path(td) / "fresh-out"
+            prior_in.mkdir()
+            fresh_in.mkdir()
+
+            def checkerboard(x: int, y: int) -> tuple[int, int, int]:
+                v = 80 if (x // 4 + y // 4) % 2 == 0 else 200
+                return (v, v, v)
+
+            self._png(prior_in / "grid-default.dark.png", checkerboard)
+            # One-pixel jitter at (0, 0), same shape as the real flake.
+            self._png(
+                fresh_in / "grid-default.dark.png",
+                lambda x, y: (
+                    checkerboard(x, y)[0] + (1 if (x, y) == (0, 0) else 0),
+                    checkerboard(x, y)[1] + (1 if (x, y) == (0, 0) else 0),
+                    checkerboard(x, y)[2] + (1 if (x, y) == (0, 0) else 0),
+                ),
+            )
+
+            class GenPrior:
+                input_dir = str(prior_in)
+                output_dir = str(prior_out)
+            mod.cmd_generate(GenPrior())
+
+            class GenFresh:
+                input_dir = str(fresh_in)
+                output_dir = str(fresh_out)
+                prior_renders = str(prior_out / "renders")
+            mod.cmd_generate(GenFresh())
+
+            prior_png = (prior_out / "renders" / "grid-default.dark.png").read_bytes()
+            fresh_png = (fresh_out / "renders" / "grid-default.dark.png").read_bytes()
+            self.assertEqual(
+                fresh_png, prior_png,
+                "perceptually-identical render must reuse prior bytes so "
+                "the staged tree stays bit-identical",
+            )
+
     def test_copy_changed_skips_perceptually_identical(self) -> None:
         self._require_pixelmatch()
         with tempfile.TemporaryDirectory() as td:
