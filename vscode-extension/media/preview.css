@@ -2693,6 +2693,30 @@ bundle-chip-bar {
 .theming-swatch[data-source="wallpaper"] {
     border-style: dashed;
 }
+/* Scaled-down 20x20 preview for shape tokens — the corner-radius
+ * geometry is the affordance, so a translucent fill with a subtle
+ * outline is enough. CSS clamps `border-radius` at 50% of the side
+ * which makes 28 dp on a 20 px swatch render as a full circle —
+ * intentional, that's the "fully rounded" visual the spec implies. */
+.theming-shape-preview {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-color: currentColor;
+    opacity: 0.22;
+    border: 1px solid currentColor;
+    box-sizing: border-box;
+}
+/* Inline sample for typography rows — paints `Aa` in the resolved
+ * font (loaded from Google Fonts in the panel head). Lives in the
+ * same column as the colour swatch so the table stays scannable. */
+.theming-font-sample {
+    display: inline-block;
+    min-width: 22px;
+    font-size: 16px;
+    line-height: 1;
+    text-align: center;
+}
 .theming-name-cell {
     min-width: 120px;
 }
