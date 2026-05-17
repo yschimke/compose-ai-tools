@@ -229,33 +229,35 @@ fun main(args: Array<String>) {
       IncrementalDiscovery(classpath = classpath)
     } else null
 
-  // H1+H2 — wire the per-render history archive. Path comes from `composeai.daemon.historyDir`;
-  // workspace root for git-provenance resolution comes from `composeai.daemon.workspaceRoot` (JVM
-  // CWD when unset). Mirrors the desktop daemon's wireup. See HISTORY.md § "What this PR lands".
-  val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
-  val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
-  val gitProvenance =
-    if (historyDirProp != null) {
-      GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+  // History feature gated to 1.1 (see [HistoryFeature]). When disabled — the 1.0 cut —
+  // `historyManager` stays null and every history wireup (sysprop reads, git-ref sources, prune
+  // budgets) compiles out. Mirrors the desktop daemon's gate; HISTORY.md describes the original
+  // H1+H2 wiring this block preserves verbatim for the 1.1 re-enable.
+  val historyManager: HistoryManager? =
+    if (HistoryFeature.ENABLED) {
+      val historyDirProp = System.getProperty(HISTORY_DIR_PROP)
+      val workspaceRootProp = System.getProperty(WORKSPACE_ROOT_PROP)
+      val gitProvenance =
+        if (historyDirProp != null) {
+          GitProvenance(workspaceRoot = workspaceRootProp?.let(Path::of))
+        } else null
+      val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
+      val pruneConfig = HistoryPruneConfig.fromSysprops()
+      historyDirProp?.let { dir ->
+        System.err.println(
+          "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
+            "pruneConfig=$pruneConfig)"
+        )
+        HistoryManager.forLocalFsAndGitRefs(
+          historyDir = Path.of(dir),
+          module = System.getProperty(MODULE_ID_PROP) ?: "",
+          gitProvenance = gitProvenance,
+          gitRefs = gitRefHistoryRefs,
+          repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
+          pruneConfig = pruneConfig,
+        )
+      }
     } else null
-  // H10-read — see desktop DaemonMain for the design rationale.
-  val gitRefHistoryRefs = GitRefHistorySource.parseRefsSysprop()
-  // H4 — prune config from sysprops (defaults: 50 entries / 14 days / 500 MB / 1h auto interval).
-  val pruneConfig = HistoryPruneConfig.fromSysprops()
-  val historyManager: HistoryManager? = historyDirProp?.let { dir ->
-    System.err.println(
-      "compose-ai-tools daemon: HistoryManager active (dir=$dir, gitRefs=${gitRefHistoryRefs}, " +
-        "pruneConfig=$pruneConfig)"
-    )
-    HistoryManager.forLocalFsAndGitRefs(
-      historyDir = Path.of(dir),
-      module = System.getProperty(MODULE_ID_PROP) ?: "",
-      gitProvenance = gitProvenance,
-      gitRefs = gitRefHistoryRefs,
-      repoRoot = workspaceRootProp?.let(Path::of) ?: Path.of(dir).parent,
-      pruneConfig = pruneConfig,
-    )
-  }
 
   // ExtensionRegistry — every extension is registered here in the inactive state. Clients call
   // `extensions/enable` to opt in to specific contributions.

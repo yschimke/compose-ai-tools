@@ -610,23 +610,32 @@ class JsonRpcServer(
       "initialize" -> handleInitialize(req)
       "renderNow" -> handleRenderNow(req)
       "shutdown" -> handleShutdown(req)
-      "history/list" -> handleHistoryList(req)
-      "history/read" -> handleHistoryRead(req)
+      // History wire surface gated to 1.1 (see [HistoryFeature]). When disabled, every `history/*`
+      // method short-circuits to method-not-found — clients that pre-handle that error code (the
+      // VS Code panel's `historySource` falls back to "no entries" when it sees -32601) degrade
+      // gracefully without coding against a half-shipped surface. When re-enabled for 1.1 the
+      // `handleHistoryList` / `handleHistoryRead` / `handleHistoryPrune` handlers are unchanged.
+      "history/list" ->
+        if (HistoryFeature.ENABLED) handleHistoryList(req)
+        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
+      "history/read" ->
+        if (HistoryFeature.ENABLED) handleHistoryRead(req)
+        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
       "history/diff" ->
-        // TODO(1.1): drop the experimental gate once the History roadmap lands (pixel mode H5,
-        // git-ref write modes, LFS/squash-GC). Until then, production daemons report
-        // method-not-found so clients that pre-handle that case (`historyDiff` UI on vscode) keep
-        // working without coding against a half-finished surface.
-        if (historyDiffExperimental) handleHistoryDiff(req)
+        if (HistoryFeature.ENABLED && historyDiffExperimental) handleHistoryDiff(req)
         else
           sendErrorResponse(
             id = req.id,
             code = ERR_METHOD_NOT_FOUND,
             message =
-              "history/diff is experimental in 1.0 and disabled by default; " +
-                "set -D$HISTORY_DIFF_EXPERIMENTAL_PROP=true to enable",
+              if (!HistoryFeature.ENABLED) HISTORY_DISABLED_MESSAGE
+              else
+                "history/diff is experimental in 1.0 and disabled by default; " +
+                  "set -D$HISTORY_DIFF_EXPERIMENTAL_PROP=true to enable",
           )
-      "history/prune" -> handleHistoryPrune(req)
+      "history/prune" ->
+        if (HistoryFeature.ENABLED) handleHistoryPrune(req)
+        else sendErrorResponse(req.id, ERR_METHOD_NOT_FOUND, HISTORY_DISABLED_MESSAGE)
       "data/fetch" -> handleDataFetch(req)
       "data/subscribe" -> handleDataSubscribe(req, subscribe = true)
       "data/unsubscribe" -> handleDataSubscribe(req, subscribe = false)
@@ -3430,6 +3439,10 @@ class JsonRpcServer(
 
     private const val DEFAULT_DAEMON_VERSION: String = "0.0.0-dev"
     private const val DEFAULT_HISTORY_DIR: String = ".compose-preview-history"
+
+    /** Message returned for history method requests when [HistoryFeature.ENABLED] is `false`. */
+    private const val HISTORY_DISABLED_MESSAGE: String =
+      "history methods are post-1.0 and disabled in this daemon build; tracking for 1.1+"
 
     // JSON-RPC error codes — PROTOCOL.md § 2.
     const val ERR_PARSE: Int = -32700
