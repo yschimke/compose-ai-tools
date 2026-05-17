@@ -417,6 +417,34 @@ export class GradleService {
     }
 
     /**
+     * Runs `:<module>:renderPreviews` then `:<module>:composePreviewBundle`
+     * with `-PbundlePreviewIds=<previewId>` and `-PbundleOutput=<outputPath>`.
+     * The render step keeps the bundle's cover PNG fresh; the bundle step
+     * produces a PNG+ZIP polyglot at [outputPath]. Throws on failure.
+     */
+    async exportPreviewBundle(
+        module: ModuleInfo,
+        previewId: string,
+        outputPath: string,
+        opts?: TaskOptions,
+    ): Promise<void> {
+        const extraArgs = [
+            `-PbundlePreviewIds=${previewId}`,
+            `-PbundleOutput=${outputPath}`,
+        ];
+        await this.runTask(
+            `${module.modulePath}:renderPreviews`,
+            extraArgs,
+            opts,
+        );
+        await this.runTask(
+            `${module.modulePath}:composePreviewBundle`,
+            extraArgs,
+            opts,
+        );
+    }
+
+    /**
      * Runs `:<module>:composePreviewDoctor` and returns the parsed sidecar
      * report. Same JSON schema as `compose-preview doctor --json`'s per-
      * module shape — see `ComposePreviewDoctorTask.kt` in `gradle-plugin`.

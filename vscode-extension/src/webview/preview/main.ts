@@ -210,6 +210,7 @@ export class PreviewApp extends LitElement {
     private _btnStopInteractive!: HTMLButtonElement;
     @query("#btn-recording") private _btnRecording!: HTMLButtonElement;
     @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
+    @query("#btn-export-bundle") private _btnExportBundle!: HTMLButtonElement;
     @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
     @query("#focus-position") private _focusPosition!: HTMLElement;
 
@@ -380,6 +381,15 @@ export class PreviewApp extends LitElement {
                 </select>
                 <button
                     class="icon-button"
+                    id="btn-export-bundle"
+                    title="Export focused preview as a portable PNG+ZIP bundle"
+                    aria-label="Export preview bundle"
+                    hidden
+                >
+                    <i class="codicon codicon-package" aria-hidden="true"></i>
+                </button>
+                <button
+                    class="icon-button"
                     id="btn-exit-focus"
                     title="Exit focus mode"
                     aria-label="Exit focus mode"
@@ -507,6 +517,7 @@ export class PreviewApp extends LitElement {
         const btnStopInteractive = this._btnStopInteractive;
         const btnRecording = this._btnRecording;
         const recordingFormat = this._recordingFormat;
+        const btnExportBundle = this._btnExportBundle;
         const btnExitFocus = this._btnExitFocus;
         const focusToolbar = new FocusToolbarController({
             btnPrev,
@@ -518,6 +529,7 @@ export class PreviewApp extends LitElement {
             btnInteractive,
             btnStopInteractive,
             btnRecording,
+            btnExportBundle,
             btnExitFocus,
             recordingFormat,
             focusInspector,
@@ -2390,6 +2402,9 @@ export class PreviewApp extends LitElement {
         btnRecording.addEventListener("click", () =>
             liveState.toggleRecording(),
         );
+        btnExportBundle.addEventListener("click", () =>
+            requestExportPreviewBundle(),
+        );
         btnExitFocus.addEventListener("click", () => exitFocus());
 
         // Focus-mode orchestration (applyLayout, button-state hooks, focus
@@ -2420,6 +2435,9 @@ export class PreviewApp extends LitElement {
         }
         function requestLaunchOnDevice(): void {
             focusController.requestLaunchOnDevice();
+        }
+        function requestExportPreviewBundle(): void {
+            focusController.requestExportPreviewBundle();
         }
         function toggleA11yOverlay(): void {
             focusController.toggleA11yOverlay();
