@@ -67,6 +67,16 @@ import {
     PhaseDurations,
 } from "./buildProgress";
 import {
+    DataExtensionPendingDiagnostics,
+    DataExtensionProgressTracker,
+    StatusSummary as DataExtensionStatusSummary,
+} from "./dataExtensionProgress";
+import {
+    DoctorReportInput,
+    DoctorReportModule,
+    renderDoctorReport,
+} from "./doctorReport";
+import {
     CompileError,
     extractCompileErrors,
     DiagnosticLike,
@@ -110,6 +120,20 @@ let daemonScheduler: DaemonScheduler | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let interactiveStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
+/** Indicator for "data extension subscribed, first payload not yet received."
+ *  Lives in the VS Code status bar so the signal is visible even when the
+ *  Compose Preview panel isn't focused. Hidden when no kinds are pending. */
+let dataExtensionStatusItem: vscode.StatusBarItem | null = null;
+/** Tracker for the in-flight `data/subscribe` → `onDataProductsAttached`
+ *  window. Constructed in activate() so the timer callbacks are bound to
+ *  the live `panel` / `outputChannel` references. See dataExtensionProgress.ts. */
+let dataExtensionTracker: DataExtensionProgressTracker | null = null;
+/** Unfiltered emitter onto the "Compose Preview" output channel. Used by
+ *  failure-data dumps (data-extension safety timeout, doctor report) that
+ *  must surface regardless of `composePreview.logging.level`. */
+let logForce: (msg: string) => void = () => {
+    /* noop pre-activate */
+};
 /** Owned by activate(); reused by the live panel's focus-mode diff handler. */
 let historySource: HistorySource | null = null;
 /**
@@ -594,6 +618,12 @@ export async function activate(
             outputChannel.appendLine(msg);
         }
     };
+    // Bypasses `composePreview.logging.level` so failure-data dumps survive
+    // even on `quiet`. Use sparingly — reserved for diagnostics the user is
+    // expected to copy when filing a bug.
+    logForce = (msg: string) => {
+        outputChannel.appendLine(msg);
+    };
 
     // Startup fingerprint — answers "is the build I think I installed
     // actually loaded?" when triaging a save-loop bug. The extension version
@@ -783,6 +813,17 @@ export async function activate(
                                           `${dp.kind}:${dp.payload !== undefined ? "inline" : dp.path ? "path" : "empty"}`,
                                   )
                                   .join(",")}]`,
+                          );
+                          // First payload for a just-enabled kind clears
+                          // the panel progress bar / status item that the
+                          // chip toggle armed. Resolving with the actual
+                          // attached kinds means a partial attach (some
+                          // kinds arrived, others haven't) keeps the
+                          // remaining ones in the pending set until they
+                          // arrive or the safety timeout fires.
+                          dataExtensionTracker?.resolve(
+                              previewId,
+                              dataProducts.map((dp) => dp.kind),
                           );
                           const decoded = applyDataProductsToRegistry(
                               registry,
@@ -1025,6 +1066,45 @@ export async function activate(
     );
     interactiveStatusItem.command = "workbench.action.output.toggleOutput";
     context.subscriptions.push(interactiveStatusItem);
+
+    // Visible only while at least one data extension is awaiting its first
+    // payload. Click opens the output channel — useful when the entry has
+    // since timed out and the user wants to see the diagnostic dump.
+    dataExtensionStatusItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left,
+        88,
+    );
+    dataExtensionStatusItem.command = "workbench.action.output.toggleOutput";
+    context.subscriptions.push(dataExtensionStatusItem);
+    dataExtensionTracker = new DataExtensionProgressTracker({
+        onProgress: (post) => {
+            // Don't fight a real refresh for the slim bar — its phase labels
+            // ("Compiling Kotlin", "Rendering previews") carry richer info
+            // than ours and are already calibrated against module history.
+            // The status-bar item still reflects the data-extension activity
+            // so the signal isn't lost.
+            if (refreshInFlight) return;
+            panel?.postMessage({
+                command: "setProgress",
+                phase: "dataExtension",
+                label: post.label,
+                percent: post.percent,
+                slow: false,
+            });
+        },
+        onClear: () => {
+            if (refreshInFlight) return;
+            panel?.postMessage({ command: "clearProgress" });
+        },
+        onStatus: (summary) => applyDataExtensionStatus(summary),
+        onTimeout: (diag) => emitDataExtensionTimeoutDiagnostics(diag),
+    });
+    context.subscriptions.push({
+        dispose: () => {
+            dataExtensionTracker?.dispose();
+            dataExtensionTracker = null;
+        },
+    });
 
     // In test mode we wrap the webview-message handler so the test API can
     // also assert on inbound traffic (e.g. `webviewPreviewsRendered`, which
@@ -1313,6 +1393,35 @@ export async function activate(
         }
         await doctorDiagnostics.refresh(gradleService.findPreviewModules());
     };
+    const buildAndShowDoctorReport = async () => {
+        if (!gradleService) {
+            void vscode.window.showWarningMessage(
+                "Compose Preview: Gradle service not ready yet — try again after activation finishes.",
+            );
+            return;
+        }
+        await refreshDoctor();
+        const report = await assembleDoctorReport(
+            gradleService,
+            extVersion,
+            extPath,
+            workspaceRoot,
+        );
+        logForce(report);
+        // Markdown untitled doc — VS Code's preview-on-the-side flow gives
+        // the user a one-click "open preview" and a fully selectable buffer
+        // for copying. Clipboard is also primed so a copy-paste into a
+        // GitHub issue works without scrolling.
+        await vscode.env.clipboard.writeText(report);
+        const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: "markdown",
+        });
+        await vscode.window.showTextDocument(doc, { preview: false });
+        void vscode.window.showInformationMessage(
+            "Doctor report copied to clipboard and opened as a Markdown doc. Paste into a GitHub issue if you're filing one.",
+        );
+    };
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.runDoctor", () => {
             void vscode.window.withProgress(
@@ -1323,6 +1432,18 @@ export async function activate(
                 refreshDoctor,
             );
         }),
+        vscode.commands.registerCommand(
+            "composePreview.copyDoctorReport",
+            () => {
+                void vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Window,
+                        title: "Building Compose Preview doctor report…",
+                    },
+                    buildAndShowDoctorReport,
+                );
+            },
+        ),
         vscode.commands.registerCommand("composePreview.diffAllVsMain", () =>
             diffAllVsMain(),
         ),
@@ -2814,6 +2935,167 @@ function updateDaemonStatus(module: ModuleInfo, state: WarmState): void {
             );
             break;
     }
+}
+
+function applyDataExtensionStatus(
+    summary: DataExtensionStatusSummary | null,
+): void {
+    const item = dataExtensionStatusItem;
+    if (!item) return;
+    if (!summary) {
+        item.hide();
+        return;
+    }
+    const subjectKinds = summary.kinds.slice(0, 3).join(", ");
+    const more =
+        summary.kinds.length > 3 ? ` +${summary.kinds.length - 3}` : "";
+    const previewSuffix =
+        summary.pendingPreviewCount > 1
+            ? ` × ${summary.pendingPreviewCount}`
+            : "";
+    item.text = `$(loading~spin) ${subjectKinds}${more}${previewSuffix}`;
+    item.tooltip =
+        "Compose Preview: waiting for data extension payloads. " +
+        `Pending kinds: ${summary.kinds.join(", ") || "(unknown)"}. ` +
+        "Click to open the Compose Preview output channel.";
+    item.show();
+}
+
+function emitDataExtensionTimeoutDiagnostics(
+    diag: DataExtensionPendingDiagnostics,
+): void {
+    const lines: string[] = [];
+    lines.push(
+        `[data-extension-timeout] previewId=${diag.previewId} module=${diag.moduleId} ` +
+            `elapsedMs=${diag.elapsedMs} kinds=[${diag.kinds.join(",")}]`,
+    );
+    const moduleReady = daemonGate?.isDaemonReady(diag.moduleId) ?? false;
+    lines.push(
+        `    daemonReady=${moduleReady} refreshInFlight=${refreshInFlight}`,
+    );
+    const snap = daemonGate?.getCapabilitiesSnapshot(diag.moduleId);
+    if (!snap) {
+        lines.push(
+            "    capabilities: <none — daemon not initialised for this module>",
+        );
+    } else {
+        const advertisedKinds = new Set(snap.dataProducts.map((p) => p.kind));
+        const unsupported = diag.kinds.filter((k) => !advertisedKinds.has(k));
+        lines.push(
+            `    advertisedDataProducts=[${snap.dataProducts
+                .map((p) => `${p.kind}(transport=${p.transport})`)
+                .join(",")}]`,
+        );
+        lines.push(
+            `    advertisedDataExtensions=[${snap.dataExtensions.map((e) => e.id).join(",")}]`,
+        );
+        if (unsupported.length > 0) {
+            lines.push(
+                `    ⚠ unsupported (kind not advertised by daemon): [${unsupported.join(",")}]`,
+            );
+        }
+    }
+    const moduleInfo = gradleService?.findModuleByPath(diag.moduleId) ?? null;
+    if (!moduleInfo) {
+        lines.push(
+            `    moduleInfo: <not resolved — gradleService.findModuleByPath('${diag.moduleId}') returned null>`,
+        );
+    } else {
+        lines.push(`    moduleInfo: projectDir=${moduleInfo.projectDir}`);
+    }
+    lines.push(
+        "    Run `Compose Preview: Copy Doctor Report` for a full snapshot you can paste into a bug report.",
+    );
+    for (const line of lines) logForce(line);
+}
+
+async function assembleDoctorReport(
+    gs: GradleService,
+    extensionVersion: string,
+    extensionPath: string,
+    workspaceRoot: string,
+): Promise<string> {
+    const os = await import("node:os");
+    const config = vscode.workspace.getConfiguration("composePreview");
+    const modules = gs.findPreviewModules();
+    const reportModules: DoctorReportModule[] = [];
+    const notes: string[] = [];
+    for (const module of modules) {
+        const snap =
+            daemonGate?.getCapabilitiesSnapshot(module.modulePath) ?? null;
+        let doctor = null;
+        // `runDoctor` swallows task / parse failures and returns null — the
+        // production caller (`PreviewDoctorDiagnostics`) prefers a quiet
+        // skip. For the bug-report path we want the opposite: surface the
+        // failure message so the user sees "Doctor: ⚠️ failed — ..." rather
+        // than "_(not available for this module)_", which is the most useful
+        // debugging signal in a bug report. The onError callback is the
+        // explicit handoff for that case. `runTask` itself doesn't throw
+        // past `runDoctor`, but the try/catch stays as a defensive backstop
+        // in case the contract ever changes.
+        let doctorError: string | null = null;
+        try {
+            doctor = await gs.runDoctor(module, (msg) => {
+                doctorError = msg;
+            });
+        } catch (err) {
+            doctorError = (err as Error)?.message ?? String(err);
+        }
+        reportModules.push({
+            modulePath: module.modulePath,
+            projectDir: module.projectDir,
+            pluginApplied: true,
+            daemonReady: daemonGate?.isDaemonReady(module.modulePath) ?? false,
+            daemonInteractive:
+                daemonGate?.isInteractiveSupported(module.modulePath) ?? false,
+            dataProducts:
+                snap?.dataProducts.map((p) => ({
+                    kind: p.kind,
+                    transport: p.transport,
+                    schemaVersion: p.schemaVersion,
+                })) ?? [],
+            dataExtensions:
+                snap?.dataExtensions.map((e) => ({
+                    id: e.id,
+                    displayName: e.displayName,
+                })) ?? [],
+            doctor,
+            doctorError,
+        });
+    }
+    const pending =
+        dataExtensionTracker?.snapshot().map((p) => ({
+            previewId: p.previewId,
+            moduleId: p.moduleId,
+            kinds: p.kinds,
+            elapsedMs: p.elapsedMs,
+        })) ?? [];
+    if (modules.length === 0) {
+        notes.push(
+            "No preview-eligible modules were found — make sure the Compose Preview Gradle plugin is applied to at least one module.",
+        );
+    }
+    const input: DoctorReportInput = {
+        generatedAt: new Date(),
+        environment: {
+            extensionVersion,
+            extensionPath,
+            vscodeVersion: vscode.version,
+            platform: process.platform,
+            osRelease: os.release(),
+            nodeVersion: process.version,
+            arch: process.arch,
+            workspaceRoot,
+            mode: config.get<string>("mode") ?? "<unset>",
+            earlyFeaturesEnabled:
+                config.get<boolean>("earlyFeatures.enabled") ?? false,
+            loggingLevel: config.get<string>("logging.level") ?? "<unset>",
+        },
+        modules: reportModules,
+        pendingDataExtensions: pending,
+        notes,
+    };
+    return renderDoctorReport(input);
 }
 
 /** Per-extension-session memo so bootstrap runs once per module. */
@@ -4343,6 +4625,18 @@ async function handleSetDataExtensionEnabled(
             enabled,
         );
         if (t !== "unchanged") a11yTransition = t;
+    }
+    // Start the progress indicator BEFORE awaiting the subscribe call so
+    // the user sees feedback the instant they click. The tracker resolves
+    // on `onDataProductsAttached`, on disable, or on its own safety timeout.
+    if (enabled) {
+        dataExtensionTracker?.begin(
+            previewId,
+            moduleId.modulePath,
+            filteredKinds,
+        );
+    } else {
+        dataExtensionTracker?.resolve(previewId, filteredKinds);
     }
     // Single subscription call so the wire sees `data/subscribe` per
     // kind followed by exactly one `renderNow`. Per-kind dispatch

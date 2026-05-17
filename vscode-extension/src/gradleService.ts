@@ -426,15 +426,20 @@ export class GradleService {
      * wasn't produced. Callers should treat null as "skip doctor
      * diagnostics for this module", not as an empty finding set.
      */
-    async runDoctor(module: ModuleInfo): Promise<DoctorModuleReport | null> {
+    async runDoctor(
+        module: ModuleInfo,
+        onError?: (message: string) => void,
+    ): Promise<DoctorModuleReport | null> {
         const task = `${module.modulePath}:composePreviewDoctor`;
+        const fail = (message: string): null => {
+            this.logger.appendLine(`[doctor] ${message}`);
+            onError?.(message);
+            return null;
+        };
         try {
             await this.runTask(task);
         } catch (e) {
-            this.logger.appendLine(
-                `[doctor] ${task} failed: ${(e as Error).message}`,
-            );
-            return null;
+            return fail(`${task} failed: ${(e as Error).message}`);
         }
         const reportPath = path.join(
             this.workspaceRoot,
@@ -444,25 +449,22 @@ export class GradleService {
             "doctor.json",
         );
         if (!fs.existsSync(reportPath)) {
-            this.logger.appendLine(`[doctor] ${reportPath} not produced`);
-            return null;
+            return fail(`${reportPath} not produced`);
         }
         try {
             const parsed = JSON.parse(
                 fs.readFileSync(reportPath, "utf-8"),
             ) as DoctorModuleReport;
             if (!parsed.schema?.startsWith("compose-preview-doctor/")) {
-                this.logger.appendLine(
-                    `[doctor] unexpected schema in ${reportPath}: ${parsed.schema}`,
+                return fail(
+                    `unexpected schema in ${reportPath}: ${parsed.schema}`,
                 );
-                return null;
             }
             return parsed;
         } catch (e) {
-            this.logger.appendLine(
-                `[doctor] parse failed for ${reportPath}: ${(e as Error).message}`,
+            return fail(
+                `parse failed for ${reportPath}: ${(e as Error).message}`,
             );
-            return null;
         }
     }
 
