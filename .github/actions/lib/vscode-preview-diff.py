@@ -87,6 +87,65 @@ def _image_url(repo: str, ref: str, path: str) -> str:
     return f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
 
 
+# Pixel count above pixelmatch's per-pixel threshold that we still treat as
+# perceptually unchanged. Headless Chromium emits ±1-channel jitter on
+# antialiased edges between runs even when nothing about the fixture has
+# changed — `inspection-tree.dark.png` reproducibly flips between 2 pixel
+# values on a single column without any source change. Same tolerance as
+# the composable side (`compare-previews.py`).
+_PERCEPTUAL_PIXEL_TOLERANCE = 16
+
+
+def _perceptually_changed(prior_png: Path, current_png: Path) -> bool:
+    """Return True if the two PNGs differ by more than rounding noise.
+
+    Mirrors `compare-previews._perceptually_changed`: uses Mapbox's
+    pixelmatch with AA detection on, so a handful of antialiased edge
+    pixels around glyphs and rounded corners — which the harness produces
+    non-deterministically between runs — don't count as real differences.
+
+    Falls back to ``True`` (i.e. defer to sha-mismatch) when the library
+    isn't importable, either PNG can't be located, or decoding fails. The
+    fallback is strictly no more permissive than the previous sha-only
+    behaviour.
+    """
+    try:
+        from pixelmatch.contrib.PIL import pixelmatch
+        from PIL import Image
+    except ImportError:
+        return True
+    if not prior_png.exists() or not current_png.exists():
+        return True
+    try:
+        with Image.open(prior_png) as prior, Image.open(current_png) as current:
+            if prior.size != current.size:
+                return True
+            diff = pixelmatch(prior, current, threshold=0.1, includeAA=False)
+    except Exception:
+        return True
+    return diff > _PERCEPTUAL_PIXEL_TOLERANCE
+
+
+def _is_changed(
+    name: str,
+    cur_meta: dict,
+    prior_meta: dict,
+    baseline_renders: Path | None,
+    input_dir: Path,
+) -> bool:
+    """Decide whether ``cur_meta`` is a real change vs ``prior_meta``.
+
+    Fast path: shas match → unchanged. On mismatch, if we have a local
+    copy of the prior PNG, run the perceptual filter; otherwise fall back
+    to the strict sha behaviour.
+    """
+    if prior_meta.get("sha256") == cur_meta["sha256"]:
+        return False
+    if baseline_renders is None:
+        return True
+    return _perceptually_changed(baseline_renders / name, input_dir / name)
+
+
 # ---------------------------------------------------------------------------
 # generate
 # ---------------------------------------------------------------------------
@@ -143,13 +202,16 @@ def cmd_copy_changed(args: argparse.Namespace) -> int:
     baselines = _load_json(Path(args.baselines)).get("captures", {})
     current = _scan(input_dir)
 
+    raw_renders = getattr(args, "baseline_renders", None)
+    baseline_renders = Path(raw_renders) if raw_renders else None
+
     renders = output_dir / "renders"
     renders.mkdir(parents=True, exist_ok=True)
 
     copied = 0
     for name, meta in current.items():
-        prior = baselines.get(name)
-        if prior and prior.get("sha256") == meta["sha256"]:
+        prior = baselines.get(name) or {}
+        if not _is_changed(name, meta, prior, baseline_renders, input_dir):
             continue
         shutil.copy2(input_dir / name, renders / name)
         copied += 1
@@ -166,6 +228,9 @@ def cmd_compare(args: argparse.Namespace) -> int:
     baselines = _load_json(Path(args.baselines)).get("captures", {})
     current = _scan(input_dir)
 
+    raw_renders = getattr(args, "baseline_renders", None)
+    baseline_renders = Path(raw_renders) if raw_renders else None
+
     new: list[tuple[str, dict]] = []
     changed: list[tuple[str, dict, dict]] = []
     removed: list[tuple[str, dict]] = []
@@ -174,7 +239,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         prior = baselines.get(name)
         if prior is None:
             new.append((name, meta))
-        elif prior.get("sha256") != meta["sha256"]:
+        elif _is_changed(name, meta, prior, baseline_renders, input_dir):
             changed.append((name, prior, meta))
 
     for name, meta in sorted(baselines.items()):
@@ -262,6 +327,11 @@ def main(argv: list[str]) -> int:
     cp.add_argument("input_dir")
     cp.add_argument("--baselines", required=True)
     cp.add_argument("--output-dir", required=True)
+    # Optional. When supplied, sha-mismatched pairs run through pixelmatch
+    # before being copied — collapses the antialiased-edge jitter the
+    # headless Chromium harness emits between runs (see
+    # `_perceptually_changed`). Strict-bytes fallback when omitted.
+    cp.add_argument("--baseline-renders", default=None)
     cp.set_defaults(func=cmd_copy_changed)
 
     c = sub.add_parser("compare", help="Emit a markdown PR comment body")
@@ -271,6 +341,9 @@ def main(argv: list[str]) -> int:
     c.add_argument("--base-ref", required=True)
     c.add_argument("--head-ref", required=True)
     c.add_argument("--base-branch", required=True)
+    # Same as `copy-changed --baseline-renders` — pixelmatch path for the
+    # PR-comment diff so the two surfaces agree.
+    c.add_argument("--baseline-renders", default=None)
     c.set_defaults(func=cmd_compare)
 
     args = parser.parse_args(argv)

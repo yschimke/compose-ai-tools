@@ -128,6 +128,92 @@ class TestCopyChanged(unittest.TestCase):
             self.assertEqual(copied, ["grid-default.light.png", "newfix.dark.png"])
 
 
+class TestPerceptualFilter(unittest.TestCase):
+    """Cover the pixelmatch path that absorbs antialiased-edge jitter.
+
+    The headless Chromium harness emits ±1-channel differences on a small
+    number of antialiased pixels between runs even when nothing about the
+    fixture has changed (originally surfaced by `inspection-tree`
+    repeatedly flipping by 2 bytes on `vscode-preview/main`). Without the
+    perceptual filter those PNGs read as "changed" and ship a fake row in
+    the PR diff comment.
+    """
+
+    def _require_pixelmatch(self) -> None:
+        try:
+            from pixelmatch.contrib.PIL import pixelmatch  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("pixelmatch/Pillow not installed")
+
+    def _png(self, path: Path, fn) -> None:
+        from PIL import Image
+        img = Image.new("RGB", (32, 32), (255, 255, 255))
+        for x in range(32):
+            for y in range(32):
+                img.putpixel((x, y), fn(x, y))
+        img.save(path)
+
+    def test_copy_changed_skips_perceptually_identical(self) -> None:
+        self._require_pixelmatch()
+        with tempfile.TemporaryDirectory() as td:
+            base_dir = Path(td) / "base"
+            head_dir = Path(td) / "head"
+            staging = Path(td) / "staging"
+            base_dir.mkdir()
+            head_dir.mkdir()
+
+            # Same content but written twice — PIL emits identical bytes,
+            # so to simulate the harness flake we flip one corner pixel
+            # by 1 on the "head" copy. That mimics the real jitter we
+            # measured on `inspection-tree.dark.png`.
+            def shape(x: int, y: int) -> tuple[int, int, int]:
+                v = 80 if (x // 4 + y // 4) % 2 == 0 else 200
+                return (v, v, v)
+
+            self._png(base_dir / "grid-default.dark.png", shape)
+            self._png(head_dir / "grid-default.dark.png",
+                      lambda x, y: (shape(x, y)[0] + (1 if (x, y) == (0, 0) else 0),
+                                    shape(x, y)[1] + (1 if (x, y) == (0, 0) else 0),
+                                    shape(x, y)[2] + (1 if (x, y) == (0, 0) else 0)))
+
+            class GenArgs:
+                input_dir = str(base_dir)
+                output_dir = str(Path(td) / "baseline-out")
+            mod.cmd_generate(GenArgs())
+
+            baseline_renders = str(Path(td) / "baseline-out" / "renders")
+
+            class CopyArgs:
+                input_dir = str(head_dir)
+                baselines = str(Path(td) / "baseline-out" / "baselines.json")
+                output_dir = str(staging)
+                baseline_renders = None  # strict bytes path
+
+            mod.cmd_copy_changed(CopyArgs())
+            strict = sorted(p.name for p in (staging / "renders").iterdir())
+            self.assertEqual(
+                strict, ["grid-default.dark.png"],
+                "without --baseline-renders, sha mismatch must still copy",
+            )
+
+            shutil.rmtree(staging)
+
+            class CopyArgsPerceptual:
+                input_dir = str(head_dir)
+                baselines = str(Path(td) / "baseline-out" / "baselines.json")
+                output_dir = str(staging)
+                baseline_renders = str(Path(td) / "baseline-out" / "renders")
+            mod.cmd_copy_changed(CopyArgsPerceptual())
+            perceptual = sorted(
+                p.name for p in (staging / "renders").iterdir()
+            ) if (staging / "renders").exists() else []
+            self.assertEqual(
+                perceptual, [],
+                "single-pixel jitter must be absorbed by pixelmatch",
+            )
+
+
 class TestCompare(unittest.TestCase):
     def _run(
         self,

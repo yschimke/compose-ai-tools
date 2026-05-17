@@ -78,9 +78,30 @@ runs:
           git fetch origin "$BASE_BRANCH"
           git show "origin/${BASE_BRANCH}:baselines.json" \
             > _vscode_baselines/baselines.json 2>/dev/null || true
+          # Extract the baseline `renders/` tree alongside `baselines.json`
+          # so the pixelmatch-based perceptual filter in
+          # `vscode-preview-diff.py` has both PNGs to diff. Without this
+          # the harness's ±1-channel antialiased-edge jitter (Chromium
+          # rasterisation is not bitwise-deterministic between runs) trips
+          # the sha comparison and surfaces a fake "changed" row in every
+          # PR. `git archive` writes to stdout so the working tree is
+          # untouched; failures (e.g. baseline branch has no `renders/`
+          # tree yet) fall back to the strict-bytes path.
+          git archive "origin/${BASE_BRANCH}" renders 2>/dev/null \
+            | tar -x -C _vscode_baselines/ 2>/dev/null || true
         else
           echo "No $BASE_BRANCH branch yet — treating all captures as new."
         fi
+
+    - name: Install perceptual-diff dependencies
+      shell: bash
+      run: |
+        # pixelmatch (Mapbox; AA-aware) collapses the antialiased-edge
+        # jitter the harness emits between runs. If install fails, the
+        # script falls back to strict sha-only comparison — same shape
+        # as the composable preview-comment action.
+        python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
+          || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
     - name: Resolve Before ref
       shell: bash
@@ -109,6 +130,7 @@ runs:
         python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" copy-changed \
           vscode-extension/preview-harness/out \
           --baselines _vscode_baselines/baselines.json \
+          --baseline-renders _vscode_baselines/renders \
           --output-dir _vscode_pr_renders
 
     - name: Push PR captures
@@ -188,6 +210,7 @@ runs:
         python3 "$ACTION_PATH/../lib/vscode-preview-diff.py" compare \
           vscode-extension/preview-harness/out \
           --baselines _vscode_baselines/baselines.json \
+          --baseline-renders _vscode_baselines/renders \
           --repo "$REPO" \
           --base-ref "$BASE_REF" \
           --head-ref "$HEAD_REF" \
