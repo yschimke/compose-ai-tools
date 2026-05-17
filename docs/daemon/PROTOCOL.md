@@ -153,6 +153,12 @@ Result:
   // androidSdk — fixed Android SDK level the backend renders against. Populated by the
   // Robolectric backend from its pinned @Config(sdk = ...) value; absent/null on Desktop and
   // other non-Android backends.
+  //
+  // Per-backend data-product matrix: the set of kinds each backend advertises in
+  // `extensions/list` / `data/fetch` differs because some producers are Android-API-bound
+  // (`a11y/*`, `resources/used`, `uiautomator`, `data/ambient`). Clients render the panel chips
+  // off `backend` plus the live `extensions/list` snapshot — see DATA-PRODUCTS.md §
+  // "Per-backend support matrix" for the full table.
   classpathFingerprint: string;      // SHA-256 hex of the resolved test classpath
   manifest: {
     path: string;                    // absolute path to the daemon's working previews.json
