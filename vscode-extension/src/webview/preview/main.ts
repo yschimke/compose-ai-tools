@@ -1280,11 +1280,18 @@ export class PreviewApp extends LitElement {
             // boxes (inspection, history-diff) wire their entries
             // the same way; the legend swaps slices based on the
             // active tab.
+            // Legend lists the focusable / TalkBack stops only —
+            // merged nodes plus orphan finding / touch-target rows
+            // (which carry their own bounds and synthesize as
+            // merged=true). Unmerged children render in the data
+            // table beneath their merged parent to show the tree
+            // structure, but they share bounds with that parent and
+            // would duplicate swatches on the overlay.
             const legendEntries: BundleLegendEntry[] = data.rows
-                .filter((row) => row.bounds !== null)
+                .filter((row) => row.bounds !== null && row.merged)
                 .map((row, idx) => ({
                     id: row.id,
-                    label: row.label,
+                    label: row.displayLabel,
                     detail: a11yLegendDetail(row),
                     level: row.topFindingLevel ?? "info",
                     color:
