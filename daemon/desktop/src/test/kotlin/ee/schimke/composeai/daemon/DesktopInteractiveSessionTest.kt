@@ -264,8 +264,168 @@ class DesktopInteractiveSessionTest {
     return matches.toDouble() / total.toDouble()
   }
 
+  /**
+   * Issue #1203 — end-to-end coverage for the desktop `KEY_DOWN` / `KEY_UP` wire shape into a held
+   * composition. Mirrors [click_input_flips_state_and_repaints]:
+   *
+   * 1. **Bootstrap render is red** — `KeyPressColorSquare` paints its `pressed = false` branch.
+   * 2. **`KEY_DOWN` with `keyCode = "29"` (Android `KEYCODE_A`) reaches the composition** — routed
+   *    through [DesktopInteractiveSession.dispatch] → `BaseComposeScene.sendKeyEvent` → the focused
+   *    node's `Modifier.onKeyEvent` lambda flips `pressed = true`.
+   * 3. **`remember` state survives across renders** — the second render paints green, which is only
+   *    true if the held scene persisted the mutation. Same load-bearing assertion as the click
+   *    test, applied to the keyboard surface.
+   *
+   * Counterpart to the harness scenario `SInteractiveKeyDispatch` from the issue's acceptance
+   * criteria, run in-process here so we exercise the Skiko `sendKeyEvent` translation table without
+   * paying the subprocess + baseline-PNG cost of real-mode harness tests.
+   */
+  @Test
+  fun key_down_input_flips_state_and_repaints() {
+    val outputDir = tempFolder.newFolder("interactive-key-renders")
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == KEY_PRESS_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "KeyPressColorSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "key-press-color-square",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = KEY_PRESS_PREVIEW_ID,
+          classLoader =
+            DesktopInteractiveSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+        )
+      try {
+        // Bootstrap render — no key dispatched yet, `pressed = false` so the box is red.
+        val first = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull("first render must produce a pngPath", first.pngPath)
+        val firstImage = readPng(File(first.pngPath!!))
+        val redMatch = pixelMatchPct(firstImage, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+        assertTrue(
+          "expected ≥ 95% red pixels on bootstrap render; got ${"%.2f".format(redMatch * 100)}%",
+          redMatch >= 0.95,
+        )
+
+        // Dispatch KEY_DOWN(KEYCODE_A) — wire format is the Android `KEYCODE_*` int as a
+        // decimal string; the desktop session translates through `androidKeycodeToComposeKey`
+        // to the Skiko `Key.A` constant. `KEYCODE_A == 29` per `InteractiveKeyCodes`.
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-stream-key-1",
+            kind = InteractiveInputKind.KEY_DOWN,
+            keyCode = "29",
+          )
+        )
+
+        // Re-render — `Modifier.onKeyEvent` should have flipped `pressed = true` and the box
+        // should paint green. Load-bearing for the issue #1203 contract: without the new
+        // dispatch wiring this would still be red (the old no-op branch).
+        val second = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull("second render must produce a pngPath", second.pngPath)
+        val secondImage = readPng(File(second.pngPath!!))
+        val greenMatch = pixelMatchPct(secondImage, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "expected ≥ 95% green pixels after KEY_DOWN(KEYCODE_A); got " +
+            "${"%.2f".format(greenMatch * 100)}% — this is the load-bearing #1203 assertion " +
+            "(daemon side wire shape went from no-op to real Skiko sendKeyEvent).",
+          greenMatch >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+    assertFalse(
+      "render thread must not observe an InterruptedException",
+      host.renderThreadInterrupted,
+    )
+  }
+
+  /**
+   * Issue #1203 — unmapped keycodes drop silently. A forward-looking client that sends a key
+   * outside the translation table (e.g. `F13`) shouldn't crash the dispatch loop or flip the
+   * fixture state; the second render must still be red.
+   */
+  @Test
+  fun key_down_with_unmapped_keycode_is_a_silent_no_op() {
+    val outputDir = tempFolder.newFolder("interactive-key-unmapped-renders")
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == KEY_PRESS_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "KeyPressColorSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "key-press-unmapped",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = KEY_PRESS_PREVIEW_ID,
+          classLoader =
+            DesktopInteractiveSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+        )
+      try {
+        // Bootstrap.
+        val first = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull(first.pngPath)
+
+        // Dispatch a wire keycode that the desktop translation table doesn't cover (Android
+        // `KEYCODE_F13 == 183`; intentionally outside `InteractiveKeyCodes`). Must NOT throw,
+        // must NOT mutate composition state.
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-stream-key-unmapped",
+            kind = InteractiveInputKind.KEY_DOWN,
+            keyCode = "183",
+          )
+        )
+
+        val second = session.render(requestId = RenderHost.nextRequestId())
+        assertNotNull(second.pngPath)
+        val secondImage = readPng(File(second.pngPath!!))
+        val redMatch = pixelMatchPct(secondImage, expectedRgb = 0xEF5350, perChannelTolerance = 8)
+        assertTrue(
+          "unmapped keycode must not flip state; expected ≥ 95% red; got " +
+            "${"%.2f".format(redMatch * 100)}%",
+          redMatch >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   companion object {
     private const val FIXTURE_PREVIEW_ID = "click-toggle-square"
     private const val FRAME_CLOCK_PREVIEW_ID = "frame-clock-square"
+    private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
   }
 }
