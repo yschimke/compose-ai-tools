@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import androidx.compose.runtime.tooling.observe
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsActions
@@ -154,7 +155,57 @@ open class RobolectricHost(
   private val interactiveIdleLeaseMs: Long =
     System.getProperty(AndroidInteractiveSession.IDLE_LEASE_PROP)?.toLongOrNull()
       ?: AndroidInteractiveSession.DEFAULT_IDLE_LEASE_MS,
+  /**
+   * Issue #1204 — interactive-session lifecycle listener for the `compose/recomposition`
+   * producer ([AndroidRecompositionDataProductRegistry]). Called from [acquireInteractiveSession]
+   * after the session is fully allocated (slot pinned, streamId minted), and again from
+   * `AndroidInteractiveSession.close` with [InteractiveSessionLifecycle.Released] so the registry
+   * tears down its per-previewId bookkeeping.
+   *
+   * Decoupled from the registry interface itself for the same reason the desktop side decouples
+   * its `DesktopHost.InteractiveSessionListener` — the renderer-agnostic [DataProductRegistry]
+   * surface intentionally doesn't carry slot / streamId / sandbox bridge concepts. The listener
+   * seam stays in the Android module.
+   */
+  private val interactiveSessionListener: InteractiveSessionListener? = null,
 ) : RenderHost {
+
+  /**
+   * Issue #1204 — session lifecycle hook fired on `acquireInteractiveSession` success and on
+   * `AndroidInteractiveSession.close`. Implementations are expected to be cheap and
+   * side-effect-isolated — they run on whatever thread called acquire / close.
+   */
+  fun interface InteractiveSessionListener {
+    fun onSessionLifecycle(event: InteractiveSessionLifecycle)
+  }
+
+  /** Issue #1204 — payload for [InteractiveSessionListener]. */
+  sealed interface InteractiveSessionLifecycle {
+    val previewId: String
+    val streamId: String
+
+    /**
+     * Session is live — slot has been pinned, `setContent` has landed, and the held composition
+     * is draining commands. The listener can enqueue
+     * [ee.schimke.composeai.daemon.bridge.InteractiveCommand.StartObserveRecomposition] onto
+     * [slot]'s `interactiveCommands` to install observers; the host's acquire path posts the
+     * lifecycle event *after* the start latch has counted down so the held loop is already in
+     * its drain phase.
+     */
+    data class Acquired(
+      override val previewId: String,
+      override val streamId: String,
+      val slot: ee.schimke.composeai.daemon.bridge.SandboxSlot,
+    ) : InteractiveSessionLifecycle
+
+    /**
+     * Session has been released — either explicitly via `interactive/stop`, by the idle-lease
+     * watchdog, or by host shutdown. The listener cleans up its per-previewId state but does
+     * NOT post further commands (the held loop has already returned from `runHeldInteractiveSession`).
+     */
+    data class Released(override val previewId: String, override val streamId: String) :
+      InteractiveSessionLifecycle
+  }
   /**
    * INTERACTIVE-ANDROID.md § 2 — interactive sessions on Android need one pinned sandbox slot in
    * addition to the always-on slot 0 that drains normal renders, so the capability bit reads
@@ -864,6 +915,20 @@ open class RobolectricHost(
         idleLeaseMs = interactiveIdleLeaseMs,
         onCloseHook = {
           activeInteractiveSession.compareAndSet(sessionBox[0], null)
+          // Issue #1204 — fire Released BEFORE invoking the caller hook so the registry's
+          // observer-cleanup runs before any wire-level cleanup the JsonRpcServer hook does.
+          interactiveSessionListener?.let { listener ->
+            try {
+              listener.onSessionLifecycle(
+                InteractiveSessionLifecycle.Released(previewId = previewId, streamId = streamId)
+              )
+            } catch (t: Throwable) {
+              System.err.println(
+                "compose-ai-daemon: RobolectricHost: interactiveSessionListener.onReleased threw " +
+                  "(${t.javaClass.simpleName}: ${t.message}); continuing"
+              )
+            }
+          }
           // JsonRpcServer-side cleanup wired through the public acquire API. Wrapped in
           // try/catch because a misbehaving caller hook shouldn't strand the host's own state
           // mutation above (e.g. leaving activeInteractiveSession pinned after the watchdog
@@ -882,6 +947,26 @@ open class RobolectricHost(
       )
     sessionBox[0] = session
     activeInteractiveSession.set(session)
+    // Issue #1204 — fire the lifecycle listener so the recomposition registry can attach its
+    // observer install command. Wrapped in try/catch because a misbehaving listener shouldn't
+    // strand the acquire path; the worst that happens is no recomposition counters for this
+    // session, which is recoverable (the panel just sees `nodes: []`).
+    interactiveSessionListener?.let { listener ->
+      try {
+        listener.onSessionLifecycle(
+          InteractiveSessionLifecycle.Acquired(
+            previewId = previewId,
+            streamId = streamId,
+            slot = slot,
+          )
+        )
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: RobolectricHost: interactiveSessionListener.onAcquired threw " +
+            "(${t.javaClass.simpleName}: ${t.message}); continuing"
+        )
+      }
+    }
     return session
   }
 
@@ -1669,6 +1754,14 @@ open class RobolectricHost(
             // snapshots the live registry into this map; `state.restore` reads it back.
             val stateCheckpoints =
               java.util.concurrent.ConcurrentHashMap<String, Map<String, List<Any?>>>()
+            // Issue #1204 — per-stream `compose/recomposition` observer handles, populated by
+            // [InteractiveCommand.StartObserveRecomposition] and disposed on
+            // [InteractiveCommand.StopObserveRecomposition] / on session close below. Keyed by
+            // previewId because v3 holds exactly one (previewId, streamId) per session — but a
+            // single registry could conceivably re-subscribe under the same previewId with a new
+            // panel-side frame stream, so we tear down the prior install on overwrite.
+            val recompositionHandles =
+              java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
             setupTrace.section("compose:setContent") {
               rule.setContent {
                 androidx.compose.runtime.key(reloadCounter.intValue) {
@@ -1938,7 +2031,73 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.StartObserveRecomposition -> {
+                  try {
+                    // Tear down any prior observer for the same previewId so a re-subscribe lands
+                    // on a clean slot — same reset-on-resubscribe semantics the desktop producer
+                    // uses. The bridge's [open] is idempotent, so calling it again on a live
+                    // entry is safe.
+                    recompositionHandles.remove(cmd.previewId)?.invoke()
+                    ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.open(
+                      cmd.previewId,
+                      cmd.streamId,
+                    )
+                    val handle =
+                      try {
+                        installRecompositionObserver(rule, cmd.previewId, cmd.streamId)
+                      } catch (t: Throwable) {
+                        // Same safety net the desktop producer uses: any `LinkageError` /
+                        // `NoSuchMethodError` / reflection failure from the Compose-runtime walk
+                        // degrades to "advertised but unavailable" rather than crashing the
+                        // sandbox loop. The host-side registry reads [replyUnavailable] and
+                        // latches its `globallyUnavailable` flag.
+                        System.err.println(
+                          "compose-ai-daemon: held-rule for stream ${start.streamId}: " +
+                            "recomposition observer install failed " +
+                            "(${t.javaClass.simpleName}: ${t.message}); marking unavailable"
+                        )
+                        cmd.replyUnavailable.set(true)
+                        ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.close(
+                          cmd.previewId,
+                          cmd.streamId,
+                        )
+                        null
+                      }
+                    if (handle != null) {
+                      recompositionHandles[cmd.previewId] = handle
+                    }
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
+                is InteractiveCommand.StopObserveRecomposition -> {
+                  try {
+                    recompositionHandles.remove(cmd.previewId)?.invoke()
+                    ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.close(
+                      cmd.previewId,
+                      cmd.streamId,
+                    )
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.Close -> {
+                  // Issue #1204 — dispose every live recomposition observer for this session
+                  // before returning. Best-effort: a thrown dispose is swallowed so the close
+                  // path still completes (mirrors the desktop producer's dispose-best-effort
+                  // pattern).
+                  for ((_, dispose) in recompositionHandles) {
+                    try {
+                      dispose()
+                    } catch (_: Throwable) {
+                      // Already going down; nothing to do.
+                    }
+                  }
+                  recompositionHandles.clear()
                   cmd.replyLatch.countDown()
                   return
                 }
@@ -1983,6 +2142,156 @@ open class RobolectricHost(
       } finally {
         Thread.currentThread().contextClassLoader = previousContext
       }
+    }
+
+    /**
+     * Issue #1204 — install a [androidx.compose.runtime.tooling.CompositionObserver] against the
+     * held rule's `Recomposer` and route per-scope recomposition counts into
+     * [ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge].
+     *
+     * The recomposer is reached by reflecting `AbstractComposeView.parentContext` — `setContent` on
+     * the test rule constructs a `ComposeView` and calls `setParentCompositionContext(recomposer)`
+     * on it, which stashes the rule's [androidx.compose.runtime.Recomposer] in that private field.
+     * `findViewTreeCompositionContext` would be cleaner but is only populated by an explicit
+     * `setViewTreeCompositionContext` (not by `setParentCompositionContext`), which the test rule
+     * doesn't call. Reflection on a single private field is the smallest hop that still resolves
+     * to the recomposer driving the held composition; the desktop producer makes the same trade
+     * for `ImageComposeScene`.
+     *
+     * Returns a dispose lambda the held-loop stashes per previewId; on Stop or session close the
+     * loop invokes it to drop the per-recomposer registration handle plus all per-composition
+     * observer handles. Throws on failure — caller catches and routes to the safety net (latched
+     * "instrumentation unavailable" via [InteractiveCommand.StartObserveRecomposition.replyUnavailable]).
+     */
+    @OptIn(androidx.compose.runtime.ExperimentalComposeRuntimeApi::class)
+    private fun installRecompositionObserver(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      previewId: String,
+      streamId: String,
+    ): () -> Unit {
+      val recomposer =
+        rule.runOnUiThread {
+          val decor = rule.activity.window.decorView
+          val composeView = findFirstAbstractComposeView(decor)
+          if (composeView != null) reflectParentRecomposer(composeView) else null
+        }
+          ?: error(
+            "RobolectricHost.installRecompositionObserver: no Recomposer found for stream " +
+              "'$streamId' — the held rule must run setContent before observer install"
+          )
+      val perCompositionHandles =
+        java.util.Collections.synchronizedList(
+          mutableListOf<androidx.compose.runtime.tooling.CompositionObserverHandle>()
+        )
+      val perCompositionObserver =
+        object : androidx.compose.runtime.tooling.CompositionObserver {
+          override fun onBeginComposition(
+            composition: androidx.compose.runtime.tooling.ObservableComposition
+          ) {}
+
+          override fun onScopeEnter(scope: androidx.compose.runtime.RecomposeScope) {}
+
+          override fun onReadInScope(
+            scope: androidx.compose.runtime.RecomposeScope,
+            value: Any,
+          ) {}
+
+          override fun onScopeExit(scope: androidx.compose.runtime.RecomposeScope) {
+            ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.markRecomposed(
+              previewId,
+              streamId,
+              System.identityHashCode(scope),
+            )
+          }
+
+          override fun onEndComposition(
+            composition: androidx.compose.runtime.tooling.ObservableComposition
+          ) {}
+
+          override fun onScopeInvalidated(
+            scope: androidx.compose.runtime.RecomposeScope,
+            value: Any?,
+          ) {}
+
+          override fun onScopeDisposed(scope: androidx.compose.runtime.RecomposeScope) {
+            ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.markDisposed(
+              previewId,
+              streamId,
+              System.identityHashCode(scope),
+            )
+          }
+        }
+      val registrationObserver =
+        object : androidx.compose.runtime.tooling.CompositionRegistrationObserver {
+          override fun onCompositionRegistered(
+            composition: androidx.compose.runtime.tooling.ObservableComposition
+          ) {
+            val handle = composition.setObserver(perCompositionObserver)
+            perCompositionHandles.add(handle)
+          }
+
+          override fun onCompositionUnregistered(
+            composition: androidx.compose.runtime.tooling.ObservableComposition
+          ) {}
+        }
+      val recomposerHandle = recomposer.observe(registrationObserver)
+      return {
+        try {
+          recomposerHandle.dispose()
+        } catch (_: Throwable) {}
+        val copy = synchronized(perCompositionHandles) { perCompositionHandles.toList() }
+        for (h in copy) {
+          try {
+            h.dispose()
+          } catch (_: Throwable) {}
+        }
+      }
+    }
+
+    /**
+     * Issue #1204 — walk the activity's view tree looking for an [androidx.compose.ui.platform.AbstractComposeView].
+     * The test rule's `setContent` always creates one and registers the rule's `Recomposer` as the
+     * parent composition context on it; finding it gives us the view whose `parentContext` field
+     * holds the recomposer we want to observe.
+     */
+    private fun findFirstAbstractComposeView(
+      root: android.view.View
+    ): androidx.compose.ui.platform.AbstractComposeView? {
+      if (root is androidx.compose.ui.platform.AbstractComposeView) return root
+      if (root is android.view.ViewGroup) {
+        for (i in 0 until root.childCount) {
+          val hit = findFirstAbstractComposeView(root.getChildAt(i))
+          if (hit != null) return hit
+        }
+      }
+      return null
+    }
+
+    /**
+     * Issue #1204 — read `AbstractComposeView.parentContext` reflectively. `setParentCompositionContext`
+     * sets this private field; the public `findViewTreeCompositionContext` only sees explicit
+     * `setViewTreeCompositionContext` calls (which the test rule doesn't make). Returns `null`
+     * when the field isn't a [androidx.compose.runtime.Recomposer] — most commonly when reflection
+     * fails entirely (which the caller surfaces as instrumentation-unavailable).
+     */
+    private fun reflectParentRecomposer(
+      composeView: androidx.compose.ui.platform.AbstractComposeView
+    ): androidx.compose.runtime.Recomposer? {
+      var cls: Class<*>? = composeView.javaClass
+      while (cls != null) {
+        try {
+          val field = cls.getDeclaredField("parentContext")
+          field.isAccessible = true
+          return field.get(composeView) as? androidx.compose.runtime.Recomposer
+        } catch (_: NoSuchFieldException) {
+          cls = cls.superclass
+        }
+      }
+      return null
     }
 
     /**

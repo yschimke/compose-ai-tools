@@ -49,6 +49,7 @@ class PreviewManifestRouter(
   sandboxCount: Int = 1,
   userClassloaderHolderFactory: ((sandboxClassLoader: ClassLoader) -> UserClassLoaderHolder)? =
     null,
+  interactiveSessionListener: InteractiveSessionListener? = null,
 ) : RobolectricHost(
   userClassloaderHolder = userClassloaderHolder,
   sandboxCount = sandboxCount,
@@ -56,6 +57,7 @@ class PreviewManifestRouter(
   previewSpecResolver = { previewId ->
     manifest.previews.firstOrNull { it.id == previewId }?.renderSpec()
   },
+  interactiveSessionListener = interactiveSessionListener,
 ) {
 
   private val byId: Map<String, PreviewManifestEntry> = manifest.previews.associateBy { it.id }

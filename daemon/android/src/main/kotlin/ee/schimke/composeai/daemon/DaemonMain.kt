@@ -120,6 +120,12 @@ fun main(args: Array<String>) {
       PreviewIndex.empty()
     }
 
+  // Issue #1204 — the Android `compose/recomposition` producer plugs into the host's interactive
+  // session lifecycle. Build it here so the RobolectricHost constructor below can wire it as the
+  // host's [InteractiveSessionListener]; the same instance is registered in the ExtensionRegistry
+  // a few hundred lines down so `data/subscribe` / `attachmentsFor` reach the same bookkeeping.
+  val recompositionRegistry = AndroidRecompositionDataProductRegistry()
+
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
   val host: RenderHost =
     if (manifestPath != null && manifestPath.isNotBlank()) {
@@ -163,6 +169,10 @@ fun main(args: Array<String>) {
         sandboxCount = routerSandboxCount,
         userClassloaderHolderFactory =
           if (routerSandboxCount > 1) userClassloaderHolderFactory else null,
+        interactiveSessionListener =
+          RobolectricHost.InteractiveSessionListener { event ->
+            recompositionRegistry.onSessionLifecycle(event)
+          },
       )
     } else {
       if (sandboxCount > 1) {
@@ -175,6 +185,10 @@ fun main(args: Array<String>) {
         sandboxCount = sandboxCount,
         previewSpecResolver =
           previewIndexBackedSpecResolver(previewIndex)?.takeIf { previewIndex.size > 0 },
+        interactiveSessionListener =
+          RobolectricHost.InteractiveSessionListener { event ->
+            recompositionRegistry.onSessionLifecycle(event)
+          },
       )
     }
 
@@ -305,15 +319,15 @@ fun main(args: Array<String>) {
             dataProductRegistry = WallpaperDataProductRegistry(),
           )
         )
-        // Stub advertisement of `compose/recomposition` so the panel's Performance bundle stops
-        // tripping `-32020 kind not advertised` when toggled on Android previews. Returns
-        // NotAvailable until the in-sandbox observer-install bridge lands; see
-        // [AndroidRecompositionStubRegistry] for the rationale.
+        // Issue #1204 — real `compose/recomposition` producer. Wired through the host's
+        // [RobolectricHost.InteractiveSessionListener] above so observer installs hit the
+        // sandbox-side held-rule loop when a `data/subscribe(mode=delta)` lands while an
+        // interactive session is held.
         add(
           Extension(
             id = "data/recomposition",
-            displayName = "Recomposition counts (stub)",
-            dataProductRegistry = AndroidRecompositionStubRegistry(),
+            displayName = "Recomposition counts",
+            dataProductRegistry = recompositionRegistry,
           )
         )
         add(

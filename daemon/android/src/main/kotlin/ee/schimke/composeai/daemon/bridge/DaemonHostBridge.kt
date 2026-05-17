@@ -268,6 +268,10 @@ object DaemonHostBridge {
     // an instance field on [SandboxSlot] (not aliased to a top-level @JvmField like [requests]),
     // so the explicit clear is necessary even on the single-slot path.
     slot0Eager.interactiveCommands.clear()
+    // Issue #1204 — drop any per-stream recomposition counters left behind by a prior host
+    // lifecycle. Mirrors the [interactiveCommands] cleanup above: the bridge is per-JVM, so
+    // counters survive [reset] otherwise and would leak into the next acquireInteractiveSession.
+    SandboxRecompositionBridge.resetAll()
     // Drop any extended slots back to the canonical single-slot list. Multi-slot configuration is
     // re-applied by the next [configureSlotCount] call (typically from `RobolectricHost.start`).
     // Render IDs (RenderHost.nextRequestId) deliberately stay monotonic across host restarts
@@ -654,5 +658,37 @@ sealed interface InteractiveCommand {
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
     val replyApplied: AtomicBoolean,
+  ) : InteractiveCommand
+
+  /**
+   * Issue #1204 — start the `compose/recomposition` observer inside the held-rule loop. The
+   * sandbox-side handler installs a `CompositionObserver` against the rule's `Recomposer` and
+   * routes per-scope recomposition counts into [SandboxRecompositionBridge] keyed by
+   * ([previewId], [streamId]).
+   *
+   * **Opt-in latching.** [replyUnavailable] is set by the sandbox handler when the Compose runtime
+   * doesn't expose the reflection targets the observer install needs (`LinkageError` /
+   * `NoSuchMethodError` / similar). The host-side registry treats that as the latched
+   * "instrumentation unavailable" state — same shape `RecompositionDataProductRegistry` uses on
+   * desktop — and stops re-trying the install for the rest of the daemon's lifetime.
+   */
+  data class StartObserveRecomposition(
+    override val streamId: String,
+    val previewId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyUnavailable: AtomicBoolean,
+  ) : InteractiveCommand
+
+  /**
+   * Issue #1204 — companion to [StartObserveRecomposition]: disposes the per-stream observer handle
+   * and drops the [SandboxRecompositionBridge] counter slot. Idempotent at the sandbox: a stop
+   * without a preceding start is a no-op.
+   */
+  data class StopObserveRecomposition(
+    override val streamId: String,
+    val previewId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
   ) : InteractiveCommand
 }
