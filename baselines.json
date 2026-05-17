@@ -167,6 +167,13 @@
     "sha256": "06361724a0330d4ec6aba520a73caea4e3a783bde320821b471a0be7e4f38d28",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AnimatedPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
+    "captureLabel": "",
+    "functionName": "KeyboardDemoPreview",
+    "renderBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+    "sha256": "ee13791aa7bf9fcff8c89f376a26529034f23882f4e873d68a61909dc3e709e7",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/KeyboardDemoPreview.kt"
+  },
   "samples:android/com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview_NavHost \u2014 Home": {
     "captureLabel": "",
     "functionName": "NavHostHomePreview",
@@ -474,6 +481,13 @@
     "renderBasename": "SharedRedBoxPreview.png",
     "sha256": "70afa24f0e257bb7adddc922b875bbb4611e7ed07e6067a081ea62ceea643b2c",
     "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
+    "captureLabel": "",
+    "functionName": "KeyboardDemoPreview",
+    "renderBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+    "sha256": "963c64c0a428c8bc78cbd22c659002ff31d940d5131ab40cb4e94a6776f215be",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt"
   },
   "samples:cmp/com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch": {
     "captureLabel": "",

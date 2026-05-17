@@ -8,6 +8,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AnimatedPreviewsKt.FadeInBoxAnimatedPreview.gif" width="150" /> |
 | `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AnimatedPreviewsKt.RevealLabelAnimatedPreview.gif" width="150" /> |
+| `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
 | `NavHostHomePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Short.png" width="150" /> |
@@ -97,6 +98,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Teal.png" width="150" /> |
