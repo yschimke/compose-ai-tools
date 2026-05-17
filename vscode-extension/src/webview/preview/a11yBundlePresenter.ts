@@ -38,6 +38,14 @@ export interface AccessibilityTouchTarget {
 export interface A11yRow {
     id: string;
     label: string;
+    /** Label as it should appear in the legend / overlay tooltip.
+     *  For merged nodes that the daemon emitted without a `label`
+     *  (e.g. a `clickable` row whose only content is inner `Text`
+     *  children) this is the concatenation of the immediately-
+     *  following unmerged children's labels — the TalkBack-style
+     *  merged announcement. Falls back to `label` otherwise, with
+     *  the `(unlabelled)` placeholder applied for empty strings. */
+    displayLabel: string;
     role: string;
     states: string;
     merged: boolean;
@@ -80,9 +88,11 @@ export interface A11yBundleOptions {
     /** Show only `merged: true` nodes — the focusable / screen-reader
      *  stops. Unmerged children (e.g. inner `Text` inside a `Button`)
      *  duplicate their merged ancestor's bounds and clutter the
-     *  overlay + legend without adding new information for most
-     *  reviews. Defaults to `true`; flip to `false` to surface the
-     *  full hierarchy when debugging a specific merge boundary. */
+     *  overlay without adding new information for most reviews, but
+     *  in the data-table they make the tree structure (which text
+     *  rolls up into which focusable container) visible. Defaults
+     *  to `false`; flip to `true` to drop unmerged rows from the
+     *  table (the legend filters them out either way). */
     mergedOnly?: boolean;
 }
 
@@ -92,11 +102,20 @@ export function computeA11yBundleData(
     touchTargets: readonly AccessibilityTouchTarget[] = [],
     options: A11yBundleOptions = {},
 ): A11yBundleData {
-    const mergedOnly = options.mergedOnly ?? true;
+    const mergedOnly = options.mergedOnly ?? false;
     const rows: A11yRow[] = [];
     const overlay: OverlayBox[] = [];
     const findingsByBoundsKey = groupFindingsByBoundsKey(findings);
     const matchedKeys = new Set<string>();
+    // Pre-compute the merged announcement label for each merged node
+    // by walking its run of immediately-following `merged: false`
+    // children and concatenating their text — the wire format is flat
+    // so emission order is our only handle on parent/child. This is
+    // what TalkBack would read aloud for the focusable, and it's what
+    // the legend wants in place of the daemon's empty `label` on
+    // containers like `clickable` rows whose own text lives in
+    // unmerged Text children.
+    const mergedChildLabels = collectMergedChildLabels(nodes);
     // Index touch targets by bounds string — the daemon emits both
     // the hierarchy and the targets keyed on the same source bounds,
     // so we can merge per-node without exposing the daemon-internal
@@ -138,9 +157,14 @@ export function computeA11yBundleData(
             topLevel(matchingFindings),
             targetFindingCount > 0 ? "warning" : null,
         );
+        const rawLabel = node.label ?? "";
+        const inheritedLabel =
+            isMerged && !rawLabel ? (mergedChildLabels.get(idx) ?? "") : "";
+        const displayLabel = rawLabel || inheritedLabel || "(unlabelled)";
         const row: A11yRow = {
             id,
-            label: node.label || "(unlabelled)",
+            label: rawLabel || "(unlabelled)",
+            displayLabel,
             role: node.role ?? "",
             states: node.states?.join(", ") ?? "",
             merged: isMerged,
@@ -155,7 +179,12 @@ export function computeA11yBundleData(
             depth: isMerged ? 0 : 1,
         };
         rows.push(row);
-        if (bounds) {
+        // Only merged nodes draw overlay boxes — unmerged children
+        // share (or sit inside) their merged ancestor's bounds, so
+        // adding their boxes just stacks duplicates on the preview
+        // and clutters the screen-reader focus map. They still show
+        // in the table so the tree structure is visible.
+        if (bounds && isMerged) {
             overlay.push({
                 id,
                 bounds,
@@ -183,9 +212,11 @@ export function computeA11yBundleData(
         const id = "a11y-finding-orphan-" + idx;
         const bounds = parseBounds(fBounds);
         const level = normLevel(f.level);
+        const orphanLabel = f.viewDescription || "(no element)";
         rows.push({
             id,
-            label: f.viewDescription || "(no element)",
+            label: orphanLabel,
+            displayLabel: orphanLabel,
             role: f.type,
             states: "",
             merged: true,
@@ -221,9 +252,13 @@ export function computeA11yBundleData(
         if (tKey && matchedKeys.has(tKey)) return;
         const id = "a11y-touchtarget-orphan-" + idx;
         const bounds = parseBounds(t.boundsInScreen ?? "");
+        const orphanTargetLabel = t.nodeId
+            ? "node " + t.nodeId
+            : "(touch target)";
         rows.push({
             id,
-            label: t.nodeId ? "node " + t.nodeId : "(touch target)",
+            label: orphanTargetLabel,
+            displayLabel: orphanTargetLabel,
             role: "TouchTarget",
             states: t.findings.join(", "),
             merged: true,
@@ -249,6 +284,24 @@ export function computeA11yBundleData(
     });
 
     return { rows, overlay };
+}
+
+function collectMergedChildLabels(
+    nodes: readonly AccessibilityNode[],
+): Map<number, string> {
+    const out = new Map<number, string>();
+    for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (n.merged === false) continue;
+        const childTexts: string[] = [];
+        for (let j = i + 1; j < nodes.length; j++) {
+            if (nodes[j].merged !== false) break;
+            const childLabel = nodes[j].label;
+            if (childLabel) childTexts.push(childLabel);
+        }
+        if (childTexts.length > 0) out.set(i, childTexts.join(" · "));
+    }
+    return out;
 }
 
 function mergeLevel(
@@ -282,28 +335,47 @@ export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
         {
             header: "Label",
             cellClass: "a11y-label-cell",
-            render: (row) => html`
-                <div
-                    class=${row.depth > 0
-                        ? "a11y-label-stack a11y-label-stack-indent"
-                        : "a11y-label-stack"}
-                    data-depth=${row.depth}
-                >
-                    ${row.depth > 0
-                        ? html`<span class="a11y-tree-arm" aria-hidden="true"
-                              >↳</span
-                          >`
-                        : ""}
-                    <div class="a11y-label-text">
-                        <strong>${row.label}</strong>
-                        ${row.role
-                            ? html`<span class="a11y-row-role"
-                                  >${row.role}</span
+            render: (row) => {
+                const stackClasses = ["a11y-label-stack"];
+                if (row.depth > 0) stackClasses.push("a11y-label-stack-indent");
+                stackClasses.push(
+                    row.merged
+                        ? "a11y-label-stack-merged"
+                        : "a11y-label-stack-unmerged",
+                );
+                return html`
+                    <div
+                        class=${stackClasses.join(" ")}
+                        data-depth=${row.depth}
+                        data-merged=${row.merged ? "true" : "false"}
+                    >
+                        ${row.depth > 0
+                            ? html`<span
+                                  class="a11y-tree-arm"
+                                  aria-hidden="true"
+                                  >↳</span
                               >`
-                            : ""}
+                            : html`<span
+                                  class="a11y-tree-pip"
+                                  aria-hidden="true"
+                                  title="Merged (focusable / screen-reader stop)"
+                                  >●</span
+                              >`}
+                        <div class="a11y-label-text">
+                            ${row.merged
+                                ? html`<strong>${row.label}</strong>`
+                                : html`<span class="a11y-label-unmerged-text"
+                                      >${row.label}</span
+                                  >`}
+                            ${row.role
+                                ? html`<span class="a11y-row-role"
+                                      >${row.role}</span
+                                  >`
+                                : ""}
+                        </div>
                     </div>
-                </div>
-            `,
+                `;
+            },
         },
         {
             header: "States",

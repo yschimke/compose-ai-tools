@@ -250,18 +250,13 @@ describe("computeA11yBundleData", () => {
                 }),
             ],
             [],
-            [],
-            // Depth-annotation contract only matters when unmerged
-            // children are surfaced; opt back into the full hierarchy
-            // since the default `mergedOnly` filter would drop them.
-            { mergedOnly: false },
         );
         assert.strictEqual(data.rows.length, 2);
         assert.strictEqual(data.rows[0].depth, 0, "merged ⇒ top-level");
         assert.strictEqual(data.rows[1].depth, 1, "unmerged ⇒ child of merged");
     });
 
-    it("filters unmerged nodes by default so the legend stays focused on TalkBack stops", () => {
+    it("keeps unmerged children in the table but skips their overlay box (parent covers them)", () => {
         const data = computeA11yBundleData(
             [
                 node({
@@ -277,9 +272,64 @@ describe("computeA11yBundleData", () => {
             ],
             [],
         );
-        assert.strictEqual(data.rows.length, 1);
-        assert.strictEqual(data.rows[0].label, "Button");
+        // Both rows appear in the table — the tree view needs the
+        // child to be visible to show the merge structure.
+        assert.strictEqual(data.rows.length, 2);
+        assert.strictEqual(data.rows[0].merged, true);
+        assert.strictEqual(data.rows[1].merged, false);
+        // But the overlay only paints the merged parent — the child
+        // sits inside the parent's bounds and would just stack a
+        // duplicate box on the preview.
         assert.strictEqual(data.overlay.length, 1);
+        assert.strictEqual(data.overlay[0].id, data.rows[0].id);
+    });
+
+    it("derives a merged node's displayLabel from its unmerged children when the daemon emitted no label", () => {
+        // Wear `ActivityListPreview` case: the `clickable` row has no
+        // label on the wire, only its inner Text children. The
+        // legend would show "(unlabelled)" if we used `label`
+        // verbatim — `displayLabel` joins the child texts so users
+        // see what TalkBack would announce.
+        const data = computeA11yBundleData(
+            [
+                node({
+                    label: "",
+                    role: "clickable",
+                    merged: true,
+                    boundsInScreen: "0,0,100,40",
+                }),
+                node({
+                    label: "Morning run",
+                    merged: false,
+                    boundsInScreen: "5,5,95,20",
+                }),
+                node({
+                    label: "5.2 km · 28 min",
+                    merged: false,
+                    boundsInScreen: "5,20,95,35",
+                }),
+                node({
+                    label: "Heart rate row",
+                    role: "clickable",
+                    merged: true,
+                    boundsInScreen: "0,40,100,80",
+                }),
+            ],
+            [],
+        );
+        const parent = data.rows.find(
+            (r) => r.role === "clickable" && r.merged,
+        )!;
+        assert.strictEqual(parent.label, "(unlabelled)");
+        assert.strictEqual(
+            parent.displayLabel,
+            "Morning run · 5.2 km · 28 min",
+        );
+        // A merged node that DOES have its own label keeps it — the
+        // child walk only kicks in when the daemon emitted an empty
+        // string, and it stops at the next merged node.
+        const sibling = data.rows.find((r) => r.label === "Heart rate row")!;
+        assert.strictEqual(sibling.displayLabel, "Heart rate row");
     });
 
     it("treats a missing `merged` field as merged=true (daemon JSON omits the default)", () => {
@@ -312,9 +362,10 @@ describe("computeA11yBundleData", () => {
 
     it("does not surface a finding on an unmerged child as an orphan when the bounds match", () => {
         // The finding lives on the inner Text node's bounds, which
-        // also matches the merged Button (same bounds). When we
-        // filter unmerged nodes out, the finding must still merge
-        // onto the Button row instead of looking like an orphan.
+        // also matches the merged Button (same bounds). The finding
+        // must merge onto the Button row instead of looking like an
+        // orphan, regardless of whether the unmerged child is also
+        // present in the table.
         const data = computeA11yBundleData(
             [
                 node({
@@ -336,9 +387,15 @@ describe("computeA11yBundleData", () => {
                 }),
             ],
         );
-        assert.strictEqual(data.rows.length, 1);
-        assert.strictEqual(data.rows[0].findingCount, 1);
-        assert.strictEqual(data.rows[0].topFindingLevel, "warning");
+        const parent = data.rows.find((r) => r.merged && r.label === "Button");
+        assert.ok(parent);
+        assert.strictEqual(parent!.findingCount, 1);
+        assert.strictEqual(parent!.topFindingLevel, "warning");
+        // No orphan row should have been synthesised — the finding
+        // attached to the matching merged ancestor.
+        assert.ok(
+            !data.rows.some((r) => r.id.startsWith("a11y-finding-orphan-")),
+        );
     });
 
     it("orphan finding rows render at depth 0 regardless of hierarchy", () => {
