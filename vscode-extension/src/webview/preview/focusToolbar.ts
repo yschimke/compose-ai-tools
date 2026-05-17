@@ -23,8 +23,6 @@
 // site.
 
 export interface FocusToolbarElements {
-    btnPrev: HTMLButtonElement;
-    btnNext: HTMLButtonElement;
     btnDiffHead: HTMLButtonElement;
     btnDiffMain: HTMLButtonElement;
     btnLaunchDevice: HTMLButtonElement;

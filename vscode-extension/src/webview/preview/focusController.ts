@@ -1,7 +1,7 @@
 // Focus-mode orchestration for the live "Compose Preview" panel.
 //
 // Lifted verbatim from `behavior.ts`'s `applyLayout` / `publishScopedPreview`
-// / `navigateFocus` / `focusOnCard` / `exitFocus` / `requestFocusedDiff` /
+// / `focusOnCard` / `exitFocus` / `requestFocusedDiff` /
 // `requestLaunchOnDevice` / `toggleA11yOverlay` cluster, plus the four
 // `applyXxxButtonState` hooks that drive the focus-mode toolbar. After
 // this lift `behavior.ts` is mostly setup + message-event wiring; the
@@ -53,10 +53,6 @@ export interface FocusControllerConfig {
     /** `<data-tabs>` — active-bundle tab row, rendered below the chip
      *  strip. Same focus-only visibility rule as `bundleChipBar`. */
     dataTabs: HTMLElement;
-    /** `<div id="focus-position">` — the "N / M" position indicator. */
-    focusPosition: HTMLElement;
-    btnPrev: HTMLButtonElement;
-    btnNext: HTMLButtonElement;
     focusToolbar: FocusToolbarController;
     inspector: FocusInspectorController;
     liveState: LiveStateController;
@@ -190,25 +186,27 @@ export class FocusController {
 
     applyLayout(): void {
         const mode = this.config.filterToolbar.getLayoutValue();
+        const inFocus = mode === "focus";
         this.config.grid.setLayoutMode(mode);
-        this.config.focusControls.hidden = mode !== "focus";
-        // The chip bar is now always visible (anchored to the bottom of
-        // the panel). Minimal mode hides it via CSS (`preview-app[data-
-        // minimal-mode="true"] bundle-chip-bar`), so this controller
-        // just keeps the element non-hidden — the chip bar itself
-        // filters which bundle chips render based on the early-features
-        // snapshot it receives from `reflectBundleState` in `main.ts`.
-        // The tab strip stays hidden until at least one bundle is
-        // active; DataTabs.render() returns empty when no active
-        // bundles, but unhiding it lets the host show tab bodies as
-        // soon as the user toggles a chip on, regardless of layout.
-        this.config.bundleChipBar.hidden = false;
-        this.config.dataTabs.hidden = false;
+        // Focus is the inspector mode: it owns the focus toolbar, chip
+        // bar, data-extension tabs, and the focus inspector sidebar.
+        // Multi modes (grid/flow/column) are the browser modes: filter
+        // toolbar only, no extensions. The split keeps each mode
+        // single-purpose so the user is never looking at extension
+        // data for a preview that isn't the one they targeted.
+        this.config.focusControls.hidden = !inFocus;
+        this.config.bundleChipBar.hidden = !inFocus;
+        this.config.dataTabs.hidden = !inFocus;
+        // Filter dropdowns are a multi-mode concept (which previews to
+        // show in the grid); in focus mode the user has already picked.
+        // `<filter-toolbar>` and the focus-inspector sidebar are also
+        // managed elsewhere — the inspector toggles its own `hidden`
+        // through `inspector.render(card | null)` below.
+        this.config.filterToolbar.hidden = inFocus;
 
-        if (mode === "focus") {
+        if (inFocus) {
             const visible = this.getVisibleCards();
             if (visible.length === 0) {
-                this.config.focusPosition.textContent = "0 / 0";
                 this.config.inspector.render(null);
                 this.publishScopedPreview();
                 return;
@@ -223,10 +221,6 @@ export class FocusController {
                 this.config.setFocusIndex(0);
             }
             this.config.grid.applyFocusVisibility(visible[focusIndex]);
-            this.config.focusPosition.textContent =
-                focusIndex + 1 + " / " + visible.length;
-            this.config.btnPrev.disabled = focusIndex === 0;
-            this.config.btnNext.disabled = focusIndex === visible.length - 1;
             this.config.inspector.render(visible[focusIndex]);
         } else {
             this.config.grid.applyFocusVisibility(null);
@@ -304,16 +298,6 @@ export class FocusController {
             command: "previewScopeChanged",
             previewId,
         });
-    }
-
-    navigateFocus(delta: number): void {
-        const visible = this.getVisibleCards();
-        if (visible.length === 0) return;
-        const cur = this.config.getFocusIndex();
-        this.config.setFocusIndex(
-            Math.max(0, Math.min(visible.length - 1, cur + delta)),
-        );
-        this.applyLayout();
     }
 
     /**
