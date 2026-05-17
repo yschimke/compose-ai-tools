@@ -399,6 +399,12 @@ export class PreviewApp extends LitElement {
             this.dataset.earlyFeatures === "true";
         const minimalMode = this.dataset.minimalMode === "true";
         const bundleMode = this.dataset.bundleMode === "true";
+        // Bundle viewer panels gate daemon-driven focus-mode buttons
+        // (a11y overlay, recording, focus inspector chips) on this flag
+        // — it flips true when the host posts `bundleDaemonReady` after
+        // the per-bundle daemon JVM finishes `initialize`. Sidebar
+        // panels never see that message and ignore this flag entirely.
+        let bundleDaemonReady = false;
         const vscode = getVsCodeApi<PersistedState>();
         // Bundle mode: this <preview-app> is hosted by `BundleViewerPanel`
         // showing previews re-rendered from a `composePreviewBundle` file.
@@ -458,6 +464,28 @@ export class PreviewApp extends LitElement {
                 this.requestUpdate();
             }
         });
+        // Bundle-mode panels listen for the host's `bundleDaemonReady`
+        // signal; once seen, daemon-backed focus-mode buttons stop
+        // hiding. The flag is set before the focus controller is
+        // constructed, but the message may also arrive later (the
+        // daemon spawn is async); re-apply visibility on each event so
+        // the toolbar reflects readiness without a layout change.
+        if (bundleMode) {
+            window.addEventListener("message", (event: MessageEvent) => {
+                const data = event.data as { command?: string };
+                if (data?.command !== "bundleDaemonReady") return;
+                if (bundleDaemonReady) return;
+                bundleDaemonReady = true;
+                // `focusController` is initialised later in this
+                // function; the let-binding above closes over it.
+                // Guard against the message arriving before init.
+                try {
+                    focusController?.applyEarlyFeatureVisibility();
+                } catch {
+                    /* not yet constructed; first applyLayout will pick it up */
+                }
+            });
+        }
         if (minimalMode) {
             // Minimal mode hides the extension chrome (bundle chip bar +
             // data tabs) since data extensions are disabled — see CSS rule.
@@ -2316,6 +2344,7 @@ export class PreviewApp extends LitElement {
             state,
             earlyFeatures,
             bundleMode: () => bundleMode,
+            bundleDaemonReady: () => bundleDaemonReady,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
             getFocusIndex: () => previewStore.getState().focusIndex,

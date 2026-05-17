@@ -489,6 +489,16 @@ export type ExtensionToWebview =
      */
     | { command: "setMinimalMode"; minimal: boolean }
     /**
+     * Bundle viewer panel: the desktop daemon spawned for [bundlePath]
+     * has finished `initialize` + `extensions/enable` and is ready to
+     * serve `renderNow` / `data/subscribe` / interactive requests. The
+     * panel flips bundle-mode toolbar gating to allow daemon-backed
+     * buttons (a11y overlay, focus inspector chips) the same way the
+     * sidebar does when its module's daemon transitions to `ready`.
+     * Sidebar panels never receive this.
+     */
+    | { command: "bundleDaemonReady"; bundlePath: string }
+    /**
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
      * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).

@@ -44,6 +44,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "inspect" -> InspectSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "extract" -> ExtractSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "render" -> RenderSubcommand(args.drop(args.indexOf(sub) + 1)).run()
+      "daemon" -> BundleDaemonCommand(args.drop(args.indexOf(sub) + 1)).run()
       null,
       "help",
       "--help",
@@ -69,6 +70,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle inspect <bundle.png>
         compose-preview bundle extract <bundle.png> [-o <dir>]
         compose-preview bundle render  <bundle.png> [-o <dir>]   (v1: stub — prints what would render)
+        compose-preview bundle daemon  <bundle.png> [-v]         (spawn the desktop daemon over stdio)
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
