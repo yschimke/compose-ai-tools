@@ -225,13 +225,24 @@ open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
         )
       }
       is RobolectricHost.InteractiveSessionLifecycle.Released -> {
-        liveSessions.remove(event.previewId)
+        // Scope cleanup to the released stream — a watchdog-driven close for an old session can
+        // race with a new acquire for the same previewId, so we must verify the streamId
+        // before nulling out subscription state. `AndroidInteractiveSession.close()` clears the
+        // active-stream ref before firing the close hook, which is what makes the race
+        // observable: by the time we see Released(A) the host may have already entered
+        // Acquired(B) for the same preview. Without this guard we'd wipe out B's
+        // sandboxStreamId and silently drop subsequent attachments.
+        liveSessions.compute(event.previewId) { _, current ->
+          if (current?.streamId == event.streamId) null else current
+        }
         val state = subscriptions[event.previewId] ?: return
-        // The held loop has already disposed every recomposition observer on Close — we just
-        // forget the sandbox stream id so attachmentsFor stops shipping payloads.
-        state.observerInstalled = false
-        state.sandboxStreamId = null
-        state.slot = null
+        if (state.sandboxStreamId == event.streamId) {
+          // The held loop has already disposed every recomposition observer on Close — we just
+          // forget the sandbox stream id so attachmentsFor stops shipping payloads.
+          state.observerInstalled = false
+          state.sandboxStreamId = null
+          state.slot = null
+        }
       }
     }
   }
