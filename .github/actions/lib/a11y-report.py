@@ -199,12 +199,20 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
             if src.exists():
                 clean_basename = src.name
                 shutil.copy2(src, renders_out / clean_basename)
-        # Copy the annotated PNG when present.
+        # Copy the annotated PNG when present. The daemon writes every
+        # overlay to `data/<previewId>/a11y-overlay.png`, so the source
+        # basename collides across previews — rename to `<clean>.a11y.png`
+        # (or `<previewId>.a11y.png` when the clean render is missing) so
+        # each preview's overlay survives in the flat per-module dir.
         annotated_basename = ""
         if row["annotatedPath"]:
             src = build_dir / row["annotatedPath"]
             if src.exists():
-                annotated_basename = src.name
+                stem = (
+                    Path(clean_basename).stem if clean_basename
+                    else row["previewId"]
+                )
+                annotated_basename = f"{stem}.a11y.png"
                 shutil.copy2(src, renders_out / annotated_basename)
         findings_summary.append({
             "module": row["module"],
