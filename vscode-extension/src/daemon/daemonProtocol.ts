@@ -175,6 +175,12 @@ export interface DataExtensionDescriptor {
     id: string;
     displayName?: string;
     recordingScriptEvents?: RecordingScriptEventDescriptor[];
+    /**
+     * Issue #1203 — when `true`, every dispatch path under this extension requires a held
+     * interactive composition. The panel auto-enters live mode for the preview when toggling
+     * the extension on; absent / `false` on pre-#1203 daemons.
+     */
+    requiresInteractive?: boolean;
 }
 
 export interface RecordingScriptEventDescriptor {

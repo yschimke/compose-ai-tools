@@ -675,6 +675,13 @@ export interface DaemonDataProductCapability {
 export interface DaemonDataExtensionDescriptor {
     id: string;
     displayName?: string;
+    /**
+     * Issue #1203 — `true` when the extension can only dispatch against a held interactive
+     * composition. The panel auto-enters live mode for the preview when the user toggles the
+     * extension on, instead of letting the request silently drop. Absent / `false` on
+     * pre-#1203 daemons; treat both as "no auto-enter behaviour".
+     */
+    requiresInteractive?: boolean;
 }
 
 /** Messages from webview to extension */

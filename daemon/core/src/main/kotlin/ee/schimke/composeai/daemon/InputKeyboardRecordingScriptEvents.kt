@@ -46,6 +46,10 @@ object InputKeyboardRecordingScriptEvents {
             supported = supported,
           ),
         ),
+      // Keyboard dispatch only makes sense against a held composition — outside live mode there's
+      // no scene to receive `sendKeyEvent` / `performKeyInput`. Marking the extension lets the
+      // panel auto-enter live mode when the user toggles it on instead of failing silently.
+      requiresInteractive = true,
     )
 
   /** Convenience for hosts whose dispatch path is wired. */

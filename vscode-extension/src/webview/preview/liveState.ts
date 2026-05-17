@@ -98,6 +98,17 @@ export class LiveStateController {
         string,
         ReadonlySet<string>
     >();
+    // Issue #1203 — per-module set of data-extension ids whose descriptor
+    // carries `requiresInteractive = true`. The panel auto-enters live mode
+    // for a preview when the user toggles on any such extension instead of
+    // failing silently — keyboard / rotary dispatch can't land outside a held
+    // composition. Written from `setDaemonCapabilities`; queried via
+    // `extensionRequiresInteractive(id)` and acted on by
+    // `enterLiveModeForExtension`.
+    private readonly moduleInteractiveOnlyExtensions = new Map<
+        string,
+        ReadonlySet<string>
+    >();
 
     constructor(private readonly cfg: LiveStateConfig) {}
 
@@ -155,6 +166,53 @@ export class LiveStateController {
             if (kinds.has(kind)) return true;
         }
         return false;
+    }
+
+    /**
+     * Issue #1203 — record which data-extension ids carry
+     * `DataExtensionDescriptor.requiresInteractive = true` for [moduleId]. Forwarded from
+     * `setDaemonCapabilities`. Empty / undefined clears the entry; a daemon restart that
+     * drops the flag flips the panel back to "no auto-enter" behaviour for those extensions.
+     */
+    setInteractiveOnlyExtensions(
+        moduleId: string,
+        extensionIds: readonly string[] | undefined,
+    ): void {
+        if (!extensionIds || extensionIds.length === 0) {
+            this.moduleInteractiveOnlyExtensions.delete(moduleId);
+        } else {
+            this.moduleInteractiveOnlyExtensions.set(
+                moduleId,
+                new Set(extensionIds),
+            );
+        }
+    }
+
+    /**
+     * Issue #1203 — true when [extensionId] is one of the daemon-advertised
+     * interactive-only extensions (descriptor `requiresInteractive = true`). The panel is
+     * single-module-scoped today, so we union across modules; revisit when the panel grows
+     * multi-module support.
+     */
+    extensionRequiresInteractive(extensionId: string): boolean {
+        for (const ids of this.moduleInteractiveOnlyExtensions.values()) {
+            if (ids.has(extensionId)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Issue #1203 — entry point for a panel toggle that enables an interactive-only
+     * data extension on [card]. Idempotent: if the card is already live, this is a no-op.
+     * Otherwise we drive the same live-mode-on path the per-card stop button reverses —
+     * `setInteractiveForCard` with `shift = true` so a second card already in live mode
+     * stays live (the user's toggle didn't ask to take its slot).
+     */
+    enterLiveModeForExtension(card: HTMLElement): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        if (this.interactivePreviewIds.has(previewId)) return;
+        this.setInteractiveForCard(card, true);
     }
 
     /**

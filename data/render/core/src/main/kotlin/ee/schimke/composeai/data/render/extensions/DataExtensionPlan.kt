@@ -215,6 +215,14 @@ data class DataExtensionDescriptor(
   val id: DataExtensionId,
   val displayName: String = id.value,
   val recordingScriptEvents: List<RecordingScriptEventDescriptor> = emptyList(),
+  /**
+   * Issue #1203 — `true` when every dispatch path under this extension only makes sense while a
+   * held interactive composition is up (the canonical case is keyboard / rotary input). Clients use
+   * this to auto-enter live mode when the user toggles the extension on for a preview instead of
+   * asking them to flip Live separately. Defaults to `false` so existing extensions (recording
+   * probe, state save/restore, etc.) keep their pre-flag behaviour.
+   */
+  val requiresInteractive: Boolean = false,
 )
 
 @Serializable
