@@ -63,6 +63,10 @@ dependencies {
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))
   implementation(project(":data-layoutinspector-connector"))
+  // Navigation registry + payload types — extracted from this module in #1201 phase 4 so
+  // `:daemon:desktop` can also depend on the registry. The producer (Intent → wire payload) stays
+  // here because it imports `android.content.Intent`.
+  implementation(project(":data-navigation-connector"))
   implementation(project(":data-resources-connector"))
   implementation(project(":data-strings-connector"))
   implementation(project(":data-theme-connector"))

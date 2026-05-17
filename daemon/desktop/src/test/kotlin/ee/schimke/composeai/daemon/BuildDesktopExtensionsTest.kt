@@ -16,10 +16,9 @@ import org.junit.rules.TemporaryFolder
  *
  * **What's still Android-only.** The negative assertions below pin the kinds the desktop daemon
  * deliberately does NOT advertise yet because their producers are Android-API-bound (`uiautomator`,
- * `a11y` ATF, `resources/used`, `i18n/translations`) or because the registry side still lives in
- * `:daemon:android`'s sources (`data/navigation`). Issue #1201's per-row triage tracks the
- * migration path; the panel should honour `ServerCapabilities.backend == "desktop"` and grey those
- * chips out instead of relying on the daemon to advertise them.
+ * `a11y` ATF, `resources/used`). Issue #1201's per-row triage tracks the migration path; the panel
+ * should honour `ServerCapabilities.backend == "desktop"` and grey those chips out instead of
+ * relying on the daemon to advertise them.
  */
 class BuildDesktopExtensionsTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
@@ -105,6 +104,15 @@ class BuildDesktopExtensionsTest {
   }
 
   @Test
+  fun data_navigation_advertised_when_data_root_set() {
+    val dataRoot = tempFolder.newFolder("data")
+    val ids = build(dataRoot = dataRoot)
+    // Phase 4 (#1201): registry extracted from :daemon:android into :data-navigation-connector so
+    // desktop can register it. Producer side stays in :daemon:android (Intent reflection).
+    assertTrue("data/navigation" in ids)
+  }
+
+  @Test
   fun android_only_kinds_stay_unadvertised_on_desktop() {
     val dataRoot = tempFolder.newFolder("data")
     val ids = build(dataRoot = dataRoot, composeTraceEnabled = true, displayFilterEnabled = true)
@@ -114,8 +122,5 @@ class BuildDesktopExtensionsTest {
     assertFalse("resources/used" in ids)
     assertFalse("a11y" in ids)
     assertFalse("uiautomator" in ids)
-    // `NavigationDataProductRegistry` still lives in :daemon:android's sources; extraction to a
-    // connector module is tracked separately. Same #1201 triage.
-    assertFalse("data/navigation" in ids)
   }
 }

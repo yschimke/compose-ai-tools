@@ -82,6 +82,14 @@ include(":data-fonts-connector")
 
 project(":data-fonts-connector").projectDir = file("data/fonts/connector")
 
+include(":data-navigation-core")
+
+project(":data-navigation-core").projectDir = file("data/navigation/core")
+
+include(":data-navigation-connector")
+
+project(":data-navigation-connector").projectDir = file("data/navigation/connector")
+
 include(":data-render-core")
 
 project(":data-render-core").projectDir = file("data/render/core")
