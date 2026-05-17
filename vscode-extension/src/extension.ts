@@ -3024,9 +3024,20 @@ async function assembleDoctorReport(
         const snap =
             daemonGate?.getCapabilitiesSnapshot(module.modulePath) ?? null;
         let doctor = null;
+        // `runDoctor` swallows task / parse failures and returns null — the
+        // production caller (`PreviewDoctorDiagnostics`) prefers a quiet
+        // skip. For the bug-report path we want the opposite: surface the
+        // failure message so the user sees "Doctor: ⚠️ failed — ..." rather
+        // than "_(not available for this module)_", which is the most useful
+        // debugging signal in a bug report. The onError callback is the
+        // explicit handoff for that case. `runTask` itself doesn't throw
+        // past `runDoctor`, but the try/catch stays as a defensive backstop
+        // in case the contract ever changes.
         let doctorError: string | null = null;
         try {
-            doctor = await gs.runDoctor(module);
+            doctor = await gs.runDoctor(module, (msg) => {
+                doctorError = msg;
+            });
         } catch (err) {
             doctorError = (err as Error)?.message ?? String(err);
         }
