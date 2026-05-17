@@ -62,6 +62,12 @@ dependencies {
   // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each
   // PNG capture. Same dep on the Android side; the producer is renderer-agnostic (BufferedImage).
   implementation(project(":data-displayfilter-connector"))
+  // Fonts connector — issue #1201 phase 1. Producer is currently Android-only
+  // (GoogleFontInterceptor / Typeface accounting); the registry side reads JSON artefacts from
+  // disk so it can be advertised on desktop unconditionally — `data/fetch` returns
+  // NotAvailable when no producer has written. This removes the "kind not advertised" symptom
+  // on the panel's Performance / Fonts chips for CMP-desktop sessions.
+  implementation(project(":data-fonts-connector"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
