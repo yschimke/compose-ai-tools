@@ -34,8 +34,10 @@ import {
 import { DaemonClient } from "./daemon/daemonClient";
 import {
     DataProductAttachment,
+    InteractiveInputKind,
     RenderFailedParams,
     RenderFinishedParams,
+    StreamFrameParams,
 } from "./daemon/daemonProtocol";
 import type { Capture, PreviewInfo, PreviewParams } from "./types";
 
@@ -69,6 +71,29 @@ type WebviewMessage =
           command: "viewportUpdated";
           visible: string[];
           predicted: string[];
+      }
+    // `composestream/1` — live-mode entry/exit. The webview's
+    // `LiveStateController` produces these the same way it does for the
+    // sidebar panel; the bundle viewer routes them to its per-tab
+    // daemon and forwards the resulting `streamFrame` events back.
+    | { command: "requestStreamStart"; previewId: string }
+    | { command: "requestStreamStop"; previewId: string }
+    | {
+          command: "requestStreamVisibility";
+          previewId: string;
+          visible: boolean;
+          fps?: number;
+      }
+    | {
+          command: "recordInteractiveInput";
+          previewId: string;
+          kind: InteractiveInputKind;
+          pixelX: number;
+          pixelY: number;
+          imageWidth: number;
+          imageHeight: number;
+          scrollDeltaY?: number;
+          keyCode?: string;
       };
 
 export class BundleViewerPanel {
@@ -142,6 +167,20 @@ export class BundleViewerPanel {
      *  chip-bar. Mirrors the wire state so a chip toggle off (or panel
      *  disposal) unsubscribes exactly what we subscribed to. */
     private readonly dataSubscriptions = new Map<string, Set<string>>();
+    /** Active `composestream/1` streams keyed by `previewId`. Value is
+     *  the daemon-allocated `frameStreamId` we hand back as the
+     *  `interactive/input` routing key. Mirrors
+     *  `extension.ts:activeStreamFrameStreams` but scoped to this panel
+     *  so each bundle tab tears down its own streams on close. */
+    private readonly activeStreams = new Map<string, string>();
+    /** Reverse lookup for `streamFrame` notifications — the daemon
+     *  identifies the stream by `frameStreamId`, the webview wants
+     *  `previewId`. */
+    private readonly streamFrameIdToPreviewId = new Map<string, string>();
+    /** Synthetic module id the bundle viewer surfaces to `<preview-app>`
+     *  so `setInteractiveAvailability` routes through the same
+     *  `LiveStateController` plumbing the sidebar uses. */
+    private readonly moduleId: string;
 
     private constructor(
         private readonly bundlePath: string,
@@ -149,6 +188,10 @@ export class BundleViewerPanel {
         private readonly deps: BundleViewerHostDeps,
         private readonly contents: BundleContents,
     ) {
+        // `bundle:<absolutePath>` matches the synthetic id we publish in
+        // `setPreviews.moduleDir` and the routing key the per-panel
+        // daemon advertises via `setInteractiveAvailability`.
+        this.moduleId = `bundle:${bundlePath}`;
         panel.webview.html = this.buildHtml();
         panel.onDidDispose(() => this.dispose());
         panel.webview.onDidReceiveMessage((msg: WebviewMessage) => {
@@ -160,6 +203,18 @@ export class BundleViewerPanel {
         if (this.disposed) return;
         this.disposed = true;
         BundleViewerPanel.active.delete(this.bundlePath);
+        // Best-effort stream/stop for any active live previews before
+        // SIGTERMing the daemon — keeps the daemon's last-stderr line a
+        // graceful "stream closed" instead of a mid-flush abort.
+        for (const sid of this.activeStreams.values()) {
+            try {
+                this.daemon?.client.streamStop({ frameStreamId: sid });
+            } catch {
+                /* daemon may already be gone; safeKill follows */
+            }
+        }
+        this.activeStreams.clear();
+        this.streamFrameIdToPreviewId.clear();
         this.daemon?.dispose();
         this.daemon = null;
     }
@@ -205,6 +260,8 @@ export class BundleViewerPanel {
                                 void this.onRenderFinished(params),
                             onRenderFailed: (params) =>
                                 this.onRenderFailed(params),
+                            onStreamFrame: (params) =>
+                                this.onStreamFrame(params),
                         },
                     }),
             );
@@ -255,19 +312,33 @@ export class BundleViewerPanel {
         const previews = this.pendingSetPreviews;
         if (!previews) return;
         this.pendingSetPreviews = null;
-        // Signal "daemon-backed mode is live" to the webview by writing a
-        // truthy moduleDir — `<preview-app>`'s bundle-mode toolbar gating
-        // unhides the daemon-driven buttons once it sees a non-empty
-        // module id. Bundle path serves as the synthetic id.
+        // Signal "daemon-backed mode is live" to the webview by writing
+        // a truthy moduleDir — `<preview-app>`'s bundle-mode toolbar
+        // gating unhides the daemon-driven buttons once it sees a
+        // non-empty module id. Bundle path serves as the synthetic id.
         this.panel.webview.postMessage({
             command: "setPreviews",
             previews,
-            moduleDir: `bundle:${this.bundlePath}`,
+            moduleDir: this.moduleId,
             heavyStaleIds: [],
         });
         this.panel.webview.postMessage({
             command: "bundleDaemonReady",
             bundlePath: this.bundlePath,
+        });
+        // `LiveStateController.setAvailability` keys daemon-readiness +
+        // interactive-support per moduleId. Without this ping the LIVE
+        // button stays disabled even when the bundle daemon is up — the
+        // controller has no other path to learn whether
+        // `composestream/1` is on offer. Mirrors the sidebar's
+        // `publishInteractiveAvailability` post.
+        const interactive =
+            this.daemon?.initializeResult.capabilities.interactive === true;
+        this.panel.webview.postMessage({
+            command: "setInteractiveAvailability",
+            moduleId: this.moduleId,
+            ready: true,
+            interactiveSupported: interactive,
         });
     }
 
@@ -384,6 +455,159 @@ export class BundleViewerPanel {
             case "viewportUpdated":
                 this.daemon?.client.setVisible({ ids: msg.visible });
                 break;
+            case "requestStreamStart":
+                await this.handleStreamStart(msg.previewId);
+                break;
+            case "requestStreamStop":
+                this.handleStreamStop(msg.previewId);
+                break;
+            case "requestStreamVisibility":
+                this.handleStreamVisibility(
+                    msg.previewId,
+                    msg.visible,
+                    msg.fps,
+                );
+                break;
+            case "recordInteractiveInput":
+                this.handleInteractiveInput(msg);
+                break;
+        }
+    }
+
+    private async handleStreamStart(previewId: string): Promise<void> {
+        const client = this.daemon?.client;
+        if (!client) return;
+        if (this.activeStreams.has(previewId)) {
+            // Idempotent — the webview's optimistic LIVE toggle may
+            // re-issue start on a card that's already streaming.
+            return;
+        }
+        try {
+            const result = await client.streamStart({ previewId });
+            if (this.disposed) {
+                client.streamStop({ frameStreamId: result.frameStreamId });
+                return;
+            }
+            this.activeStreams.set(previewId, result.frameStreamId);
+            this.streamFrameIdToPreviewId.set(result.frameStreamId, previewId);
+            this.panel.webview.postMessage({
+                command: "streamStarted",
+                previewId,
+                frameStreamId: result.frameStreamId,
+                codec: result.codec,
+                heldSession: result.heldSession,
+            });
+            // Match the sidebar: setFocus pins the preview as the
+            // interactive target so the daemon's scheduler doesn't
+            // throttle it.
+            client.setFocus({ ids: [previewId] });
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} stream/start ${previewId} failed: ${(err as Error).message}`,
+            );
+            // Roll the webview's optimistic LIVE state back so the
+            // button isn't stuck "on" against a stream that never
+            // started. `streamStopped` alone only detaches the
+            // `<canvas>` painter — `clearInteractive` is what unwinds
+            // `LiveStateController`'s live-set so the toolbar gating
+            // and pointer-event masking revert. The sidebar's
+            // `handleRequestStreamStart` falls back to a legacy
+            // interactive path here that keeps the card LIVE; bundle
+            // mode has no such fallback.
+            this.panel.webview.postMessage({
+                command: "clearInteractive",
+                previewId,
+            });
+            this.panel.webview.postMessage({
+                command: "streamStopped",
+                previewId,
+            });
+        }
+    }
+
+    private handleStreamStop(previewId: string): void {
+        const sid = this.activeStreams.get(previewId);
+        if (!sid) return;
+        this.activeStreams.delete(previewId);
+        this.streamFrameIdToPreviewId.delete(sid);
+        try {
+            this.daemon?.client.streamStop({ frameStreamId: sid });
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} stream/stop ${previewId}: ${(err as Error).message}`,
+            );
+        }
+        if (!this.disposed) {
+            this.panel.webview.postMessage({
+                command: "streamStopped",
+                previewId,
+            });
+        }
+    }
+
+    private handleStreamVisibility(
+        previewId: string,
+        visible: boolean,
+        fps?: number,
+    ): void {
+        const sid = this.activeStreams.get(previewId);
+        if (!sid) return;
+        try {
+            this.daemon?.client.streamVisibility({
+                frameStreamId: sid,
+                visible,
+                fps,
+            });
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} stream/visibility ${previewId}: ${(err as Error).message}`,
+            );
+        }
+    }
+
+    private handleInteractiveInput(
+        msg: Extract<WebviewMessage, { command: "recordInteractiveInput" }>,
+    ): void {
+        const sid = this.activeStreams.get(msg.previewId);
+        if (!sid) return;
+        try {
+            this.daemon?.client.interactiveInput({
+                frameStreamId: sid,
+                kind: msg.kind,
+                pixelX: msg.pixelX,
+                pixelY: msg.pixelY,
+                scrollDeltaY: msg.scrollDeltaY,
+                keyCode: msg.keyCode,
+            });
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} interactive/input ${msg.previewId}: ${(err as Error).message}`,
+            );
+        }
+    }
+
+    private onStreamFrame(params: StreamFrameParams): void {
+        if (this.disposed) return;
+        const previewId = this.streamFrameIdToPreviewId.get(
+            params.frameStreamId,
+        );
+        if (!previewId) return;
+        this.panel.webview.postMessage({
+            command: "streamFrame",
+            previewId,
+            frameStreamId: params.frameStreamId,
+            seq: params.seq,
+            ptsMillis: params.ptsMillis,
+            widthPx: params.widthPx,
+            heightPx: params.heightPx,
+            codec: params.codec,
+            keyframe: params.keyframe,
+            final: params.final,
+            payloadBase64: params.payloadBase64,
+        });
+        if (params.final) {
+            this.activeStreams.delete(previewId);
+            this.streamFrameIdToPreviewId.delete(params.frameStreamId);
         }
     }
 
