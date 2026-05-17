@@ -2098,14 +2098,26 @@ open class RobolectricHost(
                 }
                 is InteractiveCommand.Close -> {
                   // Issue #1204 — dispose every live recomposition observer for this session
-                  // before returning. Best-effort: a thrown dispose is swallowed so the close
-                  // path still completes (mirrors the desktop producer's dispose-best-effort
-                  // pattern).
-                  for ((_, dispose) in recompositionHandles) {
+                  // before returning, AND drop the bridge counter slot so a session that ended
+                  // without an explicit data/unsubscribe (idle-lease watchdog, interactive/stop
+                  // while still subscribed) doesn't leak per-(previewId, streamId) maps for the
+                  // life of the JVM. Best-effort: a thrown dispose / bridge close is swallowed
+                  // so the close path still completes (mirrors the desktop producer's
+                  // dispose-best-effort pattern).
+                  for ((previewIdKey, dispose) in recompositionHandles) {
                     try {
                       dispose()
                     } catch (_: Throwable) {
                       // Already going down; nothing to do.
+                    }
+                    try {
+                      ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.close(
+                        previewIdKey,
+                        start.streamId,
+                      )
+                    } catch (_: Throwable) {
+                      // Bridge close is pure ConcurrentHashMap.remove — shouldn't throw, but
+                      // the catch keeps the held-loop teardown path defensive.
                     }
                   }
                   recompositionHandles.clear()
