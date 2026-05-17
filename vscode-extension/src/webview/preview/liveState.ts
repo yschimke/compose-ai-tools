@@ -90,6 +90,14 @@ export class LiveStateController {
     // ReadonlyMap accessors. See module-header doc.
     private readonly moduleDaemonReady = new Map<string, boolean>();
     private readonly moduleInteractiveSupported = new Map<string, boolean>();
+    // Issue #1203 — per-module set of interactive input kinds (beyond pointer)
+    // the daemon dispatches. Written from `setDaemonCapabilities`; read by
+    // `supportsInteractiveControl` to decide whether to attach the live-card
+    // keyboard listener / show a rotary affordance.
+    private readonly moduleInteractiveControlKinds = new Map<
+        string,
+        ReadonlySet<string>
+    >();
 
     constructor(private readonly cfg: LiveStateConfig) {}
 
@@ -117,6 +125,36 @@ export class LiveStateController {
      *  `getModuleDaemonReady`. */
     getModuleInteractiveSupported(): ReadonlyMap<string, boolean> {
         return this.moduleInteractiveSupported;
+    }
+
+    /**
+     * Issue #1203 — record the interactive input kinds [moduleId]'s daemon advertises.
+     * Forwarded from `setDaemonCapabilities`. Empty / undefined kinds clear the entry so
+     * a daemon restart that drops the capability flips the panel back to pointer-only.
+     */
+    setInteractiveControlKinds(
+        moduleId: string,
+        kinds: readonly string[] | undefined,
+    ): void {
+        if (!kinds || kinds.length === 0) {
+            this.moduleInteractiveControlKinds.delete(moduleId);
+        } else {
+            this.moduleInteractiveControlKinds.set(moduleId, new Set(kinds));
+        }
+    }
+
+    /**
+     * Issue #1203 — true when any module the panel knows about advertises [kind] as an
+     * interactive control. The panel is single-module-scoped today (see `moduleReadiness`),
+     * so "any module supports it" reduces to "the active module supports it"; if the panel
+     * ever shows multiple modules, swap this to look up by the focused card's
+     * `data-module-id`.
+     */
+    supportsInteractiveControl(kind: string): boolean {
+        for (const kinds of this.moduleInteractiveControlKinds.values()) {
+            if (kinds.has(kind)) return true;
+        }
+        return false;
     }
 
     /**

@@ -4383,17 +4383,19 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 );
             }
             break;
-        case "recordInteractiveInput":
-            logLine(
-                `[interactive] ${msg.kind} ${msg.previewId} px=${msg.pixelX},${msg.pixelY} ` +
-                    `image=${msg.imageWidth}x${msg.imageHeight}` +
-                    (msg.scrollDeltaY != null
-                        ? ` deltaY=${msg.scrollDeltaY}`
-                        : ""),
-            );
+        case "recordInteractiveInput": {
+            const isKey = msg.kind === "keyDown" || msg.kind === "keyUp";
+            const detail = isKey
+                ? `keyCode=${msg.keyCode}`
+                : `px=${msg.pixelX},${msg.pixelY} image=${msg.imageWidth}x${msg.imageHeight}` +
+                  (msg.scrollDeltaY != null
+                      ? ` deltaY=${msg.scrollDeltaY}`
+                      : "");
+            logLine(`[interactive] ${msg.kind} ${msg.previewId} ${detail}`);
             void forwardInteractiveInput(msg);
             void forwardRecordingInput(msg);
             break;
+        }
         case "setA11yOverlay":
             if (earlyFeaturesEnabled()) {
                 logInfo(
@@ -5895,6 +5897,7 @@ async function forwardInteractiveInput(
         pixelX: input.pixelX,
         pixelY: input.pixelY,
         scrollDeltaY: input.scrollDeltaY,
+        keyCode: input.keyCode,
     });
 }
 
@@ -5926,6 +5929,7 @@ async function forwardRecordingInput(
         pixelX: input.pixelX,
         pixelY: input.pixelY,
         scrollDeltaY: input.scrollDeltaY,
+        keyCode: input.keyCode,
     });
 }
 
@@ -5967,6 +5971,7 @@ function publishDaemonCapabilities(moduleId: string): void {
         moduleId,
         dataProducts: snap?.dataProducts ?? [],
         dataExtensions: snap?.dataExtensions ?? [],
+        interactiveControlKinds: snap?.interactiveControlKinds ?? [],
     });
 }
 

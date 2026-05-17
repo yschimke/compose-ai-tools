@@ -245,7 +245,14 @@ export function handleExtensionMessage(
             // moved to the bundle shell (#1099); the slim focus
             // inspector no longer surfaces per-capability UI. Other
             // controllers subscribe to capability changes through
-            // their own paths, so this dispatcher drops the message.
+            // their own paths, so this dispatcher drops the message —
+            // except for the issue #1203 interactive-control kinds,
+            // which the live-card keyboard listener needs to gate
+            // attachment.
+            ctx.liveState.setInteractiveControlKinds(
+                msg.moduleId,
+                msg.interactiveControlKinds,
+            );
             return;
         case "streamStarted": {
             const card = document.getElementById(
