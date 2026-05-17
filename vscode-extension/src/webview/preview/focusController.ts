@@ -62,6 +62,14 @@ export interface FocusControllerConfig {
      *  layout transitions. */
     state: FocusControllerPersistedState;
     earlyFeatures(): boolean;
+    /** When true the panel is a bundle viewer. Daemon-driven buttons
+     *  gate on [bundleDaemonReady] instead of being forced hidden.
+     *  Module-only buttons (launch on device, diff vs HEAD/main) stay
+     *  hidden regardless. Optional so non-bundle hosts can omit it. */
+    bundleMode?(): boolean;
+    /** True once `bundleDaemonReady` has been observed for this panel.
+     *  Only consulted when [bundleMode] returns true. */
+    bundleDaemonReady?(): boolean;
     getA11yOverlayId(): string | null;
     setA11yOverlayId(id: string | null): void;
     getFocusIndex(): number;
@@ -92,9 +100,16 @@ export class FocusController {
     }
 
     applyEarlyFeatureVisibility(): void {
+        const bundle = this.config.bundleMode?.() ?? false;
         this.config.focusToolbar.applyEarlyFeatureVisibility({
             earlyFeatures: this.config.earlyFeatures(),
             inFocus: this.inFocus(),
+            bundleMode: bundle,
+            // In non-bundle mode, daemon readiness is intentionally
+            // forced true — sidebar panels gate daemon-backed buttons
+            // per-button via the `applyXxxButtonState` hooks instead.
+            bundleDaemonReady:
+                !bundle || (this.config.bundleDaemonReady?.() ?? false),
         });
     }
 

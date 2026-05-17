@@ -107,6 +107,13 @@
                 "category": "Compose Preview",
                 "icon": "$(device-mobile)",
                 "enablement": "config.composePreview.earlyFeatures.enabled"
+            },
+            {
+                "command": "composePreview.openBundle",
+                "title": "Open Preview Bundle…",
+                "category": "Compose Preview",
+                "icon": "$(package)",
+                "enablement": "config.composePreview.earlyFeatures.enabled"
             }
         ],
         "menus": {
@@ -125,6 +132,19 @@
                     "command": "composePreview.copyDoctorReport",
                     "when": "view == composePreview.panel",
                     "group": "navigation@3"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "composePreview.openBundle",
+                    "when": "resourceExtname == .png && config.composePreview.earlyFeatures.enabled",
+                    "group": "navigation@10"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "composePreview.openBundle",
+                    "when": "config.composePreview.earlyFeatures.enabled"
                 }
             ]
         },
@@ -159,6 +179,12 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Enable early, unstable preview features in the VS Code panel, including focus-mode diffs, focus inspector extension layers, a11y overlay controls, recording, and diff-all commands. Focus mode and live interactive previews remain available when this is off."
+                },
+                "composePreview.bundleCliPath": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine-overridable",
+                    "markdownDescription": "Absolute path to the `compose-preview` CLI launcher used by `Compose Preview: Open Preview Bundle…`. Empty (default) falls back to `$COMPOSE_PREVIEW_CLI` and then `compose-preview` on PATH (the install script's default landing spot is `~/.local/bin/compose-preview`)."
                 },
                 "composePreview.logging.level": {
                     "type": "string",

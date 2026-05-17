@@ -489,6 +489,16 @@ export type ExtensionToWebview =
      */
     | { command: "setMinimalMode"; minimal: boolean }
     /**
+     * Bundle viewer panel: the desktop daemon spawned for [bundlePath]
+     * has finished `initialize` + `extensions/enable` and is ready to
+     * serve `renderNow` / `data/subscribe` / interactive requests. The
+     * panel flips bundle-mode toolbar gating to allow daemon-backed
+     * buttons (a11y overlay, focus inspector chips) the same way the
+     * sidebar does when its module's daemon transitions to `ready`.
+     * Sidebar panels never receive this.
+     */
+    | { command: "bundleDaemonReady"; bundlePath: string }
+    /**
      * Drives the slim progress bar at the top of the panel. `percent` is
      * monotonic within a refresh and clamped to [0, 1]; `label` is the
      * user-facing phase name ("Compiling Kotlin", "Rendering previews"…).
@@ -848,6 +858,18 @@ export type WebviewToExtension =
      * focused preview).
      */
     | { command: "requestExportPreviewBundle"; previewId: string }
+    /**
+     * User dragged a file onto the sidebar preview panel. The host
+     * checks that [fsPath] is a `composePreviewBundle` polyglot
+     * (PNG+ZIP) and opens it in a `BundleViewerPanel`. Non-bundle
+     * files surface a warning toast.
+     *
+     * [fsPath] is the path the host OS provided to the webview's drop
+     * handler. Some platforms / VS Code builds expose only the file
+     * name, in which case [fsPath] is empty and the host falls back to
+     * showing a quick-pick rooted at the workspace folder.
+     */
+    | { command: "bundleDropped"; fsPath: string; fileName: string }
     /**
      * `composestream/1` — open a live frame stream for [previewId]. The
      * extension acquires a held interactive session and pumps `streamFrame`
