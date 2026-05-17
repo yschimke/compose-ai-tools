@@ -91,6 +91,20 @@ class BuildDesktopExtensionsTest {
   }
 
   @Test
+  fun layoutinspector_and_strings_kinds_advertised_when_data_root_set() {
+    val dataRoot = tempFolder.newFolder("data")
+    val ids = build(dataRoot = dataRoot)
+    // Phase 2 (#1201): the connector modules moved from `android.library` to Compose
+    // Multiplatform JVM, so `:daemon:desktop` can register their file-based registries. The
+    // producer side is still Android-only (Robolectric semantics tree); these registries return
+    // NotAvailable on desktop until a CMP-portable producer ports.
+    assertTrue("compose/semantics" in ids)
+    assertTrue("layout/inspector" in ids)
+    assertTrue("text/strings" in ids)
+    assertTrue("i18n/translations" in ids)
+  }
+
+  @Test
   fun android_only_kinds_stay_unadvertised_on_desktop() {
     val dataRoot = tempFolder.newFolder("data")
     val ids = build(dataRoot = dataRoot, composeTraceEnabled = true, displayFilterEnabled = true)
@@ -98,14 +112,10 @@ class BuildDesktopExtensionsTest {
     // `ServerCapabilities.backend == "desktop"` rather than expecting the daemon to advertise.
     // Tracking migration of each in issue #1201.
     assertFalse("resources/used" in ids)
-    assertFalse("i18n/translations" in ids)
     assertFalse("a11y" in ids)
     assertFalse("uiautomator" in ids)
-    // Registries below still live in :daemon:android's sources and need to be extracted to a
-    // shared connector module before desktop can register them. Same #1201 triage.
-    assertFalse("compose/semantics" in ids)
-    assertFalse("layout/inspector" in ids)
-    assertFalse("text/strings" in ids)
+    // `NavigationDataProductRegistry` still lives in :daemon:android's sources; extraction to a
+    // connector module is tracked separately. Same #1201 triage.
     assertFalse("data/navigation" in ids)
   }
 }

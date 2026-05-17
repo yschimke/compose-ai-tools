@@ -579,6 +579,40 @@ internal fun buildDesktopExtensions(
         dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
       )
     )
+    // Phase 2 (#1201): layoutinspector + strings registries. The connector modules were migrated
+    // to Compose Multiplatform JVM so desktop can depend on them; the producers stay Robolectric-
+    // bound for now so these return `NotAvailable` until a CMP-portable producer ports. The point
+    // of advertising them is to stop the panel's chips logging `-32020 kind not advertised` on
+    // CMP-desktop sessions.
+    add(
+      Extension(
+        id = "compose/semantics",
+        displayName = "Compose semantics snapshot",
+        dataProductRegistry = ComposeSemanticsDataProductRegistry(rootDir = dataRoot),
+      )
+    )
+    add(
+      Extension(
+        id = "layout/inspector",
+        displayName = "Layout inspector",
+        dataProductRegistry = LayoutInspectorDataProductRegistry(rootDir = dataRoot),
+      )
+    )
+    add(
+      Extension(
+        id = "text/strings",
+        displayName = "Text strings",
+        dataProductRegistry =
+          TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex),
+      )
+    )
+    add(
+      Extension(
+        id = "i18n/translations",
+        displayName = "i18n translations",
+        dataProductRegistry = I18nTranslationsDataProductRegistry(rootDir = dataRoot),
+      )
+    )
     if (displayFilterEnabled) {
       add(
         Extension(

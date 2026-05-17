@@ -14,8 +14,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Producer for `i18n/translations`, backed by Android string resources plus the visible
- * text carried by the Compose semantics tree for the rendered preview.
+ * Producer for `i18n/translations`, backed by Android string resources plus the visible text
+ * carried by the Compose semantics tree for the rendered preview.
  */
 object I18nTranslationsDataProducer {
   const val KIND: String = I18nTranslationsProduct.KIND
@@ -36,8 +36,8 @@ object I18nTranslationsDataProducer {
     root: SemanticsNode,
     renderedLocale: String?,
     resDirs: List<File> = resDirsFromSysprop(),
-    defaultLocale: String = System.getProperty(DEFAULT_LOCALE_PROP)?.takeIf { it.isNotBlank() }
-      ?: DEFAULT_LOCALE,
+    defaultLocale: String =
+      System.getProperty(DEFAULT_LOCALE_PROP)?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE,
   ) {
     val catalog = AndroidStringCatalog.load(resDirs = resDirs, defaultLocale = defaultLocale)
     val payload =
@@ -68,17 +68,13 @@ object I18nTranslationsDataProducer {
     (System.getProperty(RES_DIRS_PROP) ?: "")
       .split(File.pathSeparator)
       .mapNotNull { it.takeIf(String::isNotBlank)?.let(::File) }
-      .ifEmpty {
-        listOf(
-          File("src/main/res"),
-          File("src/debug/res"),
-        )
-      }
+      .ifEmpty { listOf(File("src/main/res"), File("src/debug/res")) }
 
   private fun SemanticsNode.visibleStrings(): List<VisibleString> {
     val cfg = config
     val text =
-      cfg.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+      cfg
+        .getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
         ?.joinToString(" ") { it.text }
         ?.takeIf { it.isNotBlank() }
         ?: cfg

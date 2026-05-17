@@ -39,24 +39,31 @@ class ComposeSemanticsDataProductRegistryTest {
   fun `fetch returns path by default and payload when inline requested`() {
     val previewId = "com.example.SemanticsPreview"
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(ComposeSemanticsDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(ComposeSemanticsDataProducer.FILE)
     file.writeText(
       """{"root":{"nodeId":"1","boundsInRoot":"0,0,64,64","label":"Submit","role":"Button","clickable":true}}"""
     )
     val registry = ComposeSemanticsDataProductRegistry(rootDir)
 
     val pathOutcome =
-      registry.fetch(previewId = previewId, kind = "compose/semantics", params = null, inline = false)
+      registry.fetch(
+        previewId = previewId,
+        kind = "compose/semantics",
+        params = null,
+        inline = false,
+      )
     assertTrue(pathOutcome is DataProductRegistry.Outcome.Ok)
     val pathResult = (pathOutcome as DataProductRegistry.Outcome.Ok).result
     assertEquals(file.absolutePath, pathResult.path)
     assertNull(pathResult.payload)
 
     val inlineOutcome =
-      registry.fetch(previewId = previewId, kind = "compose/semantics", params = null, inline = true)
+      registry.fetch(
+        previewId = previewId,
+        kind = "compose/semantics",
+        params = null,
+        inline = true,
+      )
     assertTrue(inlineOutcome is DataProductRegistry.Outcome.Ok)
     val inlineResult = (inlineOutcome as DataProductRegistry.Outcome.Ok).result
     assertNull(inlineResult.path)
@@ -74,10 +81,7 @@ class ComposeSemanticsDataProductRegistryTest {
     assertEquals(emptyList<Any>(), registry.attachmentsFor(previewId, setOf("compose/semantics")))
 
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(ComposeSemanticsDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(ComposeSemanticsDataProducer.FILE)
     file.writeText("""{"root":{"nodeId":"1","boundsInRoot":"0,0,1,1"}}""")
 
     val attachment = registry.attachmentsFor(previewId, setOf("compose/semantics")).single()
@@ -101,17 +105,19 @@ class ComposeSemanticsDataProductRegistryTest {
   fun `layout inspector fetch returns path by default and payload when inline requested`() {
     val previewId = "com.example.LayoutPreview"
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(LayoutInspectorDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(LayoutInspectorDataProducer.FILE)
     file.writeText(
       """{"root":{"nodeId":"1","component":"SettingsRow","bounds":{"left":0,"top":80,"right":360,"bottom":136},"size":{"width":360,"height":56},"modifiers":[{"name":"padding","properties":{"top":"2.dp"}}]}}"""
     )
     val registry = LayoutInspectorDataProductRegistry(rootDir)
 
     val pathOutcome =
-      registry.fetch(previewId = previewId, kind = "layout/inspector", params = null, inline = false)
+      registry.fetch(
+        previewId = previewId,
+        kind = "layout/inspector",
+        params = null,
+        inline = false,
+      )
     assertTrue(pathOutcome is DataProductRegistry.Outcome.Ok)
     val pathResult = (pathOutcome as DataProductRegistry.Outcome.Ok).result
     assertEquals(file.absolutePath, pathResult.path)
@@ -136,10 +142,7 @@ class ComposeSemanticsDataProductRegistryTest {
     assertEquals(emptyList<Any>(), registry.attachmentsFor(previewId, setOf("layout/inspector")))
 
     val file =
-      rootDir
-        .resolve(previewId)
-        .also { it.mkdirs() }
-        .resolve(LayoutInspectorDataProducer.FILE)
+      rootDir.resolve(previewId).also { it.mkdirs() }.resolve(LayoutInspectorDataProducer.FILE)
     file.writeText(
       """{"root":{"nodeId":"1","component":"Box","bounds":{"left":0,"top":0,"right":1,"bottom":1},"size":{"width":1,"height":1}}}"""
     )

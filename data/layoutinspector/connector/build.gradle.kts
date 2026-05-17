@@ -1,36 +1,33 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
+// Issue #1201 — migrated from `android.library` to Compose Multiplatform JVM so
+// `:daemon:desktop` can depend on the registries (they're file-based JSON readers — pure JVM —
+// and their compile-time Compose types resolve cleanly against CMP's `compose.ui` on desktop
+// consumers). `:daemon:android` and `:renderer-android` (the existing Android consumers) keep
+// working because Android library modules can depend on JVM jars transparently.
+//
+// **Published artifact change**: AAR → JAR. Pre-1.0 so acceptable; the only external coordinate
+// for this module is `ee.schimke.composeai:data-layoutinspector-connector` and there's no public
+// dependency stability promise yet (see DESIGN.md § 17).
 
 plugins {
   id("composeai.maven-publishing")
-  alias(libs.plugins.android.library)
+  alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
 }
-
-android { namespace = "ee.schimke.composeai.data.layoutinspector.connector" }
 
 dependencies {
   api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))
-  compileOnly(platform(libs.compose.bom.compat))
-  compileOnly(libs.compose.ui)
-  testImplementation(platform(libs.compose.bom.compat))
-  testImplementation(libs.compose.ui)
+  // Compose Multiplatform's `compose.ui` resolves to the AndroidX variant on Android consumers
+  // and to the desktop/skiko variant on JVM consumers via Gradle variant attributes. `compileOnly`
+  // keeps it out of the published POM — the consumer (`:daemon:android` / `:daemon:desktop`)
+  // supplies its own at runtime, same shape as the pre-migration `compileOnly(libs.compose.ui)`.
+  compileOnly(compose.ui)
+  testImplementation(compose.ui)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {
