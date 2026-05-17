@@ -3,6 +3,19 @@ package ee.schimke.composeai.daemon.harness
 import java.io.File
 
 /**
+ * Propagates the `composeai.history.enabled` sysprop from the test JVM into a spawned daemon
+ * subprocess. Production daemons leave the property unset and the `HistoryFeature` default
+ * (`false`) keeps the history surface dead; the test JVM sets it `true` via the root build's
+ * `tasks.withType<Test>().configureEach { systemProperty("composeai.history.enabled", "true") }`
+ * hook so the history implementation stays exercised in CI. Without the explicit propagation here
+ * the spawned daemon JVM inherits nothing and the harness's history scenarios (S9 / S10 / S11) trip
+ * `MethodNotFound` for every history method call. Drop when 1.1 flips the default.
+ */
+private fun MutableList<String>.addHistoryFeatureSyspropIfSet() {
+  System.getProperty("composeai.history.enabled")?.let { add("-Dcomposeai.history.enabled=$it") }
+}
+
+/**
  * How the harness spawns the daemon JVM that [HarnessClient] talks to — see
  * [TEST-HARNESS § 8a + § 9](../../../docs/daemon/TEST-HARNESS.md#8a-the-fakehost-test-fixture).
  *
@@ -93,6 +106,7 @@ class FakeHarnessLauncher(
           add("-Dcomposeai.daemon.history.maxTotalSizeBytes=$pruneMaxTotalSizeBytes")
         if (pruneAutoIntervalMs != null)
           add("-Dcomposeai.daemon.history.autoPruneIntervalMs=$pruneAutoIntervalMs")
+        addHistoryFeatureSyspropIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
@@ -168,6 +182,7 @@ class RealDesktopHarnessLauncher(
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
         // Save-after-render ordering watchdog — same justification as `FakeHarnessLauncher` above.
         add("-Dcomposeai.daemon.discoveryWatchdogMs=500")
+        addHistoryFeatureSyspropIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
@@ -302,6 +317,7 @@ class RealAndroidHarnessLauncher(
         // can dominate the first render's wall-clock; tests should use a large *poll* timeout
         // (60-120s) rather than relying on this idle timeout to back-stop a hung daemon.
         add("-Dcomposeai.daemon.idleTimeoutMs=2000")
+        addHistoryFeatureSyspropIfSet()
         addAll(extraJvmArgs)
         add("-cp")
         add(cpString)
