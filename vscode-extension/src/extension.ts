@@ -2718,6 +2718,16 @@ async function warmShownPreviewsForFile(
     try {
         await daemonScheduler.setFocus(module, ids);
         await daemonScheduler.setVisible(module, ids, []);
+        // Yield once so any panel postMessages queued during refresh /
+        // daemon warm-up (chip activation, restored bundle state) reach
+        // handleSetDataExtensionEnabled before the warm-up render fires,
+        // then drain the data/subscribe traffic those handlers kicked
+        // off. Without this barrier the daemon's
+        // subscriptionDrivenRenderMode lock misses this first render and
+        // the user sees an extension-less first frame until they
+        // navigate away and back.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        await daemonScheduler.awaitPendingSubscribes(module.modulePath);
         await daemonScheduler.renderNow(module, ids, "fast", reason);
     } catch (err) {
         daemonShownPreviewWarmScopes.delete(scopeKey);

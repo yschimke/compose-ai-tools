@@ -2028,10 +2028,22 @@ export class PreviewApp extends LitElement {
             const availableBundles: BundleId[] = earlyFeatures()
                 ? s.bundles.map((b) => b.id)
                 : ["a11y"];
+            // Grey out inactive chips while the preview daemon is still
+            // spawning. A click during that window queues subscriptions
+            // whose follow-up renderNow races the warm-up render and
+            // misses the daemon's subscriptionDrivenRenderMode lock —
+            // surfacing the wait directly is clearer than the dataless
+            // bundle body the user would otherwise see. Active chips
+            // stay enabled so the user can still turn an in-flight
+            // bundle off if they want.
+            const daemonReady = isFocusedModuleReady(
+                liveState.getModuleDaemonReady(),
+            );
             bundleChipBar.setState({
                 bundles: s.bundles,
                 activeBundles: s.activeBundles,
                 availableBundles,
+                daemonReady,
             });
             dataTabs.setState({
                 bundles: s.bundles,
