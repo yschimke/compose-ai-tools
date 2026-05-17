@@ -149,6 +149,18 @@ export interface DaemonScheduler {
         kinds: readonly string[],
         enabled: boolean,
     ): Promise<void>;
+    /**
+     * Resolves once every in-flight `data/subscribe` for [moduleId] has been
+     * acknowledged by the daemon (or has settled — failures count as drained).
+     * Callers that issue a `renderNow` independently of
+     * [setDataProductSubscription] (e.g. the activation-time warm-up render)
+     * await this before sending so the daemon's
+     * `subscriptionDrivenRenderMode` lock has the panel-side subscriptions
+     * recorded by the time the render is dispatched. Without this barrier the
+     * first daemon render on a fresh spawn races the panel's chip-driven
+     * subscribe posts and the user sees an extension-less first frame.
+     */
+    awaitPendingSubscribes(moduleId: string): Promise<void>;
     renderNow(
         module: ModuleInfo,
         previewIds: string[],
@@ -188,6 +200,20 @@ export class LiveDaemonScheduler implements DaemonScheduler {
      * leaves `setVisible`, so we only need to dedup re-subscribes.
      */
     private readonly subscribedPairs = new Set<string>();
+    /**
+     * In-flight `data/subscribe` promises per moduleId. Tracked so an
+     * out-of-band caller (the activation warm-up render in
+     * `warmShownPreviewsForFile`) can drain them via
+     * [awaitPendingSubscribes] before issuing a `renderNow`. Without this
+     * drain, the warm-up render races the panel's chip-driven subscribes
+     * for the very first preview after a daemon spawn and the daemon's
+     * `subscriptionDrivenRenderMode` lock misses the in-flight render —
+     * extensions appear empty until the user re-navigates.
+     */
+    private readonly pendingSubscribes = new Map<
+        string,
+        Set<Promise<unknown>>
+    >();
     /** Cards we've already speculatively requested so scrolling back over
      *  them doesn't re-queue identical work. Keyed by `${moduleId}::${id}`. */
     private speculated = new Set<string>();
@@ -430,16 +456,19 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             if (enabled) {
                 this.subscribedPairs.add(subKey);
                 subscribedAny = true;
-                client.dataSubscribe({ previewId, kind }).catch((err) => {
-                    // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
-                    // expected, not noise — log to the daemon channel and roll back the
-                    // bookkeeping so a later daemon spawn re-issues.
-                    const msg = (err as Error)?.message ?? String(err);
-                    this.logger.appendLine(
-                        `[daemon] dataSubscribe(${previewId}, ${kind}) failed: ${msg}`,
-                    );
-                    this.subscribedPairs.delete(subKey);
-                });
+                const subPromise = client
+                    .dataSubscribe({ previewId, kind })
+                    .catch((err) => {
+                        // Pre-D2 daemons reject with DataProductUnknown for every kind; that's
+                        // expected, not noise — log to the daemon channel and roll back the
+                        // bookkeeping so a later daemon spawn re-issues.
+                        const msg = (err as Error)?.message ?? String(err);
+                        this.logger.appendLine(
+                            `[daemon] dataSubscribe(${previewId}, ${kind}) failed: ${msg}`,
+                        );
+                        this.subscribedPairs.delete(subKey);
+                    });
+                this.trackPendingSubscribe(module.modulePath, subPromise);
             } else {
                 this.subscribedPairs.delete(subKey);
                 client.dataUnsubscribe({ previewId, kind }).catch((err) => {
@@ -475,6 +504,41 @@ export class LiveDaemonScheduler implements DaemonScheduler {
                     );
                 });
         }
+    }
+
+    /**
+     * Stash the in-flight `data/subscribe` promise so a parallel `renderNow`
+     * caller can drain it before sending. The promise is removed from the
+     * pending set on settle (resolve or reject) so a long-lived module
+     * doesn't accumulate references.
+     */
+    private trackPendingSubscribe(
+        moduleId: string,
+        promise: Promise<unknown>,
+    ): void {
+        let bucket = this.pendingSubscribes.get(moduleId);
+        if (!bucket) {
+            bucket = new Set();
+            this.pendingSubscribes.set(moduleId, bucket);
+        }
+        bucket.add(promise);
+        const drop = () => {
+            const current = this.pendingSubscribes.get(moduleId);
+            if (!current) return;
+            current.delete(promise);
+            if (current.size === 0) this.pendingSubscribes.delete(moduleId);
+        };
+        promise.then(drop, drop);
+    }
+
+    awaitPendingSubscribes(moduleId: string): Promise<void> {
+        const bucket = this.pendingSubscribes.get(moduleId);
+        if (!bucket || bucket.size === 0) {
+            return Promise.resolve();
+        }
+        // Snapshot — settle the entries we know about now; subscribes
+        // issued later are the next caller's problem.
+        return Promise.allSettled([...bucket]).then(() => undefined);
     }
 
     /**
@@ -720,6 +784,10 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         _enabled: boolean,
     ): Promise<void> {
         /* no-op: data extensions are disabled in minimal mode */
+    }
+
+    async awaitPendingSubscribes(_moduleId: string): Promise<void> {
+        /* no-op: minimal mode never issues data/subscribe */
     }
 
     async renderNow(
