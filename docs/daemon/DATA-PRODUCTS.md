@@ -289,28 +289,34 @@ A `data/fetch` that needs a re-render:
 
 ## Per-backend support matrix (issue #1201)
 
-Which kinds each backend's `extensions/list` advertises and serves through `data/fetch` / `data/subscribe`. Read this together with `initialize.capabilities.dataProducts`: the daemon never lies about what it can advertise, so a kind that shows up in `extensions/list` will round-trip through `data/fetch` (possibly returning `NotAvailable` when no producer has written yet, but **never** `-32020 DataProductUnknown`).
+Which `kind` strings each backend's `extensions/list` advertises and serves through `data/fetch` / `data/subscribe`. The first column is the wire-level `kind` the client passes — **not** the daemon-side `Extension.id` (those differ: e.g. the extension registered as `data/theme` exposes the kind `compose/theme`). Read this together with `initialize.capabilities.dataProducts`: the daemon never lies about what it can advertise, so a kind that shows up in the capability list will round-trip through `data/fetch` (possibly returning `NotAvailable` when no producer has written yet, but **never** `-32020 DataProductUnknown`).
 
-| Kind | Android | Desktop (CMP) | Notes |
+| `kind` | Android | Desktop (CMP) | Notes |
 |---|---|---|---|
-| `device/clip` / `device/background` | ✅ | ✅ | Renderer-agnostic device-bound previewer. |
-| `render/trace` / `render/test-failure` / `render/overlay-legend` | ✅ | ✅ | Renderer-agnostic. |
-| `data/theme` / `data/wallpaper` / `data/pseudolocale` | ✅ | ✅ | Override-extension shapes. Pseudolocale has separate Android / Desktop planner modules — see `:data-pseudolocale-connector{-desktop}`. |
-| `data/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
-| `compose/trace` | ✅ | ✅ | Both backends, gated on `composeai.perfetto.enabled` + `composeai.render.outputDir`. |
-| `displayfilter` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
+| `render/deviceClip` / `render/deviceBackground` | ✅ | ✅ | Renderer-agnostic device-bound previewer. |
+| `render/trace` | ✅ | ✅ | Phase breakdown from render metrics. |
+| `render/composeAiTrace` | ✅ | ✅ | Both backends, gated on `composeai.perfetto.enabled` + `composeai.render.outputDir`. |
+| `test/failure` | ✅ | ✅ | Postmortem bundle on `renderFailed`. Renderer-agnostic. |
+| `compose/theme` | ✅ | ✅ | Material 3 theme tokens. Override-extension shape. |
+| `compose/wallpaper` | ✅ | ✅ | Wallpaper override shape. |
+| `compose/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
+| `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
 | `compose/semantics` / `layout/inspector` | ✅ producer | 📁 registry-only | Android producer reads the Robolectric semantics tree. Desktop registry serves the file once a CMP-portable producer driving `LocalView` / `SemanticsOwner` lands. |
 | `text/strings` | ✅ producer | 📁 registry-only | Synthesised from `compose/semantics`; ports along with that kind. |
 | `i18n/translations` | ✅ producer | 📁 registry-only | Reads `values*/strings.xml`. Desktop equivalent reads `org.jetbrains.compose.resources.ResourceEnvironment` once that producer ports. |
 | `data/navigation` | ✅ producer | 📁 registry-only | Android producer reads `Activity.intent` + `OnBackPressedDispatcher`. Desktop equivalent watches `NavController`; same registry file shape. |
 | `history/diff/regions` + history JSON-RPC | 🔒 1.1 | 🔒 1.1 | Both backends gated behind `HistoryFeature.ENABLED` (post-1.0). See `daemon/core/.../HistoryFeature.kt`. |
-| `a11y/atf` + `a11y/hierarchy` + `a11y/touchTargets` + `a11y/overlay` | ✅ | ❌ Android-only | Producer depends on ATF + Robolectric `AccessibilityNodeInfo` walks. CMP-portable subset (geometric touch-target + contrast against `SemanticsNode`) is a future track; not blocked on registry. |
+| `a11y/atf` / `a11y/hierarchy` / `a11y/touchTargets` / `a11y/overlay` | ✅ | ❌ Android-only | Producer depends on ATF + Robolectric `AccessibilityNodeInfo` walks. CMP-portable subset (geometric touch-target + contrast against `SemanticsNode`) is a future track; not blocked on registry. |
 | `resources/used` | ✅ | ❌ Android-only | Producer intercepts `Resources.getValue`; no Compose-Multiplatform analogue ships. |
-| `uia/hierarchy` (uiautomator) | ✅ | ❌ Android-only | UIAutomator is Android-API surface; CMP-desktop panel chips should grey out on `serverCapabilities.backend == "desktop"`. |
-| `data/ambient` | ✅ Wear-only | ❌ | Robolectric shadow of `AmbientLifecycleObserver` — Wear OS only. |
+| `uia/hierarchy` | ✅ | ❌ Android-only | UIAutomator is Android-API surface; CMP-desktop panel chips should grey out on `serverCapabilities.backend == "desktop"`. |
+| `compose/ambient` | ✅ Wear-only | ❌ | Robolectric shadow of `AmbientLifecycleObserver` — Wear OS only. |
 
 Legend: ✅ producer = backend writes the artefact each render. 📁 registry-only = backend advertises the kind and serves `data/fetch` against the file when present; producer has not ported yet, so the kind returns `NotAvailable` until either a port lands or an Android render writes into the same `dataRoot` (which only happens if Android and Desktop daemons share an output dir — an unusual deployment). ❌ = not advertised; panel should grey out on `serverCapabilities.backend == "desktop"`. 🔒 = gated behind a feature flag.
+
+> The CMP-desktop panel additionally surfaces several override extensions that don't ship a `kind` and therefore aren't `data/fetch`-able: `data/pseudolocale` (locale override + `LayoutDirection.Rtl`) and `render/overlay-legend` (preview overlay only). They appear in `extensions/list` but their `dataProducts` capability set is empty by design.
+
+
 
 ## Worked example: `a11y/hierarchy`
 
