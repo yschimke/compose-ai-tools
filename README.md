@@ -46,3 +46,10 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![text-strings/dark](renders/text-strings.dark.png) |
 | `light` | ![text-strings/light](renders/text-strings.light.png) |
 
+## theming
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![theming/dark](renders/theming.dark.png) |
+| `light` | ![theming/light](renders/theming.light.png) |
+
