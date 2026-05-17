@@ -35,6 +35,7 @@ import { DaemonClient } from "./daemon/daemonClient";
 import {
     DataProductAttachment,
     InteractiveInputKind,
+    RecordingFormat,
     RenderFailedParams,
     RenderFinishedParams,
     StreamFrameParams,
@@ -94,6 +95,12 @@ type WebviewMessage =
           imageHeight: number;
           scrollDeltaY?: number;
           keyCode?: string;
+      }
+    | {
+          command: "setRecording";
+          previewId: string;
+          enabled: boolean;
+          format?: RecordingFormat;
       };
 
 export class BundleViewerPanel {
@@ -177,6 +184,20 @@ export class BundleViewerPanel {
      *  identifies the stream by `frameStreamId`, the webview wants
      *  `previewId`. */
     private readonly streamFrameIdToPreviewId = new Map<string, string>();
+    /** Active `recording/*` sessions keyed by `previewId`. Value is the
+     *  daemon-allocated recordingId; format lives in a sibling map so
+     *  `recording/encode` on stop can pick the same container the user
+     *  chose at start. Mirrors `extension.ts:activeRecordingSessions`
+     *  / `activeRecordingFormats`, panel-scoped. */
+    private readonly activeRecordings = new Map<string, string>();
+    private readonly activeRecordingFormats = new Map<
+        string,
+        RecordingFormat
+    >();
+    /** Per-preview mutation queue so two rapid REC clicks can't race
+     *  `recording/start` against `recording/stop`. Same shape as
+     *  `extension.ts:recordingMutationQueues`. */
+    private readonly recordingMutationQueues = new Map<string, Promise<void>>();
     /** Synthetic module id the bundle viewer surfaces to `<preview-app>`
      *  so `setInteractiveAvailability` routes through the same
      *  `LiveStateController` plumbing the sidebar uses. */
@@ -215,8 +236,68 @@ export class BundleViewerPanel {
         }
         this.activeStreams.clear();
         this.streamFrameIdToPreviewId.clear();
-        this.daemon?.dispose();
-        this.daemon = null;
+        // Recordings need stop+encode before the daemon's frame buffer
+        // disappears. Snapshot the maps, then kick off the encode
+        // asynchronously — `disposeAfterRecordings` awaits the
+        // recording flushes (with a timeout) before SIGTERMing the
+        // daemon, so the user gets the saved videoPath toast for an
+        // in-progress recording even if they closed the tab.
+        const pendingRecordings = [...this.activeRecordings.entries()];
+        const pendingFormats = new Map(this.activeRecordingFormats);
+        this.activeRecordings.clear();
+        this.activeRecordingFormats.clear();
+        if (pendingRecordings.length === 0) {
+            this.daemon?.dispose();
+            this.daemon = null;
+            return;
+        }
+        void this.disposeAfterRecordings(pendingRecordings, pendingFormats);
+    }
+
+    private async disposeAfterRecordings(
+        pending: Array<[string, string]>,
+        formats: Map<string, RecordingFormat>,
+    ): Promise<void> {
+        const daemon = this.daemon;
+        if (!daemon) return;
+        try {
+            await Promise.race([
+                Promise.all(
+                    pending.map(async ([previewId, recordingId]) => {
+                        try {
+                            const stopped = await daemon.client.recordingStop({
+                                recordingId,
+                            });
+                            const encoded = await daemon.client.recordingEncode(
+                                {
+                                    recordingId,
+                                    format: formats.get(previewId) ?? "apng",
+                                },
+                            );
+                            this.deps.logLine(
+                                `${CHANNEL} recording flushed ${previewId}: ${encoded.videoPath} ` +
+                                    `(${stopped.frameCount} frames)`,
+                            );
+                            void vscode.window.showInformationMessage(
+                                `Compose preview recording saved: ${encoded.videoPath}`,
+                            );
+                        } catch (err) {
+                            this.deps.logLine(
+                                `${CHANNEL} recording flush ${previewId} failed: ${(err as Error).message}`,
+                            );
+                        }
+                    }),
+                ),
+                // Guardrail: if the daemon hangs on encode (e.g. ffmpeg
+                // shells out to a missing binary), don't pin the JVM
+                // alive forever — 10s is more than enough for an APNG /
+                // MP4 of a few-second recording.
+                new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+            ]);
+        } finally {
+            daemon.dispose();
+            this.daemon = null;
+        }
     }
 
     private start(): void {
@@ -470,6 +551,14 @@ export class BundleViewerPanel {
                 break;
             case "recordInteractiveInput":
                 this.handleInteractiveInput(msg);
+                this.forwardRecordingInput(msg);
+                break;
+            case "setRecording":
+                this.queueRecordingMutation(
+                    msg.previewId,
+                    msg.enabled,
+                    msg.format ?? "apng",
+                );
                 break;
         }
     }
@@ -582,6 +671,162 @@ export class BundleViewerPanel {
         } catch (err) {
             this.deps.logLine(
                 `${CHANNEL} interactive/input ${msg.previewId}: ${(err as Error).message}`,
+            );
+        }
+    }
+
+    /**
+     * When a recording is active on this preview, fan out the same
+     * pointer/key event to `recording/input` so the recorded script
+     * captures it alongside the live frame. Mirrors `forwardRecordingInput`
+     * in the sidebar's `extension.ts`.
+     */
+    private forwardRecordingInput(
+        msg: Extract<WebviewMessage, { command: "recordInteractiveInput" }>,
+    ): void {
+        const recordingId = this.activeRecordings.get(msg.previewId);
+        if (!recordingId) return;
+        try {
+            this.daemon?.client.recordingInput({
+                recordingId,
+                kind: msg.kind,
+                pixelX: msg.pixelX,
+                pixelY: msg.pixelY,
+                scrollDeltaY: msg.scrollDeltaY,
+                keyCode: msg.keyCode,
+            });
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} recording/input ${msg.previewId}: ${(err as Error).message}`,
+            );
+        }
+    }
+
+    /**
+     * Serialise REC start/stop toggles per previewId so a rapid double-
+     * click can't fire `recording/start` while a `recording/stop` is in
+     * flight (or vice versa). Same shape as
+     * `extension.ts:queueRecordingMutation`.
+     */
+    private queueRecordingMutation(
+        previewId: string,
+        enabled: boolean,
+        format: RecordingFormat,
+    ): void {
+        const previous =
+            this.recordingMutationQueues.get(previewId) ?? Promise.resolve();
+        const next = previous
+            .catch(() => {})
+            .then(() => this.handleSetRecording(previewId, enabled, format))
+            .catch((err) => {
+                this.deps.logLine(
+                    `${CHANNEL} setRecording ${previewId} failed: ${(err as Error).message}`,
+                );
+                if (!this.disposed) {
+                    this.panel.webview.postMessage({
+                        command: "clearRecording",
+                        previewId,
+                    });
+                }
+            })
+            .finally(() => {
+                if (this.recordingMutationQueues.get(previewId) === next) {
+                    this.recordingMutationQueues.delete(previewId);
+                }
+            });
+        this.recordingMutationQueues.set(previewId, next);
+    }
+
+    private async handleSetRecording(
+        previewId: string,
+        enabled: boolean,
+        format: RecordingFormat,
+    ): Promise<void> {
+        const client = this.daemon?.client;
+        if (!client) {
+            if (!this.disposed) {
+                this.panel.webview.postMessage({
+                    command: "clearRecording",
+                    previewId,
+                });
+            }
+            return;
+        }
+        if (!enabled) {
+            const recordingId = this.activeRecordings.get(previewId);
+            if (!recordingId) {
+                if (!this.disposed) {
+                    this.panel.webview.postMessage({
+                        command: "clearRecording",
+                        previewId,
+                    });
+                }
+                return;
+            }
+            this.activeRecordings.delete(previewId);
+            const encodeFormat =
+                this.activeRecordingFormats.get(previewId) ?? format;
+            this.activeRecordingFormats.delete(previewId);
+            try {
+                const stopped = await client.recordingStop({ recordingId });
+                const encoded = await client.recordingEncode({
+                    recordingId,
+                    format: encodeFormat,
+                });
+                this.deps.logLine(
+                    `${CHANNEL} recording saved ${previewId}: ${encoded.videoPath} ` +
+                        `(${stopped.frameCount} frames, ${stopped.durationMs}ms)`,
+                );
+                void vscode.window.showInformationMessage(
+                    `Compose preview recording saved: ${encoded.videoPath}`,
+                );
+            } catch (err) {
+                this.deps.logLine(
+                    `${CHANNEL} recording/stop ${previewId} failed: ${(err as Error).message}`,
+                );
+                void vscode.window.showErrorMessage(
+                    `Compose preview recording failed: ${(err as Error).message}`,
+                );
+            } finally {
+                if (!this.disposed) {
+                    this.panel.webview.postMessage({
+                        command: "clearRecording",
+                        previewId,
+                    });
+                }
+            }
+            return;
+        }
+
+        if (this.activeRecordings.has(previewId)) {
+            // Idempotent on the optimistic-toggle path.
+            return;
+        }
+        try {
+            const result = await client.recordingStart({
+                previewId,
+                fps: 30,
+                scale: 1.0,
+                live: true,
+            });
+            this.activeRecordings.set(previewId, result.recordingId);
+            this.activeRecordingFormats.set(previewId, format);
+            client.setFocus({ ids: [previewId] });
+            this.deps.logLine(
+                `${CHANNEL} recording on ${previewId} (recordingId=${result.recordingId})`,
+            );
+        } catch (err) {
+            this.deps.logLine(
+                `${CHANNEL} recording/start ${previewId} failed: ${(err as Error).message}`,
+            );
+            if (!this.disposed) {
+                this.panel.webview.postMessage({
+                    command: "clearRecording",
+                    previewId,
+                });
+            }
+            void vscode.window.showErrorMessage(
+                `Compose preview recording failed: ${(err as Error).message}`,
             );
         }
     }
