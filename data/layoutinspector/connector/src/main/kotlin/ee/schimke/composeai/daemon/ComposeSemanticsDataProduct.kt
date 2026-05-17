@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import androidx.compose.runtime.tooling.CompositionData
+import androidx.compose.runtime.tooling.CompositionGroup
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -13,8 +15,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.TextUnitType
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -27,11 +27,7 @@ import java.io.File
 import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.roundToInt
-import androidx.compose.runtime.tooling.CompositionData
-import androidx.compose.runtime.tooling.CompositionGroup
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /** Producer for `compose/semantics`, a compact SemanticsNode projection for inspector clients. */
 object ComposeSemanticsDataProducer {
@@ -47,9 +43,9 @@ object ComposeSemanticsDataProducer {
   fun writeArtifacts(rootDir: File, previewId: String, root: SemanticsNode) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ComposeSemanticsPayload(root = root.toWireNode())
-    previewDir.resolve(FILE).writeText(
-      json.encodeToString(ComposeSemanticsPayload.serializer(), payload)
-    )
+    previewDir
+      .resolve(FILE)
+      .writeText(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
   }
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
@@ -89,16 +85,16 @@ object ComposeSemanticsDataProducer {
     getOrNull(SemanticsProperties.ContentDescription)
       ?.joinToString(" ")
       ?.takeIf { it.isNotBlank() }
-      ?.let { return it }
+      ?.let {
+        return it
+      }
     return getOrNull(SemanticsProperties.Text)
       ?.joinToString(" ") { it.text }
       ?.takeIf { it.isNotBlank() }
   }
 
   private fun SemanticsConfiguration.renderedText(): String? =
-    getOrNull(SemanticsProperties.Text)
-      ?.joinToString(" ") { it.text }
-      ?.takeIf { it.isNotBlank() }
+    getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }?.takeIf { it.isNotBlank() }
 
   private fun SemanticsConfiguration.layoutDetails(): LayoutTextDetails? {
     val action = getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null
@@ -135,9 +131,11 @@ object ComposeSemanticsDataProducer {
         .distinct()
         .singleOrNull()
     val overflow =
-      results.map { it.layoutInput.overflow.toString() }.distinct().singleOrNull()?.takeIf {
-        it.isNotBlank()
-      }
+      results
+        .map { it.layoutInput.overflow.toString() }
+        .distinct()
+        .singleOrNull()
+        ?.takeIf { it.isNotBlank() }
     return LayoutTextDetails(
       text = text,
       fontSize = fontSize,
@@ -154,17 +152,15 @@ object ComposeSemanticsDataProducer {
     )
   }
 
-  private fun TextLayoutResult.textColors(): List<Color> =
-    buildList {
-      add(layoutInput.style.color)
-      layoutInput.text.spanStyles.forEach { add(it.item.color) }
-    }
+  private fun TextLayoutResult.textColors(): List<Color> = buildList {
+    add(layoutInput.style.color)
+    layoutInput.text.spanStyles.forEach { add(it.item.color) }
+  }
 
-  private fun TextLayoutResult.backgroundColors(): List<Color> =
-    buildList {
-      add(layoutInput.style.background)
-      layoutInput.text.spanStyles.forEach { add(it.item.background) }
-    }
+  private fun TextLayoutResult.backgroundColors(): List<Color> = buildList {
+    add(layoutInput.style.background)
+    layoutInput.text.spanStyles.forEach { add(it.item.background) }
+  }
 
   private fun unambiguousColor(colors: List<Color>): Color? =
     colors.filter { it != Color.Unspecified }.distinct().singleOrNull()
@@ -191,14 +187,20 @@ object ComposeSemanticsDataProducer {
 
 typealias ComposeSemanticsPayload =
   ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+
 typealias ComposeSemanticsNode = ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
-typealias LayoutInspectorPayload =
-  ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+
+typealias LayoutInspectorPayload = ee.schimke.composeai.data.layoutinspector.LayoutInspectorPayload
+
 typealias LayoutInspectorNode = ee.schimke.composeai.data.layoutinspector.LayoutInspectorNode
+
 typealias LayoutInspectorBounds = ee.schimke.composeai.data.layoutinspector.LayoutInspectorBounds
+
 typealias LayoutInspectorSize = ee.schimke.composeai.data.layoutinspector.LayoutInspectorSize
+
 typealias LayoutInspectorConstraints =
   ee.schimke.composeai.data.layoutinspector.LayoutInspectorConstraints
+
 typealias LayoutInspectorModifier =
   ee.schimke.composeai.data.layoutinspector.LayoutInspectorModifier
 
@@ -213,18 +215,14 @@ object LayoutInspectorDataProducer {
     prettyPrint = false
   }
 
-  fun writeArtifacts(
-    rootDir: File,
-    previewId: String,
-    previewContext: PreviewContext,
-  ) {
+  fun writeArtifacts(rootDir: File, previewId: String, previewContext: PreviewContext) {
     val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return
     val layoutRoot = ComposeLayoutInspector.inspect(capture) ?: return
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = LayoutInspectorPayload(root = layoutRoot)
-    previewDir.resolve(FILE).writeText(
-      json.encodeToString(LayoutInspectorPayload.serializer(), payload)
-    )
+    previewDir
+      .resolve(FILE)
+      .writeText(json.encodeToString(LayoutInspectorPayload.serializer(), payload))
   }
 }
 
@@ -238,7 +236,9 @@ internal data class LayoutInspectorCaptureContext(
       return LayoutInspectorCaptureContext(
         rootSemanticsNode = root.semanticsOwner.unmergedRootSemanticsNode,
         slotTables =
-          ExtensionSlotTables.of(previewContext.inspection.slotTables.filterIsInstance<CompositionData>()),
+          ExtensionSlotTables.of(
+            previewContext.inspection.slotTables.filterIsInstance<CompositionData>()
+          ),
       )
     }
   }
@@ -286,13 +286,11 @@ internal object ComposeLayoutInspector {
     rootCoordinates: LayoutCoordinates?
   ): LayoutInspectorModifier? {
     val inspectable = modifier as? InspectableValue
-    val name = inspectable?.nameFallback?.takeIf { it.isNotBlank() } ?: modifier.javaClass.simpleName
+    val name =
+      inspectable?.nameFallback?.takeIf { it.isNotBlank() } ?: modifier.javaClass.simpleName
     val value = inspectable?.valueOverride?.wireValue()
     val properties =
-      inspectable
-        ?.inspectableElements
-        ?.associate { it.name to it.value.wireValue() }
-        .orEmpty()
+      inspectable?.inspectableElements?.associate { it.name to it.value.wireValue() }.orEmpty()
     return LayoutInspectorModifier(
       name = name,
       value = value,
@@ -321,13 +319,14 @@ internal object ComposeLayoutInspector {
       )
     }
 
-  private fun Any?.wireValue(): String = when (this) {
-    null -> "null"
-    is String -> this
-    is Number,
-    is Boolean -> toString()
-    else -> toString()
-  }
+  private fun Any?.wireValue(): String =
+    when (this) {
+      null -> "null"
+      is String -> this
+      is Number,
+      is Boolean -> toString()
+      else -> toString()
+    }
 
   private data class LayoutSource(
     val component: String,
@@ -348,11 +347,12 @@ internal object ComposeLayoutInspector {
           val node = group.node ?: return@forEach
           val sourceInfo = group.sourceInfo
           if (sourceInfo != null) {
-            byNode[node] = LayoutSource(
-              component = sourceInfo.componentName() ?: node.javaClass.simpleName,
-              source = sourceInfo.sourceLocation(),
-              sourceInfo = sourceInfo,
-            )
+            byNode[node] =
+              LayoutSource(
+                component = sourceInfo.componentName() ?: node.javaClass.simpleName,
+                source = sourceInfo.sourceLocation(),
+                sourceInfo = sourceInfo,
+              )
           }
         }
     }
@@ -421,7 +421,8 @@ internal object ComposeLayoutInspector {
       (call(semanticsNode, "getLayoutNode\$ui_release") ?: call(semanticsNode, "getLayoutInfo"))
         ?.let(::LayoutNodeFacade)
 
-    fun coordinates(node: Any): LayoutCoordinates? = call(node, "getCoordinates") as? LayoutCoordinates
+    fun coordinates(node: Any): LayoutCoordinates? =
+      call(node, "getCoordinates") as? LayoutCoordinates
 
     fun semanticsId(node: Any): Int? = call(node, "getSemanticsId") as? Int
 
@@ -441,8 +442,7 @@ internal object ComposeLayoutInspector {
       sequenceOf("getZSortedChildren", "getChildren\$ui_release", "getFoldedChildren\$ui_release")
         .mapNotNull { call(node, it) as? Iterable<*> }
         .firstOrNull()
-        ?.filterNotNull()
-        ?: emptyList()
+        ?.filterNotNull() ?: emptyList()
 
     fun constraints(node: Any): LayoutInspectorConstraints? {
       val delegate = call(node, "getLayoutDelegate\$ui_release") ?: return null
@@ -498,9 +498,11 @@ internal object ComposeLayoutInspector {
     private fun Class<*>.findZeroArgMethod(name: String): Method? {
       var current: Class<*>? = this
       while (current != null) {
-        current.declaredMethods.firstOrNull { it.name == name && it.parameterCount == 0 }?.let {
-          return it
-        }
+        current.declaredMethods
+          .firstOrNull { it.name == name && it.parameterCount == 0 }
+          ?.let {
+            return it
+          }
         current = current.superclass
       }
       return methods.firstOrNull { it.name == name && it.parameterCount == 0 }
@@ -508,148 +510,54 @@ internal object ComposeLayoutInspector {
   }
 }
 
-/** Registry side for `compose/semantics`; reads the latest JSON artefact from disk. */
-class ComposeSemanticsDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = ComposeSemanticsDataProducer.KIND,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-        displayName = "Compose semantics",
-        facets = listOf(DataProductFacet.STRUCTURED),
-        mediaTypes = listOf("application/json"),
-        sampling = SamplingPolicy.End,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != ComposeSemanticsDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/**
+ * Registry for `compose/semantics`. Path-transport by default; the inline-fallback read and
+ * missing-file → NotAvailable plumbing come from [FileBackedDataProductRegistry].
+ */
+class ComposeSemanticsDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = ComposeSemanticsDataProducer.KIND,
           schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
+          displayName = "Compose semantics",
+          facets = listOf(DataProductFacet.STRUCTURED),
+          mediaTypes = listOf("application/json"),
+          sampling = SamplingPolicy.End,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(
-    previewId: String,
-    kinds: Set<String>,
-  ): List<DataProductAttachment> {
-    if (ComposeSemanticsDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = ComposeSemanticsDataProducer.KIND,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(ComposeSemanticsDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == ComposeSemanticsDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(ComposeSemanticsDataProducer.FILE)
+    else null
 }
 
-/** Registry side for `layout/inspector`; reads the latest JSON artefact from disk. */
-class LayoutInspectorDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = LayoutInspectorDataProducer.KIND,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != LayoutInspectorDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/**
+ * Registry for `layout/inspector`. Path-transport by default with the inline-fallback the base
+ * class supplies via `inline=true` upgrade.
+ */
+class LayoutInspectorDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = LayoutInspectorDataProducer.KIND,
           schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(
-    previewId: String,
-    kinds: Set<String>,
-  ): List<DataProductAttachment> {
-    if (LayoutInspectorDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = LayoutInspectorDataProducer.KIND,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(LayoutInspectorDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == LayoutInspectorDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(LayoutInspectorDataProducer.FILE)
+    else null
 }

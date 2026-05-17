@@ -1,33 +1,24 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
+// Issue #1201 — migrated from `android.library` to Compose Multiplatform JVM. See the parity
+// note in `:data-layoutinspector-connector`'s build script; same rationale applies. The two
+// I18nTranslations/TextStrings registries are file-based readers and the producer-side imports
+// are `androidx.compose.ui.semantics.*` which CMP exposes on JVM.
 
 plugins {
   id("composeai.maven-publishing")
-  alias(libs.plugins.android.library)
+  alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
+  alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
 }
-
-android { namespace = "ee.schimke.composeai.data.strings.connector" }
 
 dependencies {
   api(project(":data-strings-core"))
   api(project(":daemon:core"))
   api(project(":data-layoutinspector-core"))
-  compileOnly(platform(libs.compose.bom.compat))
-  compileOnly(libs.compose.ui)
+  compileOnly(compose.ui)
+  testImplementation(compose.ui)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {

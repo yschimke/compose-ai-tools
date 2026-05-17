@@ -95,8 +95,7 @@ class TextStringsDataProductRegistry(
   private fun payloadFor(previewId: String): TextStringsPayload? {
     val file = rootDir.resolve(previewId).resolve(ComposeSemanticsProduct.FILE)
     if (!file.exists()) return null
-    val semantics =
-      json.decodeFromString(ComposeSemanticsPayload.serializer(), file.readText())
+    val semantics = json.decodeFromString(ComposeSemanticsPayload.serializer(), file.readText())
     val metadata = latestRenderMetadata[previewId] ?: metadataFor(previewId, overrides = null)
     val texts = buildList { collectTexts(semantics.root, metadata.localeTag, metadata.fontScale) }
     return TextStringsPayload(texts = texts)

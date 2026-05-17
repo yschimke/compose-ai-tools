@@ -13,7 +13,9 @@ class ComposeLayoutInspectorTest {
     val semanticsRoot = SemanticsNodeLike(layoutNode = root)
 
     val node =
-      ComposeLayoutInspector.inspect(LayoutInspectorCaptureContext(rootSemanticsNode = semanticsRoot))
+      ComposeLayoutInspector.inspect(
+        LayoutInspectorCaptureContext(rootSemanticsNode = semanticsRoot)
+      )
 
     requireNotNull(node)
     assertEquals("42", node.nodeId)
@@ -31,14 +33,17 @@ class ComposeLayoutInspectorTest {
     val semanticsRoot = SemanticsInfoLike(layoutInfo = layout)
 
     val node =
-      ComposeLayoutInspector.inspect(LayoutInspectorCaptureContext(rootSemanticsNode = semanticsRoot))
+      ComposeLayoutInspector.inspect(
+        LayoutInspectorCaptureContext(rootSemanticsNode = semanticsRoot)
+      )
 
     assertEquals("9", node?.nodeId)
   }
 
   @Test
   fun returnsNullWhenNoLayoutRootIsAvailable() {
-    val node = ComposeLayoutInspector.inspect(LayoutInspectorCaptureContext(rootSemanticsNode = Any()))
+    val node =
+      ComposeLayoutInspector.inspect(LayoutInspectorCaptureContext(rootSemanticsNode = Any()))
 
     assertNull(node)
   }
