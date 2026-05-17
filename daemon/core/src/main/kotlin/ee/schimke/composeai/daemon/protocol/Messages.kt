@@ -206,6 +206,17 @@ data class ServerCapabilities(
    * its pinned `@Config(sdk = ...)` value; `null` on Desktop and other non-Android backends.
    */
   val androidSdk: Int? = null,
+  /**
+   * Interactive input kinds (beyond pointer / click) this host can actually dispatch into a held
+   * composition. Wire-spelling matches [InteractiveInputKind]'s [SerialName]s (`keyDown`, `keyUp`,
+   * `rotaryScroll`). Pointer-family kinds are always supported when [interactive] is `true` and are
+   * not listed here.
+   *
+   * Clients (panel / MCP) use this to decide whether to surface interactive controls — a keyboard
+   * listener forwarding `keyDown` / `keyUp`, a rotary-scroll affordance, etc. Empty list = host
+   * supports only pointer events (pre-#1203 behavior); clients treat absent and `[]` identically.
+   */
+  val interactiveControlKinds: List<String> = emptyList(),
 )
 
 /**
@@ -1205,7 +1216,9 @@ data class RecordingInputParams(
   /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
-  /** For `keyDown` / `keyUp` (reserved; v1 dispatch is a no-op). */
+  /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
+  val scrollDeltaY: Float? = null,
+  /** For `keyDown` / `keyUp`. Decimal-string Android `KEYCODE_*`; see `InteractiveKeyCodes`. */
   val keyCode: String? = null,
 )
 

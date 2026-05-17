@@ -8,6 +8,7 @@
 import * as assert from "assert";
 import {
     attachInteractiveInputHandlers,
+    domCodeToAndroidKeycode,
     liveRenderSurface,
 } from "../webview/preview/interactiveInput";
 
@@ -629,5 +630,135 @@ describe("attachInteractiveInputHandlers pointermove — rAF coalescing", () => 
             posted.map((m) => m["kind"]),
             ["pointerDown"],
         );
+    });
+});
+
+describe("domCodeToAndroidKeycode (issue #1203)", () => {
+    it("translates the wire-format keys to their Android KEYCODE_* ints", () => {
+        // Pin the entries the daemon's `InteractiveKeyCodes` covers — anchor
+        // by Android KEYCODE_* values so a drift on either side trips this.
+        assert.strictEqual(domCodeToAndroidKeycode("KeyA"), 29);
+        assert.strictEqual(domCodeToAndroidKeycode("KeyZ"), 54);
+        assert.strictEqual(domCodeToAndroidKeycode("Digit0"), 7);
+        assert.strictEqual(domCodeToAndroidKeycode("Digit9"), 16);
+        assert.strictEqual(domCodeToAndroidKeycode("Space"), 62);
+        assert.strictEqual(domCodeToAndroidKeycode("Enter"), 66);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadEnter"), 66);
+        assert.strictEqual(domCodeToAndroidKeycode("Backspace"), 67);
+        assert.strictEqual(domCodeToAndroidKeycode("Delete"), 112);
+        assert.strictEqual(domCodeToAndroidKeycode("ArrowLeft"), 21);
+        assert.strictEqual(domCodeToAndroidKeycode("ArrowRight"), 22);
+        assert.strictEqual(domCodeToAndroidKeycode("ArrowUp"), 19);
+        assert.strictEqual(domCodeToAndroidKeycode("ArrowDown"), 20);
+        assert.strictEqual(domCodeToAndroidKeycode("ShiftLeft"), 59);
+        assert.strictEqual(domCodeToAndroidKeycode("ControlLeft"), 113);
+    });
+
+    it("returns null for codes outside the table so unmapped keys drop silently", () => {
+        assert.strictEqual(domCodeToAndroidKeycode("F13"), null);
+        assert.strictEqual(domCodeToAndroidKeycode("Numpad0"), null);
+        assert.strictEqual(domCodeToAndroidKeycode("MediaPlayPause"), null);
+        assert.strictEqual(domCodeToAndroidKeycode("Unidentified"), null);
+        assert.strictEqual(domCodeToAndroidKeycode(""), null);
+    });
+});
+
+describe("attachInteractiveInputHandlers keyboard (issue #1203)", () => {
+    it("posts keyDown / keyUp with the Android keycode when daemon supports it", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: (kind) => kind === "keyDown" || kind === "keyUp",
+            vscode: api,
+        });
+
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "KeyA", bubbles: true }),
+        );
+        card.dispatchEvent(
+            new KeyboardEvent("keyup", { code: "KeyA", bubbles: true }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => ({
+                command: m["command"],
+                kind: m["kind"],
+                keyCode: m["keyCode"],
+            })),
+            [
+                {
+                    command: "recordInteractiveInput",
+                    kind: "keyDown",
+                    keyCode: "29",
+                },
+                {
+                    command: "recordInteractiveInput",
+                    kind: "keyUp",
+                    keyCode: "29",
+                },
+            ],
+        );
+        // The card gets focusable so a click on the surface hands keyboard
+        // input to it. -1 keeps it out of the natural tab order.
+        assert.strictEqual(card.getAttribute("tabindex"), "-1");
+    });
+
+    it("does not attach the listener when the daemon doesn't advertise keyDown/keyUp", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => false,
+            vscode: api,
+        });
+
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "KeyA", bubbles: true }),
+        );
+
+        assert.deepStrictEqual(posted, []);
+        assert.strictEqual(card.hasAttribute("tabindex"), false);
+    });
+
+    it("drops keystrokes when the card is not in live mode even with daemon support", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        let isLive = true;
+        attachInteractiveInputHandlers(card, {
+            isLive: () => isLive,
+            supportsControl: () => true,
+            vscode: api,
+        });
+        // First keystroke goes through.
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "KeyA", bubbles: true }),
+        );
+        // Stop live; subsequent keystrokes must drop.
+        isLive = false;
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "KeyB", bubbles: true }),
+        );
+
+        assert.deepStrictEqual(
+            posted.map((m) => m["keyCode"]),
+            ["29"],
+        );
+    });
+
+    it("ignores unmapped DOM codes instead of forwarding garbage", () => {
+        const { card } = buildLiveCard("p1");
+        const { posted, api } = createVscode();
+        attachInteractiveInputHandlers(card, {
+            isLive: () => true,
+            supportsControl: () => true,
+            vscode: api,
+        });
+
+        card.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "F13", bubbles: true }),
+        );
+
+        assert.deepStrictEqual(posted, []);
     });
 });

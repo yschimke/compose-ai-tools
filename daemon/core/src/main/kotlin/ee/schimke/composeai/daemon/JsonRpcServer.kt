@@ -743,6 +743,10 @@ class JsonRpcServer(
             // clients can reason about backend compatibility without scraping logs. Desktop and
             // test fakes inherit null.
             androidSdk = host.androidSdk,
+            // Issue #1203 — interactive input kinds (beyond pointer) this host can dispatch.
+            // Sorted for stable wire ordering; pre-feature hosts inherit `emptySet()` and clients
+            // see `[]` (treat as "only pointer is supported").
+            interactiveControlKinds = host.supportedInteractiveControlKinds.sorted(),
           ),
         // B2.1 — surface the authoritative SHA-256 to the client so VS Code can correlate later
         // `classpathDirty` notifications against the daemon's known-at-startup state. Empty

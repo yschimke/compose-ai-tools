@@ -157,7 +157,8 @@ open class DesktopHost(
    *
    * - `recording.probe` — timeline marker.
    * - `input.touch` — click + pointer up/down/move via `ImageComposeScene.sendPointerEvent`.
-   * - `input.keyboard` — advertised as roadmap (supported = false); key dispatch isn't wired.
+   * - `input.keyboard` — keyDown / keyUp via Skiko `sendKeyEvent` + the Android-keycode → Compose
+   *   `Key` translation table in `DesktopKeyDispatch.kt`. Wired by issue #1203.
    *
    * `input.rsb` is Wear-only and lives on `RobolectricHost`; desktop daemons skip it. The empty
    * list when [supportsRecording] is `false` mirrors the `supportedRecordingFormats` shape so
@@ -168,7 +169,7 @@ open class DesktopHost(
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
         InputTouchRecordingScriptEvents.descriptor,
-        InputKeyboardRecordingScriptEvents.descriptor,
+        InputKeyboardRecordingScriptEvents.supportedDescriptor,
       )
     else emptyList()
 
@@ -199,6 +200,15 @@ open class DesktopHost(
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
   override val backendKind: ee.schimke.composeai.daemon.protocol.BackendKind =
     ee.schimke.composeai.daemon.protocol.BackendKind.DESKTOP
+
+  /**
+   * Issue #1203 — Skiko's `BaseComposeScene.sendKeyEvent` handles keyDown/keyUp and
+   * `sendPointerEvent(PointerEventType.Scroll)` handles rotary scroll, so the desktop backend
+   * dispatches all three input kinds beyond pointer. Wear-style rotary on desktop maps to wheel
+   * scroll on the focused composable — same surface a `mouseWheel` would hit.
+   */
+  override val supportedInteractiveControlKinds: Set<String> =
+    if (supportsInteractive) setOf("keyDown", "keyUp", "rotaryScroll") else emptySet()
 
   private val requests: LinkedBlockingQueue<RenderRequest> = LinkedBlockingQueue()
   private val results: ConcurrentHashMap<Long, LinkedBlockingQueue<Any>> = ConcurrentHashMap()

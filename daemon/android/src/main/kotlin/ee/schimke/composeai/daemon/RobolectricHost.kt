@@ -7,10 +7,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasRequestFocusAction
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.data.render.PreviewContext
@@ -252,7 +254,8 @@ open class RobolectricHost(
    *
    * - `recording.probe` (renderer-agnostic) — the in-script timeline marker.
    * - `input.touch` (renderer-agnostic) — pointer events through the held-rule loop.
-   * - `input.keyboard` (renderer-agnostic) — roadmap on every host; key dispatch isn't wired.
+   * - `input.keyboard` (renderer-agnostic) — key events through `rule.onRoot().performKeyInput`;
+   *   wire `keyCode` is the decimal-string Android `KEYCODE_*` int (issue #1203).
    * - `input.rsb` (Android-only) — rotary side-button scroll on Wear previews.
    * - `lifecycle.{pause,resume,stop}` (Android-only) — `ActivityScenario.moveToState(...)`.
    * - `navigation.{deepLink,back,predictiveBack*}` (Android-only) — `Activity.startActivity` for
@@ -273,7 +276,7 @@ open class RobolectricHost(
       listOf(
         RecordingScriptDataExtensions.recordingDescriptor,
         InputTouchRecordingScriptEvents.descriptor,
-        InputKeyboardRecordingScriptEvents.descriptor,
+        InputKeyboardRecordingScriptEvents.supportedDescriptor,
         InputRsbRecordingScriptEvents.descriptor,
         LifecycleRecordingScriptEvents.descriptor,
         NavigationRecordingScriptEvents.descriptor,
@@ -346,6 +349,14 @@ open class RobolectricHost(
     ee.schimke.composeai.daemon.protocol.BackendKind.ANDROID
 
   override val androidSdk: Int = ANDROID_SDK
+
+  /**
+   * Issue #1203 — Android dispatches keyDown / keyUp through `rule.onRoot().performKeyInput` in
+   * the sandbox-side held-rule loop, and rotaryScroll via the existing `dispatchRotaryScroll`
+   * (RSB) handler. All three input kinds beyond pointer are advertised.
+   */
+  override val supportedInteractiveControlKinds: Set<String> =
+    if (supportsInteractive) setOf("keyDown", "keyUp", "rotaryScroll") else emptySet()
 
   init {
     require(sandboxCount >= 1) { "sandboxCount must be >= 1, got $sandboxCount" }
@@ -2340,7 +2351,34 @@ open class RobolectricHost(
             dispatchRotaryScroll(rule, position, delta)
           }
         }
+        "keyDown" -> dispatchHeldKeyEvent(rule, cmd.keyCode, down = true)
+        "keyUp" -> dispatchHeldKeyEvent(rule, cmd.keyCode, down = false)
       }
+    }
+
+    /**
+     * Issue #1203 — translate the wire's Android `KEYCODE_*` int (decimal string) to a Compose
+     * [androidx.compose.ui.input.key.Key] and dispatch through the held rule's `performKeyInput`.
+     * Compose's test API consumes the same `Key` enum on both backends; the keycode int doubles
+     * as the wire format because Android's runtime keycodes (the larger consumer surface) are
+     * already this shape. Unmapped / unparseable codes drop silently so a forward-looking client
+     * can't crash the loop.
+     */
+    @OptIn(ExperimentalTestApi::class)
+    private fun dispatchHeldKeyEvent(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      keyCode: String?,
+      down: Boolean,
+    ) {
+      val code = InteractiveKeyCodes.parse(keyCode) ?: return
+      // Android's actual `Key(nativeKeyCode: Int)` builds a Compose `Key` directly from the
+      // Android `KEYCODE_*` int — same shape the wire carries.
+      val key = androidx.compose.ui.input.key.Key(nativeKeyCode = code)
+      rule.onRoot().performKeyInput { if (down) keyDown(key) else keyUp(key) }
     }
 
     private fun performClickActionAt(
