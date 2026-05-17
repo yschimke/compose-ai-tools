@@ -85,6 +85,12 @@
                 "category": "Compose Preview"
             },
             {
+                "command": "composePreview.copyDoctorReport",
+                "title": "Copy Doctor Report (for bug reports)",
+                "category": "Compose Preview",
+                "icon": "$(report)"
+            },
+            {
                 "command": "composePreview.restartDaemon",
                 "title": "Restart Preview Daemon (pick up rebuilt JAR)",
                 "category": "Compose Preview"
@@ -114,6 +120,11 @@
                     "command": "composePreview.refresh",
                     "when": "view == composePreview.panel",
                     "group": "navigation@2"
+                },
+                {
+                    "command": "composePreview.copyDoctorReport",
+                    "when": "view == composePreview.panel",
+                    "group": "navigation@3"
                 }
             ]
         },
