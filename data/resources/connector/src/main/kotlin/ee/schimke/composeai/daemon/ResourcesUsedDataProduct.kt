@@ -269,70 +269,23 @@ private object ResourceSourceIndex {
   private val FILE_RESOURCE_TYPES = setOf("drawable", "layout")
 }
 
-/** Registry side for `resources/used`; reads the latest JSON artefact from disk. */
-class ResourcesUsedDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = ResourcesUsedDataProducer.KIND,
-        schemaVersion = ResourcesUsedDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != ResourcesUsedDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/** Registry for `resources/used`. PATH transport; base class supplies the inline-upgrade path. */
+class ResourcesUsedDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = ResourcesUsedDataProducer.KIND,
           schemaVersion = ResourcesUsedDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = ResourcesUsedDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (ResourcesUsedDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = ResourcesUsedDataProducer.KIND,
-        schemaVersion = ResourcesUsedDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(ResourcesUsedDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == ResourcesUsedDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(ResourcesUsedDataProducer.FILE)
+    else null
 }
