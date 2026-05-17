@@ -604,6 +604,14 @@ preview-app {
     max-height: 70vh;
     object-fit: contain;
 }
+/* Focus mode is single-variant: the carousel arrows and the "+N
+ * variants" badge belong to multi-mode browsing. Hide them so Focus
+ * stays the inspector view of exactly the variant the user clicked. */
+.preview-grid.layout-focus .preview-card .frame-controls,
+.preview-grid.layout-focus .preview-card .variant-badge,
+.preview-grid.layout-focus .preview-card .animation-icon {
+    display: none;
+}
 
 .preview-card.filtered-out {
     display: none !important;
@@ -619,13 +627,6 @@ preview-app {
 }
 .focus-controls[hidden] {
     display: none;
-}
-#focus-position {
-    font-size: calc(var(--vscode-font-size) - 1px);
-    color: var(--text-secondary);
-    min-width: 50px;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
 }
 
 .focus-inspector {

@@ -187,7 +187,6 @@ export class FilterToolbar extends LitElement {
                         <option value="grid">Grid</option>
                         <option value="flow">Flow</option>
                         <option value="column">Column</option>
-                        <option value="focus">Focus</option>
                     </select>
                     <i
                         class="codicon codicon-chevron-down select-chevron"

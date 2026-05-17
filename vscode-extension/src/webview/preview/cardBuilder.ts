@@ -284,19 +284,22 @@ export function populatePreviewCard(
     imgContainer.appendChild(skeleton);
     card.appendChild(imgContainer);
 
-    // Single-click on the image enters LIVE for this preview (in any
-    // layout — focus, grid, flow, column). The first click toggles
-    // interactive on; subsequent clicks while LIVE forward as pointer
-    // events to the daemon (handled by attachInteractiveInputHandlers
-    // attached via updateImage). The handler is on the container, not
-    // the <img>, so clicks land before the image renders too. Modifier-
-    // aware: Shift+click follows the multi-stream semantics from
+    // Multi-mode (grid/flow/column): clicking the image enters Focus
+    // mode on this card, preserving the carousel's current variant
+    // (`card.dataset.currentIndex`) because focus is the inspector
+    // mode and we want to land on the variant the user was looking at.
+    // Focus mode: clicking the image enters LIVE (interactive
+    // streaming) for this preview — the toolbar's `btn-interactive` is
+    // the canonical entry, but image-click is the casual shortcut and
+    // forwards subsequent clicks as pointer events to the daemon while
+    // live (via attachInteractiveInputHandlers attached on updateImage).
+    // Modifier-aware: Shift+click follows multi-stream semantics from
     // toggleInteractive().
     imgContainer.addEventListener("click", (evt) => {
         const previewId = card.dataset.previewId;
         if (!previewId) return;
-        // If we're already live for this preview, the per-image click
-        // handler routes to recordInteractiveInput. Check before the
+        // Already-live: image-click routes to recordInteractiveInput
+        // (handled via attachInteractiveInputHandlers); skip the
         // stale-card branch so interactive clicks do not also queue a
         // heavyweight refresh for stale captures.
         if (config.liveState.isLive(previewId)) return;
@@ -304,6 +307,12 @@ export function populatePreviewCard(
             evt.preventDefault();
             evt.stopPropagation();
             config.staleBadge.requestHeavyRefresh(card);
+            return;
+        }
+        if (!config.inFocus()) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            config.enterFocus(card);
             return;
         }
         config.liveState.enterInteractiveOnCard(card, evt.shiftKey);

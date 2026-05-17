@@ -199,8 +199,6 @@ export class PreviewApp extends LitElement {
     @query("data-tabs") private _dataTabs!: DataTabs;
     @query("#bundle-legend") private _bundleLegend!: BundleLegend;
     @query("#focus-controls") private _focusControls!: HTMLElement;
-    @query("#btn-prev") private _btnPrev!: HTMLButtonElement;
-    @query("#btn-next") private _btnNext!: HTMLButtonElement;
     @query("#btn-diff-head") private _btnDiffHead!: HTMLButtonElement;
     @query("#btn-diff-main") private _btnDiffMain!: HTMLButtonElement;
     @query("#btn-launch-device") private _btnLaunchDevice!: HTMLButtonElement;
@@ -211,7 +209,6 @@ export class PreviewApp extends LitElement {
     @query("#btn-recording") private _btnRecording!: HTMLButtonElement;
     @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
     @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
-    @query("#focus-position") private _focusPosition!: HTMLElement;
 
     protected render(): TemplateResult {
         const minimal = this.dataset.minimalMode === "true";
@@ -264,29 +261,6 @@ export class PreviewApp extends LitElement {
 
             <message-banner></message-banner>
             <div id="focus-controls" class="focus-controls" hidden>
-                <button
-                    class="icon-button"
-                    id="btn-prev"
-                    title="Previous preview"
-                    aria-label="Previous preview"
-                >
-                    <i
-                        class="codicon codicon-arrow-left"
-                        aria-hidden="true"
-                    ></i>
-                </button>
-                <span id="focus-position" aria-live="polite"></span>
-                <button
-                    class="icon-button"
-                    id="btn-next"
-                    title="Next preview"
-                    aria-label="Next preview"
-                >
-                    <i
-                        class="codicon codicon-arrow-right"
-                        aria-hidden="true"
-                    ></i>
-                </button>
                 <button
                     class="icon-button"
                     id="btn-diff-head"
@@ -497,8 +471,6 @@ export class PreviewApp extends LitElement {
         // focusOnCard / exitFocus / restoreFilterState.
         const filterToolbar = this._filterToolbar;
         const focusControls = this._focusControls;
-        const btnPrev = this._btnPrev;
-        const btnNext = this._btnNext;
         const btnDiffHead = this._btnDiffHead;
         const btnDiffMain = this._btnDiffMain;
         const btnLaunchDevice = this._btnLaunchDevice;
@@ -509,8 +481,6 @@ export class PreviewApp extends LitElement {
         const recordingFormat = this._recordingFormat;
         const btnExitFocus = this._btnExitFocus;
         const focusToolbar = new FocusToolbarController({
-            btnPrev,
-            btnNext,
             btnDiffHead,
             btnDiffMain,
             btnLaunchDevice,
@@ -543,7 +513,6 @@ export class PreviewApp extends LitElement {
         // `<preview-card>` Lit component can subscribe per-card without
         // going through this closure (see the versioned-counter notes in
         // `previewStore.ts`).
-        const focusPosition = this._focusPosition;
         // Progress bar is owned by `<progress-bar>` — see
         // `components/ProgressBar.ts`. It listens for `setProgress` /
         // `clearProgress` directly and owns its own deferred-paint timing.
@@ -2284,9 +2253,6 @@ export class PreviewApp extends LitElement {
             focusControls,
             bundleChipBar,
             dataTabs,
-            focusPosition,
-            btnPrev,
-            btnNext,
             focusToolbar,
             inspector,
             liveState,
@@ -2385,8 +2351,6 @@ export class PreviewApp extends LitElement {
             applyFilters();
         });
 
-        btnPrev.addEventListener("click", () => navigateFocus(-1));
-        btnNext.addEventListener("click", () => navigateFocus(1));
         btnDiffHead.addEventListener("click", () => requestFocusedDiff("head"));
         btnDiffMain.addEventListener("click", () => requestFocusedDiff("main"));
         btnLaunchDevice.addEventListener("click", () =>
@@ -2420,9 +2384,6 @@ export class PreviewApp extends LitElement {
         }
         function applyRecordingButtonState(): void {
             focusController.applyRecordingButtonState();
-        }
-        function navigateFocus(delta: number): void {
-            focusController.navigateFocus(delta);
         }
         function focusOnCard(card: HTMLElement): void {
             focusController.focusOnCard(card);
