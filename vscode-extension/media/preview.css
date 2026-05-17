@@ -2707,15 +2707,13 @@ bundle-chip-bar {
     border: 1px solid currentColor;
     box-sizing: border-box;
 }
-/* Inline sample for typography rows — paints `Aa` in the resolved
- * font (loaded from Google Fonts in the panel head). Lives in the
- * same column as the colour swatch so the table stays scannable. */
-.theming-font-sample {
-    display: inline-block;
-    min-width: 22px;
-    font-size: 16px;
-    line-height: 1;
-    text-align: center;
+/* Typography rows render the token name itself in the resolved font
+ * (loaded from Google Fonts in the panel head) so the user sees the
+ * typeface at a glance. Sized a touch larger than the row's body text
+ * to give glyph variation room to breathe. */
+.theming-typography-name {
+    font-size: 15px;
+    line-height: 1.1;
 }
 .theming-name-cell {
     min-width: 120px;

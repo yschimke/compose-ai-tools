@@ -355,24 +355,19 @@ function renderSwatch(row: ThemingRow): TemplateResult | string {
             title=${row.value}
         ></span>`;
     }
-    if (row.kind === "typography") {
-        const fam = row.cssFontFamily;
-        const weight = row.cssFontWeight;
-        const style = row.cssFontStyle;
-        const apply = (el: Element | undefined): void => {
-            if (!el) return;
-            const e = el as HTMLElement;
-            e.style.fontFamily = fam;
-            if (weight !== null) e.style.fontWeight = String(weight);
-            e.style.fontStyle = style;
-        };
-        // Short pangram-ish sample — gives the user a glyph (Aa) plus a
-        // numeral and a punctuation mark, the three places fonts diverge
-        // most. Width is bounded by `.theming-swatch-cell` so it lines up
-        // with the colour swatch column above.
-        return html`<span class="theming-font-sample" ${ref(apply)}>Aa</span>`;
-    }
     return "";
+}
+
+function applyTypographyFont(row: ThemingTypographyRow) {
+    return (el: Element | undefined): void => {
+        if (!el) return;
+        const e = el as HTMLElement;
+        e.style.fontFamily = row.cssFontFamily;
+        if (row.cssFontWeight !== null) {
+            e.style.fontWeight = String(row.cssFontWeight);
+        }
+        e.style.fontStyle = row.cssFontStyle;
+    };
 }
 
 function renderName(row: ThemingRow): TemplateResult {
@@ -393,6 +388,17 @@ function renderName(row: ThemingRow): TemplateResult {
                 ? html`<span class="theming-name-sub">from wallpaper</span>`
                 : ""}
         </div>`;
+    }
+    if (row.kind === "typography") {
+        // Paint the token name itself in the resolved font so the user
+        // sees the typeface at a glance. CSP blocks inline `style=` and
+        // lit's `styleMap`, so the font is applied via a CSSOM ref
+        // callback — same trick the swatch uses.
+        return html`<strong
+            class="theming-typography-name"
+            ${ref(applyTypographyFont(row))}
+            >${row.name}</strong
+        >`;
     }
     return html`<strong>${row.name}</strong>`;
 }
