@@ -827,6 +827,15 @@ export type WebviewToExtension =
      */
     | { command: "requestLaunchOnDevice"; previewId: string }
     /**
+     * Focus-mode "Export bundle" click — early-features gated. The host
+     * shows a save dialog, then runs `:<module>:renderPreviews` +
+     * `:<module>:composePreviewBundle` with `-PbundlePreviewIds=<id>` and
+     * `-PbundleOutput=<file>` so the produced PNG+ZIP polyglot lands at
+     * the user-picked location. The bundle is single-preview (cover =
+     * focused preview).
+     */
+    | { command: "requestExportPreviewBundle"; previewId: string }
+    /**
      * `composestream/1` — open a live frame stream for [previewId]. The
      * extension acquires a held interactive session and pumps `streamFrame`
      * notifications down to the webview, where the canvas painter consumes

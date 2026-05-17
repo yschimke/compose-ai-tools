@@ -4361,6 +4361,11 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 void launchOnDevice(msg.previewId);
             }
             break;
+        case "requestExportPreviewBundle":
+            if (earlyFeaturesEnabled()) {
+                void exportPreviewBundle(msg.previewId);
+            }
+            break;
         case "requestStreamStart":
             void handleRequestStreamStart(msg.previewId);
             break;
@@ -5430,6 +5435,86 @@ function formatRelativeShort(iso: string | undefined): string {
     }
     const d = Math.round(h / 24);
     return d + "d ago";
+}
+
+/**
+ * Early-feature: pack the focused preview into a portable PNG+ZIP polyglot
+ * bundle. Resolves the owning module from [previewId], prompts for a save
+ * location, then runs `:<module>:renderPreviews` + `:<module>:composePreviewBundle`
+ * with `-PbundlePreviewIds=<previewId>` and `-PbundleOutput=<file>`. Reports
+ * success / failure via toasts; the resulting `.png` is a valid image that
+ * also unzips to the bundle contents.
+ */
+async function exportPreviewBundle(previewId: string): Promise<void> {
+    if (!gradleService) {
+        vscode.window.showInformationMessage(
+            "Compose Preview is not ready yet.",
+        );
+        return;
+    }
+    const module = previewModuleMap.get(previewId);
+    if (!module) {
+        vscode.window.showWarningMessage(
+            "Compose Preview: could not resolve module for the focused preview.",
+        );
+        return;
+    }
+    const label = lookupPreviewLabel(previewId) ?? previewId;
+    const defaultName =
+        label.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") ||
+        "preview";
+    const defaultDir = path.join(
+        gradleService.workspaceRoot,
+        module.projectDir,
+        "build",
+        "compose-previews",
+    );
+    const defaultUri = vscode.Uri.file(
+        path.join(defaultDir, `${defaultName}.bundle.png`),
+    );
+    const target = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: { "PNG+ZIP bundle": ["png"] },
+        saveLabel: "Export bundle",
+        title: `Export ${label} as PNG+ZIP bundle`,
+    });
+    if (!target) {
+        return;
+    }
+    const outputPath = target.fsPath;
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: `Exporting ${label} bundle…`,
+            },
+            async () => {
+                await gradleService!.exportPreviewBundle(
+                    module,
+                    previewId,
+                    outputPath,
+                );
+            },
+        );
+    } catch (err) {
+        const message = (err as Error).message ?? String(err);
+        logLine(`exportPreviewBundle failed: ${message}`);
+        vscode.window.showErrorMessage(
+            `Compose Preview: bundle export failed — ${message}`,
+        );
+        return;
+    }
+    const open = "Reveal in OS";
+    const choice = await vscode.window.showInformationMessage(
+        `Compose preview bundle saved: ${path.basename(outputPath)}`,
+        open,
+    );
+    if (choice === open) {
+        void vscode.commands.executeCommand(
+            "revealFileInOS",
+            vscode.Uri.file(outputPath),
+        );
+    }
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {
