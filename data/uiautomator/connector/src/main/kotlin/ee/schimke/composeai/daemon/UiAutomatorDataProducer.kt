@@ -1,7 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -10,7 +8,6 @@ import ee.schimke.composeai.renderer.uiautomator.UiAutomatorDataProducts
 import ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyPayload
 import java.io.File
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 
 /**
  * D2 — writes the per-render UIAutomator hierarchy artefact the data-product registry surfaces
@@ -69,91 +66,26 @@ object UiAutomatorDataProducer {
  *
  * `rootDir` mirrors `RenderEngine`'s `dataDir`. Wired by [DaemonMain].
  */
-class UiAutomatorDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = UiAutomatorDataProducer.KIND_HIERARCHY,
-        schemaVersion = UiAutomatorDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-        displayName = "UIAutomator hierarchy",
-        facets = listOf(DataProductFacet.STRUCTURED),
-        mediaTypes = listOf("application/json"),
-        sampling = SamplingPolicy.End,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    val file =
-      when (kind) {
-        UiAutomatorDataProducer.KIND_HIERARCHY ->
-          fileFor(previewId, UiAutomatorDataProducer.FILE_HIERARCHY)
-        else -> return DataProductRegistry.Outcome.Unknown
-      }
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (inline) {
-      val payloadElement: JsonElement =
-        try {
-          json.parseToJsonElement(file.readText())
-        } catch (t: Throwable) {
-          return DataProductRegistry.Outcome.FetchFailed(
-            message = "could not parse $kind for $previewId: ${t.message}"
-          )
-        }
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+class UiAutomatorDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = UiAutomatorDataProducer.KIND_HIERARCHY,
           schemaVersion = UiAutomatorDataProducer.SCHEMA_VERSION,
-          payload = payloadElement,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
+          displayName = "UIAutomator hierarchy",
+          facets = listOf(DataProductFacet.STRUCTURED),
+          mediaTypes = listOf("application/json"),
+          sampling = SamplingPolicy.End,
         )
       )
-    }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = UiAutomatorDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  override fun attachmentsFor(
-    previewId: String,
-    kinds: Set<String>,
-  ): List<DataProductAttachment> {
-    val out = mutableListOf<DataProductAttachment>()
-    for (kind in kinds) {
-      when (kind) {
-        UiAutomatorDataProducer.KIND_HIERARCHY -> {
-          val file = fileFor(previewId, UiAutomatorDataProducer.FILE_HIERARCHY)
-          if (!file.exists()) continue
-          out.add(
-            DataProductAttachment(
-              kind = kind,
-              schemaVersion = UiAutomatorDataProducer.SCHEMA_VERSION,
-              path = file.absolutePath,
-            )
-          )
-        }
-      // Unknown kinds drop out silently — the dispatcher already filtered against
-      // `capabilities` before calling this; an unrecognised kind here means the
-      // dispatcher's filtering drifted and we'd rather skip than emit garbage.
-      }
-    }
-    return out
-  }
-
-  private fun fileFor(previewId: String, fileName: String): File =
-    rootDir.resolve(previewId).resolve(fileName)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == UiAutomatorDataProducer.KIND_HIERARCHY)
+      rootDir.resolve(previewId).resolve(UiAutomatorDataProducer.FILE_HIERARCHY)
+    else null
 }

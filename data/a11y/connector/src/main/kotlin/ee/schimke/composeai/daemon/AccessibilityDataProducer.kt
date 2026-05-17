@@ -1,7 +1,5 @@
 package ee.schimke.composeai.daemon
 
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
@@ -167,9 +165,61 @@ object AccessibilityDataProducer {
  * `rootDir` mirrors `RenderEngine`'s `dataDir` (defaults to `<outputDir.parent>/data`). Wired by
  * [DaemonMain].
  */
-class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-
-  private val json = Json { ignoreUnknownKeys = true }
+class AccessibilityDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = AccessibilityDataProducer.KIND_ATF,
+          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+          transport = DataProductTransport.INLINE,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = true,
+          displayName = "Accessibility findings",
+          facets =
+            listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+          sampling = SamplingPolicy.End,
+        ),
+        DataProductCapability(
+          kind = AccessibilityDataProducer.KIND_HIERARCHY,
+          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = true,
+          displayName = "Accessibility hierarchy",
+          facets = listOf(DataProductFacet.STRUCTURED),
+          mediaTypes = listOf("application/json"),
+          sampling = SamplingPolicy.End,
+        ),
+        DataProductCapability(
+          kind = AccessibilityDataProducer.KIND_TOUCH_TARGETS,
+          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+          transport = DataProductTransport.INLINE,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = true,
+          displayName = "Touch target findings",
+          facets =
+            listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
+          sampling = SamplingPolicy.End,
+        ),
+        DataProductCapability(
+          kind = AccessibilityDataProducer.KIND_OVERLAY,
+          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = true,
+          displayName = "Accessibility overlay",
+          facets =
+            listOf(DataProductFacet.ARTIFACT, DataProductFacet.IMAGE, DataProductFacet.OVERLAY),
+          mediaTypes = listOf("image/png"),
+          sampling = SamplingPolicy.End,
+        ),
+      )
+  ) {
 
   /**
    * D2.2 — set of `(previewId, kind)` pairs the dispatcher has reported subscribed via
@@ -182,153 +232,45 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
    * hook); the bookkeeping is structural and idempotent so adding the read site is the only
    * remaining step.
    */
-  private val subscribedPairs: MutableSet<Pair<String, String>> =
-    ConcurrentHashMap.newKeySet()
+  private val subscribedPairs: MutableSet<Pair<String, String>> = ConcurrentHashMap.newKeySet()
 
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = AccessibilityDataProducer.KIND_ATF,
-        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.INLINE,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = true,
-        displayName = "Accessibility findings",
-        facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
-        sampling = SamplingPolicy.End,
-      ),
-      DataProductCapability(
-        kind = AccessibilityDataProducer.KIND_HIERARCHY,
-        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = true,
-        displayName = "Accessibility hierarchy",
-        facets = listOf(DataProductFacet.STRUCTURED),
-        mediaTypes = listOf("application/json"),
-        sampling = SamplingPolicy.End,
-      ),
-      DataProductCapability(
-        kind = AccessibilityDataProducer.KIND_TOUCH_TARGETS,
-        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.INLINE,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = true,
-        displayName = "Touch target findings",
-        facets = listOf(DataProductFacet.STRUCTURED, DataProductFacet.CHECK, DataProductFacet.DIAGNOSTIC),
-        sampling = SamplingPolicy.End,
-      ),
-      DataProductCapability(
-        kind = AccessibilityDataProducer.KIND_OVERLAY,
-        schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = true,
-        displayName = "Accessibility overlay",
-        facets = listOf(DataProductFacet.ARTIFACT, DataProductFacet.IMAGE, DataProductFacet.OVERLAY),
-        mediaTypes = listOf("image/png"),
-        sampling = SamplingPolicy.End,
-      ),
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    val (file, transport) =
+  override fun fileFor(previewId: String, kind: String): File? {
+    val fileName =
       when (kind) {
-        AccessibilityDataProducer.KIND_ATF ->
-          fileFor(previewId, AccessibilityDataProducer.FILE_ATF) to DataProductTransport.INLINE
-        AccessibilityDataProducer.KIND_HIERARCHY ->
-          fileFor(previewId, AccessibilityDataProducer.FILE_HIERARCHY) to
-            DataProductTransport.PATH
-        AccessibilityDataProducer.KIND_TOUCH_TARGETS ->
-          fileFor(previewId, AccessibilityDataProducer.FILE_TOUCH_TARGETS) to
-            DataProductTransport.INLINE
-        AccessibilityDataProducer.KIND_OVERLAY ->
-          fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY) to DataProductTransport.PATH
-        else -> return DataProductRegistry.Outcome.Unknown
+        AccessibilityDataProducer.KIND_ATF -> AccessibilityDataProducer.FILE_ATF
+        AccessibilityDataProducer.KIND_HIERARCHY -> AccessibilityDataProducer.FILE_HIERARCHY
+        AccessibilityDataProducer.KIND_TOUCH_TARGETS -> AccessibilityDataProducer.FILE_TOUCH_TARGETS
+        AccessibilityDataProducer.KIND_OVERLAY -> AccessibilityDataProducer.FILE_OVERLAY
+        else -> return null
       }
-    // D2.2 — every a11y kind is `requiresRerender = true`. A missing artefact means the latest
-    // render didn't run in a11y mode (the producer's writeArtifacts is gated on
-    // `effectiveRunAccessibility`); the dispatcher reacts by queueing a re-render with
-    // `mode=a11y` and re-invoking fetch, which then finds the freshly-written file. See
-    // [DataProductRegistry.Outcome.RequiresRerender] for the dispatch contract.
-    if (!file.exists()) return DataProductRegistry.Outcome.RequiresRerender("a11y")
-    val extras = extrasFor(previewId, kind)
-    // The overlay kind is binary (PNG); never parse it as JSON. Path-only.
-    if (kind == AccessibilityDataProducer.KIND_OVERLAY) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
-          schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
-          extras = extras.takeIf { it.isNotEmpty() },
-        )
-      )
-    }
-    val payloadElement: JsonElement? =
-      try {
-        json.parseToJsonElement(file.readText())
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    val result =
-      when {
-        inline ->
-          DataFetchResult(
-            kind = kind,
-            schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-            payload = payloadElement,
-            extras = extras.takeIf { it.isNotEmpty() },
-          )
-        transport == DataProductTransport.INLINE ->
-          // Even when the caller didn't ask for inline, the `inline` transport kind has no
-          // separate `path` representation. Returning the parsed payload keeps the API
-          // self-consistent: `transport='inline'` ⇒ payload always set.
-          DataFetchResult(
-            kind = kind,
-            schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-            payload = payloadElement,
-            extras = extras.takeIf { it.isNotEmpty() },
-          )
-        else ->
-          DataFetchResult(
-            kind = kind,
-            schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-            path = file.absolutePath,
-            extras = extras.takeIf { it.isNotEmpty() },
-          )
-      }
-    return DataProductRegistry.Outcome.Ok(result)
+    return rootDir.resolve(previewId).resolve(fileName)
   }
 
   /**
-   * Builds the [DataProductExtra] list for [kind] by scanning [previewId]'s data dir for
-   * known sibling outputs. Today the only extra is the a11y overlay PNG, attached to all
-   * three a11y kinds. Returns an empty list when no extras are available — the caller wraps
-   * the result in `takeIf { it.isNotEmpty() }` so the wire field stays absent in that case.
+   * D2.2 — every a11y kind is `requiresRerender = true`. A missing artefact means the latest
+   * render didn't run in a11y mode (the producer's writeArtifacts is gated on
+   * `effectiveRunAccessibility`); the dispatcher reacts by queueing a re-render with `mode=a11y`
+   * and re-invoking fetch, which then finds the freshly-written file.
    */
-  private fun extrasFor(previewId: String, kind: String): List<DataProductExtra> {
-    val attaches =
-      when (kind) {
-        AccessibilityDataProducer.KIND_ATF,
-        AccessibilityDataProducer.KIND_HIERARCHY,
-        AccessibilityDataProducer.KIND_TOUCH_TARGETS,
-        AccessibilityDataProducer.KIND_OVERLAY -> true
-        else -> false
-      }
-    if (!attaches) return emptyList()
-    val overlay = fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY)
-    if (!overlay.exists()) return emptyList()
+  override fun missingOutcome(previewId: String, kind: String): DataProductRegistry.Outcome =
+    DataProductRegistry.Outcome.RequiresRerender("a11y")
+
+  /** The overlay kind is a PNG — never parse it as JSON, even on `inline = true`. */
+  override fun allowInlineUpgrade(kind: String): Boolean =
+    kind != AccessibilityDataProducer.KIND_OVERLAY
+
+  /**
+   * The overlay PNG rides as an `extras` entry on every a11y kind so a panel that subscribed to
+   * any of them gets the picture handy without a follow-up `data/fetch`. Skips when the overlay
+   * file isn't on disk for [previewId].
+   */
+  override fun extras(
+    previewId: String,
+    kind: String,
+    payload: JsonElement?,
+  ): List<DataProductExtra>? {
+    val overlay = rootDir.resolve(previewId).resolve(AccessibilityDataProducer.FILE_OVERLAY)
+    if (!overlay.exists()) return null
     return listOf(
       DataProductExtra(
         name = AccessibilityDataProducer.OVERLAY_EXTRA_NAME,
@@ -339,88 +281,6 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
     )
   }
 
-  override fun attachmentsFor(
-    previewId: String,
-    kinds: Set<String>,
-  ): List<DataProductAttachment> {
-    val out = mutableListOf<DataProductAttachment>()
-    for (kind in kinds) {
-      val extras = extrasFor(previewId, kind).takeIf { it.isNotEmpty() }
-      when (kind) {
-        AccessibilityDataProducer.KIND_ATF -> {
-          val file = fileFor(previewId, AccessibilityDataProducer.FILE_ATF)
-          if (!file.exists()) continue
-          val parsed =
-            try {
-              json.parseToJsonElement(file.readText())
-            } catch (t: Throwable) {
-              System.err.println(
-                "AccessibilityDataProductRegistry: parse $kind failed for $previewId: ${t.message}"
-              )
-              continue
-            }
-          out.add(
-            DataProductAttachment(
-              kind = kind,
-              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-              payload = parsed,
-              extras = extras,
-            )
-          )
-        }
-        AccessibilityDataProducer.KIND_HIERARCHY -> {
-          val file = fileFor(previewId, AccessibilityDataProducer.FILE_HIERARCHY)
-          if (!file.exists()) continue
-          out.add(
-            DataProductAttachment(
-              kind = kind,
-              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-              path = file.absolutePath,
-              extras = extras,
-            )
-          )
-        }
-        AccessibilityDataProducer.KIND_TOUCH_TARGETS -> {
-          val file = fileFor(previewId, AccessibilityDataProducer.FILE_TOUCH_TARGETS)
-          if (!file.exists()) continue
-          val parsed =
-            try {
-              json.parseToJsonElement(file.readText())
-            } catch (t: Throwable) {
-              System.err.println(
-                "AccessibilityDataProductRegistry: parse $kind failed for $previewId: ${t.message}"
-              )
-              continue
-            }
-          out.add(
-            DataProductAttachment(
-              kind = kind,
-              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-              payload = parsed,
-              extras = extras,
-            )
-          )
-        }
-        AccessibilityDataProducer.KIND_OVERLAY -> {
-          val file = fileFor(previewId, AccessibilityDataProducer.FILE_OVERLAY)
-          if (!file.exists()) continue
-          out.add(
-            DataProductAttachment(
-              kind = kind,
-              schemaVersion = AccessibilityDataProducer.SCHEMA_VERSION,
-              path = file.absolutePath,
-              extras = extras,
-            )
-          )
-        }
-      // Unknown kinds drop out silently — the dispatcher already filtered against
-      // `capabilities` before calling this; an unrecognised kind here means the
-      // dispatcher's filtering drifted and we'd rather skip than emit garbage.
-      }
-    }
-    return out
-  }
-
   /**
    * D2.2 — record `(previewId, kind)` so the next render of [previewId] can run in a11y mode.
    * Idempotent across re-subscribes (the [Set] de-duplicates). Only the four advertised a11y
@@ -428,7 +288,7 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
    * matching, but this is defensive) is ignored.
    */
   override fun onSubscribe(previewId: String, kind: String, params: JsonElement?) {
-    if (!isAccessibilityKind(kind)) return
+    if (!isKnown(kind)) return
     subscribedPairs.add(previewId to kind)
   }
 
@@ -438,26 +298,17 @@ class AccessibilityDataProductRegistry(private val rootDir: File) : DataProductR
    * runs, [isPreviewSubscribed] reflects the new state synchronously.
    */
   override fun onUnsubscribe(previewId: String, kind: String) {
-    if (!isAccessibilityKind(kind)) return
+    if (!isKnown(kind)) return
     subscribedPairs.remove(previewId to kind)
   }
 
   /**
    * D2.2 — `true` iff at least one a11y kind has a live subscription for [previewId]. Designed for
-   * the host's render dispatcher: when this returns `true` the next `host.submit(...)` payload
-   * for [previewId] should carry `mode=a11y` so the renderer flips `LocalInspectionMode` and
-   * writes the ATF/hierarchy artefacts the subscribed kinds will read off disk on the next
+   * the host's render dispatcher: when this returns `true` the next `host.submit(...)` payload for
+   * [previewId] should carry `mode=a11y` so the renderer flips `LocalInspectionMode` and writes
+   * the ATF/hierarchy artefacts the subscribed kinds will read off disk on the next
    * `attachmentsFor` pass.
    */
   fun isPreviewSubscribed(previewId: String): Boolean =
     subscribedPairs.any { (id, _) -> id == previewId }
-
-  private fun isAccessibilityKind(kind: String): Boolean =
-    kind == AccessibilityDataProducer.KIND_ATF ||
-      kind == AccessibilityDataProducer.KIND_HIERARCHY ||
-      kind == AccessibilityDataProducer.KIND_TOUCH_TARGETS ||
-      kind == AccessibilityDataProducer.KIND_OVERLAY
-
-  private fun fileFor(previewId: String, fileName: String): File =
-    rootDir.resolve(previewId).resolve(fileName)
 }

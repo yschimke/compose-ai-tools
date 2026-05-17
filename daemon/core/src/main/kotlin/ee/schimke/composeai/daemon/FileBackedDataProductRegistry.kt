@@ -87,6 +87,18 @@ abstract class FileBackedDataProductRegistry(
     payload: JsonElement?,
   ): List<DataProductExtra>? = null
 
+  /**
+   * Whether [fetch] should honour `inline = true` for a `PATH`-transport [kind] by reading
+   * [readInlinePayload]. Default `true` — agents asking for inline get the JSON payload back
+   * inlined, even though the registry could also serve a path.
+   *
+   * Override to `false` for kinds whose on-disk artefact is **not** JSON: the a11y registry's
+   * overlay kind is a PNG, so an `inline = true` fetch must still return the path rather than
+   * trying to parse PNG bytes as JSON and emitting `FetchFailed`. `INLINE`-transport kinds are
+   * unaffected — they're always read regardless of the flag.
+   */
+  protected open fun allowInlineUpgrade(kind: String): Boolean = true
+
   override fun fetch(
     previewId: String,
     kind: String,
@@ -96,7 +108,8 @@ abstract class FileBackedDataProductRegistry(
     val cap = byKind[kind] ?: return DataProductRegistry.Outcome.Unknown
     val file = fileFor(previewId, kind) ?: return DataProductRegistry.Outcome.Unknown
     if (!file.exists()) return missingOutcome(previewId, kind)
-    val shouldInline = cap.transport == DataProductTransport.INLINE || inline
+    val shouldInline =
+      cap.transport == DataProductTransport.INLINE || (inline && allowInlineUpgrade(kind))
     return if (shouldInline) {
       val payload =
         try {

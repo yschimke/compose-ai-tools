@@ -228,4 +228,38 @@ class FileBackedDataProductRegistryTest {
     assertTrue(reg.isKnown("demo/path"))
     assertTrue(!reg.isKnown("nope"))
   }
+
+  private class BinaryPathRegistry(rootDir: File) :
+    FileBackedDataProductRegistry(
+      capabilities =
+        listOf(
+          DataProductCapability(
+            kind = "demo/binary",
+            schemaVersion = 1,
+            transport = DataProductTransport.PATH,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+    ) {
+    private val root = rootDir
+
+    override fun fileFor(previewId: String, kind: String): File? =
+      if (kind == "demo/binary") root.resolve(previewId).resolve("payload.png") else null
+
+    override fun allowInlineUpgrade(kind: String): Boolean = false
+  }
+
+  @Test
+  fun fetch_path_returns_path_when_inline_upgrade_disallowed() {
+    val reg = BinaryPathRegistry(tempFolder.root)
+    val written = writeFile(tempFolder.root, "p", "payload.png", "not json — these are PNG bytes")
+    val outcome = reg.fetch("p", "demo/binary", params = null, inline = true)
+    val ok = outcome as DataProductRegistry.Outcome.Ok
+    // The disabled upgrade keeps the response on the path branch — without it the JSON parse
+    // of binary bytes would explode and we'd return FetchFailed.
+    assertEquals(written.absolutePath, ok.result.path)
+    assertNull(ok.result.payload)
+  }
 }
