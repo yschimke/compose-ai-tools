@@ -2,16 +2,12 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.strings.I18nTranslationsProduct
 import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Producer for `i18n/translations`, backed by Android string resources plus the visible text
@@ -114,70 +110,23 @@ typealias AndroidStringEntry = ee.schimke.composeai.data.strings.AndroidStringEn
 
 typealias ResolvedString = ee.schimke.composeai.data.strings.ResolvedString
 
-/** Registry side for `i18n/translations`; reads the latest JSON artefact from disk. */
-class I18nTranslationsDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = I18nTranslationsDataProducer.KIND,
-        schemaVersion = I18nTranslationsDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != I18nTranslationsDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/** Registry for `i18n/translations`. Path-transport; base class handles the inline upgrade. */
+class I18nTranslationsDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = I18nTranslationsDataProducer.KIND,
           schemaVersion = I18nTranslationsDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = I18nTranslationsDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (I18nTranslationsDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = I18nTranslationsDataProducer.KIND,
-        schemaVersion = I18nTranslationsDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(I18nTranslationsDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == I18nTranslationsDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(I18nTranslationsDataProducer.FILE)
+    else null
 }

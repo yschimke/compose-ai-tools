@@ -15,8 +15,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.TextUnitType
-import ee.schimke.composeai.daemon.protocol.DataFetchResult
-import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -30,8 +28,6 @@ import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /** Producer for `compose/semantics`, a compact SemanticsNode projection for inspector clients. */
 object ComposeSemanticsDataProducer {
@@ -514,142 +510,54 @@ internal object ComposeLayoutInspector {
   }
 }
 
-/** Registry side for `compose/semantics`; reads the latest JSON artefact from disk. */
-class ComposeSemanticsDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = ComposeSemanticsDataProducer.KIND,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-        displayName = "Compose semantics",
-        facets = listOf(DataProductFacet.STRUCTURED),
-        mediaTypes = listOf("application/json"),
-        sampling = SamplingPolicy.End,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != ComposeSemanticsDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/**
+ * Registry for `compose/semantics`. Path-transport by default; the inline-fallback read and
+ * missing-file → NotAvailable plumbing come from [FileBackedDataProductRegistry].
+ */
+class ComposeSemanticsDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = ComposeSemanticsDataProducer.KIND,
           schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
+          displayName = "Compose semantics",
+          facets = listOf(DataProductFacet.STRUCTURED),
+          mediaTypes = listOf("application/json"),
+          sampling = SamplingPolicy.End,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (ComposeSemanticsDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = ComposeSemanticsDataProducer.KIND,
-        schemaVersion = ComposeSemanticsDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(ComposeSemanticsDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == ComposeSemanticsDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(ComposeSemanticsDataProducer.FILE)
+    else null
 }
 
-/** Registry side for `layout/inspector`; reads the latest JSON artefact from disk. */
-class LayoutInspectorDataProductRegistry(private val rootDir: File) : DataProductRegistry {
-  private val json = Json { ignoreUnknownKeys = true }
-
-  override val capabilities: List<DataProductCapability> =
-    listOf(
-      DataProductCapability(
-        kind = LayoutInspectorDataProducer.KIND,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        transport = DataProductTransport.PATH,
-        attachable = true,
-        fetchable = true,
-        requiresRerender = false,
-      )
-    )
-
-  override fun fetch(
-    previewId: String,
-    kind: String,
-    params: JsonElement?,
-    inline: Boolean,
-  ): DataProductRegistry.Outcome {
-    if (kind != LayoutInspectorDataProducer.KIND) return DataProductRegistry.Outcome.Unknown
-    val file = fileFor(previewId)
-    if (!file.exists()) return DataProductRegistry.Outcome.NotAvailable
-    if (!inline) {
-      return DataProductRegistry.Outcome.Ok(
-        DataFetchResult(
-          kind = kind,
+/**
+ * Registry for `layout/inspector`. Path-transport by default with the inline-fallback the base
+ * class supplies via `inline=true` upgrade.
+ */
+class LayoutInspectorDataProductRegistry(private val rootDir: File) :
+  FileBackedDataProductRegistry(
+    capabilities =
+      listOf(
+        DataProductCapability(
+          kind = LayoutInspectorDataProducer.KIND,
           schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-          path = file.absolutePath,
+          transport = DataProductTransport.PATH,
+          attachable = true,
+          fetchable = true,
+          requiresRerender = false,
         )
       )
-    }
-    val payload: JsonObject =
-      try {
-        json.parseToJsonElement(file.readText()) as JsonObject
-      } catch (t: Throwable) {
-        return DataProductRegistry.Outcome.FetchFailed(
-          message = "could not parse $kind for $previewId: ${t.message}"
-        )
-      }
-    return DataProductRegistry.Outcome.Ok(
-      DataFetchResult(
-        kind = kind,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        payload = payload,
-      )
-    )
-  }
-
-  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
-    if (LayoutInspectorDataProducer.KIND !in kinds) return emptyList()
-    val file = fileFor(previewId)
-    if (!file.exists()) return emptyList()
-    return listOf(
-      DataProductAttachment(
-        kind = LayoutInspectorDataProducer.KIND,
-        schemaVersion = LayoutInspectorDataProducer.SCHEMA_VERSION,
-        path = file.absolutePath,
-      )
-    )
-  }
-
-  private fun fileFor(previewId: String): File =
-    rootDir.resolve(previewId).resolve(LayoutInspectorDataProducer.FILE)
+  ) {
+  override fun fileFor(previewId: String, kind: String): File? =
+    if (kind == LayoutInspectorDataProducer.KIND)
+      rootDir.resolve(previewId).resolve(LayoutInspectorDataProducer.FILE)
+    else null
 }
