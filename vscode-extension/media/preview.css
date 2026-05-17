@@ -2062,6 +2062,19 @@ bundle-chip-bar {
     border-color: var(--vscode-focusBorder, transparent);
     opacity: 1;
 }
+/* Chips disabled while the preview daemon hasn't finished spawning.
+   Subscriptions issued during that window race the warm-up render and
+   land too late for the daemon's subscriptionDrivenRenderMode lock,
+   producing an extension-less first frame. Greying surfaces the wait
+   directly to the user instead. */
+.bundle-chip.bundle-chip-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.bundle-chip.bundle-chip-disabled:hover {
+    background: transparent;
+    opacity: 0.4;
+}
 .bundle-chip-label {
     white-space: nowrap;
 }
