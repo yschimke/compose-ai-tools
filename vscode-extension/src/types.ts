@@ -634,6 +634,12 @@ export type ExtensionToWebview =
           moduleId: string;
           dataProducts: DaemonDataProductCapability[];
           dataExtensions: DaemonDataExtensionDescriptor[];
+          /**
+           * Issue #1203 — interactive input kinds (beyond pointer) this daemon dispatches.
+           * Wire-spellings: `'keyDown'`, `'keyUp'`, `'rotaryScroll'`. The panel uses this to
+           * decide whether to register the live card's keyboard listener.
+           */
+          interactiveControlKinds?: string[];
       }
     /**
      * Host's response to `loadFontPreview`: the requested font's bytes
@@ -669,6 +675,13 @@ export interface DaemonDataProductCapability {
 export interface DaemonDataExtensionDescriptor {
     id: string;
     displayName?: string;
+    /**
+     * Issue #1203 — `true` when the extension can only dispatch against a held interactive
+     * composition. The panel auto-enters live mode for the preview when the user toggles the
+     * extension on, instead of letting the request silently drop. Absent / `false` on
+     * pre-#1203 daemons; treat both as "no auto-enter behaviour".
+     */
+    requiresInteractive?: boolean;
 }
 
 /** Messages from webview to extension */
@@ -864,9 +877,12 @@ export type WebviewToExtension =
           format?: "apng" | "mp4";
       }
     /**
-     * Pointer/rotary input on the focused image while interactive mode is on.
-     * Coordinates are in IMAGE-NATURAL pixel space — the same coordinate
-     * system the renderer thinks in. See docs/daemon/INTERACTIVE.md § 6/§ 7.
+     * Pointer / rotary / keyboard input on the focused image while interactive mode is on.
+     * Pointer coordinates are in IMAGE-NATURAL pixel space — the same coordinate system the
+     * renderer thinks in. See docs/daemon/INTERACTIVE.md § 6/§ 7. Keyboard events (kind
+     * `keyDown` / `keyUp`, issue #1203) carry `keyCode` as the decimal-string Android
+     * `KEYCODE_*` int; the daemon translates per backend (Desktop → Compose `Key`, Android →
+     * `Key(nativeKeyCode = ...)`). Pixel fields are omitted for keyboard events.
      */
     | {
           command: "recordInteractiveInput";
@@ -876,12 +892,15 @@ export type WebviewToExtension =
               | "pointerDown"
               | "pointerMove"
               | "pointerUp"
-              | "rotaryScroll";
-          pixelX: number;
-          pixelY: number;
-          imageWidth: number;
-          imageHeight: number;
+              | "rotaryScroll"
+              | "keyDown"
+              | "keyUp";
+          pixelX?: number;
+          pixelY?: number;
+          imageWidth?: number;
+          imageHeight?: number;
           scrollDeltaY?: number;
+          keyCode?: string;
       }
     /**
      * D2 — focus-mode toggle for the local a11y overlay. When `enabled`, the

@@ -175,6 +175,12 @@ export interface DataExtensionDescriptor {
     id: string;
     displayName?: string;
     recordingScriptEvents?: RecordingScriptEventDescriptor[];
+    /**
+     * Issue #1203 — when `true`, every dispatch path under this extension requires a held
+     * interactive composition. The panel auto-enters live mode for the preview when toggling
+     * the extension on; absent / `false` on pre-#1203 daemons.
+     */
+    requiresInteractive?: boolean;
 }
 
 export interface RecordingScriptEventDescriptor {
@@ -304,6 +310,14 @@ export interface InitializeResult {
          * Android backends, absent or null on Desktop and other non-Android backends.
          */
         androidSdk?: number | null;
+        /**
+         * Issue #1203 — interactive input kinds (beyond pointer) this host can dispatch into a
+         * held composition. Wire-spelled to match {@link InteractiveInputKind} on the Kotlin
+         * side (`'keyDown'`, `'keyUp'`, `'rotaryScroll'`). Empty / absent on pre-#1203 daemons;
+         * panel treats both as "only pointer input is dispatchable" and skips the keyboard /
+         * rotary controls.
+         */
+        interactiveControlKinds?: string[];
     };
     classpathFingerprint: string;
     manifest: { path: string; previewCount: number };

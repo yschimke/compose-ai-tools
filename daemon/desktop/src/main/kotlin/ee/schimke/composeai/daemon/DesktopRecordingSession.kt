@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+
 package ee.schimke.composeai.daemon
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -264,10 +269,11 @@ class DesktopRecordingSession(
    * [scriptHandlers.dispatch] and never branches on event kind directly.
    *
    * Built-in input kinds (`click`, `pointerDown`, `pointerMove`, `pointerUp`) are registered as
-   * real Skiko `sendPointerEvent` calls. `rotaryScroll`, `keyDown`, and `keyUp` register as
-   * unsupported handlers so the agent gets a specific reason rather than the generic "no handler"
-   * message. The probe extension handler appears once, here, instead of leaking into the dispatch
-   * loop's special-case branch.
+   * real Skiko `sendPointerEvent` calls. `rotaryScroll` reuses the pointer pipeline's
+   * `PointerEventType.Scroll`; `keyDown` / `keyUp` route through `sendKeyEvent` with the desktop
+   * key translation table (`DesktopKeyDispatch.kt`). Issue #1203 closed the no-op gap that lived
+   * here pre-v3. The probe extension handler appears once, here, instead of leaking into the
+   * dispatch loop's special-case branch.
    */
   private val scriptHandlers: RecordingScriptHandlerRegistry = buildScriptHandlers()
 
@@ -287,9 +293,9 @@ class DesktopRecordingSession(
           InputTouchRecordingScriptEvents.POINTER_UP_EVENT,
           pointerHandler(PointerEventType.Release),
         )
-        put("input.rotaryScroll", desktopUnsupported("rotary scroll"))
-        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, desktopUnsupported("keyDown"))
-        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, desktopUnsupported("keyUp"))
+        put("input.rotaryScroll", rotaryScrollHandler())
+        put(InputKeyboardRecordingScriptEvents.KEY_DOWN_EVENT, keyHandler(KeyEventType.KeyDown))
+        put(InputKeyboardRecordingScriptEvents.KEY_UP_EVENT, keyHandler(KeyEventType.KeyUp))
         put(
           RecordingScriptDataExtensions.PROBE_EVENT,
           RecordingScriptEventHandler { e, _ -> appliedEvidence(e, "probe marker reached") },
@@ -353,9 +359,55 @@ class DesktopRecordingSession(
       appliedEvidence(event)
     }
 
-  private fun desktopUnsupported(label: String): RecordingScriptEventHandler =
+  /**
+   * Reuses Skiko's pointer-event pipeline for rotary scrolling — the same path a wheel input on a
+   * watch-face preview would take. `scrollDeltaY` follows the browser-wheel convention (positive
+   * means scrolling toward the user / page-down) which matches how the desktop interactive session
+   * forwards it.
+   */
+  private fun rotaryScrollHandler(): RecordingScriptEventHandler =
+    RecordingScriptEventHandler { event, ctx ->
+      val px = event.pixelX
+      val py = event.pixelY
+      val deltaY = event.scrollDeltaY
+      if (px == null || py == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires both pixelX and pixelY",
+        )
+      }
+      if (deltaY == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} requires scrollDeltaY",
+        )
+      }
+      state.scene.sendPointerEvent(
+        eventType = PointerEventType.Scroll,
+        position = sceneOffset(px, py),
+        timeMillis = ctx.tMs,
+        scrollDelta = Offset(0f, deltaY),
+      )
+      appliedEvidence(event)
+    }
+
+  /**
+   * Translate the wire `keyCode` (Android `KEYCODE_*` int as a decimal string — see
+   * `InteractiveKeyCodes`) to a Compose [androidx.compose.ui.input.key.Key] and dispatch via
+   * `BaseComposeScene.sendKeyEvent`. Unmapped codes surface as `unsupported` script evidence so the
+   * agent learns which key didn't make it through.
+   */
+  private fun keyHandler(type: KeyEventType): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
-      unsupportedEvidence(event, "$label dispatch is not implemented for desktop recording")
+      val key = androidKeycodeToComposeKey(event.keyCode)
+      if (key == null) {
+        return@RecordingScriptEventHandler unsupportedEvidence(
+          event,
+          "${event.kind} keyCode '${event.keyCode}' is not in the desktop key translation table",
+        )
+      }
+      state.scene.sendKeyEvent(KeyEvent(key, type))
+      appliedEvidence(event)
     }
 
   /**
@@ -532,10 +584,8 @@ class DesktopRecordingSession(
       kind = kind.wireName(),
       pixelX = pixelX,
       pixelY = pixelY,
+      scrollDeltaY = scrollDeltaY,
       keyCode = keyCode,
-      // RecordingInputParams doesn't carry scrollDeltaY today (the wire shape is set by the
-      // panel-side recording/input notification handler in JsonRpcServer); future rotary-aware
-      // live drivers can extend this synthesisation when they wire the new payload field.
     )
 
   private fun writeFramePng(image: Image, frameIndex: Int) {

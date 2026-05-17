@@ -2226,6 +2226,14 @@ export class PreviewApp extends LitElement {
         const interactiveInputConfig = {
             isLive: (id: string) =>
                 liveState.isLive(id) || liveState.isRecording(id),
+            // Issue #1203 — the keyboard listener only attaches when the daemon
+            // advertises `keyDown` / `keyUp` via `ServerCapabilities.interactiveControlKinds`.
+            // The predicate is called once per card at attach time (idempotency
+            // guard inside `attachInteractiveInputHandlers` short-circuits subsequent
+            // calls), so a daemon-capability change requires re-attach to take effect —
+            // which `updateImage` already drives on every live render.
+            supportsControl: (kind: string) =>
+                liveState.supportsInteractiveControl(kind),
             vscode,
         };
 

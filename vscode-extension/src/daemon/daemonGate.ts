@@ -25,7 +25,19 @@ export interface DaemonCapabilitiesSnapshot {
         requiresRerender: boolean;
         displayName?: string;
     }[];
-    dataExtensions: { id: string; displayName?: string }[];
+    dataExtensions: {
+        id: string;
+        displayName?: string;
+        /** Issue #1203 — extension only dispatches inside a held interactive composition. */
+        requiresInteractive?: boolean;
+    }[];
+    /**
+     * Issue #1203 — interactive input kinds (beyond pointer) this daemon can dispatch.
+     * Wire-spellings: `'keyDown'`, `'keyUp'`, `'rotaryScroll'`. Empty / undefined on pre-#1203
+     * daemons; the panel treats both as "only pointer input is dispatchable" and skips the
+     * keyboard / rotary controls.
+     */
+    interactiveControlKinds?: string[];
 }
 
 /**
@@ -281,7 +293,9 @@ export class LiveDaemonGate implements DaemonGate {
             dataExtensions: (caps.dataExtensions ?? []).map((e) => ({
                 id: e.id,
                 displayName: e.displayName,
+                requiresInteractive: e.requiresInteractive,
             })),
+            interactiveControlKinds: caps.interactiveControlKinds ?? [],
         };
     }
 

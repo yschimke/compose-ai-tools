@@ -93,6 +93,19 @@ export interface InteractiveInputConfig {
      * naturally pass events through.
      */
     isLive(previewId: string): boolean;
+    /**
+     * Issue #1203 — predicate keyed on an interactive control kind wire spelling
+     * (`'keyDown'` / `'keyUp'` / `'rotaryScroll'`). Returns true when the daemon
+     * advertised support for that kind via `ServerCapabilities.interactiveControlKinds`.
+     * The wheel listener doesn't gate on this — rotary scrolling is a daemon-side
+     * dispatch concern, and a daemon that doesn't dispatch will see the event arrive
+     * and harmlessly drop it. The keyboard listener does gate, so we don't burn focus
+     * + keystrokes on a daemon that can't act on them.
+     *
+     * Defaulted to "false on every kind" so callers that don't supply the predicate
+     * keep the pre-#1203 behaviour (no keyboard listener attached).
+     */
+    supportsControl?(kind: string): boolean;
     vscode: VsCodeApi<unknown>;
 }
 
@@ -139,6 +152,42 @@ export function attachInteractiveInputHandlers(
             },
             { passive: false, capture: true },
         );
+    }
+
+    // Issue #1203 — attach keyboard listener once per card, gated by daemon
+    // capability. Idempotent via `dataset.interactiveKeyboardBound`. The card needs
+    // `tabindex` to receive focus and thus `keydown` / `keyup`; we set it the first
+    // time the listener attaches. Pointerdown re-focuses the card (existing handler
+    // calls `setPointerCapture` but not `focus()`; we add that below) so a click on
+    // the live surface naturally hands keyboard input to it.
+    if (
+        card.dataset.interactiveKeyboardBound !== "1" &&
+        config.supportsControl?.("keyDown") === true &&
+        config.supportsControl?.("keyUp") === true
+    ) {
+        card.dataset.interactiveKeyboardBound = "1";
+        if (!card.hasAttribute("tabindex")) {
+            // `-1` keeps the card out of the tab-order (we don't want tabbing
+            // through a card grid to start firing daemon-side key events) but lets
+            // `focus()` succeed.
+            card.setAttribute("tabindex", "-1");
+        }
+        const onKey = (evt: KeyboardEvent, kind: "keyDown" | "keyUp"): void => {
+            const id = card.dataset.previewId;
+            if (!id || !config.isLive(id)) return;
+            const keyCode = domCodeToAndroidKeycode(evt.code);
+            if (keyCode == null) return;
+            config.vscode.postMessage({
+                command: "recordInteractiveInput",
+                previewId: id,
+                kind,
+                keyCode: String(keyCode),
+            });
+            evt.preventDefault();
+            evt.stopPropagation();
+        };
+        card.addEventListener("keydown", (evt) => onKey(evt, "keyDown"));
+        card.addEventListener("keyup", (evt) => onKey(evt, "keyUp"));
     }
 
     if (card.dataset.interactivePointerBound === "1") return;
@@ -227,6 +276,10 @@ export function attachInteractiveInputHandlers(
         // the cursor leaves the surface (or the surface gets swapped out
         // mid-drag by the streaming painter).
         card.setPointerCapture?.(evt.pointerId);
+        // Issue #1203 — focus the card on click so keyboard input lands here.
+        // `preventScroll: true` keeps the surrounding grid from jumping when the
+        // browser's default focus-on-focus scroll-into-view fires on first focus.
+        (card as HTMLElement).focus?.({ preventScroll: true });
         evt.preventDefault();
         evt.stopPropagation();
     });
@@ -382,6 +435,89 @@ function eventInsideElement(
         evt.clientY,
     );
 }
+
+/**
+ * Issue #1203 — translate a DOM `KeyboardEvent.code` (the physical-key spelling, e.g.
+ * `"KeyA"` / `"ArrowLeft"`) to the Android `KEYCODE_*` int the daemon wire expects.
+ *
+ * The Kotlin-side `InteractiveKeyCodes` is the canonical authority for the integer
+ * spellings; mismatches between the two tables would only show up as silent drops
+ * (daemon doesn't recognise the code) rather than crashes. Covers letters, digits,
+ * navigation, modifiers, and the common editing keys — same set the daemon advertises.
+ * Returns `null` for codes outside the table so the listener skips the post; pressing
+ * an unmapped key in the panel is harmless.
+ */
+export function domCodeToAndroidKeycode(code: string): number | null {
+    return DOM_CODE_TO_ANDROID_KEYCODE.get(code) ?? null;
+}
+
+const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
+    // Letters (KEYCODE_A = 29, KEYCODE_Z = 54).
+    ["KeyA", 29],
+    ["KeyB", 30],
+    ["KeyC", 31],
+    ["KeyD", 32],
+    ["KeyE", 33],
+    ["KeyF", 34],
+    ["KeyG", 35],
+    ["KeyH", 36],
+    ["KeyI", 37],
+    ["KeyJ", 38],
+    ["KeyK", 39],
+    ["KeyL", 40],
+    ["KeyM", 41],
+    ["KeyN", 42],
+    ["KeyO", 43],
+    ["KeyP", 44],
+    ["KeyQ", 45],
+    ["KeyR", 46],
+    ["KeyS", 47],
+    ["KeyT", 48],
+    ["KeyU", 49],
+    ["KeyV", 50],
+    ["KeyW", 51],
+    ["KeyX", 52],
+    ["KeyY", 53],
+    ["KeyZ", 54],
+    // Digits (KEYCODE_0 = 7, KEYCODE_9 = 16). Top row only — numpad would map to
+    // KEYCODE_NUMPAD_* which the daemon table doesn't enumerate today.
+    ["Digit0", 7],
+    ["Digit1", 8],
+    ["Digit2", 9],
+    ["Digit3", 10],
+    ["Digit4", 11],
+    ["Digit5", 12],
+    ["Digit6", 13],
+    ["Digit7", 14],
+    ["Digit8", 15],
+    ["Digit9", 16],
+    // Whitespace / editing.
+    ["Space", 62],
+    ["Enter", 66],
+    ["NumpadEnter", 66],
+    ["Tab", 61],
+    ["Backspace", 67],
+    ["Delete", 112],
+    ["Escape", 111],
+    // Navigation.
+    ["ArrowLeft", 21],
+    ["ArrowRight", 22],
+    ["ArrowUp", 19],
+    ["ArrowDown", 20],
+    ["Home", 122],
+    ["End", 123],
+    ["PageUp", 92],
+    ["PageDown", 93],
+    // Modifiers.
+    ["ShiftLeft", 59],
+    ["ShiftRight", 60],
+    ["ControlLeft", 113],
+    ["ControlRight", 114],
+    ["AltLeft", 57],
+    ["AltRight", 58],
+    ["MetaLeft", 117],
+    ["MetaRight", 118],
+]);
 
 type InteractiveInputKind =
     | "click"

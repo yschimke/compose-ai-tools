@@ -410,9 +410,12 @@ sealed interface InteractiveCommand {
 
   /**
    * Synthesise + dispatch a [android.view.MotionEvent] on the rule's main thread. [kind] mirrors
-   * the v2 wire `interactive/input` `kind` field — pointer events plus `"rotaryScroll"` for Wear
-   * previews; key events fall through to a no-op until v4. Pixel coordinates are in the held
-   * composition's own pixel space — the host has already scaled from any `pixelDensity` ratio.
+   * the v2 wire `interactive/input` `kind` field — pointer events, `"rotaryScroll"` for Wear,
+   * and (issue #1203) `"keyDown"` / `"keyUp"` which route through the held rule's
+   * `performKeyInput`. Pixel coordinates are in the held composition's own pixel space — the host
+   * has already scaled from any `pixelDensity` ratio. For key events [pixelX] / [pixelY] are
+   * unused and may be zero; [keyCode] carries the Android `KEYCODE_*` int as a decimal string
+   * (see `InteractiveKeyCodes`).
    */
   data class Dispatch(
     override val streamId: String,
@@ -420,6 +423,11 @@ sealed interface InteractiveCommand {
     val pixelX: Int,
     val pixelY: Int,
     val scrollDeltaY: Float? = null,
+    /**
+     * Issue #1203 — decimal-string Android `KEYCODE_*` for `keyDown` / `keyUp`. Cross-classloader
+     * value is just a `java.lang.String` (do-not-acquire), so the bridge serialises trivially.
+     */
+    val keyCode: String? = null,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
   ) : InteractiveCommand
