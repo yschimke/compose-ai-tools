@@ -54,7 +54,7 @@ The plugin is published to [Maven Central](https://central.sonatype.com/artifact
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.10.17"
+    id("ee.schimke.composeai.preview") version "0.10.18"
 }
 ```
 <!-- x-release-please-end -->

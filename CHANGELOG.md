@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.18](https://github.com/yschimke/compose-ai-tools/compare/v0.10.17...v0.10.18) (2026-05-18)
+
+
+### Bug Fixes
+
+* **daemon:** use className= in ShadowAmbientLifecycleObserver @Implements ([#1247](https://github.com/yschimke/compose-ai-tools/issues/1247)) ([955546c](https://github.com/yschimke/compose-ai-tools/commit/955546c26816caba9a7839ac90dc5ae63e0ee97f))
+* **gradle-plugin:** harden renderPreviews against missing android.jar ([#1243](https://github.com/yschimke/compose-ai-tools/issues/1243)) ([#1245](https://github.com/yschimke/compose-ai-tools/issues/1245)) ([2f53ebd](https://github.com/yschimke/compose-ai-tools/commit/2f53ebd2f05741cc02193d6cad0ba1b17fb81419))
+* scroll long/gif preview cards no longer show static base capture ([#1241](https://github.com/yschimke/compose-ai-tools/issues/1241)) ([ca74a28](https://github.com/yschimke/compose-ai-tools/commit/ca74a288f13e18756f663868dcdb2728d41e3d4c))
+* **vscode-extension:** buffer daemon stderr across pipe chunk boundaries ([#1238](https://github.com/yschimke/compose-ai-tools/issues/1238)) ([521a51a](https://github.com/yschimke/compose-ai-tools/commit/521a51abc2ad40f01fb51dabde5b90a839e3887d))
+* **vscode:** only restore focus mode on boot when the focused preview is still present ([#1240](https://github.com/yschimke/compose-ai-tools/issues/1240)) ([20018fc](https://github.com/yschimke/compose-ai-tools/commit/20018fcb078e04714dd438c510b6a117313134ac))
+
 ## [0.10.17](https://github.com/yschimke/compose-ai-tools/compare/v0.10.16...v0.10.17) (2026-05-18)
 
 
