@@ -87,18 +87,23 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
   }
 
   /**
-   * Conditionally registers [ShadowAmbientLifecycleObserver]. The shadow's
-   * `@Implements(AmbientLifecycleObserver::class)` value forces Robolectric's
-   * [org.robolectric.internal.bytecode.ShadowMap.obtainShadowInfo] to resolve
-   * `androidx.wear.ambient.AmbientLifecycleObserver` via reflection during sandbox bootstrap; on
-   * non-Wear consumers (e.g. `:samples:android`, plain Android apps) that class isn't on the
-   * runtime classpath and the resolution throws `TypeNotPresentException`, killing the daemon
-   * before any render runs (issue: PR #891 regression hit by run-agent-audit-samples.py).
+   * Conditionally registers [ShadowAmbientLifecycleObserver].
    *
-   * Returning the shadow only when wear-ambient is loadable keeps the existing wear path intact
-   * while leaving non-wear consumers untouched. The same gate is mirrored on the engine side in
-   * [ee.schimke.composeai.daemon.RobolectricHost] for `AmbientPreviewOverrideExtension` /
-   * `AmbientInputDispatchObserver` instantiation.
+   * Two interlocking precautions keep non-Wear consumers safe (issue #1244, PR #891 regression hit
+   * by `run-agent-audit-samples.py`):
+   * 1. **The shadow uses `@Implements(className = …)` instead of the `value = …` class-literal
+   *    form**, so Robolectric's [org.robolectric.internal.bytecode.ShadowMap.obtainShadowInfo]
+   *    reads the FQN as a `String` rather than dereferencing a deferred `Class<?>` proxy that the
+   *    JVM annotation parser would resolve via the shadow's defining loader. That deferred
+   *    resolution was the path that threw `TypeNotPresentException` mid-sandbox-bootstrap on Wear
+   *    sample classpaths shipping the shadow next to a stale/mismatched wear AAR.
+   * 2. **This gate still hides the shadow when wear-ambient isn't loadable**, so the shadow class
+   *    — which references `AmbientLifecycleObserver` in field and method-parameter types — is
+   *    only ever returned to Robolectric on classpaths where its symbolic links can be resolved.
+   *
+   * The same gate is mirrored on the engine side in [ee.schimke.composeai.daemon.RobolectricHost]
+   * for `AmbientPreviewOverrideExtension` / `AmbientInputDispatchObserver` instantiation —
+   * those concrete classes call into `AmbientStateController` which directly imports wear API.
    */
   override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> =
     if (isWearAmbientAvailable(javaClass.classLoader)) {
