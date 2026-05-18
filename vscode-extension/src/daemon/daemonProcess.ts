@@ -54,6 +54,45 @@ export function readLaunchDescriptor(
     }
 }
 
+/**
+ * Splits a stream of arbitrary text chunks into newline-delimited lines, holding
+ * the trailing fragment of the last chunk until the next chunk (or `flush`)
+ * completes it. Node's `Readable.on("data", ...)` flushes when the writer flushes
+ * — not on line boundaries — so a naive `chunk.split(/\r?\n/)` treats a partial
+ * line as complete and emits the prefix on its own. For the daemon's stderr that
+ * silently corrupts uncaught-exception output: the JVM writes
+ * `Exception in thread "main" ` *then* invokes `printStackTrace`, and any pipe
+ * boundary between those two writes emits the prefix alone, while the
+ * `java.lang.X: msg` continuation arrives in the next chunk and gets dropped by
+ * the quiet-level allow-list filter.
+ */
+export class ChunkLineSplitter {
+    private buffer = "";
+
+    /** Append `chunk` and return every complete line it produced. */
+    feed(chunk: string): string[] {
+        this.buffer += chunk;
+        const lines: string[] = [];
+        let newlineIndex: number;
+        while ((newlineIndex = this.buffer.search(/\r?\n/)) !== -1) {
+            lines.push(this.buffer.slice(0, newlineIndex));
+            const matchLength = this.buffer[newlineIndex] === "\r" ? 2 : 1;
+            this.buffer = this.buffer.slice(newlineIndex + matchLength);
+        }
+        return lines;
+    }
+
+    /** Return any pending fragment (no trailing newline) and clear the buffer. */
+    flush(): string | null {
+        if (this.buffer.length === 0) {
+            return null;
+        }
+        const tail = this.buffer;
+        this.buffer = "";
+        return tail;
+    }
+}
+
 export interface SpawnedDaemon {
     client: DaemonClient;
     process: ChildProcess;
@@ -138,17 +177,39 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // logger so daemon `System.err.println` lands in the user's output panel.
     // The filter dedupes the Roborazzi ActionBar banner and drops the boot
     // diagnostics at normal level; verbose passes everything through.
+    //
+    // Buffer carry-over across chunk boundaries: pipes flush whenever the
+    // writer happens to flush, not on line boundaries. Java's uncaught-exception
+    // handler writes `Exception in thread "main" ` and then calls
+    // `printStackTrace`, and the pipe can land its boundary between those two
+    // writes — splitting on `\r?\n` per chunk would treat the partial prefix
+    // as a complete line and emit `Exception in thread "main" ` with no class
+    // name. The quiet-level filter (allow-listed to `^Exception ` / `^Caused
+    // by: ` / `^\s+at`) would then drop the `java.lang.X: ...` continuation
+    // line that arrives in the next chunk because it doesn't start with one
+    // of those prefixes, making every link/initialiser failure look like the
+    // exception had no message.
     child.stderr.setEncoding("utf-8");
+    const emitStderrLine = (line: string): void => {
+        if (line.length === 0) {
+            return;
+        }
+        const filtered = logFilter.filterDaemonStderrLine(line);
+        if (filtered === null) {
+            return;
+        }
+        logger?.appendLine(`[daemon stderr] ${filtered}`);
+    };
+    const stderrSplitter = new ChunkLineSplitter();
     child.stderr.on("data", (chunk: string) => {
-        for (const line of chunk.split(/\r?\n/)) {
-            if (line.length === 0) {
-                continue;
-            }
-            const filtered = logFilter.filterDaemonStderrLine(line);
-            if (filtered === null) {
-                continue;
-            }
-            logger?.appendLine(`[daemon stderr] ${filtered}`);
+        for (const line of stderrSplitter.feed(chunk)) {
+            emitStderrLine(line);
+        }
+    });
+    child.stderr.on("end", () => {
+        const tail = stderrSplitter.flush();
+        if (tail !== null) {
+            emitStderrLine(tail);
         }
     });
 
