@@ -42,11 +42,22 @@ samples/bazel/
 ├── BUILD.bazel           # discover_resources target wiring
 ├── compose_preview.bzl   # rule definitions
 ├── _discover.sh          # placeholder discover action
-└── app/
-    └── res/
-        ├── drawable/ic_demo.xml
-        └── drawable-night/ic_demo.xml
+└── app/res/              # mirrors samples/android/src/main/res/
+    ├── drawable/         # vectors + an animated-vector
+    ├── drawable-night/   # qualifier variant of ic_compose_logo
+    ├── mipmap-anydpi-v26/  # two adaptive-icons
+    └── values/           # non-drawable XML; discover skips these
 ```
+
+The `app/res/` tree is a verbatim copy of
+[`samples/android/src/main/res/`](../android/src/main/res/), chosen
+because it covers every shape the resources pipeline cares about
+(`<vector>`, `<animated-vector>`, `<adaptive-icon>`, a qualifier
+variant under `drawable-night/`, and `<resources>` files under
+`values/` that the discover action correctly skips). Mirroring an
+existing Android sample also means we can byte-diff the eventual
+Bazel-produced PNGs against the Gradle-produced ones once the render
+half lands.
 
 ## Build
 
@@ -69,9 +80,9 @@ the render half lands.
 
 ## Status
 
-- [x] `MODULE.bazel`, `.bazelrc`, sample XML drawables
+- [x] `MODULE.bazel`, `.bazelrc`, full `res/` tree mirroring `samples/android`
 - [x] `discover_resources` rule (placeholder shell action)
-- [ ] `compose-preview discover-resources` CLI subcommand (next commit)
+- [x] Opt-in CI workflow (`.github/workflows/bazel.yml`)
+- [ ] `compose-preview discover-resources` CLI subcommand
 - [ ] Swap `_discover.sh` for the real CLI binary
 - [ ] `render_resources` rule (blocked on render-CLI extraction)
-- [ ] CI smoke job (opt-in workflow, not on the default `check` matrix)

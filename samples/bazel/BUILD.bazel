@@ -16,6 +16,10 @@ discover_resources(
         "app/res/drawable/*.xml",
         "app/res/drawable-*/*.xml",
         "app/res/mipmap-*/*.xml",
+        # values/ is included so the rule exercises the
+        # skip-classification path — these files have a `<resources>`
+        # root and are dropped by the discover action.
+        "app/res/values/*.xml",
     ]),
     module = "//samples/bazel:app",
     variant = "main",
