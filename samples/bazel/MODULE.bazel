@@ -1,0 +1,13 @@
+# Bazel sample for compose-ai-tools — resources generation stepping stone.
+#
+# This module is intentionally minimal: bzlmod with no external deps. The
+# `discover_resources` rule defined in `compose_preview.bzl` is a pure
+# shell action (no rules_jvm_external, no rules_kotlin) until the
+# `compose-preview discover-resources` CLI subcommand lands — see issue
+# #1253. Adding `rules_kotlin` only happens when the sample needs to
+# compile Kotlin, which it does not for the resources-only first slice.
+
+module(
+    name = "compose_ai_tools_bazel_sample",
+    version = "0.0.0",
+)

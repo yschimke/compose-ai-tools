@@ -1,0 +1,27 @@
+load("//:compose_preview.bzl", "discover_resources")
+
+# Placeholder discover action — shell script that mirrors the wire
+# format produced by `discoverAndroidResources`. Swapped for the
+# `compose-preview discover-resources` CLI subcommand once it lands
+# (issue #1253).
+sh_binary(
+    name = "_discover",
+    srcs = ["_discover.sh"],
+    visibility = ["//visibility:public"],
+)
+
+discover_resources(
+    name = "app_resources",
+    srcs = glob([
+        "app/res/drawable/*.xml",
+        "app/res/drawable-*/*.xml",
+        "app/res/mipmap-*/*.xml",
+    ]),
+    module = "//samples/bazel:app",
+    variant = "main",
+)
+
+filegroup(
+    name = "all",
+    srcs = [":app_resources"],
+)
