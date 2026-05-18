@@ -176,6 +176,24 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             ),
         );
 
+        // Resolve the webview view. The `webviewA11yState` ack the chip
+        // tests wait for only fires from a live webview script, and
+        // without explicit focus `panel.view` stays undefined — every
+        // host `postMessage` no-ops. See the matching note in
+        // `e2e.test.ts`. Idempotent if the cmp suite already opened it.
+        await vscode.commands.executeCommand("composePreview.panel.focus");
+        await waitFor(
+            "webviewReady from the resolved webview",
+            30_000,
+            100,
+            () => {
+                const inbound = api.getReceivedMessages();
+                return inbound.find(
+                    (m) => (m as PostedMessage).command === "webviewReady",
+                );
+            },
+        );
+
         // The chip toggles below send `data/subscribe` through the daemon
         // scheduler, which requires a live daemon and therefore a
         // `composePreviewDaemonStart`-produced launch descriptor. Activation
