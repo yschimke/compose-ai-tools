@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.20"
+kotlin = "2.3.21"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -14,7 +14,7 @@ kotlin = "2.3.20"
 # `configureKotlinCompatibility(...)`; remove the flag (and bump this to
 # `2.1.x`) when the removal lands and we're ready to drop 2.0.x consumers.
 kotlinCoreLibraries = "2.0.21"
-agp = "9.2.0"
+agp = "9.2.1"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
@@ -23,7 +23,7 @@ classgraph = "4.8.184"
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.04.01"
+compose-bom-stable = "2026.05.00"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -43,7 +43,7 @@ activity-compose = "1.13.0"
 # `navigation.*` script-event surface end-to-end. Activity-compose 1.13's
 # transitive `androidx.navigationevent` floor (see CompatRules.kt) means
 # this stays compatible with the renderer's compileOnly stack.
-navigation-compose = "2.9.7"
+navigation-compose = "2.9.8"
 wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
@@ -53,7 +53,7 @@ wear-tooling-preview = "1.0.0"
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
 # controller) so consumer code wired to `AmbientAware { ... }` can render under
 # a synthetic ambient state without flashing a real watch.
-wear = "1.3.0"
+wear = "1.4.0"
 # Horologist's `AmbientAware` composable + `AmbientState` sealed type — the
 # de-facto helper most Wear apps use to wrap their root content. Used by
 # `:samples:wear` previews to demonstrate the ambient override end-to-end.
@@ -73,17 +73,17 @@ horologist = "0.7.15"
 #    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
 #    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
 #    inside `RemoteButtonImpl` at preview render time.
-compose-remote = "1.0.0-alpha08"
-wear-compose-remote = "1.0.0-alpha02"
+compose-remote = "1.0.0-alpha010"
+wear-compose-remote = "1.0.0-alpha03"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.0"
-kotlinx-coroutines = "1.10.2"
+compose-ui-prerelease = "1.11.1"
+kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.11.1"
+mcp-kotlin-sdk = "0.12.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -104,7 +104,7 @@ android-compose-screenshot = "0.0.1-alpha14"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.0.0"
+checker-qual = "4.1.0"
 # KMP port of Google's Material Color Utilities. Powers the wallpaper data
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
