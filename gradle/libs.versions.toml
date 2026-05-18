@@ -109,7 +109,7 @@ checker-qual = "4.1.0"
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
 # derived dynamic theming actually produces.
-material-kolor = "4.0.5"
+material-kolor = "4.1.1"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
