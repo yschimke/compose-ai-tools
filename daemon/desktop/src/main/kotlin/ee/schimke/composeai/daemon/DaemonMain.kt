@@ -495,169 +495,186 @@ internal fun buildDesktopExtensions(
   composeTraceEnabled: Boolean,
   displayFilterEnabled: Boolean,
 ): List<Extension> = buildList {
-  add(
+  tryAdd("device/clip") {
     Extension(
       id = "device/clip",
       displayName = "Device clip",
       dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
       previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
     )
-  )
-  add(
+  }
+  tryAdd("device/background") {
     Extension(
       id = "device/background",
       displayName = "Device background",
       dataProductRegistry = DeviceBackgroundDataProductRegistry(previewIndex = previewIndex),
       previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
     )
-  )
-  add(
+  }
+  tryAdd("render/trace") {
     Extension(
       id = "render/trace",
       displayName = "Render trace",
       dataProductRegistry = RenderTraceDataProductRegistry(),
       previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
     )
-  )
-  add(
+  }
+  tryAdd("render/test-failure") {
     Extension(
       id = "render/test-failure",
       displayName = "Test failure",
       dataProductRegistry = TestFailureDataProductRegistry(),
     )
-  )
-  add(
+  }
+  tryAdd("render/overlay-legend") {
     Extension(
       id = "render/overlay-legend",
       displayName = "Render overlay legend",
       previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
     )
-  )
-  add(
+  }
+  tryAdd("data/theme") {
     Extension(
       id = "data/theme",
       displayName = "Material 3 theme override",
       dataProductRegistry = themeRegistry,
       previewOverrideExtensions = listOf(Material3ThemePreviewOverrideExtension()),
     )
-  )
-  add(
+  }
+  tryAdd("data/wallpaper") {
     Extension(
       id = "data/wallpaper",
       displayName = "Wallpaper override",
       dataProductRegistry = wallpaperRegistry,
       previewOverrideExtensions = listOf(WallpaperPreviewOverrideExtension()),
     )
-  )
-  add(
+  }
+  tryAdd("data/pseudolocale") {
     Extension(
       id = "data/pseudolocale",
       displayName = "Pseudolocale (desktop)",
       previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
     )
-  )
-  add(
+  }
+  tryAdd("data/recomposition") {
     Extension(
       id = "data/recomposition",
       displayName = "Recomposition counters",
       dataProductRegistry = recompositionRegistry,
     )
-  )
+  }
   if (dataRoot != null) {
     // Issue #1201 — file-based registries that are portable to desktop. The producer side is
     // currently Android-only for `fonts/used` (the GoogleFontInterceptor / Typeface accounting
     // path); the registry returns NotAvailable on desktop until a Skia-side font producer lands.
     // `displayfilter` is fully portable (BufferedImage post-capture) and gated on the same sysprop
     // the Android side reads.
-    add(
+    tryAdd("fonts/used") {
       Extension(
         id = "fonts/used",
         displayName = "Fonts used",
         dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
       )
-    )
+    }
     // Phase 2 (#1201): layoutinspector + strings registries. The connector modules were migrated
     // to Compose Multiplatform JVM so desktop can depend on them; the producers stay Robolectric-
     // bound for now so these return `NotAvailable` until a CMP-portable producer ports. The point
     // of advertising them is to stop the panel's chips logging `-32020 kind not advertised` on
     // CMP-desktop sessions.
-    add(
+    tryAdd("compose/semantics") {
       Extension(
         id = "compose/semantics",
         displayName = "Compose semantics snapshot",
         dataProductRegistry = ComposeSemanticsDataProductRegistry(rootDir = dataRoot),
       )
-    )
-    add(
+    }
+    tryAdd("layout/inspector") {
       Extension(
         id = "layout/inspector",
         displayName = "Layout inspector",
         dataProductRegistry = LayoutInspectorDataProductRegistry(rootDir = dataRoot),
       )
-    )
-    add(
+    }
+    tryAdd("text/strings") {
       Extension(
         id = "text/strings",
         displayName = "Text strings",
         dataProductRegistry =
           TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex),
       )
-    )
-    add(
+    }
+    tryAdd("i18n/translations") {
       Extension(
         id = "i18n/translations",
         displayName = "i18n translations",
         dataProductRegistry = I18nTranslationsDataProductRegistry(rootDir = dataRoot),
       )
-    )
+    }
     // Phase 4 (#1201): navigation registry. Producer side stays in `:daemon:android`
     // (`Intent` reflection); the registry returns `NotAvailable` on desktop until a CMP-portable
     // producer driving `NavController` lands. Advertising it is enough to stop the panel's
     // navigation chip tripping `-32020 kind not advertised`.
-    add(
+    tryAdd("data/navigation") {
       Extension(
         id = "data/navigation",
         displayName = "Navigation snapshot",
         dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
       )
-    )
+    }
     if (displayFilterEnabled) {
-      add(
+      tryAdd("displayfilter") {
         Extension(
           id = "displayfilter",
           displayName = "Display filter variants",
           dataProductRegistry = DisplayFilterDataProductRegistry(rootDir = dataRoot),
         )
-      )
+      }
     }
     if (composeTraceEnabled) {
-      add(
+      tryAdd("compose/trace") {
         Extension(
           id = "compose/trace",
           displayName = "Compose Perfetto trace",
           dataProductRegistry = PerfettoTraceDataProductRegistry(rootDir = dataRoot),
           previewExtensionDescriptors = listOf(RenderPreviewExtension.composeTraceDescriptor),
         )
-      )
+      }
     }
   }
   if (historyManager != null) {
-    add(
+    tryAdd("history/diff-regions") {
       Extension(
         id = "history/diff-regions",
         displayName = "History diff regions",
         dataProductRegistry = HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
       )
-    )
+    }
   }
   // Recording-script extensions are descriptor-only on the daemon side — the host's session
   // registry decides what's actually dispatchable. The roadmap descriptors are advertised so
   // panels can grey out unimplemented actions.
-  add(
+  tryAdd("recording/script") {
     Extension(
       id = "recording/script",
       displayName = "Recording-script extensions",
       dataExtensionDescriptors = RecordingScriptDataExtensions.roadmapDescriptors,
     )
-  )
+  }
+}
+
+/**
+ * Adds [build]'s result to the list, catching `LinkageError` (`NoClassDefFoundError` /
+ * `ClassNotFoundException`-shaped failures) so one missing connector module's class does not crash
+ * the entire daemon process. Mirrors the helper in `:daemon:android`'s DaemonMain — see the
+ * rationale comment there.
+ */
+private inline fun MutableList<Extension>.tryAdd(label: String, build: () -> Extension) {
+  try {
+    add(build())
+  } catch (e: LinkageError) {
+    System.err.println(
+      "compose-ai-tools daemon: extension '$label' unavailable on this classpath — " +
+        "${e.javaClass.simpleName}: ${e.message}"
+    )
+  }
 }
