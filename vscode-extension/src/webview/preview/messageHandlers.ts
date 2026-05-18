@@ -92,6 +92,14 @@ export interface PreviewMessageContext {
     applyRelativeSizing(previews: PreviewInfo[]): void;
     applyFilters(): void;
     applyLayout(): void;
+    /**
+     * One-shot focus restoration triggered by the first `setPreviews`
+     * after a webview boot. If the panel was in focus mode at unload,
+     * the boot defers re-entering focus until this call verifies the
+     * previously focused preview is in the new manifest. No-op after
+     * it's consumed once or when there's no pending focus to restore.
+     */
+    applyPendingFocusRestore(): void;
     applyInteractiveButtonState(): void;
     applyRecordingButtonState(): void;
     saveFilterState(): void;
@@ -338,6 +346,10 @@ function handleSetPreviews(
     ctx.restoreFilterState();
     ctx.applyFilters();
     ctx.applyLayout();
+    // Lazy focus-mode restore — re-enters focus only if the previously
+    // focused preview survived the new manifest. See the deferred-restore
+    // note on `pendingFocusRestoreId` in `main.ts`.
+    ctx.applyPendingFocusRestore();
     // setPreviews can rebuild the focused card from scratch; re-stamp the live
     // badge so the LIVE chip reattaches to the right card(s). Drop any live
     // previewIds that are gone from the new manifest — silent cleanup; the

@@ -36,6 +36,16 @@ export interface FocusControllerPersistedState {
     layout?: "grid" | "flow" | "column" | "focus";
     diffMode?: DiffMode;
     filters?: { fn?: string; group?: string };
+    /** Previously focused previewId — written on every focus navigation
+     *  so a webview reload can verify the focused preview still belongs
+     *  to the currently active file before re-entering focus mode.
+     *  See the deferred restore at boot in `main.ts`. */
+    focusedPreviewId?: string | null;
+    /** Layout to fall back to when exiting focus. Persisted (not just
+     *  held in `previewStore`) so the cold-boot "drop out of focus if
+     *  the focused preview isn't in the current file" path can restore
+     *  the prior dropdown choice. */
+    previousLayout?: "grid" | "flow" | "column";
 }
 
 export interface FocusControllerConfig {
@@ -309,6 +319,13 @@ export class FocusController {
         // re-walking the DOM. Same value goes upstream to the extension
         // so the History panel can re-scope.
         previewStore.setState({ focusedPreviewId: previewId });
+        // Also persist so the next webview boot can verify the focused
+        // preview is still in the active file's manifest before re-
+        // entering focus mode.
+        if (this.config.state.focusedPreviewId !== previewId) {
+            this.config.state.focusedPreviewId = previewId;
+            this.config.vscode.setState(this.config.state);
+        }
         this.config.vscode.postMessage({
             command: "previewScopeChanged",
             previewId,
