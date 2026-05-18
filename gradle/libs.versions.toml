@@ -109,6 +109,15 @@ checker-qual = "4.1.0"
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
 # derived dynamic theming actually produces.
+# Pinned to the 4.0.x line: `:data-wallpaper-connector` is a published
+# module and its consumers live on the renderer-android Compose floor
+# (`compose-bom-compat`, Compose 1.9.5). 4.1.0 rebuilt against Compose
+# Multiplatform 1.10.0 + Kotlin 2.3.0 and switched from an Android library
+# to a "Multiplatform Android library" — both move the transitive floor
+# above what our published surface targets. Renovate is constrained to
+# 4.0.x in `.github/renovate.json`; bumping the supported floor is a
+# manual decision (re-check `:data-wallpaper-connector:compileKotlin`
+# against `compose-bom-compat` when raising it).
 material-kolor = "4.0.5"
 
 [libraries]
