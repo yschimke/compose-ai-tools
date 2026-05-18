@@ -1105,10 +1105,12 @@ internal object AndroidPreviewSupport {
     // classes / classpath additions are still composed in the Test lambda below
     // (they need `findByName("test${capVariant}UnitTest")` which only resolves
     // late).
+    val bootClasspathFallback = AndroidPreviewClasspath.buildBootClasspathFallback(project)
     val resolvedClasspath =
       AndroidPreviewClasspath.buildTestClasspath(
         project = project,
         bootClasspath = bootClasspath,
+        bootClasspathFallback = bootClasspathFallback,
         rendererConfig = rendererConfig,
         rendererClassDirs = rendererClassDirs,
         sourceClassDirs = sourceClassDirs,
@@ -1314,6 +1316,15 @@ internal object AndroidPreviewSupport {
         // dataProducts.
         outputs.dir(dataProductsDirectory).withPropertyName("dataProductsDir")
 
+        // Fail fast with a clear, fixable error if android.jar isn't actually
+        // on the resolved classpath — otherwise the user sees Robolectric's
+        // own `Config.<clinit>` -> `NoClassDefFoundError: android/app/Application`
+        // (issue #1243), which doesn't hint at the root cause (missing
+        // compileSdk / unresolved SDK location). doFirst runs in the Gradle
+        // process at task-execution time, so `classpath.files` is fully
+        // resolved by the time we inspect it.
+        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
+
         dependsOn(discoverTask)
         dependsOn(generateRobolectricPropertiesTask)
         if (useLocalRenderer) {
@@ -1385,6 +1396,11 @@ internal object AndroidPreviewSupport {
         systemProperty("composeai.resources.outputDir", resourcesRendersOutputDir.get())
 
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
+
+        // Same #1243 guard as renderPreviews above — the resource render task
+        // boots Robolectric through the identical classpath and hits the same
+        // `Config.<clinit>` -> `Application.class` resolution at runner init.
+        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
 
         dependsOn("discoverAndroidResources")
         dependsOn(generateRobolectricPropertiesTask)

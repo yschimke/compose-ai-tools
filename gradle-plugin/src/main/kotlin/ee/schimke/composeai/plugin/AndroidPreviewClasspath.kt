@@ -1,5 +1,7 @@
 package ee.schimke.composeai.plugin
 
+import java.io.File
+import java.util.zip.ZipFile
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.attributes.Attribute
@@ -48,6 +50,7 @@ internal object AndroidPreviewClasspath {
   fun buildTestClasspath(
     project: Project,
     bootClasspath: Provider<List<RegularFile>>,
+    bootClasspathFallback: Provider<List<File>>,
     rendererConfig: Configuration,
     rendererClassDirs: FileCollection,
     sourceClassDirs: FileCollection,
@@ -100,9 +103,102 @@ internal object AndroidPreviewClasspath {
       // shadows applied). The outer stub does NOT shadow the sandboxed PixelCopy.
       //
       // Sourced from AGP's SdkComponents so we don't have to parse local.properties
-      // or read rootProject.file(...).
+      // or read rootProject.file(...). When AGP's bootClasspath resolves empty (rare
+      // — e.g. compileSdk left at its DSL default on a freshly-applied AGP variant,
+      // or a module type that doesn't bind sdkComponents), the fallback derived from
+      // `local.properties` / `ANDROID_HOME` rescues the load. See issue #1243 — when
+      // neither path supplies android.jar, Robolectric's own `Config.<clinit>` fails
+      // with `NoClassDefFoundError: android/app/Application` before the test runs.
       from(project.files(bootClasspath))
+      from(project.files(bootClasspathFallback))
     }
+
+  /**
+   * Lazy fallback for `android.jar`, used when AGP's `sdkComponents.bootClasspath` provider returns
+   * an empty list (issue #1243). Reads `sdk.dir` from `local.properties` first, falls back to the
+   * `ANDROID_HOME` / `ANDROID_SDK_ROOT` env vars, then picks the highest-versioned `platforms/
+   * android-N/android.jar` under that SDK root. Any version is acceptable for outer-classpath
+   * resolution of `android.app.Application` — Robolectric still drives the in-sandbox framework
+   * from its own `android-all` artifact, gated by `sdk=…` in the generated
+   * `robolectric.properties`.
+   *
+   * Returns an empty list when no SDK can be located on disk; in that case
+   * [validateApplicationOnClasspath] surfaces a clear error before the test JVM forks.
+   */
+  fun buildBootClasspathFallback(project: Project): Provider<List<File>> {
+    val localProperties =
+      project.rootProject.layout.projectDirectory.file("local.properties").asFile
+    val androidHomeEnv = project.providers.environmentVariable("ANDROID_HOME")
+    val androidSdkRootEnv = project.providers.environmentVariable("ANDROID_SDK_ROOT")
+    return project.providers.provider {
+      val sdkDir =
+        sdkDirFromLocalProperties(localProperties)
+          ?: androidHomeEnv.orNull?.takeIf { it.isNotBlank() }
+          ?: androidSdkRootEnv.orNull?.takeIf { it.isNotBlank() }
+          ?: return@provider emptyList<File>()
+      val androidJar = highestPlatformAndroidJar(File(sdkDir))
+      if (androidJar != null && androidJar.isFile) listOf(androidJar) else emptyList()
+    }
+  }
+
+  /**
+   * Throws a Gradle-friendly `IllegalStateException` describing how to fix the situation when the
+   * resolved test classpath has no entry that defines `android/app/Application.class`. Intended for
+   * a `doFirst {}` on the `renderPreviews` `Test` task so the user sees a precise error rather than
+   * the `NoClassDefFoundError` in Robolectric's `Config.<clinit>` (issue #1243).
+   */
+  fun validateApplicationOnClasspath(classpath: Iterable<File>) {
+    val scanned = classpath.filter { it.isFile && it.name.endsWith(".jar") }
+    val found = scanned.any { jar -> jarContainsEntry(jar, "android/app/Application.class") }
+    if (found) return
+    val sample = scanned.take(10).joinToString("\n") { " - ${it.absolutePath}" }
+    val more = if (scanned.size > 10) "\n - (+${scanned.size - 10} more)" else ""
+    throw IllegalStateException(
+      """
+        |compose-preview: android.jar is not on the renderPreviews test classpath, so
+        |Robolectric's Config.<clinit> will fail with NoClassDefFoundError: android/app/Application
+        |before any preview renders. (issue #1243)
+        |
+        |Common causes:
+        | * `compileSdk` is unset in the module's `android { }` block (AGP's sdkComponents
+        |   .bootClasspath then resolves empty).
+        | * `sdk.dir` is missing from `local.properties` AND `ANDROID_HOME` / `ANDROID_SDK_ROOT`
+        |   are unset, so the plugin's fallback couldn't locate the SDK either.
+        | * No `platforms/android-*/android.jar` is installed at the resolved SDK root.
+        |
+        |Classpath JARs scanned (none contained android/app/Application.class):
+        |$sample$more
+        """
+        .trimMargin()
+    )
+  }
+
+  private fun sdkDirFromLocalProperties(localProperties: File): String? {
+    if (!localProperties.isFile) return null
+    return runCatching {
+        val props = java.util.Properties()
+        localProperties.inputStream().use { props.load(it) }
+        props.getProperty("sdk.dir")?.takeIf { it.isNotBlank() }
+      }
+      .getOrNull()
+  }
+
+  private fun highestPlatformAndroidJar(sdkRoot: File): File? {
+    val platforms = File(sdkRoot, "platforms")
+    if (!platforms.isDirectory) return null
+    return platforms
+      .listFiles { f -> f.isDirectory && f.name.startsWith("android-") }
+      .orEmpty()
+      .mapNotNull { dir ->
+        val jar = File(dir, "android.jar")
+        if (jar.isFile) dir.name.removePrefix("android-").toIntOrNull()?.let { it to jar } else null
+      }
+      .maxByOrNull { it.first }
+      ?.second
+  }
+
+  private fun jarContainsEntry(jar: File, entryPath: String): Boolean =
+    runCatching { ZipFile(jar).use { it.getEntry(entryPath) != null } }.getOrDefault(false)
 
   /**
    * Static JVM open flags that the renderPreviews test JVM needs. Pure data — no Gradle DSL
