@@ -1161,71 +1161,71 @@ export async function activate(
         gradleService?.findModuleByPath(modulePath) ?? null;
     historySource = HISTORY_FEATURE_ENABLED
         ? buildHistorySource({
-        isDaemonReady: (moduleId) =>
-            daemonGate?.isDaemonReady(moduleId) ?? false,
-        daemonList: async (scope) => {
-            const module = moduleInfoFromScope(scope.moduleId);
-            if (!module) {
-                throw new Error("daemon unavailable");
-            }
-            const client = await daemonGate?.getOrSpawn(
-                module,
-                daemonScheduler!.daemonEvents(scope.moduleId),
-            );
-            if (!client) {
-                throw new Error("daemon unavailable");
-            }
-            return client.historyList({ previewId: scope.previewId });
-        },
-        daemonRead: async (id) => {
-            const moduleId = historyScopeRef.current?.moduleId;
-            if (!moduleId) {
-                throw new Error("no scope");
-            }
-            const module = moduleInfoFromScope(moduleId);
-            if (!module) {
-                throw new Error("daemon unavailable");
-            }
-            const client = await daemonGate?.getOrSpawn(
-                module,
-                daemonScheduler!.daemonEvents(moduleId),
-            );
-            if (!client) {
-                throw new Error("daemon unavailable");
-            }
-            return client.historyRead({ id, inline: false });
-        },
-        daemonDiff: async (fromId, toId) => {
-            const moduleId = historyScopeRef.current?.moduleId;
-            if (!moduleId) {
-                throw new Error("no scope");
-            }
-            const module = moduleInfoFromScope(moduleId);
-            if (!module) {
-                throw new Error("daemon unavailable");
-            }
-            const client = await daemonGate?.getOrSpawn(
-                module,
-                daemonScheduler!.daemonEvents(moduleId),
-            );
-            if (!client) {
-                throw new Error("daemon unavailable");
-            }
-            // TODO(1.1): history/diff is experimental in the 1.0 daemon and
-            // returns MethodNotFound unless the user opts in via
-            // `composeai.experimental.historyDiff`. Once the daemon flips the
-            // default, simplify this back to a direct call. Until then,
-            // surface the gate as a clear "diff unavailable" rather than a
-            // raw RPC error.
-            return client.historyDiff({
-                from: fromId,
-                to: toId,
-                mode: "metadata",
-            });
-        },
-        getCurrentScope: () => historyScopeRef.current,
-        logger: outputChannel,
-    })
+              isDaemonReady: (moduleId) =>
+                  daemonGate?.isDaemonReady(moduleId) ?? false,
+              daemonList: async (scope) => {
+                  const module = moduleInfoFromScope(scope.moduleId);
+                  if (!module) {
+                      throw new Error("daemon unavailable");
+                  }
+                  const client = await daemonGate?.getOrSpawn(
+                      module,
+                      daemonScheduler!.daemonEvents(scope.moduleId),
+                  );
+                  if (!client) {
+                      throw new Error("daemon unavailable");
+                  }
+                  return client.historyList({ previewId: scope.previewId });
+              },
+              daemonRead: async (id) => {
+                  const moduleId = historyScopeRef.current?.moduleId;
+                  if (!moduleId) {
+                      throw new Error("no scope");
+                  }
+                  const module = moduleInfoFromScope(moduleId);
+                  if (!module) {
+                      throw new Error("daemon unavailable");
+                  }
+                  const client = await daemonGate?.getOrSpawn(
+                      module,
+                      daemonScheduler!.daemonEvents(moduleId),
+                  );
+                  if (!client) {
+                      throw new Error("daemon unavailable");
+                  }
+                  return client.historyRead({ id, inline: false });
+              },
+              daemonDiff: async (fromId, toId) => {
+                  const moduleId = historyScopeRef.current?.moduleId;
+                  if (!moduleId) {
+                      throw new Error("no scope");
+                  }
+                  const module = moduleInfoFromScope(moduleId);
+                  if (!module) {
+                      throw new Error("daemon unavailable");
+                  }
+                  const client = await daemonGate?.getOrSpawn(
+                      module,
+                      daemonScheduler!.daemonEvents(moduleId),
+                  );
+                  if (!client) {
+                      throw new Error("daemon unavailable");
+                  }
+                  // TODO(1.1): history/diff is experimental in the 1.0 daemon and
+                  // returns MethodNotFound unless the user opts in via
+                  // `composeai.experimental.historyDiff`. Once the daemon flips the
+                  // default, simplify this back to a direct call. Until then,
+                  // surface the gate as a clear "diff unavailable" rather than a
+                  // raw RPC error.
+                  return client.historyDiff({
+                      from: fromId,
+                      to: toId,
+                      mode: "metadata",
+                  });
+              },
+              getCurrentScope: () => historyScopeRef.current,
+              logger: outputChannel,
+          })
         : null;
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.refresh", () =>
