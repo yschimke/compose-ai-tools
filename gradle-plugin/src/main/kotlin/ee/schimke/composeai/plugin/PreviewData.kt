@@ -6,11 +6,14 @@ import kotlinx.serialization.Serializable
  * Which @Preview flavour the entry came from. Drives renderer selection — [COMPOSE] previews are
  * `@Composable` functions invoked through the normal Compose machinery; [TILE] previews are plain
  * functions returning `androidx.wear.tiles.tooling.preview.TilePreviewData` that need to be
- * inflated via `androidx.wear.tiles.renderer.TileRenderer`.
+ * inflated via `androidx.wear.tiles.renderer.TileRenderer`; [NOTIFICATION] previews are plain
+ * functions taking a `Context` and returning `android.app.Notification`, inflated via
+ * `Notification.Builder.recoverBuilder` + `RemoteViews.apply` (see issue #1249).
  */
 enum class PreviewKind {
   COMPOSE,
   TILE,
+  NOTIFICATION,
 }
 
 /**
