@@ -598,21 +598,21 @@
     "captureLabel": "",
     "functionName": "RemoteButtonEnabledPreview",
     "renderBasename": "RemoteButtonEnabledPreview.png",
-    "sha256": "f61439df0d94e91bebeb343a2746558fc371870c8b2b176e3c307193e240cc62",
+    "sha256": "c85ebde1a1469d24283861fa9478fa903597766c7e4ae9f2aa46d3b26c73af08",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview": {
     "captureLabel": "",
     "functionName": "RemoteButtonWithBorderPreview",
     "renderBasename": "RemoteButtonWithBorderPreview.png",
-    "sha256": "0cdd522b40d183998eb8b6df49e5707c5147ff63081f5dbd667bf2be6397e188",
+    "sha256": "05ca78c9a948b395eaec4d713f11c55e8fc631b2e921a7737ce5f3edd395e30e",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
     "captureLabel": "",
     "functionName": "RemoteButtonWithShapePreview",
     "renderBasename": "RemoteButtonWithShapePreview.png",
-    "sha256": "9340c279d321d58e4646637d6e1fa5334cba2241c02ffd519766043ad501f3bc",
+    "sha256": "5e60f8a1f84b2815f4c352a60294384158046b8c1df9583b95f5e8f379ff586a",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
   "samples:wear/com.example.samplewear.AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient body \u2014 ambient": {
