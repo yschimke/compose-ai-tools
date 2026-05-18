@@ -14,6 +14,11 @@ plugins {
 // alignment story.
 
 composePreview {
+  // Pin Robolectric to SDK 35; this module compiles against `compileSdk = 37` but Robolectric
+  // 4.16.1 only ships up to API 36 (and needs JDK 21+ for that). See the matching block in
+  // `:samples:android` for the broader JDK 17 toolchain rationale.
+  sdkVersion.set(35)
+
   // `FocusedPreviewPixelTest` reads PNGs under
   // `build/compose-previews/renders/`; opt the unit-test tasks into a
   // `dependsOn(renderAllPreviews)` chain so `:samples:android-alpha:check`

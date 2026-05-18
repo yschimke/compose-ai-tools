@@ -11,7 +11,18 @@ import org.gradle.api.provider.Property
 
 abstract class PreviewExtension @Inject constructor(private val objects: ObjectFactory) {
   val variant: Property<String> = objects.property(String::class.java).convention("debug")
-  val sdkVersion: Property<Int> = objects.property(Int::class.java).convention(35)
+
+  /**
+   * Override for the Robolectric SDK level baked into the generated `robolectric.properties`. When
+   * unset (default), the plugin auto-detects the consumer's `android.compileSdk` and uses that, so
+   * `apk-for-local-test.ap_`'s `compileSdkVersion` matches Robolectric's synthesized framework and
+   * `PackageParser` can parse the resource APK. Set this only when you deliberately want to render
+   * against a different framework level than your `compileSdk` (rare). Must fall within
+   * Robolectric's supported range — see [GenerateRobolectricPropertiesTask.MIN_SUPPORTED_SDK] /
+   * [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK].
+   */
+  val sdkVersion: Property<Int> = objects.property(Int::class.java)
+
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**

@@ -8,6 +8,8 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 
@@ -80,12 +82,52 @@ internal object AndroidPreviewSupport {
     return name.removeSuffix(replacementSuffix) + "-android"
   }
 
+  /**
+   * Resolves the Robolectric `sdk=N` value written into the generated `robolectric.properties`.
+   *
+   * Priority:
+   * 1. `composePreview.sdkVersion = N` — explicit consumer override (rare; for renders that
+   *    deliberately want a different framework level than `compileSdk`).
+   * 2. `android.compileSdk` — the consumer's compileSdk, captured from AGP's `finalizeDsl`. Matches
+   *    what AGP stamps into `apk-for-local-test.ap_`'s `compileSdkVersion`, so Robolectric's
+   *    synthesized framework can parse the resource APK (issue #1248).
+   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — only reachable when AGP didn't supply a
+   *    `compileSdk` and the user didn't override; AGP normally fails the build before getting here,
+   *    so this is mainly a guard for unit tests that drive task wiring directly.
+   *
+   * Extracted to a static helper so the resolution chain is testable without applying AGP.
+   */
+  internal fun resolveRobolectricSdk(
+    extensionOverride: Property<Int>,
+    consumerCompileSdk: Provider<Int>,
+  ): Provider<Int> =
+    extensionOverride
+      .orElse(consumerCompileSdk)
+      .orElse(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+
   fun configure(project: Project, extension: PreviewExtension) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
+    // Captures the consumer's `android.compileSdk` from `finalizeDsl` so the
+    // `generateRobolectricProperties` task can stamp the matching `sdk=N` into
+    // the generated `robolectric.properties`. Robolectric must run at the same
+    // API level the consumer's `apk-for-local-test.ap_` was compiled against;
+    // otherwise `PackageParser` rejects the manifest with "Requires newer sdk
+    // version" at sandbox bootstrap (issue #1248).
+    val consumerCompileSdk = project.objects.property(Int::class.java)
+
     androidComponents.finalizeDsl { android: Any ->
+      val common = android as CommonExtension
       if (extension.enabled.get()) {
-        (android as CommonExtension).testOptions.unitTests.isIncludeAndroidResources = true
+        common.testOptions.unitTests.isIncludeAndroidResources = true
+      }
+      // `compileSdk` is nullable on `CommonExtension` (consumers can omit it,
+      // though AGP usually fails the build later). Only propagate when set so
+      // [GenerateRobolectricPropertiesTask.sdk]'s `.orElse(...)` chain falls
+      // through to the user override / floor when AGP couldn't supply one.
+      val resolvedCompileSdk: Int? = common.compileSdk
+      if (resolvedCompileSdk != null) {
+        consumerCompileSdk.set(resolvedCompileSdk)
       }
     }
 
@@ -115,6 +157,7 @@ internal object AndroidPreviewSupport {
         extension,
         variant,
         androidComponents.sdkComponents.bootClasspath,
+        consumerCompileSdk,
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
@@ -222,6 +265,7 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
     variant: Variant,
     bootClasspath: org.gradle.api.provider.Provider<List<org.gradle.api.file.RegularFile>>,
+    consumerCompileSdk: org.gradle.api.provider.Provider<Int>,
   ) {
     val variantName = variant.name
     val capVariant = variantName.cap()
@@ -1089,6 +1133,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Generate package-level robolectric.properties for renderPreviews"
         useConsumerApplication.set(extension.useConsumerApplication)
+        sdk.set(resolveRobolectricSdk(extension.sdkVersion, consumerCompileSdk))
         outputDir.set(robolectricPropertiesDir)
       }
 
