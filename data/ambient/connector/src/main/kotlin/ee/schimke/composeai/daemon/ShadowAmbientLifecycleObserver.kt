@@ -24,8 +24,22 @@ import org.robolectric.annotation.RealObject
  * (`onCreate` / `onResume` / `onPause` / `onDestroy`) are no-ops — the controller drives the
  * ambient transitions directly, and the AOSP impl's lifecycle plumbing (which would have
  * registered with `WearableActivityController`) is intentionally bypassed.
+ *
+ * **Issue #1244 — `@Implements(className = …)` instead of `@Implements(value = …)`.** Robolectric's
+ * `ShadowMap.obtainShadowInfo` reads the shadow's `@Implements` annotation via
+ * `clazz.getAnnotation(Implements.class)`, then queries `className()` first and only dereferences
+ * `value()` when `className()` is empty. The class-literal form (`AmbientLifecycleObserver::class`)
+ * stores a deferred `Class<?>` ref in the annotation proxy; calling `.value()` forces the JVM's
+ * `AnnotationInvocationHandler` to resolve `androidx.wear.ambient.AmbientLifecycleObserver`
+ * against the shadow class's defining loader. On Wear-sample daemon classpaths that ship the
+ * shadow but mismatched-runtime-or-stale wear AAR coordinates this throws
+ * `TypeNotPresentException` mid-sandbox-bootstrap — which the `getExtraShadows` gate in
+ * `SandboxHoldingRunner` can't intercept because the failure is deep inside Robolectric's
+ * iteration loop. Using the FQN string keeps the annotation parseable on any classpath; the
+ * shadow itself is only ever loaded when the wear AAR is present (the
+ * [SandboxHoldingRunner.getExtraShadows] gate is preserved as defence in depth).
  */
-@Implements(AmbientLifecycleObserver::class)
+@Implements(className = "androidx.wear.ambient.AmbientLifecycleObserver")
 class ShadowAmbientLifecycleObserver {
 
   @RealObject @Suppress("unused") private lateinit var realObserver: AmbientLifecycleObserver
