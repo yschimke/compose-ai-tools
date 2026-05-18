@@ -34,8 +34,11 @@ on:
       - ".github/workflows/preview-comment.yml"
   workflow_dispatch:
   schedule:
-    # Weekly — catches drift when consumer repos bump AGP/Kotlin without us.
-    - cron: "17 6 * * 1"
+    # Daily — catches drift when consumer repos bump AGP/Kotlin without us.
+    # The `androidchka` matrix entry pairs with a live androidx-main checkout,
+    # so daily cadence is what surfaces breakage from upstream androidx within
+    # 24h instead of a week.
+    - cron: "17 6 * * *"
 
 concurrency:
   group: integration-${{ github.workflow }}-${{ github.ref }}
@@ -211,6 +214,45 @@ jobs:
           # :common KMP module. Targeting :common needs KMP-Android-target
           # handling we don't have yet. Re-add once the plugin supports KMP
           # Android source sets cleanly.
+          - name: androidchka (compose:material3 samples)
+            slug: androidchka-material3
+            repo: yschimke/androidchka
+            ref: main
+            workdir: .
+            # Daily drift sentinel against upstream androidx. androidchka
+            # is a Gradle workspace that selectively builds a handful of
+            # androidx modules from a sibling `androidx/androidx` checkout
+            # (wired via a symlink at `androidx/` inside the workspace).
+            # `local.properties` — written by the "Write local.properties"
+            # step below — picks the source modules; everything else
+            # resolves from the pinned androidx.dev snapshot. The cron at
+            # the top of this workflow is what makes this catch
+            # androidx-main breakage within 24h.
+            secondary_repo: androidx/androidx
+            secondary_ref: androidx-main
+            secondary_path: androidx-src
+            # Blob-filtered partial clone keeps the runner checkout under
+            # ~1 GB; the working copy fetches file blobs on demand as
+            # Gradle resolves them.
+            secondary_filter: "blob:none"
+            # androidchka's symlink shipped in-tree points at a developer's
+            # own AndroidX checkout (relative path with no meaning in CI).
+            # Replace it with an absolute symlink to the runner's
+            # androidx-src checkout. See "Wire androidx symlink" below.
+            wire_androidx_symlink: true
+            # Activate just the material3 samples module — small enough to
+            # configure quickly, but real `@Preview` coverage. Add more
+            # sources here as the integration matures.
+            local_properties: |
+              androidx.sources=:compose:material3:material3:samples
+              androidx.recursiveProjectDiscovery=main,samples
+            module: ":compose:material3:material3:samples"
+            extra_gradle_args: --no-configuration-cache
+            # Exercise the CLI binary end-to-end rather than just the
+            # Gradle path. See "CLI: list previews" / "CLI: render previews"
+            # below.
+            use_cli: true
+            render: true
     steps:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -219,6 +261,39 @@ jobs:
           ref: ${{ matrix.ref }}
           path: external
           persist-credentials: false
+
+      - name: Checkout ${{ matrix.secondary_repo }} (secondary)
+        if: matrix.secondary_repo != ''
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.secondary_repo }}
+          ref: ${{ matrix.secondary_ref }}
+          path: ${{ matrix.secondary_path }}
+          filter: ${{ matrix.secondary_filter }}
+          persist-credentials: false
+
+      - name: Wire androidx symlink in androidchka workspace
+        if: matrix.wire_androidx_symlink
+        run: |
+          set -euo pipefail
+          target="$GITHUB_WORKSPACE/${{ matrix.secondary_path }}"
+          link="external/${{ matrix.workdir }}/androidx"
+          # Drop the in-tree placeholder symlink (or directory) and replace
+          # it with an absolute symlink to the secondary checkout.
+          rm -rf "$link"
+          ln -s "$target" "$link"
+          ls -ld "$link"
+
+      - name: Write local.properties for ${{ matrix.name }}
+        if: matrix.local_properties != ''
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          LOCAL_PROPERTIES: ${{ matrix.local_properties }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$LOCAL_PROPERTIES" > local.properties
+          echo "--- local.properties ---"
+          cat local.properties
 
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
@@ -274,6 +349,7 @@ jobs:
         run: ${{ matrix.pre_gradle_script }}
 
       - name: Discover previews via Gradle
+        if: ${{ !matrix.use_cli }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -285,6 +361,19 @@ jobs:
           ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" discoverPreviews \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
+
+      - name: CLI — list previews (${{ matrix.module }})
+        if: matrix.use_cli
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          # `compose-preview list` auto-injects the same init script via the
+          # Tooling API and drives discoverPreviews under the hood, so this
+          # exercises the CLI binary's end-to-end pipeline (not just the
+          # Gradle path used by the other matrix entries).
+          compose-preview list --module "${{ matrix.module }}"
 
       - name: Verify previews.json was produced
         working-directory: external/${{ matrix.workdir }}
@@ -308,7 +397,7 @@ jobs:
           fi
 
       - name: Render previews via Gradle
-        if: matrix.render
+        if: ${{ matrix.render && !matrix.use_cli }}
         working-directory: external/${{ matrix.workdir }}
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
@@ -321,6 +410,18 @@ jobs:
           ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
+
+      - name: CLI — render previews (${{ matrix.module }})
+        if: ${{ matrix.render && matrix.use_cli }}
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          # `compose-preview render` drives renderPreviews end-to-end via
+          # the Tooling API, including renderer-android AAR resolution from
+          # the mavenLocal snapshot we seeded earlier.
+          compose-preview render --module "${{ matrix.module }}"
 
       - name: Verify PNGs were produced
         if: matrix.render
