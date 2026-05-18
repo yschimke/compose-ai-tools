@@ -127,6 +127,28 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
         api.injectGradleApi(
             new RealGradleApi(repoRoot, (line) => console.log(line)),
         );
+
+        // Resolve the webview view. Without this, `panel.view` stays
+        // undefined, every `panel.postMessage` is silently dropped, and
+        // the `webviewPreviewsRendered` ack the assertion waits for is
+        // never sent. `postedMessageLog` still captures the host's post
+        // *attempts*, which is why the earlier `setPreviews` waitFor
+        // matched — but the resolved-webview round-trip needs the view
+        // open. The activation-time auto-refresh is suppressed under
+        // `COMPOSE_PREVIEW_TEST_MODE=1`, so no extra-render side effects
+        // from the focus call.
+        await vscode.commands.executeCommand("composePreview.panel.focus");
+        await waitFor(
+            "webviewReady from the resolved webview",
+            30_000,
+            100,
+            () => {
+                const inbound = api.getReceivedMessages();
+                return inbound.find(
+                    (m) => (m as PostedMessage).command === "webviewReady",
+                );
+            },
+        );
     });
 
     it("renders previews for samples/cmp through the real Gradle plugin", async () => {
