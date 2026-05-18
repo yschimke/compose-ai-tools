@@ -253,6 +253,9 @@ jobs:
             # below.
             use_cli: true
             render: true
+            # androidx-main + androidchka's build-logic require JDK 21.
+            # The other matrix entries stay on the workflow-default 17.
+            java_version: "21"
     steps:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -298,7 +301,9 @@ jobs:
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: temurin
-          java-version: 17
+          # Matrix entries can override (e.g. androidchka needs 21 for
+          # androidx-main); everyone else gets the 17 default.
+          java-version: ${{ matrix.java_version || '17' }}
 
       - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
