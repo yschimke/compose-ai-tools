@@ -47,6 +47,17 @@
       "allowedVersions": "/^2025\\.11\\./"
     },
     {
+      "description": "material-kolor: pin to the 4.0.x line. `:data-wallpaper-connector` is published against the renderer-android Compose floor (`compose-bom-compat`, Compose 1.9.5); 4.1.0 rebuilt against Compose Multiplatform 1.10.0 + Kotlin 2.3.0 and migrated to a Multiplatform Android library, raising the transitive floor above our published surface. See gradle/libs.versions.toml for the full rationale — bumping the floor is a manual decision.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "com.materialkolor:material-kolor"
+      ],
+      "matchCurrentValue": "/^4\\.0\\./",
+      "allowedVersions": "/^4\\.0\\./"
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"
