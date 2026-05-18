@@ -2,7 +2,10 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { readLaunchDescriptor } from "../daemon/daemonProcess";
+import {
+    ChunkLineSplitter,
+    readLaunchDescriptor,
+} from "../daemon/daemonProcess";
 import {
     DAEMON_DESCRIPTOR_SCHEMA_VERSION,
     DaemonLaunchDescriptor,
@@ -157,4 +160,74 @@ describe("readLaunchDescriptor", () => {
             assert.strictEqual(result?.javaLauncher, null);
         }),
     );
+});
+
+describe("ChunkLineSplitter", () => {
+    it("emits whole lines from a single chunk", () => {
+        const s = new ChunkLineSplitter();
+        assert.deepStrictEqual(s.feed("alpha\nbeta\ngamma\n"), [
+            "alpha",
+            "beta",
+            "gamma",
+        ]);
+        assert.strictEqual(s.flush(), null);
+    });
+
+    it("holds a trailing fragment until the next chunk completes it", () => {
+        // Reproduces the JVM uncaught-exception bug: the JVM does
+        // `System.err.print("Exception in thread \"main\" ")` and *then* calls
+        // `printStackTrace`. When a pipe boundary lands between those two writes
+        // the prefix arrived without `\n`; the previous naive splitter emitted
+        // it as a complete line, and the quiet-level filter dropped the
+        // `java.lang.IllegalArgumentException: ...` continuation that arrived
+        // in the next chunk.
+        const s = new ChunkLineSplitter();
+        assert.deepStrictEqual(s.feed('Exception in thread "main" '), []);
+        assert.deepStrictEqual(
+            s.feed(
+                "java.lang.IllegalArgumentException: PreviewManifestRouter: " +
+                    "manifest '/x' does not exist\n\tat A.b(File.kt:1)\n",
+            ),
+            [
+                'Exception in thread "main" java.lang.IllegalArgumentException: ' +
+                    "PreviewManifestRouter: manifest '/x' does not exist",
+                "\tat A.b(File.kt:1)",
+            ],
+        );
+        assert.strictEqual(s.flush(), null);
+    });
+
+    it("handles CRLF and bare LF line endings", () => {
+        const s = new ChunkLineSplitter();
+        assert.deepStrictEqual(s.feed("a\r\nb\nc\r\n"), ["a", "b", "c"]);
+        assert.strictEqual(s.flush(), null);
+    });
+
+    it("splits across arbitrary mid-line chunk boundaries", () => {
+        const s = new ChunkLineSplitter();
+        const full = "alpha\nbeta\ngamma";
+        const all: string[] = [];
+        for (const char of full) {
+            for (const line of s.feed(char)) {
+                all.push(line);
+            }
+        }
+        const tail = s.flush();
+        if (tail !== null) {
+            all.push(tail);
+        }
+        assert.deepStrictEqual(all, ["alpha", "beta", "gamma"]);
+    });
+
+    it("emits empty lines between blank-line separated paragraphs", () => {
+        const s = new ChunkLineSplitter();
+        assert.deepStrictEqual(s.feed("a\n\nb\n"), ["a", "", "b"]);
+    });
+
+    it("flushes a final fragment with no trailing newline", () => {
+        const s = new ChunkLineSplitter();
+        assert.deepStrictEqual(s.feed("partial"), []);
+        assert.strictEqual(s.flush(), "partial");
+        assert.strictEqual(s.flush(), null);
+    });
 });
