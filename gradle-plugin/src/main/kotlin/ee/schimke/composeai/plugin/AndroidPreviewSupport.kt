@@ -83,27 +83,30 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Resolves the Robolectric `sdk=N` value written into the generated `robolectric.properties`.
+   * Wires [GenerateRobolectricPropertiesTask] inputs from the consumer's configuration. The task
+   * resolves the final `sdk=N` from these via:
+   * 1. `composePreview.sdkVersion = N` — explicit consumer override (validated strictly against
+   *    Robolectric's supported range; out-of-range values fail the task).
+   * 2. `android.compileSdk` — auto-detected from AGP's `finalizeDsl`; clamped to
+   *    [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK] with a build warning when the consumer
+   *    is on a newer compileSdk than Robolectric ships (e.g. `compileSdk = 37` against Robolectric
+   *    4.16.1's API 36 ceiling — Tiles consumers often hit this via transitive minCompileSdk
+   *    requirements).
+   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — fallback when neither is set; AGP normally
+   *    fails the build before reaching this branch, so it's mostly a unit-test guard.
    *
-   * Priority:
-   * 1. `composePreview.sdkVersion = N` — explicit consumer override (rare; for renders that
-   *    deliberately want a different framework level than `compileSdk`).
-   * 2. `android.compileSdk` — the consumer's compileSdk, captured from AGP's `finalizeDsl`. Matches
-   *    what AGP stamps into `apk-for-local-test.ap_`'s `compileSdkVersion`, so Robolectric's
-   *    synthesized framework can parse the resource APK (issue #1248).
-   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — only reachable when AGP didn't supply a
-   *    `compileSdk` and the user didn't override; AGP normally fails the build before getting here,
-   *    so this is mainly a guard for unit tests that drive task wiring directly.
-   *
-   * Extracted to a static helper so the resolution chain is testable without applying AGP.
+   * The decision lives inside the task action (see [GenerateRobolectricPropertiesTask.resolveSdk])
+   * so the clamp warning fires at execution time alongside the file write.
    */
-  internal fun resolveRobolectricSdk(
+  internal fun wireSdkInputs(
+    task: GenerateRobolectricPropertiesTask,
     extensionOverride: Property<Int>,
     consumerCompileSdk: Provider<Int>,
-  ): Provider<Int> =
-    extensionOverride
-      .orElse(consumerCompileSdk)
-      .orElse(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+  ) {
+    task.sdkOverride.set(extensionOverride)
+    task.consumerCompileSdk.set(consumerCompileSdk)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+  }
 
   fun configure(project: Project, extension: PreviewExtension) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
@@ -1133,7 +1136,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Generate package-level robolectric.properties for renderPreviews"
         useConsumerApplication.set(extension.useConsumerApplication)
-        sdk.set(resolveRobolectricSdk(extension.sdkVersion, consumerCompileSdk))
+        wireSdkInputs(this, extension.sdkVersion, consumerCompileSdk)
         outputDir.set(robolectricPropertiesDir)
       }
 

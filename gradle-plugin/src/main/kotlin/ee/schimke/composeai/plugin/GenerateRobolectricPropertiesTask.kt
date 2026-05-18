@@ -6,6 +6,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
 
@@ -19,11 +20,9 @@ import org.gradle.api.tasks.TaskAction
  * that class's KDoc for the #142 motivation.
  *
  * Fields written unconditionally:
- * - `sdk=${sdk.get()}` — the Android SDK level Robolectric targets. Wired from the consumer's
- *   `android.compileSdk` in [AndroidPreviewSupport] (override via `composePreview.sdkVersion`) so
- *   the framework Robolectric synthesizes matches the level the consumer's `apk-for-local-test.ap_`
- *   was built against. A mismatch surfaces as `PackageParserException: Requires newer sdk version`
- *   at sandbox bootstrap (issue #1248).
+ * - `sdk=N` — the Android SDK level Robolectric targets. Resolved from the inputs below in priority
+ *   order; see [resolveSdk] for the chain and the clamp-vs-fail behaviour around Robolectric's
+ *   supported range (issue #1248).
  * - `graphicsMode=NATIVE` — routes Compose capture through HardwareRenderer, the only path that
  *   replays RenderNodes correctly for `roborazzi`'s `captureRoboImage`.
  * - `shadows=…ShadowFontsContractCompat` — globally registers the GoogleFont shadow so
@@ -45,29 +44,33 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
   @get:Input abstract val useConsumerApplication: Property<Boolean>
 
   /**
-   * Android SDK level written into the generated `robolectric.properties`. Wired from the
-   * consumer's `android.compileSdk` so Robolectric's synthesized framework matches the level
-   * `apk-for-local-test.ap_` claims it was built against. Override via `composePreview.sdkVersion =
-   * N` for the rare case where the consumer wants to render against a different framework level
-   * than their `compileSdk`. Must fall within Robolectric's supported range
-   * ([MIN_SUPPORTED_SDK]..[MAX_SUPPORTED_SDK]); out-of-range values fail the task with a
-   * Gradle-friendly error.
+   * Explicit `composePreview.sdkVersion = N` override. When present, used verbatim — validated
+   * strictly against [MIN_SUPPORTED_SDK]..[MAX_SUPPORTED_SDK] (the consumer asked for a specific
+   * level, so an out-of-range value is a configuration error worth failing fast on).
    */
-  @get:Input abstract val sdk: Property<Int>
+  @get:Input @get:Optional abstract val sdkOverride: Property<Int>
+
+  /**
+   * Consumer's `android.compileSdk`, captured by [AndroidPreviewSupport] in `finalizeDsl`. Used
+   * when [sdkOverride] is absent. Auto-detected values above [MAX_SUPPORTED_SDK] are CLAMPED to
+   * [MAX_SUPPORTED_SDK] with a build warning rather than failing the task — a consumer on
+   * `compileSdk = 37` (e.g. for a transitive minCompileSdk requirement) should still get the
+   * best-effort render at the highest SDK Robolectric supports, not a build break.
+   */
+  @get:Input @get:Optional abstract val consumerCompileSdk: Property<Int>
+
+  /**
+   * Static fallback when neither [sdkOverride] nor [consumerCompileSdk] is set. Should equal
+   * [DEFAULT_SDK] in normal wiring; only reachable when AGP didn't supply a `compileSdk` and the
+   * user didn't override (unit-test setups).
+   */
+  @get:Input abstract val defaultSdk: Property<Int>
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
   @TaskAction
   fun generate() {
-    val sdkLevel = sdk.get()
-    if (sdkLevel !in MIN_SUPPORTED_SDK..MAX_SUPPORTED_SDK) {
-      throw GradleException(
-        "compose-preview: Robolectric SDK $sdkLevel is outside the supported range " +
-          "($MIN_SUPPORTED_SDK..$MAX_SUPPORTED_SDK for this Robolectric build). " +
-          "Either lower the consumer's `compileSdk`, or set " +
-          "`composePreview.sdkVersion = N` to pin a supported level explicitly."
-      )
-    }
+    val sdkLevel = resolveSdk()
     val dir = outputDir.get().asFile.resolve("ee/schimke/composeai/renderer")
     dir.deleteRecursively()
     dir.mkdirs()
@@ -108,6 +111,46 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
           .trimMargin()
       }
     file.writeText(body)
+  }
+
+  /**
+   * Priority chain: [sdkOverride] (strict) → [consumerCompileSdk] (clamp to range with warning) →
+   * [defaultSdk]. Internal so the test can drive it directly.
+   */
+  internal fun resolveSdk(): Int {
+    if (sdkOverride.isPresent) {
+      val v = sdkOverride.get()
+      if (v !in MIN_SUPPORTED_SDK..MAX_SUPPORTED_SDK) {
+        throw GradleException(
+          "compose-preview: composePreview.sdkVersion = $v is outside the supported range " +
+            "($MIN_SUPPORTED_SDK..$MAX_SUPPORTED_SDK for this Robolectric build). Pick a value " +
+            "inside that range or remove the override to let the plugin auto-detect from " +
+            "android.compileSdk."
+        )
+      }
+      return v
+    }
+    if (consumerCompileSdk.isPresent) {
+      val raw = consumerCompileSdk.get()
+      if (raw < MIN_SUPPORTED_SDK) {
+        throw GradleException(
+          "compose-preview: consumer compileSdk = $raw is below Robolectric's floor " +
+            "($MIN_SUPPORTED_SDK). Raise android.compileSdk or set composePreview.sdkVersion = N " +
+            "to pin a supported level explicitly."
+        )
+      }
+      if (raw > MAX_SUPPORTED_SDK) {
+        logger.warn(
+          "compose-preview: consumer compileSdk = $raw exceeds Robolectric's max supported SDK " +
+            "($MAX_SUPPORTED_SDK for this Robolectric build); clamping the Robolectric sandbox " +
+            "to $MAX_SUPPORTED_SDK. Rendering may still fail if your APK's <uses-sdk> requires a " +
+            "newer framework. Set composePreview.sdkVersion = N to silence this warning."
+        )
+        return MAX_SUPPORTED_SDK
+      }
+      return raw
+    }
+    return defaultSdk.get()
   }
 
   companion object {

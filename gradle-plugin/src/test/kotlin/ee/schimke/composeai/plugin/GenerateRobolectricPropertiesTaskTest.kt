@@ -15,10 +15,11 @@ import org.junit.rules.TemporaryFolder
  * `AnnotationParser` resolving `android.app.Application` during test-class discovery — see
  * issue #142 and `GenerateRobolectricPropertiesTask` KDoc.
  *
- * The `sdk` value tracks the consumer's `android.compileSdk` (or a `composePreview.sdkVersion`
- * override) — see issue #1248 and the resolver in `AndroidPreviewSupport`. These tests drive the
- * task directly so they cover the property surface; the AGP-side auto-detection is exercised by the
- * samples' end-to-end render runs.
+ * The `sdk` resolution chain — `composePreview.sdkVersion` override > consumer `android.compileSdk`
+ * > static default, with the auto-detect path clamped to Robolectric's max — is the load-bearing
+ * > fix for issue #1248 (`PackageParser: Requires newer sdk version`), so each link gets a
+ * > dedicated assertion here. The samples (`:samples:android`, `:samples:wear`) exercise the
+ * > AGP-side `finalizeDsl` plumbing end-to-end via `:samples:android:renderAllPreviews`.
  */
 class GenerateRobolectricPropertiesTaskTest {
 
@@ -26,7 +27,7 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `default emits sdk graphicsMode application shadows`() {
-    val body = generate(useConsumerApplication = false, sdk = 36)
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")
     assertThat(body).contains("graphicsMode=NATIVE")
     assertThat(body).contains("application=android.app.Application")
@@ -35,7 +36,7 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `useConsumerApplication drops application line but keeps sdk graphicsMode shadows`() {
-    val body = generate(useConsumerApplication = true, sdk = 36)
+    val body = generate(useConsumerApplication = true, override = null, compileSdk = 36)
     assertThat(body).contains("sdk=36")
     assertThat(body).contains("graphicsMode=NATIVE")
     assertThat(body).doesNotContain("application=")
@@ -43,41 +44,75 @@ class GenerateRobolectricPropertiesTaskTest {
   }
 
   @Test
-  fun `sdk property is propagated verbatim into the generated file`() {
-    // Consumer on the previous compileSdk line — proves the file isn't hard-pinned to 36.
-    val body = generate(useConsumerApplication = false, sdk = 35)
+  fun `explicit composePreview sdkVersion override wins over consumer compileSdk`() {
+    val body = generate(useConsumerApplication = false, override = 33, compileSdk = 36)
+    assertThat(body).contains("sdk=33")
+  }
+
+  @Test
+  fun `consumer compileSdk wins when override is unset`() {
+    // Repro of the inverse of #1248 — confirm we haven't simply moved the hardcode from 35 to 36.
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = 35)
     assertThat(body).contains("sdk=35")
   }
 
   @Test
-  fun `sdk above the supported ceiling fails with a Gradle-friendly message`() {
+  fun `compileSdk above the Robolectric ceiling clamps to the ceiling`() {
+    // Tiles consumers on compileSdk = 37 (transitive minCompileSdk from wear-tiles-renderer)
+    // shouldn't see a hard build failure — clamp to Robolectric's max and warn.
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = 37)
+    assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
+  }
+
+  @Test
+  fun `explicit override above the ceiling fails strictly`() {
+    // Auto-detect clamps; an explicit user pick is a configuration error worth surfacing.
     val exception =
       assertThrows(GradleException::class.java) {
-        generate(useConsumerApplication = false, sdk = 99)
+        generate(useConsumerApplication = false, override = 99, compileSdk = 36)
       }
-    assertThat(exception.message).contains("99")
+    assertThat(exception.message).contains("composePreview.sdkVersion = 99")
+    assertThat(exception.message).contains("supported range")
+  }
+
+  @Test
+  fun `explicit override below the floor fails strictly`() {
+    val exception =
+      assertThrows(GradleException::class.java) {
+        generate(useConsumerApplication = false, override = 5, compileSdk = 36)
+      }
+    assertThat(exception.message).contains("composePreview.sdkVersion = 5")
+  }
+
+  @Test
+  fun `compileSdk below the floor fails with a Gradle-friendly message`() {
+    val exception =
+      assertThrows(GradleException::class.java) {
+        generate(useConsumerApplication = false, override = null, compileSdk = 15)
+      }
+    assertThat(exception.message).contains("compileSdk = 15")
     assertThat(exception.message).contains("composePreview.sdkVersion")
   }
 
   @Test
-  fun `sdk below the supported floor fails with a Gradle-friendly message`() {
-    val exception =
-      assertThrows(GradleException::class.java) {
-        generate(useConsumerApplication = false, sdk = 5)
-      }
-    assertThat(exception.message).contains("5")
-    assertThat(exception.message).contains("composePreview.sdkVersion")
+  fun `falls back to DEFAULT_SDK when neither override nor compileSdk is set`() {
+    // AGP normally fails the build before `compileSdk` ends up unset, so this branch is mostly a
+    // guard for unit-test setups that drive the task directly without an `android { … }` block.
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = null)
+    assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.DEFAULT_SDK}")
   }
 
-  private fun generate(useConsumerApplication: Boolean, sdk: Int): String {
+  private fun generate(useConsumerApplication: Boolean, override: Int?, compileSdk: Int?): String {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task =
       project.tasks
         .register("generateRobolectricProperties", GenerateRobolectricPropertiesTask::class.java)
         .get()
     task.useConsumerApplication.set(useConsumerApplication)
-    task.sdk.set(sdk)
-    task.outputDir.set(tmp.newFolder("out-$sdk-$useConsumerApplication"))
+    if (override != null) task.sdkOverride.set(override)
+    if (compileSdk != null) task.consumerCompileSdk.set(compileSdk)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.outputDir.set(tmp.newFolder("out-$override-$compileSdk-$useConsumerApplication"))
     task.generate()
     val file =
       task.outputDir.get().asFile.resolve("ee/schimke/composeai/renderer/robolectric.properties")
