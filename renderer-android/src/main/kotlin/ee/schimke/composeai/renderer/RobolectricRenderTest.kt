@@ -846,6 +846,14 @@ abstract class RobolectricRenderTestBase(
                     // [handleLongCapture].
                     val outputFile = job.outputFile
                     outputFile.parentFile?.mkdirs()
+                    // Clean any stale .error.json from this slot before
+                    // attempting a fresh render. Today's success must not
+                    // leave yesterday's failure haunting the panel; today's
+                    // failure must overwrite yesterday's anyway. The
+                    // capture-zero sidecar is already cleaned earlier in
+                    // renderDefault — this covers every other capture and
+                    // every data product.
+                    RenderErrorSidecar.deleteStale(outputFile)
 
                     val scroll = job.scroll
                     val longHandled = scroll != null &&
@@ -930,7 +938,32 @@ abstract class RobolectricRenderTestBase(
                             }
                         }
 
-                    if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled) {
+                    // `handleLongCapture` / `handleGifCapture` returned false
+                    // (e.g. `NoScrollable` — no scrollable on the requested
+                    // axis): for a LONG/GIF *data product* job we must NOT
+                    // fall through to a single `captureRoboImage`. That
+                    // would write PNG bytes into a `.gif`-named file (no
+                    // animation in the panel) or stamp the unscrolled first
+                    // viewport into the long-scroll PNG path (the panel
+                    // would show what looks like the static base capture
+                    // under a "scroll long" / "scroll gif" label).
+                    // Write a structured error sidecar instead so the panel
+                    // surfaces the real failure.
+                    val productFellThrough =
+                        job is ProductRenderJob &&
+                            !longHandled && !gifHandled
+                    if (productFellThrough) {
+                        val modeName = scroll?.mode?.name ?: "?"
+                        val axisName = scroll?.axis?.name ?: "VERTICAL"
+                        RenderErrorSidecar.write(
+                            outputFile,
+                            IllegalStateException(
+                                "@ScrollingPreview($modeName) on '${preview.id}': no scrollable " +
+                                    "composable found on axis $axisName — refusing to write a " +
+                                    "single-frame capture into the data product path."
+                            ),
+                        )
+                    } else if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled) {
                         // TOP mode is the unscrolled initial frame — no
                         // drive, just a capture. END mode drives the first
                         // scrollable on the requested axis to its content
@@ -960,7 +993,8 @@ abstract class RobolectricRenderTestBase(
                     // output, and @FocusedPreview(gif=true) GIF output —
                     // those files' dimensions are the full scrollable
                     // extent / frame size, not the composable's intrinsic box.
-                    if (!longHandled && !gifHandled && !animationHandled && !focusGifHandled &&
+                    if (!productFellThrough &&
+                        !longHandled && !gifHandled && !animationHandled && !focusGifHandled &&
                         (wrapWidth || wrapHeight) && measured != null) {
                         cropPngTopLeft(
                             file = outputFile,

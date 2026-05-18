@@ -199,6 +199,77 @@ describe("refreshCardMetadata", () => {
         assert.strictEqual(merged![1]!.imageData, "BYTES-1");
     });
 
+    it("drops imageData when the renderOutput at an index changes", () => {
+        // Regression for the "scroll gif / scroll long shows the static
+        // base-capture image" symptom. When @ScrollingPreview produces
+        // an image data product, `withDataProductCaptures` drops the
+        // (no-scroll, no-time) base capture and folds the LONG/GIF
+        // product into the captures array. The slot at index 0 shifts
+        // from `renders/<id>.png` (static) to
+        // `data/render-scroll-{long,gif}/<id>.{png,gif}` (data product),
+        // and the old static bytes must NOT carry across to the new
+        // slot.
+        const p0 = preview("preview:1", {
+            captures: [capture("renders/X.png", "")],
+        });
+        const card = buildCard(p0);
+        setCardCaptures("preview:1", [
+            {
+                renderOutput: "renders/X.png",
+                label: "",
+                imageData: "STATIC-BYTES",
+                errorMessage: null,
+                renderError: null,
+            },
+        ]);
+
+        const p1 = preview("preview:1", {
+            captures: [capture("data/render-scroll-long/X.png", "scroll long")],
+        });
+        const { config } = buildConfig();
+        refreshCardMetadata(card, p1, config);
+
+        const merged = previewStore.getState().cardCaptures.get("preview:1");
+        assert.ok(merged);
+        assert.strictEqual(merged!.length, 1);
+        assert.strictEqual(
+            merged![0]!.renderOutput,
+            "data/render-scroll-long/X.png",
+        );
+        assert.strictEqual(merged![0]!.label, "scroll long");
+        // The wrong-slot static bytes must NOT carry into the LONG slot.
+        assert.strictEqual(merged![0]!.imageData, null);
+    });
+
+    it("drops carry-over errorMessage when renderOutput at an index changes", () => {
+        // Companion to the imageData case above: a prior error left
+        // against the static slot must not bleed into the data product
+        // slot when the captures array shifts shape.
+        const p0 = preview("preview:1", {
+            captures: [capture("renders/X.png", "")],
+        });
+        const card = buildCard(p0);
+        setCardCaptures("preview:1", [
+            {
+                renderOutput: "renders/X.png",
+                label: "",
+                imageData: null,
+                errorMessage: "Render failed",
+                renderError: null,
+            },
+        ]);
+
+        const p1 = preview("preview:1", {
+            captures: [capture("data/render-scroll-gif/X.gif", "scroll gif")],
+        });
+        const { config } = buildConfig();
+        refreshCardMetadata(card, p1, config);
+
+        const merged = previewStore.getState().cardCaptures.get("preview:1");
+        assert.ok(merged);
+        assert.strictEqual(merged![0]!.errorMessage, null);
+    });
+
     it("clamps dataset.currentIndex when the new capture count is shorter", () => {
         const p0 = preview("preview:1", {
             captures: [capture("a.png"), capture("b.png"), capture("c.png")],
