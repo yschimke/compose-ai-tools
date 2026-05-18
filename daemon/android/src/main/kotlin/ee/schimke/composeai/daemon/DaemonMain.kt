@@ -277,15 +277,15 @@ fun main(args: Array<String>) {
   val extensions =
     ExtensionRegistry(
       buildList {
-        add(
+        tryAdd("device/clip") {
           Extension(
             id = "device/clip",
             displayName = "Device clip",
             dataProductRegistry = DeviceClipDataProductRegistry(previewIndex = previewIndex),
             previewExtensionDescriptors = listOf(RenderPreviewExtension.deviceClipDescriptor),
           )
-        )
-        add(
+        }
+        tryAdd("device/background") {
           Extension(
             id = "device/background",
             displayName = "Device background",
@@ -293,116 +293,116 @@ fun main(args: Array<String>) {
             previewExtensionDescriptors =
               listOf(RenderPreviewExtension.deviceBackgroundDescriptor),
           )
-        )
-        add(
+        }
+        tryAdd("render/trace") {
           Extension(
             id = "render/trace",
             displayName = "Render trace",
             dataProductRegistry = RenderTraceDataProductRegistry(),
             previewExtensionDescriptors = listOf(RenderPreviewExtension.renderTraceDescriptor),
           )
-        )
-        add(
+        }
+        tryAdd("render/test-failure") {
           Extension(
             id = "render/test-failure",
             displayName = "Test failure",
             dataProductRegistry = TestFailureDataProductRegistry(),
           )
-        )
-        add(
+        }
+        tryAdd("render/overlay-legend") {
           Extension(
             id = "render/overlay-legend",
             displayName = "Render overlay legend",
             previewExtensionDescriptors = listOf(RenderPreviewExtension.overlayLegendDescriptor),
           )
-        )
-        add(
+        }
+        tryAdd("data/theme") {
           Extension(
             id = "data/theme",
             displayName = "Material 3 theme override",
             dataProductRegistry = ThemeDataProductRegistry(),
           )
-        )
-        add(
+        }
+        tryAdd("data/wallpaper") {
           Extension(
             id = "data/wallpaper",
             displayName = "Wallpaper override",
             dataProductRegistry = WallpaperDataProductRegistry(),
           )
-        )
+        }
         // Issue #1204 — real `compose/recomposition` producer. Wired through the host's
         // [RobolectricHost.InteractiveSessionListener] above so observer installs hit the
         // sandbox-side held-rule loop when a `data/subscribe(mode=delta)` lands while an
         // interactive session is held.
-        add(
+        tryAdd("data/recomposition") {
           Extension(
             id = "data/recomposition",
             displayName = "Recomposition counts",
             dataProductRegistry = recompositionRegistry,
           )
-        )
-        add(
+        }
+        tryAdd("data/ambient") {
           Extension(
             id = "data/ambient",
             displayName = "Wear OS ambient override",
             dataProductRegistry = AmbientDataProductRegistry(),
           )
-        )
+        }
         if (historyManager != null) {
-          add(
+          tryAdd("history/diff-regions") {
             Extension(
               id = "history/diff-regions",
               displayName = "History diff regions",
               dataProductRegistry =
                 HistoryDiffRegionsDataProductRegistry(historyManager = historyManager),
             )
-          )
+          }
         }
         if (dataRoot != null) {
-          add(
+          tryAdd("compose/semantics") {
             Extension(
               id = "compose/semantics",
               displayName = "Compose semantics snapshot",
               dataProductRegistry = ComposeSemanticsDataProductRegistry(rootDir = dataRoot),
             )
-          )
-          add(
+          }
+          tryAdd("layout/inspector") {
             Extension(
               id = "layout/inspector",
               displayName = "Layout inspector",
               dataProductRegistry = LayoutInspectorDataProductRegistry(rootDir = dataRoot),
             )
-          )
-          add(
+          }
+          tryAdd("resources/used") {
             Extension(
               id = "resources/used",
               displayName = "Resources used",
               dataProductRegistry = ResourcesUsedDataProductRegistry(rootDir = dataRoot),
             )
-          )
-          add(
+          }
+          tryAdd("i18n/translations") {
             Extension(
               id = "i18n/translations",
               displayName = "i18n translations",
               dataProductRegistry = I18nTranslationsDataProductRegistry(rootDir = dataRoot),
             )
-          )
-          add(
+          }
+          tryAdd("fonts/used") {
             Extension(
               id = "fonts/used",
               displayName = "Fonts used",
               dataProductRegistry = FontsUsedDataProductRegistry(rootDir = dataRoot),
             )
-          )
-          add(
+          }
+          tryAdd("data/navigation") {
             Extension(
               id = "data/navigation",
               displayName = "Navigation snapshot",
               dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
             )
-          )
+          }
           if (composeTraceEnabled) {
-            add(
+            tryAdd("compose/trace") {
               Extension(
                 id = "compose/trace",
                 displayName = "Compose Perfetto trace",
@@ -410,17 +410,17 @@ fun main(args: Array<String>) {
                 previewExtensionDescriptors =
                   listOf(RenderPreviewExtension.composeTraceDescriptor),
               )
-            )
+            }
           }
-          add(
+          tryAdd("text/strings") {
             Extension(
               id = "text/strings",
               displayName = "Text strings",
               dataProductRegistry =
                 TextStringsDataProductRegistry(rootDir = dataRoot, previewIndex = previewIndex),
             )
-          )
-          add(
+          }
+          tryAdd("a11y") {
             Extension(
               id = "a11y",
               displayName = "Accessibility",
@@ -434,48 +434,48 @@ fun main(args: Array<String>) {
                   AccessibilityAnnotatedPreviewExtension.descriptor,
                 ),
             )
-          )
+          }
           // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.) plus the
           // `uia/hierarchy` data product (#874). Always wired on the Android backend — the
           // dispatch path lives in RobolectricHost and the hierarchy producer ride along on
           // the same render pass; neither depends on the a11y opt-in.
-          add(
+          tryAdd(UiAutomatorRecordingScriptEvents.EXTENSION_ID) {
             Extension(
               id = UiAutomatorRecordingScriptEvents.EXTENSION_ID,
               displayName = "UIAutomator script actions",
               dataProductRegistry = UiAutomatorDataProductRegistry(rootDir = dataRoot),
               dataExtensionDescriptors = UiAutomatorRecordingScriptEvents.descriptors,
             )
-          )
+          }
           // Navigation script events (`navigation.deepLink`, `navigation.back`,
           // `navigation.predictiveBack*`). Always wired on the Android backend — the dispatch
           // path lives in RobolectricHost.performNavigationAction and exercises the held
           // activity's `OnBackPressedDispatcher` / `startActivity`.
-          add(
+          tryAdd(NavigationRecordingScriptEvents.EXTENSION_ID) {
             Extension(
               id = NavigationRecordingScriptEvents.EXTENSION_ID,
               displayName = "Navigation script controls",
               dataExtensionDescriptors = NavigationRecordingScriptEvents.descriptors,
             )
-          )
+          }
           // Display filters — post-capture color-matrix variants (grayscale/bedtime, invert,
           // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty
           // so an `extensions/list` doesn't surface a phantom kind that has nothing on disk yet.
           // The same prop drives the host's writeArtifacts call site (when wired up); keeping
           // both reads in DisplayFilterConfig avoids drift between "registered" and "produced".
           if (DisplayFilterConfig.fromSystemProperties().isNotEmpty()) {
-            add(
+            tryAdd("displayfilter") {
               Extension(
                 id = "displayfilter",
                 displayName = "Display filter variants",
                 dataProductRegistry = DisplayFilterDataProductRegistry(rootDir = dataRoot),
               )
-            )
+            }
           }
         }
         // host-wired recording-script extensions + renderer-agnostic roadmap descriptors. The
         // host's contribution flips supported flags as new handlers land in its session registry.
-        add(
+        tryAdd("recording/script") {
           Extension(
             id = "recording/script",
             displayName = "Recording-script extensions",
@@ -483,7 +483,7 @@ fun main(args: Array<String>) {
               host.recordingScriptEventDescriptors() +
                 RecordingScriptDataExtensions.roadmapDescriptors,
           )
-        )
+        }
       }
     )
 
@@ -500,6 +500,33 @@ fun main(args: Array<String>) {
       extensions = extensions,
     )
   server.run()
+}
+
+/**
+ * Adds [build]'s result to the list, catching `LinkageError`
+ * (`NoClassDefFoundError` / `ClassNotFoundException`-shaped failures) so one missing connector
+ * module's class does not crash the entire daemon process.
+ *
+ * The classpath the daemon JVM launches with comes from
+ * `samples/<module>/build/compose-previews/daemon-launch.json`, materialised by the gradle
+ * plugin's `composePreviewDaemonStart` task. A stale descriptor produced before a connector
+ * module was wired in — e.g. after pulling PR #1226's extraction of
+ * `NavigationDataProductRegistry` into `:data-navigation-connector` without re-running the
+ * bootstrap — leaves the registry class off the classpath but DaemonMain still references it
+ * directly, exploding the process on the very first registration. With this helper the spawn
+ * survives one missing connector: the affected extension is skipped with a stderr line naming
+ * the kind, so the user sees which classpath entry is missing and which `extensions/list` chip
+ * will disappear until the descriptor refreshes.
+ */
+private inline fun MutableList<Extension>.tryAdd(label: String, build: () -> Extension) {
+  try {
+    add(build())
+  } catch (e: LinkageError) {
+    System.err.println(
+      "compose-ai-tools daemon: extension '$label' unavailable on this classpath — " +
+        "${e.javaClass.simpleName}: ${e.message}"
+    )
+  }
 }
 
 /** HISTORY.md § "What this PR lands § H1" — null disables history. */
