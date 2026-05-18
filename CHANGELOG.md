@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.10.17](https://github.com/yschimke/compose-ai-tools/compare/v0.10.16...v0.10.17) (2026-05-18)
+
+
+### Features
+
+* add bundle viewer panel for preview bundles ([#1213](https://github.com/yschimke/compose-ai-tools/issues/1213)) ([3234934](https://github.com/yschimke/compose-ai-tools/commit/32349345f5ffe7b615ec49615a49bd3889bad9cb))
+* add data extension progress tracking and doctor report ([#1197](https://github.com/yschimke/compose-ai-tools/issues/1197)) ([2e35236](https://github.com/yschimke/compose-ai-tools/commit/2e3523603c66ba012c533e576364c50e1c87ea3b))
+* add early-feature preview bundle export ([#1196](https://github.com/yschimke/compose-ai-tools/issues/1196)) ([76b9a45](https://github.com/yschimke/compose-ai-tools/commit/76b9a455a7cfd11f39e86b2638646cc79a96fe85))
+* add keyboard and rotary scroll input support to interactive mode ([#1212](https://github.com/yschimke/compose-ai-tools/issues/1212)) ([ede5ef7](https://github.com/yschimke/compose-ai-tools/commit/ede5ef786df65a3bc967f19c32f6a07e513d6d84))
+* add live-mode streaming support to bundle viewer ([#1216](https://github.com/yschimke/compose-ai-tools/issues/1216)) ([dcf5f80](https://github.com/yschimke/compose-ai-tools/commit/dcf5f80536459d85e6ecebcce74429ba0d31b4da))
+* **daemon-desktop:** advertise fonts/used and displayfilter on desktop ([#1201](https://github.com/yschimke/compose-ai-tools/issues/1201)) ([#1209](https://github.com/yschimke/compose-ai-tools/issues/1209)) ([3c2056f](https://github.com/yschimke/compose-ai-tools/commit/3c2056f4388d8e31517043f6975857496d7b826f))
+* gate history surface behind post-1.0 feature flag ([#1220](https://github.com/yschimke/compose-ai-tools/issues/1220)) ([f741de6](https://github.com/yschimke/compose-ai-tools/commit/f741de6481b1eaf7ea8ee7f4fa05af87e1ed58fe))
+* implement compose/recomposition observer for Android interactive sessions ([#1211](https://github.com/yschimke/compose-ai-tools/issues/1211)) ([6732397](https://github.com/yschimke/compose-ai-tools/commit/6732397e0d8c9102e25563fddf9c9ea02394c52e))
+* **vscode-extension:** pull current branch before F5 build ([#1199](https://github.com/yschimke/compose-ai-tools/issues/1199)) ([d74fb35](https://github.com/yschimke/compose-ai-tools/commit/d74fb35bed0ee4793f5e73b6bb3784c7b7738686))
+* **vscode:** show merged child text in a11y legend, render table as merge-aware tree ([#1190](https://github.com/yschimke/compose-ai-tools/issues/1190)) ([017c826](https://github.com/yschimke/compose-ai-tools/commit/017c8264b198834ce39a3d6455c8c45f8fc2003b))
+* **vscode:** wire recording through the per-tab bundle daemon ([#1219](https://github.com/yschimke/compose-ai-tools/issues/1219)) ([27fcbb5](https://github.com/yschimke/compose-ai-tools/commit/27fcbb5d983c66aad79df3841a68ea66f595c186))
+
+
+### Bug Fixes
+
+* **daemon-android:** plug recomposition bridge leaks on session shutdown ([#1215](https://github.com/yschimke/compose-ai-tools/issues/1215)) ([4dee1f9](https://github.com/yschimke/compose-ai-tools/commit/4dee1f985f3787f1fd7f94f996fd3ff597ec7472))
+* **daemon-harness:** propagate composeai.history.enabled to spawned daemons ([#1222](https://github.com/yschimke/compose-ai-tools/issues/1222)) ([8beea39](https://github.com/yschimke/compose-ai-tools/commit/8beea3954d6025989874fea961e886dac64b0fcb))
+* **daemon:** survive missing connector classes on launch classpath ([#1236](https://github.com/yschimke/compose-ai-tools/issues/1236)) ([0fc1bbc](https://github.com/yschimke/compose-ai-tools/commit/0fc1bbc6db634763a0be0fa54cb38ffcc5c47eb9))
+* **deps:** update gradle minor/patch ([#1233](https://github.com/yschimke/compose-ai-tools/issues/1233)) ([265eb19](https://github.com/yschimke/compose-ai-tools/commit/265eb1921e263a48757679e3ede6bf1b91ee4ed2))
+* guard daemon readiness check against uninitialized liveState ([#1195](https://github.com/yschimke/compose-ai-tools/issues/1195)) ([9dbf945](https://github.com/yschimke/compose-ai-tools/commit/9dbf945255c7ee634016fe4953b287cd58d3d6b3))
+* rename annotated overlays to prevent collisions in flat output ([#1198](https://github.com/yschimke/compose-ai-tools/issues/1198)) ([038eb03](https://github.com/yschimke/compose-ai-tools/commit/038eb03135f33691f454cd886886afa6ec31c0ae))
+* **vscode-extension:** drain pending data/subscribe before warm-up render ([#1192](https://github.com/yschimke/compose-ai-tools/issues/1192)) ([7e5619c](https://github.com/yschimke/compose-ai-tools/commit/7e5619cd4c132086d618493ace31b5127a6e8923))
+* **vscode-extension:** make Theming swatches visible and previewable ([#1193](https://github.com/yschimke/compose-ai-tools/issues/1193)) ([23c9e47](https://github.com/yschimke/compose-ai-tools/commit/23c9e47f5063c82c719ae6f37da771f82e5c34dd))
+* **vscode-extension:** tighten quiet/normal log filtering ([#1189](https://github.com/yschimke/compose-ai-tools/issues/1189)) ([f374dc9](https://github.com/yschimke/compose-ai-tools/commit/f374dc9ecd71e8fb2524aa82f6a49b16057032d4))
+* **vscode-preview:** absorb harness AA jitter with pixelmatch ([#1194](https://github.com/yschimke/compose-ai-tools/issues/1194)) ([2cdff46](https://github.com/yschimke/compose-ai-tools/commit/2cdff46e59992da0c62087feac7d5d29d66beb05))
+
 ## [0.10.16](https://github.com/yschimke/compose-ai-tools/compare/v0.10.15...v0.10.16) (2026-05-16)
 
 
