@@ -159,6 +159,21 @@ interface PersistedState {
     layout?: "grid" | "flow" | "column" | "focus";
     diffMode?: DiffMode;
     /**
+     * `previewId` of the focused preview at unload time. Used at boot to
+     * verify the focused preview still belongs to the currently active
+     * file before re-entering focus mode — see the deferred restore in
+     * `firstUpdated` and the `applyPendingFocusRestore` callback. Stays
+     * `null` when not in focus mode.
+     */
+    focusedPreviewId?: string | null;
+    /**
+     * Layout to fall back to when exiting focus mode. Persisted (not just
+     * held in `previewStore.previousLayout`) so a cold boot from
+     * `layout === "focus"` can land on the prior dropdown choice when the
+     * focused preview isn't in the active file's manifest anymore.
+     */
+    previousLayout?: "grid" | "flow" | "column";
+    /**
      * Per-scope MRU of focus-inspector data-product `kind` strings —
      * scope is the active module dir today (see `getScope` in
      * `FocusInspectorConfig`). Most-recent-first within each list,
@@ -615,9 +630,10 @@ export class PreviewApp extends LitElement {
         // the persisted layout so initial subscribers see the right value.
         previewStore.setState({
             previousLayout:
-                state.layout && state.layout !== "focus"
+                state.previousLayout ??
+                (state.layout && state.layout !== "focus"
                     ? state.layout
-                    : "grid",
+                    : "grid"),
         });
         let filterDebounce: ReturnType<typeof setTimeout> | null = null;
 
@@ -2359,8 +2375,12 @@ export class PreviewApp extends LitElement {
             setFocusIndex: (next) =>
                 previewStore.setState({ focusIndex: next }),
             getPreviousLayout: () => previewStore.getState().previousLayout,
-            setPreviousLayout: (next) =>
-                previewStore.setState({ previousLayout: next }),
+            setPreviousLayout: (next) => {
+                previewStore.setState({ previousLayout: next });
+                state.previousLayout = next;
+                // `focusOnCard` calls `vscode.setState(state)` itself
+                // after this returns, so no separate persist call here.
+            },
             getLastScopedPreviewId: () =>
                 previewStore.getState().lastScopedPreviewId,
             setLastScopedPreviewId: (next) =>
@@ -2398,12 +2418,32 @@ export class PreviewApp extends LitElement {
         // `BundleViewerPanel`) clamp to focus mode — the filter toolbar
         // is hidden and the persisted layout from the sidebar panel
         // shouldn't carry over.
+        //
+        // Focus mode is restored lazily: cold boots don't enter focus
+        // until `setPreviews` arrives and confirms the previously focused
+        // preview is in the active file's manifest. Otherwise reopening
+        // the panel against a different file (or no open file) leaves
+        // the user staring at an empty focus stage with the filter
+        // toolbar hidden. `pendingFocusRestoreId` carries the previously
+        // focused previewId across to the first `setPreviews` handler.
+        let pendingFocusRestoreId: string | null = null;
         if (bundleMode) {
             filterToolbar.setLayoutValue("focus");
             state.layout = "focus";
+        } else if (state.layout === "focus") {
+            pendingFocusRestoreId = state.focusedPreviewId ?? null;
+            const fallback = state.previousLayout ?? "grid";
+            filterToolbar.setLayoutValue(fallback);
+            state.layout = fallback;
+            // Clear the persisted focused-preview marker until we
+            // confirm the focused preview reappears. If `setPreviews`
+            // re-enters focus mode, `publishScopedPreview` will write
+            // it back; otherwise we stay out of focus.
+            state.focusedPreviewId = null;
+            vscode.setState(state);
         } else if (
             state.layout &&
-            ["grid", "flow", "column", "focus"].includes(state.layout)
+            ["grid", "flow", "column"].includes(state.layout)
         ) {
             filterToolbar.setLayoutValue(state.layout);
         }
@@ -2416,11 +2456,15 @@ export class PreviewApp extends LitElement {
 
         filterToolbar.addEventListener("layout-changed", () => {
             const next = filterToolbar.getLayoutValue();
+            // User took control of the layout — drop any deferred
+            // focus-restore from the previous session so a late-arriving
+            // `setPreviews` doesn't yank them back into focus mode.
+            pendingFocusRestoreId = null;
             if (next === "focus" && state.layout !== "focus") {
                 // state.layout is now narrowed to "grid"|"flow"|"column"|undefined.
-                previewStore.setState({
-                    previousLayout: state.layout ?? "grid",
-                });
+                const prev = state.layout ?? "grid";
+                previewStore.setState({ previousLayout: prev });
+                state.previousLayout = prev;
             }
             state.layout = next;
             vscode.setState(state);
@@ -2618,6 +2662,18 @@ export class PreviewApp extends LitElement {
             applyRelativeSizing,
             applyFilters,
             applyLayout,
+            applyPendingFocusRestore: () => {
+                if (!pendingFocusRestoreId) return;
+                const target = pendingFocusRestoreId;
+                // One-shot — clear before acting so a focusOnCard call
+                // that re-runs applyLayout (and therefore setPreviews
+                // handlers, in pathological re-entrancy) doesn't loop.
+                pendingFocusRestoreId = null;
+                const card = grid
+                    .getVisibleCards()
+                    .find((c) => c.dataset.previewId === target);
+                if (card) focusController.focusOnCard(card);
+            },
             applyInteractiveButtonState,
             applyRecordingButtonState,
             saveFilterState,
