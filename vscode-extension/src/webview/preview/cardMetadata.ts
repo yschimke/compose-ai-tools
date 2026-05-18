@@ -70,26 +70,34 @@ export function refreshCardMetadata(
             p.functionName + (p.params.name ? " — " + p.params.name : "");
         title.title = buildTooltip(p);
     }
-    // Refresh capture labels in place. If the capture count changed
-    // (e.g. user edited @RoboComposePreviewOptions) we preserve
-    // already-received imageData for renderOutputs that carry over.
+    // Refresh capture labels in place. Preserve already-received
+    // imageData / errorMessage only when the slot at this index addresses
+    // the same renderOutput as before — otherwise we'd paint the previous
+    // capture's bytes into a different file's slot. That's how a static
+    // base capture's PNG bytes ended up showing under a "scroll long" /
+    // "scroll gif" label when @ScrollingPreview data products fold in
+    // (the static capture is dropped from the array, the LONG/GIF slot
+    // shifts down to index 0, and the cached static bytes get carried
+    // across to the wrong slot). When the renderOutput changes we reset
+    // to null-image and let the next render's updateImage fill it in.
     const newCaps = p.captures.map((c) => ({
         renderOutput: c.renderOutput,
         label: c.label || "",
     }));
     const prior = previewStore.getState().cardCaptures.get(p.id) ?? [];
-    // Match by index rather than renderOutput since filenames may
-    // legitimately change (e.g. a preview gains a @RoboComposePreviewOptions
-    // annotation). Mismatched positions just reset to null-image.
-    const mergedCaps = newCaps.map(
-        (nc, i): CapturePresentation => ({
+    const mergedCaps = newCaps.map((nc, i): CapturePresentation => {
+        const carry =
+            prior[i] && prior[i].renderOutput === nc.renderOutput
+                ? prior[i]
+                : null;
+        return {
             label: nc.label,
             renderOutput: nc.renderOutput || "",
-            imageData: prior[i]?.imageData ?? null,
-            errorMessage: prior[i]?.errorMessage ?? null,
-            renderError: prior[i]?.renderError ?? null,
-        }),
-    );
+            imageData: carry?.imageData ?? null,
+            errorMessage: carry?.errorMessage ?? null,
+            renderError: carry?.renderError ?? null,
+        };
+    });
     setCardCaptures(p.id, mergedCaps);
     const curIdx = parseInt(card.dataset.currentIndex || "0", 10);
     if (curIdx >= mergedCaps.length) {
