@@ -199,14 +199,18 @@ class RenderEngine(
     val themeFallbackCapture = MaterialThemeFallbackCapture()
 
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
+    val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
+    val nonComposable = isTile || isNotification
     val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
-    // Tile previews are non-composable top-level functions returning
-    // `TilePreviewData`; routing them through `getDeclaredComposableMethod` would throw
-    // `NoSuchMethodException` (the Compose-method lookup expects `(Composer, Int, …)` trailing
-    // params). The tile path skips composable resolution entirely and paints the inflated tile
-    // View through [renderer.TilePreviewComposable] in the setContent body below.
+    // Tile / notification previews are non-composable top-level functions returning
+    // `TilePreviewData` / `android.app.Notification`; routing them through
+    // `getDeclaredComposableMethod` would throw `NoSuchMethodException` (the Compose-method
+    // lookup expects `(Composer, Int, …)` trailing params). The non-composable paths skip
+    // composable resolution entirely and paint the inflated View through
+    // [renderer.TilePreviewComposable] / [renderer.NotificationPreviewComposable] in the
+    // setContent body below.
     val composableMethod: ComposableMethod? =
-      if (isTile) null
+      if (nonComposable) null
       else trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
@@ -328,6 +332,16 @@ class RenderEngine(
                             // `findTilePreviewMethod` would `Class.forName` against the parent
                             // loader and either miss user classes (under isolation) or render
                             // stale bytecode after an edit.
+                            classLoader = classLoader,
+                          )
+                        } else if (isNotification) {
+                          // Non-composable `@NotificationPreview` — mirrors the standalone
+                          // renderer's `NotificationPreviewStrategy`. The inflated RemoteViews
+                          // lands inside the `Box` via `AndroidView`, same Compose-tree shape as
+                          // the tile path so captureRoboImage downstream is unchanged.
+                          ee.schimke.composeai.renderer.NotificationPreviewComposable(
+                            className = spec.className,
+                            functionName = spec.functionName,
                             classLoader = classLoader,
                           )
                         } else {
@@ -790,6 +804,13 @@ class RenderEngine(
      * unchanged through the daemon's render path.
      */
     const val TILE_KIND: String = "TILE"
+
+    /**
+     * `RenderSpec.kind` value flagging a notification preview (non-composable function returning
+     * `android.app.Notification`). Mirrors `ee.schimke.composeai.plugin.PreviewKind.NOTIFICATION`
+     * so a manifest-emitted value round-trips unchanged through the daemon's render path.
+     */
+    const val NOTIFICATION_KIND: String = "NOTIFICATION"
 
     /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.

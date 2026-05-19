@@ -72,6 +72,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         "androidx.compose.ui.tooling.preview.Preview",
         "androidx.compose.desktop.ui.tooling.preview.Preview",
         TILE_PREVIEW_FQN,
+        NOTIFICATION_PREVIEW_FQN,
       )
     private val CONTAINER_FQNS =
       setOf(
@@ -105,6 +106,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     private const val COMPOSER_FQN = "androidx.compose.runtime.Composer"
 
     internal const val TILE_PREVIEW_FQN = "androidx.wear.tiles.tooling.preview.Preview"
+
+    // Our own opt-in for Android notification previews. Function signature is
+    // `(android.content.Context) -> android.app.Notification`; same FQN-match
+    // policy as the other annotations we own. See `NotificationPreview.kt`.
+    internal const val NOTIFICATION_PREVIEW_FQN = "ee.schimke.composeai.preview.NotificationPreview"
 
     // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
     // so the lifecycle log stays readable on projects with huge classpaths.
@@ -557,8 +563,11 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     // @Preview drove the fan-out.
     val previewParameter = extractPreviewParameter(method)
     val isTilePreview = isAnyTilePreviewAnnotation(annotations, scanResult)
+    val isNotificationPreview = isAnyNotificationPreviewAnnotation(annotations, scanResult)
     val hasUnsupportedParameters =
-      !isTilePreview && hasUnsupportedPreviewParameters(method, previewParameter)
+      !isTilePreview &&
+        !isNotificationPreview &&
+        hasUnsupportedPreviewParameters(method, previewParameter)
     if (hasUnsupportedParameters) {
       logger.warn(
         "composePreview: skipping @Preview '${classInfo.name}.${method.name}' — " +
@@ -651,6 +660,25 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     return false
   }
 
+  /**
+   * Notification previews (`NOTIFICATION_PREVIEW_FQN`) take a single `(Context)` argument supplied
+   * by the renderer at run time — same shape as a `(Context)` tile preview, so
+   * the @PreviewParameter contract that gates Compose previews doesn't apply. Walk direct
+   * annotations + multi-preview meta-annotations so a notification preview reached through a future
+   * multi-preview alias is exempted too.
+   */
+  private fun isAnyNotificationPreviewAnnotation(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    if (collectDirectPreviews(annotations).any { it.name == NOTIFICATION_PREVIEW_FQN }) return true
+    for (ann in annotations) {
+      val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
+      if (resolved.any { it.name == NOTIFICATION_PREVIEW_FQN }) return true
+    }
+    return false
+  }
+
   private fun hasUnsupportedPreviewParameters(
     method: MethodInfo,
     previewParameter: Pair<String, Int>?,
@@ -724,21 +752,25 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
-    val effectiveTimings = if (isTile) emptyList() else timings
-    val effectiveScrolls = if (isTile) emptyList() else scrolls
-    // Tile previews don't go through `mainClock` either — `TileRenderer`
-    // inflates a static View and there's no animation surface to drive.
-    val effectiveAnimation = if (isTile) null else animation
-    // `@FocusedPreview` only applies to Compose previews (the focus owner
-    // is a Compose construct); tile previews ignore it. `gif = true` swaps
-    // the per-step PNG fan-out for a single GIF capture, so skip the
-    // per-step PNG path entirely when a GIF spec is set.
-    val effectiveFocusGif = if (isTile) null else focusGif
-    val effectiveFocuses = if (isTile || effectiveFocusGif != null) emptyList() else focuses
-    // `@AmbientPreview` is Wear-Compose-only — it drives `LocalAmbientModeManager`. Tile previews
-    // render through `TileRenderer` and never enter the Compose composition where the local lives,
-    // so the override is a no-op there.
-    val effectiveAmbient = if (isTile) null else ambient
+    // Notification previews aren't composable either — no `mainClock`, no scrollables, no focus
+    // owner. Treat them the same as tiles for every dimensional fan-out so the single-capture
+    // path runs unmodified.
+    val isNotification = ann.name == NOTIFICATION_PREVIEW_FQN
+    val nonComposable = isTile || isNotification
+    val effectiveTimings = if (nonComposable) emptyList() else timings
+    val effectiveScrolls = if (nonComposable) emptyList() else scrolls
+    // Tile / notification previews don't go through `mainClock` — there's no animation surface to
+    // drive.
+    val effectiveAnimation = if (nonComposable) null else animation
+    // `@FocusedPreview` only applies to Compose previews (the focus owner is a Compose construct).
+    // `gif = true` swaps the per-step PNG fan-out for a single GIF capture, so skip the per-step
+    // PNG path entirely when a GIF spec is set.
+    val effectiveFocusGif = if (nonComposable) null else focusGif
+    val effectiveFocuses = if (nonComposable || effectiveFocusGif != null) emptyList() else focuses
+    // `@AmbientPreview` is Wear-Compose-only — it drives `LocalAmbientModeManager`. Non-composable
+    // previews render outside the Compose composition where the local lives, so the override is a
+    // no-op there.
+    val effectiveAmbient = if (nonComposable) null else ambient
 
     // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
     // function. When one is paired with anything else on the same function — scroll/time
@@ -1211,10 +1243,12 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     val id = fqn + suffix
     val outputPlan =
       buildOutputPlan(ann, id, scrolls, animation, focuses, focusGif, ambient, timings)
-    // Tile previews don't go through @Composable invocations — they return a `TilePreviewData`
-    // and the renderer reflects them directly. Skipping the lazy means the bytecode walk never
-    // runs for tile-only methods.
-    val targets = if (params.kind == PreviewKind.TILE) emptyList() else inferredTargets.value
+    // Tile / notification previews don't go through @Composable invocations — they return a
+    // `TilePreviewData` / `Notification` and the renderer reflects them directly. Skipping the
+    // lazy means the bytecode walk never runs for these methods.
+    val targets =
+      if (params.kind == PreviewKind.TILE || params.kind == PreviewKind.NOTIFICATION) emptyList()
+      else inferredTargets.value
     return PreviewInfo(
       id = id,
       functionName = method.name,
@@ -1284,6 +1318,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
     wrapperClassName: String?,
     previewParameter: Pair<String, Int>?,
   ): PreviewParams {
+    // `@NotificationPreview` has no parameters, so the rest of this function — which
+    // dereferences `device` / `widthDp` / `fontScale` / etc. from `ann.parameterValues` — would
+    // throw `NoSuchElementException`. Return a minimal params object up-front; the renderer
+    // applies its own default qualifiers when rendering RemoteViews. Width/height parameters
+    // will be added when the variants matrix from #1249 lands.
+    if (ann.name == NOTIFICATION_PREVIEW_FQN) {
+      return PreviewParams(kind = PreviewKind.NOTIFICATION)
+    }
     val pv = ann.parameterValues
     val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE
     val device = (pv.getValue("device") as? String)?.ifBlank { null }
