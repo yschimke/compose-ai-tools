@@ -8,6 +8,8 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 
@@ -80,12 +82,55 @@ internal object AndroidPreviewSupport {
     return name.removeSuffix(replacementSuffix) + "-android"
   }
 
+  /**
+   * Wires [GenerateRobolectricPropertiesTask] inputs from the consumer's configuration. The task
+   * resolves the final `sdk=N` from these via:
+   * 1. `composePreview.sdkVersion = N` — explicit consumer override (validated strictly against
+   *    Robolectric's supported range; out-of-range values fail the task).
+   * 2. `android.compileSdk` — auto-detected from AGP's `finalizeDsl`; clamped to
+   *    [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK] with a build warning when the consumer
+   *    is on a newer compileSdk than Robolectric ships (e.g. `compileSdk = 37` against Robolectric
+   *    4.16.1's API 36 ceiling — Tiles consumers often hit this via transitive minCompileSdk
+   *    requirements).
+   * 3. [GenerateRobolectricPropertiesTask.DEFAULT_SDK] — fallback when neither is set; AGP normally
+   *    fails the build before reaching this branch, so it's mostly a unit-test guard.
+   *
+   * The decision lives inside the task action (see [GenerateRobolectricPropertiesTask.resolveSdk])
+   * so the clamp warning fires at execution time alongside the file write.
+   */
+  internal fun wireSdkInputs(
+    task: GenerateRobolectricPropertiesTask,
+    extensionOverride: Property<Int>,
+    consumerCompileSdk: Provider<Int>,
+  ) {
+    task.sdkOverride.set(extensionOverride)
+    task.consumerCompileSdk.set(consumerCompileSdk)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+  }
+
   fun configure(project: Project, extension: PreviewExtension) {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
+    // Captures the consumer's `android.compileSdk` from `finalizeDsl` so the
+    // `generateRobolectricProperties` task can stamp the matching `sdk=N` into
+    // the generated `robolectric.properties`. Robolectric must run at the same
+    // API level the consumer's `apk-for-local-test.ap_` was compiled against;
+    // otherwise `PackageParser` rejects the manifest with "Requires newer sdk
+    // version" at sandbox bootstrap (issue #1248).
+    val consumerCompileSdk = project.objects.property(Int::class.java)
+
     androidComponents.finalizeDsl { android: Any ->
+      val common = android as CommonExtension
       if (extension.enabled.get()) {
-        (android as CommonExtension).testOptions.unitTests.isIncludeAndroidResources = true
+        common.testOptions.unitTests.isIncludeAndroidResources = true
+      }
+      // `compileSdk` is nullable on `CommonExtension` (consumers can omit it,
+      // though AGP usually fails the build later). Only propagate when set so
+      // [GenerateRobolectricPropertiesTask.sdk]'s `.orElse(...)` chain falls
+      // through to the user override / floor when AGP couldn't supply one.
+      val resolvedCompileSdk: Int? = common.compileSdk
+      if (resolvedCompileSdk != null) {
+        consumerCompileSdk.set(resolvedCompileSdk)
       }
     }
 
@@ -115,6 +160,7 @@ internal object AndroidPreviewSupport {
         extension,
         variant,
         androidComponents.sdkComponents.bootClasspath,
+        consumerCompileSdk,
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
@@ -222,6 +268,7 @@ internal object AndroidPreviewSupport {
     extension: PreviewExtension,
     variant: Variant,
     bootClasspath: org.gradle.api.provider.Provider<List<org.gradle.api.file.RegularFile>>,
+    consumerCompileSdk: org.gradle.api.provider.Provider<Int>,
   ) {
     val variantName = variant.name
     val capVariant = variantName.cap()
@@ -1089,6 +1136,7 @@ internal object AndroidPreviewSupport {
         group = "compose preview"
         description = "Generate package-level robolectric.properties for renderPreviews"
         useConsumerApplication.set(extension.useConsumerApplication)
+        wireSdkInputs(this, extension.sdkVersion, consumerCompileSdk)
         outputDir.set(robolectricPropertiesDir)
       }
 

@@ -5,6 +5,13 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
+composePreview {
+  // Pin Robolectric to SDK 35; this module compiles against `compileSdk = 37` but Robolectric
+  // 4.16.1 only ships up to API 36 (and needs JDK 21+ for that). See the matching block in
+  // `:samples:android` for the broader JDK 17 toolchain rationale.
+  sdkVersion.set(35)
+}
+
 android {
   namespace = "com.example.sampleremotecompose"
   // compose-remote alpha08+ / wear-compose-remote alpha02+ raise the AAR

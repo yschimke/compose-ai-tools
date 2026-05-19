@@ -311,7 +311,9 @@ class RealAndroidHarnessLauncher(
         // Pin Robolectric to SDK 35 — `SandboxHoldingRunner`'s @Config(sdk=[35]) already does this,
         // but JDK 17 + SDK 36 emits the "won't be run" warning early in sandbox bootstrap and
         // some Robolectric paths fall back to defaults if the annotation is misread. Belt-and-
-        // braces; doesn't hurt when the annotation already pins.
+        // braces; doesn't hurt when the annotation already pins. Keep the literal in lockstep
+        // with `RobolectricHost.ANDROID_SDK`; the harness module can't depend on `:daemon:android`
+        // (Android variant on a plain JVM module), so the constant is duplicated by hand.
         add("-Drobolectric.config.sdk=35")
         // Idle timeout — keep parity with the desktop launcher. Note: Robolectric sandbox bootstrap
         // can dominate the first render's wall-clock; tests should use a large *poll* timeout
