@@ -1143,6 +1143,17 @@ open class RobolectricHost(
    * exit. Idempotent.
    */
   companion object {
+    /**
+     * Android SDK level the daemon's Robolectric sandbox targets. Pinned to 35 because the daemon
+     * runs under JDK 17 (per `docs/AGENTS.md`) and Robolectric refuses SDK 36 unless the JVM is
+     * JDK 21+ (`DefaultSdkProvider.verifySupportedSdk`). Consumers on `compileSdk = 36` whose own
+     * APK manifest carries `minSdkVersion ≤ 35` still parse cleanly here — older
+     * `compileSdkVersion` against a newer framework is allowed.
+     *
+     * When the project's toolchain moves to JDK 21, this can follow
+     * [GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK] in the gradle-plugin and we can pin
+     * the daemon to whatever Robolectric currently supports.
+     */
     const val ANDROID_SDK: Int = 35
 
     /** Same sysprop the desktop side uses; honoured on Android too. */

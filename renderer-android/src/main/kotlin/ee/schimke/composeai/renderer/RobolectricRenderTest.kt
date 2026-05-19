@@ -345,7 +345,9 @@ object PreviewManifestLoader {
  * the bytecode removes that parse path entirely.
  *
  * The properties file pins:
- *   - `sdk=35` — matches the renderer's SDK assumption (was `@Config(sdk=[35])`)
+ *   - `sdk=N` — auto-detected from the consumer's `android.compileSdk` (see
+ *     [GenerateRobolectricPropertiesTask] and issue #1248). Override with
+ *     `composePreview.sdkVersion = N`.
  *   - `graphicsMode=NATIVE` — HardwareRenderer path for Compose capture
  *   - `application=android.app.Application` (default) — skips the consumer's
  *     custom `Application.onCreate()` so preview rendering sidesteps

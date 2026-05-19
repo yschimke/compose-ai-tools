@@ -6,6 +6,15 @@ plugins {
 }
 
 composePreview {
+  // Pin Robolectric to SDK 35 even though `composeai.android-conventions` sets
+  // `compileSdk = 36`. The plugin's default is auto-detection (`compileSdk` →
+  // `sdk=N` in `robolectric.properties`, see issue #1248), but the project's
+  // toolchain is JDK 17 and Robolectric SDK 36 requires JDK 21+
+  // (`DefaultSdkProvider.verifySupportedSdk`). The override demonstrates the
+  // escape hatch consumers reach for in the same situation. Drop this line
+  // when the toolchain moves to JDK 21.
+  sdkVersion.set(35)
+
   // resourcePreviews { ... } is on by default — the sample exercises the
   // Android XML resource preview pipeline (vector / animated-vector /
   // adaptive-icon) without any extra config.
