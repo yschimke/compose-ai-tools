@@ -151,8 +151,22 @@ gradle.settingsEvaluated {
     // path that survives. pluginManagement.repositories.mavenLocal() covers the catalog-alias /
     // literal-`id(...) version "..."` case where resolution goes through the plugins DSL instead
     // of our buildscript classpath injection.
+    //
+    // `gradle.settingsEvaluated` fires for every build, including composite-included builds
+    // (e.g. androidchka's `build-logic`). Gradle only auto-adds the default Plugin Portal when
+    // `pluginManagement.repositories` is empty after settings evaluation — once we explicitly add
+    // `mavenLocal()` the list is non-empty and the default is suppressed, so a `build-logic`
+    // module that relies on the implicit default for `kotlin-dsl` (resolved via plugin marker
+    // from the Gradle Plugin Portal) fails. Restore those defaults explicitly when the build
+    // didn't declare any plugin repos of its own.
     if (useMavenLocal) {
+        val seedPluginDefaults = pluginManagement.repositories.isEmpty()
         pluginManagement.repositories.mavenLocal()
+        if (seedPluginDefaults) {
+            pluginManagement.repositories.gradlePluginPortal()
+            pluginManagement.repositories.mavenCentral()
+            pluginManagement.repositories.google()
+        }
         dependencyResolutionManagement.repositories.mavenLocal()
     }
 }

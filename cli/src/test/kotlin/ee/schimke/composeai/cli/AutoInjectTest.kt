@@ -578,6 +578,27 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script restores default plugin repositories when seeding mavenLocal into an empty pluginManagement`() {
+    // `gradle.settingsEvaluated` fires for every included build, including composite `build-logic`
+    // modules (e.g. androidchka's). Gradle only auto-applies its `gradlePluginPortal()` default
+    // when `pluginManagement.repositories` is empty after settings evaluation — so blindly
+    // appending `mavenLocal()` from the init script turns a build that relied on the implicit
+    // default into a build with mavenLocal as the *only* plugin repo, breaking resolution of
+    // `kotlin-dsl` (whose plugin marker lives on the Gradle Plugin Portal). The integration
+    // matrix's `androidchka (compose:material3 samples)` job exposed this. Restore the defaults
+    // explicitly when the consumer didn't declare any of its own.
+    val script = renderInitScript("0.1.0-SNAPSHOT")
+    assertTrue(
+      script.contains("pluginManagement.repositories.isEmpty()"),
+      "expected the script to detect an empty pluginManagement repo list before seeding defaults",
+    )
+    assertTrue(
+      script.contains("pluginManagement.repositories.gradlePluginPortal()"),
+      "expected the script to restore gradlePluginPortal when seeding into empty repos",
+    )
+  }
+
+  @Test
   fun `init script strips comments before matching plugin declarations`() {
     // Codex P2 review on PR #1183: a documentation line like
     //   // id("ee.schimke.composeai.preview") version "..."
