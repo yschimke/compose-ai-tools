@@ -36,6 +36,8 @@ include(":samples:android-screenshot-test")
 
 include(":samples:android-daemon-bench")
 
+include(":samples:sdk-matrix")
+
 include(":samples:wear")
 
 include(":samples:cmp")
