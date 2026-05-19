@@ -39,6 +39,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![inspection-tree/dark](renders/inspection-tree.dark.png) |
 | `light` | ![inspection-tree/light](renders/inspection-tree.light.png) |
 
+## notifications
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![notifications/dark](renders/notifications.dark.png) |
+| `light` | ![notifications/light](renders/notifications.light.png) |
+
 ## text-strings
 
 | Theme | Capture |

@@ -61,6 +61,18 @@
       "sha256": "7f31d6d3d80c33052700144c4e4a977067d8f88969b8893d3851611adba23dc6",
       "size": 62814
     },
+    "notifications.dark.png": {
+      "fixture": "notifications",
+      "theme": "dark",
+      "sha256": "4527c37b598cd74931f4e3482584baf10b57c6ea6356e1876137c914d1ddd56d",
+      "size": 48746
+    },
+    "notifications.light.png": {
+      "fixture": "notifications",
+      "theme": "light",
+      "sha256": "103d20cb42f4bc2c61d6b8ae5e5fa6d50e3216b8f5301a7986dce229071217c9",
+      "size": 49346
+    },
     "text-strings.dark.png": {
       "fixture": "text-strings",
       "theme": "dark",
