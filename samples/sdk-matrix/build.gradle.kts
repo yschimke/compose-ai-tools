@@ -15,6 +15,9 @@
 //
 // See `docs/SDK_COMPATIBILITY.md` for the full cell matrix and the documented outcomes.
 import org.gradle.api.JavaVersion
+import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 plugins {
   alias(libs.plugins.android.application)
@@ -44,6 +47,13 @@ val matrixRobolectricVersion: String? =
 // without the task's validator throwing.
 val matrixMaxSupportedSdk: Int? =
   providers.gradleProperty("composeai.matrix.maxSupportedSdk").orNull?.toIntOrNull()
+// JDK toolchain the Kotlin compile + Test workers fork into. Driven by the workflow's matrix
+// `jdk` axis. Defaults to JDK 17 (the project's baseline), but bumps to 21 for cells that
+// exercise Robolectric SDK 36+: Robolectric's `DefaultSdkProvider.verifySupportedSdk` refuses
+// SDK 36 unless the test JVM is JDK 21+, so the matrix's whole JDK axis only does its job if the
+// Test task actually forks into the matrix-selected JDK rather than the project default.
+val matrixJvmToolchain: Int =
+  providers.gradleProperty("composeai.matrix.jvmToolchain").orNull?.toIntOrNull() ?: 17
 
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
@@ -91,7 +101,19 @@ android {
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
-kotlin { jvmToolchain(17) }
+kotlin { jvmToolchain(matrixJvmToolchain) }
+
+// Belt-and-braces: the Test task's `javaLauncher` is what actually decides which JDK the test
+// JVM forks into. `kotlin { jvmToolchain(N) }` sets it on the AGP-created Test tasks, but a
+// fresh `Test` task created later wouldn't inherit. Pin it explicitly so every Test task — now
+// and future — honours the matrix's JDK axis.
+val javaToolchains = extensions.getByType(JavaToolchainService::class.java)
+
+tasks.withType(Test::class.java).configureEach {
+  javaLauncher.set(
+    javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(matrixJvmToolchain)) }
+  )
+}
 
 dependencies {
   implementation(platform(libs.compose.bom.stable))
