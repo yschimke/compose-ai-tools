@@ -39,6 +39,7 @@ class Cell:
     sdk_version: str | None
     robolectric: str | None
     expected: str
+    expected_reason: str | None
     outcome: str
     exit_code: int
     reason: str | None
@@ -54,6 +55,7 @@ class Cell:
             sdk_version=payload.get("sdkVersion"),
             robolectric=payload.get("robolectric"),
             expected=payload["expected"],
+            expected_reason=payload.get("expectedReason"),
             outcome=payload["outcome"],
             exit_code=payload["exitCode"],
             reason=payload.get("reason"),
@@ -61,13 +63,33 @@ class Cell:
 
     @property
     def matches_expectation(self) -> bool:
-        return self.outcome == self.expected
+        """A cell matches expectations when both:
+        - its outcome matches `expected`, AND
+        - if `expected_reason` is set (only on cells that document a specific failure shape we're
+          gating on), the captured `reason` text contains that substring case-insensitively.
+
+        The reason check matters most on `expect: fail` cells that double as upstream-watch probes:
+        without it, a Sonatype outage or a forced-dependency regression would slip past the drift
+        check disguised as the expected `UnknownSdk` failure. Per Codex review on #1270.
+        """
+        if self.outcome != self.expected:
+            return False
+        if self.expected_reason and self.outcome == "fail":
+            captured = (self.reason or "").lower()
+            return self.expected_reason.lower() in captured
+        return True
 
 
 def status_glyph(cell: Cell) -> str:
     if cell.outcome == "pass" and cell.expected == "pass":
         return "✅ pass"
     if cell.outcome == "fail" and cell.expected == "fail":
+        if cell.expected_reason and cell.expected_reason.lower() not in (cell.reason or "").lower():
+            # Cell failed AND its expected-reason gate is set, but the captured reason doesn't
+            # match. Surface as drift even though outcome lines up — same signal as the snapshot
+            # probe regressing for an unrelated cause (Sonatype outage, classpath wiring break,
+            # etc.) per Codex review on #1270.
+            return f"⚠️ fail (wrong reason; expected `{cell.expected_reason}`)"
         return "❌ fail (expected)"
     if cell.outcome == "pass" and cell.expected == "fail":
         return "❓ pass (expected fail — investigate)"
@@ -116,7 +138,17 @@ def render(cells: list[Cell]) -> str:
     if unexpected:
         lines.append(f"**{len(unexpected)} cell(s) drifted from expectations:**")
         for c in unexpected:
-            lines.append(f"- `{c.label}` — expected {c.expected}, got {c.outcome}")
+            detail = f"expected {c.expected}, got {c.outcome}"
+            if (
+                c.outcome == c.expected == "fail"
+                and c.expected_reason
+                and c.expected_reason.lower() not in (c.reason or "").lower()
+            ):
+                detail = (
+                    f"failed for the wrong reason — expected `{c.expected_reason}` "
+                    f"in the captured message"
+                )
+            lines.append(f"- `{c.label}` — {detail}")
     else:
         lines.append("All cells matched their documented expectations.")
     # Always print full per-cell failure reasons under the table — the most actionable info for
