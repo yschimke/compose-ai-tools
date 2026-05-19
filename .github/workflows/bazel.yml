@@ -31,13 +31,32 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Bazel version
+      - name: Bazel version + info
         # Bazelisk is pre-installed on the ubuntu-latest runner image
         # as `/usr/bin/bazel`. Avoids a third-party setup action and
-        # a writable-prefix curl install.
-        run: bazel version
+        # a writable-prefix curl install. `bazel info` surfaces the
+        # resolved workspace / output-base / release up-front so a
+        # later analysis failure has context.
+        run: |
+          bazel version
+          bazel info release workspace output_base
       - name: Build resources manifest
-        run: bazel build //:app_resources
+        run: bazel build --verbose_failures --sandbox_debug //:app_resources
+      - name: Diagnostic dump (on failure)
+        if: failure()
+        run: |
+          echo "=== bazel info ==="
+          bazel info 2>&1 || true
+          echo "=== command.log (tail) ==="
+          out_base="$(bazel info output_base 2>/dev/null || true)"
+          if [ -n "$out_base" ] && [ -f "$out_base/command.log" ]; then
+            tail -200 "$out_base/command.log"
+          fi
+          echo "=== java.log (tail) ==="
+          find "${out_base:-/dev/null}" -name 'java.log*' -printf '%p\n' 2>/dev/null \
+            | head -3 | while read -r f; do echo "--- $f ---"; tail -100 "$f"; done
+          echo "=== sample tree ==="
+          ls -laR . | head -100
       - name: Inspect output
         run: |
           out="$(bazel cquery --output=files //:app_resources)"
