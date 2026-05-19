@@ -21,6 +21,7 @@ internal interface PreviewRenderStrategy {
 private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> = mapOf(
     PreviewKind.COMPOSE to ComposePreviewStrategy,
     PreviewKind.TILE to TilePreviewStrategy,
+    PreviewKind.NOTIFICATION to NotificationPreviewStrategy,
 )
 
 internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
@@ -157,6 +158,21 @@ internal fun resolvePreviewReceiver(clazz: Class<*>): Any? {
         ctor.isAccessible = true
         ctor.newInstance()
     }.getOrNull()
+}
+
+/**
+ * Notifications strategy: invoke the non-composable `(Context) -> Notification` function and
+ * inflate the resulting `RemoteViews` through an `AndroidView`. See
+ * [NotificationPreviewComposable] for the heavy lifting.
+ */
+private object NotificationPreviewStrategy : PreviewRenderStrategy {
+    @Composable
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
+        NotificationPreviewComposable(
+            className = preview.className,
+            functionName = preview.functionName,
+        )
+    }
 }
 
 /**
