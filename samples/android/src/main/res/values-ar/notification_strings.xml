@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">عينة Android</string>
+  <string name="notif_variant_title">تحديث معاينة Compose</string>
+  <string name="notif_variant_text">انقر للقراءة</string>
+  <string name="notif_variant_big_text">تنتشر الإشعارات الآن عبر محاور بيئة Preview@ — المظهر واللغة ومقياس الخط — من خلال آلية المعاينة المتعددة الموجودة في Compose. مصنع واحد، متغيرات معروضة متعددة.</string>
+</resources>
