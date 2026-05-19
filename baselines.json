@@ -64,8 +64,8 @@
     "notifications.dark.png": {
       "fixture": "notifications",
       "theme": "dark",
-      "sha256": "4527c37b598cd74931f4e3482584baf10b57c6ea6356e1876137c914d1ddd56d",
-      "size": 48746
+      "sha256": "8a3648f6089435d9a8cf44488c9af9bec2e2a9f4f342b100161110c89d9a7598",
+      "size": 49441
     },
     "notifications.light.png": {
       "fixture": "notifications",
