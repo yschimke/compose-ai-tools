@@ -1,0 +1,207 @@
+name: SDK Compatibility Matrix
+
+# Nightly sweep over (JDK × compileSdk × targetSdk × minSdk × sdkVersion override) for the
+# synthetic `:samples:sdk-matrix` module. Documents which SDK combinations render cleanly under
+# auto-detection, which need the `composePreview.sdkVersion` override knob, and which are
+# expected-to-fail (e.g. JDK 17 cannot render at Robolectric SDK 36). Drives
+# `docs/SDK_COMPATIBILITY.md`.
+#
+# Matrix scope and filtering rationale (see also docs/SDK_COMPATIBILITY.md):
+# - compileSdk ∈ {35, 36, 37}. Below 35 is non-sensical for any active app (Play Store new-app
+#   floor since Aug 2025); above 37 isn't shipping today.
+# - targetSdk ≤ compileSdk (AGP rule).
+# - minSdk ∈ {24, 36}. Issue #1248's `PackageParser: Requires newer sdk version` is gated by
+#   minSdk; the matrix spans low-floor (typical) and tightly-targeting consumers.
+# - JDK ∈ {17, 21}. Robolectric SDK 36 requires JDK 21+
+#   (`DefaultSdkProvider.verifySupportedSdk`); the matrix's whole reason to sweep two JDKs is
+#   to surface that constraint.
+# - sdkVersion override ∈ {auto, 35}. `auto` exercises the plugin's auto-detect path; `35` is
+#   the rescue override consumers on JDK 17 reach for when their compileSdk is 36+.
+
+on:
+  schedule:
+    # 04:17 UTC daily — offset from the other crons in this repo to avoid
+    # piling onto the same runner pool.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sdk-matrix-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ----- JDK 17, auto-detect -----
+          # Baseline: compileSdk=35 lands within Robolectric's JDK 17 ceiling, renders cleanly.
+          - { label: "jdk17 / compileSdk=35 / target=35 / min=24 / auto", jdk: "17", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", expect: pass }
+          # JDK 17 + compileSdk≥36 fails at sandbox bootstrap: Robolectric refuses SDK 36
+          # without JDK 21. The minSdk axis is moot here; this is purely a JDK constraint.
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", expect: fail }
+          # Above-ceiling clamps to 36 — same JDK refusal afterward.
+          - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", expect: fail }
+          # ----- JDK 17, sdkVersion=35 override -----
+          # The rescue path consumers on JDK 17 + compileSdk=36 take. APK's minSdk=24 parses
+          # cleanly against the SDK 35 framework Robolectric synthesizes.
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "35", expect: pass }
+          # The original #1248 shape: override pins Robolectric to SDK 35, but the APK's
+          # `<uses-sdk minSdkVersion="36">` is newer than the runtime framework, so
+          # PackageParser refuses. Documented failure, not a regression.
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=36 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "35", expect: fail }
+          # ----- JDK 21, auto-detect -----
+          # Parity sanity check at the bottom of the range.
+          - { label: "jdk21 / compileSdk=35 / target=35 / min=24 / auto", jdk: "21", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", expect: pass }
+          # JDK 21 unlocks Robolectric SDK 36 — auto-detect picks sdk=36 and renders.
+          - { label: "jdk21 / compileSdk=36 / target=36 / min=24 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", expect: pass }
+          # The #1248 case JDK 21 fixes outright: minSdk=36 matches the runtime framework.
+          - { label: "jdk21 / compileSdk=36 / target=36 / min=36 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "", expect: pass }
+          # Above-ceiling clamp; minSdk=24 trivially parses against SDK 36.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", expect: pass }
+          # Above-ceiling clamp with minSdk=36 — clamp lands at exactly the right level.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", expect: pass }
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.jdk }}
+
+      - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Render :samples:sdk-matrix
+        id: render
+        env:
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          set +e
+          sdk_version_arg=""
+          if [ -n "${{ matrix.sdkVersion }}" ]; then
+            sdk_version_arg="-Pcomposeai.matrix.sdkVersion=${{ matrix.sdkVersion }}"
+          fi
+          ./gradlew :samples:sdk-matrix:renderAllPreviews \
+            -Pcomposeai.matrix.compileSdk=${{ matrix.compileSdk }} \
+            -Pcomposeai.matrix.targetSdk=${{ matrix.targetSdk }} \
+            -Pcomposeai.matrix.minSdk=${{ matrix.minSdk }} \
+            $sdk_version_arg \
+            --stacktrace 2>&1 | tee build.log
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "outcome=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=fail" >> "$GITHUB_OUTPUT"
+          fi
+          # The step itself exits 0 so the aggregator sees every cell. Pass/fail is recorded
+          # in the cell JSON; the aggregator flags rows where `outcome != expected`.
+          exit 0
+
+      - name: Record cell result
+        env:
+          LABEL: ${{ matrix.label }}
+          JDK: ${{ matrix.jdk }}
+          COMPILE_SDK: ${{ matrix.compileSdk }}
+          TARGET_SDK: ${{ matrix.targetSdk }}
+          MIN_SDK: ${{ matrix.minSdk }}
+          SDK_VERSION: ${{ matrix.sdkVersion }}
+          EXPECT: ${{ matrix.expect }}
+          OUTCOME: ${{ steps.render.outputs.outcome }}
+          EXIT_CODE: ${{ steps.render.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          mkdir -p cell-results
+          slug=$(printf '%s' "$LABEL" | tr -c '[:alnum:]' '-' | tr -s '-' | sed 's/^-//;s/-$//')
+          python3 - "$slug" <<'PY'
+          import json, os, sys
+          slug = sys.argv[1]
+          row = {
+            "label": os.environ["LABEL"],
+            "jdk": os.environ["JDK"],
+            "compileSdk": int(os.environ["COMPILE_SDK"]),
+            "targetSdk": int(os.environ["TARGET_SDK"]),
+            "minSdk": int(os.environ["MIN_SDK"]),
+            "sdkVersion": os.environ["SDK_VERSION"] or None,
+            "expected": os.environ["EXPECT"],
+            "outcome": os.environ["OUTCOME"],
+            "exitCode": int(os.environ["EXIT_CODE"]),
+          }
+          with open(f"cell-results/{slug}.json", "w") as f:
+            json.dump(row, f)
+          PY
+
+      - name: Upload cell result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-matrix-cell-${{ strategy.job-index }}
+          path: |
+            cell-results/*.json
+            samples/sdk-matrix/build/compose-previews/renders/*.png
+            samples/sdk-matrix/build/generated/composeai/robolectric/**/robolectric.properties
+            build.log
+
+  aggregate:
+    name: Aggregate matrix results
+    runs-on: ubuntu-latest
+    needs: matrix
+    if: always()
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Download cell results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: cell-results
+          pattern: sdk-matrix-cell-*
+          merge-multiple: true
+
+      - name: Render results table
+        id: report
+        run: |
+          set -euo pipefail
+          python3 scripts/sdk_matrix_report.py \
+            --cells cell-results \
+            --out matrix-report.md
+          echo "## SDK Compatibility Matrix (run $(date -u +%FT%TZ))" >> "$GITHUB_STEP_SUMMARY"
+          cat matrix-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if any cell drifted from expectations
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, sys
+          from pathlib import Path
+          drift = []
+          for p in sorted(Path("cell-results").rglob("*.json")):
+            row = json.load(open(p))
+            if row["outcome"] != row["expected"]:
+              drift.append(row["label"])
+          if drift:
+            print("Drift detected:", file=sys.stderr)
+            for d in drift:
+              print(f" - {d}", file=sys.stderr)
+            sys.exit(1)
+          print("All cells matched expectations.")
+          PY
+
+      - name: Upload aggregated report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-matrix-report
+          path: matrix-report.md
