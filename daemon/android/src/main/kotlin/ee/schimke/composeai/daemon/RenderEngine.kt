@@ -343,6 +343,10 @@ class RenderEngine(
                             className = spec.className,
                             functionName = spec.functionName,
                             classLoader = classLoader,
+                            // Lets the renderer write a structured-fields JSON sidecar alongside
+                            // the PNG for daemon-driven renders (same path used by the standalone
+                            // `renderPreviews` Test task).
+                            previewId = spec.previewId,
                           )
                         } else {
                           InvokeComposable(composableMethod!!)
