@@ -5,6 +5,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Shader
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
@@ -18,7 +23,8 @@ import androidx.core.app.Person
  * notification surface render correctly*, not how many variants of one notification we produce.
  *
  * Covers the surfaces real apps mostly ship: Messaging (Signal / WhatsApp / Discord),
- * Inbox-summary (Gmail), and actions (reply / dismiss button row).
+ * Inbox-summary (Gmail), `BigPictureStyle` (camera / share notifications), and actions
+ * (reply / dismiss button row).
  */
 private const val GALLERY_CHANNEL_ID = "gallery"
 
@@ -112,4 +118,55 @@ fun ActionsPreview() {
       .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Archive", noopIntent)
       .build()
   }
+}
+
+/**
+ * `BigPictureStyle` — the surface camera / photo-share / weather apps use when the body of the
+ * notification is itself an image. The expanded shade layout reserves a wide row for the bitmap
+ * and renders the title + text above it.
+ *
+ * The bitmap is generated programmatically (a gradient sky with a sun) so the sample doesn't have
+ * to carry a photo asset in the repo. Real apps would use a `BitmapFactory.decodeResource` /
+ * `decodeFile` of an actual image; the rendering path is the same.
+ */
+@Preview(name = "Big picture")
+@Composable
+fun BigPictureStylePreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.ic_menu_camera)
+      .setContentTitle("Photo shared")
+      .setContentText("Tap to view")
+      .setStyle(NotificationCompat.BigPictureStyle().bigPicture(sampleBigPicture()))
+      .build()
+  }
+}
+
+/**
+ * Synthetic 720×384 "photo" used by [BigPictureStylePreview]. A linear sky gradient with a sun
+ * disc in the upper-right — enough visual structure to read as an actual image at notification
+ * size without shipping a raster asset.
+ */
+private fun sampleBigPicture(): Bitmap {
+  val w = 720
+  val h = 384
+  val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+  val canvas = Canvas(bmp)
+  val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+  paint.shader =
+    LinearGradient(
+      0f,
+      0f,
+      0f,
+      h.toFloat(),
+      0xFF1976D2.toInt(),
+      0xFFFFB74D.toInt(),
+      Shader.TileMode.CLAMP,
+    )
+  canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+  paint.shader = null
+  paint.color = 0xFFFFEB3B.toInt()
+  canvas.drawCircle(w * 0.75f, h * 0.38f, h * 0.18f, paint)
+  return bmp
 }
