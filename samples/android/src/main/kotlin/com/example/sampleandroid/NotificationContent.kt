@@ -2,6 +2,7 @@ package com.example.sampleandroid
 
 import android.app.Notification
 import android.content.Context
+import android.content.res.Configuration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +42,13 @@ fun NotificationContent(factory: (Context) -> Notification) {
               ViewGroup.LayoutParams.MATCH_PARENT,
               ViewGroup.LayoutParams.WRAP_CONTENT,
             )
+          // RemoteViews title rows resolve `?attr/textColorPrimary` against the activity theme,
+          // which is near-white under `uiMode = NIGHT_YES`. Without a matching dark surface
+          // behind the inflated tree, the title text renders white-on-white. SystemUI on-device
+          // paints the dark notification surface for us; here we have to do it ourselves. Read
+          // `android.R.attr.colorBackground` from the theme so the colour tracks the active
+          // night-mode configuration without us hard-coding light / dark values.
+          setBackgroundColor(resolveBackgroundColor(ctx))
         }
       val notification = factory(context)
       val view =
@@ -56,6 +64,24 @@ fun NotificationContent(factory: (Context) -> Notification) {
       parent
     },
   )
+}
+
+/**
+ * AOSP-derived notification surface colours, picked off the active `Configuration.uiMode`. We
+ * deliberately don't read `?android:attr/colorBackground` from the activity theme: the renderer's
+ * sandbox activity uses a generic theme that resolves the same lavender for both day and night
+ * modes, so the title row's `?attr/textColorPrimary` (near-white under NIGHT_YES) renders
+ * white-on-white. Hard-coding the two surface values keeps each variant's contrast correct.
+ *
+ * Values approximate `Theme.DeviceDefault.Notification` / `…Notification.Dark` (≈ `#FFFFFF`
+ * day, `#1F1F1F` night) — close enough to AOSP that the rendered PNG reads like the shade
+ * surface a stock device would draw.
+ */
+private fun resolveBackgroundColor(context: Context): Int {
+  val night =
+    (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+      Configuration.UI_MODE_NIGHT_YES
+  return if (night) 0xFF1F1F1F.toInt() else 0xFFFFFFFF.toInt()
 }
 
 @Suppress("DEPRECATION")
