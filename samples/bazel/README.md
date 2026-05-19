@@ -86,3 +86,46 @@ the render half lands.
 - [ ] `compose-preview discover-resources` CLI subcommand
 - [ ] Swap `_discover.sh` for the real CLI binary
 - [ ] `render_resources` rule (blocked on render-CLI extraction)
+
+## Compose APK target (opt-in, known-fragile)
+
+A second target — `//:bazel_sample_apk` — builds a tiny Android APK
+with a `@Composable @Preview` and a `@NotificationPreview` function
+through `rules_kotlin` + `rules_android` + `rules_jvm_external`. Sources
+under [`app/src/main/kotlin/com/example/bazelsample/`](app/src/main/kotlin/com/example/bazelsample/).
+Manifest at [`app/src/main/AndroidManifest.xml`](app/src/main/AndroidManifest.xml).
+
+```
+bazel build //:bazel_sample_apk
+```
+
+**This target is known-fragile and intentionally not blocking CI.** The
+core problem is upstream:
+[bazelbuild/rules_kotlin#1388](https://github.com/bazelbuild/rules_kotlin/issues/1388) —
+the Compose compiler plugin can't be wired through `rules_kotlin` on
+Kotlin 2.x. The pins in [`MODULE.bazel`](MODULE.bazel) stay on Kotlin
+1.9.x + standalone Compose Compiler 1.5.x as a workaround; this is a
+deliberate toolchain divergence from the rest of compose-ai-tools (which
+runs Kotlin 2.3.x).
+
+The CI job that builds the APK lives in
+[`.github/workflows/bazel.yml`](../../.github/workflows/bazel.yml) under
+`jobs.bazel-build-apk` with `continue-on-error: true`. Watch it; when
+it goes green organically (upstream fix, version bump, or a working
+fork lands) the `continue-on-error` flag is the next thing to drop.
+
+Until then, treat the target as scaffolding — proof that the layout
+compiles in principle, useful as a starting point when the toolchain
+unblocks, but not a guarantee that `bazel build //:bazel_sample_apk`
+succeeds on `main` today.
+
+### Why `@NotificationPreview` is redeclared locally
+
+[`Notifications.kt`](app/src/main/kotlin/com/example/bazelsample/Notifications.kt)
+re-declares the annotation as a file-private class rather than
+depending on the in-tree `:preview-annotations` Gradle module. The
+fixture's whole point is to demonstrate a project layout that doesn't
+know about Gradle; the canonical annotation lives at
+[`preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt`](../../preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt)
+and a real downstream consumer would resolve the published artifact
+from Maven (FQN match is what the discovery side keys off).

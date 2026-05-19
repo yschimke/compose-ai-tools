@@ -1,13 +1,70 @@
-# Bazel sample for compose-ai-tools — resources generation stepping stone.
+# Bazel sample for compose-ai-tools.
 #
-# This module is intentionally minimal: bzlmod with no external deps. The
-# `discover_resources` rule defined in `compose_preview.bzl` is a pure
-# shell action (no rules_jvm_external, no rules_kotlin) until the
-# `compose-preview discover-resources` CLI subcommand lands — see issue
-# #1253. Adding `rules_kotlin` only happens when the sample needs to
-# compile Kotlin, which it does not for the resources-only first slice.
+# Two scopes live in this module:
+#
+#   1. `discover_resources` (//:app_resources) — pure-shell resources
+#      discovery rule, no external deps. Tracked by issue #1253; this
+#      is the part the resources-only first slice is committing to.
+#
+#   2. Android Compose APK (//:bazel_sample_apk) — opt-in,
+#      known-fragile. Pulls rules_kotlin / rules_android /
+#      rules_jvm_external to compile a tiny `@Composable @Preview` +
+#      `@NotificationPreview` into a real APK. Pins are conservative
+#      because the Compose compiler plugin + rules_kotlin combination
+#      is openly broken on Kotlin 2.x
+#      (bazelbuild/rules_kotlin#1388). We stay on Kotlin 1.9.x +
+#      standalone Compose Compiler 1.5.x for now.
+#
+#      The APK target is not on the default CI path — see
+#      .github/workflows/bazel.yml for the opt-in second job.
 
 module(
     name = "compose_ai_tools_bazel_sample",
     version = "0.0.0",
 )
+
+# --- Android / Kotlin / Compose toolchain (opt-in) ---
+# Versions verified to exist on Bazel Central Registry as of late
+# 2025. The Compose artifact versions are starting points; transitives
+# are resolved by rules_jvm_external. Run
+# `REPIN=1 bazel run @maven//:pin` after editing the artifact list.
+
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "rules_jvm_external", version = "6.10")
+bazel_dep(name = "rules_kotlin", version = "1.9.6")
+bazel_dep(name = "rules_android", version = "0.7.2")
+
+# Android SDK — picks up $ANDROID_HOME from the environment. On the
+# GitHub `ubuntu-latest` runner, prefer
+# `android-actions/setup-android@v3` over the pre-installed SDK for
+# determinism.
+android_sdk_repository_extension = use_extension(
+    "@rules_android//rules/android_sdk_repository:rule.bzl",
+    "android_sdk_repository_extension",
+)
+use_repo(android_sdk_repository_extension, "androidsdk")
+register_toolchains("@androidsdk//:sdk-toolchain", "@androidsdk//:all")
+
+# Maven artifact graph. Lock file is committed so CI is hermetic.
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    name = "maven",
+    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
+    artifacts = [
+        "androidx.activity:activity-compose:1.9.3",
+        "androidx.compose.compiler:compiler:1.5.15",
+        "androidx.compose.foundation:foundation:1.7.5",
+        "androidx.compose.material3:material3:1.3.1",
+        "androidx.compose.runtime:runtime:1.7.5",
+        "androidx.compose.ui:ui:1.7.5",
+        "androidx.compose.ui:ui-tooling-preview:1.7.5",
+        "androidx.core:core-ktx:1.13.1",
+    ],
+    lock_file = "//:maven_install.json",
+    repositories = [
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+    use_starlark_android_rules = True,
+)
+use_repo(maven, "maven")

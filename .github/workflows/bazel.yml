@@ -47,3 +47,34 @@ jobs:
           python3 -c "import json,sys; d=json.load(open('$out')); \
             assert d['resources'], 'no resources discovered'; \
             print(f'{len(d[\"resources\"])} resources')"
+
+  bazel-build-apk:
+    # Opt-in second job: Bazel + Compose APK target. Marked
+    # `continue-on-error: true` because the rules_kotlin + Compose
+    # compiler combination is broken on Kotlin 2.x
+    # (bazelbuild/rules_kotlin#1388) and we're tracking the path back
+    # to green from outside this workflow. Don't block PR merges on
+    # this; do let it run so we can see when upstream fixes it.
+    name: bazel build //:bazel_sample_apk (known fragile)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: samples/bazel
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: "platforms;android-34 build-tools;34.0.0"
+      - name: Bazel version
+        run: bazel version
+      - name: Build APK
+        run: bazel build //:bazel_sample_apk
