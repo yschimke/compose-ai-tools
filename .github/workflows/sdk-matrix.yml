@@ -72,14 +72,22 @@ jobs:
           - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
           # ----- Robolectric snapshot probes -----
           # Forces `org.robolectric:robolectric:4.17-SNAPSHOT` on the test classpath AND lifts the
-          # task's ceiling to 37 via `maxSupportedSdk` so the snapshot's API 37 fixes (upstream
-          # commit 0e89b68) actually get exercised. The ceiling lift is a matrix-internal escape
+          # task's ceiling to 37 via `maxSupportedSdk` so the snapshot's API 37 work (upstream
+          # commit 0e89b68) actually gets exercised. The ceiling lift is a matrix-internal escape
           # hatch — production consumers never set it — so a stable-Robolectric 4.16.1 user can't
           # accidentally turn the clamp-warning behaviour above into a runtime sandbox failure.
-          # Snapshot resolution itself can't be verified locally (Sonatype is off-network in many
-          # sandboxes); CI carries the network access these cells need.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: pass }
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: pass }
+          #
+          # `expect: fail` for now: as of this writing the `4.17-SNAPSHOT` build has the popup-
+          # window / `relayout2` code-path fixes for API 37, but Robolectric's
+          # `DefaultSdkProvider` doesn't yet enumerate API 37 as a known SDK (no
+          # `android-all-instrumented-37.jar` ships with the snapshot), so the sandbox boot fails
+          # with `IllegalArgumentException` at `UnknownSdk.java`. We keep the cells in the matrix
+          # specifically to catch the day upstream adds the framework jar — the cells will then
+          # drift to "pass when expected fail" and surface as ❓ in the aggregated report, which
+          # is the exact signal to flip `expect:` to `pass` and bump `libs.robolectric` in
+          # `gradle/libs.versions.toml`.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail }
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
