@@ -7,6 +7,7 @@
   one-line title, two-line body.
 -->
 <resources>
+  <string name="app_name">Sample Android</string>
   <string name="notif_variant_title">Compose preview update</string>
   <string name="notif_variant_text">Tap to read</string>
   <string name="notif_variant_big_text">Notifications now fan out across @Preview environment axes — theme, locale, font scale — through Compose\'s existing multi-preview machinery. One factory, many rendered variants.</string>

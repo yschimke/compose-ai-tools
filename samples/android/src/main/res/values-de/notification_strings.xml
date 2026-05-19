@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="app_name">Android-Beispiel</string>
   <string name="notif_variant_title">Compose-Vorschau aktualisiert</string>
   <string name="notif_variant_text">Tippen zum Lesen</string>
   <string name="notif_variant_big_text">Benachrichtigungen fächern sich nun über die Umgebungsachsen von @Preview auf — Theme, Sprache, Schriftskalierung — durch den vorhandenen Multi-Preview-Mechanismus von Compose. Eine Factory, viele gerenderte Varianten.</string>

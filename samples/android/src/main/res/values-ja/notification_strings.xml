@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string name="app_name">サンプル Android</string>
   <string name="notif_variant_title">Compose プレビュー更新</string>
   <string name="notif_variant_text">タップして読む</string>
   <string name="notif_variant_big_text">通知は、Compose の既存のマルチプレビュー機構を通じて、@Preview の環境軸（テーマ、ロケール、フォントスケール）に展開されるようになりました。1 つのファクトリーから複数のバリアントがレンダリングされます。</string>
