@@ -30,11 +30,24 @@ val matrixMinSdk: Int =
   providers.gradleProperty("composeai.matrix.minSdk").orNull?.toIntOrNull() ?: 24
 val matrixSdkOverride: Int? =
   providers.gradleProperty("composeai.matrix.sdkVersion").orNull?.toIntOrNull()
+// Robolectric snapshot version probe. When set (e.g. `4.17-SNAPSHOT`) the snapshots repo
+// declared in `settings.gradle.kts` is honoured and `resolutionStrategy.force(...)` pins this
+// version on every configuration so the test runtime classpath swaps in the snapshot regardless
+// of what `renderer-android` compiled against. See `docs/SDK_COMPATIBILITY.md` for the
+// snapshot-probe cells and the upstream commit (`0e89b68`) the snapshot picks up.
+val matrixRobolectricVersion: String? =
+  providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
   // workflow when a cell is documenting the override branch.
   matrixSdkOverride?.let { sdkVersion.set(it) }
+}
+
+if (matrixRobolectricVersion != null) {
+  configurations.all {
+    resolutionStrategy.force("org.robolectric:robolectric:$matrixRobolectricVersion")
+  }
 }
 
 android {

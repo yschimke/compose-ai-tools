@@ -42,31 +42,43 @@ jobs:
         include:
           # ----- JDK 17, auto-detect -----
           # Baseline: compileSdk=35 lands within Robolectric's JDK 17 ceiling, renders cleanly.
-          - { label: "jdk17 / compileSdk=35 / target=35 / min=24 / auto", jdk: "17", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", expect: pass }
+          - { label: "jdk17 / compileSdk=35 / target=35 / min=24 / auto", jdk: "17", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", robolectric: "", expect: pass }
           # JDK 17 + compileSdk≥36 fails at sandbox bootstrap: Robolectric refuses SDK 36
           # without JDK 21. The minSdk axis is moot here; this is purely a JDK constraint.
-          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", expect: fail }
-          # Above-ceiling clamps to 36 — same JDK refusal afterward.
-          - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", expect: fail }
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / auto", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", expect: fail }
+          # JDK 17 + compileSdk=37 fails twice over: ceiling lifted to 37 means no clamp, but
+          # Robolectric 4.16.1 has no `android-all-instrumented-37.jar`, and JDK 17 wouldn't
+          # accept SDK 37 anyway. Fails at sandbox bootstrap with "API level 37 is not available".
+          - { label: "jdk17 / compileSdk=37 / target=37 / min=24 / auto", jdk: "17", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", expect: fail }
           # ----- JDK 17, sdkVersion=35 override -----
           # The rescue path consumers on JDK 17 + compileSdk=36 take. APK's minSdk=24 parses
           # cleanly against the SDK 35 framework Robolectric synthesizes.
-          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "35", expect: pass }
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=24 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "35", robolectric: "", expect: pass }
           # The original #1248 shape: override pins Robolectric to SDK 35, but the APK's
           # `<uses-sdk minSdkVersion="36">` is newer than the runtime framework, so
           # PackageParser refuses. Documented failure, not a regression.
-          - { label: "jdk17 / compileSdk=36 / target=36 / min=36 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "35", expect: fail }
+          - { label: "jdk17 / compileSdk=36 / target=36 / min=36 / override=35", jdk: "17", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "35", robolectric: "", expect: fail }
           # ----- JDK 21, auto-detect -----
           # Parity sanity check at the bottom of the range.
-          - { label: "jdk21 / compileSdk=35 / target=35 / min=24 / auto", jdk: "21", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", expect: pass }
+          - { label: "jdk21 / compileSdk=35 / target=35 / min=24 / auto", jdk: "21", compileSdk: 35, targetSdk: 35, minSdk: 24, sdkVersion: "", robolectric: "", expect: pass }
           # JDK 21 unlocks Robolectric SDK 36 — auto-detect picks sdk=36 and renders.
-          - { label: "jdk21 / compileSdk=36 / target=36 / min=24 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", expect: pass }
+          - { label: "jdk21 / compileSdk=36 / target=36 / min=24 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 24, sdkVersion: "", robolectric: "", expect: pass }
           # The #1248 case JDK 21 fixes outright: minSdk=36 matches the runtime framework.
-          - { label: "jdk21 / compileSdk=36 / target=36 / min=36 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "", expect: pass }
-          # Above-ceiling clamp; minSdk=24 trivially parses against SDK 36.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", expect: pass }
-          # Above-ceiling clamp with minSdk=36 — clamp lands at exactly the right level.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", expect: pass }
+          - { label: "jdk21 / compileSdk=36 / target=36 / min=36 / auto", jdk: "21", compileSdk: 36, targetSdk: 36, minSdk: 36, sdkVersion: "", robolectric: "", expect: pass }
+          # JDK 21 + compileSdk=37 + stable Robolectric: ceiling lifted to 37, no clamp, but
+          # 4.16.1 doesn't ship API 37. Fails at sandbox bootstrap with "API level 37 is not
+          # available". The snapshot variants below are the way to actually render at SDK 37.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "", expect: fail }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", expect: fail }
+          # ----- Robolectric snapshot probes -----
+          # Forces `org.robolectric:robolectric:4.17-SNAPSHOT` on the test classpath so the
+          # snapshot's API 37 fixes (upstream commit 0e89b68) are exercised. These cells are the
+          # only ones that should render at SDK 37 today; if they regress, the snapshot has lost
+          # API 37 support and `docs/SDK_COMPATIBILITY.md` needs revising. Snapshot resolution
+          # itself can't be verified locally (Sonatype is off-network in many sandboxes); CI
+          # carries the network access these cells need.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", expect: pass }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", expect: pass }
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -92,11 +104,16 @@ jobs:
           if [ -n "${{ matrix.sdkVersion }}" ]; then
             sdk_version_arg="-Pcomposeai.matrix.sdkVersion=${{ matrix.sdkVersion }}"
           fi
+          robolectric_arg=""
+          if [ -n "${{ matrix.robolectric }}" ]; then
+            robolectric_arg="-Pcomposeai.matrix.robolectricVersion=${{ matrix.robolectric }}"
+          fi
           ./gradlew :samples:sdk-matrix:renderAllPreviews \
             -Pcomposeai.matrix.compileSdk=${{ matrix.compileSdk }} \
             -Pcomposeai.matrix.targetSdk=${{ matrix.targetSdk }} \
             -Pcomposeai.matrix.minSdk=${{ matrix.minSdk }} \
             $sdk_version_arg \
+            $robolectric_arg \
             --stacktrace 2>&1 | tee build.log
           exit_code=${PIPESTATUS[0]}
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
@@ -117,6 +134,7 @@ jobs:
           TARGET_SDK: ${{ matrix.targetSdk }}
           MIN_SDK: ${{ matrix.minSdk }}
           SDK_VERSION: ${{ matrix.sdkVersion }}
+          ROBOLECTRIC: ${{ matrix.robolectric }}
           EXPECT: ${{ matrix.expect }}
           OUTCOME: ${{ steps.render.outputs.outcome }}
           EXIT_CODE: ${{ steps.render.outputs.exit_code }}
@@ -134,6 +152,7 @@ jobs:
             "targetSdk": int(os.environ["TARGET_SDK"]),
             "minSdk": int(os.environ["MIN_SDK"]),
             "sdkVersion": os.environ["SDK_VERSION"] or None,
+            "robolectric": os.environ["ROBOLECTRIC"] or None,
             "expected": os.environ["EXPECT"],
             "outcome": os.environ["OUTCOME"],
             "exitCode": int(os.environ["EXIT_CODE"]),

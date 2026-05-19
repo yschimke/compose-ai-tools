@@ -163,16 +163,20 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     internal const val MIN_SUPPORTED_SDK: Int = 21
 
     /**
-     * Ceiling of Robolectric's supported `sdk=` range. Robolectric 4.16.1 ships
-     * `android-all-instrumented` jars up to API 36 (Baklava). Bump this in lockstep with
-     * `gradle/libs.versions.toml`'s `robolectric` pin when Robolectric adds a new API level.
+     * Ceiling of the `sdk=` range this task accepts before clamping. Set to API 37 so consumers on
+     * a Robolectric snapshot (which has Android 17 / API 37 fixes — see
+     * https://github.com/robolectric/robolectric/commit/0e89b684f5871ae6c65f973bc34aa022ec9a541e)
+     * can render at SDK 37. Consumers on the stable `4.16.1` line that auto-detect into `sdk=37`
+     * fail at sandbox bootstrap because no `android-all-instrumented-37.jar` exists on classpath —
+     * fast-fail at task time would be friendlier than runtime, but identifying which Robolectric is
+     * on the test classpath at task config time is non-trivial and the bump unblocks the snapshot
+     * probe in the SDK compatibility matrix (`docs/SDK_COMPATIBILITY.md`).
      *
-     * Note: Robolectric refuses to bootstrap an SDK 36 sandbox unless the test JVM is JDK 21+
-     * (`DefaultSdkProvider.verifySupportedSdk`). Consumers on JDK 17 will get a clear `Android SDK
-     * 36 requires Java 21` error if their `compileSdk` (or this override) lands on 36 — they need
-     * to bump their toolchain.
+     * Robolectric additionally refuses to bootstrap an SDK 36+ sandbox unless the test JVM is JDK
+     * 21+ (`DefaultSdkProvider.verifySupportedSdk`). Consumers on JDK 17 will get a clear `Android
+     * SDK N requires Java 21` error if their `compileSdk` (or this override) lands on 36 or above.
      */
-    internal const val MAX_SUPPORTED_SDK: Int = 36
+    internal const val MAX_SUPPORTED_SDK: Int = 37
 
     /**
      * Default Robolectric SDK when neither the consumer's `android.compileSdk` nor

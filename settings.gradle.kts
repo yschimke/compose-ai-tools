@@ -7,12 +7,26 @@ pluginManagement {
   }
 }
 
+// Snapshot probe for the SDK compatibility matrix's snapshot cells. Pulls Robolectric
+// snapshots (which carry API 37 fixes ahead of the next stable release) from the OSS Sonatype
+// snapshots repo so `:samples:sdk-matrix` can render at SDK 37. Repo is added only when the
+// property is set; default builds aren't slowed by an extra snapshot lookup. Scoped to
+// `org.robolectric` so a stray snapshot artifact in some other group can't leak in.
+val matrixRobolectricVersion: String? =
+  providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
+
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
+    if (matrixRobolectricVersion?.endsWith("-SNAPSHOT") == true) {
+      maven("https://oss.sonatype.org/content/repositories/snapshots/") {
+        name = "robolectric-snapshots"
+        content { includeGroup("org.robolectric") }
+      }
+    }
   }
 }
 

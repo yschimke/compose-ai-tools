@@ -58,9 +58,15 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `compileSdk above the Robolectric ceiling clamps to the ceiling`() {
-    // Tiles consumers on compileSdk = 37 (transitive minCompileSdk from wear-tiles-renderer)
-    // shouldn't see a hard build failure — clamp to Robolectric's max and warn.
-    val body = generate(useConsumerApplication = false, override = null, compileSdk = 37)
+    // Consumers on `compileSdk` beyond the task's ceiling shouldn't see a hard build failure —
+    // clamp to MAX_SUPPORTED_SDK and warn. With `MAX_SUPPORTED_SDK = 37` (the snapshot Robolectric
+    // ceiling), `compileSdk = 38` is the hypothetical "above ceiling" case.
+    val body =
+      generate(
+        useConsumerApplication = false,
+        override = null,
+        compileSdk = GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK + 1,
+      )
     assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
   }
 
