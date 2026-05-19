@@ -1,0 +1,29 @@
+load("//:compose_preview.bzl", "discover_resources")
+
+# Expose the placeholder discover script as a plain source file so
+# the rule can stream it into a `run_shell` action. We deliberately
+# avoid `sh_binary` here — it's no longer a native rule in Bazel 8
+# (lives in @rules_shell) and pulling in a third-party module for
+# one throwaway script isn't worth it. The script is replaced by
+# `compose-preview discover-resources` once that lands (#1253).
+exports_files(["_discover.sh"])
+
+discover_resources(
+    name = "app_resources",
+    srcs = glob([
+        "app/res/drawable/*.xml",
+        "app/res/drawable-*/*.xml",
+        "app/res/mipmap-*/*.xml",
+        # values/ is included so the rule exercises the
+        # skip-classification path — these files have a `<resources>`
+        # root and are dropped by the discover action.
+        "app/res/values/*.xml",
+    ]),
+    module = "//samples/bazel:app",
+    variant = "main",
+)
+
+filegroup(
+    name = "all",
+    srcs = [":app_resources"],
+)

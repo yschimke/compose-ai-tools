@@ -1,0 +1,49 @@
+name: Bazel sample
+
+# Opt-in workflow for the resources-only Bazel demo
+# (samples/bazel/). Triggers on PRs that touch the sample or this
+# workflow file, plus manual dispatch. Not part of the default `check`
+# matrix because the Bazel toolchain install adds wall-clock to every
+# PR — see issue #1253 for the wider rollout plan.
+
+on:
+  pull_request:
+    paths:
+      - "samples/bazel/**"
+      - ".github/workflows/bazel.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bazel-build:
+    name: bazel build //:app_resources
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: samples/bazel
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bazel version
+        # Bazelisk is pre-installed on the ubuntu-latest runner image
+        # as `/usr/bin/bazel`. Avoids a third-party setup action and
+        # a writable-prefix curl install.
+        run: bazel version
+      - name: Build resources manifest
+        run: bazel build //:app_resources
+      - name: Inspect output
+        run: |
+          out="$(bazel cquery --output=files //:app_resources)"
+          echo "--- resources.json ---"
+          cat "$out"
+          echo "--- validating JSON ---"
+          python3 -c "import json,sys; d=json.load(open('$out')); \
+            assert d['resources'], 'no resources discovered'; \
+            print(f'{len(d[\"resources\"])} resources')"
