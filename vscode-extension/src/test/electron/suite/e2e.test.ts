@@ -138,11 +138,17 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
         // `COMPOSE_PREVIEW_TEST_MODE=1`, so no extra-render side effects
         // from the focus call.
         await vscode.commands.executeCommand("composePreview.panel.focus");
+        // `webviewReady` is one-shot — the webview emits it once on
+        // resolve. `resetMessages()` in a sibling suite would otherwise
+        // make `getReceivedMessages()` scans loop forever. Prefer the
+        // persistent latch; the inbound scan covers the first-suite
+        // case where the latch hasn't flipped yet.
         await waitFor(
             "webviewReady from the resolved webview",
             30_000,
             100,
             () => {
+                if (api.isWebviewReady()) return true;
                 const inbound = api.getReceivedMessages();
                 return inbound.find(
                     (m) => (m as PostedMessage).command === "webviewReady",
