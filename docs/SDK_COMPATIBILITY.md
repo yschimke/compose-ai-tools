@@ -112,7 +112,7 @@ When a cell in your project lands in the ❌ row, your options are:
    // settings.gradle.kts — add the snapshots repo:
    dependencyResolutionManagement {
      repositories {
-       maven("https://oss.sonatype.org/content/repositories/snapshots/") {
+       maven("https://central.sonatype.com/repository/maven-snapshots/") {
          content { includeGroup("org.robolectric") }
        }
      }
