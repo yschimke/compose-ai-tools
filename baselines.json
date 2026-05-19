@@ -181,6 +181,20 @@
     "sha256": "1039b7c66c1842d47792ef337155a5f578ba75bf46386b0d5d539f61dec8ea76",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/NavHostPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview": {
+    "captureLabel": "",
+    "functionName": "bigTextNotificationPreview",
+    "renderBasename": "NotificationPreviewsKt.bigTextNotificationPreview.png",
+    "sha256": "811740f5a58fe7347db0472dc2db8305f3574c91e9c9dd37f094aaaa9f166d94",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview": {
+    "captureLabel": "",
+    "functionName": "simpleNotificationPreview",
+    "renderBasename": "NotificationPreviewsKt.simpleNotificationPreview.png",
+    "sha256": "97a8c1527407726b4eeee68d574ea14145a262027c41759cea722b6fff4a4dbe",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
     "captureLabel": "",
     "functionName": "BodyTextPreview",
