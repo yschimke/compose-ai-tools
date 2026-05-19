@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.19](https://github.com/yschimke/compose-ai-tools/compare/v0.10.18...v0.10.19) (2026-05-19)
+
+
+### Features
+
+* add Bazel sample for resources discovery ([#1256](https://github.com/yschimke/compose-ai-tools/issues/1256)) ([842a53d](https://github.com/yschimke/compose-ai-tools/commit/842a53da54cfa8a6622d217ccb553d7eabbf0f4a))
+* add notification preview composable and CI workflow ([#1259](https://github.com/yschimke/compose-ai-tools/issues/1259)) ([ae36685](https://github.com/yschimke/compose-ai-tools/commit/ae36685d2210ced2cde5d5d73791a315959ecb48))
+* add notification preview support ([#1255](https://github.com/yschimke/compose-ai-tools/issues/1255)) ([d4e2f41](https://github.com/yschimke/compose-ai-tools/commit/d4e2f4130e409d3daaffd619fb95b53fedd30c37))
+* add NotificationStyleGallery with messaging, inbox, and actions previews ([#1263](https://github.com/yschimke/compose-ai-tools/issues/1263)) ([0b832fb](https://github.com/yschimke/compose-ai-tools/commit/0b832fb35a37ba6727069bd1814cbfba335bf67c))
+* **ci:** add Robolectric snapshot probe cells to SDK matrix ([#1260](https://github.com/yschimke/compose-ai-tools/issues/1260)) ([591d686](https://github.com/yschimke/compose-ai-tools/commit/591d6864fd12dd61e8406cac852381636ff5d976))
+* **ci:** add SDK compatibility matrix workflow + docs ([#1258](https://github.com/yschimke/compose-ai-tools/issues/1258)) ([d423fe4](https://github.com/yschimke/compose-ai-tools/commit/d423fe4d31a8fa1b0a679b3c5645b59909f98d6a))
+
+
+### Bug Fixes
+
+* **ci:** point SDK matrix snapshot probe at the new Sonatype Central URL ([#1267](https://github.com/yschimke/compose-ai-tools/issues/1267)) ([a66afc0](https://github.com/yschimke/compose-ai-tools/commit/a66afc058754b96a7eb8728dd1a14fac91cca72d))
+* **ci:** wire SDK matrix JDK axis through toolchain + surface per-cell failure reasons ([#1265](https://github.com/yschimke/compose-ai-tools/issues/1265)) ([23de5bc](https://github.com/yschimke/compose-ai-tools/commit/23de5bc7c07b327d89d28da5859e5a954e70da3f))
+* **gradle-plugin:** auto-detect Robolectric SDK from consumer compileSdk ([#1254](https://github.com/yschimke/compose-ai-tools/issues/1254)) ([8318c94](https://github.com/yschimke/compose-ai-tools/commit/8318c941da974646e40b3a5b189539253eb98507))
+* restore default plugin repos when seeding mavenLocal ([#1261](https://github.com/yschimke/compose-ai-tools/issues/1261)) ([74f9530](https://github.com/yschimke/compose-ai-tools/commit/74f95301100c90a762afa26a3d6ea6aa1431ca39))
+
 ## [0.10.18](https://github.com/yschimke/compose-ai-tools/compare/v0.10.17...v0.10.18) (2026-05-18)
 
 
