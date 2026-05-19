@@ -16,14 +16,21 @@ lands; the rule's interface (`srcs`, `module`, `variant`, output
 def _discover_resources_impl(ctx):
     out = ctx.actions.declare_file(ctx.attr.name + ".json")
     args = ctx.actions.args()
+    args.add(ctx.file._discover.path)
     args.add(out.path)
     args.add(ctx.attr.module)
     args.add(ctx.attr.variant)
     args.add_all([f.path for f in ctx.files.srcs])
-    ctx.actions.run(
-        executable = ctx.executable._discover,
+
+    # `run_shell` instead of `run(executable=sh_binary)`: native
+    # sh_binary was removed in Bazel 8 and now lives in `@rules_shell`.
+    # For a placeholder action, invoking `bash "$@"` directly avoids
+    # taking a third-party module dep for one shell script — the real
+    # `compose-preview discover-resources` CLI will replace this.
+    ctx.actions.run_shell(
+        command = 'bash "$@"',
         arguments = [args],
-        inputs = ctx.files.srcs,
+        inputs = ctx.files.srcs + [ctx.file._discover],
         outputs = [out],
         mnemonic = "ComposePreviewDiscoverResources",
         progress_message = "Discovering Compose resources for %{label}",
@@ -57,9 +64,8 @@ discover_resources = rule(
             doc = "Variant label (Gradle parity). Bazel sample uses 'main'.",
         ),
         "_discover": attr.label(
-            default = ":_discover",
-            executable = True,
-            cfg = "exec",
+            default = ":_discover.sh",
+            allow_single_file = [".sh"],
         ),
     },
 )

@@ -1,14 +1,12 @@
 load("//:compose_preview.bzl", "discover_resources")
 
-# Placeholder discover action — shell script that mirrors the wire
-# format produced by `discoverAndroidResources`. Swapped for the
-# `compose-preview discover-resources` CLI subcommand once it lands
-# (issue #1253).
-sh_binary(
-    name = "_discover",
-    srcs = ["_discover.sh"],
-    visibility = ["//visibility:public"],
-)
+# Expose the placeholder discover script as a plain source file so
+# the rule can stream it into a `run_shell` action. We deliberately
+# avoid `sh_binary` here — it's no longer a native rule in Bazel 8
+# (lives in @rules_shell) and pulling in a third-party module for
+# one throwaway script isn't worth it. The script is replaced by
+# `compose-preview discover-resources` once that lands (#1253).
+exports_files(["_discover.sh"])
 
 discover_resources(
     name = "app_resources",
