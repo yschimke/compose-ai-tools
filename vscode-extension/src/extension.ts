@@ -454,6 +454,16 @@ export interface ComposePreviewTestApi {
     getReceivedMessages(): unknown[];
     /** Drop both message buffers (posted + received). */
     resetMessages(): void;
+    /**
+     * `true` once the resolved webview has signalled `webviewReady` at
+     * least once this session. Survives [resetMessages] so a later test
+     * suite can confirm the webview is alive without depending on a
+     * `webviewReady` still sitting in the received buffer — the first
+     * `resetMessages()` after the initial ready signal would otherwise
+     * leave subsequent suites waiting forever for a one-shot message
+     * that the webview never re-emits.
+     */
+    isWebviewReady(): boolean;
 }
 
 /** Captured messages for [ComposePreviewTestApi.getPostedMessages]. Only
@@ -463,6 +473,14 @@ const postedMessageLog: unknown[] = [];
 /** Captured messages for [ComposePreviewTestApi.getReceivedMessages]. Only
  *  populated when running under `COMPOSE_PREVIEW_TEST_MODE=1`. */
 const receivedMessageLog: unknown[] = [];
+
+/** Persistent latch for [ComposePreviewTestApi.isWebviewReady]. Unlike
+ *  `receivedMessageLog` this is *not* cleared by `resetMessages()`, so a
+ *  later e2e suite can verify the webview is alive even after a prior
+ *  suite drained the inbound buffer. The webview emits `webviewReady`
+ *  exactly once per resolved view, so once-latched-forever matches the
+ *  underlying signal. */
+let webviewEverReady = false;
 
 /**
  * D2 — routes daemon-attached `a11y/atf` + `a11y/hierarchy` data products into the
@@ -1116,6 +1134,9 @@ export async function activate(
     const onMessage = isTestMode
         ? (msg: WebviewToExtension) => {
               receivedMessageLog.push(msg);
+              if (msg.command === "webviewReady") {
+                  webviewEverReady = true;
+              }
               handleWebviewMessage(msg);
           }
         : handleWebviewMessage;
@@ -1775,6 +1796,9 @@ export async function activate(
             resetMessages(): void {
                 postedMessageLog.length = 0;
                 receivedMessageLog.length = 0;
+            },
+            isWebviewReady(): boolean {
+                return webviewEverReady;
             },
         };
         return testApi;

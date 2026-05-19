@@ -182,11 +182,20 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         // host `postMessage` no-ops. See the matching note in
         // `e2e.test.ts`. Idempotent if the cmp suite already opened it.
         await vscode.commands.executeCommand("composePreview.panel.focus");
+        // `webviewReady` is a one-shot signal: the webview emits it once
+        // on resolve and never again. When the cmp suite ran first it
+        // already drove that signal, and `resetMessages()` inside the
+        // cmp `it()` cleared the inbound buffer — so scanning
+        // `getReceivedMessages()` for `webviewReady` here would loop
+        // forever. Use the persistent latch instead; fall back to the
+        // inbound scan only when the wear suite is the first to focus
+        // the panel (e.g. `e2e*.test.js` runs in isolation).
         await waitFor(
             "webviewReady from the resolved webview",
             30_000,
             100,
             () => {
+                if (api.isWebviewReady()) return true;
                 const inbound = api.getReceivedMessages();
                 return inbound.find(
                     (m) => (m as PostedMessage).command === "webviewReady",
