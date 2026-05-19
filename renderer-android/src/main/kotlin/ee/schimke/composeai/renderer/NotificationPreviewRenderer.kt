@@ -36,6 +36,14 @@ fun NotificationPreviewComposable(
      * shape as [TilePreviewComposable] for the daemon path's per-render child loader.
      */
     classLoader: ClassLoader? = null,
+    /**
+     * Preview id used as the filename stem for the structured-fields JSON sidecar
+     * (`<outputDir>/../data/notifications/<id>.notification.json`). `null` skips the sidecar
+     * write — kept optional so call sites that don't care about the sidecar (a future doc
+     * snippet, a quick test) can pass through unchanged. Both call sites the renderer / daemon
+     * use today pass the manifest's preview id.
+     */
+    previewId: String? = null,
 ) {
     val context = LocalContext.current
     AndroidView(
@@ -54,7 +62,7 @@ fun NotificationPreviewComposable(
                 // `NotificationContent` helper carries.
                 setBackgroundColor(resolveNotificationBackgroundColor(ctx))
             }
-            renderNotificationInto(context, className, functionName, classLoader, parent)
+            renderNotificationInto(context, className, functionName, classLoader, parent, previewId)
             parent
         },
     )
@@ -66,6 +74,7 @@ private fun renderNotificationInto(
     functionName: String,
     classLoader: ClassLoader?,
     parent: FrameLayout,
+    previewId: String?,
 ) {
     val notification = invokeNotificationPreviewFunction(context, className, functionName, classLoader)
     val view = inflateNotificationView(context, notification, parent)
@@ -77,6 +86,12 @@ private fun renderNotificationInto(
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ),
     )
+    // Best-effort structured-fields sidecar. Resolves the output dir from
+    // `composeai.render.outputDir`; no-ops silently when the property is absent or [previewId] is
+    // null, matching the behaviour of [RenderErrorSidecar].
+    if (previewId != null) {
+        NotificationSidecar.write(previewId, notification, context)
+    }
 }
 
 /**
