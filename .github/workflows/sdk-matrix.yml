@@ -72,14 +72,22 @@ jobs:
           - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto (clamp)", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "", maxSupportedSdk: "", expect: pass }
           # ----- Robolectric snapshot probes -----
           # Forces `org.robolectric:robolectric:4.17-SNAPSHOT` on the test classpath AND lifts the
-          # task's ceiling to 37 via `maxSupportedSdk` so the snapshot's API 37 fixes (upstream
-          # commit 0e89b68) actually get exercised. The ceiling lift is a matrix-internal escape
+          # task's ceiling to 37 via `maxSupportedSdk` so the snapshot's API 37 work (upstream
+          # commit 0e89b68) actually gets exercised. The ceiling lift is a matrix-internal escape
           # hatch — production consumers never set it — so a stable-Robolectric 4.16.1 user can't
           # accidentally turn the clamp-warning behaviour above into a runtime sandbox failure.
-          # Snapshot resolution itself can't be verified locally (Sonatype is off-network in many
-          # sandboxes); CI carries the network access these cells need.
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: pass }
-          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: pass }
+          #
+          # `expect: fail` for now: as of this writing the `4.17-SNAPSHOT` build has the popup-
+          # window / `relayout2` code-path fixes for API 37, but Robolectric's
+          # `DefaultSdkProvider` doesn't yet enumerate API 37 as a known SDK (no
+          # `android-all-instrumented-37.jar` ships with the snapshot), so the sandbox boot fails
+          # with `IllegalArgumentException` at `UnknownSdk.java`. We keep the cells in the matrix
+          # specifically to catch the day upstream adds the framework jar — the cells will then
+          # drift to "pass when expected fail" and surface as ❓ in the aggregated report, which
+          # is the exact signal to flip `expect:` to `pass` and bump `libs.robolectric` in
+          # `gradle/libs.versions.toml`.
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=24 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 24, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
+          - { label: "jdk21 / compileSdk=37 / target=37 / min=36 / auto / robolectric=4.17-SNAPSHOT", jdk: "21", compileSdk: 37, targetSdk: 37, minSdk: 36, sdkVersion: "", robolectric: "4.17-SNAPSHOT", maxSupportedSdk: "37", expect: fail, expectedReason: "UnknownSdk" }
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -164,6 +172,7 @@ jobs:
           ROBOLECTRIC: ${{ matrix.robolectric }}
           MAX_SUPPORTED_SDK: ${{ matrix.maxSupportedSdk }}
           EXPECT: ${{ matrix.expect }}
+          EXPECTED_REASON: ${{ matrix.expectedReason }}
           OUTCOME: ${{ steps.render.outputs.outcome }}
           EXIT_CODE: ${{ steps.render.outputs.exit_code }}
           REASON: ${{ steps.render.outputs.reason }}
@@ -184,6 +193,7 @@ jobs:
             "robolectric": os.environ["ROBOLECTRIC"] or None,
             "maxSupportedSdk": int(os.environ["MAX_SUPPORTED_SDK"]) if os.environ["MAX_SUPPORTED_SDK"] else None,
             "expected": os.environ["EXPECT"],
+            "expectedReason": os.environ.get("EXPECTED_REASON") or None,
             "outcome": os.environ["OUTCOME"],
             "exitCode": int(os.environ["EXIT_CODE"]),
             "reason": os.environ.get("REASON") or None,
@@ -239,8 +249,22 @@ jobs:
           drift = []
           for p in sorted(Path("cell-results").rglob("*.json")):
             row = json.load(open(p))
+            label = row["label"]
             if row["outcome"] != row["expected"]:
-              drift.append(row["label"])
+              drift.append(f"{label} (expected {row['expected']}, got {row['outcome']})")
+              continue
+            # Reason gating: when a cell carries `expectedReason`, the captured failure message
+            # must contain that substring (case-insensitive). Without this an unrelated breakage
+            # (Sonatype outage, classpath wiring regression) on an `expect: fail` cell would
+            # silently pass drift — losing the upstream-watch signal. Per Codex review on #1270.
+            expected_reason = row.get("expectedReason")
+            if row["outcome"] == "fail" and expected_reason:
+              captured = (row.get("reason") or "").lower()
+              if expected_reason.lower() not in captured:
+                drift.append(
+                  f"{label} (failed for the wrong reason — expected `{expected_reason}` "
+                  f"in the captured message)"
+                )
           if drift:
             print("Drift detected:", file=sys.stderr)
             for d in drift:

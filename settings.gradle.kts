@@ -8,10 +8,14 @@ pluginManagement {
 }
 
 // Snapshot probe for the SDK compatibility matrix's snapshot cells. Pulls Robolectric
-// snapshots (which carry API 37 fixes ahead of the next stable release) from the OSS Sonatype
-// snapshots repo so `:samples:sdk-matrix` can render at SDK 37. Repo is added only when the
-// property is set; default builds aren't slowed by an extra snapshot lookup. Scoped to
-// `org.robolectric` so a stray snapshot artifact in some other group can't leak in.
+// snapshots (which carry API 37 fixes ahead of the next stable release) from the new Sonatype
+// Central Maven snapshots endpoint so `:samples:sdk-matrix` can render at SDK 37. The legacy
+// `oss.sonatype.org` host is still reachable but stopped accepting new snapshots during
+// Sonatype's 2024–2025 migration to `central.sonatype.com`. Both endpoints are added so a
+// future-published snapshot that lands on the old host still resolves; in practice the new one
+// wins. Scoped to `org.robolectric` so a stray snapshot artifact in some other group can't leak
+// in. Repos are added only when the property is set; default builds aren't slowed by extra
+// snapshot lookups.
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
@@ -22,8 +26,12 @@ dependencyResolutionManagement {
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
     if (matrixRobolectricVersion?.endsWith("-SNAPSHOT") == true) {
+      maven("https://central.sonatype.com/repository/maven-snapshots/") {
+        name = "robolectric-snapshots-central"
+        content { includeGroup("org.robolectric") }
+      }
       maven("https://oss.sonatype.org/content/repositories/snapshots/") {
-        name = "robolectric-snapshots"
+        name = "robolectric-snapshots-oss"
         content { includeGroup("org.robolectric") }
       }
     }
