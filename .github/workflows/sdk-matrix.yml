@@ -117,6 +117,7 @@ jobs:
             -Pcomposeai.matrix.compileSdk=${{ matrix.compileSdk }} \
             -Pcomposeai.matrix.targetSdk=${{ matrix.targetSdk }} \
             -Pcomposeai.matrix.minSdk=${{ matrix.minSdk }} \
+            -Pcomposeai.matrix.jvmToolchain=${{ matrix.jdk }} \
             $sdk_version_arg \
             $robolectric_arg \
             $max_supported_arg \
@@ -125,8 +126,28 @@ jobs:
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           if [ "$exit_code" -eq 0 ]; then
             echo "outcome=pass" >> "$GITHUB_OUTPUT"
+            echo "reason=" >> "$GITHUB_OUTPUT"
           else
             echo "outcome=fail" >> "$GITHUB_OUTPUT"
+            # Pull the most useful one-liner out of the build log so the aggregated report can
+            # explain each red cell without forcing the reader to download artifacts. Priority
+            # order: a Robolectric/PackageParser/Java-version line beats a generic
+            # `Execution failed` line, which beats falling back to "see build.log". The pattern
+            # set covers the four documented failure shapes (#1248 PackageParser, JDK 21
+            # requirement, missing SDK jar, plus a generic Gradle exception fallback).
+            reason=$(grep -m1 -E \
+              "Requires newer sdk version|Android SDK [0-9]+ requires Java|API level [0-9]+ is not available|UnsupportedOperationException|Could not resolve all files|composeai.matrix" \
+              build.log | head -c 400 || true)
+            if [ -z "$reason" ]; then
+              reason=$(grep -m1 -E "^.*[Ff]ailed|FAILURE: " build.log | head -c 400 || true)
+            fi
+            if [ -z "$reason" ]; then
+              reason="see build.log artifact"
+            fi
+            # `$GITHUB_OUTPUT` is line-delimited; escape any newlines / pipes in the matched
+            # message so it survives a single `output=` line.
+            reason_one_line=$(printf '%s' "$reason" | tr '\n' ' ' | tr -s ' ' | sed 's/|/\\|/g')
+            echo "reason=$reason_one_line" >> "$GITHUB_OUTPUT"
           fi
           # The step itself exits 0 so the aggregator sees every cell. Pass/fail is recorded
           # in the cell JSON; the aggregator flags rows where `outcome != expected`.
@@ -145,6 +166,7 @@ jobs:
           EXPECT: ${{ matrix.expect }}
           OUTCOME: ${{ steps.render.outputs.outcome }}
           EXIT_CODE: ${{ steps.render.outputs.exit_code }}
+          REASON: ${{ steps.render.outputs.reason }}
         run: |
           set -euo pipefail
           mkdir -p cell-results
@@ -164,6 +186,7 @@ jobs:
             "expected": os.environ["EXPECT"],
             "outcome": os.environ["OUTCOME"],
             "exitCode": int(os.environ["EXIT_CODE"]),
+            "reason": os.environ.get("REASON") or None,
           }
           with open(f"cell-results/{slug}.json", "w") as f:
             json.dump(row, f)

@@ -41,6 +41,7 @@ class Cell:
     expected: str
     outcome: str
     exit_code: int
+    reason: str | None
 
     @classmethod
     def from_json(cls, payload: dict) -> "Cell":
@@ -55,6 +56,7 @@ class Cell:
             expected=payload["expected"],
             outcome=payload["outcome"],
             exit_code=payload["exitCode"],
+            reason=payload.get("reason"),
         )
 
     @property
@@ -72,22 +74,44 @@ def status_glyph(cell: Cell) -> str:
     return "💥 fail (unexpected)"
 
 
+def _short_reason(reason: str | None, char_limit: int = 140) -> str:
+    """Trim a captured failure line for the inline table column. The full text shows up below
+    the table for each cell that failed; this trim just keeps the table readable."""
+    if not reason:
+        return ""
+    cleaned = reason.strip()
+    if len(cleaned) <= char_limit:
+        return cleaned
+    return cleaned[: char_limit - 1].rstrip() + "…"
+
+
+def _escape_table_cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
 def render(cells: list[Cell]) -> str:
     cells_sorted = sorted(
         cells, key=lambda c: (c.jdk, c.compile_sdk, c.target_sdk, c.min_sdk)
     )
     lines: list[str] = [
-        "| JDK | compileSdk | targetSdk | minSdk | sdkVersion | Robolectric | Expected | Outcome |",
-        "|---:|---:|---:|---:|---|---|---|---|",
+        "| JDK | compileSdk | targetSdk | minSdk | sdkVersion | Robolectric | Expected | Outcome | Reason |",
+        "|---:|---:|---:|---:|---|---|---|---|---|",
     ]
     for c in cells_sorted:
         sdk_override = c.sdk_version or "auto"
         robolectric = c.robolectric or "stable"
+        # Inline reason only when the cell actually failed — passes don't need a reason column
+        # entry. Keep it short; the full text lands under the table.
+        reason_cell = ""
+        if c.outcome == "fail":
+            reason_cell = _escape_table_cell(_short_reason(c.reason))
         lines.append(
             f"| {c.jdk} | {c.compile_sdk} | {c.target_sdk} | {c.min_sdk} | "
-            f"{sdk_override} | {robolectric} | {c.expected} | {status_glyph(c)} |"
+            f"{sdk_override} | {robolectric} | {c.expected} | {status_glyph(c)} | "
+            f"{reason_cell} |"
         )
     unexpected = [c for c in cells if not c.matches_expectation]
+    failed = [c for c in cells if c.outcome == "fail"]
     lines.append("")
     if unexpected:
         lines.append(f"**{len(unexpected)} cell(s) drifted from expectations:**")
@@ -95,6 +119,17 @@ def render(cells: list[Cell]) -> str:
             lines.append(f"- `{c.label}` — expected {c.expected}, got {c.outcome}")
     else:
         lines.append("All cells matched their documented expectations.")
+    # Always print full per-cell failure reasons under the table — the most actionable info for
+    # someone reading the workflow summary. Includes expected fails so the doc keeps "why" right
+    # next to each ❌ row; drift cells get an extra bold marker.
+    if failed:
+        lines.append("")
+        lines.append("### Failure reasons")
+        lines.append("")
+        for c in sorted(failed, key=lambda x: (x.jdk, x.compile_sdk, x.target_sdk, x.min_sdk)):
+            tag = " **(unexpected)**" if not c.matches_expectation else ""
+            reason = c.reason or "(no message captured — see build.log artifact)"
+            lines.append(f"- `{c.label}`{tag}: {reason}")
     return "\n".join(lines) + "\n"
 
 
