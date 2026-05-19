@@ -37,6 +37,13 @@ val matrixSdkOverride: Int? =
 // snapshot-probe cells and the upstream commit (`0e89b68`) the snapshot picks up.
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
+// Matrix-only escape hatch for `GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK`. Production
+// consumers never reach for this — auto-detect clamps above-ceiling values so they don't trip a
+// runtime sandbox failure. The snapshot probe cells pair this with
+// `composeai.matrix.robolectricVersion` so a snapshot Robolectric that ships API 37 can render
+// without the task's validator throwing.
+val matrixMaxSupportedSdk: Int? =
+  providers.gradleProperty("composeai.matrix.maxSupportedSdk").orNull?.toIntOrNull()
 
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
@@ -47,6 +54,17 @@ composePreview {
 if (matrixRobolectricVersion != null) {
   configurations.all {
     resolutionStrategy.force("org.robolectric:robolectric:$matrixRobolectricVersion")
+  }
+}
+
+if (matrixMaxSupportedSdk != null) {
+  afterEvaluate {
+    tasks.named(
+      "generateRobolectricProperties",
+      ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
+    ) {
+      maxSupportedSdkOverride.set(matrixMaxSupportedSdk)
+    }
   }
 }
 

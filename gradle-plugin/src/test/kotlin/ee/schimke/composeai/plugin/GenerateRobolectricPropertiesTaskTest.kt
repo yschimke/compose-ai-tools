@@ -58,16 +58,26 @@ class GenerateRobolectricPropertiesTaskTest {
 
   @Test
   fun `compileSdk above the Robolectric ceiling clamps to the ceiling`() {
-    // Consumers on `compileSdk` beyond the task's ceiling shouldn't see a hard build failure —
-    // clamp to MAX_SUPPORTED_SDK and warn. With `MAX_SUPPORTED_SDK = 37` (the snapshot Robolectric
-    // ceiling), `compileSdk = 38` is the hypothetical "above ceiling" case.
+    // Tiles consumers on compileSdk = 37 (transitive minCompileSdk from wear-tiles-renderer)
+    // shouldn't see a hard build failure — clamp to MAX_SUPPORTED_SDK (36 for stable Robolectric
+    // 4.16.1) and warn.
+    val body = generate(useConsumerApplication = false, override = null, compileSdk = 37)
+    assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
+  }
+
+  @Test
+  fun `maxSupportedSdkOverride lifts the ceiling and skips the clamp`() {
+    // Matrix snapshot probes pair a Robolectric snapshot with this override so an above-ceiling
+    // compileSdk renders at its native level instead of clamping. Production consumers don't
+    // touch this knob.
     val body =
       generate(
         useConsumerApplication = false,
         override = null,
-        compileSdk = GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK + 1,
+        compileSdk = 37,
+        maxSupportedSdkOverride = 37,
       )
-    assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK}")
+    assertThat(body).contains("sdk=37")
   }
 
   @Test
@@ -108,7 +118,12 @@ class GenerateRobolectricPropertiesTaskTest {
     assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.DEFAULT_SDK}")
   }
 
-  private fun generate(useConsumerApplication: Boolean, override: Int?, compileSdk: Int?): String {
+  private fun generate(
+    useConsumerApplication: Boolean,
+    override: Int?,
+    compileSdk: Int?,
+    maxSupportedSdkOverride: Int? = null,
+  ): String {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task =
       project.tasks
@@ -117,8 +132,11 @@ class GenerateRobolectricPropertiesTaskTest {
     task.useConsumerApplication.set(useConsumerApplication)
     if (override != null) task.sdkOverride.set(override)
     if (compileSdk != null) task.consumerCompileSdk.set(compileSdk)
+    if (maxSupportedSdkOverride != null) task.maxSupportedSdkOverride.set(maxSupportedSdkOverride)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
-    task.outputDir.set(tmp.newFolder("out-$override-$compileSdk-$useConsumerApplication"))
+    task.outputDir.set(
+      tmp.newFolder("out-$override-$compileSdk-$useConsumerApplication-$maxSupportedSdkOverride")
+    )
     task.generate()
     val file =
       task.outputDir.get().asFile.resolve("ee/schimke/composeai/renderer/robolectric.properties")
