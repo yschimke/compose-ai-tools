@@ -39,8 +39,10 @@ class Cell:
     sdk_version: str | None
     robolectric: str | None
     expected: str
+    expected_reason: str | None
     outcome: str
     exit_code: int
+    reason: str | None
 
     @classmethod
     def from_json(cls, payload: dict) -> "Cell":
@@ -53,23 +55,60 @@ class Cell:
             sdk_version=payload.get("sdkVersion"),
             robolectric=payload.get("robolectric"),
             expected=payload["expected"],
+            expected_reason=payload.get("expectedReason"),
             outcome=payload["outcome"],
             exit_code=payload["exitCode"],
+            reason=payload.get("reason"),
         )
 
     @property
     def matches_expectation(self) -> bool:
-        return self.outcome == self.expected
+        """A cell matches expectations when both:
+        - its outcome matches `expected`, AND
+        - if `expected_reason` is set (only on cells that document a specific failure shape we're
+          gating on), the captured `reason` text contains that substring case-insensitively.
+
+        The reason check matters most on `expect: fail` cells that double as upstream-watch probes:
+        without it, a Sonatype outage or a forced-dependency regression would slip past the drift
+        check disguised as the expected `UnknownSdk` failure. Per Codex review on #1270.
+        """
+        if self.outcome != self.expected:
+            return False
+        if self.expected_reason and self.outcome == "fail":
+            captured = (self.reason or "").lower()
+            return self.expected_reason.lower() in captured
+        return True
 
 
 def status_glyph(cell: Cell) -> str:
     if cell.outcome == "pass" and cell.expected == "pass":
         return "✅ pass"
     if cell.outcome == "fail" and cell.expected == "fail":
+        if cell.expected_reason and cell.expected_reason.lower() not in (cell.reason or "").lower():
+            # Cell failed AND its expected-reason gate is set, but the captured reason doesn't
+            # match. Surface as drift even though outcome lines up — same signal as the snapshot
+            # probe regressing for an unrelated cause (Sonatype outage, classpath wiring break,
+            # etc.) per Codex review on #1270.
+            return f"⚠️ fail (wrong reason; expected `{cell.expected_reason}`)"
         return "❌ fail (expected)"
     if cell.outcome == "pass" and cell.expected == "fail":
         return "❓ pass (expected fail — investigate)"
     return "💥 fail (unexpected)"
+
+
+def _short_reason(reason: str | None, char_limit: int = 140) -> str:
+    """Trim a captured failure line for the inline table column. The full text shows up below
+    the table for each cell that failed; this trim just keeps the table readable."""
+    if not reason:
+        return ""
+    cleaned = reason.strip()
+    if len(cleaned) <= char_limit:
+        return cleaned
+    return cleaned[: char_limit - 1].rstrip() + "…"
+
+
+def _escape_table_cell(text: str) -> str:
+    return text.replace("|", "\\|").replace("\n", " ").strip()
 
 
 def render(cells: list[Cell]) -> str:
@@ -77,24 +116,52 @@ def render(cells: list[Cell]) -> str:
         cells, key=lambda c: (c.jdk, c.compile_sdk, c.target_sdk, c.min_sdk)
     )
     lines: list[str] = [
-        "| JDK | compileSdk | targetSdk | minSdk | sdkVersion | Robolectric | Expected | Outcome |",
-        "|---:|---:|---:|---:|---|---|---|---|",
+        "| JDK | compileSdk | targetSdk | minSdk | sdkVersion | Robolectric | Expected | Outcome | Reason |",
+        "|---:|---:|---:|---:|---|---|---|---|---|",
     ]
     for c in cells_sorted:
         sdk_override = c.sdk_version or "auto"
         robolectric = c.robolectric or "stable"
+        # Inline reason only when the cell actually failed — passes don't need a reason column
+        # entry. Keep it short; the full text lands under the table.
+        reason_cell = ""
+        if c.outcome == "fail":
+            reason_cell = _escape_table_cell(_short_reason(c.reason))
         lines.append(
             f"| {c.jdk} | {c.compile_sdk} | {c.target_sdk} | {c.min_sdk} | "
-            f"{sdk_override} | {robolectric} | {c.expected} | {status_glyph(c)} |"
+            f"{sdk_override} | {robolectric} | {c.expected} | {status_glyph(c)} | "
+            f"{reason_cell} |"
         )
     unexpected = [c for c in cells if not c.matches_expectation]
+    failed = [c for c in cells if c.outcome == "fail"]
     lines.append("")
     if unexpected:
         lines.append(f"**{len(unexpected)} cell(s) drifted from expectations:**")
         for c in unexpected:
-            lines.append(f"- `{c.label}` — expected {c.expected}, got {c.outcome}")
+            detail = f"expected {c.expected}, got {c.outcome}"
+            if (
+                c.outcome == c.expected == "fail"
+                and c.expected_reason
+                and c.expected_reason.lower() not in (c.reason or "").lower()
+            ):
+                detail = (
+                    f"failed for the wrong reason — expected `{c.expected_reason}` "
+                    f"in the captured message"
+                )
+            lines.append(f"- `{c.label}` — {detail}")
     else:
         lines.append("All cells matched their documented expectations.")
+    # Always print full per-cell failure reasons under the table — the most actionable info for
+    # someone reading the workflow summary. Includes expected fails so the doc keeps "why" right
+    # next to each ❌ row; drift cells get an extra bold marker.
+    if failed:
+        lines.append("")
+        lines.append("### Failure reasons")
+        lines.append("")
+        for c in sorted(failed, key=lambda x: (x.jdk, x.compile_sdk, x.target_sdk, x.min_sdk)):
+            tag = " **(unexpected)**" if not c.matches_expectation else ""
+            reason = c.reason or "(no message captured — see build.log artifact)"
+            lines.append(f"- `{c.label}`{tag}: {reason}")
     return "\n".join(lines) + "\n"
 
 
