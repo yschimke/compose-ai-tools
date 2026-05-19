@@ -28,33 +28,43 @@ const rendersDir = resolve(
   "renders",
 );
 
-// Four representative entries — one from each axis the panel needs to render correctly. Keeping the
-// list short keeps the fixture file under ~200K of base64; expand only when a new design contract
-// surface needs coverage.
+// Four representative entries — one from each axis the panel needs to render correctly. Keeping
+// the list short keeps the fixture file under ~200K of base64; expand only when a new design
+// contract surface needs coverage.
+//
+// `idSuffix` mirrors the real `PreviewInfo.id` discovery emits. For unnamed `@Preview` the suffix
+// is just the function name; `@Preview(name = "…")` appends `_<name>` UNSANITIZED (spaces and all)
+// — only the `renderOutput` filename gets path-sanitised. Keeping the fixture id in sync with
+// what the real manifest carries matters because panel logic (focus restore, history,
+// data-product addressing, stale markers) keys off this id; a divergent fixture id passes
+// silently but misses bugs that would regress real previews. Codex flagged the previous shape
+// (#1266 review): `MessagingStylePreview` etc. were missing the `_<name>` suffix the real
+// `NotificationStyleGallery.kt` produces.
 const entries = [
   {
-    suffix: "simpleNotificationPreview",
+    idSuffix: "simpleNotificationPreview",
     fn: "simpleNotificationPreview",
     cls: "NotificationPreviewsKt",
     png: "NotificationPreviewsKt.simpleNotificationPreview.png",
     label: "@NotificationPreview · simple",
   },
   {
-    suffix: "BigTextVariantsPreview_Arabic",
+    idSuffix: "BigTextVariantsPreview_Arabic",
     fn: "BigTextVariantsPreview",
     cls: "NotificationVariantPreviewsKt",
     png: "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
     label: "Variants · Arabic (RTL)",
   },
   {
-    suffix: "MessagingStylePreview",
+    // `@Preview(name = "Messaging style")` — id keeps the space, only the PNG filename sanitises.
+    idSuffix: "MessagingStylePreview_Messaging style",
     fn: "MessagingStylePreview",
     cls: "NotificationStyleGalleryKt",
     png: "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png",
     label: "Gallery · MessagingStyle",
   },
   {
-    suffix: "ActionsPreview",
+    idSuffix: "ActionsPreview_Actions",
     fn: "ActionsPreview",
     cls: "NotificationStyleGalleryKt",
     png: "NotificationStyleGalleryKt.ActionsPreview_Actions.png",
@@ -63,7 +73,7 @@ const entries = [
 ];
 
 const previews = entries.map((e) => ({
-  id: `com.example.sampleandroid.${e.cls}.${e.suffix}`,
+  id: `com.example.sampleandroid.${e.cls}.${e.idSuffix}`,
   functionName: e.fn,
   className: `com.example.sampleandroid.${e.cls}`,
   sourceFile: `${e.cls.replace("Kt", "")}.kt`,
@@ -92,7 +102,7 @@ const previews = entries.map((e) => ({
 
 const updateImages = entries.map((e) => ({
   command: "updateImage",
-  previewId: `com.example.sampleandroid.${e.cls}.${e.suffix}`,
+  previewId: `com.example.sampleandroid.${e.cls}.${e.idSuffix}`,
   captureIndex: 0,
   imageData: readFileSync(resolve(rendersDir, e.png)).toString("base64"),
 }));
