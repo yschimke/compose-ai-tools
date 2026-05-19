@@ -1523,4 +1523,80 @@ class DiscoveryFunctionalTest {
     // spam the log with them.
     assertThat(result.output).doesNotContain("failOnEmpty diagnostics")
   }
+
+  @Test
+  fun `discoverPreviews keeps notification previews that take a Context parameter`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub `@NotificationPreview` under its real FQN. The CMP fixture doesn't depend on
+    // `:preview-annotations`, but discovery is FQN-driven — the stub exercises the same code
+    // path a real consumer would. Mirrors the `Preview.kt` stub the tile-previews test uses.
+    val previewFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    previewFqnDir.mkdirs()
+    File(previewFqnDir, "NotificationPreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @MustBeDocumented
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class NotificationPreview
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Notifications.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import ee.schimke.composeai.preview.NotificationPreview
+
+      // Stand-in for `android.content.Context`. Discovery doesn't reflect parameter types beyond
+      // @PreviewParameter, so any single non-Composer parameter exercises the bypass gate the same
+      // way the real `(Context) -> Notification` signature does.
+      class FakeContext
+
+      @NotificationPreview
+      fun SimpleNotificationPreview(context: FakeContext) = "stub"
+
+      // Parameterless overload is also accepted (mirrors the tile-preview contract, since
+      // `findNotificationPreviewMethod` falls back to the no-arg overload).
+      @NotificationPreview
+      fun NoArgNotificationPreview() = "stub"
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("discoverPreviews", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    // The "unsupported parameters" warning must NOT fire for notification previews — their
+    // (Context) parameter is part of the supported contract, same as tile previews.
+    assertThat(result.output).doesNotContain("SimpleNotificationPreview' — method has parameter(s)")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val notificationPreviews =
+      manifest.previews.filter {
+        it.functionName == "SimpleNotificationPreview" ||
+          it.functionName == "NoArgNotificationPreview"
+      }
+    assertThat(notificationPreviews.map { it.functionName })
+      .containsExactly("SimpleNotificationPreview", "NoArgNotificationPreview")
+    assertThat(notificationPreviews.map { it.params.kind }.toSet())
+      .containsExactly(PreviewKind.NOTIFICATION)
+    // Each notification preview produces exactly one capture (no scroll / time / focus / ambient
+    // fan-out — `buildOutputPlan` treats NOTIFICATION the same as TILE for dimensional axes).
+    assertThat(notificationPreviews.map { it.captures.size }).containsExactly(1, 1)
+    // Target inference is skipped for non-composable kinds, so `targets` stays empty.
+    assertThat(notificationPreviews.flatMap { it.targets }).isEmpty()
+  }
 }
