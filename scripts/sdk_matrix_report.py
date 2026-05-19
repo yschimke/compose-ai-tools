@@ -36,6 +36,8 @@ class Cell:
     compile_sdk: int
     target_sdk: int
     min_sdk: int
+    sdk_version: str | None
+    robolectric: str | None
     expected: str
     outcome: str
     exit_code: int
@@ -48,6 +50,8 @@ class Cell:
             compile_sdk=payload["compileSdk"],
             target_sdk=payload["targetSdk"],
             min_sdk=payload["minSdk"],
+            sdk_version=payload.get("sdkVersion"),
+            robolectric=payload.get("robolectric"),
             expected=payload["expected"],
             outcome=payload["outcome"],
             exit_code=payload["exitCode"],
@@ -73,13 +77,15 @@ def render(cells: list[Cell]) -> str:
         cells, key=lambda c: (c.jdk, c.compile_sdk, c.target_sdk, c.min_sdk)
     )
     lines: list[str] = [
-        "| JDK | compileSdk | targetSdk | minSdk | Expected | Outcome |",
-        "|---:|---:|---:|---:|---|---|",
+        "| JDK | compileSdk | targetSdk | minSdk | sdkVersion | Robolectric | Expected | Outcome |",
+        "|---:|---:|---:|---:|---|---|---|---|",
     ]
     for c in cells_sorted:
+        sdk_override = c.sdk_version or "auto"
+        robolectric = c.robolectric or "stable"
         lines.append(
             f"| {c.jdk} | {c.compile_sdk} | {c.target_sdk} | {c.min_sdk} | "
-            f"{c.expected} | {status_glyph(c)} |"
+            f"{sdk_override} | {robolectric} | {c.expected} | {status_glyph(c)} |"
         )
     unexpected = [c for c in cells if not c.matches_expectation]
     lines.append("")

@@ -30,11 +30,42 @@ val matrixMinSdk: Int =
   providers.gradleProperty("composeai.matrix.minSdk").orNull?.toIntOrNull() ?: 24
 val matrixSdkOverride: Int? =
   providers.gradleProperty("composeai.matrix.sdkVersion").orNull?.toIntOrNull()
+// Robolectric snapshot version probe. When set (e.g. `4.17-SNAPSHOT`) the snapshots repo
+// declared in `settings.gradle.kts` is honoured and `resolutionStrategy.force(...)` pins this
+// version on every configuration so the test runtime classpath swaps in the snapshot regardless
+// of what `renderer-android` compiled against. See `docs/SDK_COMPATIBILITY.md` for the
+// snapshot-probe cells and the upstream commit (`0e89b68`) the snapshot picks up.
+val matrixRobolectricVersion: String? =
+  providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
+// Matrix-only escape hatch for `GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK`. Production
+// consumers never reach for this — auto-detect clamps above-ceiling values so they don't trip a
+// runtime sandbox failure. The snapshot probe cells pair this with
+// `composeai.matrix.robolectricVersion` so a snapshot Robolectric that ships API 37 can render
+// without the task's validator throwing.
+val matrixMaxSupportedSdk: Int? =
+  providers.gradleProperty("composeai.matrix.maxSupportedSdk").orNull?.toIntOrNull()
 
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
   // workflow when a cell is documenting the override branch.
   matrixSdkOverride?.let { sdkVersion.set(it) }
+}
+
+if (matrixRobolectricVersion != null) {
+  configurations.all {
+    resolutionStrategy.force("org.robolectric:robolectric:$matrixRobolectricVersion")
+  }
+}
+
+if (matrixMaxSupportedSdk != null) {
+  afterEvaluate {
+    tasks.named(
+      "generateRobolectricProperties",
+      ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
+    ) {
+      maxSupportedSdkOverride.set(matrixMaxSupportedSdk)
+    }
+  }
 }
 
 android {
