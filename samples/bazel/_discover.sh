@@ -4,13 +4,17 @@
 # Walks a list of XML resource files and emits a `resources.json`
 # matching the wire format from the Gradle plugin's
 # `discoverAndroidResources` task. Intentionally narrow: classifies
-# `<vector>` and `<adaptive-icon>` root tags only — everything else
-# is skipped, same as ResourceXmlClassifier.
+# `<vector>`, `<animated-vector>` and `<adaptive-icon>` root tags
+# only — everything else is skipped, same as ResourceXmlClassifier.
 #
-# This script will be replaced by `compose-preview discover-resources`
-# (issue #1253) once that subcommand exists. The rule's input/output
-# contract stays the same: stdin = (out, module, variant, *srcs),
-# stdout = resources.json.
+# Bash-3.2-compatible (no `declare -A`) so the sample builds on
+# macOS' default /bin/bash. Resource and sourceFiles ordering is
+# stabilised via `LC_ALL=C sort` so the output is byte-deterministic
+# across hosts.
+#
+# Will be replaced by `compose-preview discover-resources` (#1253).
+# The rule's input/output contract (`out module variant *srcs`,
+# stdout = resources.json) stays the same.
 
 set -euo pipefail
 
@@ -19,10 +23,23 @@ module="$2"
 variant="$3"
 shift 3
 
-# Group inputs by `(base, name)` from path components:
-#   …/<base><-qualifier?>/<name>.xml
-# Skipping non-render tags via a root-element peek.
-declare -A entries
+# Parallel indexed arrays keyed by a synthetic slot index.
+# `sources[i]` is a newline-separated list of `qualifier<TAB>path`
+# rows for resource `ids[i]`.
+ids=()
+types=()
+sources=()
+
+find_index() {
+    local target="$1" i
+    for i in "${!ids[@]}"; do
+        if [ "${ids[$i]}" = "$target" ]; then
+            printf '%s' "$i"
+            return 0
+        fi
+    done
+    return 1
+}
 
 for src in "$@"; do
     dir="$(dirname "$src")"
@@ -34,7 +51,6 @@ for src in "$@"; do
     fi
     name="$(basename "$src" .xml)"
 
-    # Classify root tag — bail out on anything we don't render.
     root="$(grep -m1 -oE '<[a-zA-Z-]+' "$src" | tr -d '<' || true)"
     case "$root" in
         vector) type="vector" ;;
@@ -48,39 +64,51 @@ for src in "$@"; do
     fi
 
     id="${base}/${name}"
-    key="$id"
-    existing="${entries[$key]:-}"
-    if [ -z "$existing" ]; then
-        entries[$key]="${type}|${qualifier}=${src}"
+    # path|qualifier — path-first because path is never empty, and `|`
+    # avoids `read`'s whitespace-IFS quirk that would drop a leading
+    # empty field for the default-qualifier case.
+    entry="${src}|${qualifier}"
+    if idx="$(find_index "$id")"; then
+        sources[$idx]="${sources[$idx]}
+${entry}"
     else
-        entries[$key]="${existing}\n${qualifier}=${src}"
+        ids+=("$id")
+        types+=("$type")
+        sources+=("$entry")
     fi
 done
 
-# Emit JSON. No external jq dep — this is a controlled shape.
+# Walk slots in id-sorted order for deterministic JSON.
+sorted_indices=()
+if [ "${#ids[@]}" -gt 0 ]; then
+    while IFS= read -r idx; do
+        sorted_indices+=("$idx")
+    done < <(
+        for i in "${!ids[@]}"; do
+            printf '%s\t%d\n' "${ids[$i]}" "$i"
+        done | LC_ALL=C sort | cut -f2
+    )
+fi
+
 {
     printf '{\n'
     printf '  "module": "%s",\n' "$module"
     printf '  "variant": "%s",\n' "$variant"
     printf '  "resources": [\n'
     first=1
-    for key in "${!entries[@]}"; do
-        value="${entries[$key]}"
-        type="${value%%|*}"
-        rest="${value#*|}"
+    for idx in "${sorted_indices[@]}"; do
         if [ $first -eq 0 ]; then printf ',\n'; fi
         first=0
         printf '    {\n'
-        printf '      "id": "%s",\n' "$key"
-        printf '      "type": "%s",\n' "$type"
+        printf '      "id": "%s",\n' "${ids[$idx]}"
+        printf '      "type": "%s",\n' "${types[$idx]}"
         printf '      "sourceFiles": {\n'
         sf_first=1
-        # shellcheck disable=SC2001
-        echo -e "$rest" | while IFS='=' read -r qual path; do
+        while IFS='|' read -r path qual; do
             if [ $sf_first -eq 0 ]; then printf ',\n'; fi
             sf_first=0
             printf '        "%s": "%s"' "$qual" "$path"
-        done
+        done < <(printf '%s\n' "${sources[$idx]}" | LC_ALL=C sort)
         printf '\n      },\n'
         printf '      "captures": []\n'
         printf '    }'

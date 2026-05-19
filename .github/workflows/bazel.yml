@@ -31,12 +31,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Install Bazelisk
-        run: |
-          curl -fsSL -o /usr/local/bin/bazel \
-            https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64
-          chmod +x /usr/local/bin/bazel
-          bazel version
+      - name: Bazel version
+        # Bazelisk is pre-installed on the ubuntu-latest runner image
+        # as `/usr/bin/bazel`. Avoids a third-party setup action and
+        # a writable-prefix curl install.
+        run: bazel version
       - name: Build resources manifest
         run: bazel build //:app_resources
       - name: Inspect output
