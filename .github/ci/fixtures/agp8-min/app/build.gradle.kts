@@ -34,7 +34,19 @@ android {
 }
 
 dependencies {
-  val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+  // compose-bom 2025.11.01 pins compose-ui / compose-runtime to 1.9.5 —
+  // matches `compose-bom-compat` in `gradle/libs.versions.toml`, which is
+  // the version renderer-android compiles its public API against. Below
+  // this BOM the renderer's bytecode references method signatures (e.g.
+  // `ComposeUiNode.setCompositeKeyHash`, first shipped in compose-ui 1.9)
+  // that the consumer's runtime doesn't have, and `renderPreviews` fails
+  // with `NoSuchMethodError` at render time. The agp8-min CI job
+  // deliberately downgrades this BOM to 2024.12.01 (Compose 1.7.6) to
+  // demonstrate that failure mode and confirm `compose-preview doctor`
+  // surfaces the `env.compose-bom-version` finding, then bumps it back to
+  // exercise the success path. See `.github/workflows/integration.yml`,
+  // the `agp8-min` job.
+  val composeBom = platform("androidx.compose:compose-bom:2025.11.01")
   implementation(composeBom)
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-tooling-preview")
