@@ -7,19 +7,21 @@ name: Notification Previews
 #    Mirrors the `compose-preview/main` / `compose-preview/a11y/main` / `compose-preview/resources/main`
 #    pattern — one disjoint branch per surface, so notifications history is independently
 #    bisectable and doesn't churn alongside compose / a11y / resources.
-#  - on **PR**: uploads the PNGs as a workflow artifact for human inspection. The PR-comment
-#    diff path (parallel of `a11y-report` / `preview-comment`) lands as a follow-up.
-#
-# Kept as a dedicated workflow — separate from compose `Preview Baselines`, `A11y Report`, and the
-# resource-baseline path inside `preview-baselines` — so notification-rendering churn doesn't
-# block the pixel-diff hot path.
+#  - on **PR**: stages the renders, pushes them to the shared `compose-preview/notifications/pr`
+#    branch (with race-retry), and upserts a sticky PR comment listing added / changed / removed
+#    notifications vs `compose-preview/notifications/main`. Image URLs in the comment are pinned
+#    to the just-pushed SHA so they survive PR merge.
 #
 # Variant matrix demonstrated: `BigTextVariantsPreview` fans out across Light / Dark / Arabic /
 # German / Japanese / Large font through stacked `@Preview` (see `NotificationVariants.kt`); the
 # FQN-discovered `@NotificationPreview` path renders `simpleNotificationPreview` and
 # `bigTextNotificationPreview` from the same module. Both kinds of preview land in
 # `samples/android/build/compose-previews/renders/` and get filtered into the artifact / baseline
-# branch below.
+# branch by the `notification-previews` composite action.
+#
+# Kept as a dedicated workflow — separate from compose `Preview Baselines`, `A11y Report`, and the
+# resource-baseline path inside `preview-baselines` — so notification-rendering churn doesn't
+# block the pixel-diff hot path.
 
 on:
   push:
@@ -33,121 +35,43 @@ permissions:
   contents: read
 
 concurrency:
-  # Push runs serialise on a single group so two main commits can't race the baseline branch;
+  # `push` runs serialise on a single group so two main commits can't race the baseline branch;
   # PR runs each get their own group so concurrent PRs don't cancel each other.
   group: notification-previews-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  render:
-    name: Render notification previews
+  baseline:
+    name: Update notification baseline
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
-      # `baseline` step appends a commit to the long-lived
-      # `compose-preview/notifications/main` branch on push events. PR runs don't write anything.
+      # Composite action appends a commit to the long-lived
+      # `compose-preview/notifications/main` branch.
       contents: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Render samples:android previews
-        run: ./gradlew :samples:android:renderAllPreviews --no-daemon
-      - name: Stage notification PNGs and JSON sidecars
-        run: |
-          set -euo pipefail
-          mkdir -p _notification_renders
-          # Both annotation paths land here:
-          #   - `NotificationPreviewsKt.*` from `@NotificationPreview` (FQN-discovered)
-          #   - `NotificationVariantPreviewsKt.*` / `NotificationStyleGalleryKt.*` from `@Preview`
-          #     + composable helper
-          # Glob captures all of them. Empty result is a hard failure — if nothing matched, either
-          # the sample lost its notification previews or the discovery path silently dropped
-          # them, and the artifact / baseline-push step below would happily ship nothing.
-          shopt -s nullglob
-          files=(samples/android/build/compose-previews/renders/*Notification*.png)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::No notification preview PNGs were rendered." >&2
-            ls samples/android/build/compose-previews/renders/ >&2 || true
-            exit 1
-          fi
-          cp "${files[@]}" _notification_renders/
-          # Structured-fields JSON sidecars (emitted by `NotificationSidecar` in renderer-android
-          # for kind=NOTIFICATION entries) live under `data/notifications/`. Copy them alongside
-          # the PNGs so the baseline branch carries the structured assertion surface too. Empty
-          # when no `@NotificationPreview` entries existed in the sample — `nullglob` keeps the
-          # `cp` silent in that case.
-          sidecars=(samples/android/build/compose-previews/data/notifications/*.notification.json)
-          if [ ${#sidecars[@]} -gt 0 ]; then
-            mkdir -p _notification_renders/data
-            cp "${sidecars[@]}" _notification_renders/data/
-          fi
-          echo "Rendered ${#files[@]} notification preview(s) + ${#sidecars[@]} sidecar(s):"
-          ls -la _notification_renders/
-
-      - name: Upload notification renders artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/notification-previews
         with:
-          name: notification-previews
-          path: _notification_renders/
-          if-no-files-found: error
-          retention-days: 14
+          mode: baseline
 
-      - name: Push to baseline branch
-        # Push events on main and manual dispatches refresh the baseline. PR runs skip — their
-        # render lives on the workflow artifact above; the diff-comment workflow (follow-up) is
-        # what will surface them on PRs once that lands.
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        env:
-          # Route every templated value through env so a malicious branch / ref input can't
-          # expand inside the shell body. (zizmor: template-injection)
-          BASELINE_BRANCH: compose-preview/notifications/main
-          REPO: ${{ github.repository }}
-          GITHUB_TOKEN_INLINE: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          cd _notification_renders
-
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add origin \
-            "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-
-          git add -A
-          TREE=$(git write-tree)
-
-          # Land the new commit on top of the existing tip so older PR comments / cross-links
-          # pinned to past SHAs stay reachable. Same pattern preview-baselines uses.
-          PARENT=""
-          if git fetch --depth=1 --quiet origin "$BASELINE_BRANCH" 2>/dev/null; then
-            PARENT=$(git rev-parse FETCH_HEAD)
-            PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
-            if [ "$TREE" = "$PARENT_TREE" ]; then
-              echo "Notification baseline unchanged vs ${BASELINE_BRANCH}; skipping push."
-              exit 0
-            fi
-          fi
-
-          MSG="Update notification baseline from ${GITHUB_SHA::8}"
-          if [ -n "$PARENT" ]; then
-            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
-          else
-            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
-          fi
-
-          # Fast-forward push (no --force). The concurrency group serialises push-event runs so
-          # no race is expected; a non-FF rejection here means something external moved the ref
-          # and warrants an alert.
-          git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"
-
-      - name: Upload renderPreviews reports on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  report:
+    name: Render notification report for PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Push staged PNGs to the shared `compose-preview/notifications/pr`
+      # branch and upsert a comment on the PR.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          name: renderPreviews-reports
-          path: |
-            samples/android/build/reports/tests/renderPreviews/
-            samples/android/build/test-results/renderPreviews/
-          if-no-files-found: ignore
-          retention-days: 14
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/notification-previews
+        with:
+          mode: comment
