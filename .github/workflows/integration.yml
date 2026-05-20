@@ -658,13 +658,19 @@ jobs:
           cp -R .github/ci/fixtures/agp8-min/. "$RUNNER_TEMP/fixture/"
           chmod +x "$RUNNER_TEMP/fixture/gradlew"
 
-      - name: Discover previews via Gradle 8.13
+      - name: Render previews via Gradle 8.13
         working-directory: ${{ runner.temp }}/fixture
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" discoverPreviews \
+          # renderPreviews depends on discoverPreviews, so this one task call
+          # covers both the discovery path and the renderer-android AAR
+          # resolution from the mavenLocal snapshot seeded earlier. Exercising
+          # the full pipeline at the bottom of the supported envelope (Gradle
+          # 8.13 + AGP 8.13.0 + Kotlin 2.0.21) is what makes this job the
+          # "oldest AGP × Kotlin together" floor coverage cell.
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
             --no-configuration-cache --stacktrace
 
       - name: Verify previews.json was produced
@@ -688,11 +694,39 @@ jobs:
             exit 1
           fi
 
+      - name: Verify PNGs were produced
+        working-directory: ${{ runner.temp }}/fixture
+        run: |
+          set -euo pipefail
+          mapfile -t pngs < <(find . -path '*/build/compose-previews/renders/*.png' 2>/dev/null)
+          if [ "${#pngs[@]}" -eq 0 ]; then
+            echo "::error::renderPreviews ran but no PNG files were produced."
+            mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' 2>/dev/null)
+            if [ "${#sidecars[@]}" -gt 0 ]; then
+              echo "Render error sidecars:"
+              printf '  %s\n' "${sidecars[@]}"
+            fi
+            exit 1
+          fi
+          echo "Rendered ${#pngs[@]} PNG file(s):"
+          printf '  %s\n' "${pngs[@]}"
+
       - name: Upload previews.json
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: previews-agp8-min
           path: ${{ runner.temp }}/fixture/**/build/compose-previews/previews.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload rendered PNGs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renders-agp8-min
+          path: |
+            ${{ runner.temp }}/fixture/**/build/compose-previews/renders/*.png
+            ${{ runner.temp }}/fixture/**/build/compose-previews/renders/*.error.json
           if-no-files-found: warn
           retention-days: 7
