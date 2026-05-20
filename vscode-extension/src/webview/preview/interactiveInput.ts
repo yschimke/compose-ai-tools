@@ -106,6 +106,17 @@ export interface InteractiveInputConfig {
      * keep the pre-#1203 behaviour (no keyboard listener attached).
      */
     supportsControl?(kind: string): boolean;
+    /**
+     * Issue #1203 — predicate keyed on `data-preview-id`. Returns true when the user has
+     * flipped the per-card "Controls" toggle on for this preview. Called on every keyboard
+     * event so toggling controls off mid-session immediately stops forwarding; the listener
+     * itself stays attached (cheaper than rebinding on every toggle).
+     *
+     * Omitted entirely → the gate is bypassed (every keystroke that passes the `isLive`
+     * check is forwarded), matching the pre-toggle behaviour. When supplied, returning
+     * `false` drops the keystroke before the wire post.
+     */
+    isControlsEnabled?(previewId: string): boolean;
     vscode: VsCodeApi<unknown>;
 }
 
@@ -175,6 +186,12 @@ export function attachInteractiveInputHandlers(
         const onKey = (evt: KeyboardEvent, kind: "keyDown" | "keyUp"): void => {
             const id = card.dataset.previewId;
             if (!id || !config.isLive(id)) return;
+            // Per-card "Controls" toggle gate (issue #1203). Without an explicit
+            // opt-in, a card in live mode for click / drag interaction would
+            // silently swallow every key the user pressed.
+            if (config.isControlsEnabled && !config.isControlsEnabled(id)) {
+                return;
+            }
             const keyCode = domCodeToAndroidKeycode(evt.code);
             if (keyCode == null) return;
             config.vscode.postMessage({
