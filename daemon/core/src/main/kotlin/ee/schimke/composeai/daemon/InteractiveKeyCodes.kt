@@ -87,6 +87,57 @@ object InteractiveKeyCodes {
   const val META_LEFT: Int = 117
   const val META_RIGHT: Int = 118
 
+  // Function keys (KEYCODE_F1 = 131 … KEYCODE_F12 = 142).
+  const val F1: Int = 131
+  const val F2: Int = 132
+  const val F3: Int = 133
+  const val F4: Int = 134
+  const val F5: Int = 135
+  const val F6: Int = 136
+  const val F7: Int = 137
+  const val F8: Int = 138
+  const val F9: Int = 139
+  const val F10: Int = 140
+  const val F11: Int = 141
+  const val F12: Int = 142
+
+  // Numpad (KEYCODE_NUMPAD_0 = 144 … KEYCODE_NUMPAD_EQUALS = 161).
+  const val NUMPAD_0: Int = 144
+  const val NUMPAD_1: Int = 145
+  const val NUMPAD_2: Int = 146
+  const val NUMPAD_3: Int = 147
+  const val NUMPAD_4: Int = 148
+  const val NUMPAD_5: Int = 149
+  const val NUMPAD_6: Int = 150
+  const val NUMPAD_7: Int = 151
+  const val NUMPAD_8: Int = 152
+  const val NUMPAD_9: Int = 153
+  const val NUMPAD_DIVIDE: Int = 154
+  const val NUMPAD_MULTIPLY: Int = 155
+  const val NUMPAD_SUBTRACT: Int = 156
+  const val NUMPAD_ADD: Int = 157
+  const val NUMPAD_DOT: Int = 158
+  const val NUMPAD_ENTER: Int = 160
+  const val NUMPAD_EQUALS: Int = 161
+
+  // Punctuation.
+  const val MINUS: Int = 69
+  const val EQUALS: Int = 70
+  const val LEFT_BRACKET: Int = 71
+  const val RIGHT_BRACKET: Int = 72
+  const val BACKSLASH: Int = 73
+  const val SEMICOLON: Int = 74
+  const val APOSTROPHE: Int = 75
+  const val COMMA: Int = 55
+  const val PERIOD: Int = 56
+  const val SLASH: Int = 76
+  const val GRAVE: Int = 68 // KEYCODE_GRAVE — backtick / DOM `Backquote`.
+
+  // Locks.
+  const val CAPS_LOCK: Int = 115
+  const val NUM_LOCK: Int = 143
+  const val SCROLL_LOCK: Int = 116
+
   /** Parse the wire spelling. Returns `null` for null / blank / non-numeric input. */
   fun parse(wire: String?): Int? = wire?.trim()?.toIntOrNull()
 }
