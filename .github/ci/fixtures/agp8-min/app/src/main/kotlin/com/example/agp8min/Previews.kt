@@ -1,16 +1,31 @@
 package com.example.agp8min
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 
-// One @Preview is enough — the integration job only verifies that
-// `discoverPreviews` finds it and writes `previews.json`. Adding a second
-// preview just to "cover edge cases" is wasted CI time; the in-repo
-// sample-android module exercises every renderer feature already.
+// `LoadingIndicator` is a material3 1.4+ composable (added in the
+// "Material You expressive" wave). compose-bom 2026.05.00 — what the
+// fixture pins above and what `:samples:android` uses too — ships M3 1.4,
+// so this preview compiles cleanly there. compose-bom 2024.12.01, which
+// the agp8-min CI job downgrades to in Phase 1, ships M3 1.3.x without
+// this composable; the import then fails to resolve and `compileDebugKotlin`
+// errors out before `renderPreviews` can even start. That's the same
+// failure shape a real consumer hits when they reach for a new Compose API
+// ahead of their BOM, and it's what `compose-preview doctor`'s
+// `env.compose-bom-version` pre-flight warns about.
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Preview
 @Composable
 fun GreetingPreview() {
-  Surface { Text(text = "agp8-min fixture") }
+  Surface {
+    Column {
+      Text(text = "agp8-min fixture")
+      LoadingIndicator()
+    }
+  }
 }
