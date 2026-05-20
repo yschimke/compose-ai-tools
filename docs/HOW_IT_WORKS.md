@@ -109,6 +109,6 @@ composePreview {
 
 - Gradle 9.4.1+
 - Java 17 or newer (renderer / plugin target JDK 17 bytecode; any newer JDK runs them)
-- AGP 9.1+ (Android projects)
-- Kotlin 2.3.21
+- AGP 9.1.0 (Android projects)
+- Kotlin 2.2.21
 - Compose Multiplatform 1.10.3 (Desktop projects)
