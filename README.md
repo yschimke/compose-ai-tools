@@ -84,8 +84,13 @@ INIT_SCRIPT="$(compose-preview init-script --path)"
 
 The CLI's [auto-inject script](cli/src/main/kotlin/ee/schimke/composeai/cli/AutoInject.kt) detects projects that already declare the plugin (either literally as `id("ee.schimke.composeai.preview") version "..."` or via a `gradle/libs.versions.toml` alias resolved through `alias(libs.plugins.<x>)`) and skips the classpath injection for those builds, so mixed setups work without conflicts.
 
-Requires Java 17+, Gradle 9.4.1+, AGP 9.1+ (Android), Kotlin 2.2.21,
-Compose Multiplatform 1.10.3 (Desktop).
+Requires Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+,
+Compose Multiplatform 1.10.3+ (Desktop). The bottom edge of the supported
+consumer envelope is exercised on every push by the
+[`agp8-min` job](.github/workflows/integration.yml) against the fixture
+under [`.github/ci/fixtures/agp8-min/`](.github/ci/fixtures/agp8-min/);
+the project's own build runs on a newer toolchain (see
+[`docs/AGENTS.md`](docs/AGENTS.md)).
 
 ## Samples
 

@@ -1,0 +1,19 @@
+product: android/app
+
+dependencies:
+  - $compose.foundation
+  - $compose.material3
+  - androidx.compose.ui:ui-tooling-preview:1.7.5
+  - androidx.activity:activity-compose:1.10.1
+  - androidx.core:core-ktx:1.13.1
+
+settings:
+  android:
+    namespace: ee.schimke.composeai.sample.amperandroid
+    applicationId: ee.schimke.composeai.sample.amperandroid
+    compileSdk: "35"
+    minSdk: "26"
+    targetSdk: "35"
+  compose: enabled
+  jvm:
+    release: 17

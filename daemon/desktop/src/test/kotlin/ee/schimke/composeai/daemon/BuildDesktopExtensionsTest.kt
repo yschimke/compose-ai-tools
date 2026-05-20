@@ -55,6 +55,9 @@ class BuildDesktopExtensionsTest {
     assertTrue("data/theme" in ids)
     assertTrue("data/wallpaper" in ids)
     assertTrue("data/pseudolocale" in ids)
+    // Issue #1205 — `data/focus` registers the focus / keyboard-traversal override planner so
+    // `renderNow.overrides.focus` is no longer silently ignored on the desktop backend.
+    assertTrue("data/focus" in ids)
     assertTrue("data/recomposition" in ids)
     assertTrue("recording/script" in ids)
 

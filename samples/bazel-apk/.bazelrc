@@ -1,0 +1,6 @@
+common --color=yes
+build --show_progress_rate_limit=0.1
+
+# bzlmod is the only supported entrypoint; WORKSPACE compatibility off.
+common --enable_bzlmod
+common --noenable_workspace

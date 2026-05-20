@@ -86,3 +86,12 @@ the render half lands.
 - [ ] `compose-preview discover-resources` CLI subcommand
 - [ ] Swap `_discover.sh` for the real CLI binary
 - [ ] `render_resources` rule (blocked on render-CLI extraction)
+
+## Companion: Compose APK sample
+
+A second Bazel sample at [`samples/bazel-apk/`](../bazel-apk/) builds a
+real Compose APK (`//:bazel_sample_apk`) via `rules_kotlin` +
+`rules_android` + `rules_jvm_external`. It lives in a separate module
+so its Android SDK / Maven toolchain wiring doesn't leak into this
+resources-only job. That target is opt-in and known-fragile — see its
+README for the rules_kotlin#1388 backstory.

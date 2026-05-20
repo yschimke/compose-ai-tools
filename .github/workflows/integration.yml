@@ -618,7 +618,17 @@ jobs:
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: temurin
-          java-version: 17
+          # JDK 21 (not 17) because the fixture's `compileSdk = 36` forces
+          # Robolectric 4.16.1 to synthesize a SDK 36 sandbox, and
+          # `DefaultSdkProvider.verifySupportedSdk` rejects SDK 36 on JDK 17
+          # at sandbox boot (see docs/SDK_COMPATIBILITY.md, row 2 — the
+          # `compileSdk = 36 × JDK 17 × auto` cell is documented as ❌ fail).
+          # The fixture's `compileSdk` can't drop below 36 either:
+          # renderer-android publishes with `minCompileSdk = 36`, so AGP
+          # would reject the AAR at metadata-merge time. JDK 21 here matches
+          # what consumers on the AGP 8.x floor with `compileSdk = 36` need
+          # to run renderPreviews against this version of renderer-android.
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
@@ -658,13 +668,19 @@ jobs:
           cp -R .github/ci/fixtures/agp8-min/. "$RUNNER_TEMP/fixture/"
           chmod +x "$RUNNER_TEMP/fixture/gradlew"
 
-      - name: Discover previews via Gradle 8.13
+      - name: Render previews via Gradle 8.13
         working-directory: ${{ runner.temp }}/fixture
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" discoverPreviews \
+          # renderPreviews depends on discoverPreviews, so this one task call
+          # covers both the discovery path and the renderer-android AAR
+          # resolution from the mavenLocal snapshot seeded earlier. Exercising
+          # the full pipeline at the bottom of the supported envelope (Gradle
+          # 8.13 + AGP 8.13.0 + Kotlin 2.0.21) is what makes this job the
+          # "oldest AGP × Kotlin together" floor coverage cell.
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
             --no-configuration-cache --stacktrace
 
       - name: Verify previews.json was produced
@@ -688,11 +704,39 @@ jobs:
             exit 1
           fi
 
+      - name: Verify PNGs were produced
+        working-directory: ${{ runner.temp }}/fixture
+        run: |
+          set -euo pipefail
+          mapfile -t pngs < <(find . -path '*/build/compose-previews/renders/*.png' 2>/dev/null)
+          if [ "${#pngs[@]}" -eq 0 ]; then
+            echo "::error::renderPreviews ran but no PNG files were produced."
+            mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' 2>/dev/null)
+            if [ "${#sidecars[@]}" -gt 0 ]; then
+              echo "Render error sidecars:"
+              printf '  %s\n' "${sidecars[@]}"
+            fi
+            exit 1
+          fi
+          echo "Rendered ${#pngs[@]} PNG file(s):"
+          printf '  %s\n' "${pngs[@]}"
+
       - name: Upload previews.json
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: previews-agp8-min
           path: ${{ runner.temp }}/fixture/**/build/compose-previews/previews.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload rendered PNGs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: renders-agp8-min
+          path: |
+            ${{ runner.temp }}/fixture/**/build/compose-previews/renders/*.png
+            ${{ runner.temp }}/fixture/**/build/compose-previews/renders/*.error.json
           if-no-files-found: warn
           retention-days: 7

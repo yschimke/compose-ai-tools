@@ -76,7 +76,7 @@ should not duplicate the schema; they explain when to request the
 product, which companions improve the evidence, and how to word a
 review without overstating what the product proves.
 
-### Image processors and extras
+### Derived images and extras
 
 A kind's primary payload is JSON or a JSON-shaped path. Some producers
 also ship **derived images** alongside — the Paparazzi-style a11y
@@ -85,14 +85,16 @@ overlay PNG is the load-bearing example. Two seams:
 - **`extras`** — additive on `DataProductAttachment` and
   `DataFetchResult`. List of `{name, path, mediaType?, sizeBytes?}`
   pointing at sibling files. Pointer-only (no inlining).
-- **`ImageProcessor`** (`daemon/core`) — pluggable post-render hook
-  the renderer's `RenderEngine` runs after the PNG is captured. Each
-  processor returns `Map<kind, List<extra>>` so one derived file can
-  attach to multiple kinds (the a11y overlay rides under `a11y/atf`,
+- **`PostCaptureProcessor`** extensions (`:data-render-extensions`) —
+  typed post-render hooks the renderer plans and runs after the PNG is
+  captured. Each extension reads/writes a typed `DataProductStore`; the
+  data-product registry then surfaces the resulting files as `extras`
+  on subscribed kinds (the a11y overlay rides under `a11y/atf`,
   `a11y/hierarchy`, AND the dedicated `a11y/overlay` kind).
 
-The first concrete processor is `AccessibilityImageProcessor`. Output
-lands at `<dataDir>/<previewId>/a11y-overlay.png`.
+The a11y overlay is produced by `OverlayExtension` inside
+`runAccessibilityPostCapturePipeline`. Output lands at
+`<dataDir>/<previewId>/a11y-overlay.png`.
 
 For pure-image kinds (`a11y/overlay`), `transport='path'` and the
 fetch returns the PNG path directly. Clients that want both the JSON
@@ -353,17 +355,14 @@ Each data product is a **pair of modules** under `data/<product>/`:
   the JSON models, round-device helpers. Coordinates:
   `ee.schimke.composeai:data-a11y-core`.
 - **`:data-<product>-connector`** — daemon glue. Implements
-  `DataProductRegistry` / `ImageProcessor` on top of the core
-  primitives and `:daemon:core` wire types. Not published — internal
-  to the daemon process.
+  `DataProductRegistry` on top of the core primitives and
+  `:daemon:core` wire types. Not published — internal to the daemon
+  process.
 
 Why split: cores are reusable in non-daemon contexts (`:gradle-plugin`,
 `:cli`, third-party Robolectric tests, MCP clients in any language that
 pull just the schema artifact). Connectors are thin adapters that
 depend on `:daemon:core`.
-
-The `ImageProcessor` interface lives in `:daemon:core` so every
-connector can implement it without circular module dependencies.
 
 ### Schema source-of-truth
 

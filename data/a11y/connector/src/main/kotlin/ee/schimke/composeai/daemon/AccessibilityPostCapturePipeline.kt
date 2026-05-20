@@ -29,8 +29,7 @@ import java.io.File
  * undeclared `put`/`get` fail loudly.
  *
  * Failures from individual extensions are logged and skipped — one bad extension shouldn't strand
- * the typed products earlier extensions already produced. Mirrors the existing
- * [AccessibilityImageProcessor] error policy in [AccessibilityDataProducer.writeArtifacts].
+ * the typed products earlier extensions already produced.
  *
  * Caller-supplied [extensions] lets test code inject custom processors; production wiring passes
  * the default consumer set ([AccessibilityPostCaptureExtensions.defaults]).
@@ -116,8 +115,7 @@ fun runAccessibilityPostCapturePipeline(
 
 /**
  * Default consumer set for [runAccessibilityPostCapturePipeline]. Both [TouchTargetsExtension] and
- * [OverlayExtension] now run through the typed graph; the legacy [AccessibilityImageProcessor]
- * hook is no longer installed by default and is kept only for embedders with custom processors.
+ * [OverlayExtension] run through the typed graph.
  */
 object AccessibilityPostCaptureExtensions {
   val defaults: List<PlannedDataExtension> = listOf(TouchTargetsExtension(), OverlayExtension())

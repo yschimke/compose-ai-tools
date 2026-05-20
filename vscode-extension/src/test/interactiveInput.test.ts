@@ -643,7 +643,6 @@ describe("domCodeToAndroidKeycode (issue #1203)", () => {
         assert.strictEqual(domCodeToAndroidKeycode("Digit9"), 16);
         assert.strictEqual(domCodeToAndroidKeycode("Space"), 62);
         assert.strictEqual(domCodeToAndroidKeycode("Enter"), 66);
-        assert.strictEqual(domCodeToAndroidKeycode("NumpadEnter"), 66);
         assert.strictEqual(domCodeToAndroidKeycode("Backspace"), 67);
         assert.strictEqual(domCodeToAndroidKeycode("Delete"), 112);
         assert.strictEqual(domCodeToAndroidKeycode("ArrowLeft"), 21);
@@ -654,9 +653,42 @@ describe("domCodeToAndroidKeycode (issue #1203)", () => {
         assert.strictEqual(domCodeToAndroidKeycode("ControlLeft"), 113);
     });
 
+    it("translates F-keys, numpad, punctuation, and locks (issue #1230)", () => {
+        // Function keys.
+        assert.strictEqual(domCodeToAndroidKeycode("F1"), 131);
+        assert.strictEqual(domCodeToAndroidKeycode("F12"), 142);
+        // Numpad — `NumpadEnter` is the dedicated KEYCODE_NUMPAD_ENTER (160),
+        // distinct from the main `Enter` (66) so the daemon can disambiguate.
+        assert.strictEqual(domCodeToAndroidKeycode("Numpad0"), 144);
+        assert.strictEqual(domCodeToAndroidKeycode("Numpad9"), 153);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadDivide"), 154);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadMultiply"), 155);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadSubtract"), 156);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadAdd"), 157);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadDecimal"), 158);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadEnter"), 160);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadEqual"), 161);
+        // Punctuation.
+        assert.strictEqual(domCodeToAndroidKeycode("Minus"), 69);
+        assert.strictEqual(domCodeToAndroidKeycode("Equal"), 70);
+        assert.strictEqual(domCodeToAndroidKeycode("BracketLeft"), 71);
+        assert.strictEqual(domCodeToAndroidKeycode("BracketRight"), 72);
+        assert.strictEqual(domCodeToAndroidKeycode("Backslash"), 73);
+        assert.strictEqual(domCodeToAndroidKeycode("Semicolon"), 74);
+        assert.strictEqual(domCodeToAndroidKeycode("Quote"), 75);
+        assert.strictEqual(domCodeToAndroidKeycode("Comma"), 55);
+        assert.strictEqual(domCodeToAndroidKeycode("Period"), 56);
+        assert.strictEqual(domCodeToAndroidKeycode("Slash"), 76);
+        assert.strictEqual(domCodeToAndroidKeycode("Backquote"), 68);
+        // Locks.
+        assert.strictEqual(domCodeToAndroidKeycode("CapsLock"), 115);
+        assert.strictEqual(domCodeToAndroidKeycode("NumLock"), 143);
+        assert.strictEqual(domCodeToAndroidKeycode("ScrollLock"), 116);
+    });
+
     it("returns null for codes outside the table so unmapped keys drop silently", () => {
+        // KEYCODE_F13 = 183 — F1–F12 are mapped, F13+ stays outside the table.
         assert.strictEqual(domCodeToAndroidKeycode("F13"), null);
-        assert.strictEqual(domCodeToAndroidKeycode("Numpad0"), null);
         assert.strictEqual(domCodeToAndroidKeycode("MediaPlayPause"), null);
         assert.strictEqual(domCodeToAndroidKeycode("Unidentified"), null);
         assert.strictEqual(domCodeToAndroidKeycode(""), null);

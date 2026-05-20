@@ -121,16 +121,6 @@ data class RenderManifest(
     val dataExtensionReports: Map<String, String> = emptyMap(),
 )
 
-// ---------------------------------------------------------------------------
-// Accessibility models (`AccessibilityReport`, `AccessibilityEntry`,
-// `AccessibilityNode`, `AccessibilityFinding`) used to live here. They moved
-// to `:data-a11y-core` (`AccessibilityModels.kt`) under the same package as
-// part of the D2.2 split — see `data/a11y/core/.../AccessibilityModels.kt`.
-// Renderer-android keeps them on its API surface via `api(project(":data-a11y-core"))`,
-// so existing imports of `ee.schimke.composeai.renderer.AccessibilityFinding` etc.
-// resolve unchanged.
-// ---------------------------------------------------------------------------
-
 @Serializable
 data class RenderPreviewEntry(
     val id: String,
