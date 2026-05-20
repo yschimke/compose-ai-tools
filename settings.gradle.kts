@@ -196,6 +196,10 @@ include(":data-focus-connector")
 
 project(":data-focus-connector").projectDir = file("data/focus/connector")
 
+include(":data-focus-connector-desktop")
+
+project(":data-focus-connector-desktop").projectDir = file("data/focus/connector-desktop")
+
 include(":data-pseudolocale-core")
 
 project(":data-pseudolocale-core").projectDir = file("data/pseudolocale/core")

@@ -200,6 +200,10 @@ open class DesktopHost(
     add("inspectionMode")
     add("material3Theme")
     add("wallpaper")
+    // Issue #1205 — `renderNow.overrides.focus` is honoured by the planner registered in
+    // `data/focus` (`FocusPreviewOverrideExtension`), which installs the around-composable that
+    // flips `LocalInputModeManager` to keyboard mode and drives `FocusManager.moveFocus(...)`.
+    add("focus")
   }
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
