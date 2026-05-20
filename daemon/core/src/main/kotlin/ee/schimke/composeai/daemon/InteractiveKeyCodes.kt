@@ -117,6 +117,7 @@ object InteractiveKeyCodes {
   const val NUMPAD_SUBTRACT: Int = 156
   const val NUMPAD_ADD: Int = 157
   const val NUMPAD_DOT: Int = 158
+  const val NUMPAD_COMMA: Int = 159
   const val NUMPAD_ENTER: Int = 160
   const val NUMPAD_EQUALS: Int = 161
 
