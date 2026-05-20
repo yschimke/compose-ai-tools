@@ -80,6 +80,18 @@ class PreviewManifestRouter(
     val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
+    // Issue #1208 — `orientation = landscape` on desktop is a `widthPx ↔ heightPx` swap; explicit
+    // pixel overrides (or device-derived dims) win over the hint. We apply the swap here, before
+    // the rewritten payload reaches `DesktopHost`, because the router unconditionally emits
+    // widthPx/heightPx tokens which would otherwise hide the "no explicit dims" signal from the
+    // downstream `DesktopHost.specFromPreviewIdPayload` swap branch.
+    val shouldSwapOrientation =
+      inbound["orientation"]?.lowercase() == "landscape" &&
+        inbound["widthPx"] == null &&
+        inbound["heightPx"] == null &&
+        deviceOverride == null
+    val effectiveBaseWidthPx = if (shouldSwapOrientation) baseHeightPx else baseWidthPx
+    val effectiveBaseHeightPx = if (shouldSwapOrientation) baseWidthPx else baseHeightPx
     val routed =
       RenderRequest.Render(
         id = typed.id,
@@ -91,8 +103,8 @@ class PreviewManifestRouter(
             append("functionName=").append(entry.functionName).append(';')
             // Inbound explicit override wins over both the device-derived value and the
             // per-preview manifest default.
-            append("widthPx=").append(inbound["widthPx"] ?: baseWidthPx).append(';')
-            append("heightPx=").append(inbound["heightPx"] ?: baseHeightPx).append(';')
+            append("widthPx=").append(inbound["widthPx"] ?: effectiveBaseWidthPx).append(';')
+            append("heightPx=").append(inbound["heightPx"] ?: effectiveBaseHeightPx).append(';')
             append("density=").append(inbound["density"] ?: baseDensity).append(';')
             append("showBackground=").append(resolved.showBackground).append(';')
             if (resolved.backgroundColor != 0L) {
@@ -102,9 +114,9 @@ class PreviewManifestRouter(
               ?.takeIf { it.isNotBlank() }
               ?.let { append("device=").append(it).append(';') }
             // PROTOCOL.md § 5 (`renderNow.overrides`) — locale / fontScale / uiMode / orientation
-            // pass straight through. Desktop's `RenderEngine` ignores everything except size /
-            // density today (see RenderEngine.kt), but the fields ride along for parity with the
-            // android router so a single payload string drives both backends.
+            // pass straight through. `orientation = landscape` is applied above as a swap of the
+            // forwarded widthPx/heightPx; the token still rides along so downstream consumers see
+            // the resolved orientation. Other fields are honoured by `RenderEngine` directly.
             inbound["localeTag"]?.let { append("localeTag=").append(it).append(';') }
             inbound["fontScale"]?.let { append("fontScale=").append(it).append(';') }
             inbound["uiMode"]?.let { append("uiMode=").append(it).append(';') }
