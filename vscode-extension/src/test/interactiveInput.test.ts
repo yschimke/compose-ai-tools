@@ -666,6 +666,7 @@ describe("domCodeToAndroidKeycode (issue #1203)", () => {
         assert.strictEqual(domCodeToAndroidKeycode("NumpadSubtract"), 156);
         assert.strictEqual(domCodeToAndroidKeycode("NumpadAdd"), 157);
         assert.strictEqual(domCodeToAndroidKeycode("NumpadDecimal"), 158);
+        assert.strictEqual(domCodeToAndroidKeycode("NumpadComma"), 159);
         assert.strictEqual(domCodeToAndroidKeycode("NumpadEnter"), 160);
         assert.strictEqual(domCodeToAndroidKeycode("NumpadEqual"), 161);
         // Punctuation.

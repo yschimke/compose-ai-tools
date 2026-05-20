@@ -562,6 +562,7 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
     ["NumpadSubtract", 156],
     ["NumpadAdd", 157],
     ["NumpadDecimal", 158],
+    ["NumpadComma", 159],
     ["NumpadEnter", 160],
     ["NumpadEqual", 161],
     // Punctuation.

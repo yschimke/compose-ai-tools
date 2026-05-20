@@ -37,6 +37,7 @@ class DesktopKeyDispatchTest {
     assertEquals(Key.NumPadSubtract, androidKeycodeToComposeKey("156"))
     assertEquals(Key.NumPadAdd, androidKeycodeToComposeKey("157"))
     assertEquals(Key.NumPadDot, androidKeycodeToComposeKey("158"))
+    assertEquals(Key.NumPadComma, androidKeycodeToComposeKey("159"))
     assertEquals(Key.NumPadEnter, androidKeycodeToComposeKey("160"))
     assertEquals(Key.NumPadEquals, androidKeycodeToComposeKey("161"))
   }
