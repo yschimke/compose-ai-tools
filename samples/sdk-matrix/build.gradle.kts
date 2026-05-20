@@ -15,6 +15,9 @@
 //
 // See `docs/SDK_COMPATIBILITY.md` for the full cell matrix and the documented outcomes.
 import org.gradle.api.JavaVersion
+import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 plugins {
   alias(libs.plugins.android.application)
@@ -30,11 +33,49 @@ val matrixMinSdk: Int =
   providers.gradleProperty("composeai.matrix.minSdk").orNull?.toIntOrNull() ?: 24
 val matrixSdkOverride: Int? =
   providers.gradleProperty("composeai.matrix.sdkVersion").orNull?.toIntOrNull()
+// Robolectric snapshot version probe. When set (e.g. `4.17-SNAPSHOT`) the snapshots repo
+// declared in `settings.gradle.kts` is honoured and `resolutionStrategy.force(...)` pins this
+// version on every configuration so the test runtime classpath swaps in the snapshot regardless
+// of what `renderer-android` compiled against. See `docs/SDK_COMPATIBILITY.md` for the
+// snapshot-probe cells and the upstream commit (`0e89b68`) the snapshot picks up.
+val matrixRobolectricVersion: String? =
+  providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
+// Matrix-only escape hatch for `GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK`. Production
+// consumers never reach for this — auto-detect clamps above-ceiling values so they don't trip a
+// runtime sandbox failure. The snapshot probe cells pair this with
+// `composeai.matrix.robolectricVersion` so a snapshot Robolectric that ships API 37 can render
+// without the task's validator throwing.
+val matrixMaxSupportedSdk: Int? =
+  providers.gradleProperty("composeai.matrix.maxSupportedSdk").orNull?.toIntOrNull()
+// JDK toolchain the Kotlin compile + Test workers fork into. Driven by the workflow's matrix
+// `jdk` axis. Defaults to JDK 17 (the project's baseline), but bumps to 21 for cells that
+// exercise Robolectric SDK 36+: Robolectric's `DefaultSdkProvider.verifySupportedSdk` refuses
+// SDK 36 unless the test JVM is JDK 21+, so the matrix's whole JDK axis only does its job if the
+// Test task actually forks into the matrix-selected JDK rather than the project default.
+val matrixJvmToolchain: Int =
+  providers.gradleProperty("composeai.matrix.jvmToolchain").orNull?.toIntOrNull() ?: 17
 
 composePreview {
   // `composeai.matrix.sdkVersion` is unset by default (auto-detect path); set it from the
   // workflow when a cell is documenting the override branch.
   matrixSdkOverride?.let { sdkVersion.set(it) }
+}
+
+if (matrixRobolectricVersion != null) {
+  configurations.all {
+    resolutionStrategy.force("org.robolectric:robolectric:$matrixRobolectricVersion")
+  }
+}
+
+if (matrixMaxSupportedSdk != null) {
+  afterEvaluate {
+    tasks.named(
+      "generateRobolectricProperties",
+      ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
+    ) {
+      maxSupportedSdkOverride.set(matrixMaxSupportedSdk)
+    }
+  }
 }
 
 android {
@@ -60,7 +101,19 @@ android {
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
-kotlin { jvmToolchain(17) }
+kotlin { jvmToolchain(matrixJvmToolchain) }
+
+// Belt-and-braces: the Test task's `javaLauncher` is what actually decides which JDK the test
+// JVM forks into. `kotlin { jvmToolchain(N) }` sets it on the AGP-created Test tasks, but a
+// fresh `Test` task created later wouldn't inherit. Pin it explicitly so every Test task — now
+// and future — honours the matrix's JDK axis.
+val javaToolchains = extensions.getByType(JavaToolchainService::class.java)
+
+tasks.withType(Test::class.java).configureEach {
+  javaLauncher.set(
+    javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(matrixJvmToolchain)) }
+  )
+}
 
 dependencies {
   implementation(platform(libs.compose.bom.stable))

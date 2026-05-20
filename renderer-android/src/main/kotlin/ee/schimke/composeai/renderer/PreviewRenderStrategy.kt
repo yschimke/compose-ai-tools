@@ -171,6 +171,7 @@ private object NotificationPreviewStrategy : PreviewRenderStrategy {
         NotificationPreviewComposable(
             className = preview.className,
             functionName = preview.functionName,
+            previewId = preview.id,
         )
     }
 }

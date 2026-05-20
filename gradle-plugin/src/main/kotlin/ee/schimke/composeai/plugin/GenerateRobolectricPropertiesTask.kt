@@ -66,6 +66,19 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    */
   @get:Input abstract val defaultSdk: Property<Int>
 
+  /**
+   * Overrides [MAX_SUPPORTED_SDK] at task execution time. Production consumers leave this unset and
+   * get the constant — `36` for Robolectric 4.16.1. The SDK compatibility matrix's snapshot probe
+   * cells set this to lift the ceiling alongside forcing a Robolectric snapshot that actually ships
+   * the higher API; without that pairing, lifting the ceiling silently turns runtime sandbox
+   * failures into "passed validation" then a worse runtime error.
+   *
+   * Don't expose on the public `composePreview` extension — this is a matrix-internal escape hatch,
+   * not a knob production builds should reach for. See `docs/SDK_COMPATIBILITY.md` and the
+   * `composeai.matrix.maxSupportedSdk` property in `:samples:sdk-matrix`.
+   */
+  @get:Input @get:Optional abstract val maxSupportedSdkOverride: Property<Int>
+
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
   @TaskAction
@@ -118,12 +131,13 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    * [defaultSdk]. Internal so the test can drive it directly.
    */
   internal fun resolveSdk(): Int {
+    val ceiling = maxSupportedSdkOverride.orNull ?: MAX_SUPPORTED_SDK
     if (sdkOverride.isPresent) {
       val v = sdkOverride.get()
-      if (v !in MIN_SUPPORTED_SDK..MAX_SUPPORTED_SDK) {
+      if (v !in MIN_SUPPORTED_SDK..ceiling) {
         throw GradleException(
           "compose-preview: composePreview.sdkVersion = $v is outside the supported range " +
-            "($MIN_SUPPORTED_SDK..$MAX_SUPPORTED_SDK for this Robolectric build). Pick a value " +
+            "($MIN_SUPPORTED_SDK..$ceiling for this Robolectric build). Pick a value " +
             "inside that range or remove the override to let the plugin auto-detect from " +
             "android.compileSdk."
         )
@@ -139,14 +153,14 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
             "to pin a supported level explicitly."
         )
       }
-      if (raw > MAX_SUPPORTED_SDK) {
+      if (raw > ceiling) {
         logger.warn(
           "compose-preview: consumer compileSdk = $raw exceeds Robolectric's max supported SDK " +
-            "($MAX_SUPPORTED_SDK for this Robolectric build); clamping the Robolectric sandbox " +
-            "to $MAX_SUPPORTED_SDK. Rendering may still fail if your APK's <uses-sdk> requires a " +
+            "($ceiling for this Robolectric build); clamping the Robolectric sandbox " +
+            "to $ceiling. Rendering may still fail if your APK's <uses-sdk> requires a " +
             "newer framework. Set composePreview.sdkVersion = N to silence this warning."
         )
-        return MAX_SUPPORTED_SDK
+        return ceiling
       }
       return raw
     }
@@ -163,14 +177,20 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     internal const val MIN_SUPPORTED_SDK: Int = 21
 
     /**
-     * Ceiling of Robolectric's supported `sdk=` range. Robolectric 4.16.1 ships
-     * `android-all-instrumented` jars up to API 36 (Baklava). Bump this in lockstep with
-     * `gradle/libs.versions.toml`'s `robolectric` pin when Robolectric adds a new API level.
+     * Ceiling of the bundled Robolectric's supported `sdk=` range. Pinned to API 36 because
+     * `gradle/libs.versions.toml` pins `robolectric = "4.16.1"`, whose `android-all-instrumented`
+     * jars top out at API 36 (Baklava). Auto-detected `compileSdk` values above this clamp here so
+     * consumers don't trip a runtime sandbox failure (`IllegalArgumentException: API level N is not
+     * available`) — they get a build warning and a best-effort render at API 36 instead.
      *
-     * Note: Robolectric refuses to bootstrap an SDK 36 sandbox unless the test JVM is JDK 21+
-     * (`DefaultSdkProvider.verifySupportedSdk`). Consumers on JDK 17 will get a clear `Android SDK
-     * 36 requires Java 21` error if their `compileSdk` (or this override) lands on 36 — they need
-     * to bump their toolchain.
+     * Bump in lockstep with `libs.robolectric` in `gradle/libs.versions.toml`. The SDK matrix's
+     * snapshot probe cells (see `docs/SDK_COMPATIBILITY.md`) lift this via the
+     * [maxSupportedSdkOverride] escape hatch when paired with a Robolectric snapshot that actually
+     * ships the higher API; production consumers shouldn't reach for that knob.
+     *
+     * Robolectric additionally refuses to bootstrap an SDK 36 sandbox unless the test JVM is JDK
+     * 21+ (`DefaultSdkProvider.verifySupportedSdk`). Consumers on JDK 17 will get a clear `Android
+     * SDK 36 requires Java 21` error if their `compileSdk` lands on 36.
      */
     internal const val MAX_SUPPORTED_SDK: Int = 36
 

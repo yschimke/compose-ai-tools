@@ -1,17 +1,27 @@
 name: Notification Previews
 
 # Renders the Android sample's `@NotificationPreview` + composable-helper notification previews
-# and uploads the resulting PNGs as a workflow artifact. Kept as a dedicated workflow — separate
-# from compose `Preview Baselines`, `A11y Report`, and the resource-baseline path inside
-# `preview-baselines` — so notification-rendering churn doesn't block the pixel-diff hot path,
-# and so adding the baseline-branch + PR-comment machinery later (mirroring `a11y-report.yml`)
-# is an additive change to this file rather than a refactor of the others.
+# and:
+#  - on **push to main** / `workflow_dispatch`: pushes the PNGs (and JSON sidecars when present)
+#    to the long-lived `compose-preview/notifications/main` branch as a browseable baseline.
+#    Mirrors the `compose-preview/main` / `compose-preview/a11y/main` / `compose-preview/resources/main`
+#    pattern — one disjoint branch per surface, so notifications history is independently
+#    bisectable and doesn't churn alongside compose / a11y / resources.
+#  - on **PR**: stages the renders, pushes them to the shared `compose-preview/notifications/pr`
+#    branch (with race-retry), and upserts a sticky PR comment listing added / changed / removed
+#    notifications vs `compose-preview/notifications/main`. Image URLs in the comment are pinned
+#    to the just-pushed SHA so they survive PR merge.
 #
 # Variant matrix demonstrated: `BigTextVariantsPreview` fans out across Light / Dark / Arabic /
 # German / Japanese / Large font through stacked `@Preview` (see `NotificationVariants.kt`); the
 # FQN-discovered `@NotificationPreview` path renders `simpleNotificationPreview` and
 # `bigTextNotificationPreview` from the same module. Both kinds of preview land in
-# `samples/android/build/compose-previews/renders/` and get filtered into the artifact below.
+# `samples/android/build/compose-previews/renders/` and get filtered into the artifact / baseline
+# branch by the `notification-previews` composite action.
+#
+# Kept as a dedicated workflow — separate from compose `Preview Baselines`, `A11y Report`, and the
+# resource-baseline path inside `preview-baselines` — so notification-rendering churn doesn't
+# block the pixel-diff hot path.
 
 on:
   push:
@@ -25,54 +35,43 @@ permissions:
   contents: read
 
 concurrency:
+  # `push` runs serialise on a single group so two main commits can't race the baseline branch;
+  # PR runs each get their own group so concurrent PRs don't cancel each other.
   group: notification-previews-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  render:
-    name: Render notification previews
+  baseline:
+    name: Update notification baseline
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      # Composite action appends a commit to the long-lived
+      # `compose-preview/notifications/main` branch.
+      contents: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - name: Render samples:android previews
-        run: ./gradlew :samples:android:renderAllPreviews --no-daemon
-      - name: Stage notification PNGs
-        run: |
-          set -euo pipefail
-          mkdir -p _notification_renders
-          # Both annotation paths land here:
-          #   - `NotificationPreviewsKt.*` from `@NotificationPreview` (FQN-discovered)
-          #   - `NotificationVariantPreviewsKt.*` from `@Preview` + composable helper
-          # Glob captures both. Empty result is a hard failure — if nothing matched, either
-          # the sample lost its notification previews or the discovery path silently dropped
-          # them, and the artifact-upload step below would happily upload nothing.
-          shopt -s nullglob
-          files=(samples/android/build/compose-previews/renders/*Notification*.png)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::No notification preview PNGs were rendered." >&2
-            ls samples/android/build/compose-previews/renders/ >&2 || true
-            exit 1
-          fi
-          cp "${files[@]}" _notification_renders/
-          echo "Rendered ${#files[@]} notification preview(s):"
-          ls -la _notification_renders/
-      - name: Upload notification renders artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/notification-previews
         with:
-          name: notification-previews
-          path: _notification_renders/
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload renderPreviews reports on failure
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+          mode: baseline
+
+  report:
+    name: Render notification report for PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Push staged PNGs to the shared `compose-preview/notifications/pr`
+      # branch and upsert a comment on the PR.
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          name: renderPreviews-reports
-          path: |
-            samples/android/build/reports/tests/renderPreviews/
-            samples/android/build/test-results/renderPreviews/
-          if-no-files-found: ignore
-          retention-days: 14
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/notification-previews
+        with:
+          mode: comment

@@ -54,10 +54,11 @@ object AccessibilityDataProducer {
   const val KIND_TOUCH_TARGETS: String = AccessibilityDataProducts.KIND_TOUCH_TARGETS
 
   /**
-   * D2.1 — `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style
-   * annotated PNG produced by [AccessibilityImageProcessor]. Lets clients fetch the picture
-   * directly without first asking for the JSON kinds. Also surfaces as an `overlay` extra on
-   * the JSON kinds, so a panel that subscribed to `a11y/atf` still has the PNG path handy.
+   * `a11y/overlay`. Path-transport kind whose only content is the Paparazzi-style annotated PNG
+   * produced by [OverlayExtension] inside [runAccessibilityPostCapturePipeline]. Lets clients
+   * fetch the picture directly without first asking for the JSON kinds. Also surfaces as an
+   * `overlay` extra on the JSON kinds, so a panel that subscribed to `a11y/atf` still has the
+   * PNG path handy.
    */
   const val KIND_OVERLAY: String = AccessibilityDataProducts.KIND_OVERLAY
 
@@ -79,12 +80,6 @@ object AccessibilityDataProducer {
    * pipeline ([runAccessibilityPostCapturePipeline]) so [TouchTargetsExtension] writes the
    * touch-targets JSON and [OverlayExtension] writes the overlay PNG. Idempotent — overwrites
    * prior files.
-   *
-   * Legacy [imageProcessors] still run after the typed pipeline, for embedders that registered
-   * custom processors alongside [AccessibilityImageProcessor]. The default daemon wiring no
-   * longer pre-installs [AccessibilityImageProcessor] — overlay generation is now owned by the
-   * typed extension graph. Each processor failure is logged + skipped so one bad processor
-   * never strands the JSON the consumer already cares about.
    */
   fun writeArtifacts(
     rootDir: File,
@@ -94,7 +89,6 @@ object AccessibilityDataProducer {
     density: Float = 1f,
     pngFile: File? = null,
     isRound: Boolean = false,
-    imageProcessors: List<ImageProcessor> = emptyList(),
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
@@ -124,26 +118,6 @@ object AccessibilityDataProducer {
       previewDir
         .resolve(FILE_TOUCH_TARGETS)
         .writeText(json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets))
-    }
-
-    if (pngFile == null || imageProcessors.isEmpty()) return
-    val input =
-      ImageProcessorInput(
-        previewId = previewId,
-        pngFile = pngFile,
-        dataDir = rootDir,
-        isRound = isRound,
-        context = AccessibilityImageContext(findings = findings, nodes = nodes),
-      )
-    for (processor in imageProcessors) {
-      try {
-        processor.process(input)
-      } catch (t: Throwable) {
-        System.err.println(
-          "AccessibilityDataProducer: image processor '${processor.name}' failed " +
-            "for $previewId: ${t.javaClass.simpleName}: ${t.message}"
-        )
-      }
     }
   }
 }

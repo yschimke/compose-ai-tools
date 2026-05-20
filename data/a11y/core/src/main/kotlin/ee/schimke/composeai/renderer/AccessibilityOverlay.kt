@@ -30,10 +30,10 @@ import kotlin.math.min
  * match the per-child screenshot fills, so the legend stays short and the
  * parent/child grouping reads at a glance.
  */
-// D2.1 — promoted from `internal` so `:daemon:android`'s `AccessibilityImageProcessor` can
-// reuse the same overlay generator the standalone Gradle / CLI path drives. The renderer-side
-// home stays the single source of truth for the visual language; the daemon adapter writes the
-// output under the data-product extras directory rather than next to the primary PNG.
+// Public so `:data-a11y-connector`'s `OverlayExtension` can reuse the same overlay generator the
+// standalone Gradle / CLI path drives. The renderer-side home stays the single source of truth
+// for the visual language; the daemon adapter writes the output under the data-product extras
+// directory rather than next to the primary PNG.
 object AccessibilityOverlay {
 
     /** Width of the legend panel beside the screenshot. */

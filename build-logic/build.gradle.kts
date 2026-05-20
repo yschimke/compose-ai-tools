@@ -17,10 +17,6 @@ gradlePlugin {
       id = "composeai.android-conventions"
       implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiAndroidConventionsPlugin"
     }
-    register("composeAiAndroidLibraryConventions") {
-      id = "composeai.android-library-conventions"
-      implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiAndroidConventionsPlugin"
-    }
     register("composeAiJvmConventions") {
       id = "composeai.jvm-conventions"
       implementationClass = "ee.schimke.composeai.buildlogic.ComposeAiJvmConventionsPlugin"

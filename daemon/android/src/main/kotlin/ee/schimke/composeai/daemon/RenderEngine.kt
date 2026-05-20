@@ -116,14 +116,6 @@ class RenderEngine(
   private val dataDir: File? =
     (outputDir.parentFile ?: outputDir).resolve("data"),
   /**
-   * Legacy image-processor escape hatch kept for embedders that registered custom processors
-   * alongside the old [AccessibilityImageProcessor]. Empty by default — overlay generation now
-   * runs through the typed extension graph (`OverlayExtension` inside
-   * `runAccessibilityPostCapturePipeline`), so the daemon's default wiring no longer pre-installs
-   * `AccessibilityImageProcessor`.
-   */
-  private val imageProcessors: List<ImageProcessor> = emptyList(),
-  /**
    * Registered [PreviewOverrideExtension]s the renderer queries on every render. The renderer
    * doesn't read individual override fields like `wallpaper` or `material3Theme` directly — each
    * registered planner inspects the merged [PreviewOverrides] and contributes its own
@@ -343,6 +335,10 @@ class RenderEngine(
                             className = spec.className,
                             functionName = spec.functionName,
                             classLoader = classLoader,
+                            // Lets the renderer write a structured-fields JSON sidecar alongside
+                            // the PNG for daemon-driven renders (same path used by the standalone
+                            // `renderPreviews` Test task).
+                            previewId = spec.previewId,
                           )
                         } else {
                           InvokeComposable(composableMethod!!)
@@ -512,7 +508,6 @@ class RenderEngine(
                     density = spec.density,
                     pngFile = outputFile,
                     isRound = isRound,
-                    imageProcessors = imageProcessors,
                   )
                   System.err.println(
                     "compose-ai-daemon: [render] phase=a11y.done outputBaseName=${spec.outputBaseName} " +

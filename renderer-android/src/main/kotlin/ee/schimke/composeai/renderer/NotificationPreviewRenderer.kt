@@ -2,6 +2,7 @@ package ee.schimke.composeai.renderer
 
 import android.app.Notification
 import android.content.Context
+import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -35,6 +36,14 @@ fun NotificationPreviewComposable(
      * shape as [TilePreviewComposable] for the daemon path's per-render child loader.
      */
     classLoader: ClassLoader? = null,
+    /**
+     * Preview id used as the filename stem for the structured-fields JSON sidecar
+     * (`<outputDir>/../data/notifications/<id>.notification.json`). `null` skips the sidecar
+     * write — kept optional so call sites that don't care about the sidecar (a future doc
+     * snippet, a quick test) can pass through unchanged. Both call sites the renderer / daemon
+     * use today pass the manifest's preview id.
+     */
+    previewId: String? = null,
 ) {
     val context = LocalContext.current
     AndroidView(
@@ -45,8 +54,15 @@ fun NotificationPreviewComposable(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 )
+                // RemoteViews title rows resolve `?attr/textColorPrimary` against the activity
+                // theme, which is near-white under `uiMode = NIGHT_YES`. Without a matching dark
+                // surface behind the inflated tree, the title text renders white-on-white.
+                // SystemUI on-device paints the dark notification surface for us; here we paint
+                // it ourselves off `Configuration.uiMode`. Mirrors the same fix the sample-local
+                // `NotificationContent` helper carries.
+                setBackgroundColor(resolveNotificationBackgroundColor(ctx))
             }
-            renderNotificationInto(context, className, functionName, classLoader, parent)
+            renderNotificationInto(context, className, functionName, classLoader, parent, previewId)
             parent
         },
     )
@@ -58,6 +74,7 @@ private fun renderNotificationInto(
     functionName: String,
     classLoader: ClassLoader?,
     parent: FrameLayout,
+    previewId: String?,
 ) {
     val notification = invokeNotificationPreviewFunction(context, className, functionName, classLoader)
     val view = inflateNotificationView(context, notification, parent)
@@ -69,6 +86,12 @@ private fun renderNotificationInto(
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ),
     )
+    // Best-effort structured-fields sidecar. Resolves the output dir from
+    // `composeai.render.outputDir`; no-ops silently when the property is absent or [previewId] is
+    // null, matching the behaviour of [RenderErrorSidecar].
+    if (previewId != null) {
+        NotificationSidecar.write(previewId, notification, context)
+    }
 }
 
 /**
@@ -122,6 +145,22 @@ private fun findNotificationPreviewMethod(
  * `createContentView()` for collapsed-only notifications. Returns `null` if neither path
  * produces a `RemoteViews` — caller treats that as a render error.
  */
+/**
+ * AOSP-derived notification surface colours, picked off the active `Configuration.uiMode`. We
+ * deliberately don't read `?android:attr/colorBackground` from the activity theme: the renderer's
+ * sandbox activity uses a generic theme that resolves the same lavender for both day and night
+ * modes, so the title row's `?attr/textColorPrimary` (near-white under NIGHT_YES) renders
+ * white-on-white. Values approximate `Theme.DeviceDefault.Notification[.Dark]` (`#FFFFFF` day,
+ * `#1F1F1F` night) — close enough to AOSP that the rendered PNG reads like the shade surface a
+ * stock device would draw.
+ */
+private fun resolveNotificationBackgroundColor(context: Context): Int {
+    val night =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+    return if (night) 0xFF1F1F1F.toInt() else 0xFFFFFFFF.toInt()
+}
+
 @Suppress("DEPRECATION")
 private fun inflateNotificationView(
     context: Context,
