@@ -1,0 +1,76 @@
+{
+  "entries": [
+    {
+      "pngBasename": "NotificationPreviewsKt.bigTextNotificationPreview.png",
+      "previewId": "NotificationPreviewsKt.bigTextNotificationPreview",
+      "sha256": "97fface431033f04735fc3c77c309fedd3a341f45945af8d99b9041f78ac97e1",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationPreviewsKt.simpleNotificationPreview.png",
+      "previewId": "NotificationPreviewsKt.simpleNotificationPreview",
+      "sha256": "7f9c3deb972c4f9471003b5448a011dd09042171f5210b72c2d43b77868e2108",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationStyleGalleryKt.ActionsPreview_Actions.png",
+      "previewId": "NotificationStyleGalleryKt.ActionsPreview_Actions",
+      "sha256": "2bdddace6c90bbb00926378864bbf2f18cb9b5b1ff694ba61baf3de404d7506d",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png",
+      "previewId": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture",
+      "sha256": "49de22e7b0f2305389fa16d5eb019118075870fec335e0bb6d44b603eb11c4dd",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
+      "previewId": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style",
+      "sha256": "cb49fcb4b532c85f11cc813a758d3ce4804232c8b9b01869b3456fa3cdc48386",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png",
+      "previewId": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style",
+      "sha256": "dfff0048dbc2251d11a6a47f4f1ce61830ad34d26947f29293dad86a7b5d4ce6",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
+      "sha256": "24799e80bf2fe16ba60bdf0d57130c93ec9357bf1d290cb0bcc866742a8c350f",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Dark.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Dark",
+      "sha256": "1d58d10a58e709f399571eeb86a56982425c1888ee0c385d9376ee36ba35d7f6",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_German.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_German",
+      "sha256": "0e3542961a14397b397e58eb7bea5b9b5b84db44aa78b300995817b6b3874cad",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese",
+      "sha256": "d05810b99af727f7e210abdbcca84861fb0b0016c79cf1f0a8f0c3a5a9754118",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Large_font.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Large_font",
+      "sha256": "1fa36172d49bdabd312fecafee1fc64e9d94d64fd62893f45de4dec9a012e642",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Light.png",
+      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Light",
+      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
+      "sidecarBasename": ""
+    }
+  ]
+}
