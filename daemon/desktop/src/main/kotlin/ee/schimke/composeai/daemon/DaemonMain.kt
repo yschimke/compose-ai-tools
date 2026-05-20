@@ -549,6 +549,20 @@ internal fun buildDesktopExtensions(
       previewOverrideExtensions = listOf(WallpaperPreviewOverrideExtension()),
     )
   }
+  tryAdd("data/focus") {
+    // Issue #1205 — focus / keyboard-traversal override. The planner reads
+    // `renderNow.overrides.focus` and emits the around-composable that flips
+    // `LocalInputModeManager` to keyboard mode and drives `FocusManager.moveFocus(...)`.
+    // Android wires the same planner from `:data-focus-connector` directly into the
+    // RenderEngine's `previewOverrideExtensions` list (see RobolectricHost); the desktop
+    // backend instead routes through the extension registry so `extensions/list` reports
+    // `data/focus` and the override only fires when the extension is active.
+    Extension(
+      id = "data/focus",
+      displayName = "Focus override",
+      previewOverrideExtensions = listOf(FocusPreviewOverrideExtension()),
+    )
+  }
   tryAdd("data/pseudolocale") {
     Extension(
       id = "data/pseudolocale",
