@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
+import ee.schimke.composeai.preview.notification.NotificationContent
 
 /**
  * Gallery of additional `NotificationCompat` styles routed through the `NotificationContent`

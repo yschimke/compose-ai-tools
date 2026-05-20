@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.core.app.NotificationCompat
+import ee.schimke.composeai.preview.notification.NotificationContent
 
 private const val VARIANTS_CHANNEL_ID = "variants"
 
