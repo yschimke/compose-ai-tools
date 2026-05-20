@@ -113,6 +113,7 @@ private val ANDROID_KEYCODE_TO_COMPOSE_KEY: Map<Int, Key> = buildMap {
   put(InteractiveKeyCodes.NUMPAD_SUBTRACT, Key.NumPadSubtract)
   put(InteractiveKeyCodes.NUMPAD_ADD, Key.NumPadAdd)
   put(InteractiveKeyCodes.NUMPAD_DOT, Key.NumPadDot)
+  put(InteractiveKeyCodes.NUMPAD_COMMA, Key.NumPadComma)
   put(InteractiveKeyCodes.NUMPAD_ENTER, Key.NumPadEnter)
   put(InteractiveKeyCodes.NUMPAD_EQUALS, Key.NumPadEquals)
   // Punctuation.
