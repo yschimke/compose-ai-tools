@@ -117,6 +117,13 @@ jobs:
     name: ${{ matrix.name }}
     needs: build-plugin
     runs-on: ubuntu-latest
+    # `continue-on-error: true` on a matrix entry makes that entry's failures
+    # surface as warnings rather than blocking required-status checks on PRs.
+    # Used by the `androidchka` cell — it pairs against a live `androidx-main`
+    # checkout and is intentionally a daily *signal* of upstream drift, not a
+    # gate on PR merges. Other cells default to `false` (blocking) when the
+    # field is absent.
+    continue-on-error: ${{ matrix.continue_on_error == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -219,6 +226,12 @@ jobs:
             repo: yschimke/androidchka
             ref: main
             workdir: .
+            # Non-blocking on PRs: this entry pairs with a live `androidx-main`
+            # checkout, so a failure here means *upstream* AndroidX shipped a
+            # break — not that the PR did anything wrong. The daily cron is
+            # still what surfaces the drift; we just don't want it gating
+            # unrelated PR merges.
+            continue_on_error: true
             # Daily drift sentinel against upstream androidx. androidchka
             # is a Gradle workspace that selectively builds a handful of
             # androidx modules from a sibling `androidx/androidx` checkout
