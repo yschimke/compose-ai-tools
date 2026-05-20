@@ -47,6 +47,16 @@ dependencies {
   // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
   // this module — extend the connector instead.**
   implementation(project(":data-ambient-connector"))
+  // Soft-keyboard (IME) connector. Owns `KeyboardController` (state) and
+  // `KeyboardOverrideExtension`
+  // (the `AroundComposable` that installs the shadow `LocalSoftwareKeyboardController` and overlays
+  // the band when `KeyboardController.softInputVisible` flips). The renderer wraps content with the
+  // extension on every capture so app-side `keyboardController.show()` (and the same path
+  // `BasicTextField` uses internally on focus) raises the band naturally. Daemon-driven
+  // `renderNow.overrides.keyboard` plans the same extension through `RobolectricHost`. Same
+  // architectural rule as focus / ambient: no hardcoded IME logic in this module — extend the
+  // connector instead.
+  implementation(project(":data-keyboard-connector"))
   // Pseudolocale connector — `Pseudolocale.fromTag(...)` for the qualifier-rewrite branch and
   // `PseudolocaleOverrideExtension` for the around-composable wrap. Same architectural rule as
   // focus / ambient: no hardcoded pseudolocale logic in this module — extend the connector

@@ -470,7 +470,39 @@ data class PreviewOverrides(
    * Compose-Multiplatform) ignore this field.
    */
   val focus: FocusOverride? = null,
+  /**
+   * Optional soft-keyboard (IME) override. Drives the connector-side `KeyboardOverrideExtension`
+   * (see `:data-keyboard-connector`). The around-composable mirrors the consumer's normal IME
+   * behaviour — `LocalSoftwareKeyboardController.show()/hide()`, focused `BasicTextField`s, and
+   * Android's `WindowInsetsCompat.Type.ime()` insets all flow into the same `KeyboardController` —
+   * and overlays a fake Gboard-shaped band at the bottom of the capture when the IME is up. The
+   * fields here let a daemon client (or `@KeyboardPreview` discovery, when wired) force visibility
+   * and per-cap press highlights on top of whatever the app naturally decides. Sending a
+   * `KeyboardOverride()` with all fields null effectively does nothing — the around-composable
+   * still installs the shadow controller and inset observer so app-driven behaviour reaches the
+   * band, the override just doesn't add anything.
+   */
+  val keyboard: KeyboardOverride? = null,
 )
+
+/**
+ * Soft-keyboard (IME) override for previews. Drives the connector-side `KeyboardOverrideExtension`
+ * (see `:data-keyboard-connector`).
+ *
+ * Two facets the daemon's interactive session also writes to directly:
+ *
+ * * [visible] — force the IME band visible or hidden regardless of what the app's
+ *   `LocalSoftwareKeyboardController` / focus state says. `null` leaves the connector observing the
+ *   app's natural IME signals (the default — app calls `keyboardController.show()` or focuses a
+ *   `BasicTextField`, band appears; app calls `hide()`, band disappears).
+ * * [pressedKey] — highlight a specific key cap in the press tint. `null` leaves the highlight
+ *   driven by `interactive/input` `KEY_DOWN` / `KEY_UP` dispatches (which `Android`/`Desktop`
+ *   `InteractiveSession.dispatch` forwards into the same controller). Pass a single-character
+ *   lowercase letter or one of the special tokens `"space"`, `"enter"`, `"shift"`, `"backspace"`,
+ *   `"sym"`.
+ */
+@Serializable
+data class KeyboardOverride(val visible: Boolean? = null, val pressedKey: String? = null)
 
 /**
  * Focus / keyboard-traversal override for previews. Drives the connector-side

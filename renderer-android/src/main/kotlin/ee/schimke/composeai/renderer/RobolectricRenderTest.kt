@@ -31,6 +31,8 @@ import ee.schimke.composeai.daemon.AmbientOverrideExtension
 import ee.schimke.composeai.daemon.FocusController
 import ee.schimke.composeai.daemon.FocusOverlay
 import ee.schimke.composeai.daemon.FocusOverrideExtension
+import ee.schimke.composeai.daemon.KeyboardController
+import ee.schimke.composeai.daemon.KeyboardOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
 import ee.schimke.composeai.daemon.DisplayFilterConfig
@@ -678,6 +680,13 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.any { it.focus != null || it.focusGif != null }
                 val focusExtension =
                     if (anyFocusCapture) FocusOverrideExtension() else null
+                // Soft-keyboard (IME) overlay: always-on. The around-composable shadows
+                // `LocalSoftwareKeyboardController` so a preview that focuses a `BasicTextField`
+                // or calls `keyboardController.show()` naturally raises the band — no per-capture
+                // opt-in needed. The state holder `KeyboardController` is reset before each render
+                // so previews don't leak visibility / pressed-key state into one another.
+                KeyboardController.resetForNewSession()
+                val keyboardExtension = KeyboardOverrideExtension()
                 // `@AmbientPreview` discovery stamps the same `AmbientCapture` onto every capture
                 // of an annotated function (single-shot per function — one preview produces one
                 // ambient state). Wrap the composition with `AmbientOverrideExtension` from
@@ -766,11 +775,14 @@ abstract class RobolectricRenderTestBase(
                                 focusOrPlain()
                             }
                         }
-                        if (pseudolocaleExtension != null) {
-                            pseudolocaleExtension.AroundComposable { ambientOrPlain() }
-                        } else {
-                            ambientOrPlain()
+                        val pseudoOrPlain: @Composable () -> Unit = {
+                            if (pseudolocaleExtension != null) {
+                                pseudolocaleExtension.AroundComposable { ambientOrPlain() }
+                            } else {
+                                ambientOrPlain()
+                            }
                         }
+                        keyboardExtension.AroundComposable { pseudoOrPlain() }
                     }
                 }
                 // With `mainClock.autoAdvance = false` the clock stays at 0
