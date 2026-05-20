@@ -403,17 +403,14 @@ open class DesktopHost(
           "DesktopHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "recording session not allocated"
         )
-    // Default-on the touch overlay for live recordings — that's the mode where the agent's only
-    // ground truth for "did my touch land where I sent it" is the captured frames. Scripted
-    // recordings keep the default (off) so existing pixel-exact tests stay deterministic. Callers
-    // that explicitly pass `overrides.touchOverlay = true/false` always win over this default.
-    val effectiveOverrides =
-      if (live && overrides?.touchOverlay == null)
-        (overrides ?: ee.schimke.composeai.daemon.protocol.PreviewOverrides()).copy(
-          touchOverlay = true
-        )
-      else overrides
-    val effectiveSpec = applyOverrides(baseSpec, effectiveOverrides, recordingId)
+    // Touch overlay is opt-in only — callers set `overrides.touchOverlay = true` to activate the
+    // `TouchOverlayExtension` `AroundComposableHook` for the session. Deliberately no implicit
+    // default-on for `live = true` recordings: keeping the field strictly off by default means
+    // existing pixel-exact tests stay byte-identical and the visualization has one well-defined
+    // entry point. Callers that want it on for every live recording can decorate
+    // `acquireRecordingSession` at the wire layer (e.g. the panel / CLI flips the field per user
+    // preference).
+    val effectiveSpec = applyOverrides(baseSpec, overrides, recordingId)
     val state =
       engine.setUp(
         effectiveSpec,
