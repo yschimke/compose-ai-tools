@@ -205,29 +205,35 @@ Independently valuable, listed here for visibility:
 - **CI sheet trims.** `.github/workflows/{amper-android,bazel}.yml` are
   path-filtered opt-in jobs that almost never trigger on tools-repo PRs.
 
-## Open questions
+## Decisions
 
-These should be resolved before Phase A starts:
+These were open in earlier drafts; locked in here so Phase A can start.
 
-1. **Should `:preview-discovery` ship a CLI main, or just a library?**
-   Argument for CLI: Bazel rules invoke `java -jar` cleanly. Argument
-   against: a CLI is overhead for Gradle/JVM consumers who can just call
-   the API.
-2. **Does `:daemon-launch-builder` need to handle Android classpath
-   layering?** `AndroidPreviewClasspath` is non-trivial (AGP
-   `artifactView` resolution, R.jar appending). Pure JVM lift may need
-   to leave the Android-specific layering in the gradle plugin and
-   expose a generic "assemble these jars into a daemon descriptor" API.
-3. **Amper's extension model.** Amper 0.10 doesn't have first-class
-   plugin support yet. The contrib repo's Amper integration may be just
-   "shell scripts that invoke `java -jar` between Amper task runs," not
-   real Amper plugins. Track [AMPER-471](https://youtrack.jetbrains.com/projects/AMPER/issues/AMPER-471).
-4. **`:render-cli` vs giving `DaemonMain` a one-shot mode.** Adding
-   `--render-once` to `DaemonMain` avoids a new published artifact but
-   couples the JSON-RPC server to a CLI parsing concern. Separate
-   `:render-cli` is cleaner.
+1. **`:preview-discovery` ships a library + a CLI main.** The library
+   is what Gradle's `DiscoverPreviewsTask` calls into; the CLI is what
+   Bazel rules `java -jar` from a `genrule`. Same build, two consumers.
+2. **`:daemon-launch-builder` is generic — "assemble a descriptor"
+   only.** The Android-specific classpath layering
+   (`AndroidPreviewClasspath`: AGP `artifactView` resolution, R.jar
+   appending, `--add-opens` set) stays in the gradle plugin. The new
+   library's API is "given these resolved jar lists + sysprops + JVM
+   args, emit a valid `daemon-launch.json`." Non-Gradle consumers
+   resolve their classpath through their own dep system (Bazel
+   `rules_jvm_external`, Amper m2 cache scrape) and hand it to the
+   builder.
+3. **Amper integration is shell-scripts-invoking-`java -jar`, not
+   plugins.** Amper 0.10's extension model isn't there yet
+   ([AMPER-471](https://youtrack.jetbrains.com/projects/AMPER/issues/AMPER-471))
+   and waiting for it blocks adoption. The pragmatic shape is a small
+   shell wrapper that runs after `./amper build` and pipes Amper's
+   `build/artifacts/.../kotlin-output/` through the three published
+   jars. Revisit when Amper ships first-class plugins.
+4. **Separate `:render-cli`, not `DaemonMain --render-once`.** Keeps
+   the daemon JSON-RPC-only — no CLI parsing concern leaks into a
+   wire-protocol server. The extra published artifact is ~30 LOC and
+   is what Bazel/Amper rules actually shell out to.
 
 ## Current state
 
-This `contrib/` directory currently contains only this README. No file
-moves have happened yet — Phase C waits on Phase A + B.
+This `contrib/` directory now holds the four moved fixtures. Phase A
+(the three library extractions) is the next concrete step.
