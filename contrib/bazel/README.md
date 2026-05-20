@@ -36,7 +36,7 @@ it under Bazel needs its own design pass.
 ## Layout
 
 ```
-samples/bazel/
+contrib/bazel/
 ├── MODULE.bazel          # bzlmod entrypoint, no external deps
 ├── .bazelrc              # bzlmod-only, no WORKSPACE fallback
 ├── BUILD.bazel           # discover_resources target wiring
@@ -50,7 +50,7 @@ samples/bazel/
 ```
 
 The `app/res/` tree is a verbatim copy of
-[`samples/android/src/main/res/`](../android/src/main/res/), chosen
+[`samples/android/src/main/res/`](../../samples/android/src/main/res/), chosen
 because it covers every shape the resources pipeline cares about
 (`<vector>`, `<animated-vector>`, `<adaptive-icon>`, a qualifier
 variant under `drawable-night/`, and `<resources>` files under
@@ -89,7 +89,7 @@ the render half lands.
 
 ## Companion: Compose APK sample
 
-A second Bazel sample at [`samples/bazel-apk/`](../bazel-apk/) builds a
+A second Bazel sample at [`contrib/bazel-apk/`](../bazel-apk/) builds a
 real Compose APK (`//:bazel_sample_apk`) via `rules_kotlin` +
 `rules_android` + `rules_jvm_external`. It lives in a separate module
 so its Android SDK / Maven toolchain wiring doesn't leak into this

@@ -1,6 +1,6 @@
 # Bazel Compose APK sample (opt-in, known-fragile)
 
-A second Bazel sample, sibling to [`samples/bazel/`](../bazel/). Builds a
+A second Bazel sample, sibling to [`contrib/bazel/`](../bazel/). Builds a
 tiny Android APK with a `@Composable @Preview` and a
 `@NotificationPreview` function through `rules_kotlin` +
 `rules_android` + `rules_jvm_external`.
@@ -39,7 +39,7 @@ bazel build //:bazel_sample_apk
 ## Layout
 
 ```
-samples/bazel-apk/
+contrib/bazel-apk/
 ├── MODULE.bazel       # bzlmod entrypoint with Android/Kotlin/Compose deps
 ├── .bazelrc           # bzlmod-only, no WORKSPACE fallback
 ├── BUILD.bazel        # kt_android_library + android_binary wiring
@@ -51,9 +51,9 @@ samples/bazel-apk/
         └── Notifications.kt   # @NotificationPreview function
 ```
 
-## Why a separate module from `samples/bazel/`
+## Why a separate module from `contrib/bazel/`
 
-The resources-only sample at [`samples/bazel/`](../bazel/) keeps its
+The resources-only sample at [`contrib/bazel/`](../bazel/) keeps its
 `MODULE.bazel` clean of Android/Kotlin/Maven toolchain wiring so its
 `//:app_resources` job doesn't need an Android SDK on the runner. Mixing
 both targets into one module forced the SDK and Maven extensions to
