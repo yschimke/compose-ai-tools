@@ -7,14 +7,21 @@ tiny Android APK with a `@Composable @Preview` and a
 
 ## Status
 
-**This target is known-fragile and intentionally not blocking CI.** The
-core problem is upstream:
-[bazelbuild/rules_kotlin#1388](https://github.com/bazelbuild/rules_kotlin/issues/1388) —
-the Compose compiler plugin can't be wired through `rules_kotlin` on
-Kotlin 2.x. The pins in [`MODULE.bazel`](MODULE.bazel) stay on Kotlin
-1.9.x + standalone Compose Compiler 1.5.x as a workaround; this is a
-deliberate toolchain divergence from the rest of compose-ai-tools (which
-runs Kotlin 2.3.x).
+**This target is known-fragile and intentionally not blocking CI.** Two
+upstream issues stack here:
+
+1. [bazelbuild/rules_kotlin#1388](https://github.com/bazelbuild/rules_kotlin/issues/1388) —
+   the Compose compiler plugin can't be wired through `rules_kotlin` on
+   Kotlin 2.x, so we stay on Kotlin 1.9.x + standalone Compose Compiler
+   1.5.x in [`MODULE.bazel`](MODULE.bazel).
+2. `rules_kotlin` 1.9.x predates Bazel 8's removal of native
+   `JavaPluginInfo` (now in `@rules_java`), so loading
+   `kotlin/internal/jvm/jvm.bzl` blows up on Bazel 8 with
+   `name 'JavaPluginInfo' is not defined`. This module pins Bazel 7 via
+   [`.bazelversion`](.bazelversion) to avoid that.
+
+Both pins are deliberate toolchain divergences from the rest of
+compose-ai-tools (which runs Kotlin 2.3.x on Bazel 8).
 
 The CI job that builds the APK lives in
 [`.github/workflows/bazel.yml`](../../.github/workflows/bazel.yml) under

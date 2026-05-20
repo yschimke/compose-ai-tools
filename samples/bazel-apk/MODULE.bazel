@@ -5,7 +5,11 @@
 # Pins are conservative because the Compose compiler plugin +
 # rules_kotlin combination is openly broken on Kotlin 2.x
 # (bazelbuild/rules_kotlin#1388). We stay on Kotlin 1.9.x + standalone
-# Compose Compiler 1.5.x for now.
+# Compose Compiler 1.5.x for now. rules_kotlin 1.9.x in turn predates
+# the Bazel 8 native-symbol cleanup (`JavaPluginInfo` moved into
+# `@rules_java`), so this module pins Bazel 7 via `.bazelversion`.
+# When rules_kotlin#1388 is fixed we can step both pins forward in one
+# go.
 #
 # Kept in a sibling directory to `samples/bazel/` (resources-only) so the
 # Android SDK / Maven toolchain wiring here doesn't leak into the
