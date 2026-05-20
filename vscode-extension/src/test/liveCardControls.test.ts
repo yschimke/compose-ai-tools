@@ -17,7 +17,11 @@
 //     stray button stamped onto the card root).
 
 import * as assert from "assert";
-import { ensureLiveCardControls } from "../webview/preview/liveCardControls";
+import {
+    ensureControlsToggleButton,
+    ensureLiveCardControls,
+    removeControlsToggleButton,
+} from "../webview/preview/liveCardControls";
 
 /** Build a `<div class="preview-card">` with an `.image-container`
  *  child (the place the per-card stop button gets appended to) and
@@ -183,5 +187,146 @@ describe("ensureLiveCardControls", () => {
         assert.strictEqual(card.children.length, 0);
         // The callback isn't invoked just by ensureing controls.
         assert.strictEqual(invoked, 0);
+    });
+});
+
+describe("ensureControlsToggleButton (issue #1203)", () => {
+    beforeEach(() => {
+        document.body.innerHTML = "";
+    });
+    afterEach(() => {
+        document.body.innerHTML = "";
+    });
+
+    it("stamps a .card-controls-toggle-btn with the right shape + pressed state", () => {
+        const card = buildCard();
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: () => {},
+        });
+        const btn = card.querySelector(
+            ".card-controls-toggle-btn",
+        ) as HTMLButtonElement | null;
+        assert.ok(btn, "controls toggle should appear in image-container");
+        assert.strictEqual(btn!.type, "button");
+        assert.strictEqual(btn!.classList.contains("icon-button"), true);
+        assert.strictEqual(btn!.getAttribute("aria-pressed"), "false");
+        assert.ok(
+            /Turn on/.test(btn!.title),
+            "off-state title should say 'Turn on'",
+        );
+        assert.ok(btn!.querySelector("i.codicon.codicon-keyboard"));
+    });
+
+    it("reflects the enabled state via aria-pressed + title", () => {
+        const card = buildCard();
+        ensureControlsToggleButton(card, { enabled: true, onToggle: () => {} });
+        const btn = card.querySelector(
+            ".card-controls-toggle-btn",
+        ) as HTMLButtonElement;
+        assert.strictEqual(btn.getAttribute("aria-pressed"), "true");
+        assert.ok(
+            /Turn off/.test(btn.title),
+            "on-state title should say 'Turn off'",
+        );
+    });
+
+    it("is idempotent — repeat calls don't duplicate the button or restack handlers", () => {
+        const card = buildCard();
+        let calls: boolean[] = [];
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: (_c, next) => calls.push(next),
+        });
+        // A second call with a different onToggle must not stack a new handler.
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: () => calls.push(true),
+        });
+        assert.strictEqual(
+            card.querySelectorAll(".card-controls-toggle-btn").length,
+            1,
+            "duplicate calls must not stamp a second button",
+        );
+        const btn = card.querySelector(
+            ".card-controls-toggle-btn",
+        ) as HTMLButtonElement;
+        btn.click();
+        assert.deepStrictEqual(
+            calls,
+            [true],
+            "the FIRST call's onToggle is bound; second-call onToggle stays disconnected",
+        );
+    });
+
+    it("click toggles between aria-pressed = false → true by invoking onToggle with !current", () => {
+        const card = buildCard();
+        const seen: boolean[] = [];
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: (_c, next) => seen.push(next),
+        });
+        const btn = card.querySelector(
+            ".card-controls-toggle-btn",
+        ) as HTMLButtonElement;
+        btn.click(); // aria-pressed = "false" → onToggle(true)
+        // Simulate the controller updating state.
+        ensureControlsToggleButton(card, { enabled: true, onToggle: () => {} });
+        // Re-bind onToggle to capture the next call (handler stays original — so use
+        // the first onToggle by leaving binding alone). Note this verifies that the
+        // pressed state reflects the latest enabled flag passed to ensure().
+        assert.strictEqual(btn.getAttribute("aria-pressed"), "true");
+        assert.deepStrictEqual(seen, [true]);
+        // Toggle off — handler was bound on the first call, so seen should grow.
+        btn.click(); // aria-pressed = "true" → onToggle(false)
+        assert.deepStrictEqual(seen, [true, false]);
+    });
+
+    it("click suppresses default and stops propagation", () => {
+        const card = buildCard();
+        let bubbled = 0;
+        card.addEventListener("click", () => bubbled++);
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: () => {},
+        });
+        const btn = card.querySelector(
+            ".card-controls-toggle-btn",
+        ) as HTMLButtonElement;
+        const evt = new Event("click", { bubbles: true, cancelable: true });
+        btn.dispatchEvent(evt);
+        assert.strictEqual(evt.defaultPrevented, true);
+        assert.strictEqual(bubbled, 0);
+    });
+
+    it("is a silent no-op when .image-container is missing", () => {
+        const card = buildBareCard();
+        assert.doesNotThrow(() =>
+            ensureControlsToggleButton(card, {
+                enabled: false,
+                onToggle: () => {},
+            }),
+        );
+        assert.strictEqual(
+            card.querySelector(".card-controls-toggle-btn"),
+            null,
+        );
+        assert.strictEqual(card.children.length, 0);
+    });
+
+    it("removeControlsToggleButton drops the button and is idempotent on a button-less card", () => {
+        const card = buildCard();
+        ensureControlsToggleButton(card, {
+            enabled: false,
+            onToggle: () => {},
+        });
+        assert.ok(card.querySelector(".card-controls-toggle-btn"));
+        removeControlsToggleButton(card);
+        assert.strictEqual(
+            card.querySelector(".card-controls-toggle-btn"),
+            null,
+        );
+        // Second call is a no-op.
+        assert.doesNotThrow(() => removeControlsToggleButton(card));
     });
 });
