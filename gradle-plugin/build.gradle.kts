@@ -31,6 +31,12 @@ gradlePlugin {
 // `https://central.sonatype.com/repository/maven-snapshots/`.
 
 dependencies {
+  // `previews.json` schema types (`PreviewInfo`, `PreviewManifest`, `Capture`, …) — extracted
+  // into a separate library inside this includeBuild so non-Gradle build systems can pull the
+  // published `ee.schimke.composeai:preview-discovery` artifact from Maven Central without
+  // dragging :gradle-plugin or AGP onto their classpath. See contrib/README.md, Phase A1.
+  api(project(":preview-discovery"))
+
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
   // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
