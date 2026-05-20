@@ -80,16 +80,23 @@ class PreviewManifestRouter(
     val baseHeightPx = deviceSpec?.let { (it.heightDp * it.density).toInt() } ?: resolved.heightPx
     val baseDensity = deviceSpec?.density ?: resolved.density
     val effectiveDevice = deviceOverride ?: resolved.device
-    // Issue #1208 — `orientation = landscape` on desktop is a `widthPx ↔ heightPx` swap; explicit
-    // pixel overrides (or device-derived dims) win over the hint. We apply the swap here, before
+    // Issue #1208 — `orientation` on desktop is a `widthPx ↔ heightPx` swap; explicit pixel
+    // overrides (or device-derived dims) win over the hint. The hint is idempotent: only swap
+    // when the requested orientation conflicts with the current aspect ratio (e.g. a base that
+    // is already landscape + `orientation=landscape` stays put). We apply the swap here, before
     // the rewritten payload reaches `DesktopHost`, because the router unconditionally emits
     // widthPx/heightPx tokens which would otherwise hide the "no explicit dims" signal from the
     // downstream `DesktopHost.specFromPreviewIdPayload` swap branch.
+    val requestedOrientation = inbound["orientation"]?.lowercase()
+    val orientationCanSwap =
+      inbound["widthPx"] == null && inbound["heightPx"] == null && deviceOverride == null
     val shouldSwapOrientation =
-      inbound["orientation"]?.lowercase() == "landscape" &&
-        inbound["widthPx"] == null &&
-        inbound["heightPx"] == null &&
-        deviceOverride == null
+      orientationCanSwap &&
+        when (requestedOrientation) {
+          "landscape" -> baseHeightPx > baseWidthPx
+          "portrait" -> baseWidthPx > baseHeightPx
+          else -> false
+        }
     val effectiveBaseWidthPx = if (shouldSwapOrientation) baseHeightPx else baseWidthPx
     val effectiveBaseHeightPx = if (shouldSwapOrientation) baseWidthPx else baseHeightPx
     val routed =

@@ -146,9 +146,10 @@ Result:
   // unsupported sliders.
   // Empty list = pre-feature daemon;
   // treat absent and `[]` identically and assume any field might be ignored.
-  // Today: Robolectric advertises every field; Desktop advertises `orientation` (modelled as a
-  // `widthPx ↔ heightPx` swap on `ImageComposeScene` since #1208) but omits Android-only timing
-  // knobs, and "localeTag" unless the Compose UI runtime exposes a providable locale list.
+  // Today: Robolectric advertises every field; Desktop advertises `orientation` (modelled as an
+  // idempotent `widthPx ↔ heightPx` swap on `ImageComposeScene` since #1208 — only fires when the
+  // request conflicts with the current aspect ratio) but omits Android-only timing knobs, and
+  // "localeTag" unless the Compose UI runtime exposes a providable locale list.
   //
   // androidSdk — fixed Android SDK level the backend renders against. Populated by the
   // Robolectric backend from its pinned @Config(sdk = ...) value; absent/null on Desktop and
@@ -321,9 +322,11 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
   localeTag?: string;                // BCP-47 (e.g. "en-US", "fr", "ja-JP").
   fontScale?: number;                // 1.0 = system default
   uiMode?: "light" | "dark";         // Android-only today.
-  orientation?: "portrait" | "landscape";  // Android: full rotation. Desktop: `landscape` swaps
-                                     // the resolved widthPx/heightPx before scene construction
-                                     // when neither dimension was set explicitly (issue #1208).
+  orientation?: "portrait" | "landscape";  // Android: full rotation. Desktop: idempotent hint
+                                     // that swaps the resolved widthPx/heightPx before scene
+                                     // construction when neither dimension was set explicitly AND
+                                     // the request conflicts with the current aspect ratio
+                                     // (issue #1208). Repeated calls are stable.
   device?: string;                   // "id:pixel_5", "id:wearos_small_round", "spec:width=400dp,height=800dp,dpi=320".
                                      // Resolved by the daemon's catalog into widthPx/heightPx/density;
                                      // explicit widthPx/heightPx/density above take precedence.
@@ -353,7 +356,7 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
 
 The result resolves as soon as the request is queued, **not** when rendering completes. Per-render progress arrives as `renderStarted` / `renderFinished` / `renderFailed` notifications keyed by ID.
 
-`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `orientation` is supported on both backends: Android performs a full rotation via the resource qualifier; desktop reduces `landscape` to a `widthPx ↔ heightPx` swap before `ImageComposeScene` construction (issue #1208). Explicit pixel/`device` overrides on the same call win over the orientation hint on desktop — pass `orientation` alone for the swap to fire. `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`). `material3Theme` is applied in the renderer's normal Compose tree as a `MaterialTheme(...) { preview() }` wrapper, so it affects components that read Material 3 locals without requiring the preview source to declare its own theme.
+`overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `orientation` is supported on both backends: Android performs a full rotation via the resource qualifier; desktop reduces `landscape`/`portrait` to a `widthPx ↔ heightPx` swap before `ImageComposeScene` construction (issue #1208). The desktop hint is **idempotent** — it means "make it look like X", not "always flip": the swap only fires when the requested orientation conflicts with the current aspect ratio, so a landscape-shaped base plus `orientation = landscape` is a no-op (repeated calls stay stable). Explicit pixel/`device` overrides on the same call win over the orientation hint on desktop — pass `orientation` alone for the swap to fire. `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`). `material3Theme` is applied in the renderer's normal Compose tree as a `MaterialTheme(...) { preview() }` wrapper, so it affects components that read Material 3 locals without requiring the preview source to declare its own theme.
 
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 

@@ -157,6 +157,108 @@ class OverrideIntegrationTest {
     }
   }
 
+  /**
+   * Issue #1208 — the orientation hint must be idempotent: a request that already matches the base
+   * aspect ratio should be a no-op, never a blind swap. Otherwise a landscape-shaped base (e.g.
+   * 120×60) plus `orientation = landscape` would flip to portrait (60×120), and the same payload
+   * sent twice would oscillate. Mirrors the LANDSCAPE → LANDSCAPE branch in `applyOverrides`,
+   * `specFromPreviewIdPayload`, and `PreviewManifestRouter.submit`.
+   */
+  @Test
+  fun orientationOverrideIsIdempotentForMatchingBase() {
+    val outputDir = tempFolder.newFolder("renders-orientation-idempotent")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "landscape-rect",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 120,
+              heightPx = 60,
+              density = 1.0f,
+              outputBaseName = "landscape-rect",
+            ),
+            PreviewManifestEntry(
+              id = "portrait-rect",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 60,
+              heightPx = 120,
+              density = 1.0f,
+              outputBaseName = "portrait-rect",
+            ),
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      // Landscape base + orientation=landscape => no swap, stays 120×60.
+      val landscapeNoOp =
+        renderAndDecode(host, "previewId=landscape-rect;orientation=landscape", "landscape-noop")
+      assertEquals(
+        "orientation=landscape on landscape base should not swap widthPx",
+        120,
+        landscapeNoOp.width,
+      )
+      assertEquals(
+        "orientation=landscape on landscape base should not swap heightPx",
+        60,
+        landscapeNoOp.height,
+      )
+
+      // Sending the same payload again must produce identical dims (idempotent).
+      val landscapeRepeat =
+        renderAndDecode(host, "previewId=landscape-rect;orientation=landscape", "landscape-repeat")
+      assertEquals(
+        "repeated orientation=landscape must be idempotent on width",
+        120,
+        landscapeRepeat.width,
+      )
+      assertEquals(
+        "repeated orientation=landscape must be idempotent on height",
+        60,
+        landscapeRepeat.height,
+      )
+
+      // Portrait base + orientation=portrait => no swap, stays 60×120 (symmetric branch).
+      val portraitNoOp =
+        renderAndDecode(host, "previewId=portrait-rect;orientation=portrait", "portrait-noop")
+      assertEquals(
+        "orientation=portrait on portrait base should not swap widthPx",
+        60,
+        portraitNoOp.width,
+      )
+      assertEquals(
+        "orientation=portrait on portrait base should not swap heightPx",
+        120,
+        portraitNoOp.height,
+      )
+
+      // Landscape base + orientation=portrait => swap to 60×120 (PORTRAIT branch).
+      val landscapeToPortrait =
+        renderAndDecode(
+          host,
+          "previewId=landscape-rect;orientation=portrait",
+          "landscape-to-portrait",
+        )
+      assertEquals(
+        "orientation=portrait on landscape base should swap widthPx",
+        60,
+        landscapeToPortrait.width,
+      )
+      assertEquals(
+        "orientation=portrait on landscape base should swap heightPx",
+        120,
+        landscapeToPortrait.height,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
   @Test
   fun uiModeOverrideFlipsDarkAwareComposable() {
     val outputDir = tempFolder.newFolder("renders-uimode")
