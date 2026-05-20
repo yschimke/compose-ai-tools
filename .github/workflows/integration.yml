@@ -618,7 +618,17 @@ jobs:
       - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
           distribution: temurin
-          java-version: 17
+          # JDK 21 (not 17) because the fixture's `compileSdk = 36` forces
+          # Robolectric 4.16.1 to synthesize a SDK 36 sandbox, and
+          # `DefaultSdkProvider.verifySupportedSdk` rejects SDK 36 on JDK 17
+          # at sandbox boot (see docs/SDK_COMPATIBILITY.md, row 2 — the
+          # `compileSdk = 36 × JDK 17 × auto` cell is documented as ❌ fail).
+          # The fixture's `compileSdk` can't drop below 36 either:
+          # renderer-android publishes with `minCompileSdk = 36`, so AGP
+          # would reject the AAR at metadata-merge time. JDK 21 here matches
+          # what consumers on the AGP 8.x floor with `compileSdk = 36` need
+          # to run renderPreviews against this version of renderer-android.
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
         with:
