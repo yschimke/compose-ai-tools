@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+@file:OptIn(
+  androidx.compose.ui.InternalComposeUiApi::class,
+  androidx.compose.ui.ExperimentalComposeUiApi::class,
+)
 
 package ee.schimke.composeai.daemon
 
@@ -8,6 +11,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
@@ -197,7 +203,7 @@ class DesktopRecordingSession(
       }
 
       val image = state.scene.render(nanoTime = tNanos)
-      writeFramePng(image, frameIndex)
+      writeFramePng(image, frameIndex, virtualTimeMs = tMs)
     }
     val tookMs = (System.nanoTime() - startNs) / 1_000_000L
     System.err.println(
@@ -303,6 +309,18 @@ class DesktopRecordingSession(
       }
     )
 
+  /**
+   * Per-pointer-id active state — keyed by [RecordingScriptEvent.pointerId] (`null` collapses to
+   * `0` for backwards compatibility). Updated by [pointerHandler] on every `pointerDown` /
+   * `pointerMove` / `pointerUp` so the next multi-pointer dispatch sees the full set of currently-
+   * pressed fingers. Cleared per id on `pointerUp`. This is what enables real pinch-to-zoom in
+   * scripted recordings — Compose's gesture pipeline needs to see both fingers simultaneously to
+   * fire `Modifier.transformable {}`'s zoom handler.
+   */
+  private val activePointers: MutableMap<Int, Offset> = mutableMapOf()
+
+  private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
+
   private fun clickHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
       val px = event.pixelX
@@ -313,21 +331,16 @@ class DesktopRecordingSession(
           "${event.kind} requires both pixelX and pixelY",
         )
       }
+      val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
-      state.scene.sendPointerEvent(
-        eventType = PointerEventType.Press,
-        position = offset,
-        timeMillis = ctx.tMs,
-        button = PointerButton.Primary,
-        buttons = PointerButtons(isPrimaryPressed = true),
-      )
+      activePointers[id] = offset
+      dispatchMultiPointer(eventType = PointerEventType.Press, timeMillis = ctx.tMs)
       state.scene.render(nanoTime = ctx.tNanos)
-      state.scene.sendPointerEvent(
+      activePointers.remove(id)
+      dispatchMultiPointer(
         eventType = PointerEventType.Release,
-        position = offset,
         timeMillis = ctx.tMs,
-        button = PointerButton.Primary,
-        buttons = PointerButtons(),
+        releasedPointer = id to offset,
       )
       appliedEvidence(event)
     }
@@ -337,6 +350,12 @@ class DesktopRecordingSession(
    * keeps the primary button held (a drag); `Release` clears the mask. Matches the pattern
    * [DesktopInteractiveSession] uses so `Modifier.clickable {}` and other tap-gesture detectors see
    * consistent down→up sequences regardless of mode.
+   *
+   * Multi-pointer aware via [RecordingScriptEvent.pointerId]: each event updates [activePointers]
+   * for its own id, then dispatches a single multi-pointer `sendPointerEvent` carrying every
+   * currently-pressed pointer. That's what pinch-to-zoom needs — without seeing both fingers at the
+   * same `tMs`, Compose's `Modifier.transformable` zoom detector treats the two fingers as
+   * independent drags and never fires the zoom callback.
    */
   private fun pointerHandler(eventType: PointerEventType): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
@@ -348,16 +367,84 @@ class DesktopRecordingSession(
           "${event.kind} requires both pixelX and pixelY",
         )
       }
-      val pressed = eventType != PointerEventType.Release
-      state.scene.sendPointerEvent(
+      val id = pointerIdOrDefault(event)
+      val offset = sceneOffset(px, py)
+      val releasedPointer: Pair<Int, Offset>?
+      when (eventType) {
+        PointerEventType.Press -> {
+          activePointers[id] = offset
+          releasedPointer = null
+        }
+        PointerEventType.Move -> {
+          activePointers[id] = offset
+          releasedPointer = null
+        }
+        PointerEventType.Release -> {
+          // Remove BEFORE dispatch but pass the released id+position into [dispatchMultiPointer]
+          // so Compose sees the up event with `pressed = false` for this pointer alongside any
+          // still-active fingers. Without the explicit released entry, dropping the pointer here
+          // and dispatching only remaining actives would deliver a Move-shaped event and the
+          // gesture detector would never see the "finger lifted" signal.
+          activePointers.remove(id)
+          releasedPointer = id to offset
+        }
+        else -> releasedPointer = null
+      }
+      dispatchMultiPointer(
         eventType = eventType,
-        position = sceneOffset(px, py),
         timeMillis = ctx.tMs,
-        button = PointerButton.Primary,
-        buttons = PointerButtons(isPrimaryPressed = pressed),
+        releasedPointer = releasedPointer,
       )
       appliedEvidence(event)
     }
+
+  /**
+   * Dispatch one multi-pointer event carrying every currently-active pointer (and, optionally, a
+   * just-released pointer with `pressed = false`). Skiko's `BaseComposeScene.sendPointerEvent`
+   * overload that takes `List<ComposeScenePointer>` is what makes pinch-to-zoom work — Compose's
+   * pointer pipeline tracks gesture id-by-id and fires `Modifier.transformable {}`'s rotation /
+   * zoom / pan callbacks only when it sees ≥ 2 pointers in a single event.
+   *
+   * Falls back to a no-op when there are no pointers to dispatch (defensive — the handlers always
+   * provide either an active set, a releasedPointer, or both).
+   */
+  private fun dispatchMultiPointer(
+    eventType: PointerEventType,
+    timeMillis: Long,
+    releasedPointer: Pair<Int, Offset>? = null,
+  ) {
+    val pointers = buildList {
+      for ((pid, off) in activePointers) {
+        add(
+          ComposeScenePointer(
+            id = PointerId(pid.toLong()),
+            position = off,
+            pressed = true,
+            type = PointerType.Touch,
+          )
+        )
+      }
+      if (releasedPointer != null) {
+        add(
+          ComposeScenePointer(
+            id = PointerId(releasedPointer.first.toLong()),
+            position = releasedPointer.second,
+            pressed = false,
+            type = PointerType.Touch,
+          )
+        )
+      }
+    }
+    if (pointers.isEmpty()) return
+    val anyPressed = pointers.any { it.pressed }
+    state.scene.sendPointerEvent(
+      eventType = eventType,
+      pointers = pointers,
+      buttons = PointerButtons(isPrimaryPressed = anyPressed),
+      timeMillis = timeMillis,
+      button = if (eventType == PointerEventType.Press) PointerButton.Primary else null,
+    )
+  }
 
   /**
    * Reuses Skiko's pointer-event pipeline for rotary scrolling — the same path a wheel input on a
@@ -460,7 +547,7 @@ class DesktopRecordingSession(
         }
 
         val image = state.scene.render(nanoTime = tNanos)
-        writeFramePng(image, liveFrameCount)
+        writeFramePng(image, liveFrameCount, virtualTimeMs = tMs)
         liveFrameCount++
 
         // Sleep until the next frame boundary. If the render body overran (unlikely on desktop;
@@ -589,6 +676,22 @@ class DesktopRecordingSession(
     )
 
   private fun writeFramePng(image: Image, frameIndex: Int) {
+    writeFramePng(image, frameIndex, virtualTimeMs = 0L)
+  }
+
+  /**
+   * Frame write. [virtualTimeMs] is unused today; threaded through so future per-frame data-product
+   * sinks (e.g. a frame-timing trace alongside the PNG) can be added without changing call sites.
+   * The touch-event visualization specifically does NOT go through a PNG post-process — it's
+   * implemented as a Compose-level `AroundComposableHook` ([TouchOverlayExtension]) so the overlay
+   * shares the held scene's frame clock + density, works uniformly on every backend that runs
+   * Compose, and doesn't depend on Skia-only primitives. See PR description for the design.
+   */
+  private fun writeFramePng(
+    image: Image,
+    frameIndex: Int,
+    @Suppress("UNUSED_PARAMETER") virtualTimeMs: Long,
+  ) {
     val outFile = File(framesDir, "frame-${"%05d".format(frameIndex)}.png")
     val bytes =
       if (scale == 1.0f && image.width == frameWidthPx && image.height == frameHeightPx) {

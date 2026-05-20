@@ -30,6 +30,7 @@ data class PreviewOverrideBaseSpec(
   val wallpaper: WallpaperOverride? = null,
   val ambient: AmbientOverride? = null,
   val focus: FocusOverride? = null,
+  val touchOverlay: Boolean? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -46,6 +47,7 @@ data class MergedPreviewOverrides(
   val wallpaper: WallpaperOverride?,
   val ambient: AmbientOverride?,
   val focus: FocusOverride?,
+  val touchOverlay: Boolean?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -67,6 +69,7 @@ data class MergedPreviewOverrides(
         wallpaper == null &&
         ambient == null &&
         focus == null &&
+        touchOverlay != true &&
         !isPseudolocale
     ) {
       return null
@@ -77,6 +80,7 @@ data class MergedPreviewOverrides(
       ambient = ambient,
       focus = focus,
       localeTag = if (isPseudolocale) localeTag else null,
+      touchOverlay = touchOverlay,
     )
   }
 }
@@ -120,6 +124,7 @@ fun mergePreviewOverrides(
       wallpaper = base.wallpaper,
       ambient = base.ambient,
       focus = base.focus,
+      touchOverlay = base.touchOverlay,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -145,5 +150,6 @@ fun mergePreviewOverrides(
     wallpaper = overrides.wallpaper ?: base.wallpaper,
     ambient = overrides.ambient ?: base.ambient,
     focus = overrides.focus ?: base.focus,
+    touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
   )
 }
