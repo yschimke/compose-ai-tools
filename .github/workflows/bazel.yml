@@ -1,15 +1,19 @@
 name: Bazel sample
 
-# Opt-in workflow for the resources-only Bazel demo
-# (samples/bazel/). Triggers on PRs that touch the sample or this
-# workflow file, plus manual dispatch. Not part of the default `check`
-# matrix because the Bazel toolchain install adds wall-clock to every
-# PR — see issue #1253 for the wider rollout plan.
+# Opt-in workflow for the Bazel demos. Two jobs:
+#   - bazel-build runs the resources-only sample (samples/bazel/).
+#   - bazel-build-apk runs the Compose APK sample (samples/bazel-apk/),
+#     `continue-on-error: true` because it's known-fragile while
+#     bazelbuild/rules_kotlin#1388 is open.
+# Not part of the default `check` matrix because the Bazel toolchain
+# install adds wall-clock to every PR — see issue #1253 for the wider
+# rollout plan.
 
 on:
   pull_request:
     paths:
       - "samples/bazel/**"
+      - "samples/bazel-apk/**"
       - ".github/workflows/bazel.yml"
   workflow_dispatch:
 
@@ -60,7 +64,7 @@ jobs:
     continue-on-error: true
     defaults:
       run:
-        working-directory: samples/bazel
+        working-directory: samples/bazel-apk
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
