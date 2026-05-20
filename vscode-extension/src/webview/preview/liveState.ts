@@ -521,15 +521,22 @@ export class LiveStateController {
     }
 
     /** Extension-driven `clearInteractive` — silent, the extension already
-     *  stopped the streams server-side. */
+     *  stopped the streams server-side. Also drop the per-card "Controls"
+     *  flag (#1203) so a future live-mode re-entry doesn't silently re-attach
+     *  keyboard interception, matching `stopInteractiveForCard` /
+     *  `stopAllInteractive`. */
     handleExtensionClearInteractive(previewId: string | null): void {
         if (previewId) {
             this.interactivePreviewIds.delete(previewId);
+            this.controlsEnabledPreviewIds.delete(previewId);
             this.applyLiveBadge();
+            this.applyControlsToggleButtons();
             this.cfg.applyInteractiveButtonState();
         } else if (this.interactivePreviewIds.size > 0) {
             this.interactivePreviewIds.clear();
+            this.controlsEnabledPreviewIds.clear();
             this.applyLiveBadge();
+            this.applyControlsToggleButtons();
             this.cfg.applyInteractiveButtonState();
         }
     }

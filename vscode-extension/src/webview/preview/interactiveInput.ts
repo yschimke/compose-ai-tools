@@ -112,8 +112,9 @@ export interface InteractiveInputConfig {
      * event so toggling controls off mid-session immediately stops forwarding; the listener
      * itself stays attached (cheaper than rebinding on every toggle).
      *
-     * Defaulted to "always false" so a config that doesn't wire it through keeps the
-     * pre-toggle behaviour of swallowing every keystroke that lands on a live card.
+     * Omitted entirely → the gate is bypassed (every keystroke that passes the `isLive`
+     * check is forwarded), matching the pre-toggle behaviour. When supplied, returning
+     * `false` drops the keystroke before the wire post.
      */
     isControlsEnabled?(previewId: string): boolean;
     vscode: VsCodeApi<unknown>;
