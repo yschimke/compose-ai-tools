@@ -1,0 +1,34 @@
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
+load("@rules_android//rules:rules.bzl", "android_binary")
+
+kt_compiler_plugin(
+    name = "compose_compiler_plugin",
+    id = "androidx.compose.compiler",
+    target_embedded_compiler = True,
+    deps = ["@maven//:androidx_compose_compiler_compiler"],
+)
+
+kt_android_library(
+    name = "bazel_sample_lib",
+    srcs = glob(["app/src/main/kotlin/**/*.kt"]),
+    custom_package = "com.example.bazelsample",
+    manifest = "app/src/main/AndroidManifest.xml",
+    plugins = [":compose_compiler_plugin"],
+    deps = [
+        "@maven//:androidx_activity_activity_compose",
+        "@maven//:androidx_compose_foundation_foundation",
+        "@maven//:androidx_compose_material3_material3",
+        "@maven//:androidx_compose_runtime_runtime",
+        "@maven//:androidx_compose_ui_ui",
+        "@maven//:androidx_compose_ui_ui_tooling_preview",
+        "@maven//:androidx_core_core_ktx",
+    ],
+)
+
+android_binary(
+    name = "bazel_sample_apk",
+    custom_package = "com.example.bazelsample",
+    manifest = "app/src/main/AndroidManifest.xml",
+    deps = [":bazel_sample_lib"],
+)
