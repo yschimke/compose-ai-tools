@@ -386,6 +386,12 @@ export class LiveStateController {
             shift,
         );
         for (const prior of plan.deactivate) {
+            // Issue #1203 — clear the Controls flag for any card we're
+            // dropping out of live. Without this, a card whose Controls
+            // toggle was on (and is now bumped out by a plain LIVE click
+            // elsewhere) would silently re-attach keyboard interception
+            // the next time it re-enters live mode.
+            this.controlsEnabledPreviewIds.delete(prior);
             this.postLiveCommand(prior, false);
         }
         this.interactivePreviewIds = plan.next;
@@ -397,6 +403,7 @@ export class LiveStateController {
         }
         this.postLiveCommand(previewId, plan.turnOnTarget);
         this.applyLiveBadge();
+        this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
         // The focus inspector is a focus-mode-only panel — refreshing it from a
         // grid-layout click would un-hide the Inspect surface (data extensions,
@@ -465,7 +472,13 @@ export class LiveStateController {
         if (!plan) return;
         this.postLiveCommand(plan.teardownId, false);
         this.interactivePreviewIds.clear();
+        // Issue #1203 — also drop the Controls flag for the card we just
+        // tore down so its toggle stays explicit on re-entry. The planner
+        // only fires when exactly one card was live, so `.delete()` on the
+        // teardown id is sufficient.
+        this.controlsEnabledPreviewIds.delete(plan.teardownId);
         this.applyLiveBadge();
+        this.applyControlsToggleButtons();
     }
 
     /**
