@@ -182,11 +182,14 @@ open class DesktopHost(
    * keep treating it as unsupported rather than falling back to JVM-wide `Locale.setDefault(...)`.
    * `orientation` is modelled as a `widthPx ↔ heightPx` swap before `ImageComposeScene`
    * construction (issue #1208) — `ImageComposeScene` has no display-rotation concept, but
-   * `LANDSCAPE` is observably just the dimension swap (plus a `LocalConfiguration.orientation` flip
-   * on Android, which desktop's `RenderEngine` doesn't compose today). Explicit `widthPx` /
-   * `heightPx` overrides on the same call win — orientation is a hint that only fires when neither
-   * dimension was set. `inspectionMode` flows into `LocalInspectionMode` on the one-shot render
-   * path; interactive and recording sessions keep their runtime-like `false` default.
+   * `LANDSCAPE` / `PORTRAIT` are observably just the dimension swap (plus a
+   * `LocalConfiguration.orientation` flip on Android, which desktop's `RenderEngine` doesn't
+   * compose today). The hint is **idempotent**: it only fires when the requested orientation
+   * conflicts with the current aspect ratio (so a landscape-shaped base + `LANDSCAPE` is a no-op).
+   * Explicit `widthPx` / `heightPx` overrides on the same call still win — orientation is a hint
+   * that only fires when no dimensions were set. `inspectionMode` flows into `LocalInspectionMode`
+   * on the one-shot render path; interactive and recording sessions keep their runtime-like `false`
+   * default.
    */
   override val supportedOverrides: Set<String> = buildSet {
     add("widthPx")
@@ -446,10 +449,11 @@ open class DesktopHost(
    * go through the host's render-queue payload string.
    *
    * Explicit `widthPx` / `heightPx` / `density` overrides win over `device`-resolved values.
-   * Issue #1208 — `orientation = LANDSCAPE` swaps the resolved `widthPx`/`heightPx` only when
-   * neither an explicit pixel dimension nor a `device` token was supplied; otherwise the explicit
-   * sizing wins (orientation is a hint, not a forced rotation). `outputBaseName` is rewritten to
-   * `recording-<recordingId>` so a stray engine fast-path encode (only used by the one-shot
+   * Issue #1208 — `orientation` swaps the resolved `widthPx`/`heightPx` only when neither an
+   * explicit pixel dimension nor a `device` token was supplied AND the requested orientation
+   * conflicts with the current aspect ratio. Otherwise the explicit sizing wins or the swap is a
+   * no-op (orientation is an idempotent hint, not a forced rotation). `outputBaseName` is rewritten
+   * to `recording-<recordingId>` so a stray engine fast-path encode (only used by the one-shot
    * `engine.render` wrapper, not by the recording flow) wouldn't collide with another preview's
    * PNG. The recording flow itself never reads it.
    */
@@ -506,8 +510,19 @@ open class DesktopHost(
           RenderSpec.SpecOrientation.LANDSCAPE
         null -> null
       }
+    // Issue #1208 — orientation is an idempotent hint meaning "make it look like X", not a forced
+    // rotation: only swap when the requested orientation conflicts with the current aspect ratio.
+    // A base whose shape already matches the request (e.g. landscape 120×60 + LANDSCAPE) stays
+    // put, otherwise repeated calls would flip back and forth. Explicit `widthPx` / `heightPx` /
+    // `device` overrides still win over the hint, so the swap only fires when no dimensions were
+    // set on the wire.
     val shouldSwap =
-      orientation == RenderSpec.SpecOrientation.LANDSCAPE && !explicitDimensionSupplied
+      !explicitDimensionSupplied &&
+        when (orientation) {
+          RenderSpec.SpecOrientation.LANDSCAPE -> merged.heightPx > merged.widthPx
+          RenderSpec.SpecOrientation.PORTRAIT -> merged.widthPx > merged.heightPx
+          null -> false
+        }
     val effectiveWidthPx = if (shouldSwap) merged.heightPx else merged.widthPx
     val effectiveHeightPx = if (shouldSwap) merged.widthPx else merged.heightPx
     return base.copy(
@@ -634,18 +649,23 @@ open class DesktopHost(
         "landscape" -> RenderSpec.SpecOrientation.LANDSCAPE
         else -> base.orientation
       }
-    // Issue #1208 — desktop has no display rotation, but `LANDSCAPE` reduces to a `widthPx ↔
-    // heightPx` swap. Explicit pixel overrides (or device-derived dims emitted by
-    // `JsonRpcServer.encodeRenderPayload`) win over the hint, so we only swap when neither
-    // dimension was supplied on the wire. `PreviewManifestRouter` always emits widthPx/heightPx
-    // from its manifest defaults, so the swap there fires on the router side instead — see
-    // [PreviewManifestRouter.submit].
+    // Issue #1208 — desktop has no display rotation, but `LANDSCAPE` / `PORTRAIT` reduce to a
+    // `widthPx ↔ heightPx` swap. The hint is idempotent: only swap when the requested orientation
+    // conflicts with the current aspect ratio (e.g. landscape-base + LANDSCAPE = no-op). Explicit
+    // pixel overrides (or device-derived dims emitted by `JsonRpcServer.encodeRenderPayload`) win
+    // over the hint, so we only swap when neither dimension was supplied on the wire.
+    // `PreviewManifestRouter` always emits widthPx/heightPx from its manifest defaults, so the
+    // swap there fires on the router side instead — see [PreviewManifestRouter.submit].
     val baseWidthPx = widthOverride ?: base.widthPx
     val baseHeightPx = heightOverride ?: base.heightPx
     val shouldSwap =
-      orientation == RenderSpec.SpecOrientation.LANDSCAPE &&
-        widthOverride == null &&
-        heightOverride == null
+      widthOverride == null &&
+        heightOverride == null &&
+        when (orientation) {
+          RenderSpec.SpecOrientation.LANDSCAPE -> baseHeightPx > baseWidthPx
+          RenderSpec.SpecOrientation.PORTRAIT -> baseWidthPx > baseHeightPx
+          null -> false
+        }
     return base.copy(
       previewId = previewId,
       renderMode = map["mode"]?.takeIf { it.isNotBlank() },
