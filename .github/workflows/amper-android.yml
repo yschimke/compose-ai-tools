@@ -1,16 +1,20 @@
 name: Amper Android sample
 
 # Opt-in workflow for the Amper Android sample
-# (samples/amper-android/). Triggers on PRs that touch the sample or
+# (contrib/amper-android/). Triggers on PRs that touch the sample or
 # this workflow file, plus manual dispatch. Not part of the default
 # `check` matrix because Amper's first run downloads the Android SDK
 # image into its cache (~tens of seconds) which is wasted wall-clock
 # for PRs that don't touch the sample.
+#
+# Lives under contrib/ pending the move to yschimke/compose-ai-contrib
+# (see contrib/README.md). When that repo is bootstrapped this workflow
+# moves with it.
 
 on:
   pull_request:
     paths:
-      - "samples/amper-android/**"
+      - "contrib/amper-android/**"
       - ".github/workflows/amper-android.yml"
   workflow_dispatch:
 
@@ -23,11 +27,11 @@ concurrency:
 
 jobs:
   amper-build:
-    name: ./amper build (samples/amper-android)
+    name: ./amper build (contrib/amper-android)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: samples/amper-android
+        working-directory: contrib/amper-android
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -43,7 +47,7 @@ jobs:
           packages: "platforms;android-35 build-tools;35.0.0"
       - name: Build
         env:
-          # Mirrors samples/amper-cmp-desktop/README.md — the bundled
+          # Mirrors contrib/amper-cmp-desktop/README.md — the bundled
           # Zulu JRE Amper auto-downloads doesn't trust the sandbox /
           # runner CA for some setups. Wiring the system truststore
           # explicitly is harmless on a stock runner and necessary on

@@ -15,7 +15,7 @@ and drives a real `RenderSession` against it.
 ## Running the fixture
 
 ```bash
-cd samples/amper-cmp-desktop
+cd contrib/amper-cmp-desktop
 
 # Sandbox / managed environments with a TLS-inspection proxy: the
 # bundled Zulu JRE Amper auto-downloads doesn't trust the proxy CA, so
