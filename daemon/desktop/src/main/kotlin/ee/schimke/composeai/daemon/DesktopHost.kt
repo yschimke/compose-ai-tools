@@ -180,9 +180,13 @@ open class DesktopHost(
    * `device` (resolved by `DeviceDimensions`). `localeTag` is advertised only when the Compose UI
    * runtime on the classpath exposes its providable locale list; older Compose Desktop runtimes
    * keep treating it as unsupported rather than falling back to JVM-wide `Locale.setDefault(...)`.
-   * `orientation` is no-op because `ImageComposeScene` has no rotation concept. `inspectionMode`
-   * flows into `LocalInspectionMode` on the one-shot render path; interactive and recording
-   * sessions keep their runtime-like `false` default.
+   * `orientation` is modelled as a `widthPx ↔ heightPx` swap before `ImageComposeScene`
+   * construction (issue #1208) — `ImageComposeScene` has no display-rotation concept, but
+   * `LANDSCAPE` is observably just the dimension swap (plus a `LocalConfiguration.orientation` flip
+   * on Android, which desktop's `RenderEngine` doesn't compose today). Explicit `widthPx` /
+   * `heightPx` overrides on the same call win — orientation is a hint that only fires when neither
+   * dimension was set. `inspectionMode` flows into `LocalInspectionMode` on the one-shot render
+   * path; interactive and recording sessions keep their runtime-like `false` default.
    */
   override val supportedOverrides: Set<String> = buildSet {
     add("widthPx")
@@ -191,6 +195,7 @@ open class DesktopHost(
     if (RenderEngine.supportsLocaleTagOverride()) add("localeTag")
     add("fontScale")
     add("uiMode")
+    add("orientation")
     add("device")
     add("inspectionMode")
     add("material3Theme")
@@ -437,15 +442,22 @@ open class DesktopHost(
    * go through the host's render-queue payload string.
    *
    * Explicit `widthPx` / `heightPx` / `density` overrides win over `device`-resolved values.
-   * `outputBaseName` is rewritten to `recording-<recordingId>` so a stray engine fast-path encode
-   * (only used by the one-shot `engine.render` wrapper, not by the recording flow) wouldn't collide
-   * with another preview's PNG. The recording flow itself never reads it.
+   * Issue #1208 — `orientation = LANDSCAPE` swaps the resolved `widthPx`/`heightPx` only when
+   * neither an explicit pixel dimension nor a `device` token was supplied; otherwise the explicit
+   * sizing wins (orientation is a hint, not a forced rotation). `outputBaseName` is rewritten to
+   * `recording-<recordingId>` so a stray engine fast-path encode (only used by the one-shot
+   * `engine.render` wrapper, not by the recording flow) wouldn't collide with another preview's
+   * PNG. The recording flow itself never reads it.
    */
   private fun applyOverrides(
     base: RenderSpec,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
     recordingId: String,
   ): RenderSpec {
+    val explicitDimensionSupplied =
+      overrides?.widthPx != null ||
+        overrides?.heightPx != null ||
+        overrides?.device?.takeIf { it.isNotBlank() } != null
     val merged =
       mergePreviewOverrides(
         base =
@@ -490,9 +502,13 @@ open class DesktopHost(
           RenderSpec.SpecOrientation.LANDSCAPE
         null -> null
       }
+    val shouldSwap =
+      orientation == RenderSpec.SpecOrientation.LANDSCAPE && !explicitDimensionSupplied
+    val effectiveWidthPx = if (shouldSwap) merged.heightPx else merged.widthPx
+    val effectiveHeightPx = if (shouldSwap) merged.widthPx else merged.heightPx
     return base.copy(
-      widthPx = merged.widthPx,
-      heightPx = merged.heightPx,
+      widthPx = effectiveWidthPx,
+      heightPx = effectiveHeightPx,
       density = merged.density,
       device = merged.device,
       localeTag = merged.localeTag,
@@ -606,11 +622,31 @@ open class DesktopHost(
     val previewId = map["previewId"]?.takeIf { it.isNotBlank() } ?: return null
     val resolver = previewSpecResolver ?: return null
     val base = resolver(previewId) ?: return null
+    val widthOverride = map["widthPx"]?.toIntOrNull()
+    val heightOverride = map["heightPx"]?.toIntOrNull()
+    val orientation =
+      when (map["orientation"]?.lowercase()) {
+        "portrait" -> RenderSpec.SpecOrientation.PORTRAIT
+        "landscape" -> RenderSpec.SpecOrientation.LANDSCAPE
+        else -> base.orientation
+      }
+    // Issue #1208 — desktop has no display rotation, but `LANDSCAPE` reduces to a `widthPx ↔
+    // heightPx` swap. Explicit pixel overrides (or device-derived dims emitted by
+    // `JsonRpcServer.encodeRenderPayload`) win over the hint, so we only swap when neither
+    // dimension was supplied on the wire. `PreviewManifestRouter` always emits widthPx/heightPx
+    // from its manifest defaults, so the swap there fires on the router side instead — see
+    // [PreviewManifestRouter.submit].
+    val baseWidthPx = widthOverride ?: base.widthPx
+    val baseHeightPx = heightOverride ?: base.heightPx
+    val shouldSwap =
+      orientation == RenderSpec.SpecOrientation.LANDSCAPE &&
+        widthOverride == null &&
+        heightOverride == null
     return base.copy(
       previewId = previewId,
       renderMode = map["mode"]?.takeIf { it.isNotBlank() },
-      widthPx = map["widthPx"]?.toIntOrNull() ?: base.widthPx,
-      heightPx = map["heightPx"]?.toIntOrNull() ?: base.heightPx,
+      widthPx = if (shouldSwap) baseHeightPx else baseWidthPx,
+      heightPx = if (shouldSwap) baseWidthPx else baseHeightPx,
       density = map["density"]?.toFloatOrNull() ?: base.density,
       localeTag = map["localeTag"]?.takeIf { it.isNotBlank() } ?: base.localeTag,
       fontScale = map["fontScale"]?.toFloatOrNull() ?: base.fontScale,
@@ -620,12 +656,7 @@ open class DesktopHost(
           "dark" -> RenderSpec.SpecUiMode.DARK
           else -> base.uiMode
         },
-      orientation =
-        when (map["orientation"]?.lowercase()) {
-          "portrait" -> RenderSpec.SpecOrientation.PORTRAIT
-          "landscape" -> RenderSpec.SpecOrientation.LANDSCAPE
-          else -> base.orientation
-        },
+      orientation = orientation,
       inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull() ?: base.inspectionMode,
     )
   }
