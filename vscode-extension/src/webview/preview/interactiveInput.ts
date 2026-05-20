@@ -496,8 +496,8 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
     ["KeyX", 52],
     ["KeyY", 53],
     ["KeyZ", 54],
-    // Digits (KEYCODE_0 = 7, KEYCODE_9 = 16). Top row only — numpad would map to
-    // KEYCODE_NUMPAD_* which the daemon table doesn't enumerate today.
+    // Digits (KEYCODE_0 = 7, KEYCODE_9 = 16). Top row only — DOM `Numpad0`…
+    // `Numpad9` map to the dedicated KEYCODE_NUMPAD_* range below.
     ["Digit0", 7],
     ["Digit1", 8],
     ["Digit2", 9],
@@ -511,7 +511,6 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
     // Whitespace / editing.
     ["Space", 62],
     ["Enter", 66],
-    ["NumpadEnter", 66],
     ["Tab", 61],
     ["Backspace", 67],
     ["Delete", 112],
@@ -534,6 +533,53 @@ const DOM_CODE_TO_ANDROID_KEYCODE: ReadonlyMap<string, number> = new Map([
     ["AltRight", 58],
     ["MetaLeft", 117],
     ["MetaRight", 118],
+    // Function keys (KEYCODE_F1 = 131 … KEYCODE_F12 = 142).
+    ["F1", 131],
+    ["F2", 132],
+    ["F3", 133],
+    ["F4", 134],
+    ["F5", 135],
+    ["F6", 136],
+    ["F7", 137],
+    ["F8", 138],
+    ["F9", 139],
+    ["F10", 140],
+    ["F11", 141],
+    ["F12", 142],
+    // Numpad (KEYCODE_NUMPAD_0 = 144 … KEYCODE_NUMPAD_EQUALS = 161).
+    ["Numpad0", 144],
+    ["Numpad1", 145],
+    ["Numpad2", 146],
+    ["Numpad3", 147],
+    ["Numpad4", 148],
+    ["Numpad5", 149],
+    ["Numpad6", 150],
+    ["Numpad7", 151],
+    ["Numpad8", 152],
+    ["Numpad9", 153],
+    ["NumpadDivide", 154],
+    ["NumpadMultiply", 155],
+    ["NumpadSubtract", 156],
+    ["NumpadAdd", 157],
+    ["NumpadDecimal", 158],
+    ["NumpadEnter", 160],
+    ["NumpadEqual", 161],
+    // Punctuation.
+    ["Minus", 69],
+    ["Equal", 70],
+    ["BracketLeft", 71],
+    ["BracketRight", 72],
+    ["Backslash", 73],
+    ["Semicolon", 74],
+    ["Quote", 75],
+    ["Comma", 55],
+    ["Period", 56],
+    ["Slash", 76],
+    ["Backquote", 68],
+    // Locks.
+    ["CapsLock", 115],
+    ["NumLock", 143],
+    ["ScrollLock", 116],
 ]);
 
 type InteractiveInputKind =
