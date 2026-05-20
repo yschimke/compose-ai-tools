@@ -1411,6 +1411,50 @@ preview-app {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
 
+/* Issue #1203 — per-card "Controls" toggle. Sits on the top-left of the
+ * image container so it doesn't overlap the live-stop button (top-right).
+ * Visible only when the daemon advertises an interactive-only data extension
+ * (e.g. `input.keyboard`); the helper in `liveCardControls.ts` injects /
+ * removes the element rather than relying on CSS `display:none`. The pressed
+ * state uses the focus / accent foreground to mirror VS Code's own toggle
+ * buttons. */
+.card-controls-toggle-btn {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 4;
+    color: var(--vscode-foreground);
+    background: color-mix(
+        in srgb,
+        var(--vscode-editor-background) 82%,
+        transparent
+    );
+    border-color: color-mix(in srgb, var(--vscode-foreground) 30%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.card-controls-toggle-btn[aria-pressed="true"] {
+    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-focusBorder, #007fd4);
+    border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.card-controls-toggle-btn:hover:not(:disabled) {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder, #007fd4) 22%,
+        var(--vscode-editor-background)
+    );
+}
+
+.card-controls-toggle-btn[aria-pressed="true"]:hover:not(:disabled) {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder, #007fd4) 85%,
+        var(--vscode-editor-background)
+    );
+}
+
 .card-live-stop-btn:hover:not(:disabled) {
     background: color-mix(
         in srgb,

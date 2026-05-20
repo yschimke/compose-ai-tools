@@ -267,6 +267,9 @@ export function handleExtensionMessage(
                     .filter((e) => e.requiresInteractive === true)
                     .map((e) => e.id),
             );
+            // Restamp the per-card "Controls" buttons so they appear /
+            // disappear in lock-step with the daemon-advertised set.
+            ctx.liveState.applyControlsToggleButtons();
             return;
         case "streamStarted": {
             const card = document.getElementById(
@@ -357,6 +360,10 @@ function handleSetPreviews(
     const newIds = new Set(msg.previews.map((p) => p.id));
     ctx.liveState.pruneLive((id) => newIds.has(id));
     ctx.liveState.applyLiveBadge();
+    // Restamp the per-card "Controls" buttons (#1203). Cards that just landed
+    // in the grid need the button injected when the daemon advertises an
+    // interactive-only extension; cards that were dropped won't be visited.
+    ctx.liveState.applyControlsToggleButtons();
     ctx.applyInteractiveButtonState();
     // Tell the extension the cards reached the grid. Powers the e2e test's
     // "real webview consumed setPreviews" assertion — `postedMessageLog`
