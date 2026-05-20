@@ -33,6 +33,25 @@ android {
   buildFeatures { compose = true }
 }
 
+// The compose-preview plugin is applied by the CI-bundled init script after
+// AGP, so the `composePreview` extension is registered on the project but
+// its Kotlin type isn't on this script's buildscript classpath — we can't
+// reference it directly in the typed DSL. Configure `sdkVersion = 35`
+// reflectively so Robolectric synthesizes a SDK 35 framework instead of
+// auto-detecting SDK 36 from `compileSdk = 36`. That keeps the agp8-min
+// job on JDK 17 (the realistic toolchain for AGP 8.x consumers): JDK 17 +
+// SDK 36 trips `DefaultSdkProvider.verifySupportedSdk`, but JDK 17 + SDK
+// 35 + manifest `minSdk = 24` is the documented "rescue path" row in
+// docs/SDK_COMPATIBILITY.md. Production consumers can set this via the
+// typed DSL: `composePreview { sdkVersion.set(35) }`.
+afterEvaluate {
+  val ext = project.extensions.findByName("composePreview") ?: return@afterEvaluate
+  @Suppress("UNCHECKED_CAST")
+  val sdk = ext.javaClass.getMethod("getSdkVersion").invoke(ext)
+      as org.gradle.api.provider.Property<Int>
+  sdk.set(35)
+}
+
 dependencies {
   // compose-bom 2025.11.01 pins compose-ui / compose-runtime to 1.9.5 —
   // matches `compose-bom-compat` in `gradle/libs.versions.toml`, which is
