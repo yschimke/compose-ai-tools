@@ -668,18 +668,123 @@ jobs:
           cp -R .github/ci/fixtures/agp8-min/. "$RUNNER_TEMP/fixture/"
           chmod +x "$RUNNER_TEMP/fixture/gradlew"
 
-      - name: Render previews via Gradle 8.13
+      # ── Three-phase floor test ─────────────────────────────────────────
+      # The committed fixture pins compose-bom to 2025.11.01 (Compose 1.9.5),
+      # which matches the renderer's `compose-bom-compat` floor. To prove the
+      # floor is real AND that `compose-preview doctor` explains it, we:
+      #   1. Downgrade the staged fixture's BOM to 2024.12.01 (Compose 1.7.6).
+      #   2. Run `renderPreviews` and assert it FAILS at render time
+      #      (renderer-android calls `ComposeUiNode.setCompositeKeyHash`, a
+      #      compose-ui 1.9+ method that 1.7.6 doesn't have).
+      #   3. Run `compose-preview doctor --json` and assert the
+      #      `env.compose-bom-version` check fires as `warning` — that's the
+      #      user-facing diagnostic for this exact failure mode.
+      #   4. Bump the staged BOM back to 2025.11.01, clear stale outputs,
+      #      and re-run `renderPreviews` — this time expecting a clean PNG.
+      # Any drift in either direction (renderer floor moves, or doctor stops
+      # surfacing the check) flips this job red.
+      - name: Phase 1 — downgrade staged fixture BOM below renderer floor
+        env:
+          OLD_BOM: "2024.12.01"
+        run: |
+          set -euo pipefail
+          fixture_build="$RUNNER_TEMP/fixture/app/build.gradle.kts"
+          # Single anchored substitution so we don't accidentally rewrite an
+          # unrelated `androidx.compose:compose-bom:*` reference if the
+          # fixture grows.
+          sed -i -E "s|(\"androidx\.compose:compose-bom:)[^\"]+(\")|\\1${OLD_BOM}\\2|" "$fixture_build"
+          echo "--- patched compose-bom line ---"
+          grep "compose-bom" "$fixture_build"
+
+      - name: Phase 1 — renderPreviews must FAIL on the too-old BOM
         working-directory: ${{ runner.temp }}/fixture
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          # renderPreviews depends on discoverPreviews, so this one task call
-          # covers both the discovery path and the renderer-android AAR
-          # resolution from the mavenLocal snapshot seeded earlier. Exercising
-          # the full pipeline at the bottom of the supported envelope (Gradle
-          # 8.13 + AGP 8.13.0 + Kotlin 2.0.21) is what makes this job the
-          # "oldest AGP × Kotlin together" floor coverage cell.
+          set +e
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
+            --no-configuration-cache --stacktrace
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::renderPreviews unexpectedly succeeded against compose-bom 2024.12.01 (Compose 1.7.6). The renderer-android floor is documented as Compose 1.9.5 in renderer-android/build.gradle.kts — either the floor changed (update this fixture + the doc) or the failure mode regressed."
+            exit 1
+          fi
+          echo "renderPreviews failed as expected (exit code $rc); proceeding to doctor."
+
+      - name: Phase 2 — compose-preview doctor must surface env.compose-bom-version
+        working-directory: ${{ runner.temp }}/fixture
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          set -euo pipefail
+          # `compose-preview doctor --json` runs the CLI's pre-flight checks
+          # (including the BOM grep against `build.gradle.kts`) and then
+          # falls through to the Gradle `composePreviewDoctor` task. The
+          # `env.compose-bom-version` check fires when any declared
+          # `compose-bom` is below the renderer floor (2025.01.00) — that's
+          # the user-facing diagnostic we want this job to guarantee.
+          compose-preview doctor --json --project "$RUNNER_TEMP/fixture" \
+            > "$RUNNER_TEMP/doctor.json" || true
+          echo "--- doctor.json ---"
+          cat "$RUNNER_TEMP/doctor.json"
+          echo "--- assertion ---"
+          python3 - "$RUNNER_TEMP/doctor.json" <<'PY'
+          import json, sys
+          report = json.load(open(sys.argv[1]))
+          checks = report.get("checks", [])
+          target = next(
+              (c for c in checks if c.get("id") == "env.compose-bom-version"),
+              None,
+          )
+          if target is None:
+              ids = [c.get("id") for c in checks]
+              print(
+                  "::error::doctor did not surface an `env.compose-bom-version` check. "
+                  f"Checks present: {ids}"
+              )
+              sys.exit(1)
+          if target.get("status") != "warning":
+              print(
+                  "::error::env.compose-bom-version fired but status is "
+                  f"{target.get('status')!r}, expected 'warning'. Check: {target}"
+              )
+              sys.exit(1)
+          print(f"env.compose-bom-version → {target.get('status')}")
+          print(f"  message: {target.get('message')}")
+          remediation = target.get("remediation") or {}
+          if remediation:
+              print(f"  summary: {remediation.get('summary')}")
+              for cmd in remediation.get("commands", []):
+                  print(f"  fix:     {cmd}")
+          PY
+
+      - name: Phase 3 — bump staged fixture BOM back to renderer floor
+        env:
+          NEW_BOM: "2025.11.01"
+        run: |
+          set -euo pipefail
+          fixture_build="$RUNNER_TEMP/fixture/app/build.gradle.kts"
+          sed -i -E "s|(\"androidx\.compose:compose-bom:)[^\"]+(\")|\\1${NEW_BOM}\\2|" "$fixture_build"
+          echo "--- patched compose-bom line ---"
+          grep "compose-bom" "$fixture_build"
+          # Drop the failed-render artifacts so the PNG-presence check below
+          # can't pick up stale `*.error.json` sidecars from phase 1.
+          rm -rf "$RUNNER_TEMP/fixture/app/build/compose-previews"
+
+      - name: Phase 3 — renderPreviews must PASS at renderer floor
+        working-directory: ${{ runner.temp }}/fixture
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          # renderPreviews depends on discoverPreviews, so this single task
+          # call covers both the discovery path and the renderer-android AAR
+          # resolution from the mavenLocal snapshot seeded earlier. This is
+          # the "oldest AGP × Kotlin together" floor-coverage cell (Gradle
+          # 8.13 + AGP 8.13.0 + Kotlin 2.0.21 + compose-bom 2025.11.01).
           ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
             --no-configuration-cache --stacktrace
 
@@ -720,6 +825,15 @@ jobs:
           fi
           echo "Rendered ${#pngs[@]} PNG file(s):"
           printf '  %s\n' "${pngs[@]}"
+
+      - name: Upload doctor.json
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: doctor-agp8-min
+          path: ${{ runner.temp }}/doctor.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload previews.json
         if: always()
