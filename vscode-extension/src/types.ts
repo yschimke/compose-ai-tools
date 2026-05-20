@@ -174,7 +174,7 @@ export interface PreviewTarget {
 
 /**
  * Per-node entry in the `a11y/hierarchy` data product. Mirrors the renderer-side
- * `AccessibilityNode` (in `renderer-android/.../RenderManifest.kt`).
+ * `AccessibilityNode` (in `data/a11y/core/.../AccessibilityModels.kt`).
  */
 export interface AccessibilityNode {
     label: string;
