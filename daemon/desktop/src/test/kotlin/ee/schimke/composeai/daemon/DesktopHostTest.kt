@@ -93,6 +93,9 @@ class DesktopHostTest {
     val supported = DesktopHost().supportedOverrides
 
     assertEquals(RenderEngine.supportsLocaleTagOverride(), "localeTag" in supported)
+    // Issue #1208 — desktop now models `orientation = landscape` as a `widthPx ↔ heightPx` swap
+    // before scene construction, so the capability is advertised on both backends.
+    assertTrue("orientation should be advertised on desktop", "orientation" in supported)
   }
 
   /**

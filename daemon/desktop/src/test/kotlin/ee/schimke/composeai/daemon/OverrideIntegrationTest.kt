@@ -19,10 +19,12 @@ import org.junit.rules.TemporaryFolder
 /**
  * Desktop counterpart of `:daemon:android`'s `OverrideIntegrationTest`. Drives
  * [PreviewManifestRouter] directly with override-bearing payloads to prove the desktop renderer
- * actually applies `widthPx`, `uiMode`, and `fontScale` (PROTOCOL.md § 5, INTERACTIVE.md § 8a).
+ * actually applies `widthPx`, `uiMode`, `fontScale`, and `orientation` (PROTOCOL.md § 5,
+ * INTERACTIVE.md § 8a).
  *
  * `localeTag` is applied only when the Compose UI runtime exposes a providable locale list;
- * `orientation` is a no-op on desktop (`ImageComposeScene` has no rotation concept).
+ * `orientation = landscape` reduces to a `widthPx ↔ heightPx` swap before `ImageComposeScene`
+ * construction since issue #1208 — see [orientationOverrideSwapsDimensions].
  */
 class OverrideIntegrationTest {
 
@@ -56,6 +58,100 @@ class OverrideIntegrationTest {
       val large = renderAndDecode(host, "previewId=red-square;widthPx=128;heightPx=128", "large")
       assertEquals("widthPx override should reach the RenderSpec", 128, large.width)
       assertEquals("heightPx override should reach the RenderSpec", 128, large.height)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  /**
+   * Issue #1208 — `orientation = landscape` reduces to a `widthPx ↔ heightPx` swap on the desktop
+   * backend because `ImageComposeScene` has no display-rotation concept. The test exercises the
+   * swap on a manifest whose base shape is taller-than-wide; landscape should flip the rendered PNG
+   * to wider-than-tall, and explicit `widthPx`/`heightPx` overrides on the same call should win
+   * over the hint (orientation is a hint, not a forced rotation).
+   */
+  @Test
+  fun orientationOverrideSwapsDimensions() {
+    val outputDir = tempFolder.newFolder("renders-orientation")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    val manifest =
+      PreviewManifest(
+        previews =
+          listOf(
+            PreviewManifestEntry(
+              id = "portrait-rect",
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "RedSquare",
+              widthPx = 60,
+              heightPx = 120,
+              density = 1.0f,
+              outputBaseName = "portrait-rect",
+            )
+          )
+      )
+    val host = PreviewManifestRouter(manifest = manifest)
+    host.start()
+    try {
+      val portrait = renderAndDecode(host, "previewId=portrait-rect", "portrait-default")
+      assertEquals("manifest default width should be honoured", 60, portrait.width)
+      assertEquals("manifest default height should be honoured", 120, portrait.height)
+      assertTrue(
+        "default orientation should be taller-than-wide; got ${portrait.width}x${portrait.height}",
+        portrait.height > portrait.width,
+      )
+
+      val landscape =
+        renderAndDecode(host, "previewId=portrait-rect;orientation=landscape", "landscape")
+      assertEquals("orientation=landscape should swap widthPx", 120, landscape.width)
+      assertEquals("orientation=landscape should swap heightPx", 60, landscape.height)
+      assertTrue(
+        "orientation=landscape should produce wider-than-tall; got ${landscape.width}x${landscape.height}",
+        landscape.width > landscape.height,
+      )
+
+      // Re-asserting portrait keeps the spec at base dims — a no-op swap.
+      val explicitPortrait =
+        renderAndDecode(host, "previewId=portrait-rect;orientation=portrait", "portrait-explicit")
+      assertEquals("orientation=portrait should leave widthPx alone", 60, explicitPortrait.width)
+      assertEquals("orientation=portrait should leave heightPx alone", 120, explicitPortrait.height)
+
+      // Precedence: explicit widthPx/heightPx win over the orientation hint. The caller asked
+      // for 200x80 AND landscape; the explicit dims are taken as-is.
+      val explicitLandscape =
+        renderAndDecode(
+          host,
+          "previewId=portrait-rect;widthPx=200;heightPx=80;orientation=landscape",
+          "explicit-landscape",
+        )
+      assertEquals(
+        "explicit widthPx should win over orientation hint",
+        200,
+        explicitLandscape.width,
+      )
+      assertEquals(
+        "explicit heightPx should win over orientation hint",
+        80,
+        explicitLandscape.height,
+      )
+
+      // Precedence in the opposite direction: explicit taller-than-wide pixels with
+      // orientation=landscape — the explicit dims still win, no swap fires.
+      val explicitTaller =
+        renderAndDecode(
+          host,
+          "previewId=portrait-rect;widthPx=40;heightPx=100;orientation=landscape",
+          "explicit-taller",
+        )
+      assertEquals(
+        "explicit widthPx should win over orientation hint even when taller-than-wide",
+        40,
+        explicitTaller.width,
+      )
+      assertEquals(
+        "explicit heightPx should win over orientation hint even when taller-than-wide",
+        100,
+        explicitTaller.height,
+      )
     } finally {
       host.shutdown()
     }

@@ -549,9 +549,12 @@ data class RenderSpec(
    */
   val uiMode: SpecUiMode? = null,
   /**
-   * Portrait/landscape override. **No-op on desktop** — there's no display rotation concept for an
-   * `ImageComposeScene`. The size override (`widthPx`/`heightPx`) is the natural lever; the field
-   * is carried so a single payload string drives both backends.
+   * Portrait/landscape override. Desktop has no display-rotation concept on `ImageComposeScene`,
+   * but issue #1208 reduces `LANDSCAPE` to a `widthPx ↔ heightPx` swap applied by [DesktopHost]
+   * before the spec reaches the engine. Explicit `widthPx`/`heightPx` overrides on the same call
+   * win over the hint — `RenderEngine` reads the resolved dimensions straight from this spec
+   * without re-interpreting the orientation field, so any swap must already be baked in by the
+   * caller.
    */
   val orientation: SpecOrientation? = null,
   /**
