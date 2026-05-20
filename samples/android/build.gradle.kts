@@ -75,6 +75,10 @@ dependencies {
   // Our `@ScrollingPreview` lives here — same role as above, read by FQN
   // at discovery time; no runtime behaviour.
   implementation(project(":preview-annotations"))
+  // `NotificationContent` composable helper for the `@Preview` + stacked multi-preview
+  // notification authoring path. Pairs with `@NotificationPreview` (in `:preview-annotations`)
+  // for the FQN-discovered NOTIFICATION strategy.
+  implementation(project(":notification-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
   // `@AnimatedPreview(showCurves = true)` reflectively probes
   // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /
