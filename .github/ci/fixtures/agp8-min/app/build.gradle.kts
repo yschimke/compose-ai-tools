@@ -53,19 +53,19 @@ afterEvaluate {
 }
 
 dependencies {
-  // compose-bom 2025.11.01 pins compose-ui / compose-runtime to 1.9.5 —
-  // matches `compose-bom-compat` in `gradle/libs.versions.toml`, which is
-  // the version renderer-android compiles its public API against. Below
-  // this BOM the renderer's bytecode references method signatures (e.g.
-  // `ComposeUiNode.setCompositeKeyHash`, first shipped in compose-ui 1.9)
-  // that the consumer's runtime doesn't have, and `renderPreviews` fails
-  // with `NoSuchMethodError` at render time. The agp8-min CI job
-  // deliberately downgrades this BOM to 2024.12.01 (Compose 1.7.6) to
-  // demonstrate that failure mode and confirm `compose-preview doctor`
-  // surfaces the `env.compose-bom-version` finding, then bumps it back to
-  // exercise the success path. See `.github/workflows/integration.yml`,
-  // the `agp8-min` job.
-  val composeBom = platform("androidx.compose:compose-bom:2025.11.01")
+  // compose-bom 2026.05.00 — `compose-bom-stable` in the project's own
+  // version catalog, what `:samples:android` and the rest of the codebase
+  // build against. Ships material3 1.4+ (which is what `Previews.kt`'s
+  // `LoadingIndicator` requires; the M3 1.3.x line in
+  // compose-bom 2024.12.01 doesn't have that composable). The agp8-min
+  // CI job downgrades this to 2024.12.01 in Phase 1 so the consumer's
+  // own preview source fails to compile against the older material3 —
+  // the same failure shape a real consumer hits when they pull a new
+  // Compose API ahead of their BOM. `compose-preview doctor` warns about
+  // the too-old BOM through its `env.compose-bom-version` pre-flight
+  // check (grep-based against `build.gradle.kts`, runs before Gradle).
+  // Phase 3 restores 2026.05.00 and asserts render then succeeds.
+  val composeBom = platform("androidx.compose:compose-bom:2026.05.00")
   implementation(composeBom)
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-tooling-preview")
