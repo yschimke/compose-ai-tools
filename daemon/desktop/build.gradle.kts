@@ -57,6 +57,12 @@ dependencies {
   // `localeTag` → `PseudolocaleOverrideExtensionDesktop`. The locale-list rewrite
   // (`en-XA` → `en`, `ar-XB` → `ar`) lives in `RenderEngine.localeProviders`.
   implementation(project(":data-pseudolocale-connector-desktop"))
+  // Focus (desktop): the around-composable that flips `LocalInputModeManager` to keyboard mode and
+  // drives `FocusManager.moveFocus(...)` from `renderNow.overrides.focus`. Issue #1205 — Android
+  // wires `FocusPreviewOverrideExtension` from `:data-focus-connector`; CMP Desktop uses this
+  // platform-portable mirror. The Android-only `FocusOverlay` (Android-View focus-owner reflection)
+  // is not shipped on desktop.
+  implementation(project(":data-focus-connector-desktop"))
   implementation(project(":data-recomposition-connector"))
   // Display-filter connector — `DisplayFilterDataProducer.writeArtifacts` runs the post-capture
   // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each
