@@ -107,8 +107,21 @@ composePreview {
 
 ## Requirements
 
-- Gradle 9.4.1+
+Consumer (what your project needs to apply the plugin):
+
+- Gradle 8.13+ (enforced at apply-time by
+  [`GradleVersionCheck`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GradleVersionCheck.kt))
 - Java 17 or newer (renderer / plugin target JDK 17 bytecode; any newer JDK runs them)
-- AGP 9.1.0 (Android projects)
-- Kotlin 2.2.21
-- Compose Multiplatform 1.10.3 (Desktop projects)
+- AGP 8.13.0+ (Android projects)
+- Kotlin 2.0.21+ (the published-API floor — `kotlinCoreLibraries` in
+  [`gradle/libs.versions.toml`](../gradle/libs.versions.toml), enforced
+  by tapmoc on every plugin/renderer build)
+- Compose Multiplatform 1.10.3+ (Desktop projects)
+
+The bottom edge is exercised end-to-end on every push by the `agp8-min`
+job in [`.github/workflows/integration.yml`](../.github/workflows/integration.yml)
+against the fixture under
+[`.github/ci/fixtures/agp8-min/`](../.github/ci/fixtures/agp8-min/). The
+project's own build toolchain (what contributors use) is documented in
+[`AGENTS.md`](AGENTS.md) and is intentionally much newer than the
+consumer floor.
