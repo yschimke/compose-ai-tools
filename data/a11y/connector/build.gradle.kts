@@ -1,9 +1,9 @@
-// D2.2 — `:data-a11y-connector` glues `:data-a11y-core` (the generic Android piece) to the
-// daemon's data-product API: `AccessibilityDataProducer` writes the per-render JSON
-// artefacts, `AccessibilityDataProductRegistry` advertises kinds + serves
-// fetch / attach paths, and `AccessibilityImageProcessor` wires the overlay PNG into the
-// `ImageProcessor` seam. Published only so `:daemon:android`'s external POM can resolve its
-// transitive daemon-side data-product implementation.
+// `:data-a11y-connector` glues `:data-a11y-core` (the generic Android piece) to the daemon's
+// data-product API: `AccessibilityDataProducer` writes the per-render JSON artefacts,
+// `AccessibilityDataProductRegistry` advertises kinds + serves fetch / attach paths, and
+// `runAccessibilityPostCapturePipeline` plans + runs `TouchTargetsExtension` + `OverlayExtension`
+// to produce the touch-targets JSON and overlay PNG. Published only so `:daemon:android`'s
+// external POM can resolve its transitive daemon-side data-product implementation.
 //
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)" for the rationale.
 
@@ -22,8 +22,8 @@ dependencies {
   // adding a second `project` dependency.
   api(project(":data-a11y-core"))
 
-  // DataProductRegistry interface, DataProductCapability / DataProductExtra wire types,
-  // ImageProcessor seam — re-exported via `api` for the same reason.
+  // DataProductRegistry interface and DataProductCapability / DataProductExtra wire types —
+  // re-exported via `api` for the same reason.
   api(project(":daemon:core"))
 
   testImplementation(libs.junit)

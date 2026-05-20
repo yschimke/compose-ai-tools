@@ -113,11 +113,12 @@ dependencies {
   implementation(project(":renderer-android"))
   implementation(libs.okio)
 
-  // D2.2 — accessibility data product (registry + producer + image processor) lives in its
+  // Accessibility data product (registry + producer + post-capture extensions) lives in its
   // own module pair: `:data-a11y-connector` brings `:data-a11y-core` (the generic ATF +
-  // overlay code, published) along transitively. `RenderEngine.kt` constructs
-  // `AccessibilityImageProcessor` and calls `AccessibilityDataProducer.writeArtifacts(...)`
-  // through this dep. `api` so downstream `:samples:android-daemon-bench` etc. can also see
+  // overlay code, published) along transitively. `RenderEngine.kt` calls
+  // `AccessibilityDataProducer.writeArtifacts(...)` through this dep, which in turn drives
+  // `runAccessibilityPostCapturePipeline` (`TouchTargetsExtension` + `OverlayExtension`).
+  // `api` so downstream `:samples:android-daemon-bench` etc. can also see
   // `AccessibilityFinding` / `AccessibilityNode` without adding their own project dep.
   api(project(":data-a11y-connector"))
 

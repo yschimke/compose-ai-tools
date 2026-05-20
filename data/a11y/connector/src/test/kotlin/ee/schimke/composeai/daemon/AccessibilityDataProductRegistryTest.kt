@@ -290,9 +290,9 @@ class AccessibilityDataProductRegistryTest {
       findings = emptyList(),
       nodes = emptyList(),
     )
-    // Simulate the AccessibilityImageProcessor having written the overlay PNG into the
-    // per-preview data dir alongside the JSON artefacts. The registry doesn't care how the
-    // bytes got there; it just surfaces the file as an extra.
+    // Simulate the OverlayExtension having written the overlay PNG into the per-preview data dir
+    // alongside the JSON artefacts. The registry doesn't care how the bytes got there; it just
+    // surfaces the file as an extra.
     val previewDir = File(rootDir, previewId).also { it.mkdirs() }
     val overlay = File(previewDir, AccessibilityDataProducer.FILE_OVERLAY)
     overlay.writeBytes(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
