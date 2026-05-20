@@ -146,9 +146,9 @@ What the new tests need that's not there yet:
 ## Out of scope (deferred follow-ups)
 
 - The hierarchy-driven labelled legend (per-node label + role list, color-matched
-  swatches) — see todo "Hierarchy-driven *named* legend".
+  swatches).
 - The `Accessibility overlay` chip displaying the daemon-rendered overlay PNG
-  in the panel — see todo "Wire 'Accessibility overlay' chip ...".
+  in the panel.
 - Visual-diff testing (compare the painted overlay against a baseline PNG).
 
 ## Where this plugs into existing CI

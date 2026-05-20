@@ -2322,6 +2322,10 @@ export class PreviewApp extends LitElement {
             // which `updateImage` already drives on every live render.
             supportsControl: (kind: string) =>
                 liveState.supportsInteractiveControl(kind),
+            // Issue #1203 — per-card "Controls" toggle gate. The listener stays
+            // attached across toggles; this predicate is consulted on every
+            // keystroke so flipping the toggle off immediately stops forwarding.
+            isControlsEnabled: (id: string) => liveState.isControlsEnabled(id),
             vscode,
         };
 
