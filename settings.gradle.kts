@@ -48,6 +48,8 @@ include(":bundle-viewer")
 
 include(":preview-annotations")
 
+include(":notification-preview-runtime")
+
 include(":samples:android")
 
 include(":samples:android-alpha")

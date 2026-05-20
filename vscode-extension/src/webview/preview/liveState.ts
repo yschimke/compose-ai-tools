@@ -45,7 +45,11 @@ import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
-import { ensureLiveCardControls } from "./liveCardControls";
+import {
+    ensureControlsToggleButton,
+    ensureLiveCardControls,
+    removeControlsToggleButton,
+} from "./liveCardControls";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
 import type { VsCodeApi } from "../shared/vscode";
@@ -83,6 +87,13 @@ export class LiveStateController {
     // etc.) call `.clear()` / `.delete()` directly.
     private interactivePreviewIds: Set<string> = new Set<string>();
     private recordingPreviewIds: Set<string> = new Set<string>();
+    // Issue #1203 — per-preview "controls" toggle state. A card with controls
+    // enabled is in interactive mode AND has the keyboard listener attached;
+    // toggling controls off detaches the listener but leaves live mode alone.
+    // Cleared when the card stops live mode (the listener is unreachable
+    // without an active session anyway, and re-entering live should not silently
+    // re-attach keyboard interception).
+    private controlsEnabledPreviewIds: Set<string> = new Set<string>();
 
     // Per-module availability — written from `setInteractiveAvailability`
     // via `setAvailability`, read by the focus toolbar predicates through
@@ -216,6 +227,69 @@ export class LiveStateController {
     }
 
     /**
+     * Issue #1203 — true when the user has enabled the per-card "controls" toggle for
+     * [previewId]. Consumed by the keyboard listener's `supportsControl` gate (via
+     * `interactiveInputConfig.isControlsEnabled`) so a card without the toggle on stays
+     * pointer-only even when the daemon advertises keyboard dispatch.
+     */
+    isControlsEnabled(previewId: string): boolean {
+        return this.controlsEnabledPreviewIds.has(previewId);
+    }
+
+    /**
+     * Issue #1203 — per-card "Controls" button click. Toggling on auto-enters live
+     * mode (interactive dispatch only lands against a held composition) and attaches
+     * the keyboard listener; toggling off detaches the listener but leaves live mode
+     * intact — the user may still want to click / drag the preview.
+     *
+     * Idempotent: re-enabling a card that's already on (e.g. via a duplicate event) is
+     * a no-op; disabling a card that's already off is a no-op.
+     */
+    toggleControlsForCard(card: HTMLElement, enabled: boolean): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        if (enabled) {
+            if (this.controlsEnabledPreviewIds.has(previewId)) return;
+            this.controlsEnabledPreviewIds.add(previewId);
+            this.enterLiveModeForExtension(card);
+            attachInteractiveInputHandlers(
+                card,
+                this.cfg.interactiveInputConfig,
+            );
+        } else {
+            if (!this.controlsEnabledPreviewIds.has(previewId)) return;
+            this.controlsEnabledPreviewIds.delete(previewId);
+        }
+        this.applyControlsToggleButtons();
+    }
+
+    /**
+     * Issue #1203 — re-stamp the per-card "Controls" button across the grid based on
+     * the current daemon capability snapshot. Called after `setDaemonCapabilities` and
+     * after each per-card toggle so the button appears / disappears in lock-step with
+     * the daemon's `requiresInteractive` extension set.
+     *
+     * Buttons appear on every card when at least one interactive-only extension is
+     * advertised; their pressed visual state reflects `isControlsEnabled(previewId)`.
+     */
+    applyControlsToggleButtons(): void {
+        const advertised = this.moduleInteractiveOnlyExtensions.size > 0;
+        const cards = document.querySelectorAll<HTMLElement>(".preview-card");
+        for (const card of cards) {
+            if (!advertised) {
+                removeControlsToggleButton(card);
+                continue;
+            }
+            const previewId = card.dataset.previewId;
+            if (!previewId) continue;
+            ensureControlsToggleButton(card, {
+                enabled: this.controlsEnabledPreviewIds.has(previewId),
+                onToggle: (c, next) => this.toggleControlsForCard(c, next),
+            });
+        }
+    }
+
+    /**
      * Posts the live-mode wire command for [previewId] — routes through
      * [liveToggleCommand] which always picks `requestStreamStart` /
      * `requestStreamStop` now that streaming is the only live path.
@@ -263,9 +337,11 @@ export class LiveStateController {
         const ids = Array.from(this.interactivePreviewIds);
         this.interactivePreviewIds.clear();
         ids.forEach((previewId) => {
+            this.controlsEnabledPreviewIds.delete(previewId);
             this.postLiveCommand(previewId, false);
         });
         this.applyLiveBadge();
+        this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
     }
 
@@ -274,8 +350,14 @@ export class LiveStateController {
         const previewId = card.dataset.previewId;
         if (!previewId || !this.interactivePreviewIds.has(previewId)) return;
         this.interactivePreviewIds.delete(previewId);
+        // Issue #1203 — keyboard listener is gated on isControlsEnabled, but
+        // leaving the flag set across a live-mode bounce would silently
+        // re-attach interception the next time the user enters live mode for
+        // unrelated reasons. Clear it so the toggle stays explicit.
+        this.controlsEnabledPreviewIds.delete(previewId);
         this.postLiveCommand(previewId, false);
         this.applyLiveBadge();
+        this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
     }
 
@@ -412,6 +494,13 @@ export class LiveStateController {
         this.interactivePreviewIds.forEach((id) => {
             if (!stillExists(id)) this.interactivePreviewIds.delete(id);
         });
+        // Issue #1203 — keep the per-card "Controls" set in sync. A preview
+        // that no longer exists for the daemon to dispatch into shouldn't
+        // keep a panel-side flag that would re-attach interception on a
+        // future preview that happens to reuse the id.
+        this.controlsEnabledPreviewIds.forEach((id) => {
+            if (!stillExists(id)) this.controlsEnabledPreviewIds.delete(id);
+        });
     }
 
     /** Daemon-not-ready — drop UI bookkeeping silently. */
@@ -423,20 +512,31 @@ export class LiveStateController {
         if (this.recordingPreviewIds.size > 0) {
             this.recordingPreviewIds.clear();
         }
+        // Issue #1203 — controls-enabled flag must also drop when the daemon
+        // disappears; the listener wouldn't reach a daemon anyway.
+        this.controlsEnabledPreviewIds.clear();
+        this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
         this.cfg.applyRecordingButtonState();
     }
 
     /** Extension-driven `clearInteractive` — silent, the extension already
-     *  stopped the streams server-side. */
+     *  stopped the streams server-side. Also drop the per-card "Controls"
+     *  flag (#1203) so a future live-mode re-entry doesn't silently re-attach
+     *  keyboard interception, matching `stopInteractiveForCard` /
+     *  `stopAllInteractive`. */
     handleExtensionClearInteractive(previewId: string | null): void {
         if (previewId) {
             this.interactivePreviewIds.delete(previewId);
+            this.controlsEnabledPreviewIds.delete(previewId);
             this.applyLiveBadge();
+            this.applyControlsToggleButtons();
             this.cfg.applyInteractiveButtonState();
         } else if (this.interactivePreviewIds.size > 0) {
             this.interactivePreviewIds.clear();
+            this.controlsEnabledPreviewIds.clear();
             this.applyLiveBadge();
+            this.applyControlsToggleButtons();
             this.cfg.applyInteractiveButtonState();
         }
     }
