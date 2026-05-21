@@ -37,6 +37,11 @@ dependencies {
   // dragging :gradle-plugin or AGP onto their classpath. See contrib/README.md, Phase A1.
   api(project(":preview-discovery"))
 
+  // `daemon-launch.json` schema + typed builder — sibling to :preview-discovery. The Android
+  // classpath layering stays in `AndroidPreviewClasspath` here; this module only assembles a
+  // descriptor from pre-resolved inputs. See contrib/README.md.
+  api(project(":daemon-launch-builder"))
+
   implementation(libs.classgraph)
   implementation(libs.kotlinx.serialization.json)
   // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph only
@@ -184,5 +189,10 @@ composeAiMavenPublishing {
 // attached the moment the matching task is added, before the task graph is computed.
 listOf("publishToMavenLocal", "publishToMavenCentral", "publishAndReleaseToMavenCentral").forEach {
   taskName ->
-  tasks.matching { it.name == taskName }.configureEach { dependsOn(":preview-discovery:$taskName") }
+  tasks
+    .matching { it.name == taskName }
+    .configureEach {
+      dependsOn(":preview-discovery:$taskName")
+      dependsOn(":daemon-launch-builder:$taskName")
+    }
 }
