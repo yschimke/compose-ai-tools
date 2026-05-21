@@ -93,6 +93,11 @@ dependencies {
   // the `KeyboardPreviewOverrideExtension` planner consuming `renderNow.overrides.keyboard`. The
   // session's `dispatch(KEY_*)` path also calls into `KeyboardController` from this module.
   implementation(project(":data-keyboard-connector"))
+  // Touch-event visualization connector — same module `:daemon:desktop` consumes. The
+  // `TouchOverlayExtension` `AroundComposable` is pure Compose foundation/runtime so the single
+  // shared JVM module works on both backends (no Android/desktop fork needed, unlike
+  // `:data-keyboard-connector` which forks for Android-specific `WindowInsetsCompat`).
+  implementation(project(":data-touch-overlay-connector"))
   // Pseudolocale connector — `Pseudolocalizer` (en-XA / ar-XB transforms), `PseudolocaleResources`
   // / `PseudolocaleContext` runtime resource interception, and the
   // `PseudolocalePreviewOverrideExtension` planner mapped to `localeTag` in {en-XA, ar-XB}. No

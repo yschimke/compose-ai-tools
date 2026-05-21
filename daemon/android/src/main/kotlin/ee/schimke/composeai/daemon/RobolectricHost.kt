@@ -1327,6 +1327,12 @@ open class RobolectricHost(
                 // .keyboard` and `interactive/input` `KEY_*` dispatches reach the same
                 // `KeyboardController` state holder.
                 KeyboardPreviewOverrideExtension(),
+                // Touch-event visualization overlay. Mirrors `DesktopHost`'s registration — same
+                // `TouchOverlayPreviewOverrideExtension` planner from the shared
+                // `:data-touch-overlay-connector` module. Plans an extension only when
+                // `renderNow.overrides.touchOverlay = true` so existing pixel-exact recordings
+                // stay byte-identical.
+                TouchOverlayPreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through

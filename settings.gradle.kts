@@ -212,6 +212,10 @@ include(":data-keyboard-connector-desktop")
 
 project(":data-keyboard-connector-desktop").projectDir = file("data/keyboard/connector-desktop")
 
+include(":data-touch-overlay-connector")
+
+project(":data-touch-overlay-connector").projectDir = file("data/touch-overlay/connector")
+
 include(":data-pseudolocale-core")
 
 project(":data-pseudolocale-core").projectDir = file("data/pseudolocale/core")
