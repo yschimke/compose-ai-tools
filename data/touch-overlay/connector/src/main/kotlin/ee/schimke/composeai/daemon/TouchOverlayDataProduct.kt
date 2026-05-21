@@ -61,10 +61,12 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * Without `Initial`, a child that consumes the event before bubble-up (`Final` pass) would starve
  * the overlay of anything to draw.
  *
- * Today the implementation lives in `:daemon:desktop` because that's where the wiring exists; the
- * code itself is pure Compose Multiplatform with no desktop-specific calls, so extracting to a
- * shared `data/touch-overlay/connector/` module (with separate desktop + android `DaemonMain`
- * registration lines) is mechanical when an Android live mode lands.
+ * Lives in `:data-touch-overlay-connector` (shared `kotlin.jvm` + `compose.multiplatform` module).
+ * Both `:daemon:desktop` and `:daemon:android` depend on this module and register
+ * [TouchOverlayPreviewOverrideExtension] in their respective `RenderEngine`'s
+ * `previewOverrideExtensions` list — no per-backend fork needed because the source uses only
+ * portable Compose APIs (`androidx.compose.foundation`, `androidx.compose.ui`,
+ * `androidx.compose.runtime`).
  */
 class TouchOverlayExtension :
   AroundComposableExtension(
