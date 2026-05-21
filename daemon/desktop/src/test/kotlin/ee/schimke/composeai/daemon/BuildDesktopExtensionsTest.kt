@@ -116,6 +116,40 @@ class BuildDesktopExtensionsTest {
   }
 
   @Test
+  fun touch_overlay_and_keyboard_band_advertise_data_extension_descriptors() {
+    // The override-driven extensions (`data/touch-overlay` + `data/keyboard`) carry a
+    // `DataExtensionDescriptor` so GUI clients (panel, MCP) can discover them via
+    // `initialize.capabilities.dataExtensions` and gate per-card toggle UI on the daemon
+    // actually shipping the matching planner. Without descriptors the capability list is empty
+    // and clients fall back to hardcoded knowledge of the field names.
+    val extensions =
+      buildDesktopExtensions(
+        previewIndex = PreviewIndex.empty(),
+        recompositionRegistry = RecompositionDataProductRegistry(),
+        themeRegistry = ThemeDataProductRegistry(),
+        wallpaperRegistry = WallpaperDataProductRegistry(),
+        historyManager = null,
+        dataRoot = null,
+        composeTraceEnabled = false,
+        displayFilterEnabled = false,
+      )
+    val touch = extensions.single { it.id == "data/touch-overlay" }
+    val touchDescriptorIds = touch.dataExtensionDescriptors.map { it.id.value }
+    assertTrue(
+      "data/touch-overlay must advertise its DataExtensionDescriptor so the panel can " +
+        "discover the toggle; got $touchDescriptorIds",
+      TouchOverlayExtension.ID.value in touchDescriptorIds,
+    )
+    val keyboard = extensions.single { it.id == "data/keyboard" }
+    val keyboardDescriptorIds = keyboard.dataExtensionDescriptors.map { it.id.value }
+    assertTrue(
+      "data/keyboard must advertise its DataExtensionDescriptor so the panel can " +
+        "discover the toggle; got $keyboardDescriptorIds",
+      KeyboardOverrideExtension.ID.value in keyboardDescriptorIds,
+    )
+  }
+
+  @Test
   fun android_only_kinds_stay_unadvertised_on_desktop() {
     val dataRoot = tempFolder.newFolder("data")
     val ids = build(dataRoot = dataRoot, composeTraceEnabled = true, displayFilterEnabled = true)

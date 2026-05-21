@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.data.render.RenderPreviewExtension
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
 import java.io.InputStream
@@ -569,10 +570,22 @@ internal fun buildDesktopExtensions(
     // `keyboardController.show()` / focused `BasicTextField` raises the band naturally;
     // `renderNow.overrides.keyboard` and `interactive/input` `KEY_*` dispatches also feed the
     // same `KeyboardController`.
+    //
+    // [dataExtensionDescriptors] advertises the connector's `KeyboardOverrideExtension.ID` so the
+    // panel / MCP can discover it via `initialize.capabilities.dataExtensions` and gate the
+    // per-card "force soft-keyboard band" toggle on the daemon actually shipping the extension —
+    // rather than the current broad "any interactive backend" gate.
     Extension(
       id = "data/keyboard",
       displayName = "Soft keyboard overlay",
       previewOverrideExtensions = listOf(KeyboardPreviewOverrideExtension()),
+      dataExtensionDescriptors =
+        listOf(
+          DataExtensionDescriptor(
+            id = KeyboardOverrideExtension.ID,
+            displayName = "Soft keyboard overlay",
+          )
+        ),
     )
   }
   tryAdd("data/pseudolocale") {
@@ -594,10 +607,21 @@ internal fun buildDesktopExtensions(
     // unchanged. Lives in `:daemon:desktop` for now since this is the first backend with live
     // mode; a future `data/touch-overlay/connector/` module will host the planner so Android picks
     // it up automatically when live mode lands on Robolectric.
+    //
+    // [dataExtensionDescriptors] advertises `TouchOverlayExtension.ID` so the panel / MCP can
+    // discover the extension via `initialize.capabilities.dataExtensions` and gate the per-card
+    // "touch overlay" toggle on the daemon actually shipping it (today: desktop only).
     Extension(
       id = "data/touch-overlay",
       displayName = "Touch event overlay",
       previewOverrideExtensions = listOf(TouchOverlayPreviewOverrideExtension()),
+      dataExtensionDescriptors =
+        listOf(
+          DataExtensionDescriptor(
+            id = TouchOverlayExtension.ID,
+            displayName = "Touch event overlay",
+          )
+        ),
     )
   }
   tryAdd("data/recomposition") {
