@@ -87,6 +87,12 @@ dependencies {
   // `renderNow.overrides.focus`, and the post-capture `FocusOverlay`. The renderer-android plugin
   // path consumes the same connector — see `:renderer-android`'s `implementation` line.
   implementation(project(":data-focus-connector"))
+  // Soft-keyboard (IME) connector — `KeyboardController`, the always-on `AroundComposable`
+  // extension that shadows `LocalSoftwareKeyboardController` to mirror natural app-side IME state
+  // (focused `BasicTextField`, explicit `keyboardController.show()`) into the band overlay, and
+  // the `KeyboardPreviewOverrideExtension` planner consuming `renderNow.overrides.keyboard`. The
+  // session's `dispatch(KEY_*)` path also calls into `KeyboardController` from this module.
+  implementation(project(":data-keyboard-connector"))
   // Pseudolocale connector — `Pseudolocalizer` (en-XA / ar-XB transforms), `PseudolocaleResources`
   // / `PseudolocaleContext` runtime resource interception, and the
   // `PseudolocalePreviewOverrideExtension` planner mapped to `localeTag` in {en-XA, ar-XB}. No

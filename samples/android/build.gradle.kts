@@ -79,6 +79,11 @@ dependencies {
   // notification authoring path. Pairs with `@NotificationPreview` (in `:preview-annotations`)
   // for the FQN-discovered NOTIFICATION strategy.
   implementation(project(":notification-preview-runtime"))
+  // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses
+  // `LocalSoftwareKeyboardController.show()` (the natural app-side IME path the connector's
+  // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
+  // directly to drive per-cap press highlights in the absence of an interactive daemon session.
+  implementation(project(":data-keyboard-connector"))
   debugImplementation("androidx.compose.ui:ui-tooling")
   // `@AnimatedPreview(showCurves = true)` reflectively probes
   // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /

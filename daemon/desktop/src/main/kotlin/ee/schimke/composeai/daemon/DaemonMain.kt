@@ -563,6 +563,18 @@ internal fun buildDesktopExtensions(
       previewOverrideExtensions = listOf(FocusPreviewOverrideExtension()),
     )
   }
+  tryAdd("data/keyboard") {
+    // Soft-keyboard (IME) overlay. Planner always emits the extension so the shadow
+    // `LocalSoftwareKeyboardController` is in place for every render and app-side
+    // `keyboardController.show()` / focused `BasicTextField` raises the band naturally;
+    // `renderNow.overrides.keyboard` and `interactive/input` `KEY_*` dispatches also feed the
+    // same `KeyboardController`.
+    Extension(
+      id = "data/keyboard",
+      displayName = "Soft keyboard overlay",
+      previewOverrideExtensions = listOf(KeyboardPreviewOverrideExtension()),
+    )
+  }
   tryAdd("data/pseudolocale") {
     Extension(
       id = "data/pseudolocale",
