@@ -12,20 +12,16 @@ plugins {
 
 ktfmt { googleStyle() }
 
-// Phase A1 of the contrib refactor (see `contrib/README.md`): the `previews.json` schema
-// types — `PreviewInfo`, `PreviewManifest`, `Capture`, the scroll/animation/focus capture
-// records, the various enums — lift out of `:gradle-plugin`'s root subproject into a
-// pure-JVM library so non-Gradle consumers (Bazel rules, Amper task definitions in
+// Phase A2 of the contrib refactor (see `contrib/README.md`): the `previews.json` schema and
+// the ClassGraph-driven scan that produces it lift out of `:gradle-plugin`'s root subproject
+// into a pure-JVM library so non-Gradle consumers (Bazel rules, Amper task definitions in
 // `yschimke/compose-ai-contrib`) can pull `ee.schimke.composeai:preview-discovery` from
-// Maven Central without dragging :gradle-plugin or AGP onto their classpath.
+// Maven Central and produce conforming `previews.json` manifests by running the same scan the
+// gradle plugin uses — without dragging :gradle-plugin or AGP onto their classpath.
 //
-// Phase A2 (separate PR) moves the ClassGraph scan logic out of `DiscoverPreviewsTask` into
-// this module and adds a CLI main; that's where the `implementation(libs.classgraph)`
-// dependency lands. For now this is just the data types.
-//
-// Package is still `ee.schimke.composeai.plugin` to avoid churning every import inside
-// `:gradle-plugin` in one go; Phase A2 will rename to `ee.schimke.composeai.discovery`
-// alongside the scan-logic move.
+// A2c (next PR) adds a `java -jar` CLI main so a Bazel `genrule` or Amper task can wrap a
+// shell call to drive discovery; the library API exposed here is enough for in-process
+// Kotlin/JVM consumers today.
 //
 // Lives inside the `gradle-plugin` composite build (rather than the outer build) so the
 // gradle plugin can take a normal `project(":preview-discovery")` dep without round-tripping
@@ -34,6 +30,15 @@ ktfmt { googleStyle() }
 
 dependencies {
   api(libs.kotlinx.serialization.json)
+  // ClassGraph drives `PreviewDiscovery.discover(...)`: scans class dirs + dependency jars for
+  // `@Preview`-annotated methods, fans out multi-preview meta-annotations via
+  // `scanResult.getClassInfo(...)`. Same coord as :gradle-plugin (and matched at runtime so the
+  // adapter doesn't drag a second copy of ClassGraph onto its classpath).
+  api(libs.classgraph)
+  // ASM walks the preview method's bytecode to extract @Composable call targets — ClassGraph
+  // only surfaces annotations + signatures, not method-body invocations. Used by
+  // `PreviewTargetInference`.
+  api(libs.asm)
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

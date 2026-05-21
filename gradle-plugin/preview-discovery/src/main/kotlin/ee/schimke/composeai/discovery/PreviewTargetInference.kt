@@ -1,6 +1,5 @@
-package ee.schimke.composeai.plugin
+package ee.schimke.composeai.discovery
 
-import ee.schimke.composeai.discovery.*
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
@@ -25,7 +24,7 @@ import org.objectweb.asm.Opcodes
  * and is reserved for a follow-up. The [TargetSignal.WRAPPER_UNWRAPPED] enum value is declared for
  * that future use.
  */
-internal object PreviewTargetInference {
+object PreviewTargetInference {
 
   // FQN prefixes whose @Composable functions are theming / layout / runtime scaffolding
   // rather than the production UI under preview. Anything matching one of these is dropped
