@@ -16,7 +16,7 @@ can produce an Android APK with a `@Composable @Preview` function and a
 ## Running the fixture
 
 ```bash
-cd samples/amper-android
+cd contrib/amper-android
 
 # Sandbox / managed environments with a TLS-inspection proxy: the
 # bundled Zulu JRE Amper auto-downloads doesn't trust the proxy CA, so
@@ -53,7 +53,7 @@ side keys off).
 - No `roborazzi` / unit tests.
 - No `:preview-annotations` dependency (see above).
 - No multi-locale resources, vector / adaptive-icon assets — that surface
-  is exercised by [`samples/android/`](../android/) under Gradle.
+  is exercised by [`samples/android/`](../../samples/android/) under Gradle.
 
 ## Why `jvm.release: 17`
 

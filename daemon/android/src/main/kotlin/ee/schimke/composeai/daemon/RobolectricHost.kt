@@ -1316,6 +1316,13 @@ open class RobolectricHost(
                 WallpaperPreviewOverrideExtension(),
                 Material3ThemePreviewOverrideExtension(),
                 FocusPreviewOverrideExtension(),
+                // Soft-keyboard (IME) overlay. The planner always emits a `KeyboardOverrideExtension`
+                // so the around-composable's shadow `LocalSoftwareKeyboardController` is in place
+                // for every render — natural app-side `keyboardController.show()` / focused
+                // `BasicTextField` raises the band without a daemon-side seed. `renderNow.overrides
+                // .keyboard` and `interactive/input` `KEY_*` dispatches reach the same
+                // `KeyboardController` state holder.
+                KeyboardPreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through

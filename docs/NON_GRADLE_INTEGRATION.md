@@ -300,7 +300,7 @@ The integration:
 3. **Discover previews** — run ClassGraph against
    `<module>/build/.../classes/main` and write `previews.json`. A
    standalone Kotlin tool (~50 LOC) is enough; see
-   [`samples/amper-cmp-desktop/`](../samples/amper-cmp-desktop/) for the
+   [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/) for the
    shape.
 4. **Synthesise the descriptor** — emit `daemon-launch.json` from the
    resolved classpath + the user-classes path. See the same sample for
@@ -313,7 +313,7 @@ Amper currently distributes itself through `packages.jetbrains.team`
 [AMPER-471](https://youtrack.jetbrains.com/projects/AMPER/issues/AMPER-471));
 end-to-end CI for the Amper path needs that host allowlisted.
 
-The fixture at [`samples/amper-cmp-desktop/`](../samples/amper-cmp-desktop/)
+The fixture at [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/)
 vendors the Amper wrapper. `module.yaml` pins `jvm.release: 17` because
 the daemon JVM runs on JDK 17 — Amper's default `jvm.release: 21` produces
 class files the JDK-17 daemon refuses to load (`UnsupportedClassVersionError`,
@@ -393,6 +393,6 @@ before the renderer can load classes compiled against it.
 - Data products catalogue: [`docs/daemon/DATA-PRODUCTS.md`](daemon/DATA-PRODUCTS.md)
 - `RenderSession` API: [`render-session/api/.../RenderSession.kt`](../render-session/api/src/main/kotlin/ee/schimke/composeai/render/session/RenderSession.kt)
 - Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt)
-- Sample Amper fixture: [`samples/amper-cmp-desktop/`](../samples/amper-cmp-desktop/)
+- Sample Amper fixture: [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/)
 - Contract test demonstrating the recipe end-to-end: [`render-session/subprocess/src/test/.../NonGradleContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/NonGradleContractTest.kt)
 - Amper-driven end-to-end test against the fixture: [`render-session/subprocess/src/test/.../AmperContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt)

@@ -25,7 +25,7 @@ import org.junit.rules.TemporaryFolder
  * End-to-end proof that an Amper-built module's `@Preview` can be driven through `RenderSession`
  * without any Gradle involvement in producing the user classes.
  *
- * The fixture at `samples/amper-cmp-desktop/` is compiled by `./amper build` — a non-Gradle build
+ * The fixture at `contrib/amper-cmp-desktop/` is compiled by `./amper build` — a non-Gradle build
  * system. This test:
  *
  * 1. Reuses the renderer/connector/data jars and the Compose Desktop runtime jar bag from the
@@ -44,7 +44,7 @@ import org.junit.rules.TemporaryFolder
  *
  * **Self-skip:** the test exits cleanly (no failure) when the prerequisite inputs are missing.
  *
- * * Amper wrapper missing? Vendored as `samples/amper-cmp-desktop/amper`.
+ * * Amper wrapper missing? Vendored as `contrib/amper-cmp-desktop/amper`.
  * * Amper outputs missing? Run `./amper build` from the fixture first. In sandbox environments with
  *   a TLS-inspection proxy the bundled Zulu JRE needs the system truststore wired via
  *   `AMPER_JAVA_OPTIONS="-ea -XX:+EnableDynamicAgentLoading
@@ -66,7 +66,7 @@ class AmperContractTest {
   @Test
   fun `amper-built classes drive a real render via RenderSession`() {
     val repoRoot = locateRepoRoot()
-    val amperFixtureDir = File(repoRoot, "samples/amper-cmp-desktop")
+    val amperFixtureDir = File(repoRoot, "contrib/amper-cmp-desktop")
     val amperKotlinOutput =
       File(
         amperFixtureDir,
@@ -77,7 +77,7 @@ class AmperContractTest {
 
     if (!File(amperFixtureDir, "amper").canExecute()) {
       System.err.println(
-        "[AmperContractTest] skipping — `samples/amper-cmp-desktop/amper` wrapper missing or not executable"
+        "[AmperContractTest] skipping — `contrib/amper-cmp-desktop/amper` wrapper missing or not executable"
       )
       return
     }
@@ -85,7 +85,7 @@ class AmperContractTest {
     if (classFiles == null || classFiles.isEmpty()) {
       System.err.println(
         "[AmperContractTest] skipping — Amper outputs missing at $amperKotlinOutput. " +
-          "Run `cd samples/amper-cmp-desktop && AMPER_JAVA_OPTIONS=\"…trustStore=…\" ./amper build` first."
+          "Run `cd contrib/amper-cmp-desktop && AMPER_JAVA_OPTIONS=\"…trustStore=…\" ./amper build` first."
       )
       return
     }
