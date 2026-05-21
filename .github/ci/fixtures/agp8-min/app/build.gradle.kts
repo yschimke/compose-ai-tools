@@ -55,16 +55,16 @@ afterEvaluate {
 dependencies {
   // compose-bom 2026.05.00 — `compose-bom-stable` in the project's own
   // version catalog, what `:samples:android` and the rest of the codebase
-  // build against. Ships material3 1.4+ (which is what `Previews.kt`'s
-  // `LoadingIndicator` requires; the M3 1.3.x line in
-  // compose-bom 2024.12.01 doesn't have that composable). The agp8-min
-  // CI job downgrades this to 2024.12.01 in Phase 1 so the consumer's
-  // own preview source fails to compile against the older material3 —
-  // the same failure shape a real consumer hits when they pull a new
-  // Compose API ahead of their BOM. `compose-preview doctor` warns about
-  // the too-old BOM through its `env.compose-bom-version` pre-flight
-  // check (grep-based against `build.gradle.kts`, runs before Gradle).
-  // Phase 3 restores 2026.05.00 and asserts render then succeeds.
+  // build against. Ships material3 1.4.0 (which is what `Previews.kt`'s
+  // `VerticalDragHandle` requires; the M3 1.3.1 line in compose-bom
+  // 2024.12.01 doesn't have that composable). The agp8-min CI job
+  // downgrades this to 2024.12.01 in Phase 1 so the consumer's own
+  // preview source fails to compile against the older material3 — the
+  // same failure shape a real consumer hits when they pull a new Compose
+  // API ahead of their BOM. `compose-preview doctor` warns about the
+  // too-old BOM through its `env.compose-bom-version` pre-flight check
+  // (grep-based against `build.gradle.kts`, runs before Gradle). Phase 3
+  // restores 2026.05.00 and asserts render then succeeds.
   val composeBom = platform("androidx.compose:compose-bom:2026.05.00")
   implementation(composeBom)
   implementation("androidx.compose.ui:ui")
