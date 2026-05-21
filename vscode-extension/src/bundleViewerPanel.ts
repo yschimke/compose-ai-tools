@@ -77,7 +77,11 @@ type WebviewMessage =
     // `LiveStateController` produces these the same way it does for the
     // sidebar panel; the bundle viewer routes them to its per-tab
     // daemon and forwards the resulting `streamFrame` events back.
-    | { command: "requestStreamStart"; previewId: string }
+    | {
+          command: "requestStreamStart";
+          previewId: string;
+          overrides?: import("./daemon/daemonProtocol").PreviewOverrides;
+      }
     | { command: "requestStreamStop"; previewId: string }
     | {
           command: "requestStreamVisibility";
@@ -537,7 +541,7 @@ export class BundleViewerPanel {
                 this.daemon?.client.setVisible({ ids: msg.visible });
                 break;
             case "requestStreamStart":
-                await this.handleStreamStart(msg.previewId);
+                await this.handleStreamStart(msg.previewId, msg.overrides);
                 break;
             case "requestStreamStop":
                 this.handleStreamStop(msg.previewId);
@@ -563,7 +567,10 @@ export class BundleViewerPanel {
         }
     }
 
-    private async handleStreamStart(previewId: string): Promise<void> {
+    private async handleStreamStart(
+        previewId: string,
+        overrides?: import("./daemon/daemonProtocol").PreviewOverrides,
+    ): Promise<void> {
         const client = this.daemon?.client;
         if (!client) return;
         if (this.activeStreams.has(previewId)) {
@@ -572,7 +579,9 @@ export class BundleViewerPanel {
             return;
         }
         try {
-            const result = await client.streamStart({ previewId });
+            const result = await client.streamStart(
+                overrides ? { previewId, overrides } : { previewId },
+            );
             if (this.disposed) {
                 client.streamStop({ frameStreamId: result.frameStreamId });
                 return;

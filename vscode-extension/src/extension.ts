@@ -4418,7 +4418,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             }
             break;
         case "requestStreamStart":
-            void handleRequestStreamStart(msg.previewId);
+            void handleRequestStreamStart(msg.previewId, msg.overrides);
             break;
         case "requestStreamStop":
             void handleRequestStreamStop(msg.previewId);
@@ -5732,7 +5732,10 @@ async function handleSetInteractive(
  * input dispatch routes by the active frameStreamId regardless of which
  * handler minted it.
  */
-async function handleRequestStreamStart(previewId: string): Promise<void> {
+async function handleRequestStreamStart(
+    previewId: string,
+    overrides?: import("./daemon/daemonProtocol").PreviewOverrides,
+): Promise<void> {
     if (!daemonGate || !daemonScheduler) {
         return;
     }
@@ -5757,7 +5760,9 @@ async function handleRequestStreamStart(previewId: string): Promise<void> {
         return;
     }
     try {
-        const result = await client.streamStart({ previewId });
+        const result = await client.streamStart(
+            overrides ? { previewId, overrides } : { previewId },
+        );
         // Stream id stays in `activeStreamFrameStreams` only; do NOT cross-
         // populate `activeInteractiveStreams` (which is torn down by the
         // legacy `interactive/stop` flush path) or the daemon-side stream
