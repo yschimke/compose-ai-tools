@@ -135,10 +135,16 @@ class DesktopInteractiveSession(
       }
       InteractiveInputKind.KEY_DOWN -> {
         val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        // Mirror the press into the soft-keyboard band so an agent driving keyboard input through
+        // `interactive/input` sees the matching cap light up. The band's "press implies visible"
+        // rule in `KeyboardController.softInputVisible` also raises the band even if the consumer
+        // hasn't called `keyboardController.show()`.
+        KeyboardBandLabels.fromAndroidKeycode(input.keyCode)?.let(KeyboardController::notifyKeyDown)
         state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyDown))
       }
       InteractiveInputKind.KEY_UP -> {
         val key = androidKeycodeToComposeKey(input.keyCode) ?: return
+        KeyboardBandLabels.fromAndroidKeycode(input.keyCode)?.let(KeyboardController::notifyKeyUp)
         state.scene.sendKeyEvent(KeyEvent(key, KeyEventType.KeyUp))
       }
     }
