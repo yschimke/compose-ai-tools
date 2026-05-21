@@ -589,15 +589,23 @@ private class SessionAwareFakeHost(
    */
   @Volatile var lastOnSessionClosed: (() -> Unit)? = null
 
+  /**
+   * Captured `overrides` the server threaded through from `InteractiveStartParams.overrides`. Tests
+   * that assert protocol plumbing read this back to confirm the value flowed end-to-end.
+   */
+  @Volatile var lastOverrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides? = null
+
   override fun acquireInteractiveSession(
     previewId: String,
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
     acquireCalls.incrementAndGet()
     lastInspectionMode = inspectionMode
     lastOnSessionClosed = onSessionClosed
+    lastOverrides = overrides
     val pngFile = perPreview[previewId] ?: defaultPng
     val session =
       RecordingSession(previewId = previewId, pngFile = pngFile, onSessionClosed = onSessionClosed)
@@ -722,6 +730,7 @@ private class FailingSessionHost(private val defaultPng: File) : RenderHost {
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
     throw IllegalStateException("boom")
   }

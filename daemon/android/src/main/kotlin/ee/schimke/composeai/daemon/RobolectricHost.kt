@@ -808,7 +808,11 @@ open class RobolectricHost(
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
+    // overrides ignored — Android host doesn't route PreviewOverrides through interactive setup
+    // today. Accepting the param keeps the interface contract honoured and leaves a single-line
+    // change point for when the Android-side touch-overlay extension lands.
     if (sandboxCount < 2) {
       throw UnsupportedOperationException(
         "RobolectricHost: interactive sessions require sandboxCount >= 2 " +

@@ -254,6 +254,7 @@ private class SlowFakeHost(private val pngFile: File, private val renderDelayMs:
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
     val session = SlowSession(previewId, pngFile, renderDelayMs)
     sessions[nextSessionKey.getAndIncrement()] = session

@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+@file:OptIn(
+  androidx.compose.ui.InternalComposeUiApi::class,
+  androidx.compose.ui.ExperimentalComposeUiApi::class,
+)
 
 package ee.schimke.composeai.daemon
 
@@ -8,6 +11,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 
@@ -60,6 +66,19 @@ class DesktopInteractiveSession(
 
   @Volatile private var closed: Boolean = false
 
+  /**
+   * Per-pointer-id active state — keyed by [InteractiveInputParams.pointerId] (`null` collapses to
+   * `0`). Updated by `POINTER_DOWN` / `POINTER_MOVE` / `POINTER_UP` so the next multi-pointer
+   * dispatch sees every currently-pressed finger in a single `sendPointerEvent` call. Cleared per
+   * id on `POINTER_UP`. Mirrors the same pattern `DesktopRecordingSession` uses for scripted
+   * playback so an external panel sending two simultaneous `pointerDown`s actually gets a
+   * `Modifier.transformable {}` zoom callback (the gating signal is ≥ 2 pointers in one event).
+   *
+   * Per the [InteractiveSession] contract, JsonRpcServer serialises calls into one session, so a
+   * plain `MutableMap` is safe — no `ConcurrentHashMap` needed.
+   */
+  private val activePointers: MutableMap<Int, Offset> = mutableMapOf()
+
   override val isClosed: Boolean
     get() = closed
 
@@ -70,59 +89,50 @@ class DesktopInteractiveSession(
     when (input.kind) {
       InteractiveInputKind.CLICK -> {
         if (px == null || py == null) return
+        val id = input.pointerId ?: 0
         val offset = sceneOffset(px, py)
         // Press → render-tick → Release. The render tick between the two dispatches gives
         // Compose's gesture-detector coroutine a chance to observe the down event before the up
         // arrives — without it, `Modifier.clickable {}`'s `detectTapGestures` can race the two
         // events and miss the tap. The pattern matches what the Compose UI test harness's
         // `performClick` does internally.
-        // Press carries `button = PointerButton.Primary` + matching `buttons` because
-        // `Modifier.clickable` filters on the primary mouse button (or first finger on touch);
-        // omitting these makes the detector treat the event as ambiguous and ignore it.
+        // Goes through the same multi-pointer path as POINTER_* so a click dispatched while
+        // another pointer is already down still carries the other finger in its event.
         val nowNs = engine.currentFrameNanoTime()
         val nowMs = nowNs / 1_000_000L
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Press,
-          position = offset,
-          timeMillis = nowMs,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
+        activePointers[id] = offset
+        dispatchMultiPointer(eventType = PointerEventType.Press, timeMillis = nowMs)
         state.scene.render(nanoTime = nowNs)
-        state.scene.sendPointerEvent(
+        activePointers.remove(id)
+        dispatchMultiPointer(
           eventType = PointerEventType.Release,
-          position = offset,
           timeMillis = nowMs + CLICK_HOLD_MS,
-          button = PointerButton.Primary,
-          buttons = PointerButtons(),
+          releasedPointer = id to offset,
         )
       }
       InteractiveInputKind.POINTER_DOWN -> {
         if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Press,
-          position = sceneOffset(px, py),
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
+        val id = input.pointerId ?: 0
+        activePointers[id] = sceneOffset(px, py)
+        dispatchMultiPointer(eventType = PointerEventType.Press)
       }
       InteractiveInputKind.POINTER_MOVE -> {
         if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Move,
-          position = sceneOffset(px, py),
-          button = PointerButton.Primary,
-          buttons = PointerButtons(isPrimaryPressed = true),
-        )
+        val id = input.pointerId ?: 0
+        activePointers[id] = sceneOffset(px, py)
+        dispatchMultiPointer(eventType = PointerEventType.Move)
       }
       InteractiveInputKind.POINTER_UP -> {
         if (px == null || py == null) return
-        state.scene.sendPointerEvent(
-          eventType = PointerEventType.Release,
-          position = sceneOffset(px, py),
-          button = PointerButton.Primary,
-          buttons = PointerButtons(),
-        )
+        val id = input.pointerId ?: 0
+        val offset = sceneOffset(px, py)
+        // Remove BEFORE dispatch but pass the released id+position into [dispatchMultiPointer] so
+        // Compose sees the up event with `pressed = false` for this pointer alongside any
+        // still-active fingers. Without the explicit released entry, dropping the pointer here and
+        // dispatching only remaining actives would deliver a Move-shaped event and the gesture
+        // detector would never see the "finger lifted" signal.
+        activePointers.remove(id)
+        dispatchMultiPointer(eventType = PointerEventType.Release, releasedPointer = id to offset)
       }
       InteractiveInputKind.ROTARY_SCROLL -> {
         if (px == null || py == null) return
@@ -184,6 +194,60 @@ class DesktopInteractiveSession(
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {
     val d = state.density.density
     return androidx.compose.ui.geometry.Offset(px.toFloat() / d, py.toFloat() / d)
+  }
+
+  /**
+   * Dispatch one multi-pointer event carrying every currently-active pointer (and, optionally, a
+   * just-released pointer with `pressed = false`). Mirrors
+   * `DesktopRecordingSession.dispatchMultiPointer` — Skiko's `sendPointerEvent` overload that takes
+   * `List<ComposeScenePointer>` is what gives `Modifier.transformable {}` its rotation / zoom / pan
+   * callbacks: the gesture detector only fires when it sees ≥ 2 pointers in a single event.
+   *
+   * Falls back to a no-op when there are no pointers to dispatch — defensive, the call sites always
+   * provide either an active set, a `releasedPointer`, or both.
+   *
+   * Wall-clock timing: when [timeMillis] is `null` (the default, used by every kind except CLICK)
+   * we read [RenderEngine.currentFrameNanoTime] so the event timeline matches what
+   * `render(useWallClockFrameTime = true)` exposes to the composition. CLICK passes an explicit
+   * value so its synthetic Press and Release land at predictable Δt = `CLICK_HOLD_MS`.
+   */
+  private fun dispatchMultiPointer(
+    eventType: PointerEventType,
+    timeMillis: Long? = null,
+    releasedPointer: Pair<Int, Offset>? = null,
+  ) {
+    val pointers = buildList {
+      for ((pid, off) in activePointers) {
+        add(
+          ComposeScenePointer(
+            id = PointerId(pid.toLong()),
+            position = off,
+            pressed = true,
+            type = PointerType.Touch,
+          )
+        )
+      }
+      if (releasedPointer != null) {
+        add(
+          ComposeScenePointer(
+            id = PointerId(releasedPointer.first.toLong()),
+            position = releasedPointer.second,
+            pressed = false,
+            type = PointerType.Touch,
+          )
+        )
+      }
+    }
+    if (pointers.isEmpty()) return
+    val anyPressed = pointers.any { it.pressed }
+    val effectiveTimeMs = timeMillis ?: (engine.currentFrameNanoTime() / 1_000_000L)
+    state.scene.sendPointerEvent(
+      eventType = eventType,
+      pointers = pointers,
+      buttons = PointerButtons(isPrimaryPressed = anyPressed),
+      timeMillis = effectiveTimeMs,
+      button = if (eventType == PointerEventType.Press) PointerButton.Primary else null,
+    )
   }
 
   /** For tests that want to peek at the held scene's identity without exposing it permanently. */

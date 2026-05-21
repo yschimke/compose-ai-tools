@@ -186,6 +186,15 @@ interface RenderHost {
     classLoader: ClassLoader,
     inspectionMode: Boolean? = null,
     onSessionClosed: (() -> Unit)? = null,
+    /**
+     * Optional render-spec overrides to apply to the held interactive scene. Mirrors the analogous
+     * parameter on [acquireRecordingSession] — the interactive payoff is `touchOverlay = true`,
+     * which installs the `TouchOverlayExtension` so visualization rings paint over the streamed
+     * frames an external panel is rendering. Backends without a Compose host, or hosts that don't
+     * support per-session spec overrides for interactive mode, ignore the field. Default `null`
+     * preserves pre-existing behaviour.
+     */
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides? = null,
   ): InteractiveSession =
     throw UnsupportedOperationException(
       "interactive mode unsupported by ${this::class.simpleName ?: this::class.java.name}"

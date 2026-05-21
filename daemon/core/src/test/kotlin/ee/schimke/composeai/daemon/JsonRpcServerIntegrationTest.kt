@@ -1506,6 +1506,7 @@ private class DisconnectFakeHost : RenderHost {
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
     acquireCount.incrementAndGet()
     val session = RecordingDisconnectSession(previewId)
