@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.discovery.*
 import org.junit.Test
 
 class PreviewTargetInferenceTest {

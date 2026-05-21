@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
 import io.github.classgraph.ScanResult
