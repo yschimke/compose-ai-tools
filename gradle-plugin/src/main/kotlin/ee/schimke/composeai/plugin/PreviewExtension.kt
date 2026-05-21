@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import ee.schimke.composeai.plugin.daemon.DaemonExtension
 import javax.inject.Inject
 import org.gradle.api.Action

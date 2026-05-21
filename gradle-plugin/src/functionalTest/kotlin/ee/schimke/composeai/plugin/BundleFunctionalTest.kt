@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.discovery.*
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream

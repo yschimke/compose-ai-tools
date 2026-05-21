@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
