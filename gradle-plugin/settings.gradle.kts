@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "gradle-plugin"
+
+include(":preview-discovery")

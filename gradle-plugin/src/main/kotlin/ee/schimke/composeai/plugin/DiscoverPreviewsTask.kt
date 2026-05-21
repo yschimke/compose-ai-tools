@@ -1029,12 +1029,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
    * index. Empty when neither field is set (defensive — the discovery extractor doesn't emit such
    * captures).
    */
-  private fun focusSuffixOf(focus: FocusCapture): String =
-    when {
-      focus.direction != null && focus.step != null -> "step${focus.step}_${focus.direction.name}"
+  private fun focusSuffixOf(focus: FocusCapture): String {
+    val direction = focus.direction
+    val step = focus.step
+    return when {
+      direction != null && step != null -> "step${step}_${direction.name}"
       focus.tabIndex != null -> focus.tabIndex.toString()
       else -> ""
     }
+  }
 
   /**
    * Reads `@FocusedPreview(indices, traverse, overlay)` off the function annotation list. Returns
@@ -1300,8 +1303,10 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   // varies. Fall back to device + fontScale + uiMode only if neither name nor
   // group is present.
   private fun buildVariantSuffix(params: PreviewParams): String {
-    if (!params.name.isNullOrBlank()) return "_${sanitizeForPath(params.name)}"
-    if (!params.group.isNullOrBlank()) return "_${sanitizeForPath(params.group)}"
+    val name = params.name
+    if (!name.isNullOrBlank()) return "_${sanitizeForPath(name)}"
+    val group = params.group
+    if (!group.isNullOrBlank()) return "_${sanitizeForPath(group)}"
     val parts = mutableListOf<String>()
     params.device?.substringAfterLast(":")?.takeIf { it.isNotBlank() }?.let(parts::add)
     if (params.fontScale != 1.0f) parts.add("fs${params.fontScale}")
