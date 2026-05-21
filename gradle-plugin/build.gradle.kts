@@ -171,3 +171,18 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2025")
 }
+
+// Make `:gradle-plugin:publishToMavenLocal` (and its Central counterparts) recursive across
+// every subproject of this composite build. The outer build's root-level abbreviation
+// already fans out across outer-build subprojects; for `:gradle-plugin` (an includeBuild),
+// workflows address the includeBuild's root explicitly — so a publish task on the root must
+// pull every subproject along for the ride, otherwise `compose-preview-plugin` ships with a
+// dangling `api(":preview-discovery")` dep that downstream consumers can't resolve.
+//
+// `tasks.matching {}` is lazy and tolerates the Central tasks being registered later in
+// configuration (vanniktech wires them in an `afterEvaluate`); the dependency edge is
+// attached the moment the matching task is added, before the task graph is computed.
+listOf("publishToMavenLocal", "publishToMavenCentral", "publishAndReleaseToMavenCentral").forEach {
+  taskName ->
+  tasks.matching { it.name == taskName }.configureEach { dependsOn(":preview-discovery:$taskName") }
+}
