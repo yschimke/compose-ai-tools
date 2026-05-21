@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import io.github.classgraph.ClassGraph
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream

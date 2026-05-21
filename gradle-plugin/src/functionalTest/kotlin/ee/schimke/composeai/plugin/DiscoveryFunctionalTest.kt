@@ -1,6 +1,7 @@
 package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
+import ee.schimke.composeai.discovery.*
 import java.io.File
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner

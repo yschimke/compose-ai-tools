@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import java.io.File
 import java.io.InputStream
 import javax.xml.stream.XMLInputFactory

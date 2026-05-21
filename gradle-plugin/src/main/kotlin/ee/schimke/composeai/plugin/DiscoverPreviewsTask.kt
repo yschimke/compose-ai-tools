@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import io.github.classgraph.AnnotationClassRef
 import io.github.classgraph.AnnotationEnumValue
 import io.github.classgraph.AnnotationInfo
