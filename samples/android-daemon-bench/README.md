@@ -18,7 +18,7 @@ that would re-introduce the same problem.
 
 ## Tasks
 
-- `./gradlew :samples:android-daemon-bench:renderPreviews` — renders all
+- `./gradlew :samples:android-daemon-bench:composePreviewRender` — renders all
   five previews to `build/compose-previews/renders/`. Smoke test that the
   module builds and discovery wires up.
 - `./gradlew :samples:android-daemon-bench:benchPreviewLatency` — runs the
@@ -32,14 +32,14 @@ Mirrors DESIGN § 13's table:
 
 | Phase         | How measured                                                     |
 | ------------- | ---------------------------------------------------------------- |
-| `config`      | wall of `renderPreviews --dry-run` (no actions executed)         |
+| `config`      | wall of `composePreviewRender --dry-run` (no actions executed)         |
 | `compile`     | wall of `compileDebugKotlin` in isolation                        |
-| `discovery`   | wall of `discoverPreviews` in isolation                          |
-| `forkAndInit` | renderPreviews wall − sum(per-test render ms)                    |
+| `discovery`   | wall of `composePreviewDiscover` in isolation                          |
+| `forkAndInit` | composePreviewRender wall − sum(per-test render ms)                    |
 | `render`      | sum of per-`testcase` `time=` attrs in `TEST-*.xml`              |
 
 `forkAndInit` is a **derived** number — it captures everything the
-renderPreviews Test task does that isn't inside a JUnit `@Test` body: JVM
+composePreviewRender Test task does that isn't inside a JUnit `@Test` body: JVM
 fork startup, Robolectric sandbox bootstrap, classpath assembly, and Gradle
 overhead between the build start and the first test. It's the closest
 single number to "the cost the daemon eliminates by staying alive."

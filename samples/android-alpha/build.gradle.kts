@@ -21,7 +21,7 @@ composePreview {
 
   // `FocusedPreviewPixelTest` reads PNGs under
   // `build/compose-previews/renders/`; opt the unit-test tasks into a
-  // `dependsOn(renderAllPreviews)` chain so `:samples:android-alpha:check`
+  // `dependsOn(composePreviewRenderAll)` chain so `:samples:android-alpha:check`
   // renders before asserting.
   renderBeforeUnitTests.set(true)
 }

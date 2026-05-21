@@ -199,7 +199,7 @@ internal fun interpretDaemonSmoke(modulePath: String, outcome: DaemonSmokeOutcom
               "Re-run discovery and the daemon bootstrap so the descriptor and classpath agree.",
             commands =
               listOf(
-                "./gradlew :$modulePath:discoverPreviews :$modulePath:composePreviewDaemonStart",
+                "./gradlew :$modulePath:composePreviewDiscover :$modulePath:composePreviewDaemonStart",
                 "compose-preview mcp install",
               ),
           ),

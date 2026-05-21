@@ -38,7 +38,7 @@ describe("LogFilter", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
                 "> Task :samples:wear:compileDebugKotlin\n" +
-                    "> Task :samples:wear:discoverPreviews\n",
+                    "> Task :samples:wear:composePreviewDiscover\n",
             );
             assert.strictEqual(out, "");
         });
@@ -152,7 +152,7 @@ describe("LogFilter", () => {
             assert.strictEqual(out, "BUILD FAILED in 1s\n");
         });
 
-        it("drops the discoverPreviews bullet list at normal", () => {
+        it("drops the composePreviewDiscover bullet list at normal", () => {
             const f = withLevel("normal");
             const out = f.filterGradleChunk(
                 "Discovered 17 preview(s) in module 'wear':\n" +
@@ -470,7 +470,9 @@ describe("LogFilter", () => {
                 true,
             );
             assert.strictEqual(
-                f.shouldEmitInformational("> :samples:wear:discoverPreviews"),
+                f.shouldEmitInformational(
+                    "> :samples:wear:composePreviewDiscover",
+                ),
                 true,
             );
             assert.strictEqual(
@@ -538,18 +540,20 @@ describe("LogFilter", () => {
                 false,
             );
             assert.strictEqual(
-                f.shouldEmitInformational("> :samples:wear:discoverPreviews"),
-                false,
-            );
-            assert.strictEqual(
                 f.shouldEmitInformational(
-                    "> :samples:wear:discoverPreviews completed",
+                    "> :samples:wear:composePreviewDiscover",
                 ),
                 false,
             );
             assert.strictEqual(
                 f.shouldEmitInformational(
-                    "> :samples:wear:discoverPreviews cancelled",
+                    "> :samples:wear:composePreviewDiscover completed",
+                ),
+                false,
+            );
+            assert.strictEqual(
+                f.shouldEmitInformational(
+                    "> :samples:wear:composePreviewDiscover cancelled",
                 ),
                 false,
             );
@@ -688,12 +692,14 @@ describe("LogFilter", () => {
                 false,
             );
             assert.strictEqual(
-                f.shouldEmitInformational("> :samples:wear:discoverPreviews"),
+                f.shouldEmitInformational(
+                    "> :samples:wear:composePreviewDiscover",
+                ),
                 false,
             );
             assert.strictEqual(
                 f.shouldEmitInformational(
-                    "> :samples:wear:discoverPreviews completed",
+                    "> :samples:wear:composePreviewDiscover completed",
                 ),
                 false,
             );

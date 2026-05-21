@@ -164,7 +164,7 @@ Each entry below points at a working `NotificationCompat` example.
 | Actions (no style) | Reply / dismiss / archive button rows beneath the body. Renders regardless of `setStyle`. | [`ActionsPreview`](../samples/android/src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt) |
 
 The full gallery lives in [samples/android/src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt](../samples/android/src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt)
-and runs end-to-end via `./gradlew :samples:android:renderAllPreviews`.
+and runs end-to-end via `./gradlew :samples:android:composePreviewRenderAll`.
 
 ## Localisation
 

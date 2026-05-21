@@ -97,7 +97,7 @@ export class FilterController {
      * to let `apply` clear its own message without touching extension-
      * set text (empty-file notice, build errors, etc.).
      *
-     * `renderPreviews` (in `cardBuilder.ts`) and the `messageHandlers`
+     * `composePreviewRender` (in `cardBuilder.ts`) and the `messageHandlers`
      * dispatcher reach for this via the `setMessage` callback in their
      * respective contexts.
      */

@@ -26,9 +26,9 @@ import org.gradle.api.tasks.TaskAction
  * plus a list of [ManifestReference] rows.
  *
  * No rendering happens here — captures land with their intended `renderOutput` paths but the PNGs /
- * GIFs are produced later by the (still-to-come) `renderAndroidResources` task. Wiring is split so
- * the manifest is cheap to regenerate (sub-second walks) and tooling can read the index without
- * waiting for Robolectric to spin up.
+ * GIFs are produced later by the (still-to-come) `composePreviewRenderAndroidResources` task.
+ * Wiring is split so the manifest is cheap to regenerate (sub-second walks) and tooling can read
+ * the index without waiting for Robolectric to spin up.
  */
 @CacheableTask
 abstract class DiscoverAndroidResourcesTask : DefaultTask() {

@@ -314,7 +314,7 @@ export class BuildProgressTracker {
     private transitionTo(phase: PhaseId): void {
         const targetIdx = PHASE_INDEX[phase];
         const currentIdx = PHASE_INDEX[this.currentPhase];
-        // Phases are monotonic — a stray `discoverPreviews` line landing in the
+        // Phases are monotonic — a stray `composePreviewDiscover` line landing in the
         // middle of a render doesn't drag the bar backward. Same-phase
         // signals are no-ops.
         if (targetIdx <= currentIdx) {

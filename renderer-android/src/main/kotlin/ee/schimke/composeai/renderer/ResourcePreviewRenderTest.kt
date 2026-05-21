@@ -23,7 +23,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Android XML resource renderer. Reads the `resources.json` written by `discoverAndroidResources`
+ * Android XML resource renderer. Reads the `resources.json` written by `composePreviewDiscoverAndroidResources`
  * (path via `composeai.resources.manifest`), iterates every [RenderResourceCapture], and writes a
  * PNG / GIF to the directory pointed at by `composeai.resources.outputDir`.
  *
@@ -31,8 +31,8 @@ import org.robolectric.annotation.Config
  * `ANIMATED_VECTOR` (GIF).
  *
  * Robolectric setup mirrors [RobolectricRenderTest]'s pin: SDK 35, NATIVE graphics, paused looper,
- * hardware pixel-copy. The Gradle task wiring (`renderAndroidResources`) sets the same system
- * properties on this Test task as on `renderPreviews`, so both paths share Robolectric's runtime
+ * hardware pixel-copy. The Gradle task wiring (`composePreviewRenderAndroidResources`) sets the same system
+ * properties on this Test task as on `composePreviewRender`, so both paths share Robolectric's runtime
  * configuration.
  */
 @RunWith(RobolectricTestRunner::class)

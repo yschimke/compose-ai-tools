@@ -38,10 +38,10 @@ dependencies {
 
 // One row per (target, phase, scenario, run). Captured to docs/daemon/baseline-latency.csv.
 // Phases mirror P0.1's Android table; the desktop equivalents are:
-//   config       — `:bench:renderPreviews --dry-run` wall (same as Android).
+//   config       — `:bench:composePreviewRender --dry-run` wall (same as Android).
 //   compile      — `compileKotlin` wall (kotlin.jvm; no `compileDebugKotlin`).
-//   discovery    — `discoverPreviews` wall (renderer-agnostic).
-//   forkAndInit  — derived: renderPreviews wall - sum(per-preview javaexec walls).
+//   discovery    — `composePreviewDiscover` wall (renderer-agnostic).
+//   forkAndInit  — derived: composePreviewRender wall - sum(per-preview javaexec walls).
 //                  Desktop forks ONE JVM PER PREVIEW (RenderPreviewsTask.renderWithCompose
 //                  iterates `execOperations.javaexec` per preview) — so this captures
 //                  Gradle's orchestration overhead BETWEEN those forks, not the forks
@@ -153,7 +153,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 
     // Same string-literal swap rationale as P0.1: kotlinc strips comments,
     // so a comment-only edit leaves bytecode unchanged and downstream
-    // `.class`-hashing tasks (renderPreviews, discoverPreviews) stay
+    // `.class`-hashing tasks (composePreviewRender, composePreviewDiscover) stay
     // UP-TO-DATE. A varying string literal is the smallest input mutation
     // that propagates all the way through.
     val literalMarker = "\"three\""
@@ -243,8 +243,9 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 
       // Phase 1: config (dry-run, no actions executed).
       val dryFlags = arrayOf("--dry-run") + cacheFlags
-      val configRes = gradle("$benchPath:renderPreviews", *dryFlags)
-      rows += Row("config", scenario, run, configRes.wallMs, "wall of renderPreviews --dry-run")
+      val configRes = gradle("$benchPath:composePreviewRender", *dryFlags)
+      rows +=
+        Row("config", scenario, run, configRes.wallMs, "wall of composePreviewRender --dry-run")
 
       // Phase 2: compileKotlin in isolation. (kotlin.jvm plugin: no
       // `compileDebugKotlin` variant — single `compileKotlin` task.)
@@ -260,22 +261,22 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           else "compileKotlin UP-TO-DATE; wall is config + up-to-date checks",
         )
 
-      // Phase 3: discoverPreviews in isolation.
-      val discoveryRes = gradle("$benchPath:discoverPreviews", *cacheFlags)
-      val discoveryRan = didTaskRun(discoveryRes.output, "$benchPath:discoverPreviews")
+      // Phase 3: composePreviewDiscover in isolation.
+      val discoveryRes = gradle("$benchPath:composePreviewDiscover", *cacheFlags)
+      val discoveryRan = didTaskRun(discoveryRes.output, "$benchPath:composePreviewDiscover")
       rows +=
         Row(
           "discovery",
           scenario,
           run,
           discoveryRes.wallMs,
-          if (discoveryRan) "wall of discoverPreviews task (incl. config)"
-          else "discoverPreviews UP-TO-DATE; wall is config + up-to-date checks",
+          if (discoveryRan) "wall of composePreviewDiscover task (incl. config)"
+          else "composePreviewDiscover UP-TO-DATE; wall is config + up-to-date checks",
         )
 
-      // Phase 4 + 5: renderPreviews wall, then per-preview probe walls.
-      val renderRes = gradle("$benchPath:renderPreviews", *cacheFlags)
-      val renderRan = didTaskRun(renderRes.output, "$benchPath:renderPreviews")
+      // Phase 4 + 5: composePreviewRender wall, then per-preview probe walls.
+      val renderRes = gradle("$benchPath:composePreviewRender", *cacheFlags)
+      val renderRan = didTaskRun(renderRes.output, "$benchPath:composePreviewRender")
 
       val (probeTotalMs, renderCount) = if (renderRan) probeRenders() else 0L to 0
       val forkInitMs = (renderRes.wallMs - probeTotalMs).coerceAtLeast(0)
@@ -286,8 +287,8 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           run,
           forkInitMs,
           if (renderRan)
-            "renderPreviews wall - sum(per-preview javaexec) = Gradle orchestration between forks"
-          else "renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)",
+            "composePreviewRender wall - sum(per-preview javaexec) = Gradle orchestration between forks"
+          else "composePreviewRender UP-TO-DATE; whole wall is Gradle overhead (no fork; no render)",
         )
       rows +=
         Row(
@@ -297,7 +298,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           probeTotalMs,
           if (renderRan)
             "sum of $renderCount direct DesktopRendererMain javaexec walls (incl. per-process JVM+Skiko init)"
-          else "renderPreviews UP-TO-DATE; no render work (0 by definition)",
+          else "composePreviewRender UP-TO-DATE; no render work (0 by definition)",
         )
     }
 
@@ -320,7 +321,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     val scenarioNames = listOf("cold", "warm-no-edit", "warm-after-1-line-edit")
 
     fun primeWarm() {
-      gradle("$benchPath:renderPreviews")
+      gradle("$benchPath:composePreviewRender")
     }
 
     for (name in scenarioNames) {
@@ -471,7 +472,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   private data class RunResult(val wallMs: Long, val output: String)
 }
 
-// Renderer classpath: same configuration the desktop renderPreviews task uses
+// Renderer classpath: same configuration the desktop composePreviewRender task uses
 // (`composePreviewRenderer` includes :renderer-desktop) plus this module's
 // classes + runtime classpath. Resolved at config time.
 val rendererCp = configurations.named("composePreviewRenderer")
@@ -481,11 +482,11 @@ val runtimeCp = configurations.named("runtimeClasspath")
 tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   group = "verification"
   description =
-    "Times the existing desktop renderPreviews path under cold / warm-no-edit / " +
+    "Times the existing desktop composePreviewRender path under cold / warm-no-edit / " +
       "warm-after-1-line-edit scenarios; appends desktop rows to docs/daemon/baseline-latency.csv."
   rendererClasspath.from(mainClasses, runtimeCp, rendererCp)
   // Renderer probe needs compiled classes + previews.json on disk.
-  dependsOn("renderPreviews")
+  dependsOn("composePreviewRender")
   notCompatibleWithConfigurationCache(
     "BenchPreviewLatencyTask shells out to a nested ./gradlew invocation"
   )

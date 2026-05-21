@@ -49,7 +49,7 @@ class FreshnessMetrics {
 
   // Manifest reload counters — bumped when the poller re-reads `previews.json` because its
   // mtime+hash advanced. Lets an operator confirm the issue-#834 path actually fires when
-  // Gradle's `discoverPreviews` rewrites the manifest between renders.
+  // Gradle's `composePreviewDiscover` rewrites the manifest between renders.
   val manifestStats = AtomicLong()
   val manifestRereads = AtomicLong()
   val manifestPreviewsAdded = AtomicLong()

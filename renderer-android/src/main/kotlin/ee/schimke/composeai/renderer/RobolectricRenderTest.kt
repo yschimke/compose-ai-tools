@@ -569,7 +569,7 @@ abstract class RobolectricRenderTestBase(
         // a11y data products (ATF + hierarchy) are produced exclusively by the daemon path
         // (`daemon/android`'s `RenderEngine` drives the post-capture walk via
         // `AccessibilityHierarchyExtension` against the live SemanticsNode root). This
-        // standalone Robolectric `renderPreviews` task is the "normal render only" path — no
+        // standalone Robolectric `composePreviewRender` task is the "normal render only" path — no
         // accessibility sidecars are written here. `LocalInspectionMode` still flips to
         // `false` unconditionally though: it's what most consumers expect for production-like
         // rendering, independent of the a11y subject.
@@ -1027,7 +1027,7 @@ abstract class RobolectricRenderTestBase(
                     }
 
                     // ATF / hierarchy production lives in `daemon/android`'s `RenderEngine` —
-                    // the standalone Robolectric `renderPreviews` Task is "normal render only"
+                    // the standalone Robolectric `composePreviewRender` Task is "normal render only"
                     // and never writes accessibility sidecars. Consumers that want a11y data
                     // run the daemon (VS Code, `compose-preview a11y`, MCP / agent flows).
 

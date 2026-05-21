@@ -20,11 +20,11 @@ import org.gradle.tooling.events.test.TestOperationDescriptor
  * Handle for a subproject that applies `ee.schimke.composeai.preview`.
  *
  * [gradlePath] is the colon-separated project path **without** its leading colon (e.g. `"app"`,
- * `"auth:composables"`) — used to address Gradle tasks like `":$gradlePath:renderAllPreviews"` and
- * to identify the module in CLI output / persisted state. [projectDir] is the actual filesystem
- * directory of that subproject, resolved via Gradle's Tooling API. Using it instead of
- * `projectRoot/$gradlePath` is what makes nested subprojects (`:foo:bar`) and any custom
- * `project.projectDir` override work correctly — see issue #157.
+ * `"auth:composables"`) — used to address Gradle tasks like
+ * `":$gradlePath:composePreviewRenderAll"` and to identify the module in CLI output / persisted
+ * state. [projectDir] is the actual filesystem directory of that subproject, resolved via Gradle's
+ * Tooling API. Using it instead of `projectRoot/$gradlePath` is what makes nested subprojects
+ * (`:foo:bar`) and any custom `project.projectDir` override work correctly — see issue #157.
  */
 data class PreviewModule(val gradlePath: String, val projectDir: File)
 
@@ -170,9 +170,9 @@ class GradleConnection(
                   if (
                     progress &&
                       !verbose &&
-                      (desc.contains("discoverPreviews") ||
-                        desc.contains("renderPreviews") ||
-                        desc.contains("renderAllPreviews"))
+                      (desc.contains("composePreviewDiscover") ||
+                        desc.contains("composePreviewRender") ||
+                        desc.contains("composePreviewRenderAll"))
                   ) {
                     val elapsed = (System.currentTimeMillis() - startTime) / 1000
                     System.err.println("  [${elapsed}s] $desc")
@@ -366,15 +366,16 @@ class GradleConnection(
   }
 
   /**
-   * Find all subprojects that have a `discoverPreviews` task — these have the compose-ai-tools
-   * plugin applied.
+   * Find all subprojects that have a `composePreviewDiscover` task — these have the
+   * compose-ai-tools plugin applied.
    *
    * Each entry carries both the Gradle path (used to build task specs like
-   * `:foo:bar:renderAllPreviews`) and the resolved filesystem `projectDir`. Nested subprojects
-   * (`:foo:bar`) have directory layouts like `foo/bar/`, so substituting `:` for `/` doesn't always
-   * work — and even for standard layouts a user can point `project.projectDir` anywhere. Reading it
-   * from the Tooling API's [GradleProject.projectDirectory] is the only reliable way to resolve
-   * manifests / PNGs on disk without replicating Gradle's own project-layout logic.
+   * `:foo:bar:composePreviewRenderAll`) and the resolved filesystem `projectDir`. Nested
+   * subprojects (`:foo:bar`) have directory layouts like `foo/bar/`, so substituting `:` for `/`
+   * doesn't always work — and even for standard layouts a user can point `project.projectDir`
+   * anywhere. Reading it from the Tooling API's [GradleProject.projectDirectory] is the only
+   * reliable way to resolve manifests / PNGs on disk without replicating Gradle's own
+   * project-layout logic.
    */
   fun findPreviewModules(): List<PreviewModule> {
     return try {
@@ -386,7 +387,7 @@ class GradleConnection(
       modelAccessFailure = null
       val modules = mutableListOf<PreviewModule>()
       fun visit(project: org.gradle.tooling.model.GradleProject) {
-        val hasPreviewTask = project.tasks.any { it.name == "discoverPreviews" }
+        val hasPreviewTask = project.tasks.any { it.name == "composePreviewDiscover" }
         if (hasPreviewTask) {
           val path = project.path.removePrefix(":")
           if (path.isNotEmpty()) {

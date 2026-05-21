@@ -270,12 +270,12 @@ class DaemonSupervisor(
         // open and `record_preview` calls round-trip without the diagnostic.
         supervised.recordingFormats = result.capabilities.recordingFormats.toSet()
         // Cache the manifest path so the MCP server's background poller can detect a Gradle
-        // `discoverPreviews` re-run between renders and re-load the manifest into the catalog
+        // `composePreviewDiscover` re-run between renders and re-load the manifest into the catalog
         // (issue #834). Blank for backends that don't ship a `previews.json`.
         supervised.manifestPath = result.manifest.path.takeIf { it.isNotBlank() }
         // The daemon only emits `discoveryUpdated` for *deltas* — the initial preview set comes
         // via `initialize.manifest.path` (a `previews.json` written by the gradle plugin's
-        // `discoverPreviews` task). Synthesise an initial `discoveryUpdated` notification by
+        // `composePreviewDiscover` task). Synthesise an initial `discoveryUpdated` notification by
         // reading that file and dispatching it through the router as if it were a wire-level
         // event.
         synthesiseInitialDiscovery(supervised, result.manifest.path)
@@ -430,10 +430,10 @@ class SupervisedDaemon(val workspaceId: WorkspaceId, val modulePath: String) {
 
   /**
    * Path to `previews.json` (the per-module manifest written by the gradle plugin's
-   * `discoverPreviews` task). Captured at `initialize` time from the daemon's
+   * `composePreviewDiscover` task). Captured at `initialize` time from the daemon's
    * `InitializeResult.manifest.path`. The `DaemonMcpServer`'s background poller stats this file
-   * each cycle so a `discoverPreviews` re-run between renders publishes new preview ids into the
-   * MCP catalog without an MCP server restart — closes the "manifest doesn't auto-refresh" gap
+   * each cycle so a `composePreviewDiscover` re-run between renders publishes new preview ids into
+   * the MCP catalog without an MCP server restart — closes the "manifest doesn't auto-refresh" gap
    * reported in issue #834. Null/blank when the daemon doesn't advertise a manifest path (older
    * daemons / non-Gradle backends).
    */

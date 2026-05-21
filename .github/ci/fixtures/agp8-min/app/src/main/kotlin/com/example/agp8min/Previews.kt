@@ -14,7 +14,7 @@ import androidx.compose.ui.tooling.preview.Preview
 // cleanly there. compose-bom 2024.12.01, which the agp8-min CI job
 // downgrades to in Phase 1, ships M3 1.3.1 without this composable; the
 // import then fails to resolve and `compileDebugKotlin` errors out
-// before `renderPreviews` can even start. That's the same failure shape
+// before `composePreviewRender` can even start. That's the same failure shape
 // a real consumer hits when their source reaches for a new Compose API
 // ahead of their BOM, and it's what `compose-preview doctor`'s
 // `env.compose-bom-version` pre-flight warns about.

@@ -8,7 +8,7 @@
   no-classpath-change file save in VS Code.
 - Eliminate Gradle configuration, JVM fork startup, and Robolectric
   sandbox bootstrap from the per-save hot path.
-- Keep the existing `renderPreviews` Gradle task path untouched and
+- Keep the existing `composePreviewRender` Gradle task path untouched and
   always available.
 
 **Non-goals (v1)**
@@ -17,7 +17,7 @@
   gets its own daemon JVM.
 - The `compose-preview` CLI binary keeps using the Gradle task. (MCP
   daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
-- Replacing `renderPreviews` — daemon fronts it for the editor loop only.
+- Replacing `composePreviewRender` — daemon fronts it for the editor loop only.
 - Hot kotlinc / compile-daemon integration.
 - Tier-3 dependency-graph reachability index — v1 uses a conservative
   "module-changed = all previews stale, filtered by visibility" rule.

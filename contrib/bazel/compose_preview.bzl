@@ -7,7 +7,7 @@ the Robolectric render path is invocable outside Gradle (#1037).
 Today the implementation invokes `_discover.sh`, a hermetic shell action
 that walks the declared `srcs` and emits a `resources.json` matching
 the wire format produced by the Gradle plugin's
-`discoverAndroidResources` task. It will be swapped for a
+`composePreviewDiscoverAndroidResources` task. It will be swapped for a
 `compose-preview discover-resources` action once that subcommand
 lands; the rule's interface (`srcs`, `module`, `variant`, output
 `name.json`) is what we're committing to here.

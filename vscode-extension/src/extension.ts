@@ -147,7 +147,7 @@ let historySource: HistorySource | null = null;
  */
 const historyScopeRef: { current: HistoryScope | null } = { current: null };
 /** Tracks the most recent preview set per module for daemon focus computation.
- *  The daemon path doesn't re-issue `discoverPreviews` on every save — it
+ *  The daemon path doesn't re-issue `composePreviewDiscover` on every save — it
  *  pushes `discoveryUpdated`. We mirror the latest snapshot here so save-
  *  scoped focus signals can map "active file → preview IDs" without an
  *  extension-side discovery round-trip. */
@@ -1397,7 +1397,7 @@ export async function activate(
     // routes PNGs to the built-in image viewer and GIFs to the same viewer
     // (animated playback included). Non-existent paths surface as a standard
     // "Unable to open file" error — useful signal that the consumer hasn't
-    // run `:<module>:renderAndroidResources` yet.
+    // run `:<module>:composePreviewRenderAndroidResources` yet.
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "composePreview.previewResource",
@@ -2071,7 +2071,7 @@ function invalidateModuleCache(filePath: string): void {
  * The daemon's lightweight `DiscoveryPreviewInfo` doesn't carry capture paths,
  * device dimensions, or a11y data — only id / className / functionName /
  * sourceFile / displayName / group. We need full `PreviewInfo` to repaint
- * cards, so we run a silent `discoverPreviews` here (no progress bar, no
+ * cards, so we run a silent `composePreviewDiscover` here (no progress bar, no
  * "Building..." banner, no setLoading message). The user already saw the new
  * PNG via `renderFinished`; the panel reshape lands behind it.
  *
@@ -2173,7 +2173,7 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     }
 
     // Focus scope = the saved file's previews, derived from the most recent
-    // manifest snapshot we got from Gradle's discoverPreviews. The daemon
+    // manifest snapshot we got from Gradle's composePreviewDiscover. The daemon
     // reads this for queue ordering — focused first. If we don't yet have a
     // manifest for this module the focus call is skipped; the next refresh
     // will populate moduleManifestCache. Returning true with no ids is
@@ -2282,7 +2282,7 @@ function previewFunctionNameFromId(previewId: string): string {
  * Paint the panel from the previously-rendered `previews.json` + PNGs on disk
  * before kicking the activation Gradle round-trip. Without this the panel
  * spends the first ~1–2 s of every session on a "Loading Compose previews…"
- * placeholder while `discoverPreviews` configures Gradle — even when a perfect
+ * placeholder while `composePreviewDiscover` configures Gradle — even when a perfect
  * set of cached cards is sitting in `build/compose-previews/`.
  *
  * On activation the cached cards intentionally look fresh. Until the user
@@ -2383,7 +2383,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  *      cards from `build/compose-previews/` as normal cards so the panel
  *      never opens onto an empty screen while Gradle warms up. Skipped
  *      silently when no usable manifest exists.
- *   1. `refresh(false, filePath)` — runs `discoverPreviews` and reconciles
+ *   1. `refresh(false, filePath)` — runs `composePreviewDiscover` and reconciles
  *      the panel with whatever's currently on disk. With phase 0 having
  *      painted, this stage updates metadata in place without adding stale
  *      overlays or a full-screen takeover.
@@ -2683,7 +2683,7 @@ async function reconcilePreviewManifest(
     moduleManifestCache.delete(module.modulePath);
     let manifest;
     try {
-        manifest = await gradleService.discoverPreviews(module);
+        manifest = await gradleService.composePreviewDiscover(module);
     } catch (err) {
         logLine(
             `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message}`,
@@ -2782,7 +2782,7 @@ async function reconcilePreviewManifestAfterDaemonReady(
         });
         gradleService.invalidateCache(module);
         moduleManifestCache.delete(moduleKey);
-        const manifest = await gradleService.discoverPreviews(module);
+        const manifest = await gradleService.composePreviewDiscover(module);
         if (!manifest) {
             panel.postMessage({ command: "clearProgress" });
             return false;
@@ -3300,7 +3300,7 @@ function maybeFirePendingRefresh(): void {
  *  reads `.class` files from `build/intermediates/.../classes/` — so those
  *  files must be fresh when the swap happens. We invoke
  *  `composePreviewCompile` (the same `compileKotlin*` upstream that
- *  `discoverPreviews` depends on, minus the ClassGraph scan over every
+ *  `composePreviewDiscover` depends on, minus the ClassGraph scan over every
  *  dependency JAR) — the heavy classpath walk is now the daemon's job via
  *  `IncrementalDiscovery`, surfaced through `discoveryUpdated` only when
  *  the preview set actually drifted.
@@ -3363,7 +3363,7 @@ async function runRefreshExclusive(filePath: string): Promise<void> {
 }
 
 /**
- * Daemon-mode save: compile the upstream Kotlin task only — no `discoverPreviews`
+ * Daemon-mode save: compile the upstream Kotlin task only — no `composePreviewDiscover`
  * round-trip, no progress UI, no spinner overlays. The `.class` files land on
  * disk fresh; the daemon then runs incremental discovery internally and emits
  * `discoveryUpdated` when (and only when) the preview set changed.
@@ -3526,7 +3526,7 @@ function sourceLooksLikePreviewDeclaration(
 
 /**
  * Main refresh entry point.
- * @param forceRender  If true, runs renderAllPreviews (not just discover).
+ * @param forceRender  If true, runs composePreviewRenderAll (not just discover).
  * @param forFilePath  If set, scopes to the module owning this file.
  * @param tier         Which render tier to request when `forceRender` is true.
  *                     Defaults to `'full'` so explicit user-triggered refreshes
@@ -3539,7 +3539,7 @@ function sourceLooksLikePreviewDeclaration(
  * use this to decide whether to take follow-up steps that depend on the
  * Gradle work having actually run to completion — e.g. notifying the daemon
  * after a discover, which only makes sense when `compileKotlin` (an
- * upstream of `discoverPreviews`) finished and the on-disk `.class` files
+ * upstream of `composePreviewDiscover`) finished and the on-disk `.class` files
  * are fresh.
  *
  * - `'completed'` — the requested Gradle task ran end-to-end and the panel
@@ -3797,13 +3797,13 @@ async function refresh(
         }
     }
     lastLoadedModules = modulePathList;
-    // Spare any in-flight `:<module>:discoverPreviews` for the module we're
+    // Spare any in-flight `:<module>:composePreviewDiscover` for the module we're
     // about to refresh. The silent reconcile path
-    // (`reconcilePreviewManifestAfterDaemonReady`) calls `discoverPreviews`
+    // (`reconcilePreviewManifestAfterDaemonReady`) calls `composePreviewDiscover`
     // directly, outside this coalesce gate; without the spare, every focus
     // bounce that re-fires refresh() for the same file kills the reconcile
     // mid-task. With the spare + the in-flight dedup in
-    // `GradleService.discoverPreviews`, the subsequent `discoverPreviews`
+    // `GradleService.composePreviewDiscover`, the subsequent `composePreviewDiscover`
     // call this refresh issues awaits the same Gradle run instead of
     // starting a duplicate.
     gradleService.cancel({ keepDiscoverFor: module.modulePath });
@@ -3881,13 +3881,16 @@ async function refresh(
             manifest =
                 manifest ??
                 (forceRender
-                    ? await gradleService.renderPreviews(
+                    ? await gradleService.composePreviewRender(
                           mod,
                           tier,
                           taskOpts,
                           [],
                       )
-                    : await gradleService.discoverPreviews(mod, taskOpts));
+                    : await gradleService.composePreviewDiscover(
+                          mod,
+                          taskOpts,
+                      ));
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
@@ -5493,7 +5496,7 @@ function formatRelativeShort(iso: string | undefined): string {
 /**
  * Early-feature: pack the focused preview into a portable PNG+ZIP polyglot
  * bundle. Resolves the owning module from [previewId], prompts for a save
- * location, then runs `:<module>:renderPreviews` + `:<module>:composePreviewBundle`
+ * location, then runs `:<module>:composePreviewRender` + `:<module>:composePreviewBundle`
  * with `-PbundlePreviewIds=<previewId>` and `-PbundleOutput=<file>`. Reports
  * success / failure via toasts; the resulting `.png` is a valid image that
  * also unzips to the bundle contents.

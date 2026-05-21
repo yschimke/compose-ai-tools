@@ -38,7 +38,7 @@
 // `className`, `wearPreview`, `currentIndex`, `function`, `group`,
 // `referenced`) all land on the host element so the existing
 // `document.getElementById` paths in `messageHandlers.ts` /
-// `liveState.ts` and the `.preview-card` selector in `renderPreviews`
+// `liveState.ts` and the `.preview-card` selector in `composePreviewRender`
 // keep working unchanged.
 
 import { LitElement, html, type TemplateResult } from "lit";
@@ -101,7 +101,7 @@ export class PreviewCard extends LitElement {
         this._built = true;
     }
 
-    /** React to a `preview` reassignment from the host (`renderPreviews`
+    /** React to a `preview` reassignment from the host (`composePreviewRender`
      *  reseed) AND to per-preview store map mutations.
      *
      *  - Preview reassignment: patches the card's dataset, title,

@@ -3,7 +3,7 @@
 // grid-wide relative-sizing (`applyRelativeSizing`, re-exported
 // from `./relativeSizing`), daemon-attached a11y refresh
 // (`applyA11yUpdate`), and the manifest-reseed orchestration
-// (`renderPreviews`).
+// (`composePreviewRender`).
 //
 // The metadata-refresh path (`updateCardMetadata`) lives in
 // `./cardMetadata.ts` and runs from `<preview-card>`'s reactive
@@ -59,7 +59,7 @@ import type { VsCodeApi } from "../shared/vscode";
 
 export interface CardBuilderConfig {
     vscode: VsCodeApi<unknown>;
-    /** The `<preview-grid>` host — `renderPreviews` walks its
+    /** The `<preview-grid>` host — `composePreviewRender` walks its
      *  `.preview-card` children to diff against the new manifest, and
      *  uses `insertBefore` to keep the manifest's order stable. */
     grid: PreviewGrid;
@@ -101,13 +101,13 @@ export interface CardBuilderConfig {
      *  scroll-ahead works. */
     observeForViewport(card: HTMLElement): void;
     /** Drop a card from the viewport tracker — paired with
-     *  `observeForViewport`; called by `renderPreviews` when an existing
+     *  `observeForViewport`; called by `composePreviewRender` when an existing
      *  preview disappears from the new manifest. */
     forgetViewport(previewId: string, card: HTMLElement): void;
     /** Set the message banner text + owner, with `ensureNotBlank()`
-     *  backstop. Used by `renderPreviews`'s empty-state fallback. */
+     *  backstop. Used by `composePreviewRender`'s empty-state fallback. */
     setMessage(text: string, owner: MessageOwner): void;
-    /** Read the current message-banner owner so `renderPreviews` knows
+    /** Read the current message-banner owner so `composePreviewRender` knows
      *  whether to clear a transient `loading` / `fallback` placeholder
      *  after cards land in the DOM. */
     getMessageOwner(): MessageOwner | null;
@@ -116,7 +116,7 @@ export interface CardBuilderConfig {
 /**
  * Build the initial DOM for a preview card. Returns a `<preview-card>`
  * Lit element — caller is responsible for inserting it into the grid in
- * the right position (`renderPreviews` orchestrates a stable insertion order
+ * the right position (`composePreviewRender` orchestrates a stable insertion order
  * keyed on `previewId`).
  *
  * Step 2 of #857: this is now a thin shim that constructs the
@@ -143,7 +143,7 @@ export function buildPreviewCard(
     card.config = config;
     // Stamp the filter-critical attributes synchronously so the
     // `applyFilters` call that handleSetPreviews fires immediately
-    // after renderPreviews can see them — populatePreviewCard runs
+    // after composePreviewRender can see them — populatePreviewCard runs
     // from Lit's `firstUpdated()` which is scheduled on a microtask,
     // so by the time it sets these the first applyFilters has already
     // run against an empty grid (no `.preview-card` selector match,
@@ -396,7 +396,7 @@ export function applyA11yUpdate(
     applyA11yUpdateImpl(previewId, findings, nodes, narrow);
 }
 
-/** Subset `renderPreviews` reaches for — initial-build + metadata-refresh
+/** Subset `composePreviewRender` reaches for — initial-build + metadata-refresh
  *  collaborator surface plus the grid + viewport + message-banner hooks.
  *  The per-preview Maps live in `previewStore` and are mutated through
  *  the `…CardCaptures` / `…CardA11y…` helpers, so they don't appear on
@@ -443,7 +443,7 @@ export type RenderPreviewsConfig = Pick<
  *    `extension`-owned messages (build errors, empty-state notices) are
  *    left alone.
  */
-export function renderPreviews(
+export function composePreviewRender(
     previews: readonly PreviewInfo[],
     config: RenderPreviewsConfig,
 ): void {

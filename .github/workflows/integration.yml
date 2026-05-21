@@ -150,7 +150,7 @@ jobs:
             # descriptor, render every preview, edit a source file, recompile,
             # render again, assert the PNGs were re-emitted. Catches
             # regressions in the daemon's Tier-3 invalidation + render queue
-            # that the standalone `renderPreviews` task can't see. See
+            # that the standalone `composePreviewRender` task can't see. See
             # .github/ci/daemon-roundtrip.py.
             daemon: true
           - name: wear-os-samples (WearTilesKotlin)
@@ -166,7 +166,7 @@ jobs:
             # resources not merged into the consumer's `apk-for-local-test.ap_`,
             # crashing Robolectric at Activity bootstrap with
             # `NoClassDefFoundError: androidx/navigationevent/R$id`). Discovery
-            # never exercises that path; only renderPreviews does. Keep this
+            # never exercises that path; only composePreviewRender does. Keep this
             # entry rendering so the regression doesn't come back silently.
             render: true
             # Tiles-specific: fail the job unless at least one rendered preview
@@ -373,10 +373,10 @@ jobs:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          # Unqualified task name runs discoverPreviews in every subproject
+          # Unqualified task name runs composePreviewDiscover in every subproject
           # the init script applied the plugin to (i.e. every Android /
           # Compose-multiplatform module).
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" discoverPreviews \
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewDiscover \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -388,7 +388,7 @@ jobs:
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
           # `compose-preview list` auto-injects the same init script via the
-          # Tooling API and drives discoverPreviews under the hood, so this
+          # Tooling API and drives composePreviewDiscover under the hood, so this
           # exercises the CLI binary's end-to-end pipeline (not just the
           # Gradle path used by the other matrix entries).
           compose-preview list --module "${{ matrix.module }}"
@@ -421,11 +421,11 @@ jobs:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          # renderPreviews depends on discoverPreviews, so we get both in one
+          # composePreviewRender depends on composePreviewDiscover, so we get both in one
           # invocation. This is the step that exercises renderer-android AAR
           # resolution from mavenLocal — the artifact path external consumers
           # hit at runtime.
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             ${{ matrix.extra_gradle_args }} \
             --stacktrace
 
@@ -436,7 +436,7 @@ jobs:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          # `compose-preview render` drives renderPreviews end-to-end via
+          # `compose-preview render` drives composePreviewRender end-to-end via
           # the Tooling API, including renderer-android AAR resolution from
           # the mavenLocal snapshot we seeded earlier.
           compose-preview render --module "${{ matrix.module }}"
@@ -448,7 +448,7 @@ jobs:
           set -euo pipefail
           mapfile -t pngs < <(find . -path '*/build/compose-previews/renders/*.png' -not -path '*/external/build/*' 2>/dev/null)
           if [ "${#pngs[@]}" -eq 0 ]; then
-            echo "::error::renderPreviews ran but no PNG files were produced."
+            echo "::error::composePreviewRender ran but no PNG files were produced."
             mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' -not -path '*/external/build/*' 2>/dev/null)
             if [ "${#sidecars[@]}" -gt 0 ]; then
               echo "Render error sidecars:"
@@ -532,7 +532,7 @@ jobs:
           manifest=$(find . -path '*/build/compose-previews/previews.json' \
             -not -path '*/external/build/*' | head -1)
           if [ -z "$manifest" ]; then
-            echo "::error::No previews.json produced — discoverPreviews must run before this step."
+            echo "::error::No previews.json produced — composePreviewDiscover must run before this step."
             exit 1
           fi
           # Resolve module Gradle path from the descriptor (modulePath field) so the script
@@ -689,7 +689,7 @@ jobs:
       # `compose-preview doctor` explains it, we:
       #   1. Downgrade the staged fixture's BOM to 2024.12.01 (material3
       #      1.3.1, no `VerticalDragHandle`).
-      #   2. Run `renderPreviews` and assert it FAILS — `compileDebugKotlin`
+      #   2. Run `composePreviewRender` and assert it FAILS — `compileDebugKotlin`
       #      errors out on the unresolved `VerticalDragHandle` import.
       #      Same failure shape a real consumer hits when their source
       #      reaches for a new Compose API ahead of their BOM.
@@ -697,7 +697,7 @@ jobs:
       #      `env.compose-bom-version` fires as `warning` — the doctor's
       #      pre-flight catches the too-old BOM before any compile attempt.
       #   4. Bump the staged BOM back to 2026.05.00, clear stale outputs,
-      #      re-run `renderPreviews`. Expect a clean PNG.
+      #      re-run `composePreviewRender`. Expect a clean PNG.
       # Any drift in either direction (BOM floor moves, M3 1.4 features
       # land elsewhere, or doctor stops surfacing the check) flips red.
       - name: Phase 1 — downgrade staged fixture BOM below the material3 1.4 line
@@ -713,22 +713,22 @@ jobs:
           echo "--- patched compose-bom line ---"
           grep "compose-bom" "$fixture_build"
 
-      - name: Phase 1 — renderPreviews must FAIL on the too-old BOM
+      - name: Phase 1 — composePreviewRender must FAIL on the too-old BOM
         working-directory: ${{ runner.temp }}/fixture
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
           set +e
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             --no-configuration-cache --stacktrace
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
-            echo "::error::renderPreviews unexpectedly succeeded against compose-bom 2024.12.01. Previews.kt imports androidx.compose.material3.VerticalDragHandle (material3 1.4.0); 2024.12.01 ships material3 1.3.1 without it, so compileDebugKotlin should fail. Either the BOM mapping changed (move the Phase 1 pin lower) or the preview no longer references a post-1.3 API (pick a fresher one)."
+            echo "::error::composePreviewRender unexpectedly succeeded against compose-bom 2024.12.01. Previews.kt imports androidx.compose.material3.VerticalDragHandle (material3 1.4.0); 2024.12.01 ships material3 1.3.1 without it, so compileDebugKotlin should fail. Either the BOM mapping changed (move the Phase 1 pin lower) or the preview no longer references a post-1.3 API (pick a fresher one)."
             exit 1
           fi
-          echo "renderPreviews failed as expected (exit code $rc); proceeding to doctor."
+          echo "composePreviewRender failed as expected (exit code $rc); proceeding to doctor."
 
       - name: Phase 2 — compose-preview doctor must surface env.compose-bom-version
         working-directory: ${{ runner.temp }}/fixture
@@ -791,18 +791,18 @@ jobs:
           # can't pick up stale `*.error.json` sidecars from phase 1.
           rm -rf "$RUNNER_TEMP/fixture/app/build/compose-previews"
 
-      - name: Phase 3 — renderPreviews must PASS at renderer floor
+      - name: Phase 3 — composePreviewRender must PASS at renderer floor
         working-directory: ${{ runner.temp }}/fixture
         env:
           COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
           GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
         run: |
-          # renderPreviews depends on discoverPreviews, so this single task
+          # composePreviewRender depends on composePreviewDiscover, so this single task
           # call covers both the discovery path and the renderer-android AAR
           # resolution from the mavenLocal snapshot seeded earlier. This is
           # the "oldest AGP × Kotlin together" floor-coverage cell (Gradle
           # 8.13 + AGP 8.13.0 + Kotlin 2.0.21 + JDK 17 + compose-bom 2026.05.00).
-          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" renderPreviews \
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRender \
             --no-configuration-cache --stacktrace
 
       - name: Verify previews.json was produced
@@ -832,7 +832,7 @@ jobs:
           set -euo pipefail
           mapfile -t pngs < <(find . -path '*/build/compose-previews/renders/*.png' 2>/dev/null)
           if [ "${#pngs[@]}" -eq 0 ]; then
-            echo "::error::renderPreviews ran but no PNG files were produced."
+            echo "::error::composePreviewRender ran but no PNG files were produced."
             mapfile -t sidecars < <(find . -path '*/build/compose-previews/renders/*.error.json' 2>/dev/null)
             if [ "${#sidecars[@]}" -gt 0 ]; then
               echo "Render error sidecars:"

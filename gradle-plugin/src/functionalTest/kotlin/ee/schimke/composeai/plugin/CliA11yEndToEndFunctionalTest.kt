@@ -92,7 +92,8 @@ class CliA11yEndToEndFunctionalTest {
     // applies `com.android.library` only; the preview plugin is supplied entirely via the CLI's
     // auto-inject `--init-script`. `--module :app` because the project is laid out as
     // root + `:app` subproject (the CLI's module discovery skips the root). The CLI's a11y command
-    // drives `renderAllPreviews` and `composePreviewDaemonStart` under the hood, then spawns the
+    // drives `composePreviewRenderAll` and `composePreviewDaemonStart` under the hood, then spawns
+    // the
     // daemon, fetches `a11y/atf` per preview, and writes `accessibility.json` next to
     // `previews.json`. Exercising the no-prior-setup path is the whole point of this test —
     // auto-inject is a load-bearing entry point.

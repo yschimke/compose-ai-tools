@@ -9,7 +9,7 @@ import kotlin.math.max
  *
  * Benchmarked on 2026-04-14 against the `samples/android` module (5 previews, Robolectric `sdk=34`,
  * `graphicsMode=NATIVE`). Numbers come from the per-testcase times in
- * `build/test-results/renderPreviews/` (one XML per task run):
+ * `build/test-results/composePreviewRender/` (one XML per task run):
  * - First preview in a JVM: 4.03s (sandbox + classloader + first Compose setContent).
  * - Previews 2–5 in the same JVM: 0.11–0.22s each (warm sandbox, cached classes).
  *

@@ -2,7 +2,7 @@
 //   node preview-harness/fixtures/a11y-wear.gen.mjs > preview-harness/fixtures/a11y-wear.json
 //
 // Wear-shaped Accessibility fixture. Reuses the real
-// `:samples:wear:renderAllPreviews` output for `ActivityListPreview`
+// `:samples:wear:composePreviewRenderAll` output for `ActivityListPreview`
 // (small-round 384×384, captured straight from Robolectric) so the
 // scene under the overlay is the production render — same fonts,
 // curved bezel mask, TransformingLazyColumn squashing, real
@@ -233,7 +233,7 @@ const setPreviews = {
 const fixture = {
     name: "a11y-wear",
     description:
-        "Wear OS ActivityListPreview (small-round, 384×384 capture of the real renderAllPreviews output) focused with the Accessibility bundle active. Two clickable activity cards trip ERROR-level missing-contentDescription findings, the status icon trips a WARNING-level touch-target rule, and the low-contrast time text trips a contrast WARNING. Drives the slim legend column treatment against a size-constrained preview and the merged-hierarchy default (four unmerged inner Text nodes are emitted on the wire but the default `mergedOnly` filter drops them from the legend and the on-image overlay).",
+        "Wear OS ActivityListPreview (small-round, 384×384 capture of the real composePreviewRenderAll output) focused with the Accessibility bundle active. Two clickable activity cards trip ERROR-level missing-contentDescription findings, the status icon trips a WARNING-level touch-target rule, and the low-contrast time text trips a contrast WARNING. Drives the slim legend column treatment against a size-constrained preview and the merged-hierarchy default (four unmerged inner Text nodes are emitted on the wire but the default `mergedOnly` filter drops them from the legend and the on-image overlay).",
     dataset: EARLY_FEATURES_DATASET,
     messages: [
         setPreviews,

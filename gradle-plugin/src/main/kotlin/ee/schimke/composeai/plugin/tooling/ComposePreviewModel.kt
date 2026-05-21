@@ -79,18 +79,18 @@ interface ModuleInfo {
   val kotlinVersion: String?
 
   /**
-   * Diagnostic snapshot of the `renderPreviews` Test task — the Java launcher it will fork the test
-   * worker with, its classpath/bootstrap- classpath shape, and any JVM args copied from AGP. `null`
-   * when the task wasn't registered (plugin disabled for this module). Introduced to make bug
-   * reports like #142 self-contained: the silent "test worker falls back to system default JDK"
-   * footgun is visible directly here.
+   * Diagnostic snapshot of the `composePreviewRender` Test task — the Java launcher it will fork
+   * the test worker with, its classpath/bootstrap- classpath shape, and any JVM args copied from
+   * AGP. `null` when the task wasn't registered (plugin disabled for this module). Introduced to
+   * make bug reports like #142 self-contained: the silent "test worker falls back to system default
+   * JDK" footgun is visible directly here.
    */
   val renderPreviewsTask: RenderPreviewsTaskInfo?
 }
 
 /**
- * Snapshot of the `renderPreviews` Test task's JVM configuration. Taken at Tooling-model build
- * time, not at task execution — values reflect what Gradle would use if the task ran now.
+ * Snapshot of the `composePreviewRender` Test task's JVM configuration. Taken at Tooling-model
+ * build time, not at task execution — values reflect what Gradle would use if the task ran now.
  */
 interface RenderPreviewsTaskInfo {
   /**
@@ -115,8 +115,8 @@ interface RenderPreviewsTaskInfo {
 
   /**
    * Number of entries on the task's `bootstrapClasspath`. Non-zero on an AGP-wired unit-test task
-   * (AGP injects `mockable-android.jar`), zero on `renderPreviews` today. Exposed so doctor can
-   * call out the asymmetry.
+   * (AGP injects `mockable-android.jar`), zero on `composePreviewRender` today. Exposed so doctor
+   * can call out the asymmetry.
    */
   val bootstrapClasspathSize: Int
 

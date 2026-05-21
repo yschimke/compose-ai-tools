@@ -35,7 +35,7 @@ runs:
         # Same entry point the previous inline-workflow body used. Renders both
         # `@NotificationPreview`-discovered functions and the `@Preview` +
         # composable-helper variants that exercise `NotificationContent`.
-        ./gradlew :samples:android:renderAllPreviews --no-daemon
+        ./gradlew :samples:android:composePreviewRenderAll --no-daemon
 
     - name: Stage notification PNGs and JSON sidecars
       shell: bash
@@ -263,13 +263,13 @@ runs:
         if-no-files-found: warn
         retention-days: 14
 
-    - name: Upload renderPreviews reports on failure
+    - name: Upload composePreviewRender reports on failure
       if: failure()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: renderPreviews-reports
+        name: composePreviewRender-reports
         path: |
-          samples/android/build/reports/tests/renderPreviews/
-          samples/android/build/test-results/renderPreviews/
+          samples/android/build/reports/tests/composePreviewRender/
+          samples/android/build/test-results/composePreviewRender/
         if-no-files-found: ignore
         retention-days: 14

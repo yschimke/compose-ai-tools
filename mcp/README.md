@@ -90,7 +90,7 @@ using its `serve` subcommand) or by hand:
 
 ```bash
 ./gradlew :samples:wear:composePreviewDaemonStart \
-          :samples:wear:discoverPreviews
+          :samples:wear:composePreviewDiscover
 sed -i 's/"enabled": false/"enabled": true/' \
   samples/wear/build/compose-previews/daemon-launch.json
 ```
@@ -203,7 +203,7 @@ without ambiguity.
   `compose-preview://<workspace>/<module>/<previewFqn>?config=<qualifier>`.
   `<module>` is the Gradle module path with `:` replaced by `_`
   (`:samples:android` → `_samples_android`). `<previewFqn>` is the same
-  id the gradle plugin's `discoverPreviews` task emits (typically
+  id the gradle plugin's `composePreviewDiscover` task emits (typically
   `<className>.<methodName>` or
   `<className>.<methodName>_<config-name>` for parameterised previews).
 - **History entry**:

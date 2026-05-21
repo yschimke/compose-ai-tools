@@ -1,6 +1,6 @@
 // Unit tests for `refreshCardMetadata` — the manifest-reseed path that
 // `<preview-card>`'s reactive `updated()` hook calls when the `preview`
-// property is reassigned by `renderPreviews`.
+// property is reassigned by `composePreviewRender`.
 //
 // Pattern mirrors `relativeSizing.test.ts` / `staleBadgeDom.test.ts`:
 // build a minimal `<preview-card>`-shaped element matching what

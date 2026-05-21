@@ -4,7 +4,7 @@
 //
 // Usage:
 //   node esbuild.webview.mjs                              # rebuild if you've edited webview src
-//   ./gradlew :samples:android:renderPreviews            # ensure renders exist
+//   ./gradlew :samples:android:composePreviewRender            # ensure renders exist
 //   node vscode-extension/preview-harness/fixtures/notifications.gen.mjs
 //
 // The harness uses the resulting JSON to drive the real `<preview-app>` Lit element headlessly —

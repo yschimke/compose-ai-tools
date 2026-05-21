@@ -6,10 +6,10 @@ package ee.schimke.composeai.cli
  * without baking its DTOs / output format / exit-code policy into [Command] or [ReportCommand].
  *
  * Implementations are stateful within a single CLI invocation: [load] reads the on-disk sidecar
- * JSON written by `:renderAllPreviews`, [annotate] enriches each [PreviewResult] with whatever
- * fields make sense in the existing JSON wire format, and the print / threshold steps consume that
- * state. Each invocation gets a fresh instance, so implementations are free to cache decoded
- * payloads in fields.
+ * JSON written by `:composePreviewRenderAll`, [annotate] enriches each [PreviewResult] with
+ * whatever fields make sense in the existing JSON wire format, and the print / threshold steps
+ * consume that state. Each invocation gets a fresh instance, so implementations are free to cache
+ * decoded payloads in fields.
  *
  * Today the only impl is [A11yReportRenderer]; "add a second canned report" is a question of
  * dropping a new file here plus a registry entry, not editing [Command] or [ReportCommand].

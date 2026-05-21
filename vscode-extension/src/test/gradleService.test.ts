@@ -783,7 +783,7 @@ describe("GradleService", () => {
         );
     });
 
-    describe("discoverPreviews", () => {
+    describe("composePreviewDiscover", () => {
         it(
             "invokes gradleApi with correct task name",
             withTempDir(async (dir, api) => {
@@ -814,7 +814,7 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
@@ -822,7 +822,7 @@ describe("GradleService", () => {
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
                     api.runCalls[0].taskName,
-                    ":mod:discoverPreviews",
+                    ":mod:composePreviewDiscover",
                 );
             }),
         );
@@ -859,7 +859,7 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "samples/wear",
                     modulePath: ":samples:wear",
                 });
@@ -867,7 +867,7 @@ describe("GradleService", () => {
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
                     api.runCalls[0].taskName,
-                    ":samples:wear:discoverPreviews",
+                    ":samples:wear:composePreviewDiscover",
                 );
             }),
         );
@@ -876,7 +876,7 @@ describe("GradleService", () => {
             "dedupes concurrent calls into a single Gradle invocation",
             withTempDir(async (dir) => {
                 // Two refresh paths (refresh() + the silent reconcile from
-                // refreshAfterDaemonReady) can hit discoverPreviews for the
+                // refreshAfterDaemonReady) can hit composePreviewDiscover for the
                 // same module concurrently; without the dedupe they race two
                 // identical Gradle tasks, and the second's cancel() kills
                 // the first. The dedupe shares one promise.
@@ -913,11 +913,11 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, heldApi);
-                const first = service.discoverPreviews({
+                const first = service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
-                const second = service.discoverPreviews({
+                const second = service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
@@ -965,11 +965,11 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
@@ -1004,15 +1004,15 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                // Prime the cache via a discoverPreviews invocation.
-                await service.discoverPreviews({
+                // Prime the cache via a composePreviewDiscover invocation.
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
                 assert.strictEqual(api.runCalls.length, 1);
                 assert.strictEqual(
                     api.runCalls[0].taskName,
-                    ":mod:discoverPreviews",
+                    ":mod:composePreviewDiscover",
                 );
 
                 // compileOnly runs a different task and invalidates the cache.
@@ -1026,15 +1026,15 @@ describe("GradleService", () => {
                     ":mod:composePreviewCompile",
                 );
 
-                // Cache was dropped, so the next discoverPreviews calls Gradle again.
-                await service.discoverPreviews({
+                // Cache was dropped, so the next composePreviewDiscover calls Gradle again.
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
                 assert.strictEqual(api.runCalls.length, 3);
                 assert.strictEqual(
                     api.runCalls[2].taskName,
-                    ":mod:discoverPreviews",
+                    ":mod:composePreviewDiscover",
                 );
             }),
         );
@@ -1064,7 +1064,7 @@ describe("GradleService", () => {
                 );
 
                 const service = new GradleService(dir, api);
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
@@ -1072,7 +1072,7 @@ describe("GradleService", () => {
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
-                await service.discoverPreviews({
+                await service.composePreviewDiscover({
                     projectDir: "mod",
                     modulePath: ":mod",
                 });
@@ -1088,7 +1088,7 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews({
+                    service.composePreviewDiscover({
                         projectDir: "mod",
                         modulePath: ":mod",
                     }),
@@ -1108,7 +1108,7 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews({
+                    service.composePreviewDiscover({
                         projectDir: "mod",
                         modulePath: ":mod",
                     }),
@@ -1133,7 +1133,7 @@ describe("GradleService", () => {
 
                 const service = new GradleService(dir, api);
                 await assert.rejects(
-                    service.discoverPreviews({
+                    service.composePreviewDiscover({
                         projectDir: "mod",
                         modulePath: ":mod",
                     }),
@@ -1160,7 +1160,10 @@ describe("GradleService", () => {
                 const service = new GradleService(dir, api);
                 // Start a task but don't await — simulate running
                 service
-                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .composePreviewDiscover({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    })
                     .catch(() => {}); // swallow error
                 await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -1203,7 +1206,10 @@ describe("GradleService", () => {
                     })
                     .catch(() => {});
                 const render = service
-                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .composePreviewDiscover({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    })
                     .catch(() => {});
                 // Yield enough turns for both runTask invocations to be
                 // recorded in activeKeys.
@@ -1220,7 +1226,9 @@ describe("GradleService", () => {
                     `bootstrap must not be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
                 assert.ok(
-                    cancelledTasks.some((t) => t.endsWith(":discoverPreviews")),
+                    cancelledTasks.some((t) =>
+                        t.endsWith(":composePreviewDiscover"),
+                    ),
                     `render-path task must still be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
 
@@ -1257,7 +1265,10 @@ describe("GradleService", () => {
                     .bootstrapAppliedMarkers()
                     .catch(() => {});
                 const render = service
-                    .discoverPreviews({ projectDir: "mod", modulePath: ":mod" })
+                    .composePreviewDiscover({
+                        projectDir: "mod",
+                        modulePath: ":mod",
+                    })
                     .catch(() => {});
                 await new Promise((resolve) => setImmediate(resolve));
                 await new Promise((resolve) => setImmediate(resolve));
@@ -1270,7 +1281,9 @@ describe("GradleService", () => {
                     `composePreviewApplied must not be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
                 assert.ok(
-                    cancelledTasks.some((t) => t.endsWith(":discoverPreviews")),
+                    cancelledTasks.some((t) =>
+                        t.endsWith(":composePreviewDiscover"),
+                    ),
                     `other tasks must still be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
 
@@ -1280,7 +1293,7 @@ describe("GradleService", () => {
         );
 
         it(
-            "spares the in-flight :<module>:discoverPreviews when cancel({keepDiscoverFor}) names that module",
+            "spares the in-flight :<module>:composePreviewDiscover when cancel({keepDiscoverFor}) names that module",
             withTempDir(async (dir, api) => {
                 const resolvers: Array<() => void> = [];
                 const heldApi: GradleApi = {
@@ -1302,15 +1315,15 @@ describe("GradleService", () => {
                 };
                 const service = new GradleService(dir, heldApi);
 
-                // Two in-flight discoverPreviews for different modules.
+                // Two in-flight composePreviewDiscover for different modules.
                 const keepRun = service
-                    .discoverPreviews({
+                    .composePreviewDiscover({
                         projectDir: "keep",
                         modulePath: ":keep",
                     })
                     .catch(() => {});
                 const dropRun = service
-                    .discoverPreviews({
+                    .composePreviewDiscover({
                         projectDir: "drop",
                         modulePath: ":drop",
                     })
@@ -1322,12 +1335,16 @@ describe("GradleService", () => {
 
                 const cancelledTasks = api.cancelCalls.map((c) => c.taskName);
                 assert.ok(
-                    !cancelledTasks.some((t) => t === ":keep:discoverPreviews"),
-                    `:keep:discoverPreviews must not be cancelled, got: ${cancelledTasks.join(", ")}`,
+                    !cancelledTasks.some(
+                        (t) => t === ":keep:composePreviewDiscover",
+                    ),
+                    `:keep:composePreviewDiscover must not be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
                 assert.ok(
-                    cancelledTasks.some((t) => t === ":drop:discoverPreviews"),
-                    `:drop:discoverPreviews must be cancelled, got: ${cancelledTasks.join(", ")}`,
+                    cancelledTasks.some(
+                        (t) => t === ":drop:composePreviewDiscover",
+                    ),
+                    `:drop:composePreviewDiscover must be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
 
                 for (const r of resolvers) r();

@@ -114,7 +114,7 @@ internal object AndroidPreviewSupport {
     val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
 
     // Captures the consumer's `android.compileSdk` from `finalizeDsl` so the
-    // `generateRobolectricProperties` task can stamp the matching `sdk=N` into
+    // `composePreviewGenerateRobolectricProperties` task can stamp the matching `sdk=N` into
     // the generated `robolectric.properties`. Robolectric must run at the same
     // API level the consumer's `apk-for-local-test.ap_` was compiled against;
     // otherwise `PackageParser` rejects the manifest with "Requires newer sdk
@@ -169,7 +169,7 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * Registers `discoverAndroidResources` for the targeted [variant], gated on
+   * Registers `composePreviewDiscoverAndroidResources` for the targeted [variant], gated on
    * `composePreview.resourcePreviews.enabled`. Wires the task's inputs from the variant's lazy
    * `sources.res.all` and `artifacts.get(MERGED_MANIFEST)` providers so the task picks up flavour
    * overrides + manifest-merger output without duplicating AGP's resolution logic. Renderer wiring
@@ -186,7 +186,10 @@ internal object AndroidPreviewSupport {
     val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
     val resSources = variant.sources.res?.all
 
-    project.tasks.register("discoverAndroidResources", DiscoverAndroidResourcesTask::class.java) {
+    project.tasks.register(
+      "composePreviewDiscoverAndroidResources",
+      DiscoverAndroidResourcesTask::class.java,
+    ) {
       group = "compose preview"
       description =
         "Walk res/drawable* and res/mipmap*, parse AndroidManifest.xml, " +
@@ -336,7 +339,7 @@ internal object AndroidPreviewSupport {
         extension,
       ) {
         dependsOn(mainCompileTaskName)
-        // No opt-in-extension wiring on `discoverPreviews` — a11y is daemon-only.
+        // No opt-in-extension wiring on `composePreviewDiscover` — a11y is daemon-only.
         if (screenshotTestEnabled) {
           dependsOn(screenshotCompileTaskName)
           screenshotTestRuntimeConfig?.let { stConfig ->
@@ -351,10 +354,12 @@ internal object AndroidPreviewSupport {
           }
         }
       }
-    // `composePreviewCompile` — the daemon-mode save loop calls this instead of `discoverPreviews`
+    // `composePreviewCompile` — the daemon-mode save loop calls this instead of
+    // `composePreviewDiscover`
     // so the recompile (and on-disk `.class` refresh) runs without re-walking the dependency-JAR
     // classpath through ClassGraph on every keystroke. We deliberately stop at the main compile —
-    // ScreenshotTest sources matter only for `discoverPreviews`'s dependency-JAR scan, not for the
+    // ScreenshotTest sources matter only for `composePreviewDiscover`'s dependency-JAR scan, not
+    // for the
     // user's edited preview-bearing file.
     ComposePreviewTasks.registerCompileOnlyTask(
       project,
@@ -456,7 +461,7 @@ internal object AndroidPreviewSupport {
     // [RENDERER_COMPOSE_FLOOR_VERSION]) rather than emitting an unversioned coordinate. Two
     // consumer shapes need the explicit version:
     //
-    //  * Tile-only / non-Compose-UI Android apps that still go through `renderPreviews` (e.g.
+    //  * Tile-only / non-Compose-UI Android apps that still go through `composePreviewRender` (e.g.
     //    wear-os-samples WearTilesKotlin, where the only `androidx.compose.ui:*` artifact in main
     //    is `ui-tooling`). Those projects ship no Compose BOM and no `ui-test-*` artifact ever
     //    appears on the dependency graph, so an unversioned `androidx.compose.ui:ui-test-manifest`
@@ -994,7 +999,7 @@ internal object AndroidPreviewSupport {
         //
         // Substituting the merged artifact back to `hamcrest-core:1.3` on
         // *this* configuration is enough: `resolvedClasspath` puts rendererConfig's
-        // files ahead of the AGP test classpath in the renderPreviews JVM
+        // files ahead of the AGP test classpath in the composePreviewRender JVM
         // classpath (see comment above `resolvedClasspath` below), so Hamcrest
         // 1.3 wins class lookup even if the consumer's `${variant}UnitTestRuntimeClasspath`
         // still resolves 2.x for their own tests.
@@ -1069,7 +1074,7 @@ internal object AndroidPreviewSupport {
     // mode: the AAR's `classes.jar`, expanded via `zipTree` so Gradle's
     // `Test.include("**/…Test.class")` filter can walk it — the include
     // filter traverses file trees but does NOT descend into JAR entries,
-    // so feeding a raw JAR here silently produces `renderPreviews NO-SOURCE`
+    // so feeding a raw JAR here silently produces `composePreviewRender NO-SOURCE`
     // and every preview ends up with no PNG. `android-classes` is AGP's
     // `ArtifactType.CLASSES_JAR` (a JAR), not the extracted directory
     // (that would be `android-classes-directory`).
@@ -1132,11 +1137,11 @@ internal object AndroidPreviewSupport {
       project.layout.buildDirectory.dir("generated/composeai/robolectric/$variantName")
     val generateRobolectricPropertiesTask =
       project.tasks.register(
-        "generateRobolectricProperties",
+        "composePreviewGenerateRobolectricProperties",
         GenerateRobolectricPropertiesTask::class.java,
       ) {
         group = "compose preview"
-        description = "Generate package-level robolectric.properties for renderPreviews"
+        description = "Generate package-level robolectric.properties for composePreviewRender"
         useConsumerApplication.set(extension.useConsumerApplication)
         wireSdkInputs(this, extension.sdkVersion, consumerCompileSdk)
         outputDir.set(robolectricPropertiesDir)
@@ -1176,7 +1181,8 @@ internal object AndroidPreviewSupport {
     val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
     // ATF / hierarchy data products are produced only by the daemon path
-    // (`:daemon:android`'s RenderEngine). The standalone Robolectric `renderPreviews` Test task
+    // (`:daemon:android`'s RenderEngine). The standalone Robolectric `composePreviewRender` Test
+    // task
     // never writes accessibility artefacts, so no per-preview / aggregate output dirs are
     // declared here.
 
@@ -1198,7 +1204,10 @@ internal object AndroidPreviewSupport {
 
     val generateShardsTask =
       if (shardsEnabled) {
-        project.tasks.register("generateRenderShards", GenerateRenderShardsTask::class.java) {
+        project.tasks.register(
+          "composePreviewGenerateRenderShards",
+          GenerateRenderShardsTask::class.java,
+        ) {
           group = "compose preview"
           description = "Generate $shardCount RobolectricRenderTest_Shard subclasses"
           shards.set(shardCount)
@@ -1208,7 +1217,7 @@ internal object AndroidPreviewSupport {
 
     val compileShardsTask =
       if (generateShardsTask != null) {
-        project.tasks.register("compileRenderShards", JavaCompile::class.java) {
+        project.tasks.register("composePreviewCompileRenderShards", JavaCompile::class.java) {
           group = "compose preview"
           description = "Compile generated shard test subclasses"
           source(generateShardsTask.map { it.outputDir.asFileTree })
@@ -1223,7 +1232,7 @@ internal object AndroidPreviewSupport {
       } else null
 
     val renderTask =
-      project.tasks.register("renderPreviews", Test::class.java) {
+      project.tasks.register("composePreviewRender", Test::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
@@ -1348,7 +1357,7 @@ internal object AndroidPreviewSupport {
         // apply, so a `tier=fast` re-run with no input changes is a
         // no-op and the renders dir stays as-is. Full-tier runs cache
         // normally.
-        outputs.cacheIf("renderPreviews caches tier=full runs only") {
+        outputs.cacheIf("composePreviewRender caches tier=full runs only") {
           tierProvider.get().equals("full", ignoreCase = true)
         }
         // The PNG files are written to `rendersDirectory` via the
@@ -1362,7 +1371,7 @@ internal object AndroidPreviewSupport {
         // Heavy preview extensions such as @ScrollingPreview(LONG/GIF)
         // write their artefacts under build/compose-previews/data rather
         // than renders/. Declare that tree too so remote cache hits restore
-        // the files that renderAllPreviews validates from manifest
+        // the files that composePreviewRenderAll validates from manifest
         // dataProducts.
         outputs.dir(dataProductsDirectory).withPropertyName("dataProductsDir")
 
@@ -1403,9 +1412,9 @@ internal object AndroidPreviewSupport {
       }
 
     if (extension.resourcePreviews.enabled.get()) {
-      // Resource render task — same Robolectric harness as `renderPreviews`, different test
+      // Resource render task — same Robolectric harness as `composePreviewRender`, different test
       // class + manifest sysprops. Reuses the renderer/test/runtime classpaths computed above.
-      // Kept as a sibling task (not folded into renderPreviews) so consumers can run resource
+      // Kept as a sibling task (not folded into composePreviewRender) so consumers can run resource
       // discovery + render without paying for composable rendering, and vice versa.
       // Output dir is the shared `renders/` parent (same as `composeai.render.outputDir`),
       // NOT the `renders/resources/` subtree — the manifest's `renderOutput` paths are already
@@ -1418,7 +1427,7 @@ internal object AndroidPreviewSupport {
       val resourcesRendersOutputDir = rendersDir
       val resourcesRendersSubtree = previewOutputDir.map { it.dir("renders/resources") }
 
-      project.tasks.register("renderAndroidResources", Test::class.java) {
+      project.tasks.register("composePreviewRenderAndroidResources", Test::class.java) {
         group = "compose preview"
         description = "Render Android XML resource previews via Robolectric"
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
@@ -1447,12 +1456,12 @@ internal object AndroidPreviewSupport {
 
         outputs.dir(resourcesRendersSubtree).withPropertyName("resourcesRendersDir")
 
-        // Same #1243 guard as renderPreviews above — the resource render task
+        // Same #1243 guard as composePreviewRender above — the resource render task
         // boots Robolectric through the identical classpath and hits the same
         // `Config.<clinit>` -> `Application.class` resolution at runner init.
         doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
 
-        dependsOn("discoverAndroidResources")
+        dependsOn("composePreviewDiscoverAndroidResources")
         dependsOn(generateRobolectricPropertiesTask)
         if (useLocalRenderer) {
           dependsOn(":renderer-android:compile${capVariant}Kotlin")
@@ -1478,11 +1487,11 @@ internal object AndroidPreviewSupport {
     // unconditionally so the VS Code extension can sniff the output file
     // even when `daemon.enabled = false` (it then refuses to
     // launch — see [DaemonClasspathDescriptor] KDoc). Inputs mirror the
-    // renderPreviews task's so the spawned daemon JVM is byte-for-byte
+    // composePreviewRender task's so the spawned daemon JVM is byte-for-byte
     // equivalent. See `docs/daemon/DESIGN.md` § 4 / § 6.
     //
     // Built lazily via providers so the AGP unit-test task's javaLauncher
-    // resolves at execution time (same reason renderPreviews above defers it).
+    // resolves at execution time (same reason composePreviewRender above defers it).
     val daemonFontsCacheDir =
       project.layout.projectDirectory
         .dir(".compose-preview-history")
@@ -1532,7 +1541,7 @@ internal object AndroidPreviewSupport {
       // Property leaves room for future variants (foreground / debug) without
       // schema churn. See [DaemonBootstrapTask] / [DaemonClasspathDescriptor].
       this.mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
-      // Inherit AGP's unit-test javaLauncher exactly the way renderPreviews
+      // Inherit AGP's unit-test javaLauncher exactly the way composePreviewRender
       // does (see line ~802 above) so the daemon runs on the project's
       // configured toolchain rather than the first `java` on PATH. AGP's
       // javaLauncher Property is itself a config-cache-safe Provider produced
@@ -1558,7 +1567,7 @@ internal object AndroidPreviewSupport {
           .artifactView { attributes.attribute(artifactType, "android-classes") }
           .files
       )
-      // Same FileCollection the renderPreviews `Test` task assembles, plus
+      // Same FileCollection the composePreviewRender `Test` task assembles, plus
       // the AGP unit-test task's classpath (R.jar etc.) appended at the
       // tail — see line ~764 for the rationale.
       this.classpath.from(resolvedClasspath)
@@ -1571,7 +1580,7 @@ internal object AndroidPreviewSupport {
       // daemon's own runner. Stream B can opt back in if needed.
       this.jvmArgs.addAll(AndroidPreviewClasspath.buildJvmArgs())
       this.jvmArgs.add(extension.daemon.maxHeapMb.map { "-Xmx${it}m" })
-      // Same path-bearing system properties the renderPreviews Test task uses, plus
+      // Same path-bearing system properties the composePreviewRender Test task uses, plus
       // daemon-specific keys for [DaemonExtension] config the daemon reads at startup.
       //
       // Per-key `put(...)` calls (rather than a single `set(provider { wholeMap })`) so
@@ -1628,7 +1637,7 @@ internal object AndroidPreviewSupport {
         },
       )
       this.systemProperties.put("composeai.daemon.cheapSignalFiles", daemonCheapSignalFiles)
-      // B2.2 phase 1 — `composeai.daemon.previewsJsonPath`. Same path as the renderPreviews
+      // B2.2 phase 1 — `composeai.daemon.previewsJsonPath`. Same path as the composePreviewRender
       // manifest, surfaced via a separate sysprop so the daemon-side loader doesn't have to
       // know about the renderer-shared key.
       this.systemProperties.put("composeai.daemon.previewsJsonPath", manifestFile)
@@ -1746,7 +1755,7 @@ internal object AndroidPreviewSupport {
       .orElse("full")
 
   /**
-   * Lazy holder for the render-tier system property on the `renderPreviews` `Test` task. The
+   * Lazy holder for the render-tier system property on the `composePreviewRender` `Test` task. The
    * Provider is `@Input`, so flipping `-PcomposePreview.tier` re-runs the task without invalidating
    * the configuration cache.
    */

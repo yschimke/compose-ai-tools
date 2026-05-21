@@ -28,9 +28,9 @@ import org.junit.rules.TemporaryFolder
  *   `RenderSession` against it.
  *
  * The test does **not** call `:samples:cmp:composePreviewDaemonStart`. It does call
- * `:samples:cmp:discoverPreviews` (via the gradle pre-build) so a `previews.json` exists on disk —
- * preview discovery is one of the two contracts a non-Gradle integration owns, but the discovery
- * library extraction is a separate piece of work (see `docs/NON_GRADLE_INTEGRATION.md` §
+ * `:samples:cmp:composePreviewDiscover` (via the gradle pre-build) so a `previews.json` exists on
+ * disk — preview discovery is one of the two contracts a non-Gradle integration owns, but the
+ * discovery library extraction is a separate piece of work (see `docs/NON_GRADLE_INTEGRATION.md` §
  * "Limitations and follow-ups"); for now the test reuses an existing manifest the way an Amper /
  * Bazel rule would in a v1 integration.
  *
@@ -45,8 +45,8 @@ import org.junit.rules.TemporaryFolder
  *    the user classes and Compose runtime from the descriptor, not from any ambient gradle state.
  *
  * **Self-skip:** the test skips cleanly when the prerequisite gradle outputs are missing — devs who
- * haven't run `:samples:cmp:discoverPreviews` shouldn't see a hard failure. CI runs the pre-step
- * explicitly via `render-session/subprocess/build.gradle.kts`.
+ * haven't run `:samples:cmp:composePreviewDiscover` shouldn't see a hard failure. CI runs the
+ * pre-step explicitly via `render-session/subprocess/build.gradle.kts`.
  */
 class NonGradleContractTest {
 
@@ -67,7 +67,7 @@ class NonGradleContractTest {
 
     if (!previewsJson.isFile || !gradlePluginDescriptor.isFile) {
       System.err.println(
-        "[NonGradleContractTest] skipping — run `:samples:cmp:discoverPreviews " +
+        "[NonGradleContractTest] skipping — run `:samples:cmp:composePreviewDiscover " +
           ":samples:cmp:composePreviewDaemonStart` first to produce the reference inputs."
       )
       return

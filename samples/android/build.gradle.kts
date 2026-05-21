@@ -21,12 +21,12 @@ composePreview {
 
   // `ScrollPreviewPixelTest` reads PNGs under
   // `build/compose-previews/renders/`; opt the unit-test tasks into a
-  // `dependsOn(renderAllPreviews)` chain so `:samples:android:check`
+  // `dependsOn(composePreviewRenderAll)` chain so `:samples:android:check`
   // renders before asserting.
   renderBeforeUnitTests.set(true)
 
   // a11y is daemon-only now — there's no gradle-side toggle to enable it for the sample's
-  // `renderAllPreviews` run. The sample carries `BadButtonPreview` etc. that exist to
+  // `composePreviewRenderAll` run. The sample carries `BadButtonPreview` etc. that exist to
   // demonstrate the ATF report shape; downstream consumers exercise them through the daemon
   // (VS Code chip toggle, `compose-preview a11y`).
 }

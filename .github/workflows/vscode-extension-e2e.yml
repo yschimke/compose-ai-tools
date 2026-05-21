@@ -6,7 +6,7 @@ name: VS Code Extension E2E
 # RecordingGradleApi; this job swaps in a real one (`RealGradleApi`) so
 # the loop is exercised plugin-end-to-extension-end.
 #
-# Not on every PR: cold renderAllPreviews on `:samples:cmp` is multi-minute
+# Not on every PR: cold composePreviewRenderAll on `:samples:cmp` is multi-minute
 # and the prototype is more flake-prone than the stub-driven path.
 #
 # Triggers:

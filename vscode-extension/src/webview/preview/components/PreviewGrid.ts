@@ -2,7 +2,7 @@
 //
 // First step of the preview-grid migration. The cards themselves are
 // still imperative `<div class="preview-card">` elements created by
-// `behavior.ts` (`createCard` / `updateCardMetadata` / `renderPreviews`),
+// `behavior.ts` (`createCard` / `updateCardMetadata` / `composePreviewRender`),
 // so this element does NOT manage its own light-DOM children; it just
 // surfaces the typed methods that used to be free-standing `grid.X`
 // calls in `behavior.ts` and the cross-component reach-in from

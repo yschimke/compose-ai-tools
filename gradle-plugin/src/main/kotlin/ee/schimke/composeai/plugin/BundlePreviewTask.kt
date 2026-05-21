@@ -101,14 +101,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
 
   /**
-   * Renders directory from the preceding `renderPreviews` task. The cover preview's PNG is read
-   * from here and prepended to the polyglot; when missing or empty, the task emits a stub gray PNG
-   * so the bundle is still well-formed (and `file(1)` still reports PNG).
+   * Renders directory from the preceding `composePreviewRender` task. The cover preview's PNG is
+   * read from here and prepended to the polyglot; when missing or empty, the task emits a stub gray
+   * PNG so the bundle is still well-formed (and `file(1)` still reports PNG).
    *
    * Marked `@Internal` because the dir may legitimately not exist (bundling without a prior render
    * is a supported v1 flow). Tracking it as an `@InputDirectory @Optional` errors out when Gradle
    * resolves the property to a path on disk that doesn't yet exist. The bundle is still re-packed
-   * whenever the upstream `discoverPreviews` output or the classpath change.
+   * whenever the upstream `composePreviewDiscover` output or the classpath change.
    */
   @get:Internal abstract val rendersDir: DirectoryProperty
 
@@ -211,7 +211,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     if (ids.isEmpty()) {
       if (manifest.previews.isEmpty()) {
         throw GradleException(
-          "composePreviewBundle: previews.json is empty — nothing to bundle. Run discoverPreviews first."
+          "composePreviewBundle: previews.json is empty — nothing to bundle. Run composePreviewDiscover first."
         )
       }
       return manifest.previews

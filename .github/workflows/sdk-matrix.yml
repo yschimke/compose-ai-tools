@@ -121,7 +121,7 @@ jobs:
           if [ -n "${{ matrix.maxSupportedSdk }}" ]; then
             max_supported_arg="-Pcomposeai.matrix.maxSupportedSdk=${{ matrix.maxSupportedSdk }}"
           fi
-          ./gradlew :samples:sdk-matrix:renderAllPreviews \
+          ./gradlew :samples:sdk-matrix:composePreviewRenderAll \
             -Pcomposeai.matrix.compileSdk=${{ matrix.compileSdk }} \
             -Pcomposeai.matrix.targetSdk=${{ matrix.targetSdk }} \
             -Pcomposeai.matrix.minSdk=${{ matrix.minSdk }} \

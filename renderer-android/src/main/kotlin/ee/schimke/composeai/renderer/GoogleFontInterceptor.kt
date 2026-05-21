@@ -30,7 +30,7 @@ import java.net.URLEncoder
  * fonts commit alongside baselines — first author run over the network, every
  * subsequent run (author + CI) offline. The cache directory is plumbed via
  * the `composeai.fonts.cacheDir` system property by the plugin's
- * `renderPreviews` `Test` task.
+ * `composePreviewRender` `Test` task.
  *
  * Consumer code is unchanged: the same `Font(GoogleFont(...))` that runs on
  * device renders under Robolectric with zero `src/debug` fork, zero

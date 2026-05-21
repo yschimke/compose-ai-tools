@@ -44,10 +44,10 @@ two render paths are architecturally different:
 
 | Phase         | Android (P0.1)                                                            | Desktop (P0.6)                                                            |
 | ------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `config`      | wall of `renderPreviews --dry-run`                                        | wall of `renderPreviews --dry-run`                                        |
+| `config`      | wall of `composePreviewRender --dry-run`                                        | wall of `composePreviewRender --dry-run`                                        |
 | `compile`     | wall of `compileDebugKotlin` (AGP)                                        | wall of `compileKotlin` (kotlin.jvm)                                      |
-| `discovery`   | wall of `discoverPreviews`                                                | wall of `discoverPreviews`                                                |
-| `forkAndInit` | renderPreviews wall − Σ(JUnit testcase `time=`) = JVM fork + Robolectric  | renderPreviews wall − Σ(per-preview javaexec walls) = Gradle orchestration between forks |
+| `discovery`   | wall of `composePreviewDiscover`                                                | wall of `composePreviewDiscover`                                                |
+| `forkAndInit` | composePreviewRender wall − Σ(JUnit testcase `time=`) = JVM fork + Robolectric  | composePreviewRender wall − Σ(per-preview javaexec walls) = Gradle orchestration between forks |
 | `render`      | Σ JUnit `testcase` `time=` attrs (one shared sandbox renders all 5)       | Σ per-preview javaexec walls (one fresh JVM per preview, includes Skiko init) |
 
 On Android, ONE Robolectric Test JVM bootstraps once and renders all 5
@@ -60,7 +60,7 @@ per-process JVM startup + Skiko classloader init + Compose-Desktop
 runtime warmup, summed across previews. `forkAndInit` is small — only
 Gradle's orchestration cost between forks.
 
-When `renderPreviews` is `UP-TO-DATE`, `render` is reported as **0** by
+When `composePreviewRender` is `UP-TO-DATE`, `render` is reported as **0** by
 definition and `forkAndInit` collapses to "Gradle overhead with nothing
 to do."
 

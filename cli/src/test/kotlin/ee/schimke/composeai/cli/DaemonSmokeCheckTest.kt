@@ -121,7 +121,7 @@ class DaemonSmokeCheckTest {
     assertEquals("error", check.status)
     assertTrue(check.message.contains("1234ms"))
     assertTrue(check.detail!!.contains("timeout after 30s"))
-    assertTrue(check.remediation!!.commands.any { it.contains("discoverPreviews") })
+    assertTrue(check.remediation!!.commands.any { it.contains("composePreviewDiscover") })
   }
 
   @Test

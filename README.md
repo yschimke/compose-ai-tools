@@ -76,8 +76,8 @@ For direct `./gradlew` use (e.g., a CI step that needs extra Gradle flags), mate
 
 ```sh
 INIT_SCRIPT="$(compose-preview init-script --path)"
-./gradlew --init-script "$INIT_SCRIPT" :app:discoverPreviews
-./gradlew --init-script "$INIT_SCRIPT" :app:renderAllPreviews
+./gradlew --init-script "$INIT_SCRIPT" :app:composePreviewDiscover
+./gradlew --init-script "$INIT_SCRIPT" :app:composePreviewRenderAll
 ```
 
 > **VS Code users:** the [`Compose Preview` extension](vscode-extension/) already auto-injects via `--init-script` on every Gradle invocation it makes — no extra setup needed.
@@ -156,7 +156,7 @@ jobs:
       preview_status: ${{ job.status }}
     steps:
       - uses: actions/checkout@v4
-      - run: ./gradlew :app:renderAllPreviews
+      - run: ./gradlew :app:composePreviewRenderAll
       - uses: actions/upload-artifact@v4
         with:
           name: compose-preview-images

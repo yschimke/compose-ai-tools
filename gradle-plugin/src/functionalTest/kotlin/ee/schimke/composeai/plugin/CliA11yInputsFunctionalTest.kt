@@ -47,11 +47,11 @@ class CliA11yInputsFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "composePreviewDaemonStart", "--stacktrace")
+        .withArguments("composePreviewDiscover", "composePreviewDaemonStart", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(result.task(":composePreviewDaemonStart")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val previewOutputDir = File(projectDir, "build/compose-previews")

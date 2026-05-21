@@ -11,7 +11,7 @@ import org.junit.Test
  * Smoke coverage for the embedded Desktop backend. Opening a real session needs the daemon-launch
  * descriptor produced by `composePreviewDaemonStart` against the in-repo `:samples:cmp` module,
  * which isn't built in the unit-test classpath — that side is exercised end-to-end by
- * `:samples:cmp:renderAllPreviews` runs once we wire one up.
+ * `:samples:cmp:composePreviewRenderAll` runs once we wire one up.
  *
  * These tests cover the error-handling and contract surface that doesn't need a live daemon:
  * descriptor-missing, the `isAvailable()` probe, the `RenderSessionBackend.Embedded` advertisement.

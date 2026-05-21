@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * End-to-end verification that `@AmbientPreview` actually drives `LocalAmbientModeManager` through
- * the renderer's Compose pipeline. Reads the files produced by `:samples:wear:renderAllPreviews`
+ * the renderer's Compose pipeline. Reads the files produced by `:samples:wear:composePreviewRenderAll`
  * (wired in via `composePreview { renderBeforeUnitTests = true }`) and pixel-asserts that the
  * Interactive vs Ambient renders differ.
  *

@@ -285,7 +285,7 @@ complete -c compose-preview -x -n '__compose_preview_using_bundle_sub pack' \
 complete -c compose-preview -F -n '__compose_preview_using_bundle_sub pack' \
     -l output -s o -d 'Output .png polyglot path'
 complete -c compose-preview -f -n '__compose_preview_using_bundle_sub pack' \
-    -l no-render -d 'Skip renderPreviews; pack with a stub gray cover'
+    -l no-render -d 'Skip composePreviewRender; pack with a stub gray cover'
 
 # bundle inspect / extract / render — positional `<bundle.png>` argument restricted to PNGs
 # (and dirs so the user can drill into subfolders). `__fish_complete_suffix` returns both.
