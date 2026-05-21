@@ -238,7 +238,7 @@ private const val ROW_TOP = "qwertyuiop"
 private const val ROW_MIDDLE = "asdfghjkl"
 private const val ROW_BOTTOM = "zxcvbnm"
 
-private const val KEYBOARD_HEIGHT_DP = 240
+internal const val KEYBOARD_HEIGHT_DP = 240
 private const val SIDE_INSET_DP = 4
 private const val ROW_INSET_DP = 6
 private const val ROW_GAP_DP = 6
