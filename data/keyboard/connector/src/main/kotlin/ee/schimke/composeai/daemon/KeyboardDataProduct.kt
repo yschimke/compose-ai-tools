@@ -12,8 +12,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.SoftwareKeyboardController
+import androidx.compose.ui.unit.dp
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import ee.schimke.composeai.daemon.protocol.KeyboardOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.keyboard.Material3KeyboardProduct
@@ -79,6 +85,34 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
       val pressedKey by KeyboardController.pressedKey
       val night =
         (LocalConfiguration.current.uiMode and UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES
+
+      // Publish synthetic `WindowInsetsCompat.Type.ime()` insets on the host view so consumer code
+      // reading `WindowInsets.ime` (e.g. `Modifier.imePadding()`,
+      // `Modifier.windowInsetsPadding(WindowInsets.ime)`, or
+      // `WindowInsets.ime.asPaddingValues()` passed to a `LazyColumn`'s `contentPadding`) sees the
+      // band's height as a bottom inset — the same shape Compose's foundation-layout reads on a
+      // real device when the platform IME is up. Without this dispatch the band would just paint
+      // on top of preview content and a list's last row would render under the keys; with it, the
+      // viewport shrinks naturally and the consumer's inset-aware layout adapts.
+      //
+      // The path mirrors what Android's `WindowInsetsControllerCompat.show(Type.ime())` triggers
+      // on a real window — the platform calls `View.dispatchApplyWindowInsets(...)`, the listener
+      // installed by `WindowInsetsHolder` (compose-foundation-layout) updates its `ime`
+      // MutableState, and any composable observing `WindowInsets.ime` recomposes. Robolectric's
+      // `View` runs the listener pipeline as plain Java, so the dispatch works there too.
+      val view = LocalView.current
+      val density = LocalDensity.current
+      val imeBottomPx = with(density) { KEYBOARD_HEIGHT_DP.dp.roundToPx() }
+      DisposableEffect(visible, imeBottomPx, view) {
+        val insets = if (visible) Insets.of(0, 0, 0, imeBottomPx) else Insets.NONE
+        val compat =
+          WindowInsetsCompat.Builder()
+            .setInsets(WindowInsetsCompat.Type.ime(), insets)
+            .build()
+        ViewCompat.dispatchApplyWindowInsets(view, compat)
+        onDispose {}
+      }
+
       Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (visible) {

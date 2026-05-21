@@ -46,8 +46,20 @@ dependencies {
   // have actual runtime classes.
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.foundation)
+  // `androidx.core` for `WindowInsetsCompat` / `ViewCompat.dispatchApplyWindowInsets(view, insets)`
+  // — the connector publishes synthetic `WindowInsetsCompat.Type.ime()` insets to the host view so
+  // consumer code reading `WindowInsets.ime` (`Modifier.imePadding()`,
+  // `Modifier.windowInsetsPadding(WindowInsets.ime)`,
+  // `WindowInsets.ime.asPaddingValues()`) sees the band's height and reshapes accordingly.
+  // `compileOnly` because the consumer always brings its own `androidx.core` (transitively, via
+  // `androidx.compose.ui:ui`); we just need the API surface at compile time. Pinned to the
+  // matching compat floor (1.13.0) so the published AAR's bytecode stays binary-backward-
+  // compatible with consumers on older `androidx.core` lines — same rationale as
+  // `compose-foundation`.
+  compileOnly("androidx.core:core:1.13.0")
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.foundation)
+  testImplementation("androidx.core:core:1.13.0")
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
