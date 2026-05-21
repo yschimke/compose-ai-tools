@@ -582,6 +582,24 @@ internal fun buildDesktopExtensions(
       previewOverrideExtensions = listOf(PseudolocalePreviewOverrideExtensionDesktop()),
     )
   }
+  tryAdd("data/touch-overlay") {
+    // Touch-event visualization overlay (`AroundComposableHook`) — paints a translucent ring at
+    // every active pointer plus short-lived expanding pulses on down / up, same shape as Android's
+    // "Show touches" developer-mode toggle. Activated when `renderNow.overrides.touchOverlay =
+    // true`
+    // OR (automatically) when a live recording session starts — see
+    // `DesktopHost.acquireRecordingSession`. The around-composable observes pointer events via
+    // `Modifier.pointerInput` on the Initial pass without consuming them, so the inner preview's
+    // gesture detectors (`Modifier.transformable`, `Modifier.clickable`, …) keep working
+    // unchanged. Lives in `:daemon:desktop` for now since this is the first backend with live
+    // mode; a future `data/touch-overlay/connector/` module will host the planner so Android picks
+    // it up automatically when live mode lands on Robolectric.
+    Extension(
+      id = "data/touch-overlay",
+      displayName = "Touch event overlay",
+      previewOverrideExtensions = listOf(TouchOverlayPreviewOverrideExtension()),
+    )
+  }
   tryAdd("data/recomposition") {
     Extension(
       id = "data/recomposition",

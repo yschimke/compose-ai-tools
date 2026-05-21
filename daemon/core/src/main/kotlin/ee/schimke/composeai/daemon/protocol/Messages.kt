@@ -471,6 +471,18 @@ data class PreviewOverrides(
    */
   val focus: FocusOverride? = null,
   /**
+   * Opt-in touch-event visualization for live / recording sessions. When `true`, the
+   * `TouchOverlayExtension` (an `AroundComposableHook`) wraps the held composition with an observer
+   * that paints a translucent ring at every pressed pointer plus short-lived expanding pulses on
+   * down / up — same shape as Android's "Show touches" developer-mode toggle. The recorded APNG /
+   * mp4 / live frames then carry the touches an agent dispatched alongside the UI's reaction so the
+   * captured artifact is self-documenting. Defaults to `null` (off) so existing pixel-exact tests
+   * stay byte-identical and the visualization is strictly opt-in end-to-end — no host-side
+   * default-on (callers like the panel / CLI / agent SDK flip the field per user preference).
+   * Backends without a Compose host (none today) ignore the field.
+   */
+  val touchOverlay: Boolean? = null,
+  /**
    * Optional soft-keyboard (IME) override. Drives the connector-side `KeyboardOverrideExtension`
    * (see `:data-keyboard-connector`). The around-composable mirrors the consumer's normal IME
    * behaviour — `LocalSoftwareKeyboardController.show()/hide()`, focused `BasicTextField`s, and
@@ -1082,6 +1094,13 @@ data class InteractiveInputParams(
   /** Image-natural pixel coordinates. Daemon translates to dp using the last render's density. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
+  /**
+   * Per-pointer identifier for multi-touch dispatch (pinch-to-zoom, two-finger rotate, …). Defaults
+   * to `0` for backwards compatibility; the daemon tracks active pointers by id across
+   * `pointerDown` → `pointerMove`(s) → `pointerUp` so Compose's gesture pipeline groups them
+   * correctly. Ignored for non-pointer kinds.
+   */
+  val pointerId: Int? = null,
   /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. */
@@ -1280,6 +1299,16 @@ data class RecordingScriptEvent(
   /** Image-natural pixel coordinates. Same coordinate system as `interactive/input`. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
+  /**
+   * Per-pointer identifier for multi-touch dispatch — distinct pointers (e.g. a two-finger pinch)
+   * share a single virtual `tMs` while carrying their own id. Defaults to `0` for backwards
+   * compatibility, so existing single-pointer scripts (the vast majority) keep working unchanged.
+   * Required when dispatching pinch-to-zoom or any other multi-pointer gesture: each finger keeps
+   * its own id across `pointerDown` → `pointerMove`(s) → `pointerUp` so Compose's pointer pipeline
+   * groups events into the right gesture. Ignored for non-pointer events (`keyDown`,
+   * `rotaryScroll`, `recording.probe`, etc.).
+   */
+  val pointerId: Int? = null,
   /** For `keyDown` / `keyUp` (no-op in v1; reserved for v2 key dispatch). */
   val keyCode: String? = null,
   /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
