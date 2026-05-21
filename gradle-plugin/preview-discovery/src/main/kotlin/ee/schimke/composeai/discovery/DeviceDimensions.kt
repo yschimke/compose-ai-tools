@@ -1,4 +1,4 @@
-package ee.schimke.composeai.plugin
+package ee.schimke.composeai.discovery
 
 object DeviceDimensions {
   /**

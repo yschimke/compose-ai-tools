@@ -1,7 +1,6 @@
-package ee.schimke.composeai.plugin
+package ee.schimke.composeai.discovery
 
 import com.google.common.truth.Truth.assertThat
-import ee.schimke.composeai.discovery.*
 import org.junit.Test
 
 class DeviceDimensionsTest {
