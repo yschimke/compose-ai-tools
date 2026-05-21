@@ -2103,6 +2103,7 @@ class JsonRpcServer(
           classLoader = classLoader,
           inspectionMode = params.inspectionMode,
           onSessionClosed = { cleanupClosedInteractiveSession(streamId) },
+          overrides = params.overrides,
         )
       } catch (t: UnsupportedOperationException) {
         fallbackReason = "${t.javaClass.simpleName}: ${t.message}"
@@ -2217,6 +2218,7 @@ class JsonRpcServer(
           classLoader = classLoader,
           inspectionMode = params.inspectionMode,
           onSessionClosed = { cleanupClosedInteractiveSession(streamId) },
+          overrides = params.overrides,
         )
       } catch (t: UnsupportedOperationException) {
         fallbackReason = "${t.javaClass.simpleName}: ${t.message}"

@@ -292,6 +292,7 @@ open class DesktopHost(
     classLoader: ClassLoader,
     inspectionMode: Boolean?,
     onSessionClosed: (() -> Unit)?,
+    overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
     val resolver =
       previewSpecResolver
@@ -299,12 +300,18 @@ open class DesktopHost(
           "DesktopHost has no previewSpecResolver; pass one at construction time to enable v2 " +
             "interactive sessions"
         )
-    val spec =
+    val baseSpec =
       resolver(previewId)
         ?: throw UnsupportedOperationException(
           "DesktopHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
+    // Apply the same override-merge pass that recording sessions use, so `touchOverlay = true` on
+    // an `interactive/start` installs the `TouchOverlayExtension` against the held composition.
+    // `recordingId` is reused as the spec's distinguishing output-base-name token even though the
+    // interactive path doesn't write per-frame PNGs — keeps the spec shape symmetric and avoids a
+    // null branch in `applyOverrides`.
+    val spec = applyOverrides(baseSpec, overrides, recordingId = "interactive-$previewId")
     val state = engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
     val session =
       DesktopInteractiveSession(
