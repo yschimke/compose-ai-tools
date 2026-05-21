@@ -63,6 +63,11 @@ dependencies {
   // platform-portable mirror. The Android-only `FocusOverlay` (Android-View focus-owner reflection)
   // is not shipped on desktop.
   implementation(project(":data-focus-connector-desktop"))
+  // Soft-keyboard (IME) connector (desktop): always-on `AroundComposable` that shadows
+  // `LocalSoftwareKeyboardController` and overlays a fake-IME band when `KeyboardController`
+  // reports the keyboard is up. Mirrors `:data-keyboard-connector` (Android). The desktop
+  // session's `dispatch(KEY_*)` also calls into `KeyboardController` from this module.
+  implementation(project(":data-keyboard-connector-desktop"))
   implementation(project(":data-recomposition-connector"))
   // Display-filter connector — `DisplayFilterDataProducer.writeArtifacts` runs the post-capture
   // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each

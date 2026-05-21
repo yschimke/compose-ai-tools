@@ -200,6 +200,18 @@ include(":data-focus-connector-desktop")
 
 project(":data-focus-connector-desktop").projectDir = file("data/focus/connector-desktop")
 
+include(":data-keyboard-core")
+
+project(":data-keyboard-core").projectDir = file("data/keyboard/core")
+
+include(":data-keyboard-connector")
+
+project(":data-keyboard-connector").projectDir = file("data/keyboard/connector")
+
+include(":data-keyboard-connector-desktop")
+
+project(":data-keyboard-connector-desktop").projectDir = file("data/keyboard/connector-desktop")
+
 include(":data-pseudolocale-core")
 
 project(":data-pseudolocale-core").projectDir = file("data/pseudolocale/core")
