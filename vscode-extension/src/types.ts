@@ -878,7 +878,12 @@ export type WebviewToExtension =
      * that the legacy `setInteractive` `<img src=…>` swap path has been
      * retired. See docs/daemon/STREAMING.md and docs/daemon/INTERACTIVE.md.
      */
-    | { command: "requestStreamStart"; previewId: string }
+    | {
+          command: "requestStreamStart";
+          previewId: string;
+          /** Per-card touch / keyboard toggle state — see `daemon/liveCommand.ts`. */
+          overrides?: import("./daemon/daemonProtocol").PreviewOverrides;
+      }
     | { command: "requestStreamStop"; previewId: string }
     /**
      * Webview reports the live card scrolled into / out of viewport. The

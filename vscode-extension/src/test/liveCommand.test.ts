@@ -23,6 +23,45 @@ describe("liveToggleCommand", () => {
         assert.strictEqual(cmd.previewId, "preview-A");
         assert.ok(!("enabled" in cmd));
     });
+
+    it("forwards `overrides` on start when any field is defined", () => {
+        const cmd = liveToggleCommand("preview-A", true, {
+            touchOverlay: true,
+        });
+        assert.strictEqual(cmd.command, "requestStreamStart");
+        if (cmd.command === "requestStreamStart") {
+            assert.deepStrictEqual(cmd.overrides, { touchOverlay: true });
+        }
+    });
+
+    it("forwards a multi-field `overrides` payload verbatim", () => {
+        const cmd = liveToggleCommand("preview-A", true, {
+            touchOverlay: true,
+            keyboard: { visible: true },
+        });
+        if (cmd.command === "requestStreamStart") {
+            assert.deepStrictEqual(cmd.overrides, {
+                touchOverlay: true,
+                keyboard: { visible: true },
+            });
+        }
+    });
+
+    it("drops `overrides` entirely when every field is undefined", () => {
+        // Empty object MUST collapse to the no-overrides shape — otherwise the
+        // wire payload grows for no reason and pre-toggle tests break.
+        const cmd = liveToggleCommand("preview-A", true, {});
+        assert.strictEqual(cmd.command, "requestStreamStart");
+        assert.ok(!("overrides" in cmd));
+    });
+
+    it("ignores `overrides` on disable (stop has no overrides field)", () => {
+        const cmd = liveToggleCommand("preview-A", false, {
+            touchOverlay: true,
+        });
+        assert.strictEqual(cmd.command, "requestStreamStop");
+        assert.ok(!("overrides" in cmd));
+    });
 });
 
 describe("liveViewportCommand", () => {

@@ -40,6 +40,7 @@
 // triggered after the extension or daemon has already torn the streams down,
 // and re-posting would race the flush.
 
+import type { PreviewOverrides } from "../../daemon/daemonProtocol";
 import { liveToggleCommand } from "../../daemon/liveCommand";
 import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
@@ -47,8 +48,12 @@ import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import {
     ensureControlsToggleButton,
+    ensureKeyboardBandToggleButton,
     ensureLiveCardControls,
+    ensureTouchOverlayToggleButton,
     removeControlsToggleButton,
+    removeKeyboardBandToggleButton,
+    removeTouchOverlayToggleButton,
 } from "./liveCardControls";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
@@ -94,6 +99,15 @@ export class LiveStateController {
     // without an active session anyway, and re-entering live should not silently
     // re-attach keyboard interception).
     private controlsEnabledPreviewIds: Set<string> = new Set<string>();
+    // Per-preview state for the touch-overlay + keyboard-band toggles. Read by
+    // `overridesForPreview()` when building the `requestStreamStart` payload so
+    // the daemon's session installs the matching `AroundComposable`. Toggling on
+    // a live preview restarts the stream to pick up the new override; toggling
+    // when not live just remembers the choice for the next `requestStreamStart`.
+    // Sticky across live mode tear-down so a user who flips touch overlay on,
+    // stops live, and starts again gets the same overlay back.
+    private touchOverlayEnabledPreviewIds: Set<string> = new Set<string>();
+    private keyboardBandForcedPreviewIds: Set<string> = new Set<string>();
 
     // Per-module availability — written from `setInteractiveAvailability`
     // via `setAvailability`, read by the focus toolbar predicates through
@@ -269,24 +283,127 @@ export class LiveStateController {
      * after each per-card toggle so the button appears / disappears in lock-step with
      * the daemon's `requiresInteractive` extension set.
      *
-     * Buttons appear on every card when at least one interactive-only extension is
-     * advertised; their pressed visual state reflects `isControlsEnabled(previewId)`.
+     * Also re-stamps the per-card touch-overlay + keyboard-band toggle buttons (the
+     * `PreviewOverrides`-driven extensions, distinct from the #1203 input gate). Those
+     * appear whenever the focused module advertises interactive support — they don't
+     * require the input-only `requiresInteractive` gate because they're rendering
+     * overrides, not input dispatch.
      */
     applyControlsToggleButtons(): void {
         const advertised = this.moduleInteractiveOnlyExtensions.size > 0;
+        const interactiveSupported = this.anyModuleInteractiveSupported();
         const cards = document.querySelectorAll<HTMLElement>(".preview-card");
         for (const card of cards) {
-            if (!advertised) {
+            const previewId = card.dataset.previewId;
+            if (!previewId) {
+                // No previewId — strip every toggle, can't bind state.
                 removeControlsToggleButton(card);
+                removeTouchOverlayToggleButton(card);
+                removeKeyboardBandToggleButton(card);
                 continue;
             }
-            const previewId = card.dataset.previewId;
-            if (!previewId) continue;
-            ensureControlsToggleButton(card, {
-                enabled: this.controlsEnabledPreviewIds.has(previewId),
-                onToggle: (c, next) => this.toggleControlsForCard(c, next),
-            });
+            // Existing #1203 controls (keyboard input dispatch) — gated on the
+            // daemon advertising an interactive-only extension.
+            if (advertised) {
+                ensureControlsToggleButton(card, {
+                    enabled: this.controlsEnabledPreviewIds.has(previewId),
+                    onToggle: (c, next) => this.toggleControlsForCard(c, next),
+                });
+            } else {
+                removeControlsToggleButton(card);
+            }
+            // Touch-overlay + keyboard-band buttons — gated on the daemon
+            // supporting interactive sessions at all. The overrides themselves
+            // are no-ops on backends that don't ship the matching extension
+            // (the daemon ignores unknown `PreviewOverrides` fields), so the
+            // toggles are safe to expose unconditionally on any interactive
+            // backend.
+            if (interactiveSupported) {
+                ensureTouchOverlayToggleButton(card, {
+                    enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
+                    onToggle: (c, next) =>
+                        this.toggleTouchOverlayForCard(c, next),
+                });
+                ensureKeyboardBandToggleButton(card, {
+                    enabled: this.keyboardBandForcedPreviewIds.has(previewId),
+                    onToggle: (c, next) =>
+                        this.toggleKeyboardBandForCard(c, next),
+                });
+            } else {
+                removeTouchOverlayToggleButton(card);
+                removeKeyboardBandToggleButton(card);
+            }
         }
+    }
+
+    /**
+     * `true` when any module's daemon reports it can hold an interactive session — the
+     * gate for showing the touch-overlay + keyboard-band toggle buttons. Single-module
+     * panel today reduces to "the active module supports it"; same pattern as
+     * `supportsInteractiveControl`.
+     */
+    private anyModuleInteractiveSupported(): boolean {
+        for (const supported of this.moduleInteractiveSupported.values()) {
+            if (supported) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Per-card touch-overlay toggle. Flipping on while the card is live restarts the
+     * stream so the daemon picks up `overrides.touchOverlay = true` for the new
+     * session; flipping off similarly restarts to drop the override. The toggle is
+     * sticky — when not live, the state is remembered for the next `requestStreamStart`.
+     */
+    toggleTouchOverlayForCard(card: HTMLElement, enabled: boolean): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        const was = this.touchOverlayEnabledPreviewIds.has(previewId);
+        if (was === enabled) return;
+        if (enabled) this.touchOverlayEnabledPreviewIds.add(previewId);
+        else this.touchOverlayEnabledPreviewIds.delete(previewId);
+        this.restartLiveIfActive(previewId);
+        this.applyControlsToggleButtons();
+    }
+
+    /** Symmetric to {@link toggleTouchOverlayForCard} for the soft-keyboard band. */
+    toggleKeyboardBandForCard(card: HTMLElement, enabled: boolean): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        const was = this.keyboardBandForcedPreviewIds.has(previewId);
+        if (was === enabled) return;
+        if (enabled) this.keyboardBandForcedPreviewIds.add(previewId);
+        else this.keyboardBandForcedPreviewIds.delete(previewId);
+        this.restartLiveIfActive(previewId);
+        this.applyControlsToggleButtons();
+    }
+
+    /**
+     * Current per-card override payload — `undefined` when no toggle is on, so the
+     * existing `requestStreamStart` wire shape stays unchanged for the common case.
+     * Consumed by {@link postLiveCommand} when entering live mode.
+     */
+    overridesForPreview(previewId: string): PreviewOverrides | undefined {
+        const touch = this.touchOverlayEnabledPreviewIds.has(previewId);
+        const keyboardOn = this.keyboardBandForcedPreviewIds.has(previewId);
+        if (!touch && !keyboardOn) return undefined;
+        const overrides: PreviewOverrides = {};
+        if (touch) overrides.touchOverlay = true;
+        if (keyboardOn) overrides.keyboard = { visible: true };
+        return overrides;
+    }
+
+    /**
+     * Toggle restart helper: stop + immediately re-start live mode for [previewId] so
+     * the daemon session is rebuilt with the current `overridesForPreview` payload.
+     * No-op when the card isn't currently live; the new state is picked up on the
+     * next manual live start. Posts the two commands as separate notifications so the
+     * extension-side handler can run its existing teardown sequence unmodified.
+     */
+    private restartLiveIfActive(previewId: string): void {
+        if (!this.interactivePreviewIds.has(previewId)) return;
+        this.postLiveCommand(previewId, false);
+        this.postLiveCommand(previewId, true);
     }
 
     /**
@@ -297,7 +414,13 @@ export class LiveStateController {
      * point shares one rule.
      */
     private postLiveCommand(previewId: string, enabled: boolean): void {
-        this.cfg.vscode.postMessage(liveToggleCommand(previewId, enabled));
+        // Only the start command carries overrides; stop ignores them by contract.
+        const overrides = enabled
+            ? this.overridesForPreview(previewId)
+            : undefined;
+        this.cfg.vscode.postMessage(
+            liveToggleCommand(previewId, enabled, overrides),
+        );
     }
 
     isLive(previewId: string): boolean {

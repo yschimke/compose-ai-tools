@@ -1463,6 +1463,54 @@ preview-app {
     );
 }
 
+/* Per-card touch-overlay + keyboard-band toggles. Both drive `PreviewOverrides`
+ * fields (`touchOverlay`, `keyboard.visible`) carried on `requestStreamStart`,
+ * sit alongside the existing controls toggle on the top-left of the image
+ * container, and share its visual treatment so the row of toggles reads as one
+ * coherent strip. Spacing matches the icon-button size (~28px) + a 6px gap. */
+.card-touch-overlay-toggle-btn,
+.card-keyboard-band-toggle-btn {
+    position: absolute;
+    top: 6px;
+    z-index: 4;
+    color: var(--vscode-foreground);
+    background: color-mix(
+        in srgb,
+        var(--vscode-editor-background) 82%,
+        transparent
+    );
+    border-color: color-mix(in srgb, var(--vscode-foreground) 30%, transparent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+.card-touch-overlay-toggle-btn {
+    left: 40px;
+}
+.card-keyboard-band-toggle-btn {
+    left: 74px;
+}
+.card-touch-overlay-toggle-btn[aria-pressed="true"],
+.card-keyboard-band-toggle-btn[aria-pressed="true"] {
+    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-focusBorder, #007fd4);
+    border-color: var(--vscode-focusBorder, #007fd4);
+}
+.card-touch-overlay-toggle-btn:hover:not(:disabled),
+.card-keyboard-band-toggle-btn:hover:not(:disabled) {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder, #007fd4) 22%,
+        var(--vscode-editor-background)
+    );
+}
+.card-touch-overlay-toggle-btn[aria-pressed="true"]:hover:not(:disabled),
+.card-keyboard-band-toggle-btn[aria-pressed="true"]:hover:not(:disabled) {
+    background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder, #007fd4) 85%,
+        var(--vscode-editor-background)
+    );
+}
+
 /* Toggle button "live-on" state: red glyph matching the live card outline. */
 .icon-button.live-on {
     color: var(--vscode-errorForeground, #f55);
