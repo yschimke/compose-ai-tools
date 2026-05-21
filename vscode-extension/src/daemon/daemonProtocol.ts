@@ -449,6 +449,32 @@ export interface PreviewOverrides {
      * Per-render LocalInspectionMode override. Undefined preserves normal preview behaviour.
      */
     inspectionMode?: boolean;
+    /**
+     * Opt-in touch-event visualization for live / recording sessions. `true` installs the
+     * `TouchOverlayExtension` `AroundComposable` so the captured / streamed frames carry
+     * cyan rings at every pressed pointer plus short-lived expanding pulses on down/up —
+     * Android's "Show touches" developer-mode toggle, but agent-pixel-true. The panel's
+     * per-card touch-overlay button (`.card-touch-overlay-toggle-btn`) flips this. Defaults
+     * to `null` (off) so existing pixel-exact tests stay byte-identical.
+     */
+    touchOverlay?: boolean;
+    /**
+     * Soft-keyboard (IME) band override. `visible = true` forces the daemon's `data/keyboard`
+     * extension's Gboard-shaped band onto the capture regardless of what the app's
+     * `LocalSoftwareKeyboardController` / focus state would naturally do; `pressedKey`
+     * highlights a specific key cap (lower-case letter or `"space"` / `"enter"` /
+     * `"shift"` / `"backspace"` / `"sym"`). Driven by the panel's per-card keyboard-band
+     * toggle button (`.card-keyboard-band-toggle-btn`). Sending the field with all nullable
+     * sub-fields null is a no-op — the connector's always-active planner still observes the
+     * app's natural IME signals.
+     */
+    keyboard?: KeyboardOverride;
+}
+
+/** Soft-keyboard (IME) override. See `PreviewOverrides.keyboard`. */
+export interface KeyboardOverride {
+    visible?: boolean;
+    pressedKey?: string;
 }
 
 export interface RenderNowParams {
@@ -898,6 +924,12 @@ export interface StreamStartParams {
     maxFps?: number;
     hidpi?: boolean;
     inspectionMode?: boolean;
+    /**
+     * Per-session preview overrides. Mirrors `RecordingStartParams.overrides` — currently
+     * carries the per-card `touchOverlay` and `keyboard` toggles the panel surfaces via
+     * `.card-touch-overlay-toggle-btn` and `.card-keyboard-band-toggle-btn`.
+     */
+    overrides?: PreviewOverrides;
 }
 
 export interface StreamStartResult {
