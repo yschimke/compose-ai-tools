@@ -53,3 +53,16 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2026")
 }
+
+// CLI entry point (`PreviewDiscoveryCli`) is what Bazel rules and Amper tasks shell out to —
+// stamping the `Main-Class` attribute lets a build system invoke the artifact via
+// `java -cp <classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli ...` or
+// `java -jar preview-discovery-<v>.jar ...` (the latter only when all transitive jars sit
+// next to the artifact, which is the shape a Bazel `runtime_jars` provider produces). The
+// transitive deps (classgraph, asm, kotlinx-serialization) are `api` so consumers resolving
+// the pom get the full classpath without extra work.
+tasks.named<Jar>("jar").configure {
+  manifest {
+    attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli")
+  }
+}
