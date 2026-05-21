@@ -9,6 +9,7 @@ import ee.schimke.composeai.daemon.history.GitRefHistorySource
 import ee.schimke.composeai.daemon.history.HistoryManager
 import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.data.render.RenderPreviewExtension
+import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.renderer.AccessibilityAnnotatedPreviewExtension
 import ee.schimke.composeai.renderer.AccessibilityOverlayPreviewExtension
@@ -346,6 +347,28 @@ fun main(args: Array<String>) {
             id = "data/ambient",
             displayName = "Wear OS ambient override",
             dataProductRegistry = AmbientDataProductRegistry(),
+          )
+        }
+        tryAdd("data/touch-overlay") {
+          // Touch-event visualization overlay (`AroundComposableHook` from
+          // `:data-touch-overlay-connector`) — paints a translucent ring at every active pointer
+          // plus short-lived expanding pulses on down / up, same shape as Android's "Show
+          // touches" developer-mode toggle. Activated when `renderNow.overrides.touchOverlay =
+          // true`; mirrors the desktop registration so panel / MCP clients see the same id and
+          // descriptor across both backends. The planner itself is registered directly in
+          // `RobolectricHost`'s `previewOverrideExtensions` list (see the keyboard / focus
+          // precedent — `ExtensionRegistry` carries the descriptor metadata, the engine carries
+          // the runtime planner).
+          Extension(
+            id = "data/touch-overlay",
+            displayName = "Touch event overlay",
+            dataExtensionDescriptors =
+              listOf(
+                DataExtensionDescriptor(
+                  id = TouchOverlayExtension.ID,
+                  displayName = "Touch event overlay",
+                )
+              ),
           )
         }
         if (historyManager != null) {

@@ -68,6 +68,11 @@ dependencies {
   // reports the keyboard is up. Mirrors `:data-keyboard-connector` (Android). The desktop
   // session's `dispatch(KEY_*)` also calls into `KeyboardController` from this module.
   implementation(project(":data-keyboard-connector-desktop"))
+  // Touch-event visualization connector — `TouchOverlayExtension` `AroundComposable` that paints
+  // cyan rings at every pressed pointer + expanding pulses on down/up. Same module is consumed by
+  // `:daemon:android` (the extension's source is pure Compose foundation/runtime — portable).
+  // Activated by `renderNow.overrides.touchOverlay = true` or for live recording sessions.
+  implementation(project(":data-touch-overlay-connector"))
   implementation(project(":data-recomposition-connector"))
   // Display-filter connector — `DisplayFilterDataProducer.writeArtifacts` runs the post-capture
   // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each
