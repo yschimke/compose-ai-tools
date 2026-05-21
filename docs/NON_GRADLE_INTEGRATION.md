@@ -11,8 +11,8 @@ The two contracts you implement against:
 
 | Artifact | Schema | Wire-stable | Producer |
 | --- | --- | --- | --- |
-| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonClasspathDescriptor.kt) | `schemaVersion = 1` | You |
-| `previews.json` | [`PreviewData.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/PreviewData.kt) | `schema = "compose-previews/v1"` | You — by running ClassGraph or hand-authoring |
+| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 1` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its `java -jar` CLI |
+| `previews.json` | [`PreviewData.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt) (published as `ee.schimke.composeai:preview-discovery`) | `schema = "compose-previews/v1"` | You — or [`PreviewDiscovery`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) / its `java -jar` CLI |
 
 The consumer of both is the daemon JVM (`daemon/desktop` or `daemon/android`),
 driven by `RenderSessionFactory.open(...)` from the
@@ -372,11 +372,6 @@ before the renderer can load classes compiled against it.
 
 ## Limitations and follow-ups
 
-- **Preview discovery library is gradle-coupled.** `DiscoverPreviewsTask`
-  uses `@TaskAction` and configuration-cache-safe inputs; the underlying
-  ClassGraph scan would be extracted to a standalone library, but that's
-  tracked separately. Until then, non-Gradle integrations either hand-author
-  `previews.json` or vendor a discovery tool.
 - **Renderer-android requires Robolectric.** Driving the Android renderer
   from Bazel needs a working Robolectric + AGP classpath inside Bazel —
   doable but well off the beaten path. Start with renderer-desktop.
@@ -388,11 +383,14 @@ before the renderer can load classes compiled against it.
 
 ## Reference
 
-- Descriptor schema source: [`DaemonClasspathDescriptor.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonClasspathDescriptor.kt)
+- Descriptor schema source: [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`)
 - Wire protocol: [`docs/daemon/PROTOCOL.md`](daemon/PROTOCOL.md)
 - Data products catalogue: [`docs/daemon/DATA-PRODUCTS.md`](daemon/DATA-PRODUCTS.md)
 - `RenderSession` API: [`render-session/api/.../RenderSession.kt`](../render-session/api/src/main/kotlin/ee/schimke/composeai/render/session/RenderSession.kt)
-- Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt)
+- Reference producer (the Gradle plugin's bootstrap task): [`DaemonBootstrapTask.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonBootstrapTask.kt) — now a thin adapter over `DaemonLaunchBuilder`
+- Standalone preview-discovery library + CLI: [`PreviewDiscovery.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) + [`PreviewDiscoveryCli.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscoveryCli.kt)
+- Standalone daemon-launch-builder library + CLI: [`DaemonLaunchBuilder.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) + [`DaemonLaunchBuilderCli.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilderCli.kt)
+- Render CLI driving `SubprocessRenderSessions`: [`RenderCli.kt`](../render-cli/src/main/kotlin/ee/schimke/composeai/render/cli/RenderCli.kt)
 - Sample Amper fixture: [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/)
 - Contract test demonstrating the recipe end-to-end: [`render-session/subprocess/src/test/.../NonGradleContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/NonGradleContractTest.kt)
 - Amper-driven end-to-end test against the fixture: [`render-session/subprocess/src/test/.../AmperContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt)
