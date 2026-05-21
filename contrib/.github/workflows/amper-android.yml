@@ -1,0 +1,68 @@
+name: Amper Android sample
+
+# Opt-in workflow for the Amper Android sample
+# (amper-android/). Triggers on PRs that touch the sample or
+# this workflow file, plus manual dispatch. Not part of the default
+# `check` matrix because Amper's first run downloads the Android SDK
+# image into its cache (~tens of seconds) which is wasted wall-clock
+# for PRs that don't touch the sample.
+#
+# Lifted from yschimke/compose-ai-tools as part of Phase B of the
+# contrib refactor — see compose-ai-tools/contrib/README.md for the
+# migration history.
+
+on:
+  pull_request:
+    paths:
+      - "amper-android/**"
+      - ".github/workflows/amper-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  amper-build:
+    name: ./amper build (amper-android)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: amper-android
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+      - name: Build
+        env:
+          # Mirrors amper-cmp-desktop/README.md — the bundled
+          # Zulu JRE Amper auto-downloads doesn't trust the sandbox /
+          # runner CA for some setups. Wiring the system truststore
+          # explicitly is harmless on a stock runner and necessary on
+          # TLS-inspecting environments.
+          AMPER_JAVA_OPTIONS: >-
+            -ea -XX:+EnableDynamicAgentLoading
+            -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts
+            -Djavax.net.ssl.trustStorePassword=changeit
+        run: ./amper build
+      - name: Assert APK exists
+        run: |
+          apk="$(find build -name '*.apk' -print -quit)"
+          if [ -z "$apk" ]; then
+            echo "No APK produced under build/." >&2
+            find build -maxdepth 4 -type f >&2
+            exit 1
+          fi
+          echo "Built: $apk"
