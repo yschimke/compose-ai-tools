@@ -1066,6 +1066,17 @@ data class InteractiveStartParams(
    * preview/stub-data branch while still using a held session.
    */
   val inspectionMode: Boolean? = null,
+  /**
+   * Optional render-spec overrides applied to the held interactive scene at session-acquire time —
+   * mirrors `RecordingStartParams.overrides`. The interactive payoff is `touchOverlay`: setting it
+   * `true` here installs the `TouchOverlayExtension` `AroundComposable` so the visualization rings
+   * paint over the live frames an external panel is streaming. Other override fields (`widthPx`,
+   * `heightPx`, `device`, `localeTag`, `fontScale`, `uiMode`, `orientation`, `keyboard`, …) are
+   * accepted on the wire but only honoured by hosts that route this struct through their preview
+   * setup; today that's `DesktopHost`. Backends that ignore the field silently fall through to the
+   * un-overridden spec.
+   */
+  val overrides: PreviewOverrides? = null,
 )
 
 /**
@@ -1523,6 +1534,8 @@ data class StreamStartParams(
   val hidpi: Boolean? = null,
   /** Mirrors [InteractiveStartParams.inspectionMode]; `null` keeps the v2 default. */
   val inspectionMode: Boolean? = null,
+  /** Mirrors [InteractiveStartParams.overrides]; see that field for the touch-overlay payoff. */
+  val overrides: PreviewOverrides? = null,
 )
 
 /**
