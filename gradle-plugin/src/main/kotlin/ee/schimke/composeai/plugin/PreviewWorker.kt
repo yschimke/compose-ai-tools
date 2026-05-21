@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin
 
+import ee.schimke.composeai.discovery.*
 import java.awt.Color
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
