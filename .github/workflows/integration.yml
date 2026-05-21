@@ -684,15 +684,15 @@ jobs:
       # The committed fixture pins `compose-bom` to 2026.05.00 (matches
       # `compose-bom-stable` in `gradle/libs.versions.toml` — what
       # `:samples:android` uses) and the preview source references
-      # `androidx.compose.material3.LoadingIndicator`, a material3 1.4+
+      # `androidx.compose.material3.VerticalDragHandle`, a material3 1.4.0
       # composable. To prove the BOM floor is real AND that
       # `compose-preview doctor` explains it, we:
       #   1. Downgrade the staged fixture's BOM to 2024.12.01 (material3
-      #      1.3.1, no `LoadingIndicator`).
+      #      1.3.1, no `VerticalDragHandle`).
       #   2. Run `renderPreviews` and assert it FAILS — `compileDebugKotlin`
-      #      errors out on the unresolved `LoadingIndicator` import. This
-      #      is the same failure shape a real consumer hits when their
-      #      source reaches for a new Compose API ahead of their BOM.
+      #      errors out on the unresolved `VerticalDragHandle` import.
+      #      Same failure shape a real consumer hits when their source
+      #      reaches for a new Compose API ahead of their BOM.
       #   3. Run `compose-preview doctor --json` and assert
       #      `env.compose-bom-version` fires as `warning` — the doctor's
       #      pre-flight catches the too-old BOM before any compile attempt.
@@ -725,7 +725,7 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -eq 0 ]; then
-            echo "::error::renderPreviews unexpectedly succeeded against compose-bom 2024.12.01. Previews.kt imports androidx.compose.material3.LoadingIndicator (material3 1.4+); 2024.12.01 ships material3 1.3.1 without it, so compileDebugKotlin should fail. Either the BOM mapping changed (move the Phase 1 pin lower) or the preview no longer references a post-1.3 API (pick a fresher one)."
+            echo "::error::renderPreviews unexpectedly succeeded against compose-bom 2024.12.01. Previews.kt imports androidx.compose.material3.VerticalDragHandle (material3 1.4.0); 2024.12.01 ships material3 1.3.1 without it, so compileDebugKotlin should fail. Either the BOM mapping changed (move the Phase 1 pin lower) or the preview no longer references a post-1.3 API (pick a fresher one)."
             exit 1
           fi
           echo "renderPreviews failed as expected (exit code $rc); proceeding to doctor."
