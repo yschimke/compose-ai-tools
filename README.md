@@ -1,7 +1,7 @@
 # Preview Baselines
 ## Android XML Resource Previews
 
-Rendered from `:<module>:renderAndroidResources`. One row per (resource × qualifier × shape) capture. See [`references/resource-previews.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/resource-previews.md) for the rendering catalogue.
+Rendered from `:<module>:composePreviewRenderAndroidResources`. One row per (resource × qualifier × shape) capture. See [`references/resource-previews.md`](https://github.com/yschimke/skills/blob/main/skills/compose-preview/references/resource-previews.md) for the rendering catalogue.
 
 ### samples/android
 
