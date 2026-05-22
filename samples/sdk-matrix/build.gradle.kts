@@ -25,10 +25,15 @@ plugins {
   id("ee.schimke.composeai.preview")
 }
 
+// Defaults pinned to SDK 35 (not 36) so the no-override path renders cleanly under the project's
+// default JDK 17 toolchain — Robolectric refuses to bootstrap an SDK 36 sandbox without JDK 21+
+// (`DefaultSdkProvider.verifySupportedSdk`), which would fail every regular `preview-baselines`
+// run that doesn't set the matrix `-P` overrides. The nightly `sdk-matrix.yml` workflow always
+// passes explicit cell values, so it sweeps the full {35, 36, 37} range regardless of the default.
 val matrixCompileSdk: Int =
-  providers.gradleProperty("composeai.matrix.compileSdk").orNull?.toIntOrNull() ?: 36
+  providers.gradleProperty("composeai.matrix.compileSdk").orNull?.toIntOrNull() ?: 35
 val matrixTargetSdk: Int =
-  providers.gradleProperty("composeai.matrix.targetSdk").orNull?.toIntOrNull() ?: 36
+  providers.gradleProperty("composeai.matrix.targetSdk").orNull?.toIntOrNull() ?: 35
 val matrixMinSdk: Int =
   providers.gradleProperty("composeai.matrix.minSdk").orNull?.toIntOrNull() ?: 24
 val matrixSdkOverride: Int? =
