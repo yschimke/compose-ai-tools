@@ -16,6 +16,10 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 
 /**
  * Desktop concrete [InteractiveSession] holding a long-lived
@@ -43,9 +47,16 @@ import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
  * takes scene-px which equals natural pixels at density 1.0; we divide by the held density before
  * dispatch. Null coords (e.g. for keyboard events, which we no-op anyway) skip the dispatch.
  *
- * **Threading.** Per the [InteractiveSession] contract, `JsonRpcServer` serialises calls to one
- * instance — dispatch and render run on the same fire-and-forget worker thread per input. Skiko
- * isn't thread-safe, so the contract matches the underlying constraint.
+ * **Threading.** Every scene touch — `setUp` (run by [DesktopHost] before construction), every
+ * `dispatch`, every `render`, the optional [onSceneClose] hook, and the final `tearDown` — is
+ * pinned to [sceneExecutor], a single-thread executor that this session owns and disposes on
+ * [close]. That confines the recomposer's `LaunchedEffect` coroutines (which inherit the scene's
+ * default `Dispatchers.Unconfined` and therefore resume on whatever thread last drove
+ * recomposition) and the global `SnapshotStateObserver`'s registration to a single thread. Without
+ * that pin, an `interactive/stop` running on the JSON-RPC read thread can race a `LaunchedEffect`
+ * body still executing on a render worker thread — the cross-thread snapshot touch is what trips
+ * `Detected multithreaded access to SnapshotStateObserver` (issue #1229) and, on Linux/Skiko, can
+ * escalate to a SIGABRT inside the native scene-close path.
  */
 class DesktopInteractiveSession(
   override val previewId: String,
@@ -53,13 +64,24 @@ class DesktopInteractiveSession(
   private val state: RenderEngine.SceneState,
   private val sandboxStats: SandboxLifecycleStats,
   /**
-   * Fired exactly once after [close] flips `closed = true` and tears down the held scene. Mirrors
-   * [AndroidInteractiveSession.onCloseHook] so the same JsonRpcServer-side cleanup wiring works
-   * across both backends. DesktopHost has no idle-lease watchdog today (only explicit close + the
-   * D5 listener wrapper drive close), so on desktop the hook is effectively the same as
-   * `interactiveSessionListener.onSessionLifecycle(_, scene = null)` — but routing it through the
-   * same shape as Android keeps the host-shared API uniform and gives the desktop daemon a free
-   * hook point for any future async-close path.
+   * Single-thread executor owned by this session — every scene touch runs here. The caller
+   * ([DesktopHost.acquireInteractiveSession]) is responsible for already having executed
+   * [RenderEngine.setUp] on this executor before passing [state] in, so the scene is allocated on
+   * the same thread that will later render / dispatch / tear it down.
+   */
+  private val sceneExecutor: ExecutorService,
+  /**
+   * Optional hook fired on [sceneExecutor] right before [RenderEngine.tearDown] during [close].
+   * Used by [DesktopHost] to drive `InteractiveSessionListener.onSessionLifecycle(_, null)` — the
+   * recomposition producer's observer-dispose — on the same thread the observer was installed on.
+   * Failures are logged and swallowed; the scene tear-down proceeds either way.
+   */
+  private val onSceneClose: (() -> Unit)? = null,
+  /**
+   * Fired exactly once after [close] flips `closed = true`, the scene tear-down completes, and the
+   * executor shuts down. Pure server-side cleanup — doesn't touch the scene, so it runs on whatever
+   * thread called [close]. Mirrors [AndroidInteractiveSession.onCloseHook] so the same
+   * `JsonRpcServer`-side cleanup wiring works across both backends.
    */
   private val onCloseHook: (() -> Unit)? = null,
 ) : InteractiveSession {
@@ -74,8 +96,8 @@ class DesktopInteractiveSession(
    * playback so an external panel sending two simultaneous `pointerDown`s actually gets a
    * `Modifier.transformable {}` zoom callback (the gating signal is ≥ 2 pointers in one event).
    *
-   * Per the [InteractiveSession] contract, JsonRpcServer serialises calls into one session, so a
-   * plain `MutableMap` is safe — no `ConcurrentHashMap` needed.
+   * Read and written only from [sceneExecutor]'s thread, so a plain `MutableMap` is safe — no
+   * `ConcurrentHashMap` needed.
    */
   private val activePointers: MutableMap<Int, Offset> = mutableMapOf()
 
@@ -84,6 +106,13 @@ class DesktopInteractiveSession(
 
   override fun dispatch(input: InteractiveInputParams) {
     if (closed) return
+    runOnSceneThread {
+      if (closed) return@runOnSceneThread
+      dispatchOnSceneThread(input)
+    }
+  }
+
+  private fun dispatchOnSceneThread(input: InteractiveInputParams) {
     val px = input.pixelX
     val py = input.pixelY
     when (input.kind) {
@@ -162,27 +191,85 @@ class DesktopInteractiveSession(
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "DesktopInteractiveSession.render() called after close()" }
-    return engine.renderOnce(
-      state,
-      requestId,
-      sandboxStats = sandboxStats,
-      useWallClockFrameTime = true,
-    )
+    return runOnSceneThreadForResult {
+      check(!closed) { "DesktopInteractiveSession.render() called after close()" }
+      engine.renderOnce(state, requestId, sandboxStats = sandboxStats, useWallClockFrameTime = true)
+    }
   }
 
   override fun close() {
     if (closed) return
     closed = true
-    engine.tearDown(state)
-    if (onCloseHook != null) {
-      try {
-        onCloseHook.invoke()
-      } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: DesktopInteractiveSession: onCloseHook threw " +
-            "(${t.javaClass.simpleName}: ${t.message}); continuing"
-        )
+    try {
+      runOnSceneThread {
+        if (onSceneClose != null) {
+          try {
+            onSceneClose.invoke()
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: DesktopInteractiveSession: onSceneClose threw " +
+                "(${t.javaClass.simpleName}: ${t.message}); continuing with tearDown"
+            )
+          }
+        }
+        engine.tearDown(state)
       }
+    } finally {
+      sceneExecutor.shutdown()
+      try {
+        if (!sceneExecutor.awaitTermination(EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+          System.err.println(
+            "compose-ai-daemon: DesktopInteractiveSession($previewId): sceneExecutor did not " +
+              "terminate within ${EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS}s; continuing"
+          )
+        }
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+      }
+      if (onCloseHook != null) {
+        try {
+          onCloseHook.invoke()
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: DesktopInteractiveSession: onCloseHook threw " +
+              "(${t.javaClass.simpleName}: ${t.message}); continuing"
+          )
+        }
+      }
+    }
+  }
+
+  /**
+   * Submit [block] to [sceneExecutor] and wait. Rejected submissions (executor already shut down
+   * because a concurrent [close] won the race) are silently dropped — matches the "stale call after
+   * stop" contract documented on [InteractiveSession]. Exceptions thrown inside [block] are
+   * unwrapped from [ExecutionException] so callers see the original cause.
+   */
+  private inline fun runOnSceneThread(crossinline block: () -> Unit) {
+    val future =
+      try {
+        sceneExecutor.submit { block() }
+      } catch (_: RejectedExecutionException) {
+        return
+      }
+    try {
+      future.get()
+    } catch (e: ExecutionException) {
+      throw e.cause ?: e
+    } catch (_: InterruptedException) {
+      Thread.currentThread().interrupt()
+    }
+  }
+
+  private inline fun <T> runOnSceneThreadForResult(crossinline block: () -> T): T {
+    val future = sceneExecutor.submit<T> { block() }
+    return try {
+      future.get()
+    } catch (e: ExecutionException) {
+      throw e.cause ?: e
+    } catch (e: InterruptedException) {
+      Thread.currentThread().interrupt()
+      throw e
     }
   }
 
@@ -261,5 +348,13 @@ class DesktopInteractiveSession(
      * instant to the human.
      */
     private const val CLICK_HOLD_MS: Long = 100L
+
+    /**
+     * Bound on how long [close] waits for [sceneExecutor] to drain. Generous — a single tear-down
+     * is normally sub-second, but a recompose stuck behind a slow `LaunchedEffect` could
+     * conceivably take longer. Logging-then-continuing past the bound is better than hanging the
+     * JSON-RPC read thread indefinitely.
+     */
+    private const val EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS: Long = 5L
   }
 }
