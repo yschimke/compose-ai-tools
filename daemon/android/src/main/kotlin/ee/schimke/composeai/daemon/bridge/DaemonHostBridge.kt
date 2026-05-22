@@ -406,6 +406,17 @@ sealed interface InteractiveCommand {
     val orientation: String? = null,
     /** Held-session `LocalInspectionMode`; `null` preserves the runtime-like default (`false`). */
     val inspectionMode: Boolean? = null,
+    /**
+     * Decomposed `spec.overrides.touchOverlay`. When `true`, the held-rule loop wraps
+     * `InvokeHeldComposable` with the planner output that includes `TouchOverlayExtension`, so a
+     * panel-driven `interactive/input` with multi-touch dispatch paints the visualization rings
+     * on the streamed frames. Threaded as a primitive (not the full `PreviewOverrides` bag)
+     * because the protocol's nested types live in the instrumented daemon package and don't
+     * cross the sandbox classloader boundary cleanly — same decomposition pattern the other
+     * `spec.*` qualifier fields above use. Other planner-relevant fields (keyboard,
+     * material3Theme, …) can be added the same way when their interactive use cases need them.
+     */
+    val touchOverlay: Boolean? = null,
   ) : InteractiveCommand
 
   /**

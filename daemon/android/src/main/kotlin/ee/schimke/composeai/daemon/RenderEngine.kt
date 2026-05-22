@@ -121,7 +121,12 @@ class RenderEngine(
    * registered planner inspects the merged [PreviewOverrides] and contributes its own
    * `AroundComposable` (or other) hook when its override applies.
    */
-  private val previewOverrideExtensions: PreviewOverrideExtensions =
+  // `internal` so `RobolectricHost.SandboxRunner.runHeldInteractiveSession` (same module) can
+  // read it when wrapping `InvokeHeldComposable` with the planner output — interactive sessions
+  // bypass the public `render(...)` path that the non-held / recording paths use, but still need
+  // the same `AroundComposable` chain (canonical case: touch-overlay rings). Stays effectively
+  // private outside `:daemon:android`.
+  internal val previewOverrideExtensions: PreviewOverrideExtensions =
     PreviewOverrideExtensions.Empty,
   /**
    * Always-on data extensions (fonts, resources, i18n) that own their recorder + post-capture
