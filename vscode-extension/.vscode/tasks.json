@@ -72,7 +72,10 @@
                 ":cli:installDist"
             ],
             "options": {
-                "cwd": "${workspaceFolder}"
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PLUGIN_VERSION": "0.10.10"
+                }
             },
             "group": "build",
             "presentation": {
