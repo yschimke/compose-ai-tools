@@ -59,8 +59,16 @@ export function renderInitScript(
 // and the user's own declaration provides resolution via plugin marker
 // repos. The withPlugin hooks remain registered and no-op via the
 // plugins.hasPlugin(...) guard.
+//
+// \`COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1\` opts the buildscript repos into
+// \`mavenLocal()\` — mirrors the CLI's AutoInject.kt behavior. Useful for
+// pointing the extension at a locally-published SNAPSHOT of the plugin
+// during dev (e.g. \`./gradlew publishToMavenLocal\` against this repo, then
+// launch VS Code with the flag set). Off by default so cached snapshots
+// don't widen the search surface for normal users.
 
 val pluginVersion = "${pluginVersion}"
+val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreApplied = false
 
@@ -142,6 +150,29 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+
+    // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
+    // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
+    // plugin classpath. Consumers with \`RepositoriesMode.FAIL_ON_PROJECT_REPOS\` refuse per-project
+    // repos, so settings-level seeding is the only path that survives. pluginManagement.repositories
+    // .mavenLocal() covers the catalog-alias / literal-\`id(...) version "..."\` case where resolution
+    // goes through the plugins DSL instead of our buildscript classpath injection.
+    //
+    // Gradle only auto-adds the default Plugin Portal when \`pluginManagement.repositories\` is empty
+    // after settings evaluation — once we explicitly add \`mavenLocal()\` the list is non-empty and
+    // the default is suppressed, so a \`build-logic\` module that relies on the implicit default for
+    // \`kotlin-dsl\` (resolved via plugin marker from the Gradle Plugin Portal) fails. Restore those
+    // defaults explicitly when the build didn't declare any plugin repos of its own.
+    if (useMavenLocal) {
+        val seedPluginDefaults = pluginManagement.repositories.isEmpty()
+        pluginManagement.repositories.mavenLocal()
+        if (seedPluginDefaults) {
+            pluginManagement.repositories.gradlePluginPortal()
+            pluginManagement.repositories.mavenCentral()
+            pluginManagement.repositories.google()
+        }
+        dependencyResolutionManagement.repositories.mavenLocal()
+    }
 }
 
 allprojects {
@@ -151,6 +182,7 @@ allprojects {
                 gradlePluginPortal()
                 mavenCentral()
                 google()
+                if (useMavenLocal) mavenLocal()
             }
             dependencies {
                 add(
