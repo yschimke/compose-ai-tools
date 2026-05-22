@@ -96,7 +96,11 @@ import {
     hasFreshRenderStamp,
     writeRenderFreshnessStamp,
 } from "./renderFreshness";
-import { BUNDLED_PLUGIN_VERSION, materializeInitScript } from "./initScript";
+import {
+    BUNDLED_PLUGIN_VERSION,
+    hasIncludedPluginBuild,
+    materializeInitScript,
+} from "./initScript";
 import {
     ComposePreviewMode,
     ResolvedMode,
@@ -702,19 +706,31 @@ export async function activate(
     // a static media path) lets us version-pin the plugin coordinate in
     // TypeScript and keep the rendered script in extension storage, which
     // survives extension updates without polluting `~/.gradle/init.d/`.
+    //
+    // Skipped when the workspace is the compose-ai-tools repo itself
+    // (`includeBuild("gradle-plugin")` in settings.gradle[.kts]) — the
+    // included build already provides the plugin and a Maven-resolved
+    // classpath dep on top would pin the build-script compilation against
+    // the extension's bundled version. Mirrors the CLI's `AutoInject.kt`.
     let initScriptArgs: readonly string[] = [];
-    try {
-        const initScriptPath = materializeInitScript(
-            context.globalStorageUri.fsPath,
-        );
-        initScriptArgs = ["--init-script", initScriptPath];
+    if (hasIncludedPluginBuild(workspaceRoot)) {
         outputChannel.appendLine(
-            `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+            `[startup] auto-inject disabled: settings.gradle[.kts] includes :gradle-plugin (compose-ai-tools dev loop)`,
         );
-    } catch (err) {
-        outputChannel.appendLine(
-            `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
-        );
+    } else {
+        try {
+            const initScriptPath = materializeInitScript(
+                context.globalStorageUri.fsPath,
+            );
+            initScriptArgs = ["--init-script", initScriptPath];
+            outputChannel.appendLine(
+                `[startup] auto-inject: --init-script ${initScriptPath} (plugin ${BUNDLED_PLUGIN_VERSION})`,
+            );
+        } catch (err) {
+            outputChannel.appendLine(
+                `[startup] auto-inject disabled: failed to materialise init script: ${(err as Error).message}`,
+            );
+        }
     }
 
     // Force plain console output. The Tooling API defaults to Gradle's "rich"
@@ -4247,11 +4263,7 @@ async function refresh(
             pickRefreshMode(activeFile) === "daemon" &&
             daemonGate !== null &&
             !daemonGate.isBuildDisabled(module);
-        if (
-            sourceIsStale &&
-            !inMinimalMode() &&
-            !daemonWillRender
-        ) {
+        if (sourceIsStale && !inMinimalMode() && !daemonWillRender) {
             logLine(
                 `auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`,
             );
