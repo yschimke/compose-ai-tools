@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.11.0](https://github.com/yschimke/compose-ai-tools/compare/v0.10.19...v0.11.0) (2026-05-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **contrib:** Phase C cutover — non-Gradle code moves to compose-ai-contrib ([#1318](https://github.com/yschimke/compose-ai-tools/issues/1318))
+* **gradle-plugin:** namespace all task names under composePreview* ([#1314](https://github.com/yschimke/compose-ai-tools/issues/1314))
+* remove the legacy ImageProcessor seam ([#1286](https://github.com/yschimke/compose-ai-tools/issues/1286))
+
+### Features
+
+* add Amper Android sample and Bazel APK target ([#1276](https://github.com/yschimke/compose-ai-tools/issues/1276)) ([08b193d](https://github.com/yschimke/compose-ai-tools/commit/08b193d8c2b2a266e9ce3d018bcbb18ee70d7616))
+* **bazel-apk:** try Kotlin 2.x toolchain with the bundled Compose plugin ([#1296](https://github.com/yschimke/compose-ai-tools/issues/1296)) ([64345cc](https://github.com/yschimke/compose-ai-tools/commit/64345cc1cd790165a8d4f15418b51763a8820307))
+* **daemon-android:** route PreviewOverrides through interactive acquire ([#1317](https://github.com/yschimke/compose-ai-tools/issues/1317)) ([c2e5052](https://github.com/yschimke/compose-ai-tools/commit/c2e5052e6c1a2f829f0db6387c54e91107ff7267))
+* **daemon-desktop:** advertise touch-overlay + keyboard-band data-extension descriptors ([#1312](https://github.com/yschimke/compose-ai-tools/issues/1312)) ([56ea2d4](https://github.com/yschimke/compose-ai-tools/commit/56ea2d4e87684607d02f16d0b23eab766fabb152))
+* **daemon-desktop:** honor orientation override via widthPx/heightPx swap ([#1288](https://github.com/yschimke/compose-ai-tools/issues/1288)) ([0e92121](https://github.com/yschimke/compose-ai-tools/commit/0e921215f5f201c625bc725bec39d4edbe69ac0e))
+* **daemon-desktop:** touch-event visualization extension + multi-pointer pinch dispatch ([#1301](https://github.com/yschimke/compose-ai-tools/issues/1301)) ([9700b4a](https://github.com/yschimke/compose-ai-tools/commit/9700b4ad0b85897c582cf92883c75ea751e7ed22))
+* **daemon-desktop:** touch-event visualization extension + multi-pointer pinch dispatch ([#1304](https://github.com/yschimke/compose-ai-tools/issues/1304)) ([db942ef](https://github.com/yschimke/compose-ai-tools/commit/db942ef8cc4dac0eda03631da40ad05a64a42e27))
+* **daemon-launch-builder:** new :daemon-launch-builder library + CLI ([#1309](https://github.com/yschimke/compose-ai-tools/issues/1309)) ([17c5cf8](https://github.com/yschimke/compose-ai-tools/commit/17c5cf8a66008f5443fabe4bc7ccc8121dddf83f))
+* **data-focus:** add desktop connector + wire focus override into desktop daemon ([#1289](https://github.com/yschimke/compose-ai-tools/issues/1289)) ([797424b](https://github.com/yschimke/compose-ai-tools/commit/797424b8dfdb3f348f0c3c9944241a51c468b879))
+* **data-touch-overlay:** shared connector module + Android parity ([#1313](https://github.com/yschimke/compose-ai-tools/issues/1313)) ([43b5968](https://github.com/yschimke/compose-ai-tools/commit/43b59683dcdbf7c0bfca8ee290042e43bd8f6f7f))
+* **data/keyboard:** publish WindowInsets.ime so layouts adapt to the band ([#1303](https://github.com/yschimke/compose-ai-tools/issues/1303)) ([acf2c34](https://github.com/yschimke/compose-ai-tools/commit/acf2c34caa7ae7eb8ed10620741679edd9793f47))
+* **data/keyboard:** soft-keyboard overlay as a data extension ([#1298](https://github.com/yschimke/compose-ai-tools/issues/1298)) ([5fe29a9](https://github.com/yschimke/compose-ai-tools/commit/5fe29a93b03f1f1eea015b7450e5563732d64f81))
+* **gradle-plugin:** namespace all task names under composePreview* ([#1314](https://github.com/yschimke/compose-ai-tools/issues/1314)) ([11848f4](https://github.com/yschimke/compose-ai-tools/commit/11848f40118f6d32df8cd5c94c48994a7a3d6ec1))
+* **interactive:** expand keycode table with F-keys, numpad, punctuation, locks ([#1290](https://github.com/yschimke/compose-ai-tools/issues/1290)) ([0a96837](https://github.com/yschimke/compose-ai-tools/commit/0a9683738a58509fc6c068efd599905d0179a04f))
+* **preview-discovery:** add java -jar CLI entry point ([#1307](https://github.com/yschimke/compose-ai-tools/issues/1307)) ([f91998c](https://github.com/yschimke/compose-ai-tools/commit/f91998ca950d448ae4265f918199a60818d8ad6a))
+* publish :notification-preview-runtime artifact with sidecar emission ([#1281](https://github.com/yschimke/compose-ai-tools/issues/1281)) ([e6cb0de](https://github.com/yschimke/compose-ai-tools/commit/e6cb0def49ee37adf06eb158a7a0b854526c920a))
+* **render-cli:** new :render-cli library — java -jar over render-session-subprocess ([#1310](https://github.com/yschimke/compose-ai-tools/issues/1310)) ([92e2e1e](https://github.com/yschimke/compose-ai-tools/commit/92e2e1ef60a3e951dc4d63cca7639d6f142abee4))
+* **renderer-android:** Compose-free notification bitmap renderer primitive ([#1280](https://github.com/yschimke/compose-ai-tools/issues/1280)) ([812412e](https://github.com/yschimke/compose-ai-tools/commit/812412ec47bca72ae9d9e3230f12b67c28a8d55c))
+* **renderer-android:** structured-fields JSON sidecar for @Notificat… ([#1271](https://github.com/yschimke/compose-ai-tools/issues/1271)) ([56d9cec](https://github.com/yschimke/compose-ai-tools/commit/56d9cec96b7841c5a0bc8bb96676353e8b219f5b))
+* **samples:** BigPictureStyle entry in the notification gallery ([#1272](https://github.com/yschimke/compose-ai-tools/issues/1272)) ([a7ae7cb](https://github.com/yschimke/compose-ai-tools/commit/a7ae7cb4c4a55c2a3dcd03328d637444e33600b1))
+* **samples:** drawing canvas with tap/drag/pinch gestures ([#1321](https://github.com/yschimke/compose-ai-tools/issues/1321)) ([17daa64](https://github.com/yschimke/compose-ai-tools/commit/17daa64ecbcccb27b1d1d43d6ade5907dd37c1e0))
+* **vscode-extension:** add per-card Controls toggle for interactive … ([#1275](https://github.com/yschimke/compose-ai-tools/issues/1275)) ([4f075da](https://github.com/yschimke/compose-ai-tools/commit/4f075da4b0dd2deb7478529174d4c2476c85c2a9))
+* **vscode:** per-card touch-overlay + keyboard-band toggle buttons ([#1308](https://github.com/yschimke/compose-ai-tools/issues/1308)) ([0ef2599](https://github.com/yschimke/compose-ai-tools/commit/0ef25995ed0c8b8858c4c2e7e97470c1127c29f0))
+
+
+### Bug Fixes
+
+* align notification fixture ids with real preview naming ([#1268](https://github.com/yschimke/compose-ai-tools/issues/1268)) ([c730e9a](https://github.com/yschimke/compose-ai-tools/commit/c730e9aa345f69f367871bf5c4b59c6d7b3f3f4a))
+* **bazel-apk:** pin Bazel 7 to clear the JavaPluginInfo load error ([#1292](https://github.com/yschimke/compose-ai-tools/issues/1292)) ([4fb7ff2](https://github.com/yschimke/compose-ai-tools/commit/4fb7ff2187629f5f196b2012d30988599c78ba5d))
+* **ci:** flip snapshot probe cells to expect: fail (UnknownSdk; upstream hasn't shipped API 37 jar) ([#1270](https://github.com/yschimke/compose-ai-tools/issues/1270)) ([33f3169](https://github.com/yschimke/compose-ai-tools/commit/33f3169a446bfa46842608d09ca3d62aae8a51dd))
+* **daemon-android:** wrap held composition with previewOverrideExtensions chain ([#1320](https://github.com/yschimke/compose-ai-tools/issues/1320)) ([0c9df6d](https://github.com/yschimke/compose-ai-tools/commit/0c9df6debebd1eccbb70125ea2d80edd5c053f13))
+* **daemon-desktop:** make orientation-override swap idempotent ([#1294](https://github.com/yschimke/compose-ai-tools/issues/1294)) ([eba71ed](https://github.com/yschimke/compose-ai-tools/commit/eba71edb3586cf31aed87b8db1590279d76de9d9))
+* **interactive:** map NumpadComma to KEYCODE_NUMPAD_COMMA (159) ([#1295](https://github.com/yschimke/compose-ai-tools/issues/1295)) ([b04cc5f](https://github.com/yschimke/compose-ai-tools/commit/b04cc5febee95bac6f7bc0c932a16a2c58334fb1))
+* **renderer-android:** paint a uiMode-aware surface behind @Notificat… ([#1274](https://github.com/yschimke/compose-ai-tools/issues/1274)) ([e4e2091](https://github.com/yschimke/compose-ai-tools/commit/e4e2091d6cb33f7295a1b85daf5f96a1512fe204))
+* **vscode-extension:** clear Controls flag on plain-toggle deactivate + follow-focus teardown ([#1285](https://github.com/yschimke/compose-ai-tools/issues/1285)) ([e4b74c8](https://github.com/yschimke/compose-ai-tools/commit/e4b74c8a85e8f7b32b53b077e45cc93410b9bf1a))
+* **vscode:** gate per-card touch + keyboard toggles on the new data-extension descriptors ([#1315](https://github.com/yschimke/compose-ai-tools/issues/1315)) ([ec9dce0](https://github.com/yschimke/compose-ai-tools/commit/ec9dce01fd7b8c77782adb7634203d12e41e7508))
+
+
+### Code Refactoring
+
+* **contrib:** Phase C cutover — non-Gradle code moves to compose-ai-contrib ([#1318](https://github.com/yschimke/compose-ai-tools/issues/1318)) ([74e8ea3](https://github.com/yschimke/compose-ai-tools/commit/74e8ea3699a0aa3fe70b10b9d593ed48a5dd207a))
+* remove the legacy ImageProcessor seam ([#1286](https://github.com/yschimke/compose-ai-tools/issues/1286)) ([b80d1d7](https://github.com/yschimke/compose-ai-tools/commit/b80d1d70d6374ba27dcf9d7206727e805d1d8f20))
+
 ## [0.10.19](https://github.com/yschimke/compose-ai-tools/compare/v0.10.18...v0.10.19) (2026-05-19)
 
 
