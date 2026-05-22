@@ -79,6 +79,12 @@ dependencies {
   // notification authoring path. Pairs with `@NotificationPreview` (in `:preview-annotations`)
   // for the FQN-discovered NOTIFICATION strategy.
   implementation(project(":notification-preview-runtime"))
+  // `androidx.media.app.NotificationCompat.MediaStyle` — used only by
+  // `NotificationStyleGallery.MediaStylePreview` to render the now-playing-card style. Kept on
+  // the sample classpath (not pinned in `:notification-preview-runtime`) because consumers may
+  // be on Media3 / no media stack at all; we don't want to drag this artifact onto every
+  // notification-preview consumer.
+  implementation("androidx.media:media:1.7.0")
   // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses
   // `LocalSoftwareKeyboardController.show()` (the natural app-side IME path the connector's
   // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
