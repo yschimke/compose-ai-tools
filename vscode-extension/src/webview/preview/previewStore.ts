@@ -100,7 +100,7 @@ export interface PreviewState {
      * Per-preview carousel runtime state — `imageData` / `errorMessage`
      * / `renderError` per capture. Populated by `buildPreviewCard` /
      * `updateCardMetadata`, mutated by `updateImage` / `setImageError`,
-     * pruned by `composePreviewRender` when a preview disappears from the
+     * pruned by `renderPreviews` when a preview disappears from the
      * manifest. MUTABLE — bump `mapsRevision` after every change via
      * the helpers below.
      */
@@ -109,7 +109,7 @@ export interface PreviewState {
     /**
      * Per-preview a11y findings cache — populated by `applyA11yUpdate`
      * from daemon `a11y/atf` payloads (and rebuilt from `setPreviews`
-     * by `composePreviewRender`), re-read on every image (re)load to repaint
+     * by `renderPreviews`), re-read on every image (re)load to repaint
      * the finding overlay. MUTABLE — bump `mapsRevision` after every
      * change.
      */
@@ -157,7 +157,7 @@ export const previewStore = new Store<PreviewState>(initialState);
  * `setCardCaptures` / `deleteCardCaptures` / etc. helpers below already
  * call this — only reach for it directly when a single logical update
  * spans several Map mutations and you want one notification at the
- * end (e.g. `composePreviewRender`'s manifest reseed).
+ * end (e.g. `renderPreviews`'s manifest reseed).
  */
 export function bumpPreviewMapsRevision(): void {
     const cur = previewStore.getState().mapsRevision;

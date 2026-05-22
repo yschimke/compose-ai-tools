@@ -9,7 +9,7 @@
 // Carousel state lives outside this module: `cardCaptures` is the
 // shared `Map<previewId, CapturePresentation[]>` owned by
 // `previewStore` (populated from `setPreviews`, mutated by
-// `updateImage` / `setImageError`, drained by `composePreviewRender`'s
+// `updateImage` / `setImageError`, drained by `renderPreviews`'s
 // removal pass), and `card.dataset.currentIndex` tracks the visible
 // frame as a string. The carousel reads the captures Map directly
 // off `previewStore.getState()` so this module never needs to reach

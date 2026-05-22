@@ -6,7 +6,7 @@
 // the diff overlay) into the host tsconfig. The component
 // (`<preview-card>`) calls `refreshCardMetadata` from its reactive
 // `updated()` hook when the `preview` property is reassigned by
-// `composePreviewRender`'s manifest reseed.
+// `renderPreviews`'s manifest reseed.
 //
 // Logic is unchanged from the old `updateCardMetadata`: dataset patch,
 // title text, capture-cache merge (preserving `imageData` for surviving

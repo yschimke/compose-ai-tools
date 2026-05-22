@@ -21,7 +21,7 @@ import type { PreviewInfo } from "../shared/types";
  * Idempotent: subsequent calls overwrite the custom properties cleanly,
  * and previews whose dimensions become unknown lose both vars (the CSS
  * falls back to the default layout). Cards that disappeared from the
- * manifest aren't touched — `composePreviewRender` removes them separately.
+ * manifest aren't touched — `renderPreviews` removes them separately.
  */
 export function applyRelativeSizing(previews: readonly PreviewInfo[]): void {
     const widths = previews

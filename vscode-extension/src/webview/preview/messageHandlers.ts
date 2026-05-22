@@ -15,7 +15,7 @@
 // those controllers directly. The remaining fields on the context cover the
 // state still owned imperatively by `behavior.ts` — `allPreviews`,
 // `moduleDir`, `lastScopedPreviewId`, `a11yOverlayPreviewId` — and the
-// orchestration callbacks (`composePreviewRender`, `applyLayout`,
+// orchestration callbacks (`renderPreviews`, `applyLayout`,
 // `applyFilters`, `applyA11yUpdate`, `focusOnCard`, etc.) that should
 // fold into a future `<preview-card>` Lit component. (`updateImage`
 // already has — the dispatcher resolves the card by id and calls
@@ -88,7 +88,7 @@ export interface PreviewMessageContext {
      *  re-publishes scope. */
     setLastScopedPreviewId(id: string | null): void;
 
-    composePreviewRender(previews: PreviewInfo[]): void;
+    renderPreviews(previews: PreviewInfo[]): void;
     applyRelativeSizing(previews: PreviewInfo[]): void;
     applyFilters(): void;
     applyLayout(): void;
@@ -326,10 +326,10 @@ function handleSetPreviews(
 ): void {
     ctx.setAllPreviews(msg.previews);
     ctx.setModuleDir(msg.moduleDir);
-    ctx.composePreviewRender(msg.previews);
+    ctx.renderPreviews(msg.previews);
     ctx.applyRelativeSizing(msg.previews);
     // Stale-tier badges depend on the latest render's tier (sent from the
-    // extension as `heavyStaleIds`). Apply *after* composePreviewRender so the
+    // extension as `heavyStaleIds`). Apply *after* renderPreviews so the
     // badge attaches to cards that were just inserted, not stripped by a
     // stale-state diff from the previous setPreviews.
     ctx.staleBadge.updateAll(ctx.grid, msg.heavyStaleIds);
