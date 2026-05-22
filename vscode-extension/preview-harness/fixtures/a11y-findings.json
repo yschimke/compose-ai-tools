@@ -3,7 +3,6 @@
   "description": "Focused card with three Accessibility Test Framework findings (one ERROR, two WARNINGs) overlaid on a stylised mobile mock. Drives focus mode and activates the Accessibility bundle so the chip bar, data tab, and on-image box-overlay all paint.",
   "dataset": {
     "earlyFeatures": "true",
-    "autoEnableCheap": "false",
     "collapseVariants": "false",
     "minimalMode": "false",
     "autoInject": "true"

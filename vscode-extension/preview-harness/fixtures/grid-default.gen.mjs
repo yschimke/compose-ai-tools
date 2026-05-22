@@ -148,7 +148,6 @@ const fixture = {
         "Four-card grid: three color variants plus a greeting, after setPreviews + per-card updateImage.",
     dataset: {
         earlyFeatures: "false",
-        autoEnableCheap: "false",
         collapseVariants: "false",
         minimalMode: "false",
         autoInject: "true",
