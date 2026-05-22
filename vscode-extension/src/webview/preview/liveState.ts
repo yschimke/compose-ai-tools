@@ -707,6 +707,17 @@ export class LiveStateController {
         // Issue #1203 — controls-enabled flag must also drop when the daemon
         // disappears; the listener wouldn't reach a daemon anyway.
         this.controlsEnabledPreviewIds.clear();
+        // Daemon-advertised capability state is now stale — clear so the
+        // per-card touch-overlay / keyboard-band / #1203 controls toggles
+        // (gated on these maps via [applyControlsToggleButtons]) hide
+        // immediately instead of pointing at a dead backend until the next
+        // `setDaemonCapabilities` lands. Mirrors the `interactivePreviewIds`
+        // clear above — these are global single-module-scoped sets today
+        // (see `handleDaemonLost`'s docstring); revisit when the panel
+        // grows multi-module support.
+        this.moduleAdvertisedExtensions.clear();
+        this.moduleInteractiveOnlyExtensions.clear();
+        this.moduleInteractiveControlKinds.clear();
         this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
         this.cfg.applyRecordingButtonState();
