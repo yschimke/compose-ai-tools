@@ -267,6 +267,14 @@ export function handleExtensionMessage(
                     .filter((e) => e.requiresInteractive === true)
                     .map((e) => e.id),
             );
+            // Forward the full id list so the per-card touch-overlay + keyboard-band toggles
+            // can gate on the matching descriptor being advertised (PR #1312/#1313). Without
+            // this the buttons would silently appear on backends that don't ship the planner
+            // and the override would no-op — dead UI.
+            ctx.liveState.setAdvertisedExtensions(
+                msg.moduleId,
+                (msg.dataExtensions ?? []).map((e) => e.id),
+            );
             // Restamp the per-card "Controls" buttons so they appear /
             // disappear in lock-step with the daemon-advertised set.
             ctx.liveState.applyControlsToggleButtons();
