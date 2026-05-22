@@ -1,9 +1,11 @@
 name: Codex PR Review
 
+# Auto-triggers disabled until the codex-review tooling is wired up — see
+# https://github.com/yschimke/compose-ai-tools (the workflow referenced a
+# non-existent codex-cli PyPI package and `codex review --skill` commands).
+# Re-enable by restoring `pull_request:` here once the implementation exists.
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read

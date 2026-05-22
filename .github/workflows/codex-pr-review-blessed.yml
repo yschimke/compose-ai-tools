@@ -1,8 +1,10 @@
 name: Codex PR Review (Blessed)
 
+# Auto-triggers disabled until the codex-review tooling is wired up — see the
+# matching note in codex-pr-review.yml. The `/codex-review` comment trigger
+# stays off so unfinished tooling doesn't keep firing red X's on PRs.
 on:
-  issue_comment:
-    types: [created]
+  workflow_dispatch:
 
 permissions:
   contents: read
