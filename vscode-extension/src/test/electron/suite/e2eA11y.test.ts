@@ -211,7 +211,13 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         // an explicit warm here the first `triggerSetDataExtensionEnabled`
         // throws `[daemon] no launch descriptor for :samples:wear`.
         const warmed = await api.triggerWarmDaemon(wearKotlinFile);
-        assert.ok(warmed, "wear daemon must warm before chip subscriptions");
+        assert.ok(
+            warmed,
+            "wear daemon must warm before chip subscriptions" +
+                (warmed
+                    ? ""
+                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
+        );
 
         // One refresh bootstraps every `it`: the wear composePreviewRenderAll
         // cold path is the slowest piece of the suite, so paying for it
