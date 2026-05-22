@@ -180,6 +180,13 @@ jobs:
       - name: Install dependencies
         working-directory: vscode-extension
         run: npm ci
+      - name: Derive plugin version from tag
+        # Strip leading `v` from TAG_NAME, e.g. v0.1.0 → 0.1.0. $PLUGIN_VERSION
+        # is inherited by every subsequent step in this job — both the
+        # `npm version` set below and the VSIX build, which threads
+        # PLUGIN_VERSION through `scripts/generate-version.mjs` to bake the
+        # release coordinate into the auto-inject init script.
+        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
       - name: Set version
         working-directory: vscode-extension
         # Read tag from $TAG_NAME (from env, not templated into the script) so
