@@ -188,7 +188,9 @@ describe("daemon launch descriptor", () => {
         // accept an incompatible JVM spec. The contract test here just pins
         // the constant — bumping it is intentional and forces the gradle-plugin
         // side to bump in lockstep.
-        assert.strictEqual(DAEMON_DESCRIPTOR_SCHEMA_VERSION, 1);
+        //
+        // v2 added the optional `btaCompile` field (see daemonProtocol.ts).
+        assert.strictEqual(DAEMON_DESCRIPTOR_SCHEMA_VERSION, 2);
     });
 
     it("round-trips a synthetic descriptor", () => {
@@ -208,6 +210,7 @@ describe("daemon launch descriptor", () => {
             systemProperties: { "composeai.history": "/tmp/history" },
             workingDirectory: "/work",
             manifestPath: "/work/build/compose-previews/previews.json",
+            btaCompile: null,
         };
         const round = JSON.parse(
             JSON.stringify(desc),

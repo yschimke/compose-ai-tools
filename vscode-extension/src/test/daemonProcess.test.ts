@@ -51,6 +51,7 @@ function validDescriptor(): DaemonLaunchDescriptor {
         systemProperties: {},
         workingDirectory: "/work",
         manifestPath: "/work/build/compose-previews/previews.json",
+        btaCompile: null,
     };
 }
 
