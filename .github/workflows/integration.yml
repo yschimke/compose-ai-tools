@@ -268,15 +268,17 @@ jobs:
             render: true
             # androidchka's `build-logic/build.gradle.kts` pins the plugin via
             # `implementation("ee.schimke.composeai.preview:...:$composeAiPreviewVersion")`
-            # — its `gradle.properties` defaults to a released version (0.10.x). We want
-            # build-logic to resolve the SNAPSHOT we just published to mavenLocal so this
-            # cell tests the in-PR code, not the last release. The CLI's auto-inject
-            # detects the build-logic staging and stays out of the way; see
-            # composeAiPreviewBuildLogicStaging in cli/.../AutoInject.kt.
+            # — its `gradle.properties` defaults to a released version (0.10.x). The patch
+            # below also strips the plugin staging entirely from `build-logic` so the CLI's
+            # auto-inject is the only path that brings the plugin in — same code path as
+            # every other matrix entry. If this works, the `composeAiPreviewBuildLogicStaging`
+            # detector in `cli/.../AutoInject.kt` can be retired and androidchka can drop
+            # its build-logic staging upstream.
             pre_gradle_script: |
               python3 - <<'PY'
               import re
               from pathlib import Path
+
               gp = Path("gradle.properties")
               gp.write_text(
                   re.sub(
@@ -290,6 +292,40 @@ jobs:
               for line in gp.read_text().splitlines():
                   if line.startswith("composeAiPreviewVersion="):
                       print(line)
+
+              # Experiment: strip the build-logic staging of `ee.schimke.composeai.preview`
+              # so the CLI auto-inject is the sole path that brings the plugin in.
+              bl = Path("build-logic/build.gradle.kts")
+              bl_text = bl.read_text()
+              bl_patched = re.sub(
+                  r'^\s*implementation\("ee\.schimke\.composeai\.preview:.*\n',
+                  "",
+                  bl_text,
+                  flags=re.MULTILINE,
+              )
+              assert bl_patched != bl_text, "expected to strip composeai.preview implementation line"
+              bl.write_text(bl_patched)
+              print("--- stripped composeai.preview implementation from build-logic/build.gradle.kts ---")
+
+              ex = Path("build-logic/src/main/kotlin/androidchka.extras.gradle.kts")
+              ex_text = ex.read_text()
+              ex_patched = re.sub(
+                  r'^\s*id\("ee\.schimke\.composeai\.preview"\) apply false\s*\n',
+                  "",
+                  ex_text,
+                  flags=re.MULTILINE,
+              )
+              # Drop the entire conditional-apply afterEvaluate block (delimited by the
+              # docstring above it through the closing brace of the block).
+              ex_patched = re.sub(
+                  r'/\*\*\s*\n \* On by default: apply the Compose Preview plugin.*?\n \*/\nafterEvaluate \{.*?\n\}\n',
+                  "",
+                  ex_patched,
+                  flags=re.DOTALL,
+              )
+              assert ex_patched != ex_text, "expected to strip composeai.preview staging from extras"
+              ex.write_text(ex_patched)
+              print("--- stripped composeai.preview staging from androidchka.extras.gradle.kts ---")
               PY
             # androidx-main + androidchka's build-logic require JDK 21.
             # The other matrix entries stay on the workflow-default 17.
