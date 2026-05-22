@@ -59,6 +59,22 @@ import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
 import type { VsCodeApi } from "../shared/vscode";
 
+/**
+ * `DataExtensionDescriptor.id` of the touch-overlay extension (`TouchOverlayExtension.ID` on the
+ * Kotlin side — see `:data-touch-overlay-connector`). When the daemon advertises this id in
+ * `initialize.capabilities.dataExtensions` (PR #1312 desktop / #1313 Android), the per-card
+ * touch-overlay toggle button appears. Pinned here so the value stays in lockstep with the
+ * daemon constant; a value drift would silently hide the button forever.
+ */
+const TOUCH_OVERLAY_EXTENSION_ID = "touch-overlay";
+
+/**
+ * `DataExtensionDescriptor.id` of the soft-keyboard band extension (`KeyboardOverrideExtension.ID`
+ * on the Kotlin side — equal to `Material3KeyboardProduct.KIND`). Same gating story as
+ * [TOUCH_OVERLAY_EXTENSION_ID].
+ */
+const KEYBOARD_BAND_EXTENSION_ID = "compose/keyboard";
+
 export interface LiveStateConfig {
     vscode: VsCodeApi<unknown>;
     /** Selected recording format (`mp4` / `webm`). Read fresh on every
@@ -131,6 +147,17 @@ export class LiveStateController {
     // `extensionRequiresInteractive(id)` and acted on by
     // `enterLiveModeForExtension`.
     private readonly moduleInteractiveOnlyExtensions = new Map<
+        string,
+        ReadonlySet<string>
+    >();
+    // Full set of data-extension ids the daemon advertises per module — every
+    // `DataExtensionDescriptor` in `dataExtensions`, not just the `requiresInteractive=true`
+    // subset. Drives [applyControlsToggleButtons]'s gating for the touch-overlay /
+    // keyboard-band per-card buttons (added in #1308 — those toggles are PreviewOverride-driven,
+    // not interactive-only, so they need a separate capability check than the #1203 controls
+    // button). Written from `setDaemonCapabilities`; queried via
+    // `anyModuleAdvertisesExtension(id)`.
+    private readonly moduleAdvertisedExtensions = new Map<
         string,
         ReadonlySet<string>
     >();
@@ -227,6 +254,42 @@ export class LiveStateController {
     }
 
     /**
+     * Record the full set of data-extension ids the daemon advertises for [moduleId] —
+     * unfiltered, the union of every `DataExtensionDescriptor` in `dataExtensions`. Drives the
+     * per-card touch-overlay / keyboard-band toggle visibility via
+     * [anyModuleAdvertisesExtension]. Forwarded from `setDaemonCapabilities`; empty / undefined
+     * clears the entry.
+     */
+    setAdvertisedExtensions(
+        moduleId: string,
+        extensionIds: readonly string[] | undefined,
+    ): void {
+        if (!extensionIds || extensionIds.length === 0) {
+            this.moduleAdvertisedExtensions.delete(moduleId);
+        } else {
+            this.moduleAdvertisedExtensions.set(
+                moduleId,
+                new Set(extensionIds),
+            );
+        }
+    }
+
+    /**
+     * True when any module's daemon advertises [extensionId] in its `dataExtensions` capability
+     * snapshot. Used by [applyControlsToggleButtons] to gate the touch-overlay
+     * (`touch-overlay`) and keyboard-band (`compose/keyboard`) per-card buttons — buttons
+     * appear only on backends that actually ship the matching planner, so a daemon without the
+     * extension doesn't grow dead UI. Pre-#1312 daemons (no descriptors at all) leave both
+     * buttons hidden until the user upgrades.
+     */
+    anyModuleAdvertisesExtension(extensionId: string): boolean {
+        for (const ids of this.moduleAdvertisedExtensions.values()) {
+            if (ids.has(extensionId)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Issue #1203 — entry point for a panel toggle that enables an interactive-only
      * data extension on [card]. Idempotent: if the card is already live, this is a no-op.
      * Otherwise we drive the same live-mode-on path the per-card stop button reverses —
@@ -291,7 +354,16 @@ export class LiveStateController {
      */
     applyControlsToggleButtons(): void {
         const advertised = this.moduleInteractiveOnlyExtensions.size > 0;
-        const interactiveSupported = this.anyModuleInteractiveSupported();
+        // Per-extension gating — touch-overlay and keyboard-band buttons appear only when the
+        // daemon actually ships the matching planner (descriptor advertised via #1312/#1313).
+        // The previous "any interactive backend" gate was loose: it surfaced buttons on hosts
+        // that would silently ignore the override, leaving dead toggles in the UI.
+        const touchOverlayAdvertised = this.anyModuleAdvertisesExtension(
+            TOUCH_OVERLAY_EXTENSION_ID,
+        );
+        const keyboardBandAdvertised = this.anyModuleAdvertisesExtension(
+            KEYBOARD_BAND_EXTENSION_ID,
+        );
         const cards = document.querySelectorAll<HTMLElement>(".preview-card");
         for (const card of cards) {
             const previewId = card.dataset.previewId;
@@ -312,41 +384,25 @@ export class LiveStateController {
             } else {
                 removeControlsToggleButton(card);
             }
-            // Touch-overlay + keyboard-band buttons — gated on the daemon
-            // supporting interactive sessions at all. The overrides themselves
-            // are no-ops on backends that don't ship the matching extension
-            // (the daemon ignores unknown `PreviewOverrides` fields), so the
-            // toggles are safe to expose unconditionally on any interactive
-            // backend.
-            if (interactiveSupported) {
+            if (touchOverlayAdvertised) {
                 ensureTouchOverlayToggleButton(card, {
                     enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
                     onToggle: (c, next) =>
                         this.toggleTouchOverlayForCard(c, next),
                 });
+            } else {
+                removeTouchOverlayToggleButton(card);
+            }
+            if (keyboardBandAdvertised) {
                 ensureKeyboardBandToggleButton(card, {
                     enabled: this.keyboardBandForcedPreviewIds.has(previewId),
                     onToggle: (c, next) =>
                         this.toggleKeyboardBandForCard(c, next),
                 });
             } else {
-                removeTouchOverlayToggleButton(card);
                 removeKeyboardBandToggleButton(card);
             }
         }
-    }
-
-    /**
-     * `true` when any module's daemon reports it can hold an interactive session — the
-     * gate for showing the touch-overlay + keyboard-band toggle buttons. Single-module
-     * panel today reduces to "the active module supports it"; same pattern as
-     * `supportsInteractiveControl`.
-     */
-    private anyModuleInteractiveSupported(): boolean {
-        for (const supported of this.moduleInteractiveSupported.values()) {
-            if (supported) return true;
-        }
-        return false;
     }
 
     /**
@@ -651,6 +707,17 @@ export class LiveStateController {
         // Issue #1203 — controls-enabled flag must also drop when the daemon
         // disappears; the listener wouldn't reach a daemon anyway.
         this.controlsEnabledPreviewIds.clear();
+        // Daemon-advertised capability state is now stale — clear so the
+        // per-card touch-overlay / keyboard-band / #1203 controls toggles
+        // (gated on these maps via [applyControlsToggleButtons]) hide
+        // immediately instead of pointing at a dead backend until the next
+        // `setDaemonCapabilities` lands. Mirrors the `interactivePreviewIds`
+        // clear above — these are global single-module-scoped sets today
+        // (see `handleDaemonLost`'s docstring); revisit when the panel
+        // grows multi-module support.
+        this.moduleAdvertisedExtensions.clear();
+        this.moduleInteractiveOnlyExtensions.clear();
+        this.moduleInteractiveControlKinds.clear();
         this.applyControlsToggleButtons();
         this.cfg.applyInteractiveButtonState();
         this.cfg.applyRecordingButtonState();
