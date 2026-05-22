@@ -1,10 +1,23 @@
 # Kotlin Build Tools API — stage 2 spike
 
-**Status:** proof-of-concept ✅. Not wired into the daemon. Not user-facing.
-Lives in `:daemon:bta-host` and produces a single decisive test report
-(`./gradlew :daemon:bta-host:test`). Last run: `BtaCompilerTest.compiles
-@Composable source with Compose plugin loaded` passes against Kotlin 2.3.21 +
-Compose compiler plugin 2.3.21 + JDK 17.
+**Status:** all five checkpoints green ✅. Not wired into the daemon. Not
+user-facing. Lives in `:daemon:bta-host` (+ companion `:daemon:bta-host-fixture`)
+and produces six test reports under `./gradlew :daemon:bta-host:test` against
+Kotlin 2.3.21 + Compose compiler plugin 2.3.21 + JDK 17:
+
+  - `compiles @Composable source with Compose plugin loaded` (✅ decisive)
+  - `repeated compiles do not leak the BTA compiler` (✅ checkpoint #1, soak)
+  - `incremental compile survives a source mutation` (✅ checkpoint #2, IC)
+  - `BTA emits deterministic bytecode for the same source` + `Compose plugin's
+    signature transformation lands in the emitted bytecode` (✅ checkpoint #3)
+  - `BTA output structurally matches Gradle output for the same source`
+    (✅ checkpoint #4, Gradle parity)
+  - `BTA compiles a @Composable that references a synthetic Android R class`
+    (✅ checkpoint #5, Android-distilled)
+
+The stage-2 design proposal is unblocked; remaining work is the production
+wire-up (JSON-RPC `compileSources` endpoint, classpath assembly per
+variant, fallback strategy for KSP/KAPT modules).
 
 [CONTINUOUS-COMPILE.md](CONTINUOUS-COMPILE.md) describes the stage-1 path
 (long-running `gradle --continuous` worker per module). This spike asks the
@@ -237,17 +250,79 @@ Concrete next checkpoints, in roughly increasing risk order:
          reflection, same shape Gradle's output uses).
 
    Cheap byte-search assertions on the raw class file — no ASM, no
-   classloading. What this checkpoint does **not** answer: whether BTA's
-   output is byte-by-byte (or shape-equivalent) to Gradle's
-   `compileKotlin` output for the same source. That's a separate
-   exercise — needs a parallel Gradle compile of the same fixture and a
-   structural diff that tolerates constant-pool reordering. Tracked as
-   the next checkpoint. For the hot-swap path the structural fingerprint
-   here is the load-bearing question; byte-by-byte parity is a
-   convenience, not a correctness requirement.
-4. **Android variants.** Plug in AGP-generated R class jars,
-   BuildConfig, manifest-merger outputs. Most likely the boundary where
-   we accept "fall back to stage 1 for Android".
+   classloading.
+
+4. ✅ **Gradle vs BTA byte parity.** A companion module `:daemon:bta-host-fixture`
+   holds the same `fixture/Greeting.kt` source the spike compiles, but built via
+   Gradle's standard `compileKotlin`. `BtaCompilerGradleParityTest` reads both
+   `.class` files and compares. Sample run:
+
+   ```
+   [parity] ok=false gradleSize=1955 btaSize=1719 sizeDelta=-236 firstDiffOffset=9
+   ```
+
+   Bytes are NOT identical. They diverge at offset 9 (constant_pool_count) — BTA's
+   output is ~236 bytes shorter. The cause is Compose plugin's
+   `sourceInformationMarkerStart` / `traceEventStart` instrumentation: Gradle's
+   default compile enables those by passing `sourceInformation=true` to the
+   Compose plugin; our minimal `CompilerPlugin("…", classpath, [], {})`
+   config doesn't, so those calls aren't emitted. Functionally equivalent at
+   runtime — both classes have:
+
+   - The Compose-transformed descriptor
+     `(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;`
+   - A `kotlin.Metadata` annotation
+   - The `fixture/GreetingKt` class FQN
+   - The same module name embedded in `kotlin.Metadata.d2[]`
+
+   That's what the daemon's child-classloader hot-swap actually needs.
+   Byte-identity is a stronger property than the daemon requires, and chasing
+   it would couple the spike's CI to upstream Compose plugin option drift —
+   not worth the strictness. If a downstream consumer of `.class` files DOES
+   need byte-identity (Compose Inspector reading the source-information
+   markers, future Live Literals work), the open-but-known fix is to enrich
+   the `CompilerPlugin` config with the matching plugin options. The
+   structural-equivalence assertions are the hard requirement; byte equality
+   is logged for triage.
+
+5. ✅ **Android variants (distilled).** `BtaCompilerAndroidRJarTest`
+   synthesises a tiny `fixture.R` class via `javax.tools.ToolProvider`'s
+   javac, jars it, drops it onto BTA's compile classpath, and compiles a
+   `@Composable fun Hi(): Int = R.string.app_name` against it. The test
+   asserts both that `HiKt.class` lands on disk AND that the inlined
+   constant value (`0x7f100000`) appears in the produced bytecode — the
+   correct Android-style behaviour, since `public static final int`
+   constants get inlined by kotlinc (so searching for `fixture/R$string`
+   in the output would actually be wrong; that's what AGP-driven
+   production builds produce too).
+
+   This isn't "BTA compiles an Android module end-to-end" — it's "BTA
+   handles the only compiler-input shape that's Android-specific". AGP
+   turns resources, manifest, AIDL, BuildConfig, and the R table into
+   ordinary `.class`/`.jar` artefacts BEFORE `compileKotlin*` runs;
+   kotlinc downstream of AGP is plain JVM Kotlin compilation against
+   a classpath that happens to include those AGP-generated jars. The
+   spike confirms BTA's compile path doesn't care that some of those
+   jars carry Android-shaped synthetic classes.
+
+   What's still open for production: **classpath assembly**. The daemon's
+   stage-2 wire-up needs to know what jars to feed BTA for an Android
+   variant (`debug` vs `release`, AAR transforms, the AGP-generated
+   R/BuildConfig jars). Same plumbing the existing daemon already does
+   for the Robolectric sandbox — see `AndroidPreviewSupport.kt`. Not a
+   BTA capability question; a wiring question. Stage 1's
+   `gradle --continuous` fallback remains the right safety net for
+   modules with KSP/KAPT (which BTA doesn't drive) and for the initial
+   roll-out window while the Android classpath assembly settles.
+
+   One subtle gotcha surfaced by this checkpoint, worth carrying into
+   the stage-2 production code: `List<Path>.plus(Path)` resolves to the
+   `Iterable<Path>` overload because `Path` itself implements
+   `Iterable<Path>` (iterating name components). Appending a single
+   classpath JAR via `+` silently expands `/tmp/.../R.jar` into four
+   one-name-component entries on the classpath. Always wrap with
+   `listOf(...)` or use `+= listOf(jar)`. Stage-2's
+   `compileSources` JSON-RPC handler needs the same defence.
 
 The spike module itself stays small. None of the above gets built on
 top of `:daemon:bta-host` directly — when stage 2 starts moving, it

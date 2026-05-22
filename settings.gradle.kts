@@ -334,6 +334,11 @@ include(":daemon:harness")
 // daemon yet — see docs/daemon/BTA-SPIKE.md. Remove this module if the spike abandons.
 include(":daemon:bta-host")
 
+// Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
+// standard `compileKotlin`, so the BTA spike's Gradle-parity test has a reference artefact
+// to diff against. Same lifecycle as `:daemon:bta-host`; remove together with it.
+include(":daemon:bta-host-fixture")
+
 include(":mcp")
 
 // Public render-session library. `:render-session-api` is the pure-interface surface every

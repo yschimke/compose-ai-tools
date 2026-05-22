@@ -76,12 +76,13 @@ class BtaCompiler(
     compileClasspath: List<Path>,
     outputDir: Path,
     compilerPlugins: List<CompilerPlugin> = emptyList(),
+    moduleName: String = DEFAULT_MODULE_NAME,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
       val op = jvm.createJvmCompilationOperation(sources, outputDir)
-      configureCompilerArgs(op, compileClasspath, compilerPlugins)
+      configureCompilerArgs(op, compileClasspath, compilerPlugins, moduleName)
       executeOrThrow(session, op)
     }
     return collectClassFiles(outputDir)
@@ -119,6 +120,7 @@ class BtaCompiler(
     workingDir: Path,
     compilerPlugins: List<CompilerPlugin> = emptyList(),
     sourcesChanges: SourcesChanges = SourcesChanges.ToBeCalculated,
+    moduleName: String = DEFAULT_MODULE_NAME,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     workingDir.toFile().mkdirs()
@@ -151,7 +153,7 @@ class BtaCompiler(
           icOptions,
         )
       op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
-      configureCompilerArgs(op, compileClasspath, compilerPlugins)
+      configureCompilerArgs(op, compileClasspath, compilerPlugins, moduleName)
 
       // 4. Execute.
       executeOrThrow(session, op)
@@ -163,6 +165,7 @@ class BtaCompiler(
     op: JvmCompilationOperation,
     compileClasspath: List<Path>,
     compilerPlugins: List<CompilerPlugin>,
+    moduleName: String,
   ) {
     val args = op.compilerArguments
     args.set(
@@ -170,7 +173,7 @@ class BtaCompiler(
       compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
     )
     args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
-    args.set(JvmCompilerArguments.MODULE_NAME, "bta-spike")
+    args.set(JvmCompilerArguments.MODULE_NAME, moduleName)
     if (compilerPlugins.isNotEmpty()) {
       args.set(CommonCompilerArguments.COMPILER_PLUGINS, compilerPlugins)
     }
@@ -193,6 +196,15 @@ class BtaCompiler(
   private fun sha1(s: String): String {
     val digest = MessageDigest.getInstance("SHA-1").digest(s.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it) }
+  }
+
+  private companion object {
+    /**
+     * Mirrors KGP's default for non-multiplatform JVM modules — Gradle would pass the project path
+     * with dashes (e.g. `daemon-bta-host`). Spike tests override via the [moduleName] parameter
+     * when comparing byte-for-byte against a Gradle-produced reference.
+     */
+    const val DEFAULT_MODULE_NAME = "bta-spike"
   }
 }
 

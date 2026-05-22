@@ -44,6 +44,14 @@ dependencies {
   testImplementation(libs.junit)
 }
 
+// Companion fixture — compiled by Gradle's standard `compileKotlin` so the spike's
+// Gradle-parity test (`BtaCompilerGradleParityTest`) has a reference artefact to diff against.
+// `:daemon:bta-host-fixture` is a single-source module that holds nothing but the same
+// `fixture/Greeting.kt` the BTA tests rewrite into a `tmp` folder. Wired as `testImplementation`
+// so Gradle compiles it before the test runs; we don't actually link against the fixture
+// classes, only read its `.class` output off disk.
+dependencies { testImplementation(project(":daemon:bta-host-fixture")) }
+
 // Surface where to find the BTA impl JAR + Compose compiler plugin JAR + Compose runtime
 // classpath at test time so `BtaCompilerTest` can hand them to the in-process BTA
 // session without re-resolving the same coordinates. We resolve eagerly here so the
@@ -56,9 +64,19 @@ tasks.named<Test>("test") {
     configurations.named("testRuntimeClasspath").map {
       it.files.joinToString(File.pathSeparator) { jar -> jar.absolutePath }
     }
+  // Gradle-compiled fixture inputs for the parity test.
+  val fixtureProject = project(":daemon:bta-host-fixture")
+  val fixtureClassesDir =
+    fixtureProject.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath }
+  val fixtureSourceDir =
+    fixtureProject.layout.projectDirectory.dir("src/main/kotlin").asFile.absolutePath
   jvmArgumentProviders.add(
     CommandLineArgumentProvider {
-      listOf("-Dcomposeai.bta.testRuntimeClasspath=${testRuntime.get()}")
+      listOf(
+        "-Dcomposeai.bta.testRuntimeClasspath=${testRuntime.get()}",
+        "-Dcomposeai.bta.fixtureGradleClassesDir=${fixtureClassesDir.get()}",
+        "-Dcomposeai.bta.fixtureSourceDir=$fixtureSourceDir",
+      )
     }
   )
 }
