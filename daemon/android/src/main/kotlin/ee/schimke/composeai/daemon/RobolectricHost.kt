@@ -810,9 +810,6 @@ open class RobolectricHost(
     onSessionClosed: (() -> Unit)?,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
   ): InteractiveSession {
-    // overrides ignored — Android host doesn't route PreviewOverrides through interactive setup
-    // today. Accepting the param keeps the interface contract honoured and leaves a single-line
-    // change point for when the Android-side touch-overlay extension lands.
     if (sandboxCount < 2) {
       throw UnsupportedOperationException(
         "RobolectricHost: interactive sessions require sandboxCount >= 2 " +
@@ -826,15 +823,23 @@ open class RobolectricHost(
           "RobolectricHost has no previewSpecResolver; pass one at construction time to enable " +
             "v3 interactive sessions"
         )
-    val spec =
+    val baseSpec =
       resolver(previewId)
         ?: throw UnsupportedOperationException(
           "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "interactive session not allocated"
         )
+    // Apply the same override-merge pass recording uses (PR #1304 lit the symmetric path on
+    // desktop, #1313 brought the data/touch-overlay planner to Robolectric, this completes the
+    // story for Android). `touchOverlay = true` here installs the `TouchOverlayExtension`
+    // `AroundComposable` against the held composition so an external panel driving multi-touch
+    // via `interactive/input` sees the visualization rings on streamed frames. `outputBaseName`
+    // is a recording-only field but `applyOverrides` reuses the same merge path; tagging it
+    // `interactive-$previewId` keeps the trace-friendly naming without affecting behaviour.
+    val effectiveSpec = applyOverrides(baseSpec, overrides, "interactive-$previewId")
     return acquireInteractiveSession(
       previewId = previewId,
-      spec = spec,
+      spec = effectiveSpec,
       inspectionMode = inspectionMode,
       onSessionClosed = onSessionClosed,
     )
@@ -1025,7 +1030,7 @@ open class RobolectricHost(
           "RobolectricHost.previewSpecResolver returned null for previewId='$previewId'; " +
             "recording session not allocated"
         )
-    val effectiveSpec = applyRecordingOverrides(baseSpec, overrides, recordingId)
+    val effectiveSpec = applyOverrides(baseSpec, overrides, recordingId)
     val interactive =
       acquireInteractiveSession(
         previewId = previewId,
@@ -1059,10 +1064,21 @@ open class RobolectricHost(
     )
   }
 
-  private fun applyRecordingOverrides(
+  /**
+   * Merge [overrides] over [base]'s preview-spec fields, producing the effective `RenderSpec` that
+   * `engine.setUp` (and the interactive bridge) consume. Mirrors `DesktopHost.applyOverrides` —
+   * called from both [acquireRecordingSession] and [acquireInteractiveSession] (#1304/#1313/this
+   * PR brought the call sites into symmetry).
+   *
+   * [sessionId] tags the output base name. Recording sessions pass the recording id (used by the
+   * recording surface to scope frame paths); interactive sessions pass `"interactive-$previewId"`
+   * — the field is recording-only on the wire but reusing the same merge path keeps the override
+   * application byte-identical between the two acquire paths.
+   */
+  private fun applyOverrides(
     base: RenderSpec,
     overrides: ee.schimke.composeai.daemon.protocol.PreviewOverrides?,
-    recordingId: String,
+    sessionId: String,
   ): RenderSpec {
     val merged =
       mergePreviewOverrides(
@@ -1120,7 +1136,10 @@ open class RobolectricHost(
         },
       inspectionMode = merged.inspectionMode,
       overrides = merged.toExtensionOverrides(),
-      outputBaseName = "recording-$recordingId",
+      // Recording sessions consume this on disk (`recordings/<recordingId>/...`); interactive
+      // sessions pass `"interactive-$previewId"` and never read the field. The `recording-`
+      // prefix is preserved for byte-compat with existing recording-test expectations.
+      outputBaseName = "recording-$sessionId",
     )
   }
 
