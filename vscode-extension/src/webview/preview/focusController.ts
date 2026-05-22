@@ -63,6 +63,14 @@ export interface FocusControllerConfig {
     /** `<data-tabs>` — active-bundle tab row, rendered below the chip
      *  strip. Same focus-only visibility rule as `bundleChipBar`. */
     dataTabs: HTMLElement;
+    /** Re-evaluate `<bundle-legend>` visibility. The legend rides the
+     *  focus stage (visible only in focus mode, hidden when the active
+     *  tab has no entries) but its `hidden` flag is otherwise only
+     *  written by `reflectLegendActiveTab` on bundle-state changes. Wire
+     *  this from main so layout transitions also re-evaluate it —
+     *  without it, activating a11y in focus mode and then exiting
+     *  leaves the legend rendering next to the preview grid. */
+    refreshBundleLegend(): void;
     focusToolbar: FocusToolbarController;
     inspector: FocusInspectorController;
     liveState: LiveStateController;
@@ -234,6 +242,7 @@ export class FocusController {
             if (visible.length === 0) {
                 this.config.inspector.render(null);
                 this.publishScopedPreview();
+                this.config.refreshBundleLegend();
                 return;
             }
             let focusIndex = this.config.getFocusIndex();
@@ -285,6 +294,7 @@ export class FocusController {
         this.applyRecordingButtonState();
         this.applyA11yOverlayButtonState();
         this.applyEarlyFeatureVisibility();
+        this.config.refreshBundleLegend();
     }
 
     /**
