@@ -62,10 +62,10 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * When `true`, `discoverPreviews` fails the build if it finds zero `@Preview`-annotated functions
-   * and emits a diagnostics block to the lifecycle log (classDirs entries with class-file counts, a
-   * sample of post-filter dependency JARs, the ClassGraph scan summary, and — if classes WERE
-   * scanned but no previews matched — the annotation FQNs observed so users can see whether a
+   * When `true`, `composePreviewDiscover` fails the build if it finds zero `@Preview`-annotated
+   * functions and emits a diagnostics block to the lifecycle log (classDirs entries with class-file
+   * counts, a sample of post-filter dependency JARs, the ClassGraph scan summary, and — if classes
+   * WERE scanned but no previews matched — the annotation FQNs observed so users can see whether a
    * different-FQN `@Preview` is in use). Default: `false`, so existing empty modules stay silent.
    *
    * Intended mainly for CI (catch a silent regression where a wiring change drops every preview)
@@ -82,8 +82,8 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
    * (`androidx.compose.ui:ui-test-manifest`, `:ui-test-junit4`, and conditionally
    * `androidx.wear.tiles:tiles-renderer`) to the consumer's classpath. When `false`, the plugin
    * injects nothing and instead requires the consumer to declare every required coordinate
-   * themselves — `composePreviewDoctor` lists anything missing, and `discoverPreviews` / the render
-   * task fail fast with the exact coordinates to add.
+   * themselves — `composePreviewDoctor` lists anything missing, and `composePreviewDiscover` / the
+   * render task fail fast with the exact coordinates to add.
    *
    * Flip to `false` in projects that enforce strict, explicit dependency management
    * (version-catalog-only, custom BOMs, or consumers that require review before any plugin mutates
@@ -93,17 +93,17 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
 
   /**
    * When `true`, the plugin wires the AGP `testDebugUnitTest` / `testReleaseUnitTest` tasks to
-   * depend on `renderAllPreviews`, so a consumer's pixel-test class (e.g. one that reads the PNGs
-   * under `build/compose-previews/renders/`) sees a fully-rendered output directory by the time its
-   * assertions run. Mirror of the boilerplate `:samples:android` / `:samples:wear` /
+   * depend on `composePreviewRenderAll`, so a consumer's pixel-test class (e.g. one that reads the
+   * PNGs under `build/compose-previews/renders/`) sees a fully-rendered output directory by the
+   * time its assertions run. Mirror of the boilerplate `:samples:android` / `:samples:wear` /
    * `:samples:android-alpha` previously each carried in their own `build.gradle.kts`. Default
-   * `false` so consumers without pixel tests don't pay the `renderAllPreviews` cost on every
+   * `false` so consumers without pixel tests don't pay the `composePreviewRenderAll` cost on every
    * `:check`.
    *
    * Targets the AGP unit-test tasks by name rather than `tasks.withType<Test>()` because the
-   * plugin's own `renderPreviews` Test task is what `renderAllPreviews` already depends on —
-   * matching it here would create a cycle. No-op on Compose Multiplatform / Desktop modules where
-   * those task names don't exist.
+   * plugin's own `composePreviewRender` Test task is what `composePreviewRenderAll` already depends
+   * on — matching it here would create a cycle. No-op on Compose Multiplatform / Desktop modules
+   * where those task names don't exist.
    */
   val renderBeforeUnitTests: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
@@ -246,7 +246,7 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
    * `<animated-vector>` / `<adaptive-icon>` files (a single empty `resources.json` write), so the
    * cost of being always-registered is negligible. Set `false` to skip task registration outright —
    * useful for modules that explicitly don't want `resources.json` produced or
-   * `renderAndroidResources` showing up in `gradle tasks` listings.
+   * `composePreviewRenderAndroidResources` showing up in `gradle tasks` listings.
    */
   val enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 

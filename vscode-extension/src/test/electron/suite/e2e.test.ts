@@ -7,7 +7,7 @@ import { RealGradleApi } from "../realGradleApi";
 
 /**
  * End-to-end test. Drives the extension against a real Gradle build of
- * `:samples:cmp` so the *full* loop is exercised: `renderAllPreviews`
+ * `:samples:cmp` so the *full* loop is exercised: `composePreviewRenderAll`
  * runs through the locally-built plugin, the renderer subprocesses fork,
  * PNGs land under `samples/cmp/build/compose-previews/renders/`, and the
  * extension panel receives the populated `setPreviews` message.
@@ -63,7 +63,7 @@ async function waitFor<T>(
 }
 
 describeE2E("Compose Preview e2e (real Gradle)", function () {
-    // Cold renderAllPreviews on `:samples:cmp` is ~30-90s on a warm machine
+    // Cold composePreviewRenderAll on `:samples:cmp` is ~30-90s on a warm machine
     // and can spike higher on a fresh CI runner. GitHub's hosted Linux
     // runners regularly take 9-10+ minutes from a cold Gradle cache once the
     // sibling e2eA11y suite shares the build, so 15 minutes matches the
@@ -165,7 +165,7 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
         // refresh flow; the last one is the one carrying the rendered
         // metadata, so wait for any non-empty message.
         const previewsMessage = await waitFor(
-            "non-empty setPreviews from real renderAllPreviews",
+            "non-empty setPreviews from real composePreviewRenderAll",
             this.timeout(),
             500,
             () => {
@@ -204,7 +204,7 @@ describeE2E("Compose Preview e2e (real Gradle)", function () {
 
         // `postedMessageLog` only proves the host *attempted* to post. Wait
         // for `webviewPreviewsRendered` from the resolved webview to confirm
-        // the message landed and `renderPreviews` actually painted cards.
+        // the message landed and `composePreviewRender` actually painted cards.
         // Regression-locks the empty-grid bug where a host post into an
         // unresolved view was silently dropped — assertions on
         // `postedMessageLog` alone passed cleanly while users saw an empty

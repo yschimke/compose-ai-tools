@@ -261,7 +261,7 @@ export class PreviewApp extends LitElement {
                                   type="button"
                                   id="btn-minimal-refresh"
                                   class="minimal-refresh-button"
-                                  title="Re-run renderAllPreviews"
+                                  title="Re-run composePreviewRenderAll"
                                   aria-label="Refresh previews"
                               >
                                   <i

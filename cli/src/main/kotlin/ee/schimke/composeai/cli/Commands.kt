@@ -263,8 +263,8 @@ abstract class Command(protected val args: List<String>) {
   protected val brief: Boolean = "--brief" in args
 
   /**
-   * Sanctioned escape hatch when an agent thinks `:renderAllPreviews` is serving a stale render.
-   * Set via `--force=<reason>`; threaded into Gradle as `--rerun-tasks` so every input task
+   * Sanctioned escape hatch when an agent thinks `:composePreviewRenderAll` is serving a stale
+   * render. Set via `--force=<reason>`; threaded into Gradle as `--rerun-tasks` so every input task
    * re-executes regardless of UP-TO-DATE. **Never** runs `:clean` and **never** touches
    * `build/classes/` — agents that delete class files directly are exactly the failure mode we're
    * giving an alternative to. Each use is logged to stderr with a pointer to issue #924, where
@@ -424,9 +424,9 @@ abstract class Command(protected val args: List<String>) {
 
   /**
    * Outcome of [renderAllModules] — the full result of "discover preview modules, run their
-   * `:renderAllPreviews` tasks, read each module's manifest, and build the merged [PreviewResult]
-   * list." Each subcommand decides what to do with this (filter, format, exit code) but the gradle
-   * drive is shared.
+   * `:composePreviewRenderAll` tasks, read each module's manifest, and build the merged
+   * [PreviewResult] list." Each subcommand decides what to do with this (filter, format, exit code)
+   * but the gradle drive is shared.
    *
    * [buildOk] reflects the gradle build result. Some callers (`show`) exit non-zero immediately on
    * `false`; others (`a11y`) still want to surface the partial findings written before gradle gave
@@ -454,10 +454,11 @@ abstract class Command(protected val args: List<String>) {
    *
    * [moduleFilter] runs after `resolveModules`; pass it when only a subset of plugin-applied
    * modules participates in this pipeline (e.g. `show-resources` filters to Android-only modules
-   * because `:renderAndroidResources` doesn't exist on CMP modules).
+   * because `:composePreviewRenderAndroidResources` doesn't exist on CMP modules).
    *
    * [taskFor] builds the gradle task path for one module. Standard preview commands use
-   * `:${path}:renderAllPreviews`; resource commands use `:${path}:renderAndroidResources`.
+   * `:${path}:composePreviewRenderAll`; resource commands use
+   * `:${path}:composePreviewRenderAndroidResources`.
    *
    * Skips the actual `runGradle` call (and reports `buildOk = true`) when [moduleFilter] yields an
    * empty list — there's nothing to render and `gradle.runTasks([])` has no defined meaning.
@@ -465,7 +466,7 @@ abstract class Command(protected val args: List<String>) {
   protected fun renderModules(
     silenceStdout: Boolean,
     moduleFilter: (PreviewModule) -> Boolean = { true },
-    taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:renderAllPreviews" },
+    taskFor: (PreviewModule) -> String = { ":${it.gradlePath}:composePreviewRenderAll" },
     gradleArguments: List<String> = emptyList(),
   ): RawRenderOutcome {
     var outcome: RawRenderOutcome? = null
@@ -488,7 +489,7 @@ abstract class Command(protected val args: List<String>) {
   }
 
   /**
-   * Standard "discover modules → run `:renderAllPreviews` → load manifests → build results"
+   * Standard "discover modules → run `:composePreviewRenderAll` → load manifests → build results"
    * pipeline used by `show` and `a11y`. Wraps [renderModules] with the preview-manifest read
    * + [PreviewResult] build steps. Subcommands contribute per-feature gradle properties via
    *   [gradleArguments].
@@ -697,9 +698,9 @@ abstract class Command(protected val args: List<String>) {
    * manifest carries one template capture (e.g. `renders/foo.png`); the renderer writes one file
    * per provider value, keying each by a derived label (`renders/foo_on.png`) or by numeric index
    * (`renders/foo_PARAM_0.png`) when the label can't be derived. Returns synthetic `Capture` rows
-   * pointing at each file, or an empty list when nothing matched — the plugin's `renderAllPreviews`
-   * verification already fails loudly when a parameterized preview rendered no files at all, so we
-   * don't duplicate the error surface here.
+   * pointing at each file, or an empty list when nothing matched — the plugin's
+   * `composePreviewRenderAll` verification already fails loudly when a parameterized preview
+   * rendered no files at all, so we don't duplicate the error surface here.
    */
   private fun expandParamCaptures(
     module: PreviewModule,
@@ -936,7 +937,7 @@ class ShowCommand(args: List<String>) : Command(args) {
         "Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
       )
       System.err.println(
-        "Check the Gradle output above — a common cause is the `renderPreviews` task " +
+        "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
           "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
           "testClassesDirs."
       )
@@ -956,7 +957,7 @@ class ListCommand(args: List<String>) : Command(args) {
       val buildOk =
         withGradleStdout(jsonOutput) {
           modules = resolveModules(gradle)
-          val tasks = modules.map { ":${it.gradlePath}:discoverPreviews" }.toTypedArray()
+          val tasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }.toTypedArray()
           runGradle(gradle, *tasks)
         }
 
@@ -991,7 +992,7 @@ class RenderCommand(args: List<String>) : Command(args) {
   override fun run() {
     withGradle { gradle ->
       val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:renderAllPreviews" }.toTypedArray()
+      val tasks = modules.map { ":${it.gradlePath}:composePreviewRenderAll" }.toTypedArray()
 
       if (!runGradle(gradle, *tasks, arguments = gradleArgsWithForce())) {
         reportRenderFailures(gradle)
@@ -1048,8 +1049,8 @@ class RenderCommand(args: List<String>) : Command(args) {
  * Generic "render previews with extension X enabled, print extension X's canned report" command —
  * the shared shape behind `compose-preview a11y` and future per-extension commands. Looks up the
  * named [ExtensionReportRenderer] from [extensionRenderers], opts the Gradle build into the
- * extension via [implicitExtensions], runs `:renderAllPreviews`, then delegates the print + exit
- * policy to the renderer.
+ * extension via [implicitExtensions], runs `:composePreviewRenderAll`, then delegates the print +
+ * exit policy to the renderer.
  *
  * Subclasses exist purely to bind a name to a renderer id — the entire orchestration body lives
  * here so adding a new canned-report command is a 3-line class plus a renderer registration.
@@ -1067,8 +1068,8 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
    * [A11yCommand]) that write sidecar JSON the extension renderer's `load` pass then picks up when
    * [buildResults] runs. Default no-op.
    *
-   * At the point this is called, the standard `renderAllPreviews` gradle task has already run and
-   * each module's `previews.json` is on disk. Implementations iterate the manifests for preview
+   * At the point this is called, the standard `composePreviewRenderAll` gradle task has already run
+   * and each module's `previews.json` is on disk. Implementations iterate the manifests for preview
    * ids, drive any out-of-band production, and write the resulting sidecars to the conventional
    * `build/compose-previews/<extension>.json` locations the renderers read.
    */
@@ -1140,11 +1141,11 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  *
  * Production of a11y data products moved entirely to the preview daemon, so this command opens a
  * short-lived [ee.schimke.composeai.render.session.RenderSession] per module after the standard
- * `renderAllPreviews` build completes, walks every preview through `data/fetch` for `a11y/atf`,
- * aggregates the findings into the canonical `build/compose-previews/accessibility.json` shape that
- * [A11yReportRenderer] then loads through its disk-fallback path, and closes the session. The
- * daemon is short-lived — spawned, drained, shut down — so there's no persistent server for the
- * agent / CI script to manage.
+ * `composePreviewRenderAll` build completes, walks every preview through `data/fetch` for
+ * `a11y/atf`, aggregates the findings into the canonical
+ * `build/compose-previews/accessibility.json` shape that [A11yReportRenderer] then loads through
+ * its disk-fallback path, and closes the session. The daemon is short-lived — spawned, drained,
+ * shut down — so there's no persistent server for the agent / CI script to manage.
  *
  * The session is opened via the public `:render-session-api` / `:render-session-subprocess`
  * library; everything the CLI does here is reachable from any third-party tooling that compiles
@@ -1157,7 +1158,8 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
   ) {
     if (modules.isEmpty()) return
     // The daemon launch descriptor (`daemon-launch.json`) is written by
-    // `composePreviewDaemonStart`, which the standalone `renderAllPreviews` task does not depend
+    // `composePreviewDaemonStart`, which the standalone `composePreviewRenderAll` task does not
+    // depend
     // on. Run it in a second gradle invocation so the descriptor is fresh against the
     // consumer's current classpath. Gradle's daemon reuses the warm JVM started by the first
     // invocation, so the cold-start cost is paid once per CLI run, not once per gradle task.

@@ -63,7 +63,7 @@ import okio.ByteString.Companion.decodeBase64
  * the daemon doesn't depend on the renderer's `@RunWith(ParameterizedRobolectricTestRunner)` entry
  * point. v2's reconciliation extracts the body into a shared helper. Until then any change to the
  * core render body landed here also has to land in `:renderer-android`'s `renderDefault` (and vice
- * versa); the `:samples:android-daemon-bench:renderPreviews` task + CI pixel-diff catches drift.
+ * versa); the `:samples:android-daemon-bench:composePreviewRender` task + CI pixel-diff catches drift.
  *
  * **What's duplicated, what isn't.** This is the "small composable, no `@PreviewParameter`, no
  * `@AnimatedPreview`, no `@ScrollingPreview`" subset — the daemon's v1 surface only renders single
@@ -337,7 +337,7 @@ class RenderEngine(
                             classLoader = classLoader,
                             // Lets the renderer write a structured-fields JSON sidecar alongside
                             // the PNG for daemon-driven renders (same path used by the standalone
-                            // `renderPreviews` Test task).
+                            // `composePreviewRender` Test task).
                             previewId = spec.previewId,
                           )
                         } else {

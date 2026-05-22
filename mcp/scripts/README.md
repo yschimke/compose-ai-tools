@@ -24,7 +24,7 @@ Asserts `before == revert` (byte-equal) and `before != after`.
 # 1. Bootstrap descriptors and previews.json for the cmp sample.
 ./gradlew \
   :samples:cmp:composePreviewDaemonStart \
-  :samples:cmp:discoverPreviews
+  :samples:cmp:composePreviewDiscover
 
 # 2. If your build sets composePreview.daemon.enabled=false, either change the build script
 #    or flip the descriptor's `enabled` flag for this local smoke run.

@@ -13,7 +13,7 @@ class RenderFailuresTest {
     val failures =
       listOf(
         CapturedTestFailure(
-          taskPath = ":app:renderPreviews",
+          taskPath = ":app:composePreviewRender",
           className = "RobolectricRenderTest",
           methodName = "render_PreviewA",
           displayName = "render_PreviewA(RobolectricRenderTest)",
@@ -32,7 +32,7 @@ class RenderFailuresTest {
               .trimIndent(),
         ),
         CapturedTestFailure(
-          taskPath = ":previews:renderPreviews",
+          taskPath = ":previews:composePreviewRender",
           className = "DesktopRenderTest",
           methodName = "renders_PreviewC",
           displayName = "renders_PreviewC(DesktopRenderTest)",
@@ -45,10 +45,10 @@ class RenderFailuresTest {
     printCapturedTestFailures(failures, PrintStream(buf), stackLines = 4)
 
     val out = buf.toString()
-    assertTrue(out.contains("Failing tests in :app:renderPreviews (1):"), out)
+    assertTrue(out.contains("Failing tests in :app:composePreviewRender (1):"), out)
     assertTrue(out.contains("RobolectricRenderTest.render_PreviewA"), out)
     assertTrue(out.contains("expected: <1> but was: <2>"), out)
-    assertTrue(out.contains("Failing tests in :previews:renderPreviews (1):"), out)
+    assertTrue(out.contains("Failing tests in :previews:composePreviewRender (1):"), out)
     assertTrue(out.contains("DesktopRenderTest.renders_PreviewC"), out)
     assertFalse(out.contains("line.5"), "stack trace should be capped at 4 lines: $out")
   }
@@ -58,7 +58,7 @@ class RenderFailuresTest {
     val failures =
       listOf(
         CapturedTestFailure(
-          taskPath = ":app:renderPreviews",
+          taskPath = ":app:composePreviewRender",
           className = null,
           methodName = null,
           displayName = "Robolectric setup",

@@ -43,7 +43,7 @@ class KmpAndroidDesktopRoutingTest {
 
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
-    val discoverTask = project.tasks.getByName("discoverPreviews") as DiscoverPreviewsTask
+    val discoverTask = project.tasks.getByName("composePreviewDiscover") as DiscoverPreviewsTask
 
     val classDirPaths =
       discoverTask.classDirs.files.map { it.relativeTo(project.projectDir).invariantSeparatorsPath }
@@ -77,7 +77,7 @@ class KmpAndroidDesktopRoutingTest {
 
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
-    val discoverTask = project.tasks.getByName("discoverPreviews") as DiscoverPreviewsTask
+    val discoverTask = project.tasks.getByName("composePreviewDiscover") as DiscoverPreviewsTask
     // dependencyJars on the discover task is fed from the picked
     // `dependencyConfigName`. We can't read that name back as a property,
     // but we CAN observe that the only way for `dependencyJars` to be
@@ -125,7 +125,7 @@ class KmpAndroidDesktopRoutingTest {
     // empty), so we additionally check that BOTH configurations stay
     // resolvable side-by-side after registration — a stricter contract
     // than just "doesn't throw" but still independent of network access.
-    val discoverTask = project.tasks.getByName("discoverPreviews") as DiscoverPreviewsTask
+    val discoverTask = project.tasks.getByName("composePreviewDiscover") as DiscoverPreviewsTask
     discoverTask.dependencyJars.files // resolves; throws on a misnamed config
     assertThat(project.configurations.findByName("desktopRuntimeClasspath")).isNotNull()
     assertThat(project.configurations.findByName("androidRuntimeClasspath")).isNotNull()

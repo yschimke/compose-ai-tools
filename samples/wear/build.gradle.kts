@@ -12,7 +12,7 @@ composePreview {
 
   // `LongScrollPreviewPixelTest` reads PNGs from
   // `build/compose-previews/renders/`; opt the unit-test tasks into a
-  // `dependsOn(renderAllPreviews)` chain so `:samples:wear:check` renders
+  // `dependsOn(composePreviewRenderAll)` chain so `:samples:wear:check` renders
   // before asserting.
   renderBeforeUnitTests.set(true)
 }

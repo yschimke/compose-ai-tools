@@ -1,6 +1,6 @@
 {
   "name": "a11y-wear",
-  "description": "Wear OS ActivityListPreview (small-round, 384×384 capture of the real renderAllPreviews output) focused with the Accessibility bundle active. Two clickable activity cards trip ERROR-level missing-contentDescription findings, the status icon trips a WARNING-level touch-target rule, and the low-contrast time text trips a contrast WARNING. Drives the slim legend column treatment against a size-constrained preview and the merged-hierarchy default (four unmerged inner Text nodes are emitted on the wire but the default `mergedOnly` filter drops them from the legend and the on-image overlay).",
+  "description": "Wear OS ActivityListPreview (small-round, 384×384 capture of the real composePreviewRenderAll output) focused with the Accessibility bundle active. Two clickable activity cards trip ERROR-level missing-contentDescription findings, the status icon trips a WARNING-level touch-target rule, and the low-contrast time text trips a contrast WARNING. Drives the slim legend column treatment against a size-constrained preview and the merged-hierarchy default (four unmerged inner Text nodes are emitted on the wire but the default `mergedOnly` filter drops them from the legend and the on-image overlay).",
   "dataset": {
     "earlyFeatures": "true",
     "autoEnableCheap": "false",

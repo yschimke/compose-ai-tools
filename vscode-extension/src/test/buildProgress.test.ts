@@ -70,23 +70,26 @@ function makeTracker(opts: {
 describe("classifyTask", () => {
     it("routes render tasks to the rendering phase", () => {
         assert.strictEqual(
-            classifyTask(":samples:android:renderPreviews"),
+            classifyTask(":samples:android:composePreviewRender"),
             "rendering",
         );
-        assert.strictEqual(classifyTask(":app:renderAllPreviews"), "rendering");
         assert.strictEqual(
-            classifyTask(":app:renderAndroidResources"),
+            classifyTask(":app:composePreviewRenderAll"),
+            "rendering",
+        );
+        assert.strictEqual(
+            classifyTask(":app:composePreviewRenderAndroidResources"),
             "rendering",
         );
     });
 
     it("routes discover tasks to the discovering phase", () => {
         assert.strictEqual(
-            classifyTask(":samples:cmp:discoverPreviews"),
+            classifyTask(":samples:cmp:composePreviewDiscover"),
             "discovering",
         );
         assert.strictEqual(
-            classifyTask(":app:discoverAndroidResources"),
+            classifyTask(":app:composePreviewDiscoverAndroidResources"),
             "discovering",
         );
     });
@@ -105,7 +108,7 @@ describe("classifyTask", () => {
             "compiling",
         );
         assert.strictEqual(
-            classifyTask(":app:compileRenderShards"),
+            classifyTask(":app:composePreviewCompileRenderShards"),
             "compiling",
         );
     });
@@ -116,7 +119,7 @@ describe("classifyTask", () => {
             "resolving",
         );
         assert.strictEqual(
-            classifyTask(":app:generateRenderShards"),
+            classifyTask(":app:composePreviewGenerateRenderShards"),
             "resolving",
         );
         assert.strictEqual(
@@ -146,10 +149,10 @@ describe("BuildProgressTracker", () => {
         tracker.consume("> Task :samples:android:compileDebugKotlin\n");
         assert.strictEqual(states[states.length - 1].phase, "compiling");
 
-        tracker.consume("> Task :samples:android:discoverPreviews\n");
+        tracker.consume("> Task :samples:android:composePreviewDiscover\n");
         assert.strictEqual(states[states.length - 1].phase, "discovering");
 
-        tracker.consume("> Task :samples:android:renderPreviews\n");
+        tracker.consume("> Task :samples:android:composePreviewRender\n");
         assert.strictEqual(states[states.length - 1].phase, "rendering");
 
         tracker.finish();
@@ -162,12 +165,12 @@ describe("BuildProgressTracker", () => {
         const clock = new FakeClock();
         const { tracker, states } = makeTracker({ clock });
         tracker.start();
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         const renderingPct = states[states.length - 1].percent;
-        // A stray discoverPreviews line after rendering started must not
+        // A stray composePreviewDiscover line after rendering started must not
         // drag the bar backward — phase index is lower but tracker ignores
         // it.
-        tracker.consume("> Task :a:discoverPreviews\n");
+        tracker.consume("> Task :a:composePreviewDiscover\n");
         const afterStray = states[states.length - 1].percent;
         assert.ok(
             afterStray >= renderingPct,
@@ -192,7 +195,7 @@ describe("BuildProgressTracker", () => {
             `expected progress to advance during ticks: ${long} > ${compileStart}`,
         );
 
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         const renderStart = states[states.length - 1].percent;
         assert.ok(
             renderStart >= long,
@@ -210,9 +213,9 @@ describe("BuildProgressTracker", () => {
         clock.advance(800);
         tracker.consume("> Task :a:compileDebugKotlin\n");
         clock.advance(3500);
-        tracker.consume("> Task :a:discoverPreviews\n");
+        tracker.consume("> Task :a:composePreviewDiscover\n");
         clock.advance(400);
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         clock.advance(7000);
         tracker.finish();
         const d = tracker.phaseDurations;
@@ -243,7 +246,7 @@ describe("BuildProgressTracker", () => {
         const clock = new FakeClock();
         const { tracker, states } = makeTracker({ clock });
         tracker.start();
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         const beforeAbort = states[states.length - 1].percent;
         tracker.abort();
         clock.advance(5_000);
@@ -282,7 +285,7 @@ describe("BuildProgressTracker", () => {
         tracker.start();
         tracker.consume("> Task :a:compileDebugKotlin\n");
         const compileStart = states[states.length - 1].percent;
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         const renderStart = states[states.length - 1].percent;
         const compileSpan = renderStart - compileStart;
         // Compile owns ~50/51.8 of the bar after configure, so its span
@@ -328,7 +331,7 @@ describe("BuildProgressTracker", () => {
         assert.strictEqual(slow.slow, true, ">2x expected should flag slow");
 
         // Transition out of the slow phase — slow flag resets for the next.
-        tracker.consume("> Task :a:renderPreviews\n");
+        tracker.consume("> Task :a:composePreviewRender\n");
         const renderJustStarted = states[states.length - 1];
         assert.strictEqual(
             renderJustStarted.slow,

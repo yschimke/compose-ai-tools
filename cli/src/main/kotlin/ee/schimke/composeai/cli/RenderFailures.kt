@@ -5,8 +5,8 @@ import java.io.PrintStream
 /**
  * One test failure captured live by [GradleConnection]'s Tooling API listener. Carries everything
  * we'd otherwise have to extract from a per-task JUnit XML report.
- * - [taskPath] — Gradle path of the owning `Test` task (e.g. `:app:renderPreviews`), so output can
- *   be grouped per task and the agent reading the log knows which subproject to look at.
+ * - [taskPath] — Gradle path of the owning `Test` task (e.g. `:app:composePreviewRender`), so
+ *   output can be grouped per task and the agent reading the log knows which subproject to look at.
  * - [className]/[methodName] — populated for JVM tests (`JvmTestOperationDescriptor`); both null
  *   for non-JVM frameworks, in which case [displayName] is the fallback identifier.
  * - [message]/[description] — straight from `org.gradle.tooling.Failure`. `description` is the

@@ -213,7 +213,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         const warmed = await api.triggerWarmDaemon(wearKotlinFile);
         assert.ok(warmed, "wear daemon must warm before chip subscriptions");
 
-        // One refresh bootstraps every `it`: the wear renderAllPreviews
+        // One refresh bootstraps every `it`: the wear composePreviewRenderAll
         // cold path is the slowest piece of the suite, so paying for it
         // once and reusing the `setPreviews` payload keeps the total
         // wall-clock close to a single render plus three chip toggles.

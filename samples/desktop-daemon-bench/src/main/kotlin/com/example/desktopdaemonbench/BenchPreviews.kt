@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 //
 // Deliberately small + stable: no animations, no scrolls, no
 // @PreviewParameter. Each preview is a single capture so the desktop
-// renderPreviews wall maps cleanly onto the Compose-Desktop equivalent of
+// composePreviewRender wall maps cleanly onto the Compose-Desktop equivalent of
 // the Android forkAndInit + render rows in DESIGN.md § 13. If you grow
 // this set, mirror the change in :samples:android-daemon-bench at the
 // same time and update docs/daemon/baseline-latency.csv.

@@ -98,7 +98,7 @@ upcoming release (e.g. after tagging `v0.3.3`, the fallback is
 ### Smoke test
 
 ```
-./gradlew :samples:cmp:renderAllPreviews
+./gradlew :samples:cmp:composePreviewRenderAll
 open samples/cmp/build/compose-previews/renders/
 ```
 
@@ -205,7 +205,7 @@ cd vscode-extension && npm test   # extension unit tests (mocha)
 
 Robolectric's `ShadowVMRuntime.getAddressOfDirectByteBuffer` reflects into
 `java.nio.DirectByteBuffer.address()`; under JDK 17+ module rules that fails
-without `--add-opens=java.base/java.nio=ALL-UNNAMED`. The `renderPreviews`
+without `--add-opens=java.base/java.nio=ALL-UNNAMED`. The `composePreviewRender`
 Gradle task already adds that opens (along with `java.lang` and
 `java.lang.reflect`) in
 [ComposePreviewPlugin.kt](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewPlugin.kt);

@@ -2,10 +2,10 @@
 
 ## `build/compose-previews/renders/` is ephemeral
 
-Each `renderAllPreviews` run rewrites this directory and deletes stale files:
+Each `composePreviewRenderAll` run rewrites this directory and deletes stale files:
 
 - The renderer (`RobolectricRenderTest` / `DesktopRendererMain`) deletes its own stale `@PreviewParameter` fan-out siblings before writing a new fan-out — it's the only code that knows the exact filenames the provider will produce.
-- `renderAllPreviews` deletes any PNG/GIF not referenced by the current manifest (`cleanStaleRenders` in `ComposePreviewTasks.kt`). Parameterized `<stem>_*<ext>` matches are preserved — the plugin side can't enumerate provider values, so it trusts the renderer's own cleanup.
+- `composePreviewRenderAll` deletes any PNG/GIF not referenced by the current manifest (`cleanStaleRenders` in `ComposePreviewTasks.kt`). Parameterized `<stem>_*<ext>` matches are preserved — the plugin side can't enumerate provider values, so it trusts the renderer's own cleanup.
 
 To keep a specific render across runs, copy the file somewhere outside `build/`.
 

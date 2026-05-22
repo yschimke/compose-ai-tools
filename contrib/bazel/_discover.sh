@@ -3,7 +3,7 @@
 #
 # Walks a list of XML resource files and emits a `resources.json`
 # matching the wire format from the Gradle plugin's
-# `discoverAndroidResources` task. Intentionally narrow: classifies
+# `composePreviewDiscoverAndroidResources` task. Intentionally narrow: classifies
 # `<vector>`, `<animated-vector>` and `<adaptive-icon>` root tags
 # only — everything else is skipped, same as ResourceXmlClassifier.
 #

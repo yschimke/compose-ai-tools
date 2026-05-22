@@ -30,8 +30,8 @@ import org.gradle.api.tasks.TaskAction
  *
  * **Where the inputs come from.** The classpath FileCollection / JVM args / system properties are
  * produced by [ee.schimke.composeai.plugin.AndroidPreviewClasspath] — the same helpers the existing
- * `renderPreviews` task uses. That guarantees the daemon JVM is byte-for-byte equivalent to a
- * `renderPreviews` JVM, modulo the daemon-specific entries documented below.
+ * `composePreviewRender` task uses. That guarantees the daemon JVM is byte-for-byte equivalent to a
+ * `composePreviewRender` JVM, modulo the daemon-specific entries documented below.
  *
  * **Pending Stream B integration.** The daemon's own renderer JAR (`daemon/android`, Phase 1 task
  * B1.1) is NOT yet on disk in this worktree. When it lands, `registerAndroidTasks` should prepend
@@ -149,7 +149,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
         classpath = classpathPaths,
         jvmArgs = jvmArgs.get().toList(),
         // LinkedHashMap preserves the buildSystemProperties iteration order,
-        // which matches the renderPreviews task's systemProperty(...) call
+        // which matches the composePreviewRender task's systemProperty(...) call
         // order. Order is irrelevant to the receiving JVM but stable order
         // simplifies golden-output comparisons in tests.
         systemProperties = LinkedHashMap(systemProperties.get()),

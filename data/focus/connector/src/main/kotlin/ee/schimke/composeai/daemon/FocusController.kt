@@ -14,7 +14,7 @@ import ee.schimke.composeai.daemon.protocol.FocusOverride
  *
  * The flow is:
  *
- * 1. Plugin path (`@FocusedPreview` / `renderAllPreviews`): the renderer's per-capture loop calls
+ * 1. Plugin path (`@FocusedPreview` / `composePreviewRenderAll`): the renderer's per-capture loop calls
  *    [set] before each capture so the around-composable observes the next requested target.
  * 2. Daemon path (`renderNow.overrides.focus`): [FocusOverrideExtension.AroundComposable] seeds
  *    the controller from its constructor argument, the around-composable observes the same state

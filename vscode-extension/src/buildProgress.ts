@@ -122,27 +122,26 @@ export function classifyTask(taskName: string): PhaseId | null {
     const tail = segments[segments.length - 1] ?? taskName;
     const lower = tail.toLowerCase();
 
-    if (
-        lower.includes("renderpreviews") ||
-        lower.includes("renderallpreviews") ||
-        lower.includes("renderandroidresources")
-    ) {
+    // After the task-name rename, every plugin-owned task starts with
+    // `composepreview` (lowercased). `composepreviewrender` covers
+    // composePreviewRender / RenderAll / RenderAndroidResources;
+    // `composepreviewdiscover` covers Discover / DiscoverAndroidResources.
+    if (lower.includes("composepreviewrender")) {
         return "rendering";
     }
     if (
-        lower.includes("discoverpreviews") ||
-        lower.includes("discoverandroidresources") ||
+        lower.includes("composepreviewdiscover") ||
         lower.includes("collectpreviewinfo")
     ) {
         return "discovering";
     }
     if (
-        lower.startsWith("compile") &&
-        (lower.endsWith("kotlin") ||
-            lower.endsWith("java") ||
-            lower.endsWith("javac") ||
-            lower.includes("javawith") ||
-            lower.includes("rendershards"))
+        lower.includes("composepreviewcompilerendershards") ||
+        (lower.startsWith("compile") &&
+            (lower.endsWith("kotlin") ||
+                lower.endsWith("java") ||
+                lower.endsWith("javac") ||
+                lower.includes("javawith")))
     ) {
         return "compiling";
     }
@@ -314,7 +313,7 @@ export class BuildProgressTracker {
     private transitionTo(phase: PhaseId): void {
         const targetIdx = PHASE_INDEX[phase];
         const currentIdx = PHASE_INDEX[this.currentPhase];
-        // Phases are monotonic — a stray `discoverPreviews` line landing in the
+        // Phases are monotonic — a stray `composePreviewDiscover` line landing in the
         // middle of a render doesn't drag the bar backward. Same-phase
         // signals are no-ops.
         if (targetIdx <= currentIdx) {

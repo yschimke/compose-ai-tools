@@ -60,22 +60,22 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Build CMP sample and discover previews
-        run: ./gradlew :samples:cmp:discoverPreviews
+        run: ./gradlew :samples:cmp:composePreviewDiscover
       - name: Build Android sample and discover previews
-        run: ./gradlew :samples:android:discoverPreviews
+        run: ./gradlew :samples:android:composePreviewDiscover
       # Full render for the screenshot-test sample — the interesting behaviour
       # isn't discovery (which `:samples:android` also exercises) but rendering
       # class-member @Previews co-applied with `com.android.compose.screenshot`.
       # Regressions in `PreviewRenderStrategy.resolveReceiver` or in the
       # screenshotTest classpath wiring surface only at render time, so
-      # `discoverPreviews` alone would pass even when broken.
+      # `composePreviewDiscover` alone would pass even when broken.
       - name: Render Android screenshot-test sample previews
-        run: ./gradlew :samples:android-screenshot-test:renderAllPreviews
+        run: ./gradlew :samples:android-screenshot-test:composePreviewRenderAll
       # samples/wear's pixel-scan tests (`LongScrollPreviewPixelTest`) gate
       # the stitched Wear long-preview output against known flake
       # signatures — ghost peek-pill rows, scaled-card seam ghosts,
       # incomplete EdgeButton reveal. The test task `dependsOn
-      # renderAllPreviews` in samples/wear/build.gradle.kts, so this single
+      # composePreviewRenderAll` in samples/wear/build.gradle.kts, so this single
       # invocation both renders and asserts.
       - name: Render + pixel-test Wear sample previews
         run: ./gradlew :samples:wear:testDebugUnitTest
@@ -85,7 +85,7 @@ jobs:
       # AndroidManifest icon-reference index land under
       # `build/compose-previews/{resources.json,renders/resources/}`.
       - name: Render Android resource previews
-        run: ./gradlew :samples:android:renderAndroidResources
+        run: ./gradlew :samples:android:composePreviewRenderAndroidResources
       - name: Upload preview manifests
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

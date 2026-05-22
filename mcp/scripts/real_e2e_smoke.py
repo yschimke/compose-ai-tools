@@ -24,7 +24,7 @@ Prerequisites (all live on the host):
 - The descriptor's ``enabled`` flag must be ``true`` (set
   ``composePreview { daemon { enabled = true } }`` in the build script, or use
   ``sed`` to flip it for this local smoke run).
-- ``./gradlew :samples:cmp:discoverPreviews`` has been run so
+- ``./gradlew :samples:cmp:composePreviewDiscover`` has been run so
   ``previews.json`` exists.
 - ``./gradlew :mcp:jar :daemon:core:jar`` has been built.
 - ``MCP_CP_FILE`` (env var or ``/tmp/mcp-cp.txt``) points at a colon-joined

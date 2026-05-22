@@ -72,17 +72,17 @@ runs:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
       run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
 
-    # When `renderPreviews` fails the actual stack traces only live in
-    # samples/*/build/reports/tests/renderPreviews/ and test-results/.
+    # When `composePreviewRender` fails the actual stack traces only live in
+    # samples/*/build/reports/tests/composePreviewRender/ and test-results/.
     # Upload them so the failure is debuggable from the run page.
-    - name: Upload renderPreviews reports
+    - name: Upload composePreviewRender reports
       if: failure() && steps.render.outcome == 'failure'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: renderPreviews-reports
+        name: composePreviewRender-reports
         path: |
-          **/build/reports/tests/renderPreviews/
-          **/build/test-results/renderPreviews/
+          **/build/reports/tests/composePreviewRender/
+          **/build/test-results/composePreviewRender/
           _previews.json
         if-no-files-found: ignore
         retention-days: 14
@@ -167,14 +167,14 @@ runs:
       # found.") — the subsequent generate / push steps then short-circuit.
       run: compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
 
-    - name: Upload renderAndroidResources reports
+    - name: Upload composePreviewRenderAndroidResources reports
       if: failure() && steps.render-resources.outcome == 'failure'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: renderAndroidResources-reports
+        name: composePreviewRenderAndroidResources-reports
         path: |
-          **/build/reports/tests/renderAndroidResources/
-          **/build/test-results/renderAndroidResources/
+          **/build/reports/tests/composePreviewRenderAndroidResources/
+          **/build/test-results/composePreviewRenderAndroidResources/
           _resources.json
         if-no-files-found: ignore
         retention-days: 14

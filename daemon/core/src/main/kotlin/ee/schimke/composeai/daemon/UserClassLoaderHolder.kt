@@ -224,11 +224,11 @@ class UserClassLoaderHolder(
      * (`build/intermediates/built_in_kotlinc/<variant>/compileDebugKotlin/classes/`) and the
      * runtime-bundled jar (`build/intermediates/runtime_app_classes_jar/<variant>/.../classes.jar`)
      * for the same set of user classes. The kotlinc directory is rewritten by `compileDebugKotlin`
-     * — an upstream of every save's `discoverPreviews` — so it carries the fresh bytecode. The
-     * runtime jar is rewritten by `bundleDebugClassesToRuntimeJar`, which is **not** on the
-     * `discoverPreviews` task graph; it only runs as part of `composePreviewDaemonStart` (once at
-     * bootstrap) and the unit-test packaging path. After the first save the jar is therefore stale
-     * relative to the `.class` directory.
+     * — an upstream of every save's `composePreviewDiscover` — so it carries the fresh bytecode.
+     * The runtime jar is rewritten by `bundleDebugClassesToRuntimeJar`, which is **not** on the
+     * `composePreviewDiscover` task graph; it only runs as part of `composePreviewDaemonStart`
+     * (once at bootstrap) and the unit-test packaging path. After the first save the jar is
+     * therefore stale relative to the `.class` directory.
      *
      * `URLClassLoader.findClass` walks URLs in declaration order and returns the first match. AGP's
      * natural ordering puts the runtime jar before the kotlinc directory; without this sort the

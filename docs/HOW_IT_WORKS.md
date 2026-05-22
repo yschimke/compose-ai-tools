@@ -96,7 +96,7 @@ composePreview {
 | `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
 | `renderer-android/` | Android renderer — Robolectric harness |
 | `preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
-| `cli/` | CLI — Tooling-API driver over `discoverPreviews` / `renderAllPreviews` |
+| `cli/` | CLI — Tooling-API driver over `composePreviewDiscover` / `composePreviewRenderAll` |
 | `vscode-extension/` | VS Code extension that surfaces rendered previews in the editor |
 | `samples/android/` | Android sample with colored box `@Preview` composables |
 | `samples/android-library/` | Android library variant — exercises AAR class-jar discovery |

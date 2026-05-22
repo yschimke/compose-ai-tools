@@ -1,7 +1,7 @@
 // Latency baseline harness for the preview daemon work — see docs/daemon/DESIGN.md § 13.
 //
 // This module is deliberately small (5 trivial @Preview functions, no
-// animations / scrolls / Wear / @PreviewParameter) so its `renderPreviews`
+// animations / scrolls / Wear / @PreviewParameter) so its `composePreviewRender`
 // wall time isolates the per-render cost from sandbox-init and configuration
 // noise. The :samples:android workload is a different beast — it has scroll
 // GIFs, animations, and PreviewParameter providers that each add hundreds of
@@ -57,10 +57,10 @@ dependencies {
 
 // One row per (phase, scenario, run). Captured to docs/daemon/baseline-latency.csv.
 // Phases mirror the headings in DESIGN.md § 13's latency table:
-//   config       — `:bench:renderPreviews --dry-run` wall time (config + up-to-date checks).
+//   config       — `:bench:composePreviewRender --dry-run` wall time (config + up-to-date checks).
 //   compile      — `compileDebugKotlin` wall time (isolated).
-//   discovery    — `discoverPreviews` wall time (isolated).
-//   forkAndInit  — derived: renderPreviews wall - sum(per-test render time).
+//   discovery    — `composePreviewDiscover` wall time (isolated).
+//   forkAndInit  — derived: composePreviewRender wall - sum(per-test render time).
 //   render       — sum of per-testcase `time=` attrs in the JUnit XML.
 //
 // Scenarios:
@@ -137,7 +137,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     // Replace a single string literal in BenchPreviews.kt with a unique
     // marker, run the scenario body, then revert. We need the edit to
     // produce *different bytecode* — comment-only edits get stripped by
-    // kotlinc and downstream tasks (renderPreviews, discoverPreviews)
+    // kotlinc and downstream tasks (composePreviewRender, composePreviewDiscover)
     // stay UP-TO-DATE because their input snapshots hash the .class
     // files. A varying string literal is the smallest meaningful change
     // that kotlinc must propagate.
@@ -180,8 +180,9 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 
       // Phase 1: config (dry-run, no actions executed).
       val dryFlags = arrayOf("--dry-run") + cacheFlags
-      val configRes = gradle("$benchPath:renderPreviews", *dryFlags)
-      rows += Row("config", scenario, run, configRes.wallMs, "wall of renderPreviews --dry-run")
+      val configRes = gradle("$benchPath:composePreviewRender", *dryFlags)
+      rows +=
+        Row("config", scenario, run, configRes.wallMs, "wall of composePreviewRender --dry-run")
 
       // Phase 2: compileDebugKotlin in isolation.
       val compileRes = gradle("$benchPath:compileDebugKotlin", *cacheFlags)
@@ -196,22 +197,22 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           else "compileDebugKotlin UP-TO-DATE; wall is config + up-to-date checks",
         )
 
-      // Phase 3: discoverPreviews in isolation.
-      val discoveryRes = gradle("$benchPath:discoverPreviews", *cacheFlags)
-      val discoveryRan = didTaskRun(discoveryRes.output, "$benchPath:discoverPreviews")
+      // Phase 3: composePreviewDiscover in isolation.
+      val discoveryRes = gradle("$benchPath:composePreviewDiscover", *cacheFlags)
+      val discoveryRan = didTaskRun(discoveryRes.output, "$benchPath:composePreviewDiscover")
       rows +=
         Row(
           "discovery",
           scenario,
           run,
           discoveryRes.wallMs,
-          if (discoveryRan) "wall of discoverPreviews task (incl. config)"
-          else "discoverPreviews UP-TO-DATE; wall is config + up-to-date checks",
+          if (discoveryRan) "wall of composePreviewDiscover task (incl. config)"
+          else "composePreviewDiscover UP-TO-DATE; wall is config + up-to-date checks",
         )
 
-      // Phase 4 + 5: renderPreviews wall, then split via JUnit XML per-test times.
-      val renderRes = gradle("$benchPath:renderPreviews", *cacheFlags)
-      val renderRan = didTaskRun(renderRes.output, "$benchPath:renderPreviews")
+      // Phase 4 + 5: composePreviewRender wall, then split via JUnit XML per-test times.
+      val renderRes = gradle("$benchPath:composePreviewRender", *cacheFlags)
+      val renderRan = didTaskRun(renderRes.output, "$benchPath:composePreviewRender")
 
       val renderTotalMs: Long
       val renderCount: Int
@@ -233,8 +234,9 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           run,
           forkInitMs,
           if (renderRan)
-            "renderPreviews wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead"
-          else "renderPreviews UP-TO-DATE; whole wall is Gradle overhead (no fork, no sandbox)",
+            "composePreviewRender wall - sum(per-test) = JVM fork + sandbox init + Gradle overhead"
+          else
+            "composePreviewRender UP-TO-DATE; whole wall is Gradle overhead (no fork, no sandbox)",
         )
       rows +=
         Row(
@@ -243,7 +245,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
           run,
           renderTotalMs,
           if (renderRan) "sum of $renderCount JUnit testcase time= attrs (full preview set)"
-          else "renderPreviews UP-TO-DATE; no per-test work (0 by definition)",
+          else "composePreviewRender UP-TO-DATE; no per-test work (0 by definition)",
         )
     }
 
@@ -272,7 +274,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
     // Prime warm caches before warm scenarios so the very first warm rep doesn't
     // include leftover cold cost from whichever scenario ran before it.
     fun primeWarm() {
-      gradle("$benchPath:renderPreviews")
+      gradle("$benchPath:composePreviewRender")
     }
 
     for (name in scenarioNames) {
@@ -297,10 +299,10 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 
   private fun locateJUnitXml(rootDir: java.io.File, modulePath: String): java.io.File {
     val rel = modulePath.removePrefix(":").replace(":", "/")
-    val dir = rootDir.resolve("$rel/build/test-results/renderPreviews")
+    val dir = rootDir.resolve("$rel/build/test-results/composePreviewRender")
     val xml =
       dir.listFiles { f -> f.name.startsWith("TEST-") && f.name.endsWith(".xml") }?.firstOrNull()
-        ?: error("no JUnit XML under $dir — did renderPreviews run?")
+        ?: error("no JUnit XML under $dir — did composePreviewRender run?")
     return xml
   }
 
@@ -346,7 +348,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 tasks.register<BenchPreviewLatencyTask>("benchPreviewLatency") {
   group = "verification"
   description =
-    "Times the existing renderPreviews path under cold / warm-no-edit / " +
+    "Times the existing composePreviewRender path under cold / warm-no-edit / " +
       "warm-after-1-line-edit scenarios; writes docs/daemon/baseline-latency.csv."
   // No inputs/outputs declared — bench is always-stale by design (forces a
   // re-run when invoked explicitly).

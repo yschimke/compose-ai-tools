@@ -144,8 +144,8 @@ internal object AndroidPreviewClasspath {
   /**
    * Throws a Gradle-friendly `IllegalStateException` describing how to fix the situation when the
    * resolved test classpath has no entry that defines `android/app/Application.class`. Intended for
-   * a `doFirst {}` on the `renderPreviews` `Test` task so the user sees a precise error rather than
-   * the `NoClassDefFoundError` in Robolectric's `Config.<clinit>` (issue #1243).
+   * a `doFirst {}` on the `composePreviewRender` `Test` task so the user sees a precise error
+   * rather than the `NoClassDefFoundError` in Robolectric's `Config.<clinit>` (issue #1243).
    */
   fun validateApplicationOnClasspath(classpath: Iterable<File>) {
     val scanned = classpath.filter { it.isFile && it.name.endsWith(".jar") }
@@ -155,7 +155,7 @@ internal object AndroidPreviewClasspath {
     val more = if (scanned.size > 10) "\n - (+${scanned.size - 10} more)" else ""
     throw IllegalStateException(
       """
-        |compose-preview: android.jar is not on the renderPreviews test classpath, so
+        |compose-preview: android.jar is not on the composePreviewRender test classpath, so
         |Robolectric's Config.<clinit> will fail with NoClassDefFoundError: android/app/Application
         |before any preview renders. (issue #1243)
         |
@@ -201,7 +201,7 @@ internal object AndroidPreviewClasspath {
     runCatching { ZipFile(jar).use { it.getEntry(entryPath) != null } }.getOrDefault(false)
 
   /**
-   * Static JVM open flags that the renderPreviews test JVM needs. Pure data — no Gradle DSL
+   * Static JVM open flags that the composePreviewRender test JVM needs. Pure data — no Gradle DSL
    * coupling.
    */
   fun buildJvmArgs(): List<String> =

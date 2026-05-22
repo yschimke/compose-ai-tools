@@ -33,7 +33,7 @@ import org.junit.Test
  *
  * - `:samples:cmp:composePreviewDaemonStart` has been run with the daemon enabled, producing
  *   `samples/cmp/build/compose-previews/daemon-launch.json` with `"enabled": true`.
- * - `:samples:cmp:discoverPreviews` has been run, producing `previews.json` next to it.
+ * - `:samples:cmp:composePreviewDiscover` has been run, producing `previews.json` next to it.
  * - `:mcp:jar` and `:daemon:core:jar` have been built.
  * - The JVM running this test has both jars + their kotlinx runtime deps on `java.class.path`; the
  *   test reuses that same classpath when spawning the MCP server subprocess.
@@ -76,7 +76,7 @@ class RealMcpEndToEndTest {
     )
     Assume.assumeTrue(
       "Skipping RealMcpEndToEndTest — '$previewsJson' missing. Run " +
-        "`./gradlew :samples:cmp:discoverPreviews` first.",
+        "`./gradlew :samples:cmp:composePreviewDiscover` first.",
       previewsJson.isFile,
     )
     // The :mcp module's classes are on the test JVM's classpath either as a jar

@@ -27,7 +27,7 @@ deficiencies.
 | Token usage | ~10 tok inline (manifest is tiny — `{filter, path}` per variant); +~1.5 k per filtered PNG read. |
 | Transport | inline (JSON manifest) · variant PNGs ride as `extras` |
 | Platforms | Android, Desktop |
-| Status | Wired across both render paths — the daemon (VS Code, MCP, CLI daemon mode) and the Gradle-plugin direct path (`:samples:cmp:renderAllPreviews`) both emit variants and the manifest after each capture. |
+| Status | Wired across both render paths — the daemon (VS Code, MCP, CLI daemon mode) and the Gradle-plugin direct path (`:samples:cmp:composePreviewRenderAll`) both emit variants and the manifest after each capture. |
 
 ## What it answers
 
@@ -96,7 +96,7 @@ registration).
 (matches the rest of the `composePreview.*` flag namespace):
 
 ```sh
-./gradlew :samples:cmp:renderAllPreviews \
+./gradlew :samples:cmp:composePreviewRenderAll \
     -PcomposePreview.displayFilter.filters=grayscale,deuteranopia
 ```
 

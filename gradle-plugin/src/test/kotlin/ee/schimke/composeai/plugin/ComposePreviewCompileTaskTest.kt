@@ -37,7 +37,7 @@ class ComposePreviewCompileTaskTest {
     ComposePreviewTasks.registerDesktopTasks(project, extension)
     val compileTask = project.tasks.register("compileKotlin", DefaultTask::class.java)
 
-    val discover = project.tasks.named("discoverPreviews").get()
+    val discover = project.tasks.named("composePreviewDiscover").get()
     val deps = discover.taskDependencies.getDependencies(discover)
 
     assertThat(deps).contains(compileTask.get())

@@ -20,7 +20,7 @@ cross-layer hook.
                              │  reuses
    ┌─────────────────────────▼────────────────────────────────────┐
    │ Layer 1 — Gradle tasks + CLI                   [always on]   │
-   │   :gradle-plugin renderPreviews task; CLI. Authoritative for │
+   │   :gradle-plugin composePreviewRender task; CLI. Authoritative for │
    │   CI.                                                        │
    └──────────────────────────────────────────────────────────────┘
 ```
@@ -34,7 +34,7 @@ another layer's modules. The only allowed seams are listed in
 
 ## Layer 1 — what stays untouched
 
-- **No daemon requirement for CI.** `renderPreviews` does not require a
+- **No daemon requirement for CI.** `composePreviewRender` does not require a
   running daemon. Editor integrations use the top-level `daemon { … }`
   DSL, which defaults to enabled and can be disabled temporarily.
 - **No daemon code on the Gradle plugin classpath.** `:gradle-plugin`
@@ -46,14 +46,14 @@ another layer's modules. The only allowed seams are listed in
   `DeviceDimensions`, `KnownDevice`, protocol DTOs, history models).
   The CLI must not depend on `:daemon:android`, `:daemon:desktop`,
   `:renderer-android`, or `:renderer-desktop`.
-- **No conditional branches in `renderPreviews`** for "is the daemon
+- **No conditional branches in `composePreviewRender`** for "is the daemon
   running?". The Gradle task path is unaware of the daemon's existence.
 - **CI keeps using Layer 1.** The daemon is not a CI dependency.
-  `renderPreviews` remains the canonical render path for golden-image
+  `composePreviewRender` remains the canonical render path for golden-image
   baselines, regression tests, and release builds.
 
 What Layer 1 must **not** gain: auto-spawning a daemon, or reading from
-a daemon to satisfy `renderPreviews`.
+a daemon to satisfy `composePreviewRender`.
 
 ## Layer 2 — what the daemon owns
 
@@ -177,7 +177,7 @@ Cited from `PreviewIndex.kt`, `IncrementalDiscovery.kt` as
   `:daemon:core`.
 - Remove the `daemon` DSL block and the `composePreviewDaemonStart` task
   registration from `:gradle-plugin`.
-- The base `composePreview { … }` DSL and `renderPreviews` task work
+- The base `composePreview { … }` DSL and `composePreviewRender` task work
   unchanged. CI still passes.
 
 **Adding a fourth layer (hypothetical, e.g. a web UI):**

@@ -39,7 +39,7 @@ export async function run(): Promise<void> {
     // Sort so execution order is deterministic across runners — glob's
     // filesystem-order traversal otherwise puts `e2eA11y.test.js` ahead of
     // `e2e.test.js` on the GitHub-hosted Linux image, which left the cmp
-    // suite paying the wear renderAllPreviews's tax in its own 10-minute
+    // suite paying the wear composePreviewRenderAll's tax in its own 10-minute
     // budget. Plain lexical order runs the lighter cmp suite first.
     const files = (await glob(pattern, { cwd: testsRoot, ignore })).sort();
     console.log(

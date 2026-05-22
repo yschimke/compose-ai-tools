@@ -215,9 +215,9 @@ class DoctorCommand(private val args: List<String>) {
   /**
    * Separate check for the `java` on `PATH`. Motivated by #142: the reporter's Gradle launcher was
    * pinned to JDK 21 via `JAVA_HOME`, but their system default (`java` on PATH) was JDK 25 — and
-   * the forked `renderPreviews` test worker picked up the system default, because the Test task's
-   * `javaLauncher` wasn't pinned to the project toolchain. Separating the CLI JVM from the PATH JVM
-   * makes that delta visible in the first line of output.
+   * the forked `composePreviewRender` test worker picked up the system default, because the Test
+   * task's `javaLauncher` wasn't pinned to the project toolchain. Separating the CLI JVM from the
+   * PATH JVM makes that delta visible in the first line of output.
    *
    * Skipped on Windows for now — `java -version` prints to stderr, the parsing is the same, but
    * nobody is reporting Windows-specific bugs yet and `sh -c` isn't available there. Add when a
@@ -563,16 +563,16 @@ class DoctorCommand(private val args: List<String>) {
           category = "project",
           status = "warning",
           message =
-            "$modulePath — renderPreviews will fork JDK $launcherMajor, Gradle daemon runs JDK $daemonJavaMajor",
+            "$modulePath — composePreviewRender will fork JDK $launcherMajor, Gradle daemon runs JDK $daemonJavaMajor",
           detail =
             "$detail; symptom on mismatch: `ClassNotFoundException: android.app.Application` during JUnit discovery (see issue #142)",
           remediation =
             DoctorRemediation(
-              summary = "Pin the renderPreviews Test task to the project's Java toolchain.",
+              summary = "Pin the composePreviewRender Test task to the project's Java toolchain.",
               commands =
                 listOf(
                   "kotlin { jvmToolchain(${daemonJavaMajor ?: 21}) }",
-                  "// or: tasks.named(\"renderPreviews\", Test::class) { javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(${daemonJavaMajor ?: 21})) }) }",
+                  "// or: tasks.named(\"composePreviewRender\", Test::class) { javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(${daemonJavaMajor ?: 21})) }) }",
                 ),
               docs = "https://github.com/$REPO/issues/142",
             ),
@@ -584,7 +584,7 @@ class DoctorCommand(private val args: List<String>) {
           id = "project.${idSafe(modulePath)}.render-previews-jvm",
           category = "project",
           status = "ok",
-          message = "$modulePath — renderPreviews launcher JDK ${launcherMajor ?: "?"}",
+          message = "$modulePath — composePreviewRender launcher JDK ${launcherMajor ?: "?"}",
           detail = detail,
         )
       )
@@ -592,8 +592,8 @@ class DoctorCommand(private val args: List<String>) {
   }
 
   /**
-   * Scans HTML reports under `build/reports/tests/renderPreviews/` for known error signatures and
-   * emits a per-module hint when it spots one. Purely pattern-based — we only match signatures
+   * Scans HTML reports under `build/reports/tests/composePreviewRender/` for known error signatures
+   * and emits a per-module hint when it spots one. Purely pattern-based — we only match signatures
    * we've seen in field reports, so false positives are rare and actionable. Best-effort: if
    * there's no report on disk (first run, clean checkout) we silently skip.
    */
@@ -605,7 +605,7 @@ class DoctorCommand(private val args: List<String>) {
     // scan rather than emit a false "no prior failure" signal.
     val relative = idSafe(modulePath).replace(':', File.separatorChar)
     val moduleDir = File(projectDir, relative).takeIf { it.isDirectory } ?: return
-    val reportDir = File(moduleDir, "build/reports/tests/renderPreviews")
+    val reportDir = File(moduleDir, "build/reports/tests/composePreviewRender")
     if (!reportDir.isDirectory) return
     val htmls =
       reportDir.walkTopDown().maxDepth(4).filter { it.isFile && it.extension == "html" }.toList()
@@ -630,7 +630,7 @@ class DoctorCommand(private val args: List<String>) {
           id = "project.${idSafe(modulePath)}.last-error",
           category = "project",
           status = "warning",
-          message = "$modulePath — last renderPreviews run failed with a known signature",
+          message = "$modulePath — last composePreviewRender run failed with a known signature",
           detail = "${hint.pattern} — ${hint.hint}",
           remediation = hint.remediation,
         )
@@ -710,7 +710,7 @@ class DoctorCommand(private val args: List<String>) {
    * plugin-side `CompatRules` findings, which only fire once Gradle has resolved the test
    * classpath. Renderer-android is compiled with compose- compiler 2.2.21, which emits calls to
    * `ComposeUiNode.setCompositeKeyHash` — first shipped in compose-ui 1.9 (compose-bom 2025.01.00).
-   * Older consumers hit `NoSuchMethodError` the moment `renderPreviews` starts.
+   * Older consumers hit `NoSuchMethodError` the moment `composePreviewRender` starts.
    */
   private fun checkComposeBomVersion() {
     val workspace = File(projectDirArg ?: ".").canonicalFile
@@ -740,7 +740,7 @@ class DoctorCommand(private val args: List<String>) {
           message =
             "compose-bom ${v.raw} declared in ${source.relativeTo(workspace).path} — renderer needs ≥$floor",
           detail =
-            "Older BOMs lack `ComposeUiNode.setCompositeKeyHash`; `renderPreviews` will fail with NoSuchMethodError.",
+            "Older BOMs lack `ComposeUiNode.setCompositeKeyHash`; `composePreviewRender` will fail with NoSuchMethodError.",
           remediation =
             DoctorRemediation(
               summary = "Bump the BOM.",
@@ -1150,9 +1150,9 @@ class DoctorCommand(private val args: List<String>) {
   }
 
   /**
-   * One known `renderPreviews` failure signature. Pattern is a plain substring we look for in the
-   * HTML test report; [hint] is the human explanation; [remediation] is the same action structure
-   * the rest of doctor emits, so agents get concrete commands out of this too.
+   * One known `composePreviewRender` failure signature. Pattern is a plain substring we look for in
+   * the HTML test report; [hint] is the human explanation; [remediation] is the same action
+   * structure the rest of doctor emits, so agents get concrete commands out of this too.
    */
   private data class ErrorSignature(
     val pattern: String,
@@ -1218,9 +1218,10 @@ class DoctorCommand(private val args: List<String>) {
     }
 
     /**
-     * Failure signatures the CLI recognises from `renderPreviews` HTML reports. Order matters — the
-     * first match wins. Keep the list curated: only patterns we've traced to a specific, actionable
-     * root cause belong here. Patterns that overlap benign test output produce false positives.
+     * Failure signatures the CLI recognises from `composePreviewRender` HTML reports. Order matters
+     * — the first match wins. Keep the list curated: only patterns we've traced to a specific,
+     * actionable root cause belong here. Patterns that overlap benign test output produce false
+     * positives.
      */
     private val KNOWN_ERROR_SIGNATURES =
       listOf(
@@ -1229,7 +1230,8 @@ class DoctorCommand(private val args: List<String>) {
           hint = "likely test-worker JVM mismatch (see issue #142)",
           remediation =
             DoctorRemediation(
-              summary = "Pin the renderPreviews Test task's javaLauncher to the project toolchain.",
+              summary =
+                "Pin the composePreviewRender Test task's javaLauncher to the project toolchain.",
               commands = listOf("kotlin { jvmToolchain(21) }"),
               docs = "https://github.com/$REPO/issues/142",
             ),

@@ -109,17 +109,17 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews finds annotated composables`() {
+  fun `composePreviewDiscover finds annotated composables`() {
     val projectDir = createCmpTestProject()
 
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifestFile = File(projectDir, "build/compose-previews/previews.json")
     assertThat(manifestFile.exists()).isTrue()
@@ -150,13 +150,13 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews is UP-TO-DATE on second run`() {
+  fun `composePreviewDiscover is UP-TO-DATE on second run`() {
     val projectDir = createCmpTestProject()
 
     // First run
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
+      .withArguments("composePreviewDiscover")
       .withPluginClasspath()
       .build()
 
@@ -164,15 +164,15 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews")
+        .withArguments("composePreviewDiscover")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
   }
 
   @Test
-  fun `discoverPreviews resolves multi-preview meta-annotations`() {
+  fun `composePreviewDiscover resolves multi-preview meta-annotations`() {
     val projectDir = createCmpTestProject()
 
     // Define a custom meta-annotation that itself carries @Preview,
@@ -211,11 +211,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -231,7 +231,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews resolves nested meta-annotations`() {
+  fun `composePreviewDiscover resolves nested meta-annotations`() {
     val projectDir = createCmpTestProject()
 
     // Two levels of meta-annotation: @Outer → @Inner → @Preview
@@ -267,11 +267,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -283,7 +283,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews handles cycles in meta-annotations without hanging`() {
+  fun `composePreviewDiscover handles cycles in meta-annotations without hanging`() {
     val projectDir = createCmpTestProject()
 
     // A → B → A cycle. Neither carries @Preview directly.
@@ -319,11 +319,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest =
       json.decodeFromString<PreviewManifest>(
         File(projectDir, "build/compose-previews/previews.json").readText()
@@ -332,7 +332,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews captures PreviewWrapper provider FQN`() {
+  fun `composePreviewDiscover captures PreviewWrapper provider FQN`() {
     val projectDir = createCmpTestProject()
 
     // Declare our own @PreviewWrapper / PreviewWrapperProvider under the real
@@ -413,11 +413,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -436,7 +436,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews resolves device dimensions and disambiguates ids`() {
+  fun `composePreviewDiscover resolves device dimensions and disambiguates ids`() {
     val projectDir = createCmpTestProject()
 
     // Multi-preview with two devices, no explicit name — mirrors @WearPreviewDevices.
@@ -470,11 +470,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -502,7 +502,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews picks up @ScrollingPreview`() {
+  fun `composePreviewDiscover picks up @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 
     // Stub out @ScrollingPreview at its canonical FQN inside the synthetic
@@ -612,11 +612,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -721,7 +721,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews records @PreviewParameter provider FQN`() {
+  fun `composePreviewDiscover records @PreviewParameter provider FQN`() {
     val projectDir = createCmpTestProject()
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -775,11 +775,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -800,7 +800,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews skips private preview methods`() {
+  fun `composePreviewDiscover skips private preview methods`() {
     val projectDir = createCmpTestProject()
 
     File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -835,7 +835,7 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
@@ -848,7 +848,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews skips previews with unsupported parameters`() {
+  fun `composePreviewDiscover skips previews with unsupported parameters`() {
     val projectDir = createCmpTestProject()
 
     File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -900,7 +900,7 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
@@ -913,7 +913,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews keeps tile previews that take a Context parameter`() {
+  fun `composePreviewDiscover keeps tile previews that take a Context parameter`() {
     val projectDir = createCmpTestProject()
 
     // Stub the tile @Preview annotation under its real FQN. CMP 1.10 (the
@@ -970,7 +970,7 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
@@ -1027,7 +1027,7 @@ class DiscoveryFunctionalTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews", "--stacktrace")
+      .withArguments("composePreviewDiscover", "--stacktrace")
       .withPluginClasspath()
       .build()
 
@@ -1053,13 +1053,13 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews re-runs when source changes`() {
+  fun `composePreviewDiscover re-runs when source changes`() {
     val projectDir = createCmpTestProject()
 
     // First run
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
+      .withArguments("composePreviewDiscover")
       .withPluginClasspath()
       .build()
 
@@ -1083,11 +1083,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews")
+        .withArguments("composePreviewDiscover")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -1105,7 +1105,7 @@ class DiscoveryFunctionalTest {
    * (`PreviewModule.projectDir` via the Tooling API) has a stable contract to read against.
    */
   @Test
-  fun `discoverPreviews runs in a nested subproject`() {
+  fun `composePreviewDiscover runs in a nested subproject`() {
     val projectDir = tempDir.root
 
     // Root settings with a :auth:composables nested subproject.
@@ -1194,11 +1194,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments(":auth:composables:discoverPreviews", "--stacktrace")
+        .withArguments(":auth:composables:composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":auth:composables:discoverPreviews")?.outcome)
+    assertThat(result.task(":auth:composables:composePreviewDiscover")?.outcome)
       .isEqualTo(TaskOutcome.SUCCESS)
 
     // Manifest lives under the real subproject dir (`auth/composables/…`),
@@ -1217,7 +1217,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews finds internal previews and skips private previews`() {
+  fun `composePreviewDiscover finds internal previews and skips private previews`() {
     // Teams that don't want @Preview functions to leak into their public
     // API mark them `private` (or `internal`). Kotlin compiles `private
     // fun` to JVM `private` and ClassGraph's default visibility filter
@@ -1264,11 +1264,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     assertThat(result.output).contains("skipping private @Preview")
 
     val manifest =
@@ -1284,7 +1284,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews infers cross-file target composable`() {
+  fun `composePreviewDiscover infers cross-file target composable`() {
     // Idiomatic preview-file layout: production composable `HomeScreen` lives in `HomeScreen.kt`,
     // its `@Preview` lives in a sibling `Previews.kt`. PreviewTargetInference walks the preview
     // method's bytecode, finds the single project-local @Composable call into HomeScreen, and
@@ -1338,11 +1338,11 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -1365,7 +1365,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews emits no target when preview body is purely framework`() {
+  fun `composePreviewDiscover emits no target when preview body is purely framework`() {
     // A preview that only calls AndroidX Compose primitives (no project-local composable) gets no
     // target — the inference should not invent one from theming / layout calls.
     val projectDir = createCmpTestProject()
@@ -1395,7 +1395,7 @@ class DiscoveryFunctionalTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews", "--stacktrace")
+      .withArguments("composePreviewDiscover", "--stacktrace")
       .withPluginClasspath()
       .build()
 
@@ -1407,7 +1407,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `discoverPreviews skips other previews as candidate targets`() {
+  fun `composePreviewDiscover skips other previews as candidate targets`() {
     // A preview function that calls a *sibling* preview (instead of the production composable)
     // should not surface that sibling as a target.
     val projectDir = createCmpTestProject()
@@ -1443,7 +1443,7 @@ class DiscoveryFunctionalTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews", "--stacktrace")
+      .withArguments("composePreviewDiscover", "--stacktrace")
       .withPluginClasspath()
       .build()
 
@@ -1490,11 +1490,15 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "-PcomposePreview.failOnEmpty=true", "--stacktrace")
+        .withArguments(
+          "composePreviewDiscover",
+          "-PcomposePreview.failOnEmpty=true",
+          "--stacktrace",
+        )
         .withPluginClasspath()
         .buildAndFail()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.FAILED)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.FAILED)
     // The failure message names the module so CI logs make the regression obvious.
     assertThat(result.output).contains("discovered 0 previews in module 'test-project'")
     // Diagnostics block: classDirs listing (directory existence + class counts)
@@ -1515,18 +1519,22 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "-PcomposePreview.failOnEmpty=true", "--stacktrace")
+        .withArguments(
+          "composePreviewDiscover",
+          "-PcomposePreview.failOnEmpty=true",
+          "--stacktrace",
+        )
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     // Diagnostics only emit on the empty path; a populated run must not
     // spam the log with them.
     assertThat(result.output).doesNotContain("failOnEmpty diagnostics")
   }
 
   @Test
-  fun `discoverPreviews keeps notification previews that take a Context parameter`() {
+  fun `composePreviewDiscover keeps notification previews that take a Context parameter`() {
     val projectDir = createCmpTestProject()
 
     // Stub `@NotificationPreview` under its real FQN. The CMP fixture doesn't depend on
@@ -1573,7 +1581,7 @@ class DiscoveryFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews", "--stacktrace")
+        .withArguments("composePreviewDiscover", "--stacktrace")
         .withPluginClasspath()
         .build()
 

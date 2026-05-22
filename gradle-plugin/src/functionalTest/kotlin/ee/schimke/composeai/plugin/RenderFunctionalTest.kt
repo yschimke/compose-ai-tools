@@ -102,17 +102,17 @@ class RenderFunctionalTest {
   }
 
   @Test
-  fun `renderAllPreviews produces PNG files`() {
+  fun `composePreviewRenderAll produces PNG files`() {
     val projectDir = createTestProject()
 
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("renderAllPreviews", "--stacktrace")
+        .withArguments("composePreviewRenderAll", "--stacktrace")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":renderPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewRender")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
 
     val rendersDir = File(projectDir, "build/compose-previews/renders")
     assertThat(rendersDir.exists()).isTrue()
@@ -127,7 +127,7 @@ class RenderFunctionalTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("renderAllPreviews")
+      .withArguments("composePreviewRenderAll")
       .withPluginClasspath()
       .build()
 
@@ -150,30 +150,30 @@ class RenderFunctionalTest {
   }
 
   @Test
-  fun `renderAllPreviews fails loudly when render produces no PNGs for a non-empty manifest`() {
+  fun `composePreviewRenderAll fails loudly when render produces no PNGs for a non-empty manifest`() {
     val projectDir = createTestProject()
 
     // Discover first so `previews.json` exists with real entries; that's
     // the precondition for the post-condition check. We run discovery
-    // directly rather than going through renderAllPreviews so no PNGs
+    // directly rather than going through composePreviewRenderAll so no PNGs
     // get produced as a side-effect.
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
+      .withArguments("composePreviewDiscover")
       .withPluginClasspath()
       .build()
 
     val manifest = File(projectDir, "build/compose-previews/previews.json")
     assertThat(manifest.exists()).isTrue()
 
-    // Force the failure mode: invoke `renderAllPreviews` but exclude the
+    // Force the failure mode: invoke `composePreviewRenderAll` but exclude the
     // render task. This mirrors the real-world regression where
-    // `renderPreviews` silently becomes NO-SOURCE — the aggregate task
+    // `composePreviewRender` silently becomes NO-SOURCE — the aggregate task
     // still fires but no PNGs land on disk.
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("renderAllPreviews", "-x", "renderPreviews", "--stacktrace")
+        .withArguments("composePreviewRenderAll", "-x", "composePreviewRender", "--stacktrace")
         .withPluginClasspath()
         .buildAndFail()
 
@@ -182,12 +182,12 @@ class RenderFunctionalTest {
   }
 
   @Test
-  fun `renderAllPreviews fails loudly when render produces no data product output`() {
+  fun `composePreviewRenderAll fails loudly when render produces no data product output`() {
     val projectDir = createTestProject()
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
+      .withArguments("composePreviewDiscover")
       .withPluginClasspath()
       .build()
 
@@ -222,7 +222,7 @@ class RenderFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("renderAllPreviews", "-x", "renderPreviews", "--stacktrace")
+        .withArguments("composePreviewRenderAll", "-x", "composePreviewRender", "--stacktrace")
         .withPluginClasspath()
         .buildAndFail()
 
@@ -231,22 +231,22 @@ class RenderFunctionalTest {
   }
 
   @Test
-  fun `renderPreviews is UP-TO-DATE on second run`() {
+  fun `composePreviewRender is UP-TO-DATE on second run`() {
     val projectDir = createTestProject()
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("renderAllPreviews")
+      .withArguments("composePreviewRenderAll")
       .withPluginClasspath()
       .build()
 
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("renderAllPreviews")
+        .withArguments("composePreviewRenderAll")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":renderPreviews")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
+    assertThat(result.task(":composePreviewRender")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
   }
 }

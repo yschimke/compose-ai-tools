@@ -23,7 +23,7 @@ to MCP-aware agents.
   render, history; resource subscriptions for push.
 
 The daemon is configured with `composePreview.daemon { ... }` and
-defaults on for editor use. The Gradle `renderPreviews` task remains
+defaults on for editor use. The Gradle `composePreviewRender` task remains
 the CI-canonical render path. Open work is tracked in
 [ROADMAP.md](ROADMAP.md).
 
@@ -85,7 +85,7 @@ the CI-canonical render path. Open work is tracked in
 
 - Per-project (multi-module) sandbox sharing — each module gets its
   own daemon.
-- Replacing the Gradle `renderPreviews` task — kept as fallback and
+- Replacing the Gradle `composePreviewRender` task — kept as fallback and
   CI-canonical path indefinitely.
 - Hot kotlinc / compile daemon integration — v2.
 - Tier-3 dependency-graph reachability index — v1 ships with

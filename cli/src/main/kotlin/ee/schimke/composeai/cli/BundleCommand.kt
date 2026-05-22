@@ -21,10 +21,10 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *
  * # Subcommands
  *
- * - **`pack`** — runs `renderPreviews` (for the cover) and `composePreviewBundle` against a Gradle
- *   module and writes the resulting `.png` polyglot. Selection is via repeatable `--id` flags; the
- *   first id becomes the cover. `--no-render` skips the render step and packs with a stub gray
- *   cover.
+ * - **`pack`** — runs `composePreviewRender` (for the cover) and `composePreviewBundle` against a
+ *   Gradle module and writes the resulting `.png` polyglot. Selection is via repeatable `--id`
+ *   flags; the first id becomes the cover. `--no-render` skips the render step and packs with a
+ *   stub gray cover.
  * - **`inspect`** — open a bundle file and print its `bundle.json` + `report.json` summary,
  *   including the minimization report (how many module classes were kept vs total, which Maven
  *   coordinates contribute reachable classes). Read-only.
@@ -75,7 +75,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
         -o, --output <file> Output file path. Default: <module>/build/compose-previews/bundle.png.
-        --no-render         Skip renderPreviews — pack with a stub gray cover.
+        --no-render         Skip composePreviewRender — pack with a stub gray cover.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -127,7 +127,7 @@ private class PackSubcommand(private val args: List<String>) {
             }
             val tasks =
               buildList {
-                  if (!noRender) add(":${target.gradlePath}:renderPreviews")
+                  if (!noRender) add(":${target.gradlePath}:composePreviewRender")
                   add(":${target.gradlePath}:composePreviewBundle")
                 }
                 .toTypedArray()
