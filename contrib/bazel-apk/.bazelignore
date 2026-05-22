@@ -1,5 +1,0 @@
-# Bazel-managed outputs — exclude from any host-side glob.
-bazel-bin
-bazel-out
-bazel-testlogs
-bazel-compose_ai_tools_bazel_apk_sample
