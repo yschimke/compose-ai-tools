@@ -712,7 +712,7 @@ export type WebviewToExtension =
     | { command: "webviewReady" }
     /**
      * Webview reports it has finished applying a `setPreviews` payload to the
-     * grid — sent from `behavior.ts` after `renderPreviews` and the filter-
+     * grid — sent from `behavior.ts` after `composePreviewRender` and the filter-
      * toolbar/option update. `count` is the number of cards now in the grid.
      *
      * Drives the e2e test's "the host posted AND the webview consumed" check:
@@ -851,7 +851,7 @@ export type WebviewToExtension =
     | { command: "requestLaunchOnDevice"; previewId: string }
     /**
      * Focus-mode "Export bundle" click — early-features gated. The host
-     * shows a save dialog, then runs `:<module>:renderPreviews` +
+     * shows a save dialog, then runs `:<module>:composePreviewRender` +
      * `:<module>:composePreviewBundle` with `-PbundlePreviewIds=<id>` and
      * `-PbundleOutput=<file>` so the produced PNG+ZIP polyglot lands at
      * the user-picked location. The bundle is single-preview (cover =

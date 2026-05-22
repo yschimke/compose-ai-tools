@@ -97,9 +97,9 @@ internal object CompatRules {
    * `RobolectricIdlingStrategy.runUntilIdle` walks through `EspressoLink`.
    *
    * The plugin already substitutes `hamcrest:*` → `hamcrest-core:1.3` on its own
-   * `composePreviewAndroidRenderer<Variant>` configuration so the renderPreviews task's classpath
-   * stays clean. This finding still surfaces the latent skew so consumers know to align their own
-   * AGP unit-test runs (which use the unfiltered `${variant}UnitTestRuntimeClasspath`).
+   * `composePreviewAndroidRenderer<Variant>` configuration so the composePreviewRender task's
+   * classpath stays clean. This finding still surfaces the latent skew so consumers know to align
+   * their own AGP unit-test runs (which use the unfiltered `${variant}UnitTestRuntimeClasspath`).
    */
   private fun checkHamcrestSkew(test: Map<String, String>): ModuleFindingData? {
     val merged = test["org.hamcrest:hamcrest"] ?: return null

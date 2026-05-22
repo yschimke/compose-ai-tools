@@ -41,7 +41,7 @@ constructor(
     // (no module prefix) fans out to every applying project and writes a
     // tiny JSON at `<module>/build/compose-previews/applied.json`; the
     // extension scans for those markers to discover applied modules
-    // authoritatively. Independent of `discoverPreviews` so it runs even
+    // authoritatively. Independent of `composePreviewDiscover` so it runs even
     // in modules that never compile previews (e.g. library modules whose
     // only preview usage is compile-time annotations).
     project.tasks.register("composePreviewApplied", ComposePreviewAppliedTask::class.java) {

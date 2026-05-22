@@ -28,7 +28,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     // tree with `GradleProject` and asks for this model on each leaf;
     // projects where the plugin wasn't applied return an empty
     // `modules` map, which the CLI filters out.
-    val hasPlugin = project.tasks.findByName("discoverPreviews") != null
+    val hasPlugin = project.tasks.findByName("composePreviewDiscover") != null
     if (!hasPlugin) {
       return ComposePreviewModelData(PluginVersion.value, emptyMap())
     }
@@ -80,7 +80,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Snapshots the `renderPreviews` Test task's forked-JVM configuration so doctor can flag
+   * Snapshots the `composePreviewRender` Test task's forked-JVM configuration so doctor can flag
    * the #142-class footgun (test worker silently forking on a different JDK than the Gradle
    * daemon).
    *
@@ -90,7 +90,7 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
    * side, which compares against the daemon JVM.
    */
   private fun resolveRenderPreviewsTask(project: Project): RenderPreviewsTaskInfo? {
-    val task = project.tasks.findByName("renderPreviews") as? Test ?: return null
+    val task = project.tasks.findByName("composePreviewRender") as? Test ?: return null
     val launcher =
       try {
         task.javaLauncher.orNull

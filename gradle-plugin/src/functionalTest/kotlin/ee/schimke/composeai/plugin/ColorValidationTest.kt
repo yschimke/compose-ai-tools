@@ -133,7 +133,7 @@ class ColorValidationTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("renderAllPreviews", "--stacktrace")
+      .withArguments("composePreviewRenderAll", "--stacktrace")
       .withPluginClasspath()
       .build()
 
@@ -162,7 +162,7 @@ class ColorValidationTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("renderAllPreviews")
+      .withArguments("composePreviewRenderAll")
       .withPluginClasspath()
       .build()
 
@@ -189,7 +189,7 @@ class ColorValidationTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("renderAllPreviews")
+      .withArguments("composePreviewRenderAll")
       .withPluginClasspath()
       .build()
 
@@ -216,7 +216,7 @@ class ColorValidationTest {
 
     GradleRunner.create()
       .withProjectDir(projectDir)
-      .withArguments("discoverPreviews")
+      .withArguments("composePreviewDiscover")
       .withPluginClasspath()
       .build()
 

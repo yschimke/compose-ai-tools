@@ -47,7 +47,7 @@ const TASK_HEADER_RE = /^> Task :/;
 const ACTIONABLE_FOOTER_RE = /^\d+ actionable tasks?: /;
 
 // `Discovered N preview(s) in module '…':` + the indented bullet list that
-// follows it. Emitted by the gradle plugin's discoverPreviews task. Useful for
+// follows it. Emitted by the gradle plugin's composePreviewDiscover task. Useful for
 // debugging the discovery pipeline, redundant for end users who already see
 // `[refresh] rendered N preview(s) for <file>`. The bullet continuation lines
 // start with two spaces, so we drop the header and any subsequent `  …` line
@@ -325,7 +325,7 @@ export class LogFilter {
 
         // normal level — substantially less chatter than before. The
         // per-task `> Task :module:task [STATUS]` headers, the
-        // discoverPreviews bullet list (handled above), and the bookkeeping
+        // composePreviewDiscover bullet list (handled above), and the bookkeeping
         // tail (config cache, incubating, actionable footer) all drop.
         // `BUILD SUCCESSFUL` also drops at normal — `[refresh] rendered N`
         // already conveys success; `BUILD FAILED` survives via the

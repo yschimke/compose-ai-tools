@@ -28,7 +28,7 @@ import { LogFilter } from "./logFilter";
  * is either a human-readable label derived from the provider value (`_on`,
  * `_off`), or a numeric `_PARAM_<idx>` when no label could be derived.
  * Returns the original list unchanged when no matching files exist (rare —
- * the plugin's `renderAllPreviews` check would have already failed loudly),
+ * the plugin's `composePreviewRenderAll` check would have already failed loudly),
  * or when the template has no `renderOutput` to key off.
  *
  * Numeric `_PARAM_<idx>` entries sort before label-based entries and among
@@ -292,7 +292,7 @@ export class GradleService {
         { manifest: PreviewManifest; timestamp: number }
     >();
     /**
-     * Tracks in-flight `:<module>:discoverPreviews` runs so concurrent callers
+     * Tracks in-flight `:<module>:composePreviewDiscover` runs so concurrent callers
      * (refresh() + the silent reconciles from daemon `discoveryUpdated` and
      * `refreshAfterDaemonReady`) share a single Gradle invocation instead of
      * racing two against each other — where the second would normally hit
@@ -320,7 +320,7 @@ export class GradleService {
         this.logFilter = logFilter ?? new LogFilter();
     }
 
-    async discoverPreviews(
+    async composePreviewDiscover(
         module: ModuleInfo,
         opts?: TaskOptions,
     ): Promise<PreviewManifest | null> {
@@ -334,7 +334,7 @@ export class GradleService {
             return cached.manifest;
         }
         const promise = (async (): Promise<PreviewManifest | null> => {
-            await this.runTask(`${key}:discoverPreviews`, [], opts);
+            await this.runTask(`${key}:composePreviewDiscover`, [], opts);
             const manifest = this.readManifest(module);
             if (manifest) {
                 this.manifestCache.set(key, {
@@ -351,17 +351,17 @@ export class GradleService {
     }
 
     /**
-     * Runs the upstream Kotlin compile only — same task `discoverPreviews` depends on, minus the
+     * Runs the upstream Kotlin compile only — same task `composePreviewDiscover` depends on, minus the
      * ClassGraph scan over every dependency JAR. The daemon save loop calls this so that on-disk
      * `.class` files are fresh before we send `fileChanged` to the daemon, without paying for a
      * full preview-manifest reconcile on every keystroke. The metadata reconcile is handled
      * silently by the daemon's `discoveryUpdated` notification when (and only when) the diff is
      * non-empty.
      *
-     * Mirrors the cache invalidation behaviour of {@link discoverPreviews}: we drop the cached
+     * Mirrors the cache invalidation behaviour of {@link composePreviewDiscover}: we drop the cached
      * manifest because the user-visible source-of-truth is now the daemon's in-memory index, not
      * the on-disk `previews.json`. A subsequent gradle-mode save (daemon disabled or unhealthy)
-     * will repopulate the cache through `discoverPreviews`.
+     * will repopulate the cache through `composePreviewDiscover`.
      */
     async compileOnly(module: ModuleInfo, opts?: TaskOptions): Promise<void> {
         this.manifestCache.delete(module.modulePath);
@@ -373,7 +373,7 @@ export class GradleService {
     }
 
     /**
-     * Runs `:<module>:renderAllPreviews` and returns the parsed manifest.
+     * Runs `:<module>:composePreviewRenderAll` and returns the parsed manifest.
      *
      * `tier` controls which captures the renderer produces:
      *
@@ -396,7 +396,7 @@ export class GradleService {
      * task in a fresh JVM (and therefore a fresh Robolectric sandbox)
      * whenever the property value changes.
      */
-    async renderPreviews(
+    async composePreviewRender(
         module: ModuleInfo,
         tier: "fast" | "full" = "full",
         opts?: TaskOptions,
@@ -404,7 +404,7 @@ export class GradleService {
     ): Promise<PreviewManifest | null> {
         this.manifestCache.delete(module.modulePath);
         await this.runTask(
-            `${module.modulePath}:renderAllPreviews`,
+            `${module.modulePath}:composePreviewRenderAll`,
             [`-PcomposePreview.tier=${tier}`, ...extraArgs],
             opts,
         );
@@ -430,7 +430,7 @@ export class GradleService {
     }
 
     /**
-     * Runs `:<module>:renderPreviews` then `:<module>:composePreviewBundle`
+     * Runs `:<module>:composePreviewRender` then `:<module>:composePreviewBundle`
      * with `-PbundlePreviewIds=<encoded id>` and `-PbundleOutput=<outputPath>`.
      * The render step keeps the bundle's cover PNG fresh; the bundle step
      * produces a PNG+ZIP polyglot at [outputPath]. Throws on failure.
@@ -451,7 +451,7 @@ export class GradleService {
             `-PbundleOutput=${outputPath}`,
         ];
         await this.runTask(
-            `${module.modulePath}:renderPreviews`,
+            `${module.modulePath}:composePreviewRender`,
             extraArgs,
             opts,
         );
@@ -524,7 +524,7 @@ export class GradleService {
 
     /**
      * Loads `<module>/build/compose-previews/resources.json` — the sidecar manifest written by
-     * `:<module>:discoverAndroidResources`. Returns `null` if the file doesn't exist (consumers
+     * `:<module>:composePreviewDiscoverAndroidResources`. Returns `null` if the file doesn't exist (consumers
      * who applied the plugin but disabled `composePreview.resourcePreviews` will hit this path)
      * or if its shape is malformed.
      *
@@ -783,12 +783,12 @@ export class GradleService {
         //     for the rest of the session — markers stay missing until the
         //     user reloads.
         //
-        //   - `:<module>:discoverPreviews` for [keepDiscoverFor]: the silent
+        //   - `:<module>:composePreviewDiscover` for [keepDiscoverFor]: the silent
         //     reconcile path (`reconcilePreviewManifestAfterDaemonReady`)
-        //     calls `discoverPreviews` directly outside the refresh()
+        //     calls `composePreviewDiscover` directly outside the refresh()
         //     coalesce gate. Without this spare, a subsequent `refresh()`
         //     for the same module would kill it and re-run an identical
-        //     task — the dedupe in [discoverPreviews] then lets that
+        //     task — the dedupe in [composePreviewDiscover] then lets that
         //     subsequent call await the same in-flight promise.
         //
         // Tradeoff: a refresh that arrives while one of these is still
@@ -799,7 +799,7 @@ export class GradleService {
         // the bootstrap then becomes UP-TO-DATE and returns instantly.
         // Steady-state is unaffected.
         const keepDiscoverTask = opts?.keepDiscoverFor
-            ? `${opts.keepDiscoverFor}:discoverPreviews`
+            ? `${opts.keepDiscoverFor}:composePreviewDiscover`
             : null;
         const toCancel: string[] = [];
         const toKeep = new Set<string>();

@@ -81,10 +81,10 @@ to `minimal` when the daemon's memory cost isn't worth it for your project.
 
 ### Commands
 
-| Command                                | Description                                                                |
-| -------------------------------------- | -------------------------------------------------------------------------- |
-| `Compose Preview: Refresh Previews`    | Re-read `previews.json` and rendered PNGs from `build/compose-previews/`.  |
-| `Compose Preview: Render All Previews` | Run the `renderAllPreviews` Gradle task to discover and render everything. |
+| Command                                | Description                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------- |
+| `Compose Preview: Refresh Previews`    | Re-read `previews.json` and rendered PNGs from `build/compose-previews/`.        |
+| `Compose Preview: Render All Previews` | Run the `composePreviewRenderAll` Gradle task to discover and render everything. |
 
 ### Settings
 

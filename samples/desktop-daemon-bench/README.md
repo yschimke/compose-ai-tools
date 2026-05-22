@@ -15,7 +15,7 @@ two CSVs compare like-for-like.
 
 ## Tasks
 
-- `./gradlew :samples:desktop-daemon-bench:renderPreviews` — renders all
+- `./gradlew :samples:desktop-daemon-bench:composePreviewRender` — renders all
   five previews to `build/compose-previews/renders/`. Smoke test that the
   module builds and the desktop renderer (`renderer-desktop`) wires up.
 - `./gradlew :samples:desktop-daemon-bench:benchPreviewLatency` — runs the
@@ -33,10 +33,10 @@ Mirrors P0.1's table; the desktop equivalents differ on `forkAndInit` and
 
 | Phase         | How measured                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------- |
-| `config`      | wall of `renderPreviews --dry-run` (no actions executed)                                    |
+| `config`      | wall of `composePreviewRender --dry-run` (no actions executed)                                    |
 | `compile`     | wall of `compileKotlin` in isolation (kotlin.jvm — single task, no `compileDebugKotlin`)    |
-| `discovery`   | wall of `discoverPreviews` in isolation (renderer-agnostic; same task name on both targets) |
-| `forkAndInit` | renderPreviews wall − sum(per-preview javaexec walls); see "Desktop divergence" below       |
+| `discovery`   | wall of `composePreviewDiscover` in isolation (renderer-agnostic; same task name on both targets) |
+| `forkAndInit` | composePreviewRender wall − sum(per-preview javaexec walls); see "Desktop divergence" below       |
 | `render`      | sum of per-preview `DesktopRendererMain` `javaexec` walls (one process per preview)         |
 
 ### Desktop divergence in `render` accounting
@@ -56,7 +56,7 @@ Two consequences:
    Compose-Desktop runtime warmup + actual draw`, summed across previews.
    You can't separate the four without instrumenting the renderer, which
    P0.6 deliberately doesn't do.
-2. **`forkAndInit` is small.** It's `renderPreviews wall − Σ probe walls`,
+2. **`forkAndInit` is small.** It's `composePreviewRender wall − Σ probe walls`,
    which captures only Gradle's orchestration cost between/around the
    forks (the forks themselves live in `render`).
 
@@ -78,7 +78,7 @@ Identical to P0.1:
 
 The `warm-after-1-line-edit` scenario uses a string-literal swap (not a
 comment edit) for the same reason as P0.1: kotlinc strips comments and
-downstream `.class`-hashing tasks (`renderPreviews`, `discoverPreviews`)
+downstream `.class`-hashing tasks (`composePreviewRender`, `composePreviewDiscover`)
 stay UP-TO-DATE.
 
 ## Constraints

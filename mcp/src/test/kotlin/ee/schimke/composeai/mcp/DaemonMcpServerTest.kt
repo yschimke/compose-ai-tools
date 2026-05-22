@@ -2242,8 +2242,8 @@ class DaemonMcpServerTest {
   }
 
   @Test
-  fun `manifest poller imports new previews when discoverPreviews rewrites previews-json`() {
-    // Reproduces issue #834: a Gradle `discoverPreviews` re-run between renders rewrites the
+  fun `manifest poller imports new previews when composePreviewDiscover rewrites previews-json`() {
+    // Reproduces issue #834: a Gradle `composePreviewDiscover` re-run between renders rewrites the
     // module's `previews.json` to include new `@Preview` ids. The MCP server must pick that up
     // without a daemon restart so `render_preview` for the new id no longer fails with
     // `PreviewManifestRouter: no manifest entry`.
@@ -2312,7 +2312,7 @@ class DaemonMcpServerTest {
           .map { it.uri }
       assertThat(listBefore.any { it.contains("com.example.Initial") }).isTrue()
 
-      // Gradle's `discoverPreviews` re-runs and rewrites the manifest with a new id.
+      // Gradle's `composePreviewDiscover` re-runs and rewrites the manifest with a new id.
       manifestFile.writeText(
         """
         {"previews":[

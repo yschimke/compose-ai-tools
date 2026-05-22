@@ -19,7 +19,7 @@ import org.junit.rules.TemporaryFolder
  * > static default, with the auto-detect path clamped to Robolectric's max — is the load-bearing
  * > fix for issue #1248 (`PackageParser: Requires newer sdk version`), so each link gets a
  * > dedicated assertion here. The samples (`:samples:android`, `:samples:wear`) exercise the
- * > AGP-side `finalizeDsl` plumbing end-to-end via `:samples:android:renderAllPreviews`.
+ * > AGP-side `finalizeDsl` plumbing end-to-end via `:samples:android:composePreviewRenderAll`.
  */
 class GenerateRobolectricPropertiesTaskTest {
 
@@ -127,7 +127,10 @@ class GenerateRobolectricPropertiesTaskTest {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task =
       project.tasks
-        .register("generateRobolectricProperties", GenerateRobolectricPropertiesTask::class.java)
+        .register(
+          "composePreviewGenerateRobolectricProperties",
+          GenerateRobolectricPropertiesTask::class.java,
+        )
         .get()
     task.useConsumerApplication.set(useConsumerApplication)
     if (override != null) task.sdkOverride.set(override)

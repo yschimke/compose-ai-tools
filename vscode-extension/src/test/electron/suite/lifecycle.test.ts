@@ -125,7 +125,7 @@ describe("Compose Preview lifecycle", () => {
         const cmds = commandsOf(messages);
 
         // Lifecycle: Building… is the first thing the panel sees, then the
-        // populated card list arrives. The webview-side renderPreviews()
+        // populated card list arrives. The webview-side composePreviewRender()
         // clears the 'loading' banner the moment cards land — exercised in
         // the webview unit test; here we verify the extension at least
         // emits the right sequence.
@@ -155,14 +155,14 @@ describe("Compose Preview lifecycle", () => {
         );
     });
 
-    it("tier=fast on save passes -PcomposePreview.tier=fast to renderAllPreviews", async () => {
+    it("tier=fast on save passes -PcomposePreview.tier=fast to composePreviewRenderAll", async () => {
         await api.triggerRefresh(kotlinFile, /* force */ true, "fast");
         await flushMicrotasks();
 
         const renderCall = gradle.invocations.find(
-            (i) => i.taskName === ":sample-module:renderAllPreviews",
+            (i) => i.taskName === ":sample-module:composePreviewRenderAll",
         );
-        assert.ok(renderCall, "expected a renderAllPreviews invocation");
+        assert.ok(renderCall, "expected a composePreviewRenderAll invocation");
         assert.ok(
             renderCall.args.includes("-PcomposePreview.tier=fast"),
             `expected tier=fast in args; got: ${renderCall.args.join(" ")}`,
@@ -174,9 +174,9 @@ describe("Compose Preview lifecycle", () => {
         await flushMicrotasks();
 
         const renderCall = gradle.invocations.find(
-            (i) => i.taskName === ":sample-module:renderAllPreviews",
+            (i) => i.taskName === ":sample-module:composePreviewRenderAll",
         );
-        assert.ok(renderCall, "expected a renderAllPreviews invocation");
+        assert.ok(renderCall, "expected a composePreviewRenderAll invocation");
         assert.ok(
             renderCall.args.includes("-PcomposePreview.tier=full"),
             `expected tier=full in args; got: ${renderCall.args.join(" ")}`,

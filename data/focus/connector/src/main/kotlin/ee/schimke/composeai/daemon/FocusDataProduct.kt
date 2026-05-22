@@ -31,7 +31,7 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  *
  * The extension is the seam both render paths share:
  *
- * - **Plugin path** (`renderAllPreviews` / `RobolectricRenderTest`): the renderer wraps content
+ * - **Plugin path** (`composePreviewRenderAll` / `RobolectricRenderTest`): the renderer wraps content
  *   with this extension whenever `@FocusedPreview` discovery emitted any per-capture focus state,
  *   and updates [FocusController.set] from the outer per-capture loop. The `LaunchedEffect`
  *   re-walks each time the controller's state flips.

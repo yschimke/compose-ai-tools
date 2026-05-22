@@ -15,7 +15,7 @@ import org.junit.rules.TemporaryFolder
  *
  * The gradle-driven render path no longer produces a11y data products — that responsibility moved
  * entirely to the daemon (`:daemon:android`'s `RenderEngine`). Whether or not a build script / CLI
- * invocation requests a11y, the standalone `discoverPreviews` task writes an empty
+ * invocation requests a11y, the standalone `composePreviewDiscover` task writes an empty
  * `dataExtensionReports` map. The CLI / VS Code's "show a11y findings" surface routes through the
  * daemon and stamps a runtime pointer when there is data to point at.
  */
@@ -116,11 +116,11 @@ class AccessibilityFunctionalTest {
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
-        .withArguments("discoverPreviews")
+        .withArguments("composePreviewDiscover")
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
     // No gradle-driven extension writes into this map any more — daemon-only.
@@ -139,14 +139,14 @@ class AccessibilityFunctionalTest {
       GradleRunner.create()
         .withProjectDir(projectDir)
         .withArguments(
-          "discoverPreviews",
+          "composePreviewDiscover",
           "-PcomposePreview.previewExtensions.a11y.enableAllChecks=true",
           "-PcomposePreview.activeExtensions=a11y",
         )
         .withPluginClasspath()
         .build()
 
-    assertThat(result.task(":discoverPreviews")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
     val manifest = projectDir.readManifest()
     assertThat(manifest.previews).hasSize(1)
     assertThat(manifest.dataExtensionReports).isEmpty()

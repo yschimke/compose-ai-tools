@@ -61,7 +61,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // interactive UI relies on. Up-to-date checks still apply, so a
     // re-run with no input changes is a no-op and the renders directory
     // stays as-is regardless of tier.
-    outputs.cacheIf("renderPreviews caches tier=full runs only") {
+    outputs.cacheIf("composePreviewRender caches tier=full runs only") {
       tier.get().equals("full", ignoreCase = true)
     }
   }

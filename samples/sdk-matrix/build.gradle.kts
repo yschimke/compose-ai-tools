@@ -8,7 +8,7 @@
 // is one of the axes the matrix needs to sweep.
 //
 // Run locally:
-//   ./gradlew :samples:sdk-matrix:renderAllPreviews \
+//   ./gradlew :samples:sdk-matrix:composePreviewRenderAll \
 //     -Pcomposeai.matrix.compileSdk=36 \
 //     -Pcomposeai.matrix.targetSdk=36 \
 //     -Pcomposeai.matrix.minSdk=24
@@ -70,7 +70,7 @@ if (matrixRobolectricVersion != null) {
 if (matrixMaxSupportedSdk != null) {
   afterEvaluate {
     tasks.named(
-      "generateRobolectricProperties",
+      "composePreviewGenerateRobolectricProperties",
       ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
     ) {
       maxSupportedSdkOverride.set(matrixMaxSupportedSdk)

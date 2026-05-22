@@ -66,7 +66,7 @@ class DoctorReportSerializationTest {
   }
 
   @Test
-  fun `renderPreviews task-info serialises round-trip`() {
+  fun `composePreviewRender task-info serialises round-trip`() {
     // The nested RenderPreviewsTaskInfo model sits behind the
     // project.<module>.render-previews-jvm check — verify it
     // serialises cleanly via the CLI's action type so the JSON

@@ -68,7 +68,8 @@ class AndroidPreviewClasspathTest {
 
     assertThat(thrown).isInstanceOf(IllegalStateException::class.java)
     assertThat(thrown!!.message).contains("issue #1243")
-    assertThat(thrown.message).contains("android.jar is not on the renderPreviews test classpath")
+    assertThat(thrown.message)
+      .contains("android.jar is not on the composePreviewRender test classpath")
     assertThat(thrown.message).contains("compileSdk")
   }
 

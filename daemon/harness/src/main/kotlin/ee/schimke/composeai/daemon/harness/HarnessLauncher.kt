@@ -240,7 +240,7 @@ class RealDesktopHarnessLauncher(
  * **Heavy spawn cost.** Robolectric sandbox bootstrap (the dummy-`@Test` runner trick from DESIGN §
  * 9 + B1.3) costs roughly 3-10s on a typical dev machine — at least an order of magnitude higher
  * than the desktop launcher's ~600ms cold. Use 60s `renderStarted` and 120s `renderFinished`
- * timeouts in tests; the previous `:samples:android` `renderPreviews` task already proves the
+ * timeouts in tests; the previous `:samples:android` `composePreviewRender` task already proves the
  * JVM-args / classpath shape works at this scale, so the cost is well-understood, just slow.
  *
  * No `composeai.harness.fixtureDir` — the real daemon doesn't read FakeHost fixtures.

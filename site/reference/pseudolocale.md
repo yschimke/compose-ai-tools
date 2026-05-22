@@ -62,7 +62,7 @@ fun MyScreenBidi() {
 }
 ```
 
-`./gradlew :app:renderAllPreviews` produces `MyScreenAccent_accent.png`
+`./gradlew :app:composePreviewRenderAll` produces `MyScreenAccent_accent.png`
 and `MyScreenBidi_bidi.png` alongside the default render. No app-level
 config required: no `pseudoLocalesEnabled = true`, no `resConfigs`,
 no AAPT2 flag.
@@ -87,10 +87,10 @@ to be restarted between locales.
 
 - **Android** — [`samples/android/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/android/src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt)
   ships three previews — `default`, `accent`, `bidi` — driven from the
-  same body. Run `./gradlew :samples:android:renderAllPreviews` and
+  same body. Run `./gradlew :samples:android:composePreviewRenderAll` and
   compare the three PNGs in `samples/android/build/compose-previews/renders/`.
 - **CMP Desktop** — [`samples/cmp/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/cmp/src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt)
-  ships `default` and `bidi` previews. Run `./gradlew :samples:cmp:renderAllPreviews`
+  ships `default` and `bidi` previews. Run `./gradlew :samples:cmp:composePreviewRenderAll`
   and compare — the `bidi` PNG flips the row layout, but text content stays
   the same.
 

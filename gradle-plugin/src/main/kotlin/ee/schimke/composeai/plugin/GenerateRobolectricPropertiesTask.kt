@@ -12,7 +12,7 @@ import org.gradle.api.tasks.TaskAction
 
 /**
  * Writes `ee/schimke/composeai/renderer/robolectric.properties` into a generated resources
- * directory added to the `renderPreviews` test classpath.
+ * directory added to the `composePreviewRender` test classpath.
  *
  * Robolectric reads package-level `robolectric.properties` from the classpath and merges its fields
  * into each test's effective config. `RobolectricRenderTestBase` deliberately carries NO `@Config`

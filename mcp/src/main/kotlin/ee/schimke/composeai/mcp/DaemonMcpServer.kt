@@ -661,7 +661,8 @@ class DaemonMcpServer(
         freshnessMetrics.pollingCycles.incrementAndGet()
         supervisor.listProjects().forEach { project ->
           project.daemons.forEach { (modulePath, daemon) ->
-            // Manifest stat first — a Gradle `discoverPreviews` re-run between renders rewrites
+            // Manifest stat first — a Gradle `composePreviewDiscover` re-run between renders
+            // rewrites
             // `previews.json`. Picking that up here means new preview ids land in the catalog
             // (and `render_preview` works) before the user's next request, without the
             // restart-the-MCP-server escape hatch reported in issue #834.

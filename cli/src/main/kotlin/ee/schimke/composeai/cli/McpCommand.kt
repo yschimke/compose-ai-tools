@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *   to stderr.
  * - `install` — bootstrap descriptors for every module that applies the plugin, flip each
  *   descriptor's `enabled` flag to `true` (`composePreview.daemon { enabled = true }` isn't
- *   required up-front this way), run `discoverPreviews`, and print or install the MCP host
+ *   required up-front this way), run `composePreviewDiscover`, and print or install the MCP host
  *   configuration an agent host needs.
  * - `doctor` — report per-module descriptor state (present / missing / disabled / stale) without
  *   making any changes.
@@ -153,7 +153,7 @@ internal class McpCommand(args: List<String>) {
       // Two batched runs: bootstrap every descriptor, then re-run discovery so previews.json sits
       // alongside. Single Gradle invocation per phase keeps configuration cache hits warm.
       val daemonTasks = modules.map { ":${it.gradlePath}:composePreviewDaemonStart" }
-      val discoverTasks = modules.map { ":${it.gradlePath}:discoverPreviews" }
+      val discoverTasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }
 
       System.err.println(
         "==> bootstrapping daemon descriptors for ${modules.size} module(s): " +
@@ -186,10 +186,10 @@ internal class McpCommand(args: List<String>) {
         }
       }
 
-      System.err.println("==> running discoverPreviews so previews.json is up to date")
+      System.err.println("==> running composePreviewDiscover so previews.json is up to date")
       val discoverOk = gc.runTasks(*discoverTasks.toTypedArray())
       if (!discoverOk) {
-        System.err.println("discoverPreviews failed; descriptors are still in place.")
+        System.err.println("composePreviewDiscover failed; descriptors are still in place.")
         exitProcess(1)
       }
 

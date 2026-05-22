@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 
 // ---------------------------------------------------------------------------
 // Wire shape — `<module>/build/compose-previews/resources.json` from the
-// `discoverAndroidResources` task. Mirrors PreviewData.kt /
+// `composePreviewDiscoverAndroidResources` task. Mirrors PreviewData.kt /
 // RenderResourceManifest.kt; CLI doesn't depend on the gradle-plugin module
 // so the DTOs are duplicated here, same split the composable side uses.
 // ---------------------------------------------------------------------------
@@ -146,9 +146,9 @@ private val briefResourceJson = Json {
 
 /**
  * `compose-preview show-resources` — sibling of [ShowCommand] for Android XML resource previews.
- * Triggers `:<module>:renderAndroidResources`, walks `resources.json`, hashes the rendered PNGs /
- * GIFs against a per-module sidecar state file, and emits one row per `(resource id, capture
- * variant)` with the same id / png / sha / changed shape as the composable side.
+ * Triggers `:<module>:composePreviewRenderAndroidResources`, walks `resources.json`, hashes the
+ * rendered PNGs / GIFs against a per-module sidecar state file, and emits one row per `(resource
+ * id, capture variant)` with the same id / png / sha / changed shape as the composable side.
  *
  * Kept separate from `show` (rather than folded behind a `--with-resources` flag) because the
  * workflows are disjoint: a Compose UI dev iterating on a `@Preview` doesn't want to pay the
@@ -161,7 +161,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
 
   override fun run() {
     // Auto-detect picks up every plugin-applied module — including CMP-only ones that never
-    // get `:<module>:renderAndroidResources` (the resource pipeline is gated on the Android-side
+    // get `:<module>:composePreviewRenderAndroidResources` (the resource pipeline is gated on the
+    // Android-side
     // `AndroidPreviewSupport` path, which CMP modules don't go through). Filter to modules
     // that have an `AndroidManifest.xml` on disk: cheap, accurate, and the same signal the
     // resource discovery task itself uses upstream.
@@ -173,7 +174,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
       renderModules(
         silenceStdout = jsonOutput,
         moduleFilter = { isAndroidModule(it) },
-        taskFor = { ":${it.gradlePath}:renderAndroidResources" },
+        taskFor = { ":${it.gradlePath}:composePreviewRenderAndroidResources" },
       )
     if (outcome.modules.isEmpty()) {
       if (jsonOutput) println(encodeResourceResponse(emptyList(), emptyList()))
@@ -242,9 +243,9 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
    * `true` when [module] has an `AndroidManifest.xml` on disk under any of the standard locations.
    * Coarse but reliable signal that the module participates in the Android resource preview
    * pipeline — CMP-Desktop / pure-JVM modules don't produce a manifest, and the gradle
-   * `renderAndroidResources` task is registered exclusively from `AndroidPreviewSupport`. Uses a
-   * filesystem check rather than a Tooling-API task enumeration so the per-module overhead stays at
-   * a single `File.exists()` call.
+   * `composePreviewRenderAndroidResources` task is registered exclusively from
+   * `AndroidPreviewSupport`. Uses a filesystem check rather than a Tooling-API task enumeration so
+   * the per-module overhead stays at a single `File.exists()` call.
    */
   private fun isAndroidModule(module: PreviewModule): Boolean =
     sequenceOf(

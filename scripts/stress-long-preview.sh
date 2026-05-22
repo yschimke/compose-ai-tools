@@ -41,7 +41,7 @@ echo "[stress] running $ITERATIONS iterations → $OUTDIR"
 # rather than pulled from the up-to-date cache.
 for i in $(seq 1 "$ITERATIONS"); do
     printf '\r[stress] iteration %d/%d ...' "$i" "$ITERATIONS"
-    ./gradlew :samples:wear:renderAllPreviews --rerun-tasks -q \
+    ./gradlew :samples:wear:composePreviewRenderAll --rerun-tasks -q \
         --no-configuration-cache >"$OUTDIR/gradle_$i.log" 2>&1 || {
         echo ""
         echo "[stress] gradle failed on iteration $i — log tail:"

@@ -16,7 +16,7 @@ plugins {
 
 // Regression coverage for issue #248: applying `composePreview` to a
 // `com.android.kotlin.multiplatform.library` `:shared`-style module didn't
-// register `discoverPreviews` (the plugin only recognised
+// register `composePreviewDiscover` (the plugin only recognised
 // `com.android.application` / `com.android.library`). The fix routes
 // KMP-Android modules through the Compose Multiplatform Desktop renderer
 // path — `commonMain` previews are pure-Compose composables that

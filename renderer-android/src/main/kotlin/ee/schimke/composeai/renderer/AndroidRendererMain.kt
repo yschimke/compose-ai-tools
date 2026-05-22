@@ -20,7 +20,7 @@ fun main(args: Array<String>) {
 
     if (manifestPath == null || outputDir == null) {
         System.err.println("Required system properties: composeai.render.manifest, composeai.render.outputDir")
-        System.err.println("Normal usage is via the Gradle renderPreviews task, not this main().")
+        System.err.println("Normal usage is via the Gradle composePreviewRender task, not this main().")
         kotlin.system.exitProcess(1)
     }
 

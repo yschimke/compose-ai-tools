@@ -44,8 +44,8 @@ plugins {
 Then:
 
 ```sh
-./gradlew :app:discoverPreviews    # scan @Preview annotations
-./gradlew :app:renderAllPreviews   # render every @Preview to PNG
+./gradlew :app:composePreviewDiscover    # scan @Preview annotations
+./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
 Requires Java 17+, Gradle 9.4.1+, AGP 9.1+ (Android), Kotlin 2.2.21,

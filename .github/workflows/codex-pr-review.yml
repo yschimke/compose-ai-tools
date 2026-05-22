@@ -24,9 +24,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Render Android sample previews
-        run: ./gradlew :samples:android:renderAllPreviews
+        run: ./gradlew :samples:android:composePreviewRenderAll
       - name: Render CMP sample previews
-        run: ./gradlew :samples:cmp:renderAllPreviews
+        run: ./gradlew :samples:cmp:composePreviewRenderAll
       - name: Upload preview images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

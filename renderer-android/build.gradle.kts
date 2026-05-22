@@ -25,7 +25,8 @@ dependencies {
   //
   // The `:data-a11y-hierarchy-android` producer (the Android-specific hierarchy walk +
   // `AccessibilityHierarchyExtension`) is NOT depended on here any more — the standalone
-  // Robolectric `renderPreviews` Test task is the "normal render only" path. A11y data products
+  // Robolectric `composePreviewRender` Test task is the "normal render only" path. A11y data
+  // products
   // are produced exclusively by `:daemon:android`'s `RenderEngine`; consumers (VS Code chip,
   // `compose-preview a11y`, MCP) drive a11y through the daemon, never through this Test task.
   api(project(":data-a11y-core"))
@@ -176,7 +177,7 @@ dependencies {
   implementation(libs.roborazzi.compose)
   // ATF (roborazzi-accessibility-check + the transitive
   // `accessibility-test-framework`) is no longer wired here — the standalone Robolectric
-  // `renderPreviews` Test task does NOT run ATF. The daemon (`:daemon:android`) is the only
+  // `composePreviewRender` Test task does NOT run ATF. The daemon (`:daemon:android`) is the only
   // path that produces a11y data products and depends on these libraries via
   // `:data-a11y-hierarchy-android`.
 

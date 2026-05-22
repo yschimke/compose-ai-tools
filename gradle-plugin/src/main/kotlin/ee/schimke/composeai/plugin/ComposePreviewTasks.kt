@@ -23,7 +23,7 @@ internal object ComposePreviewTasks {
   /**
    * Candidate Kotlin compile task names for the desktop / KMP-flavoured side, in priority order.
    * The first name that resolves at configuration time is wired as the upstream of both
-   * `discoverPreviews` and `composePreviewCompile`.
+   * `composePreviewDiscover` and `composePreviewCompile`.
    */
   private val DESKTOP_COMPILE_TASK_CANDIDATES: List<String> =
     listOf("compileKotlinJvm", "compileKotlinDesktop", "compileAndroidMain", "compileKotlin")
@@ -121,7 +121,7 @@ internal object ComposePreviewTasks {
           toolClasspath = rendererConfig,
         )
       val renderTask =
-        project.tasks.register("renderPreviews", RenderPreviewsTask::class.java) {
+        project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
           onlyIf { extension.enabled.get() }
           previewsJson.set(previewOutputDir.map { it.file("previews.json") })
           outputDir.set(previewOutputDir.map { it.dir("renders") })
@@ -157,7 +157,7 @@ internal object ComposePreviewTasks {
       previewOutputDir = previewOutputDir,
       sourceClassDirs = sourceClassDirs,
       resolveDependencyConfigName = resolveDependencyConfigName,
-      discoverTaskName = "discoverPreviews",
+      discoverTaskName = "composePreviewDiscover",
     )
 
     registerDesktopDaemonStartTask(
@@ -171,16 +171,16 @@ internal object ComposePreviewTasks {
 
   /**
    * Register `composePreviewBundle` — packs the consumer module + selected previews into a portable
-   * PNG+ZIP polyglot. Inputs reuse the existing `previews.json` from `discoverPreviews` and the
-   * same module class dirs + runtime classpath that `renderPreviews` consumes; the cover PNG is
-   * read from the `renders/` directory when present (lazy — task still runs in "no-render" mode and
-   * writes a stub gray PNG cover).
+   * PNG+ZIP polyglot. Inputs reuse the existing `previews.json` from `composePreviewDiscover` and
+   * the same module class dirs + runtime classpath that `composePreviewRender` consumes; the cover
+   * PNG is read from the `renders/` directory when present (lazy — task still runs in "no-render"
+   * mode and writes a stub gray PNG cover).
    *
    * Selection comes from project properties (`-PbundlePreviewIds=…`) or CLI input. The bundle task
-   * does NOT depend on `renderPreviews` — bundling without pre-rendering is the common case for the
-   * CLI's "pack and share" flow. Callers who want the cover populated should run `renderPreviews`
-   * first (the CLI shells through `renderPreviews composePreviewBundle` as a single Gradle
-   * invocation).
+   * does NOT depend on `composePreviewRender` — bundling without pre-rendering is the common case
+   * for the CLI's "pack and share" flow. Callers who want the cover populated should run
+   * `composePreviewRender` first (the CLI shells through `composePreviewRender
+   * composePreviewBundle` as a single Gradle invocation).
    */
   private fun registerBundleTask(
     project: Project,
@@ -255,7 +255,7 @@ internal object ComposePreviewTasks {
       moduleResourcesDir.set(moduleResourcesDirProvider)
       depJarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(coordMapProvider)
-      // Renders dir is wired conditionally — when renderPreviews has run, the dir exists and
+      // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
       // contains PNGs. Use orNull semantics: missing dir = stub cover.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
@@ -265,7 +265,8 @@ internal object ComposePreviewTasks {
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
       description = "Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot."
-      // No dependsOn renderPreviews — bundle without a render is valid (stub cover). Callers wire
+      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). Callers
+      // wire
       // explicitly when they want a real cover.
       dependsOn(discoverTaskName)
     }
@@ -520,7 +521,7 @@ internal object ComposePreviewTasks {
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)
 
-    return project.tasks.register("discoverPreviews", DiscoverPreviewsTask::class.java) {
+    return project.tasks.register("composePreviewDiscover", DiscoverPreviewsTask::class.java) {
       classDirs.from(sourceClassDirs)
       sourceFiles.from(
         project.fileTree("src") {
@@ -555,7 +556,7 @@ internal object ComposePreviewTasks {
           .orElse(extension.failOnEmpty)
       )
       // No per-extension opt-in plumbed here — a11y data products are produced only by the
-      // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `discoverPreviews`
+      // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
       // task writes an empty `dataExtensionReports` map.
       outputFile.set(previewOutputDir.map { it.file("previews.json") })
       group = "compose preview"
@@ -566,11 +567,11 @@ internal object ComposePreviewTasks {
 
   /**
    * Registers a `composePreviewCompile` lifecycle task whose only job is to run the same Kotlin
-   * compile task `discoverPreviews` depends on, without the discovery action itself. Wired so the
-   * VS Code extension can keep `.class` files fresh on save without re-walking the dependency-JAR
-   * classpath through ClassGraph — the daemon owns the metadata reconcile via its
+   * compile task `composePreviewDiscover` depends on, without the discovery action itself. Wired so
+   * the VS Code extension can keep `.class` files fresh on save without re-walking the
+   * dependency-JAR classpath through ClassGraph — the daemon owns the metadata reconcile via its
    * `IncrementalDiscovery` cascade and `discoveryUpdated` notification, so the editor save loop no
-   * longer needs `:discoverPreviews` on every keystroke.
+   * longer needs `:composePreviewDiscover` on every keystroke.
    *
    * Caller passes the set of candidate compile task names; we wire every matching task lazily so
    * Android variants registered after this plugin block still participate. When none are found
@@ -585,7 +586,7 @@ internal object ComposePreviewTasks {
     return project.tasks.register("composePreviewCompile", DefaultTask::class.java) {
       group = "compose preview"
       description =
-        "Compile sources without running discoverPreviews — used by the VS Code daemon save path."
+        "Compile sources without running composePreviewDiscover — used by the VS Code daemon save path."
       onlyIf { extension.enabled.get() }
       dependsOn(project.tasks.matching { it.name in compileTaskNames })
     }
@@ -600,7 +601,7 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
   ) {
     val renderTask =
-      project.tasks.register("renderPreviews", RenderPreviewsTask::class.java) {
+      project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
         onlyIf { extension.enabled.get() }
         previewsJson.set(previewOutputDir.map { it.file("previews.json") })
         outputDir.set(previewOutputDir.map { it.dir("renders") })
@@ -619,7 +620,7 @@ internal object ComposePreviewTasks {
     registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
   }
 
-  /** Registers `renderAllPreviews` as the user-facing entry point. */
+  /** Registers `composePreviewRenderAll` as the user-facing entry point. */
   fun registerRenderAllPreviews(
     project: Project,
     extension: PreviewExtension,
@@ -631,13 +632,13 @@ internal object ComposePreviewTasks {
     // (RobolectricRenderTest on Android, RenderPreviewsTask on desktop)
     // so we KNOW the task should run for a non-empty manifest — a missing
     // PNG is a wiring bug, never expected. The most common offender on
-    // Android is `renderPreviews` reporting NO-SOURCE because the AAR's
+    // Android is `composePreviewRender` reporting NO-SOURCE because the AAR's
     // classes.jar wasn't expanded via `zipTree` before being added to
     // `testClassesDirs`, which silently skips rendering; without this
     // check the failure surfaces only in downstream tools (CLI / VSCode).
     val manifestFile = previewOutputDir.map { it.file("previews.json") }
     val rendersDir = previewOutputDir.map { it.dir("renders") }
-    val validationMarker = previewOutputDir.map { it.file("renderAllPreviews.validated") }
+    val validationMarker = previewOutputDir.map { it.file("composePreviewRenderAll.validated") }
     // Captured at config time so the `doLast` body doesn't reach for
     // `project` at execution (config-cache safe). Resolves at execution
     // to "fast" or "full"; "fast" tells the post-condition to tolerate
@@ -647,7 +648,7 @@ internal object ComposePreviewTasks {
         .gradleProperty("composePreview.tier")
         .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
         .orElse("full")
-    project.tasks.register("renderAllPreviews", DefaultTask::class.java) {
+    project.tasks.register("composePreviewRenderAll", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
       inputs
@@ -698,9 +699,9 @@ internal object ComposePreviewTasks {
           val preview = missing.take(3).joinToString(", ")
           val andMore = if (missing.size > 3) " (+${missing.size - 3} more)" else ""
           throw GradleException(
-            "renderAllPreviews: render produced no output file for ${missing.size} of " +
+            "composePreviewRenderAll: render produced no output file for ${missing.size} of " +
               "${manifest.previews.size} preview(s): $preview$andMore. This means " +
-              "`renderPreviews` was skipped or silently did nothing — on Android " +
+              "`composePreviewRender` was skipped or silently did nothing — on Android " +
               "that usually means it reported NO-SOURCE because " +
               "RobolectricRenderTest.class wasn't discoverable on its " +
               "testClassesDirs. Run with --info to see the task outcome."
@@ -713,16 +714,16 @@ internal object ComposePreviewTasks {
     }
 
     // Pixel-test wiring: chain the AGP unit-test tasks behind
-    // `renderAllPreviews` so a consumer test class that reads the PNGs under
+    // `composePreviewRenderAll` so a consumer test class that reads the PNGs under
     // `build/compose-previews/renders/` (e.g. `:samples:android-alpha`'s
     // `FocusedPreviewPixelTest`) sees the rendered output by the time its
     // assertions run. Opt-in via `composePreview { renderBeforeUnitTests =
     // true }` — default off so consumers without pixel tests don't pay the
-    // `renderAllPreviews` cost on every `:check`.
+    // `composePreviewRenderAll` cost on every `:check`.
     //
     // Targets the AGP unit-test tasks by name rather than
-    // `tasks.withType<Test>()`: the plugin's own `renderPreviews` Test task
-    // is what `renderAllPreviews` already depends on, so matching it here
+    // `tasks.withType<Test>()`: the plugin's own `composePreviewRender` Test task
+    // is what `composePreviewRenderAll` already depends on, so matching it here
     // would create a cycle. No-op on Compose Multiplatform / Desktop modules
     // where those task names don't exist.
     //
@@ -735,7 +736,7 @@ internal object ComposePreviewTasks {
       .matching { it.name in PIXEL_TEST_UNIT_TEST_TASKS }
       .configureEach {
         if (renderBeforeUnitTests.get()) {
-          dependsOn("renderAllPreviews")
+          dependsOn("composePreviewRenderAll")
         }
       }
   }

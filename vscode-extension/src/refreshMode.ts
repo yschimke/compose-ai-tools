@@ -11,7 +11,7 @@ export type RefreshMode = "daemon" | "gradle";
 
 /**
  * - `'daemon'` — the file resolves to a module. The save path skips
- *   `renderPreviews` entirely; daemon failures are surfaced as errors instead of falling back.
+ *   `composePreviewRender` entirely; daemon failures are surfaced as errors instead of falling back.
  * - `'gradle'` — file outside any module. Existing Gradle render path runs.
  *
  * Accepts the resolved module as an opaque value — only truthiness matters

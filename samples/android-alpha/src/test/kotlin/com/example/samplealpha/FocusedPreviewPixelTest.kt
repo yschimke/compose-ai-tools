@@ -9,7 +9,7 @@ import org.junit.Test
 /**
  * End-to-end verification that `@FocusedPreview` actually drives focus through the renderer's
  * Compose pipeline and that the resulting PNGs reflect the requested focus state. Reads the files
- * produced by `:samples:android-alpha:renderAllPreviews` (wired into this module's `test` task in
+ * produced by `:samples:android-alpha:composePreviewRenderAll` (wired into this module's `test` task in
  * `build.gradle.kts`) and pixel-asserts on them.
  *
  * What this guards against:

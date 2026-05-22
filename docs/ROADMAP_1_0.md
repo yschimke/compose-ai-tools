@@ -61,7 +61,7 @@ Items marked **P0** are blockers. **P1** is "should land before 1.0 but a known-
 **Problem.** We test against one toolchain. AGP/Compose/Kotlin minor bumps land every six weeks and can break the renderer in ways that don't surface until a consumer hits them.
 
 **Plan.**
-- New `.github/workflows/integration-matrix.yml` that runs `:samples:android:renderAllPreviews` and `:samples:cmp:renderAllPreviews` against the matrix corners: current, current-1, next-RC.
+- New `.github/workflows/integration-matrix.yml` that runs `:samples:android:composePreviewRenderAll` and `:samples:cmp:composePreviewRenderAll` against the matrix corners: current, current-1, next-RC.
 - Required for plugin releases; advisory on PRs.
 - Document the matrix corners in [RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md).
 

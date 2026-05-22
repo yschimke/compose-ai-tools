@@ -27,7 +27,7 @@ class EmbeddedDesktopEndToEndTest {
     if (!descriptor.isFile || !previews.isFile) {
       System.err.println(
         "[EmbeddedDesktopEndToEndTest] skipping — descriptor or previews.json missing " +
-          "(run `:samples:cmp:composePreviewDaemonStart` + `:samples:cmp:discoverPreviews`)"
+          "(run `:samples:cmp:composePreviewDaemonStart` + `:samples:cmp:composePreviewDiscover`)"
       )
       return
     }
