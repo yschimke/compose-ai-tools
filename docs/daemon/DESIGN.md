@@ -18,7 +18,11 @@
 - The `compose-preview` CLI binary keeps using the Gradle task. (MCP
   daemon mode is shipped separately as `:mcp` — see [MCP.md](MCP.md).)
 - Replacing `composePreviewRender` — daemon fronts it for the editor loop only.
-- Hot kotlinc / compile-daemon integration.
+- Hot kotlinc / compile-daemon integration. (Stage-1 spike behind
+  `composePreview.daemon.continuousCompile` — long-running `gradle
+  --continuous` worker per module — landed for measurement. See
+  [CONTINUOUS-COMPILE.md](CONTINUOUS-COMPILE.md). Stage-2 in-daemon Kotlin
+  Build Tools API integration is gated on that spike's exit criteria.)
 - Tier-3 dependency-graph reachability index — v1 uses a conservative
   "module-changed = all previews stale, filtered by visibility" rule.
 

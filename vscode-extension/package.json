@@ -175,6 +175,11 @@
                     "description": "Deprecated. The preview daemon is always on; this setting is ignored. Opt out at the build level via `composePreview { daemon { enabled = false } }`.",
                     "markdownDeprecationMessage": "This setting has no effect. The preview daemon is always on; opt out at the build level via `composePreview { daemon { enabled = false } }`."
                 },
+                "composePreview.daemon.continuousCompile": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "**Experimental.** Replace the per-save Gradle compile round-trip with a long-running `gradle --continuous :<module>:composePreviewCompile` worker per daemon-warmed module. On a 1-line edit this shaves the ~500 ms Gradle configuration + tooling-API overhead off every save; the cost is one extra Gradle daemon's worth of memory held resident per module. Off by default; see [docs/daemon/CONTINUOUS-COMPILE.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/CONTINUOUS-COMPILE.md) for the spike. Requires a window reload to take effect."
+                },
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,
