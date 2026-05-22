@@ -12,11 +12,9 @@
 // hint to use the Configure expander (default-OFF for all three since
 // they're medium+ cost).
 //
-// The kind-specific renderers in `focusPresentation.ts` (recomposition,
-// render-trace) are intentionally left in place so the legacy focus
-// inspector keeps working through migration. Shape-wise this presenter
-// mirrors their parsing — same defensive `typeof` checks, same TOP_N,
-// same `metrics.tookMs` suppression.
+// Shape-wise this presenter does defensive `typeof` checks, applies
+// the same TOP_N truncation as the legacy renderers it replaced, and
+// suppresses the redundant `metrics.tookMs` key.
 //
 // See `docs/design/EXTENSION_DATA_EXPOSURE.md` § Performance.
 
@@ -79,8 +77,7 @@ const TOP_N_PERFETTO_PHASES = 3;
  * Build the data behind the Performance tab body from the raw wire
  * payloads. Each input may be `null`/missing — the corresponding
  * section comes back as `null` when its payload didn't produce anything
- * displayable (kept symmetric with the focus-inspector presenters so
- * test fixtures port over).
+ * displayable.
  */
 export function computePerformanceBundleData(
     recompositionPayload: unknown,
@@ -95,11 +92,9 @@ export function computePerformanceBundleData(
 }
 
 /**
- * Column shape for the recomposition sub-table. Sourced from the
- * focus-inspector `composeRecompositionPresenter` registration in
- * `focusPresentation.ts` — same nodeId / count split, with the mode
- * and inputSeq lifted into the row so the column renderer can chip
- * them for at-a-glance triage.
+ * Column shape for the recomposition sub-table — nodeId / count split,
+ * with the mode and inputSeq lifted into the row so the column
+ * renderer can chip them for at-a-glance triage.
  */
 export function performanceTableColumns(): readonly DataTableColumn<RecompositionRow>[] {
     return [

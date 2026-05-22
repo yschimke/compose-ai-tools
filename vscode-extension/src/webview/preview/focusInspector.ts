@@ -4,8 +4,9 @@
 // top to bottom:
 //
 //   1. **Error banner** — surfaces the per-card render error when one
-//      is present. Driven by the `local/render/error` presenter so the
-//      shape stays consistent with the bundle-shell renderer.
+//      is present, read from `card.dataset.renderError` /
+//      `card.dataset.renderErrorDetail` (stamped by
+//      `messageHandlers.handleErrorMessage`).
 //   2. **History** — diff buttons (HEAD / main), only rendered when the
 //      History bundle chip is active. The chip is the gate; the panel
 //      stays out of the DOM otherwise so the focus area below the
@@ -24,12 +25,6 @@
 // will collapse it further.
 
 import type { PreviewInfo } from "../shared/types";
-import {
-    type PresenterContext,
-    type PresentationError,
-    type ProductPresentation,
-    getPresenter,
-} from "./focusPresentation";
 
 export interface FocusInspectorConfig {
     /** The `<div id="focus-inspector">` element rendered by `<preview-app>`. */
@@ -89,9 +84,7 @@ export class FocusInspectorController {
         }
         this.lastCard = card;
 
-        const errorBanner = this.renderErrors(
-            this.collectErrorPresentationsOnly(card, preview),
-        );
+        const errorBanner = renderRenderErrorBanner(card);
         if (errorBanner) el.appendChild(errorBanner);
         if (this.config.isHistoryActive()) {
             el.appendChild(this.historyPanel());
@@ -115,80 +108,6 @@ export class FocusInspectorController {
      */
     releasePreview(_previewId: string): void {
         // intentionally empty
-    }
-
-    /**
-     * Invoke just the `local/render/error` presenter so the inspector
-     * can surface a render-error banner without re-running the whole
-     * presenter pipeline. Returns an empty array when no error is
-     * present, keeping the call shape consistent with the previous
-     * `collectPresentations` helper.
-     */
-    private collectErrorPresentationsOnly(
-        card: HTMLElement,
-        preview: PreviewInfo,
-    ): { kind: string; presentation: ProductPresentation }[] {
-        const ctx: PresenterContext = {
-            card,
-            preview,
-            findings: [],
-            nodes: [],
-        };
-        const out: { kind: string; presentation: ProductPresentation }[] = [];
-        const errorPresenter = getPresenter("local/render/error");
-        if (errorPresenter) {
-            const presentation = errorPresenter(ctx);
-            if (presentation) {
-                out.push({ kind: "local/render/error", presentation });
-            }
-        }
-        return out;
-    }
-
-    private renderErrors(
-        presentations: readonly {
-            kind: string;
-            presentation: ProductPresentation;
-        }[],
-    ): HTMLElement | null {
-        const errors: { kind: string; error: PresentationError }[] = [];
-        for (const { kind, presentation } of presentations) {
-            if (presentation.error) {
-                errors.push({ kind, error: presentation.error });
-            }
-        }
-        if (errors.length === 0) return null;
-        const banner = document.createElement("section");
-        banner.className = "focus-panel focus-error-panel";
-        banner.setAttribute("role", "alert");
-        for (const { kind, error } of errors) {
-            const row = document.createElement("div");
-            row.className = "focus-error-row";
-            row.dataset.kind = kind;
-            const icon = document.createElement("i");
-            icon.className = "codicon codicon-error";
-            icon.setAttribute("aria-hidden", "true");
-            row.appendChild(icon);
-            const body = document.createElement("div");
-            body.className = "focus-error-body";
-            const title = document.createElement("div");
-            title.className = "focus-error-title";
-            title.textContent = error.title;
-            const message = document.createElement("div");
-            message.className = "focus-error-message";
-            message.textContent = error.message;
-            body.appendChild(title);
-            body.appendChild(message);
-            if (error.detail) {
-                const detail = document.createElement("div");
-                detail.className = "focus-error-detail";
-                detail.textContent = error.detail;
-                body.appendChild(detail);
-            }
-            row.appendChild(body);
-            banner.appendChild(row);
-        }
-        return banner;
     }
 
     private historyPanel(): HTMLElement {
@@ -232,6 +151,41 @@ export class FocusInspectorController {
         history.appendChild(historyActions);
         return history;
     }
+}
+
+function renderRenderErrorBanner(card: HTMLElement): HTMLElement | null {
+    const message = card.dataset.renderError;
+    if (!message) return null;
+    const detail = card.dataset.renderErrorDetail;
+    const banner = document.createElement("section");
+    banner.className = "focus-panel focus-error-panel";
+    banner.setAttribute("role", "alert");
+    const row = document.createElement("div");
+    row.className = "focus-error-row";
+    row.dataset.kind = "local/render/error";
+    const icon = document.createElement("i");
+    icon.className = "codicon codicon-error";
+    icon.setAttribute("aria-hidden", "true");
+    row.appendChild(icon);
+    const body = document.createElement("div");
+    body.className = "focus-error-body";
+    const title = document.createElement("div");
+    title.className = "focus-error-title";
+    title.textContent = "Render failed";
+    const messageEl = document.createElement("div");
+    messageEl.className = "focus-error-message";
+    messageEl.textContent = message;
+    body.appendChild(title);
+    body.appendChild(messageEl);
+    if (detail) {
+        const detailEl = document.createElement("div");
+        detailEl.className = "focus-error-detail";
+        detailEl.textContent = detail;
+        body.appendChild(detailEl);
+    }
+    row.appendChild(body);
+    banner.appendChild(row);
+    return banner;
 }
 
 function actionButton(
