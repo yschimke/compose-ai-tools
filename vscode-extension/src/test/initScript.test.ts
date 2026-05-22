@@ -5,6 +5,7 @@ import * as path from "path";
 import {
     BUNDLED_PLUGIN_VERSION,
     INIT_SCRIPT_FILENAME,
+    hasIncludedPluginBuild,
     initScriptDigest,
     materializeInitScript,
     renderInitScript,
@@ -251,6 +252,59 @@ describe("materializeInitScript", () => {
             const onDisk = fs.readFileSync(target, "utf-8");
             assert.match(onDisk, /val pluginVersion = "2\.0\.0"/);
             assert.ok(!onDisk.includes('val pluginVersion = "1.0.0"'));
+        }),
+    );
+});
+
+describe("hasIncludedPluginBuild", () => {
+    it(
+        'returns true for settings.gradle.kts declaring includeBuild("gradle-plugin")',
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'rootProject.name = "demo"\nincludeBuild("gradle-plugin")\n',
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), true);
+        }),
+    );
+
+    it(
+        "returns true for Groovy settings.gradle with single quotes and parens",
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle"),
+                "rootProject.name = 'demo'\nincludeBuild('gradle-plugin')\n",
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), true);
+        }),
+    );
+
+    it(
+        "returns true when includeBuild() has extra whitespace",
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild( "gradle-plugin" )\n',
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), true);
+        }),
+    );
+
+    it(
+        "returns false when no settings file exists",
+        withTempDir((dir) => {
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
+        }),
+    );
+
+    it(
+        "returns false when settings.gradle.kts includes a different build",
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild("build-logic")\n',
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
         }),
     );
 });

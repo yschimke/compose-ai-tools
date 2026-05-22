@@ -243,3 +243,34 @@ export function initScriptDigest(
         .digest("hex")
         .slice(0, 16);
 }
+
+/**
+ * True when [workspaceRoot]'s `settings.gradle[.kts]` declares
+ * `includeBuild("gradle-plugin")` — the compose-ai-tools repo's own dev-loop
+ * layout. Stacking a Maven-resolved classpath dep (auto-inject) on top of an
+ * included build that already provides `ee.schimke.composeai.preview` makes
+ * Gradle compile the consumer's build script against the published version
+ * baked into the extension, while the included build's local source provides
+ * a different (potentially newer) shape — so a build file that references a
+ * property added since that published version fails with "Unresolved
+ * reference". Skipping auto-inject in this case lets the included build win.
+ *
+ * Mirrors the CLI's `hasIncludedPluginBuild` in `cli/.../AutoInject.kt`.
+ */
+export function hasIncludedPluginBuild(workspaceRoot: string): boolean {
+    const candidates = [
+        path.join(workspaceRoot, "settings.gradle.kts"),
+        path.join(workspaceRoot, "settings.gradle"),
+    ];
+    const pattern = /includeBuild\s*\(\s*["']gradle-plugin["']\s*\)/;
+    for (const file of candidates) {
+        let text: string;
+        try {
+            text = fs.readFileSync(file, "utf-8");
+        } catch {
+            continue;
+        }
+        if (pattern.test(text)) return true;
+    }
+    return false;
+}
