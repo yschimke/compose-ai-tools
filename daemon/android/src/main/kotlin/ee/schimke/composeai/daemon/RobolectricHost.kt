@@ -20,6 +20,8 @@ import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
+import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
+import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.data.theme.TypographyToken
@@ -902,6 +904,12 @@ open class RobolectricHost(
             null -> null
           },
         inspectionMode = inspectionMode,
+        // Decomposed `spec.overrides.touchOverlay` so the held-rule loop can wrap
+        // `InvokeHeldComposable` with the touch-overlay planner output. Other override fields
+        // stay on the host side; only the ones planners actually read on the interactive path
+        // get threaded across the sandbox boundary (see the field's doc on
+        // `InteractiveCommand.Start`).
+        touchOverlay = spec.overrides?.touchOverlay,
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -1845,7 +1853,33 @@ open class RobolectricHost(
                       androidx.compose.foundation.layout.Box(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize()
                       ) {
-                        InvokeHeldComposable(composableMethod)
+                        // Wrap with the same `previewOverrideExtensions` chain the non-held
+                        // render path uses (see `RenderEngine.kt:302-309`) so interactive
+                        // sessions get `TouchOverlayExtension` + any other AroundComposable
+                        // override extensions whose planner emits. Without this wrap, the
+                        // extensions registered on the engine never reach the held composition
+                        // — they're consulted only inside `RenderEngine.render`'s composition
+                        // setup, which the held-rule `setContent` bypasses.
+                        //
+                        // The reconstructed `PreviewOverrides(touchOverlay = …)` carries only
+                        // the fields whose planners are exercised on the interactive path
+                        // today; other override-driven planners ride along because their
+                        // `plan(request)` returns an extension regardless of input (e.g. the
+                        // always-active keyboard band). See `InteractiveCommand.Start.touchOverlay`
+                        // for the cross-boundary-threading rationale.
+                        val syntheticOverrides =
+                          ee.schimke.composeai.daemon.protocol.PreviewOverrides(
+                            touchOverlay = start.touchOverlay
+                          )
+                        ComposeDataExtensionPipeline.Apply(
+                          extensions =
+                            engine.previewOverrideExtensions.plan(syntheticOverrides),
+                          previewId = null,
+                          renderMode = null,
+                          sink = RecordingExtensionCompositionSink(),
+                        ) {
+                          InvokeHeldComposable(composableMethod)
+                        }
                       }
                     }
                   }
