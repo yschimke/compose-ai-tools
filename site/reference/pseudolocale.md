@@ -24,7 +24,7 @@ pseudolocalises every `stringResource(...)` lookup on the fly.
 | Cost | low |
 | Token usage | n/a — visual-only effect, no JSON payload. |
 | Transport | n/a |
-| Platforms | Android (full) · CMP Desktop (layout-direction only) |
+| Platforms | Android (full) · CMP Desktop (full) |
 
 ## What it answers
 
@@ -35,7 +35,6 @@ pseudolocalises every `stringResource(...)` lookup on the fly.
 ## What it does NOT answer
 
 - It does not pseudolocalise hard-coded Kotlin string literals (`Text("Hi")`) — same limitation Android Studio's pseudolocale dropdown has. Use the gap as a checklist of strings that need extracting to `strings.xml`.
-- It does not pseudolocalise text content on CMP Desktop. `org.jetbrains.compose.resources.stringResource(Res.string.foo)` doesn't walk `LocalContext.resources`, so the Android Resources-subclass interception doesn't apply there. The desktop path supplies the layout-direction half (`ar-XB` flips `LocalLayoutDirection` to RTL); `en-XA` is a visual no-op on desktop.
 - It does not score copy expansion against a per-language budget. Pair with the `text/strings` data product's `didOverflowWidth` / `truncated` fields if you want a CI gate.
 
 ## Use cases
@@ -91,8 +90,11 @@ to be restarted between locales.
   compare the three PNGs in `samples/android/build/compose-previews/renders/`.
 - **CMP Desktop** — [`samples/cmp/.../PseudolocalePreviews.kt`](https://github.com/yschimke/compose-ai-tools/blob/main/samples/cmp/src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt)
   ships `default` and `bidi` previews. Run `./gradlew :samples:cmp:composePreviewRenderAll`
-  and compare — the `bidi` PNG flips the row layout, but text content stays
-  the same.
+  and compare — the `bidi` PNG flips the row layout. Text resolved through
+  `org.jetbrains.compose.resources.stringResource(Res.string.foo)` is also
+  pseudolocalised: the connector wraps `LocalResourceReader`, so byte-level
+  reads of the binary Compose Resources records get accent / RLO-PDF wrapped
+  before they reach the composable.
 
 ## How it works
 
@@ -126,9 +128,18 @@ Android, one piece on Desktop:
      callsite picks up the wrapped path automatically. Also provides
      `LocalLayoutDirection = Rtl` for `ar-XB`.
    - **Desktop** ([`:data-pseudolocale-connector-desktop`](https://github.com/yschimke/compose-ai-tools/tree/main/data/pseudolocale/connector-desktop))
-     — provides `LocalLayoutDirection = Rtl` for `ar-XB`. Doesn't
-     intercept resources because CMP's `stringResource` path doesn't
-     go through `LocalContext`.
+     — wraps `LocalResourceReader` (the `@ExperimentalResourceApi`
+     interceptor from `org.jetbrains.compose.resources`) with a
+     decorator that pseudolocalises every string-shaped record
+     coming out of `readPart(...)`. Strings, string-arrays and
+     plurals are decoded from the `<type>|...|<base64>` binary
+     record format, run through `Pseudolocalizer.transform(...)` and
+     re-encoded. Other resource types (drawables, fonts) pass
+     through unchanged. The intended `ComposeEnvironment` swap path
+     isn't reachable at CMP 1.10.x — both the interface and its
+     `LocalComposeEnvironment` are `internal` to
+     `org.jetbrains.compose.resources`. Also provides
+     `LocalLayoutDirection = Rtl` for `ar-XB`.
 
 Pure transform code (`Pseudolocalizer.accent`, `Pseudolocalizer.bidi`)
 lives in `:data-pseudolocale-core` with no Android or Compose
@@ -143,8 +154,8 @@ preservation (`%1$s`, `{name}`, `<b>…</b>`).
 |---|---|---|
 | `localeTag` rewrite to base locale | ✅ | ✅ |
 | `LayoutDirection.Rtl` for `ar-XB` | ✅ | ✅ |
-| `[Ĥêļļö ···]` accent transform of `stringResource(...)` | ✅ | ❌ |
-| RLO / PDF bidi wrap of `stringResource(...)` | ✅ | ❌ |
+| `[Ĥêļļö ···]` accent transform of `stringResource(...)` | ✅ | ✅ |
+| RLO / PDF bidi wrap of `stringResource(...)` | ✅ | ✅ |
 | Hard-coded literal strings (`Text("Hi")`) | n/a — never pseudolocalised | n/a |
 
 ## Comparison to AGP `pseudoLocalesEnabled`

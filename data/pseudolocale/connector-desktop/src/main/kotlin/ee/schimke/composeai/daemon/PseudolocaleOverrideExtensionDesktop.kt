@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -12,16 +13,29 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.LocalResourceReader
 
 /**
  * Desktop counterpart to the Android `PseudolocaleOverrideExtension`.
  *
- * **Scope.** Only the layout-direction half of pseudolocale support runs here — for `ar-XB` we
- * provide `LocalLayoutDirection = Rtl` so the captured PNG flips. The text-content
- * pseudolocalisation (the `[Ĥêļļö ···]` accent / RLO-PDF bidi wrap on string-resource lookups)
- * lives in the Android connector because it intercepts `Resources.getText`. CMP Desktop's
- * `org.jetbrains.compose.resources.stringResource` doesn't walk `LocalContext.resources`, so the
- * Android trick doesn't apply — see `site/reference/pseudolocale.md`'s "platform support" section.
+ * **Scope.** Two halves of pseudolocale support run here:
+ * - `LocalLayoutDirection = Rtl` for `ar-XB` so the captured PNG flips. Same as Android.
+ * - `LocalResourceReader` wrapped with [PseudolocalizingResourceReader] so every
+ *   `org.jetbrains.compose.resources.stringResource(...)` lookup returns the pseudolocalised accent
+ *   / RLO-PDF bidi form. CMP Desktop's `stringResource` doesn't walk `LocalContext.resources`, so
+ *   the Android `Resources.getText` interception trick doesn't apply — instead we intercept at the
+ *   byte-level `ResourceReader` that the resource-loading machinery ultimately calls. See
+ *   [PseudolocalizingResourceReader] for the record-format details.
+ *
+ * **Why not the env swap.** The issue spec preferred a `ComposeEnvironment` / `ResourceEnvironment`
+ * swap. At Compose Multiplatform 1.10.3 both `ComposeEnvironment` (interface) and
+ * `LocalComposeEnvironment` (`StaticCompositionLocalOf`) are declared `internal`, and the
+ * `ResourceEnvironment` constructor itself is internal — none of the three are reachable from
+ * outside `org.jetbrains.compose.resources`. The env also only selects which qualifier-keyed
+ * resource bundle to read; it doesn't transform output. `LocalResourceReader` is public (marked
+ * `@ExperimentalResourceApi`) and is the one published handle that can change what
+ * `stringResource(...)` returns.
  *
  * **Locale-list rewrite.** The `en-XA` / `ar-XB` BCP-47 tag isn't a real locale to the JVM, so the
  * desktop renderer rewrites it to the base tag (`en` / `ar`) before threading through the
@@ -29,6 +43,7 @@ import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExten
  * rewrite there (not here) keeps the around-composable focused on Compose-side providers and leaves
  * the renderer in charge of pre-composition state.
  */
+@OptIn(ExperimentalResourceApi::class)
 class PseudolocaleOverrideExtensionDesktop(private val mode: Pseudolocale) :
   AroundComposableExtension(
     id = ID,
@@ -36,10 +51,18 @@ class PseudolocaleOverrideExtensionDesktop(private val mode: Pseudolocale) :
   ) {
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
+    val baseReader = LocalResourceReader.current
+    val wrappedReader =
+      remember(baseReader, mode) { PseudolocalizingResourceReader(baseReader, mode) }
     if (mode.isRtl) {
-      CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) { content() }
+      CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Rtl,
+        LocalResourceReader provides wrappedReader,
+      ) {
+        content()
+      }
     } else {
-      content()
+      CompositionLocalProvider(LocalResourceReader provides wrappedReader) { content() }
     }
   }
 

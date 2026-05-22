@@ -1,8 +1,11 @@
 import org.gradle.api.DefaultTask
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
 
 plugins {
@@ -104,11 +107,41 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
+// Multiple JetBrains Compose Multiplatform `components-*-desktop` artifacts ship as
+// `library-desktop-<version>.jar` (e.g. `components-resources-desktop` and
+// `components-ui-tooling-preview-desktop`), so a flat copy into `lib-daemon-desktop/` collides on
+// filename. Stage the resolved artifacts to a build directory first, disambiguating colliding
+// filenames by Maven `module-version.jar`, so both end up on the daemon's classpath at runtime.
+val stageDaemonDesktopLibs =
+  tasks.register<Sync>("stageDaemonDesktopLibs") {
+    description = "Stages :daemon:desktop runtime artifacts, renaming filename collisions."
+    destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
+    val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
+    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    val nameByPath = artifactsProvider.map { resolved ->
+      val counts = resolved.groupingBy { it.file.name }.eachCount()
+      resolved.associate { artifact ->
+        val original = artifact.file.name
+        val mapped =
+          if (counts.getValue(original) > 1) {
+            val id = artifact.id.componentIdentifier
+            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+          } else original
+        artifact.file.absolutePath to mapped
+      }
+    }
+    inputs.property("nameByPath", nameByPath)
+    eachFile {
+      val mapped = nameByPath.get()[file.absolutePath]
+      if (mapped != null) name = mapped
+    }
+  }
+
 distributions {
   named("main") {
     contents {
       into("lib-renderer") { from(composePreviewRenderer) }
-      into("lib-daemon-desktop") { from(composePreviewDaemonDesktop) }
+      into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
     }
   }
 }
