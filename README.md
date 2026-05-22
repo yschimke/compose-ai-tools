@@ -12,6 +12,16 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `NavHostHomePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png" width="150" /> |
 | `bigTextNotificationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationPreviewsKt.bigTextNotificationPreview.png" width="150" /> |
 | `simpleNotificationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationPreviewsKt.simpleNotificationPreview.png" width="150" /> |
+| `ActionsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationStyleGalleryKt.ActionsPreview_Actions.png" width="150" /> |
+| `BigPictureStylePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png" width="150" /> |
+| `InboxStylePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png" width="150" /> |
+| `MessagingStylePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_Dark.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_German.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_Large_font.png" width="150" /> |
+| `BigTextVariantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationVariantPreviewsKt.BigTextVariantsPreview_Light.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Lorem_ipsum_dolor_sit_amet_conse.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_Short.png" width="150" /> |
 | `BodyTextPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/PreviewParameterPreviewsKt.BodyTextPreview_Body_Text_The_quick_brown_fox.png" width="150" /> |
@@ -48,6 +58,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `SemanticsMergeDescendantsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview.png" width="150" /> |
 | `SemanticsTestTagPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview.png" width="150" /> |
 | `SettingsListScrollGifPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.gif" width="150" /> |
+| `SoftKeyboardAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SoftKeyboardAnimatedPreviewKt.SoftKeyboardAnimatedPreview_Soft_Keyboard_typing.gif" width="150" /> |
+| `SoftKeyboardIdlePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft_Keyboard_idle.png" width="150" /> |
+| `ImeAwareListHiddenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware_list_keyboard_hidden.png" width="150" /> |
+| `ImeAwareListShownPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware_list_keyboard_up.png" width="150" /> |
 | `CircleButtonTransparentPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle_Button_Transparent.png" width="150" /> |
 | `FitsInBoundsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.FitsInBoundsPreview.png" width="150" /> |
 | `TruncatedHeightClipPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedHeightClipPreview.png" width="150" /> |
@@ -101,6 +115,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
+| `MultiTouchDrawingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch_Drawing.png" width="150" /> |
+| `MultiTouchDrawingSeededPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch_Drawing_seeded.png" width="150" /> |
+| `PinchToZoomPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PinchToZoomPreviewKt.PinchToZoomPreview_Pinch_To_Zoom.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Amber.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Crimson.png" width="150" /> |
 | `SwatchPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewParameterPreviewsKt.SwatchPreview_Color_Swatch_Teal.png" width="150" /> |
@@ -136,6 +153,12 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `RemoteButtonEnabledPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonEnabledPreview.png" width="150" /> |
 | `RemoteButtonWithBorderPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithBorderPreview.png" width="150" /> |
 | `RemoteButtonWithShapePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:remotecompose/RemoteButtonWithShapePreview.png" width="150" /> |
+
+## samples:sdk-matrix
+
+| Preview | Image |
+|---------|-------|
+| `SdkMatrixPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:sdk-matrix/com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview.png" width="150" /> |
 
 ## samples:wear
 
