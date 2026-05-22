@@ -4156,7 +4156,29 @@ async function refresh(
         // minimal mode — the user opted out of auto-renders, and a focus
         // event that finds stale PNGs would otherwise sneak a render
         // through without a refresh-button click.
-        if (sourceIsStale && !inMinimalMode()) {
+        //
+        // Also skipped when the daemon will produce fresh renders for this
+        // module: discover-only refresh paths (activation, focus change)
+        // are always followed by `warmDaemonForFile`, which spawns the
+        // daemon and triggers a fresh render via `notifyDaemonOfSave`.
+        // Firing the Gradle render task (`composePreviewRenderAll`) here
+        // on top of that races with `composePreviewDaemonStart` —
+        // vscode-gradle can cancel the in-flight daemon bootstrap when a
+        // second task starts on the same project, leaving the panel
+        // showing stale cards while the daemon never finishes warming.
+        // The follow-up daemon render produces fresh PNGs without the
+        // race. The opt-out path (`daemon { enabled = false }`) stays on
+        // the Gradle auto-render so users who explicitly disabled the
+        // daemon still get fresh PNGs without a save.
+        const daemonWillRender =
+            pickRefreshMode(activeFile) === "daemon" &&
+            daemonGate !== null &&
+            !daemonGate.isBuildDisabled(module);
+        if (
+            sourceIsStale &&
+            !inMinimalMode() &&
+            !daemonWillRender
+        ) {
             logLine(
                 `auto-render: ${path.basename(activeFile)} newer than rendered PNGs — kicking fresh render`,
             );
