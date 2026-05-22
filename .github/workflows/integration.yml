@@ -221,54 +221,56 @@ jobs:
           # :common KMP module. Targeting :common needs KMP-Android-target
           # handling we don't have yet. Re-add once the plugin supports KMP
           # Android source sets cleanly.
-          - name: androidchka (compose:material3 samples)
-            slug: androidchka-material3
-            repo: yschimke/androidchka
-            ref: main
-            workdir: .
-            # Non-blocking on PRs: this entry pairs with a live `androidx-main`
-            # checkout, so a failure here means *upstream* AndroidX shipped a
-            # break — not that the PR did anything wrong. The daily cron is
-            # still what surfaces the drift; we just don't want it gating
-            # unrelated PR merges.
-            continue_on_error: true
-            # Daily drift sentinel against upstream androidx. androidchka
-            # is a Gradle workspace that selectively builds a handful of
-            # androidx modules from a sibling `androidx/androidx` checkout
-            # (wired via a symlink at `androidx/` inside the workspace).
-            # `local.properties` — written by the "Write local.properties"
-            # step below — picks the source modules; everything else
-            # resolves from the pinned androidx.dev snapshot. The cron at
-            # the top of this workflow is what makes this catch
-            # androidx-main breakage within 24h.
-            secondary_repo: androidx/androidx
-            secondary_ref: androidx-main
-            secondary_path: androidx-src
-            # Blob-filtered partial clone keeps the runner checkout under
-            # ~1 GB; the working copy fetches file blobs on demand as
-            # Gradle resolves them.
-            secondary_filter: "blob:none"
-            # androidchka's symlink shipped in-tree points at a developer's
-            # own AndroidX checkout (relative path with no meaning in CI).
-            # Replace it with an absolute symlink to the runner's
-            # androidx-src checkout. See "Wire androidx symlink" below.
-            wire_androidx_symlink: true
-            # Activate just the material3 samples module — small enough to
-            # configure quickly, but real `@Preview` coverage. Add more
-            # sources here as the integration matures.
-            local_properties: |
-              androidx.sources=:compose:material3:material3:samples
-              androidx.recursiveProjectDiscovery=main,samples
-            module: ":compose:material3:material3:samples"
-            extra_gradle_args: --no-configuration-cache
-            # Exercise the CLI binary end-to-end rather than just the
-            # Gradle path. See "CLI: list previews" / "CLI: render previews"
-            # below.
-            use_cli: true
-            render: true
-            # androidx-main + androidchka's build-logic require JDK 21.
-            # The other matrix entries stay on the workflow-default 17.
-            java_version: "21"
+          # androidchka entry temporarily disabled — re-enable once the
+          # upstream androidx-main drift is sorted out.
+          # - name: androidchka (compose:material3 samples)
+          #   slug: androidchka-material3
+          #   repo: yschimke/androidchka
+          #   ref: main
+          #   workdir: .
+          #   # Non-blocking on PRs: this entry pairs with a live `androidx-main`
+          #   # checkout, so a failure here means *upstream* AndroidX shipped a
+          #   # break — not that the PR did anything wrong. The daily cron is
+          #   # still what surfaces the drift; we just don't want it gating
+          #   # unrelated PR merges.
+          #   continue_on_error: true
+          #   # Daily drift sentinel against upstream androidx. androidchka
+          #   # is a Gradle workspace that selectively builds a handful of
+          #   # androidx modules from a sibling `androidx/androidx` checkout
+          #   # (wired via a symlink at `androidx/` inside the workspace).
+          #   # `local.properties` — written by the "Write local.properties"
+          #   # step below — picks the source modules; everything else
+          #   # resolves from the pinned androidx.dev snapshot. The cron at
+          #   # the top of this workflow is what makes this catch
+          #   # androidx-main breakage within 24h.
+          #   secondary_repo: androidx/androidx
+          #   secondary_ref: androidx-main
+          #   secondary_path: androidx-src
+          #   # Blob-filtered partial clone keeps the runner checkout under
+          #   # ~1 GB; the working copy fetches file blobs on demand as
+          #   # Gradle resolves them.
+          #   secondary_filter: "blob:none"
+          #   # androidchka's symlink shipped in-tree points at a developer's
+          #   # own AndroidX checkout (relative path with no meaning in CI).
+          #   # Replace it with an absolute symlink to the runner's
+          #   # androidx-src checkout. See "Wire androidx symlink" below.
+          #   wire_androidx_symlink: true
+          #   # Activate just the material3 samples module — small enough to
+          #   # configure quickly, but real `@Preview` coverage. Add more
+          #   # sources here as the integration matures.
+          #   local_properties: |
+          #     androidx.sources=:compose:material3:material3:samples
+          #     androidx.recursiveProjectDiscovery=main,samples
+          #   module: ":compose:material3:material3:samples"
+          #   extra_gradle_args: --no-configuration-cache
+          #   # Exercise the CLI binary end-to-end rather than just the
+          #   # Gradle path. See "CLI: list previews" / "CLI: render previews"
+          #   # below.
+          #   use_cli: true
+          #   render: true
+          #   # androidx-main + androidchka's build-logic require JDK 21.
+          #   # The other matrix entries stay on the workflow-default 17.
+          #   java_version: "21"
     steps:
       - name: Checkout ${{ matrix.repo }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
