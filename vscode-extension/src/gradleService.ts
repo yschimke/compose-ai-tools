@@ -21,6 +21,7 @@ import {
     KotlinCompileErrorDetector,
 } from "./kotlinCompileErrorDetector";
 import { LogFilter } from "./logFilter";
+import { ContinuousCompileWorker } from "./daemon/continuousCompileWorker";
 
 /**
  * Expands a parameterized preview's single template capture into N captures
@@ -305,6 +306,15 @@ export class GradleService {
     >();
     private taskCounter = 0;
     private activeKeys = new Set<string>();
+    /**
+     * Per-module continuous-compile workers, registered by the daemon
+     * scheduler when `composePreview.daemon.continuousCompile` is enabled.
+     * When a module has a worker, [compileOnly] awaits the worker's next
+     * BUILD outcome instead of running a one-shot `composePreviewCompile`
+     * task. Spike behind opt-in flag — see
+     * [docs/daemon/CONTINUOUS-COMPILE.md].
+     */
+    private continuousWorkers = new Map<string, ContinuousCompileWorker>();
 
     constructor(
         workspaceRoot: string,
@@ -365,11 +375,55 @@ export class GradleService {
      */
     async compileOnly(module: ModuleInfo, opts?: TaskOptions): Promise<void> {
         this.manifestCache.delete(module.modulePath);
+        const worker = this.continuousWorkers.get(module.modulePath);
+        if (worker && worker.running) {
+            const start = Date.now();
+            const outcome = await worker.waitForNextBuild();
+            const elapsed = Date.now() - start;
+            if (!outcome) {
+                this.logger.appendLine(
+                    `[continuous] ${module.modulePath} compileOnly fell through after ${elapsed}ms — falling back to Gradle`,
+                );
+                // Fall through to the one-shot Gradle path so the caller still
+                // sees a fresh .class output even when the worker timed out
+                // or exited unexpectedly.
+            } else {
+                this.logger.appendLine(
+                    `[continuous] ${module.modulePath} compileOnly ok=${outcome.ok} durationMs=${outcome.durationMs} waitMs=${elapsed}`,
+                );
+                if (!outcome.ok) {
+                    throw new KotlinCompileError(
+                        outcome.errors,
+                        `${module.modulePath}:composePreviewCompile`,
+                    );
+                }
+                return;
+            }
+        }
         await this.runTask(
             `${module.modulePath}:composePreviewCompile`,
             [],
             opts,
         );
+    }
+
+    /**
+     * Register (or clear with `null`) a continuous-compile worker for a
+     * module. Called by the daemon scheduler when the
+     * `composePreview.daemon.continuousCompile` flag is set. The scheduler
+     * owns the worker's lifecycle (start / stop); this map is just the
+     * lookup path `compileOnly` uses to short-circuit per-save Gradle
+     * invocations.
+     */
+    setContinuousCompileWorker(
+        modulePath: string,
+        worker: ContinuousCompileWorker | null,
+    ): void {
+        if (worker) {
+            this.continuousWorkers.set(modulePath, worker);
+        } else {
+            this.continuousWorkers.delete(modulePath);
+        }
     }
 
     /**
