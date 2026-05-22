@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { BUNDLED_PLUGIN_VERSION } from "./version.generated";
 
 /**
  * Bundles a Gradle init script that auto-applies the Compose Preview plugin
@@ -14,18 +15,14 @@ import * as crypto from "crypto";
  * integration matrix drives it via `compose-preview init-script --path` so
  * external-repo runs exercise the production code path rather than a CI-only
  * variant.
+ *
+ * The bundled plugin coordinate (`BUNDLED_PLUGIN_VERSION`) is generated at
+ * compile time from `.release-please-manifest.json` (or the `PLUGIN_VERSION`
+ * env override in release builds) — mirrors the CLI's
+ * `generateCliVersionResource` Gradle task. See `scripts/generate-version.mjs`.
  */
 
-// x-release-please-start-version
-/**
- * Plugin coordinate this extension build ships with. Bumped in lockstep with
- * `release-please` so the init script always resolves a release that exists
- * on Maven Central. SNAPSHOT-only consumers can still apply the plugin via
- * their own `build.gradle.kts`; the auto-inject path is for the common
- * "happy-path" release flow.
- */
-export const BUNDLED_PLUGIN_VERSION = "0.10.10";
-// x-release-please-end
+export { BUNDLED_PLUGIN_VERSION };
 
 export const INIT_SCRIPT_FILENAME = "apply-compose-ai-preview.init.gradle.kts";
 
