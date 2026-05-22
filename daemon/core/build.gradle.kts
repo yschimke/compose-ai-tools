@@ -42,6 +42,7 @@ dependencies {
   // gradle plugin's `DaemonClasspathDescriptor` when
   // `composePreview { daemon { compileInProcess = true } }`.
   compileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
+  testCompileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
   testRuntimeOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
 
   testImplementation(libs.junit)
