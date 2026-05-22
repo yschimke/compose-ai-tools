@@ -91,6 +91,18 @@ class AndroidPreviewClasspathTest {
     AndroidPreviewClasspath.validateApplicationOnClasspath(listOf(dir, notAJar, androidJar))
   }
 
+  @Test
+  fun `buildJvmArgs opens jdk_internal_access for FileDescriptorInterceptor`() {
+    // Regression for issue #1328: Robolectric 4.16's `FileDescriptorInterceptor.setInt`
+    // reflects into `jdk.internal.access.SharedSecrets`, which the JDK refuses to expose to
+    // an unnamed module without `--add-opens=java.base/jdk.internal.access=ALL-UNNAMED`. On
+    // SDK 36 sandboxes `ApplicationSharedMemory.create()` runs during Robolectric setup and
+    // hits that interceptor, surfacing as `Failed to interact with raw FileDescriptor
+    // internals; perhaps JRE has changed?`.
+    assertThat(AndroidPreviewClasspath.buildJvmArgs())
+      .contains("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+  }
+
   private fun writeAndroidJar(file: File) {
     writeJar(file, mapOf("android/app/Application.class" to ByteArray(16)))
   }
