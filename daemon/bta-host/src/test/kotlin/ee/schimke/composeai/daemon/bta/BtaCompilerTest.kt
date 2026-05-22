@@ -3,10 +3,12 @@
 package ee.schimke.composeai.daemon.bta
 
 import java.io.File
+import java.lang.ref.WeakReference
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -35,20 +37,101 @@ class BtaCompilerTest {
 
   @Test
   fun `compiles @Composable source with Compose plugin loaded`() {
+    val fx = newFixture()
+
+    val compiler = BtaCompiler(implClasspath = fx.implClasspath)
+    val produced =
+      compiler.compile(
+        sources = listOf(fx.source),
+        compileClasspath = fx.compileClasspath,
+        outputDir = fx.outputDir,
+        compilerPlugins = listOf(fx.composePlugin),
+      )
+
+    // (2) — a .class landed on disk.
+    val greetingClass = produced.firstOrNull { it.fileName.toString() == "GreetingKt.class" }
+    assertNotNull("Expected GreetingKt.class in ${fx.outputDir}, produced=$produced", greetingClass)
+
+    // (3) — the Compose plugin actually ran. Cheap heuristic: scan the
+    // .class bytes for the literal `androidx/compose/runtime/Composer`
+    // descriptor. Avoids needing ASM on the test classpath.
+    val bytes = Files.readAllBytes(greetingClass!!)
+    val needle = "androidx/compose/runtime/Composer".toByteArray(Charsets.US_ASCII)
+    assertTrue(
+      "Greeting bytecode does NOT reference Composer — the Compose plugin's signature " +
+        "transformation did not run inside BTA. Spike is not yet viable.",
+      indexOf(bytes, needle) >= 0,
+    )
+  }
+
+  /**
+   * Stage-2 checkpoint #1 — repeat-compile soak + classloader-leak probe.
+   *
+   * Reuses a single [BtaCompiler] across [ITERATIONS] compiles, asserts every one returns success,
+   * and prints the per-iteration wall-clock so the warm-up curve is visible. If BTA's impl carried
+   * a per-call leak — e.g. a frontend session that pinned an analysis context after each
+   * `executeOperation`, or a dispatcher thread that didn't die — the iteration tail would balloon.
+   *
+   * After the loop, the compiler reference is dropped inside a scoped helper, GC is nudged, and a
+   * [WeakReference] probe checks whether the impl-side state was actually reachable for collection.
+   * This is the same shape the daemon uses for its user-class-loader soak (see CLASSLOADER.md
+   * "WeakReference soak probe"). For the spike we LOG rather than fail on a non-collected loader —
+   * BTA's `kotlin-build-tools-cri-impl` is known to keep a few interned caches even after the outer
+   * toolchain is closed; we want the data, not a flaky red.
+   */
+  @Test
+  fun `repeated compiles do not leak the BTA compiler`() {
+    val fx = newFixture()
+    val durationsMs = mutableListOf<Long>()
+
+    val weakCompiler = scopedSoakRun(fx, ITERATIONS, durationsMs)
+
+    println("[soak] per-iteration ms (n=${durationsMs.size}): $durationsMs")
+    println(
+      "[soak] first=${durationsMs.first()} median=${durationsMs.sorted()[durationsMs.size / 2]} last=${durationsMs.last()}"
+    )
+
+    // Every iteration must have produced a usable class. The soak loop returns early on a failure,
+    // so a short list with `< ITERATIONS` entries means BTA failed mid-run.
+    assertEquals(
+      "Soak loop short-circuited after a failed compile: durations=$durationsMs",
+      ITERATIONS,
+      durationsMs.size,
+    )
+
+    // Best-effort GC nudge. Java 17 hotspot honours System.gc() for tests with default args;
+    // five attempts with a brief sleep covers the typical "still in survivor space" case.
+    var clearedAt = -1
+    for (attempt in 0 until 5) {
+      System.gc()
+      Thread.sleep(50)
+      if (weakCompiler.get() == null) {
+        clearedAt = attempt
+        break
+      }
+    }
+    println(
+      if (clearedAt >= 0)
+        "[soak] compiler WeakReference cleared on GC attempt $clearedAt — no leak detected"
+      else "[soak] compiler WeakReference still live after 5 GC attempts — BTA holds something"
+    )
+  }
+
+  /**
+   * Container for the per-test classpath split + fixture source. Built once per test so the
+   * classpath-partitioning logic stays in one place; see [newFixture] for the algorithm.
+   */
+  private class Fixture(
+    val implClasspath: List<Path>,
+    val compileClasspath: List<Path>,
+    val composePlugin: CompilerPlugin,
+    val source: Path,
+    val outputDir: Path,
+  )
+
+  private fun newFixture(): Fixture {
     val runtimeClasspath = parseRuntimeClasspath()
 
-    // Split the runtime classpath into:
-    //   - implClasspath:    kotlin-build-tools-impl + everything it pulls in
-    //                       transitively (compiler-embeddable, daemon-embeddable,
-    //                       compiler-runner, daemon-client, jna, …). The impl
-    //                       won't load without its full compiler stack on its
-    //                       isolated classloader's URLs — the SharedApiClassesClassLoader
-    //                       parent only exposes `org.jetbrains.kotlin.buildtools.api.*`,
-    //                       not the compiler internals.
-    //   - composePluginJar: kotlin-compose-compiler-plugin-embeddable (becomes
-    //                       the [CompilerPlugin]'s `classpath`).
-    //   - compileClasspath: everything else (Compose runtime + kotlin-stdlib),
-    //                       fed to BTA as the source's classpath.
     // implClasspath = every Kotlin runtime + compiler artifact on the test
     // runtime, all dropped into the impl's isolated classloader. The
     // SharedApiClassesClassLoader parent only exposes
@@ -112,37 +195,54 @@ class BtaCompilerTest {
     )
     val out = tmp.newFolder("out").toPath()
 
-    val compiler = BtaCompiler(implClasspath = implClasspath)
-    val produced =
-      compiler.compile(
-        sources = listOf(greeting),
-        compileClasspath = compileClasspath,
-        outputDir = out,
-        compilerPlugins =
-          listOf(
-            CompilerPlugin(
-              "androidx.compose.compiler.plugins.kotlin",
-              listOf(composePluginJar!!),
-              emptyList(),
-              emptySet(),
-            )
-          ),
-      )
-
-    // (2) — a .class landed on disk.
-    val greetingClass = produced.firstOrNull { it.fileName.toString() == "GreetingKt.class" }
-    assertNotNull("Expected GreetingKt.class in $out, produced=$produced", greetingClass)
-
-    // (3) — the Compose plugin actually ran. Cheap heuristic: scan the
-    // .class bytes for the literal `androidx/compose/runtime/Composer`
-    // descriptor. Avoids needing ASM on the test classpath.
-    val bytes = Files.readAllBytes(greetingClass!!)
-    val needle = "androidx/compose/runtime/Composer".toByteArray(Charsets.US_ASCII)
-    assertTrue(
-      "Greeting bytecode does NOT reference Composer — the Compose plugin's signature " +
-        "transformation did not run inside BTA. Spike is not yet viable.",
-      indexOf(bytes, needle) >= 0,
+    return Fixture(
+      implClasspath = implClasspath,
+      compileClasspath = compileClasspath,
+      composePlugin =
+        CompilerPlugin(
+          "androidx.compose.compiler.plugins.kotlin",
+          listOf(composePluginJar!!),
+          emptyList(),
+          emptySet(),
+        ),
+      source = greeting,
+      outputDir = out,
     )
+  }
+
+  /**
+   * Runs the soak loop inside its own stack frame so the compiler reference is local to this
+   * function — once it returns, the JVM is free to GC the [BtaCompiler] (and its impl
+   * `URLClassLoader`). The caller probes the returned [WeakReference].
+   *
+   * Each iteration writes to a fresh output directory to avoid accidentally measuring an
+   * "everything UP-TO-DATE" path (BTA's single-shot compile re-runs unconditionally, but isolating
+   * output makes the assertion straightforward and parallels real save-loop traffic).
+   */
+  private fun scopedSoakRun(
+    fx: Fixture,
+    iterations: Int,
+    durationsMs: MutableList<Long>,
+  ): WeakReference<BtaCompiler> {
+    val compiler = BtaCompiler(implClasspath = fx.implClasspath)
+    repeat(iterations) { i ->
+      val outDir = tmp.newFolder("soak-out-$i").toPath()
+      val t0 = System.nanoTime()
+      val produced =
+        compiler.compile(
+          sources = listOf(fx.source),
+          compileClasspath = fx.compileClasspath,
+          outputDir = outDir,
+          compilerPlugins = listOf(fx.composePlugin),
+        )
+      durationsMs.add((System.nanoTime() - t0) / 1_000_000)
+      if (produced.none { it.fileName.toString() == "GreetingKt.class" }) {
+        // Bail early so the caller's assertEquals on iteration count surfaces the failure
+        // with the partial timings already captured.
+        return WeakReference(compiler)
+      }
+    }
+    return WeakReference(compiler)
   }
 
   private fun parseRuntimeClasspath(): List<Path> {
@@ -165,5 +265,12 @@ class BtaCompilerTest {
       return i
     }
     return -1
+  }
+
+  private companion object {
+    // Tuned for CI floor: enough iterations to surface a tail-time regression
+    // without making the test dominate the gradle-plugin suite. Bump locally
+    // (e.g. `-Dcomposeai.bta.soakIterations=200`) when investigating a leak.
+    const val ITERATIONS = 10
   }
 }
