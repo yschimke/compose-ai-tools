@@ -268,107 +268,15 @@ The renderer re-renders automatically when an extension is marked
 `requiresRerender = true` (a11y is). See [`DATA-PRODUCTS.md`](daemon/DATA-PRODUCTS.md)
 for the full kind catalogue.
 
-## Worked example: JetBrains Amper
+## Worked examples
 
-[Amper](https://github.com/JetBrains/amper) is the obvious non-Gradle
-target — first-class Compose Multiplatform support, declarative
-`module.yaml` config, JetBrains-maintained. The minimal Compose Desktop
-fixture is six lines:
-
-```yaml
-# module.yaml
-product: jvm/app
-
-dependencies:
-  - $compose.desktop.currentOs
-
-settings:
-  compose: enabled
-```
-
-The integration:
-
-1. **Build** — `./amper build`. Amper writes compiled classes under
-   `<module>/build/tasks/_<module>_jvmRuntimeClasspath/<...>` (or similar
-   depending on Amper version) and resolves runtime dependencies to its
-   own Maven cache.
-2. **Resolve the renderer + connector classpath** — pull
-   `ee.schimke.composeai:daemon-desktop`, `data-render-connector`,
-   `data-render-core`, `daemon-core` (and any additional extensions) into
-   a separate dependency block. With Amper 0.10+ this is one extra
-   dependency line per artifact in `module.yaml`.
-3. **Discover previews** — run ClassGraph against
-   `<module>/build/.../classes/main` and write `previews.json`. A
-   standalone Kotlin tool (~50 LOC) is enough; see
-   [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/) for the
-   shape.
-4. **Synthesise the descriptor** — emit `daemon-launch.json` from the
-   resolved classpath + the user-classes path. See the same sample for
-   the full template.
-5. **Render** — call `SubprocessRenderSessions.open(config)` and drive
-   `renderNow`.
-
-Amper currently distributes itself through `packages.jetbrains.team`
-(not Maven Central — tracked as
-[AMPER-471](https://youtrack.jetbrains.com/projects/AMPER/issues/AMPER-471));
-end-to-end CI for the Amper path needs that host allowlisted.
-
-The fixture at [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/)
-vendors the Amper wrapper. `module.yaml` pins `jvm.release: 17` because
-the daemon JVM runs on JDK 17 — Amper's default `jvm.release: 21` produces
-class files the JDK-17 daemon refuses to load (`UnsupportedClassVersionError`,
-class version 65 ≠ 61). In a managed sandbox with a TLS-inspection proxy,
-Amper's auto-downloaded Zulu JRE additionally needs the system truststore
-wired via `AMPER_JAVA_OPTIONS`; the fixture's README documents the
-incantation.
-
-End-to-end is proven by
-[`AmperContractTest`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt):
-once `./amper build` has run, the test consumes Amper's `kotlin-output/`
-directly and renders a real PNG through the same daemon pipeline the
-Gradle plugin uses.
-
-## Worked example: Bazel
-
-Bazel rules for Compose live in third-party space (`rules_kotlin`'s
-`kt_compiler_plugin`). The cleanest shape:
-
-```bazel
-load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library")
-load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
-
-kt_compiler_plugin(
-    name = "compose_compiler_plugin",
-    id = "androidx.compose.compiler",
-    target_embedded_compiler = True,
-    deps = ["@maven//:org_jetbrains_compose_compiler_compiler"],
-)
-
-kt_jvm_library(
-    name = "app",
-    srcs = glob(["src/**/*.kt"]),
-    plugins = [":compose_compiler_plugin"],
-    deps = [
-        "@maven//:org_jetbrains_compose_desktop_desktop_jvm_linux_x64",
-        "@maven//:org_jetbrains_compose_components_components_ui_tooling_preview_desktop",
-    ],
-)
-```
-
-From here a `compose_preview_render` Bazel rule:
-
-1. `runtime_jars` provider on `:app` gives the resolved runtime classpath.
-2. A `cc_binary`-style action runs the preview discovery (ClassGraph
-   against `:app`'s `.jar` outputs).
-3. Another action synthesises `daemon-launch.json` from the resolved
-   jars + the renderer-desktop dependency.
-4. A test target invokes `SubprocessRenderSessions.open(descriptor)` and
-   asserts the PNG outputs land.
-
-`Bencodes/bazel_jetpack_compose_example` is the only public reference
-Bazel+Compose project (stale; Compose 1.2.0-beta02, Kotlin 1.6.21, Bazel
-5.1.1). Use it as a structural template; expect to upgrade dependencies
-before the renderer can load classes compiled against it.
+Build-system-specific recipes (JetBrains Amper, Bazel) live in
+[`yschimke/compose-ai-contrib`](https://github.com/yschimke/compose-ai-contrib),
+the dedicated repo for non-Gradle integrations. The recipes there
+drive the published `ee.schimke.composeai:preview-discovery` +
+`:daemon-launch-builder` + `:render-cli` artifacts through
+`java -jar` from a build-system-native rule. This document is the
+contract spec the recipes implement against.
 
 ## Limitations and follow-ups
 
@@ -391,6 +299,5 @@ before the renderer can load classes compiled against it.
 - Standalone preview-discovery library + CLI: [`PreviewDiscovery.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) + [`PreviewDiscoveryCli.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscoveryCli.kt)
 - Standalone daemon-launch-builder library + CLI: [`DaemonLaunchBuilder.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) + [`DaemonLaunchBuilderCli.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilderCli.kt)
 - Render CLI driving `SubprocessRenderSessions`: [`RenderCli.kt`](../render-cli/src/main/kotlin/ee/schimke/composeai/render/cli/RenderCli.kt)
-- Sample Amper fixture: [`contrib/amper-cmp-desktop/`](../contrib/amper-cmp-desktop/)
 - Contract test demonstrating the recipe end-to-end: [`render-session/subprocess/src/test/.../NonGradleContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/NonGradleContractTest.kt)
-- Amper-driven end-to-end test against the fixture: [`render-session/subprocess/src/test/.../AmperContractTest.kt`](../render-session/subprocess/src/test/kotlin/ee/schimke/composeai/render/session/subprocess/AmperContractTest.kt)
+- Build-system-specific fixtures + end-to-end tests: [`yschimke/compose-ai-contrib`](https://github.com/yschimke/compose-ai-contrib)
