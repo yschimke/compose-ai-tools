@@ -371,6 +371,64 @@ enum class ChangeType {
   @SerialName("deleted") DELETED,
 }
 
+/**
+ * Stage-2 in-process compile (COMPILE-IN-PROCESS.md).
+ *
+ * Client → daemon request: "compile these sources via the BTA host inside the daemon JVM and swap
+ * the user classloader once the new `.class` files are on disk". The daemon side does the same
+ * `host.swapUserClassLoaders()` that a `fileChanged({kind:source})` notification would, then
+ * returns synchronously. Render dispatch happens via the existing per-preview mechanism (focus /
+ * visible tracking + `renderNow`); this request handles the compile leg only.
+ *
+ * [sources]: absolute source-file paths. Empty list is an error (nothing to compile).
+ *
+ * [changes]: when the editor knows the dirty set, pass it; the BTA IC config picks
+ * `SourcesChanges.Known(...)`. When null, BTA computes via `SourcesChanges.ToBeCalculated` against
+ * its on-disk cache. Either form works; `Known` saves BTA a directory scan.
+ */
+@Serializable
+data class CompileSourcesParams(val sources: List<String>, val changes: SourceChangeSet? = null)
+
+/**
+ * Editor-supplied dirty set for [CompileSourcesParams]. Translates 1:1 to BTA's
+ * `SourcesChanges.Known(modifiedFiles, removedFiles)`.
+ */
+@Serializable
+data class SourceChangeSet(
+  val modified: List<String> = emptyList(),
+  val removed: List<String> = emptyList(),
+)
+
+@Serializable
+data class CompileSourcesResult(
+  val result: CompileResultKind,
+  /** Populated when [result] = `compileError`. Empty otherwise. */
+  val errors: List<CompileErrorDetail> = emptyList(),
+  /** Wall-clock ms for the compile leg, measured at the daemon's call site. */
+  val durationMs: Long,
+)
+
+@Serializable
+enum class CompileResultKind {
+  @SerialName("ok") OK,
+
+  /**
+   * BTA returned a non-success result and the editor should surface the diagnostics in
+   * [CompileSourcesResult.errors]. The daemon did NOT swap the user classloader.
+   */
+  @SerialName("compileError") COMPILE_ERROR,
+
+  /**
+   * Daemon refused in-process compile for this call — typically a runtime detection of a
+   * KSP/KAPT-output dependency, or no BTA classpath was configured in the launch descriptor. Editor
+   * should retry through the stage-1 / stage-0 path.
+   */
+  @SerialName("fallback") FALLBACK,
+}
+
+@Serializable
+data class CompileErrorDetail(val file: String, val line: Int, val column: Int, val message: String)
+
 // =====================================================================
 // 4. Client → daemon requests (PROTOCOL.md § 5)
 // =====================================================================

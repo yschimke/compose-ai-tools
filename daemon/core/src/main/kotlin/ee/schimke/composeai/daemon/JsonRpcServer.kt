@@ -8,6 +8,9 @@ import ee.schimke.composeai.daemon.history.PreviewMetadataSnapshot
 import ee.schimke.composeai.daemon.history.PruneReason
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyParams
 import ee.schimke.composeai.daemon.protocol.ClasspathDirtyReason
+import ee.schimke.composeai.daemon.protocol.CompileResultKind
+import ee.schimke.composeai.daemon.protocol.CompileSourcesParams
+import ee.schimke.composeai.daemon.protocol.CompileSourcesResult
 import ee.schimke.composeai.daemon.protocol.DataFetchParams
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
@@ -224,6 +227,14 @@ class JsonRpcServer(
     System.getProperty(DATA_FETCH_RERENDER_BUDGET_PROP)?.toLongOrNull()
       ?: DEFAULT_DATA_FETCH_RERENDER_BUDGET_MS,
   private val interactiveFrameIntervalMs: Long = INTERACTIVE_FRAME_INTERVAL_MS,
+  /**
+   * Stage-2 in-process compile (COMPILE-IN-PROCESS.md). When non-null, `compileSources` requests
+   * dispatch through this service; on `Ok` we swap the user classloader the same way
+   * `fileChanged({kind:source})` does. When null (fake-mode harness scenarios, integration tests
+   * that don't opt in, daemons whose launch descriptor lacks `btaCompilerClasspath`) the handler
+   * returns `result=fallback` so the editor falls back to stage 1 / 0 without surface churn.
+   */
+  private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -609,6 +620,7 @@ class JsonRpcServer(
     when (req.method) {
       "initialize" -> handleInitialize(req)
       "renderNow" -> handleRenderNow(req)
+      "compileSources" -> handleCompileSources(req)
       "shutdown" -> handleShutdown(req)
       // History wire surface gated to 1.1 (see [HistoryFeature]). When disabled, every `history/*`
       // method short-circuits to method-not-found — clients that pre-handle that error code (the
@@ -2829,6 +2841,91 @@ class JsonRpcServer(
       )
       .apply { isDaemon = true }
       .start()
+  }
+
+  /**
+   * Stage-2 `compileSources` handler — see
+   * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../../docs/daemon/COMPILE-IN-PROCESS.md).
+   *
+   * Routes to the injected [btaCompileService] when one is wired, then mirrors the
+   * `fileChanged({kind:"source"})` side-effects on success (host classloader swap + the deferred
+   * discovery cascade). Returns one of three outcomes to the editor:
+   *
+   * - `ok` — compile succeeded, classloader swapped; editor proceeds to render.
+   * - `compileError` — BTA returned diagnostics; editor surfaces them in the existing compile-error
+   *   banner (same shape stage-0/-1 use for Gradle's `e:` output via `KotlinCompileErrorDetector`).
+   * - `fallback` — no BTA service wired, or the service explicitly refused (e.g. KSP detected at
+   *   the consumer's classpath). Editor retries the save via stage-1 continuous-compile or stage-0
+   *   one-shot Gradle.
+   *
+   * Honours the no-mid-render-cancellation invariant (DESIGN § 9): the classloader swap is a
+   * strong-ref drop, not preemption. Any in-flight render keeps using its already-resolved
+   * `Class<?>`; the next render picks up the new bytecode.
+   */
+  private fun handleCompileSources(req: JsonRpcRequest) {
+    val params =
+      try {
+        decodeParams(req.params, CompileSourcesParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(
+          id = req.id,
+          code = ERR_INVALID_PARAMS,
+          message = "invalid compileSources params: ${e.message}",
+        )
+        return
+      }
+    if (params.sources.isEmpty()) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_INVALID_PARAMS,
+        message = "compileSources requires at least one source path",
+      )
+      return
+    }
+    val service = btaCompileService
+    val startNs = System.nanoTime()
+    val outcome =
+      if (service == null) {
+        ee.schimke.composeai.daemon.bta.BtaCompileService.Outcome.Fallback(
+          "btaCompileService not configured — launch descriptor missing btaCompilerClasspath"
+        )
+      } else {
+        try {
+          service.compile(
+            sources = params.sources.map { java.nio.file.Path.of(it) },
+            changes = params.changes,
+          )
+        } catch (t: Throwable) {
+          System.err.println("compose-ai-daemon: compileSources threw — falling back: $t")
+          ee.schimke.composeai.daemon.bta.BtaCompileService.Outcome.Fallback(
+            t.message ?: t.javaClass.simpleName
+          )
+        }
+      }
+    val durationMs = (System.nanoTime() - startNs) / 1_000_000
+
+    val result =
+      when (outcome) {
+        is ee.schimke.composeai.daemon.bta.BtaCompileService.Outcome.Ok -> {
+          // Same swap path as `fileChanged({kind:source})`. The next render reads the
+          // freshly-compiled bytecode off disk via the new child classloader.
+          host.swapUserClassLoaders()
+          // And queue the discovery reconcile so a `@Preview` add/remove surfaces in the
+          // panel even though the save path didn't issue a separate `fileChanged`. First
+          // source path is enough — discovery is scoped per classpath element, not per file.
+          queueDiscoveryAfterRender(params.sources.first())
+          CompileSourcesResult(result = CompileResultKind.OK, durationMs = durationMs)
+        }
+        is ee.schimke.composeai.daemon.bta.BtaCompileService.Outcome.CompileError ->
+          CompileSourcesResult(
+            result = CompileResultKind.COMPILE_ERROR,
+            errors = outcome.errors,
+            durationMs = durationMs,
+          )
+        is ee.schimke.composeai.daemon.bta.BtaCompileService.Outcome.Fallback ->
+          CompileSourcesResult(result = CompileResultKind.FALLBACK, durationMs = durationMs)
+      }
+    sendResponse(req.id, json.encodeToJsonElement(CompileSourcesResult.serializer(), result))
   }
 
   private fun handleShutdown(req: JsonRpcRequest) {
