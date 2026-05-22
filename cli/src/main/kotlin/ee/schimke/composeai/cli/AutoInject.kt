@@ -66,7 +66,6 @@ val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreApplied = false
-var composeAiPreviewStagedByBuildLogic = false
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -113,38 +112,6 @@ fun composeAiPreviewStripComments(source: String): String {
     return sb.toString()
 }
 
-// AndroidX-style overlays (e.g. androidchka) ship a composite `build-logic` includeBuild
-// whose `build.gradle.kts` carries the plugin coordinate as a regular
-// `implementation`/`api` dependency. The included precompiled-script convention
-// plugins (`*.gradle.kts` under `build-logic/src/main/kotlin/`) then stage the plugin
-// via `id("ee.schimke.composeai.preview") apply false` (no version — versions are
-// forbidden in precompiled-script `plugins {}` blocks) and apply it from
-// `afterEvaluate`. That keeps the plugin co-resident with AGP in build-logic's
-// classloader, which is the only setup where `getByType<AndroidComponentsExtension>()`
-// resolves correctly. If we ALSO inject the plugin into the project buildscript
-// classpath from here, Gradle prefers our buildscript-loaded copy, our plugin loads
-// into a classloader that doesn't see AGP, and configuration fails with
-// `NoClassDefFoundError: com.android.build.api.variant.AndroidComponentsExtension`
-// (the failure mode the integration matrix's `androidchka (compose:material3 samples)`
-// cell exposed). Detect the staging here so we can stay entirely out of build-logic's
-// way — skip both the buildscript-classpath injection AND the `withPlugin(...)` apply
-// hooks, since auto-stubs in androidchka apply AGP without ever applying
-// `androidchka.extras`, so our hooks would call `pluginManager.apply("...")` with no
-// classpath to resolve from.
-fun composeAiPreviewBuildLogicStaging(rootDir: java.io.File): Boolean {
-    val buildLogic = java.io.File(rootDir, "build-logic")
-    if (!buildLogic.isDirectory) return false
-    val coordinateRe = Regex("[\"']ee\\.schimke\\.composeai\\.preview:[^\"']*[\"']")
-    for (name in listOf("build.gradle.kts", "build.gradle")) {
-        val buildFile = java.io.File(buildLogic, name)
-        if (!buildFile.isFile) continue
-        val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
-        val text = composeAiPreviewStripComments(raw)
-        if (coordinateRe.containsMatchIn(text)) return true
-    }
-    return false
-}
-
 fun scanForComposeAiPreviewDeclaration(
     rootDir: java.io.File,
     projectDirs: List<java.io.File>,
@@ -176,7 +143,6 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
-    composeAiPreviewStagedByBuildLogic = composeAiPreviewBuildLogicStaging(rootDir)
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -206,8 +172,6 @@ gradle.settingsEvaluated {
 }
 
 allprojects {
-    if (composeAiPreviewStagedByBuildLogic) return@allprojects
-
     if (!composeAiPreviewPreApplied) {
         buildscript {
             repositories {
