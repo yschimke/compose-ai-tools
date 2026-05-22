@@ -12,6 +12,9 @@
             "outFiles": [
                 "${workspaceFolder}/.vscode-test/artifact-extension/out/**/*.js"
             ],
+            "env": {
+                "COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL": "1"
+            },
             "preLaunchTask": "build: F5 artifacts"
         },
         {

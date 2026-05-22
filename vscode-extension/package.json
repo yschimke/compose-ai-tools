@@ -206,9 +206,10 @@
     },
     "scripts": {
         "compile": "npm run compile:host && npm run compile:webview",
-        "compile:host": "tsc -p ./",
+        "compile:host": "node scripts/generate-version.mjs && tsc -p ./",
         "compile:webview": "tsc -p tsconfig.webview.json && node esbuild.webview.mjs",
-        "watch": "tsc -watch -p ./",
+        "generate:version": "node scripts/generate-version.mjs",
+        "watch": "node scripts/generate-version.mjs && tsc -watch -p ./",
         "watch:webview": "node esbuild.webview.mjs --watch",
         "format": "prettier --write --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
         "format:check": "prettier --check --tab-width 4 package.json package-lock.json tsconfig.json tsconfig.webview.json README.md \"src/**/*.ts\" \"src/**/*.json\" \"media/**/*.css\"",
