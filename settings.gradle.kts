@@ -44,6 +44,16 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// Kotlin scripting host for `compose-preview script <path.composepreview.kts>`.
+//
+// MVP per issue #1084: rides on the default `:cli` runtime classpath (the
+// `kotlin-scripting-jvm-host` + `kotlin-compiler-embeddable` closure adds
+// ~50 MB to the tarball). The eventual lazy-fetch + classloader-split story
+// is still tracked on #1084; today this module is a single-purpose host plus
+// a thin DSL, with `:cli` reaching into it via reflection so the dispatch
+// seam already exists for the future split.
+include(":cli-scripting")
+
 include(":bundle-viewer")
 
 include(":preview-annotations")

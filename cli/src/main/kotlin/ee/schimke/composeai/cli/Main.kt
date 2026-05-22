@@ -80,6 +80,7 @@ fun main(args: Array<String>) {
     "mcp" -> McpCommand(allArgs).run()
     "update" -> UpdateCommand(allArgs).run()
     "init-script" -> InitScriptCommand(allArgs).run()
+    "script" -> runScriptCommand(allArgs)
     "version" -> println("compose-preview $BUNDLE_VERSION")
     "help" -> printUsage()
     else -> {
@@ -88,6 +89,31 @@ fun main(args: Array<String>) {
       exitProcess(1)
     }
   }
+}
+
+/**
+ * Reflectively instantiate `:cli-scripting`'s `ScriptCommand`. Lives behind reflection because
+ * `:cli-scripting` depends on `:cli` (for `PreviewResult` / `Command`) — a direct compile-time
+ * reference here would cycle the project graph. The runtime classpath always carries the sidecar
+ * (the MVP slice of issue #1084), so the "missing" branch is purely defensive: it'll become the
+ * live entry point once the lazy-fetch + classloader split lands and the bundle may legitimately be
+ * absent.
+ */
+private fun runScriptCommand(args: List<String>) {
+  val cls =
+    try {
+      Class.forName("ee.schimke.composeai.cli.scripting.ScriptCommand")
+    } catch (_: ClassNotFoundException) {
+      System.err.println(
+        "compose-preview script: scripting bundle not on the classpath. " +
+          "When the lazy-fetch path lands this will become " +
+          "`compose-preview update --with-scripting`; today the host should always be present, " +
+          "so this likely indicates a broken installation."
+      )
+      exitProcess(1)
+    }
+  val instance = cls.getDeclaredConstructor(List::class.java).newInstance(args)
+  cls.getMethod("run").invoke(instance)
 }
 
 private fun printUsage() {
@@ -123,6 +149,9 @@ private fun printUsage() {
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
                        internally.
+      script           Run a `*.composepreview.kts` Kotlin script — typed DSL with
+                       extensions(...), filter { … }, onResult { … }, fail(...). See issue
+                       #1084 for the DSL surface and the in-progress lazy-fetch story.
       version          Print the installed bundle version and exit
       help             Show this help message
 
