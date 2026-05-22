@@ -215,6 +215,19 @@ internal object AndroidPreviewClasspath {
       // opens. Reached via `PathIterator` — triggered here by Wear Compose's
       // curved text renderer.
       "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      // Robolectric's `FileDescriptorInterceptor.setInt` reflects into
+      // `jdk.internal.access.SharedSecrets#getJavaIOFileDescriptorAccess()`
+      // to mutate `FileDescriptor.fd` (the older `Field.setInt` path was
+      // replaced in 4.13+). On SDK 36 sandboxes the framework's
+      // `com.android.internal.os.ApplicationSharedMemory.create()` runs
+      // during `AndroidTestEnvironment.setUpApplicationState`, hits the
+      // interceptor, and without this opens the JDK raises
+      // `IllegalAccessException: class … cannot access class
+      // jdk.internal.access.SharedSecrets (in module java.base) because
+      // module java.base does not export jdk.internal.access` — wrapped by
+      // Robolectric as `Failed to interact with raw FileDescriptor
+      // internals; perhaps JRE has changed?`. Issue #1328.
+      "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
     )
 
   /**

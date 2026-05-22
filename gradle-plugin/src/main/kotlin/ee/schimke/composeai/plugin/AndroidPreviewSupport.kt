@@ -1439,12 +1439,7 @@ internal object AndroidPreviewSupport {
         useJUnit()
 
         jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
-        jvmArgs(
-          "--add-opens=java.base/java.io=ALL-UNNAMED",
-          "--add-opens=java.base/java.lang=ALL-UNNAMED",
-          "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
-          "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        )
+        jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
         agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
 
         systemProperty("robolectric.graphicsMode", "NATIVE")

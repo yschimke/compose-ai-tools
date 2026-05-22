@@ -295,6 +295,9 @@ class RealAndroidHarnessLauncher(
         add("--add-opens=java.base/java.lang=ALL-UNNAMED")
         add("--add-opens=java.base/java.lang.reflect=ALL-UNNAMED")
         add("--add-opens=java.base/java.nio=ALL-UNNAMED")
+        // SDK 36 + JDK 25/26: Robolectric's `FileDescriptorInterceptor.setInt`
+        // reflects through `jdk.internal.access.SharedSecrets` (see #1328).
+        add("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
         // Render output directory.
         add("-Dcomposeai.render.outputDir=${rendersDir.absolutePath}")
         // Wire the manifest router (same as desktop).
