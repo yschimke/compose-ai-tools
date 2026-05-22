@@ -17,7 +17,7 @@ through the renderer extension pipeline.
 |---|---|
 | Kinds | `render/scroll/long`, `render/scroll/gif` |
 | Schema version | n/a (image-only) |
-| Modules | `:data-scroll-core` |
+| Modules | `:data-scroll-core` (pure JVM — planners, stitcher, GIF encoder, axis), `:data-scroll-android` (the Android `AndroidComposeTestRule`-bound scroll drivers used by `:renderer-android`) |
 | Render mode | default |
 | Cost | medium (extra renders per scroll step) |
 | Token usage | Image-only — ~1.5 k tok per `render/scroll/*` PNG read; payload itself is a `path`. See [token usage](https://github.com/yschimke/compose-ai-tools/blob/main/docs/TOKEN_USAGE.md). |
@@ -30,9 +30,16 @@ through the renderer extension pipeline.
 - What does the scroll motion *look like* over time (entry animations, sticky headers settling, `LazyColumn` item placement)?
 - Does a `nestedScroll` collapse / expand land in the right state at the end of a fling?
 
-`data/scroll/core` ships scroll-scenario drivers (`ScrollDriver`,
-`ScrollGifEncoder`, `ScrollPreviewExtension`) that the renderer
-composes through the regular extension pipeline.
+`data/scroll/core` ships the pure-JVM scroll primitives (`ScrollAxis`,
+`ScrollLongFramePlan` / `ScrollGifFramePlan` planners,
+`ScrollSliceStitcher`, `ScrollGifEncoder`, `ScrollPreviewExtension`).
+`data/scroll/android` ships the `AndroidComposeTestRule`-bound
+`ScrollDriver` (`driveScrollByViewport`, `driveScrollBy`,
+`driveScrollToStart`, `driveScrollToEnd`, `remainingScrollPx`) — the
+Android renderer composes both. The Compose Desktop renderer pulls
+just `data-scroll-core` and drives the scrollable through
+`runComposeUiTest` directly, sharing the pure-JVM planners and
+stitcher with the Android path.
 
 ## What it does NOT answer
 

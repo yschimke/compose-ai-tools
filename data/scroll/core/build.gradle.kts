@@ -1,35 +1,16 @@
-import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.JavadocJar
-import com.vanniktech.maven.publish.SourcesJar
-
 plugins {
   id("composeai.maven-publishing")
-  alias(libs.plugins.android.library)
+  alias(libs.plugins.kotlin.jvm)
+  alias(libs.plugins.compose.multiplatform)
+  alias(libs.plugins.compose.compiler)
   alias(libs.plugins.tapmoc)
 }
-
-android { namespace = "ee.schimke.composeai.data.scroll.core" }
 
 dependencies {
   api(project(":data-render-core"))
   api(project(":data-render-compose"))
 
-  compileOnly(platform(libs.compose.bom.compat))
-  compileOnly(libs.compose.ui)
-  compileOnly("androidx.compose.ui:ui-test-junit4")
-
   testImplementation(libs.junit)
-  testImplementation(libs.robolectric)
-}
-
-mavenPublishing {
-  configure(
-    AndroidSingleVariantLibrary(
-      javadocJar = JavadocJar.Empty(),
-      sourcesJar = SourcesJar.Sources(),
-      variant = "release",
-    )
-  )
 }
 
 composeAiMavenPublishing {
@@ -37,7 +18,9 @@ composeAiMavenPublishing {
     artifactId = "data-scroll-core",
     displayName = "Compose Preview — Scroll Data Product (Core)",
     description =
-      "Generic Android scroll data-product primitives: Compose test-rule scroll drivers, long-screenshot stitching, Wear pill clipping, and GIF encoding.",
+      "Pure-JVM scroll data-product primitives: slice-stitcher, GIF encoder, axis primitives, " +
+        "and the long / GIF scroll-frame planner extensions. Platform-specific scroll drivers " +
+        "live in their renderer module (`:data-scroll-android` for Robolectric).",
   )
   inceptionYear.set("2026")
 }

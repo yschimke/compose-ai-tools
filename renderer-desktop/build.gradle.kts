@@ -1,4 +1,5 @@
 @file:Suppress("DEPRECATION")
+@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
 
 plugins {
   id("composeai.jvm-conventions")
@@ -14,6 +15,20 @@ dependencies {
   implementation(compose.material3)
   implementation(compose.runtime)
   implementation(compose.components.uiToolingPreview)
+  // JetBrains Compose UI Test — gives the renderer `runComposeUiTest { ... }`, the desktop
+  // equivalent of Android's `AndroidComposeTestRule`. Used by `DesktopRendererMain.renderScroll`
+  // to drive `@ScrollingPreview` LONG / GIF modes: setContent, mainClock for animation control,
+  // semantic queries for finding the scrollable, captureToImage for per-frame PNGs. NOT a test
+  // dependency — invoked from production main code (the function name is misleading; it's an
+  // entry-point for the test API, not a JUnit-only construct).
+  implementation(compose.uiTest)
+  // Pure-JVM scroll primitives: `ScrollAxis` enum, `ScrollLongFramePlan` /
+  // `ScrollGifFramePlan` planners, `ScrollSliceStitcher.stitchSlices`, `ScrollGifEncoder.encode`,
+  // plus the `buildGifScrollScript` shape function. The Android driver
+  // (`:data-scroll-android`'s `driveScrollByViewport`/`driveScrollBy`) is intentionally NOT
+  // pulled in here — desktop drives scroll through `SemanticsActions.ScrollBy` against a
+  // `ComposeUiTest`'s semantic owner directly.
+  implementation(project(":data-scroll-core"))
   // Pure-JVM accent / bidi transforms + the `Pseudolocale` enum used to detect `en-XA` / `ar-XB`
   // tags. Renderer applies the around-composable inline (LocalLayoutDirection.Rtl for ar-XB) and
   // rewrites the locale tag before it reaches `LocaleList`.

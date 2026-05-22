@@ -34,10 +34,7 @@ data class ScrollGifFramePlan(
       }
 }
 
-data class ScrollGifFrame(
-  val frame: ExtensionFrame,
-  val scrollDeltaPx: Float,
-) {
+data class ScrollGifFrame(val frame: ExtensionFrame, val scrollDeltaPx: Float) {
   init {
     require(scrollDeltaPx >= 0f) { "Scroll delta must be non-negative." }
   }

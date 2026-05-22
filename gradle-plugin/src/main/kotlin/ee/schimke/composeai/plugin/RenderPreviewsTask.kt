@@ -49,6 +49,18 @@ abstract class RenderPreviewsTask : DefaultTask() {
 
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
+  /**
+   * Data-products output. Sibling of [outputDir] in the standard layout
+   * (`build/compose-previews/data/...`). `@ScrollingPreview(modes = [LONG, GIF])` and other
+   * heavyweight annotations route their per-capture artifacts here rather than `renders/` so the
+   * primary preview carousel stays small. Optional so existing wiring (stub backend, older test
+   * scaffolds) keeps working without changes; when absent the task falls back to a
+   * sibling-of-[outputDir] directory at execution.
+   */
+  @get:org.gradle.api.tasks.Optional
+  @get:OutputDirectory
+  abstract val dataProductsDir: DirectoryProperty
+
   @get:Inject abstract val execOperations: ExecOperations
 
   @get:Inject abstract val workerExecutor: WorkerExecutor
@@ -115,6 +127,13 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // Android rendering uses a separate Test-type task (see ComposePreviewPlugin).
     val mainClass = "ee.schimke.composeai.renderer.DesktopRendererMainKt"
 
+    // Data products (e.g. `@ScrollingPreview(modes = [LONG, GIF])` LONG/GIF outputs) land in
+    // `<previews-dir>/data/<kind>/<id>.<ext>` instead of `renders/`. Each PreviewDataProduct's
+    // `output` is `data/<kind>/<id>.<ext>` — relative to the previews root (sibling of `outDir`).
+    // The `dataProductsDir` task output, when wired by the plugin, points at that same `data/`
+    // directory so Gradle tracks the written artifacts for caching / up-to-date checks.
+    val previewsRoot = outDir.parentFile
+
     for (preview in manifest.previews) {
       val spec =
         DeviceDimensions.resolveForRender(
@@ -132,58 +151,109 @@ abstract class RenderPreviewsTask : DefaultTask() {
       val density = preview.params.density ?: spec.density
       val widthPx = (spec.widthDp * density).toInt().coerceAtLeast(1)
       val heightPx = (spec.heightDp * density).toInt().coerceAtLeast(1)
-      // The discovery task writes a normalized `renderOutput` (package
-      // prefix stripped, unsafe chars sanitized) into each capture;
-      // honour it rather than rebuilding the path from `preview.id`
-      // so the file actually lands where the manifest claims it will.
-      val relRender =
-        preview.captures
-          .firstOrNull()
-          ?.renderOutput
-          ?.substringAfter("renders/", missingDelimiterValue = "")
-          ?.takeIf { it.isNotEmpty() } ?: "${preview.id}.png"
-      val outputFile = outDir.resolve(relRender)
 
-      execOperations.javaexec {
-        classpath = renderClasspath
-        this.mainClass.set(mainClass)
-        // Forward the display-filter selection so DesktopRendererMain can call
-        // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
-        // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
-        systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
-        args =
-          listOf(
-            preview.className,
-            preview.functionName,
-            widthPx.toString(),
-            heightPx.toString(),
-            density.toString(),
-            preview.params.showBackground.toString(),
-            preview.params.backgroundColor.toString(),
-            outputFile.absolutePath,
-            // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
-            preview.params.wrapperClassName.orEmpty(),
-            // 10th/11th — AS-parity wrap flags. When set, the renderer
-            // wraps the composable, measures it, and crops the PNG to
-            // the intrinsic bounds on that axis.
-            spec.wrapWidth.toString(),
-            spec.wrapHeight.toString(),
-            // 12th/13th — @PreviewParameter spec. Empty string signals
-            // "no provider"; otherwise the renderer enumerates the
-            // provider's values.take(limit) in-process and writes one
-            // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
-            // the count (consumer's classpath isn't loaded here), so
-            // fan-out is delegated to the renderer process that already
-            // has everything on its classpath.
-            preview.params.previewParameterProviderClassName.orEmpty(),
-            preview.params.previewParameterLimit.toString(),
-            // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
-            // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
-            // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
-            // string resources via the `:data-pseudolocale-connector` Resources subclass).
-            preview.params.locale.orEmpty(),
-          )
+      // (1) Iterate primary captures. Most previews have exactly one; multi-mode @ScrollingPreview
+      // (TOP/END), @RoboComposePreviewOptions time fan-out, and @FocusedPreview indexed mode all
+      // produce N captures with different `renderOutput` paths. Skipping all but the first (the
+      // old behaviour) silently dropped those extra files.
+      for (capture in preview.captures) {
+        val relRender =
+          capture.renderOutput.substringAfter("renders/", missingDelimiterValue = "").ifEmpty {
+            "${preview.id}.png"
+          }
+        val outputFile = outDir.resolve(relRender)
+        invokeRenderer(
+          mainClass = mainClass,
+          preview = preview,
+          spec = spec,
+          density = density,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          outputFile = outputFile,
+          scroll = capture.scroll,
+        )
       }
+
+      // (2) Iterate data products. `@ScrollingPreview(modes = [LONG, GIF])` emits these instead
+      // of placing LONG/GIF in `captures` — discovery splits scroll modes so the heavyweight
+      // outputs don't crowd the primary carousel (see `PreviewDiscovery.kt:844`). Render each
+      // here with the same arg shape; renderer dispatches on `scrollMode` to the dedicated
+      // `runComposeUiTest`-driven path.
+      for (product in preview.dataProducts) {
+        if (product.scroll == null) continue
+        if (product.output.isBlank()) continue
+        val outputFile = previewsRoot.resolve(product.output)
+        invokeRenderer(
+          mainClass = mainClass,
+          preview = preview,
+          spec = spec,
+          density = density,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          outputFile = outputFile,
+          scroll = product.scroll,
+        )
+      }
+    }
+  }
+
+  private fun invokeRenderer(
+    mainClass: String,
+    preview: PreviewInfo,
+    spec: DeviceDimensions.SizeSpec,
+    density: Float,
+    widthPx: Int,
+    heightPx: Int,
+    outputFile: java.io.File,
+    scroll: ScrollCapture?,
+  ) {
+    execOperations.javaexec {
+      classpath = renderClasspath
+      this.mainClass.set(mainClass)
+      // Forward the display-filter selection so DesktopRendererMain can call
+      // DisplayFilterDataProducer.writeArtifacts after each render. Empty string is fine —
+      // DisplayFilterConfig.parseFilters treats blank input as "feature disabled".
+      systemProperty("composeai.displayfilter.filters", displayFilterFilters.get())
+      args =
+        listOf(
+          preview.className,
+          preview.functionName,
+          widthPx.toString(),
+          heightPx.toString(),
+          density.toString(),
+          preview.params.showBackground.toString(),
+          preview.params.backgroundColor.toString(),
+          outputFile.absolutePath,
+          // 9th arg — empty string signals "no wrapper" (keeps arg positions stable).
+          preview.params.wrapperClassName.orEmpty(),
+          // 10th/11th — AS-parity wrap flags. When set, the renderer
+          // wraps the composable, measures it, and crops the PNG to
+          // the intrinsic bounds on that axis.
+          spec.wrapWidth.toString(),
+          spec.wrapHeight.toString(),
+          // 12th/13th — @PreviewParameter spec. Empty string signals
+          // "no provider"; otherwise the renderer enumerates the
+          // provider's values.take(limit) in-process and writes one
+          // `<id>_PARAM_<idx>.png` per value. Plugin-side can't know
+          // the count (consumer's classpath isn't loaded here), so
+          // fan-out is delegated to the renderer process that already
+          // has everything on its classpath.
+          preview.params.previewParameterProviderClassName.orEmpty(),
+          preview.params.previewParameterLimit.toString(),
+          // 14th — `@Preview(locale = ...)`. Empty string signals "no override". The renderer
+          // detects `en-XA` / `ar-XB` and applies the runtime pseudolocale wrap (currently
+          // LayoutDirection.Rtl for ar-XB on desktop; Android additionally pseudolocalises
+          // string resources via the `:data-pseudolocale-connector` Resources subclass).
+          preview.params.locale.orEmpty(),
+          // 15th–18th — @ScrollingPreview intent forwarded per capture / data product. Empty
+          // 15th signals "no scroll intent". Renderer dispatches LONG / GIF to
+          // `renderScrollPreview` (`runComposeUiTest`-driven scroll + slice or frame encode);
+          // TOP / END fall through to the default single-frame path.
+          scroll?.mode?.name.orEmpty(),
+          scroll?.axis?.name.orEmpty(),
+          (scroll?.maxScrollPx ?: 0).toString(),
+          (scroll?.frameIntervalMs ?: 0).toString(),
+        )
     }
   }
 

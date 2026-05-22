@@ -29,7 +29,8 @@ object ScrollPreviewExtension {
       displayName = "ScrollingPreview suggestions",
       annotationFqns = listOf(ANNOTATION_FQN),
       usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
-      traits = setOf(PipelineStepTrait.AnnotationInspector, PipelineStepTrait.ExtraPreviewSuggester),
+      traits =
+        setOf(PipelineStepTrait.AnnotationInspector, PipelineStepTrait.ExtraPreviewSuggester),
       requires = setOf(PipelineCapability.PreviewFunctionAnnotations),
       provides = setOf(PipelineCapability.SuggestedPreviews),
     )
@@ -40,7 +41,10 @@ object ScrollPreviewExtension {
       id = "scroll.long.scenario",
       displayName = "Long scroll scenario",
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       traits = setOf(PipelineStepTrait.ScenarioDriver),
       provides =
         setOf(
@@ -59,7 +63,10 @@ object ScrollPreviewExtension {
       id = "scroll.gif.scenario",
       displayName = "Scroll GIF scenario",
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       traits = setOf(PipelineStepTrait.ScenarioDriver),
       provides =
         setOf(
@@ -79,7 +86,10 @@ object ScrollPreviewExtension {
       displayName = "Long scroll stitcher",
       productKinds = listOf(KIND_LONG),
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       traits = setOf(PipelineStepTrait.Encoder),
       requires = setOf(PipelineCapability.MultipleFrames, PipelineCapability.ImageArtifact),
       provides = setOf(PipelineCapability.ImageArtifact),
@@ -92,7 +102,10 @@ object ScrollPreviewExtension {
       displayName = "Scroll GIF encoder",
       productKinds = listOf(KIND_GIF),
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       traits = setOf(PipelineStepTrait.Encoder),
       requires = setOf(PipelineCapability.MultipleFrames, PipelineCapability.ImageArtifact),
       provides = setOf(PipelineCapability.AnimatedArtifact),
@@ -103,7 +116,10 @@ object ScrollPreviewExtension {
       id = "scroll-long",
       displayName = "Long scroll",
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       cliCommands =
         listOf(
           PreviewExtensionCliCommand(
@@ -139,7 +155,13 @@ object ScrollPreviewExtension {
             displayName = "Render scroll annotation suggestions",
             summary = "Discovers @ScrollingPreview annotations and renders their suggested extras.",
             command =
-              listOf("compose-preview", "extensions", "run", "scrolling-preview-annotation.render", "--json"),
+              listOf(
+                "compose-preview",
+                "extensions",
+                "run",
+                "scrolling-preview-annotation.render",
+                "--json",
+              ),
             agentRecommended = true,
             usageModes = setOf(PreviewExtensionUsageMode.SuggestedExtraPreview),
           )
@@ -152,7 +174,10 @@ object ScrollPreviewExtension {
       id = "scroll-gif",
       displayName = "Scroll GIF",
       usageModes =
-        setOf(PreviewExtensionUsageMode.ExplicitEffect, PreviewExtensionUsageMode.SuggestedExtraPreview),
+        setOf(
+          PreviewExtensionUsageMode.ExplicitEffect,
+          PreviewExtensionUsageMode.SuggestedExtraPreview,
+        ),
       cliCommands =
         listOf(
           PreviewExtensionCliCommand(
