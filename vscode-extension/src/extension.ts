@@ -443,6 +443,14 @@ export interface ComposePreviewTestApi {
      * Gradle-task render path and never touches the daemon gate.
      */
     triggerWarmDaemon(filePath: string): Promise<boolean>;
+    /**
+     * Most recent failure reason recorded by `warmDaemonForFile`, or `null`
+     * if the last call succeeded (or none was made yet). Exposed so the
+     * wear a11y `before()` hook can surface the underlying cause when the
+     * warm returns `false` — otherwise the assertion just says "warm
+     * failed" with no actionable detail in CI output.
+     */
+    getLastWarmDaemonError(): string | null;
     /** Snapshot of every panel message posted since [resetMessages]. */
     getPostedMessages(): unknown[];
     /**
@@ -1787,6 +1795,9 @@ export async function activate(
             triggerWarmDaemon(filePath: string): Promise<boolean> {
                 return warmDaemonForFile(filePath);
             },
+            getLastWarmDaemonError(): string | null {
+                return lastWarmDaemonError;
+            },
             getPostedMessages(): unknown[] {
                 return [...postedMessageLog];
             },
@@ -2430,10 +2441,14 @@ async function warmDaemonForFile(
     opts: { refreshAfterReady?: boolean } = {},
 ): Promise<boolean> {
     if (!daemonGate || !daemonScheduler || !gradleService) {
+        lastWarmDaemonError =
+            "warm aborted: backend not wired " +
+            `(daemonGate=${!!daemonGate}, daemonScheduler=${!!daemonScheduler}, gradleService=${!!gradleService})`;
         return false;
     }
     const module = gradleService.resolveModule(filePath);
     if (!module) {
+        lastWarmDaemonError = `warm aborted: resolveModule returned null for ${filePath} (no applied.json marker and no plugin id in build.gradle.kts)`;
         return false;
     }
     const moduleKey = module.modulePath;
@@ -2441,7 +2456,13 @@ async function warmDaemonForFile(
         if (daemonGate.isDaemonReady(moduleKey) && opts.refreshAfterReady) {
             await refreshAfterDaemonReady(filePath, "view-open");
         }
-        return daemonGate.isDaemonReady(moduleKey);
+        const ready = daemonGate.isDaemonReady(moduleKey);
+        if (!ready) {
+            lastWarmDaemonError = `warm aborted: ${moduleKey} already bootstrapped this session but daemon is not ready (prior spawn failed without resetting the memo)`;
+        } else {
+            lastWarmDaemonError = null;
+        }
+        return ready;
     }
     daemonBootstrappedModules.add(moduleKey);
     try {
@@ -2455,6 +2476,11 @@ async function warmDaemonForFile(
         );
         if (!warmed) {
             daemonBootstrappedModules.delete(moduleKey);
+            lastWarmDaemonError = daemonGate.isBuildDisabled(module)
+                ? `warm returned false for ${moduleKey}: descriptor has enabled=false (composePreview { daemon { enabled = ... } })`
+                : `warm returned false for ${moduleKey} after bootstrap (ensureModule could not spawn daemon — check daemon-launch.json + daemon channel logs)`;
+        } else {
+            lastWarmDaemonError = null;
         }
         finishDaemonStartupProgress(module, filePath, warmed);
         if (warmed && opts.refreshAfterReady) {
@@ -2465,9 +2491,9 @@ async function warmDaemonForFile(
         daemonBootstrappedModules.delete(moduleKey);
         stopDaemonStartupProgress(module);
         panel?.postMessage({ command: "clearProgress" });
-        logLine(
-            `daemon: warm failed for ${moduleKey}: ${String((err as Error).message ?? err)}`,
-        );
+        const reason = String((err as Error).message ?? err);
+        lastWarmDaemonError = `warm threw for ${moduleKey}: ${reason}`;
+        logLine(`daemon: warm failed for ${moduleKey}: ${reason}`);
         vscode.window.showErrorMessage(
             "Compose Preview daemon failed to start. Preview saves will not render until the daemon is fixed.",
         );
@@ -3146,6 +3172,16 @@ async function assembleDoctorReport(
 
 /** Per-extension-session memo so bootstrap runs once per module. */
 const daemonBootstrappedModules = new Set<string>();
+
+/**
+ * Most recent reason `warmDaemonForFile` returned `false`. `null` when the
+ * last call succeeded (or no call has been made). Exposed through the test
+ * API so the wear a11y `before()` hook can include the underlying cause in
+ * its assertion message — production warm failures already surface through
+ * `outputChannel` + the user-facing error dialog, so this is captured for
+ * test diagnostics only.
+ */
+let lastWarmDaemonError: string | null = null;
 
 /**
  * Read Error-severity diagnostics for `filePath` from whichever language
