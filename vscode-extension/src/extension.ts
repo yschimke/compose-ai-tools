@@ -51,6 +51,7 @@ import {
     LiveDaemonScheduler,
     WarmState,
 } from "./daemon/daemonScheduler";
+import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
 import {
     buildHistorySource,
     HistoryScope,
@@ -120,6 +121,9 @@ const DAEMON_SPAWN_PROGRESS_MS = 7_000;
 let gradleService: GradleService | null = null;
 let daemonGate: DaemonGate | null = null;
 let daemonScheduler: DaemonScheduler | null = null;
+/** Non-null only when `composePreview.daemon.continuousCompile` is set. Spike —
+ *  see [docs/daemon/CONTINUOUS-COMPILE.md]. */
+let continuousCompileManager: ContinuousCompileManager | null = null;
 let daemonStatusItem: vscode.StatusBarItem | null = null;
 let interactiveStatusItem: vscode.StatusBarItem | null = null;
 let daemonStatusClearTimer: NodeJS.Timeout | null = null;
@@ -1070,6 +1074,27 @@ export async function activate(
     };
     wireBackend(initialMode.mode);
 
+    // Continuous-compile worker manager (spike, opt-in via
+    // `composePreview.daemon.continuousCompile`). Replaces the per-save
+    // Gradle round-trip with a long-running `gradle --continuous` process
+    // per module. Off by default. See docs/daemon/CONTINUOUS-COMPILE.md.
+    if (
+        initialMode.mode !== "minimal" &&
+        vscode.workspace
+            .getConfiguration("composePreview")
+            .get<boolean>("daemon.continuousCompile", false)
+    ) {
+        continuousCompileManager = new ContinuousCompileManager(
+            workspaceRoot,
+            gradleService,
+            outputChannel,
+            initScriptArgs,
+        );
+        outputChannel.appendLine(
+            "[continuous] composePreview.daemon.continuousCompile = true; per-module workers will start on first daemon warm-up",
+        );
+    }
+
     // Status-bar slot for daemon lifecycle. Hidden when the daemon flag is
     // off or no module is currently warming. Surfacing the cold-bootstrap
     // pause (typically 2-4 s on first scope-in) avoids the "panel is stuck"
@@ -1323,6 +1348,12 @@ export async function activate(
                 // clearing this the spawn would skip the bootstrap and the
                 // descriptor on disk could still reference the previous build.
                 daemonBootstrappedModules.clear();
+                // Tear down the continuous-compile workers in lockstep — they
+                // pin the Gradle daemon's classpath snapshot at spawn time, and
+                // a daemon restart often follows a renderer-JAR rebuild that
+                // would otherwise leave the worker holding stale state. The
+                // next warm will re-create them via `ensureWorker`.
+                await continuousCompileManager?.disposeAll();
                 // Hide the status-bar item — its text references a specific module
                 // that's no longer relevant; the next warmModule call will repopulate
                 // it through its progress callback.
@@ -1836,6 +1867,10 @@ export function deactivate() {
     // processes after a window close. Fire-and-forget — VS Code won't wait
     // for an async deactivate beyond a few seconds anyway.
     void daemonGate?.dispose();
+    // Same shape for the continuous-compile workers (spike). Sends EOF on
+    // stdin to each worker's `gradle --continuous` subprocess; falls back
+    // to SIGTERM after a grace window if Gradle is wedged.
+    void continuousCompileManager?.disposeAll();
     disposePreviewMainBatches();
 }
 
@@ -2165,6 +2200,7 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
                     ? "disabled"
                     : "failed";
             }
+            continuousCompileManager?.ensureWorker(module);
         } catch (err) {
             daemonBootstrappedModules.delete(moduleKey);
             logLine(`daemon: ${String((err as Error).message ?? err)}`);
@@ -2481,6 +2517,7 @@ async function warmDaemonForFile(
                 : `warm returned false for ${moduleKey} after bootstrap (ensureModule could not spawn daemon — check daemon-launch.json + daemon channel logs)`;
         } else {
             lastWarmDaemonError = null;
+            continuousCompileManager?.ensureWorker(module);
         }
         finishDaemonStartupProgress(module, filePath, warmed);
         if (warmed && opts.refreshAfterReady) {
