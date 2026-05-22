@@ -187,10 +187,38 @@ Concrete next checkpoints, in roughly increasing risk order:
    intentionally low (10) so the test stays under a few seconds; bump
    via `-Dcomposeai.bta.soakIterations=…` locally when investigating
    regressions.
-2. **Incremental compilation.** Wire `JvmSnapshotBasedIncrementalCompilationOptions`
-   + a per-module IC cache dir; measure cold vs. warm 1-line-edit timing
-   against stage 1's `gradle --continuous` floor (see
-   `CONTINUOUS-COMPILE.md`).
+2. ✅ **Incremental compilation.** `BtaCompiler.compileIncremental(...)` wires
+   `JvmSnapshotBasedIncrementalCompilationConfiguration` through, with
+   per-classpath-entry snapshots cached on disk and a `SourcesChanges`
+   parameter for callers that already know the dirty set.
+   `BtaCompilerIncrementalTest` exercises a 3-file fixture, mutates one
+   source between passes, and asserts the recompiled `.class` carries the
+   edit. Sample run:
+
+   ```
+   [ic] pass1 (cold, SourcesChanges.Unknown) ms=7064 class-count=3
+   [ic] pass2 (warm, ToBeCalculated)         ms=1082 class-count=3
+   ```
+
+   Pass 2 is **~6.5× faster** than pass 1 — BTA's IC successfully skipped
+   re-analysis of the two unchanged sources. Combined with the soak data
+   above, the same-JVM second-edit floor is in the same neighbourhood as
+   stage 1's `warm-after-1-line-edit` compile wall, but without Gradle's
+   ~500 ms configuration round-trip stacked on top. The pattern (mostly
+   cribbed from KGP's `BuildToolsApiCompilationWork`):
+     - Run `JvmClasspathSnapshottingOperation` per compile-classpath entry,
+       persist with `ClasspathEntrySnapshot.saveSnapshot(file)`. Cache by
+       absolute path for the spike; production needs a content-hash
+       fallback for in-place JAR rebuilds.
+     - Construct `JvmSnapshotBasedIncrementalCompilationConfiguration(
+       workingDir, sourcesChanges, snapshotFiles, shrunkSnapshotFile,
+       op.createSnapshotBasedIcOptions())`.
+     - `op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, config)`.
+
+   Open follow-ups not covered by this checkpoint: structured probe of
+   which sources actually got recompiled (KGP infers from
+   `caches-jvm/inputs` files), source-set wiring (commonMain vs jvmMain),
+   KSP/KAPT integration. None are blockers for the next checkpoint.
 3. **Bytecode equivalence.** Compile the same source through Gradle's
    `compileKotlin` task and through BTA; assert byte-identical or
    functionally-equivalent (constant-pool reordering ok, mangled method

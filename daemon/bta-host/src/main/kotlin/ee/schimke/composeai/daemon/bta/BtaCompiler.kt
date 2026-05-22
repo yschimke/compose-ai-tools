@@ -4,17 +4,22 @@ package ee.schimke.composeai.daemon.bta
 
 import java.net.URLClassLoader
 import java.nio.file.Path
+import java.security.MessageDigest
+import kotlin.io.path.exists
 import org.jetbrains.kotlin.buildtools.api.CompilationResult
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains
 import org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader
+import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CommonCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
 import org.jetbrains.kotlin.buildtools.api.arguments.JvmCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.enums.JvmTarget
 import org.jetbrains.kotlin.buildtools.api.getToolchain
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain
+import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration
+import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 
 /**
  * Stage-2 spike harness: drives the Kotlin Build Tools API (BTA) to compile a single `.kt` file
@@ -76,28 +81,118 @@ class BtaCompiler(
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
       val op = jvm.createJvmCompilationOperation(sources, outputDir)
-      val args = op.compilerArguments
-      args.set(
-        JvmCompilerArguments.CLASSPATH,
-        compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
-      )
-      args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
-      args.set(JvmCompilerArguments.MODULE_NAME, "bta-spike")
-      if (compilerPlugins.isNotEmpty()) {
-        args.set(CommonCompilerArguments.COMPILER_PLUGINS, compilerPlugins)
-      }
-      val result: CompilationResult =
-        session.executeOperation(op, toolchains.createInProcessExecutionPolicy(), StderrLogger)
-      check(result == CompilationResult.COMPILATION_SUCCESS) {
-        "BTA compile failed: result=$result"
-      }
+      configureCompilerArgs(op, compileClasspath, compilerPlugins)
+      executeOrThrow(session, op)
     }
-    return outputDir
+    return collectClassFiles(outputDir)
+  }
+
+  /**
+   * Incremental variant of [compile]. Reuses an on-disk cache under [workingDir] across calls so
+   * downstream sessions skip re-analysing classpath entries that haven't moved.
+   *
+   * The mechanics, drawn from KGP's own `BuildToolsApiCompilationWork`:
+   * 1. Snapshot each compile-classpath entry via [JvmClasspathSnapshottingOperation] and persist it
+   *    under `workingDir/cp-snapshots/<sha1(jarPath)>.bin`. We cache by absolute path; this is a
+   *    coarse signal, but for the spike's purposes (a single fixture compile classpath that never
+   *    changes between calls) it's enough — production stage-2 needs a content-hash fallback when a
+   *    JAR is rebuilt in place.
+   * 2. Build a [JvmSnapshotBasedIncrementalCompilationConfiguration] pointing at:
+   *     - `workingDir/ic` — BTA's own IC working dir (it'll create whatever it needs inside)
+   *     - the persisted snapshot files
+   *     - `workingDir/shrunk-classpath-snapshot.bin` — output target where BTA writes the shrunk
+   *       snapshot after the compile
+   * 3. Attach the config via `JvmCompilationOperation.INCREMENTAL_COMPILATION`.
+   * 4. Execute.
+   *
+   * [sourcesChanges] defaults to [SourcesChanges.ToBeCalculated] — BTA inspects file timestamps vs.
+   * its cache. Callers that already know the dirty set (e.g. a daemon-side file watcher) can pass
+   * [SourcesChanges.Known] for tighter incrementality.
+   *
+   * NOT production-ready. Open follow-ups: content-hash classpath cache keys, source-set wiring,
+   * KSP/KAPT, Android variants. See `docs/daemon/BTA-SPIKE.md`.
+   */
+  fun compileIncremental(
+    sources: List<Path>,
+    compileClasspath: List<Path>,
+    outputDir: Path,
+    workingDir: Path,
+    compilerPlugins: List<CompilerPlugin> = emptyList(),
+    sourcesChanges: SourcesChanges = SourcesChanges.ToBeCalculated,
+  ): List<Path> {
+    outputDir.toFile().mkdirs()
+    workingDir.toFile().mkdirs()
+    val cpSnapshotsDir = workingDir.resolve("cp-snapshots").also { it.toFile().mkdirs() }
+    val icWorkingDir = workingDir.resolve("ic").also { it.toFile().mkdirs() }
+    val shrunkClasspathSnapshot = workingDir.resolve("shrunk-classpath-snapshot.bin")
+
+    val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
+    toolchains.createBuildSession().use { session ->
+      // 1. Classpath snapshots. Cheap when cached, sub-second per entry cold.
+      val snapshotFiles = compileClasspath.map { jar ->
+        val cached = cpSnapshotsDir.resolve("${sha1(jar.toString())}.bin")
+        if (!cached.exists()) {
+          val snapshottingOp = jvm.createClasspathSnapshottingOperation(jar)
+          val snapshot = session.executeOperation(snapshottingOp)
+          snapshot.saveSnapshot(cached)
+        }
+        cached
+      }
+
+      // 2 + 3. Build the IC config and attach it to the compile op.
+      val op = jvm.createJvmCompilationOperation(sources, outputDir)
+      val icOptions = op.createSnapshotBasedIcOptions()
+      val icConfig =
+        JvmSnapshotBasedIncrementalCompilationConfiguration(
+          icWorkingDir,
+          sourcesChanges,
+          snapshotFiles,
+          shrunkClasspathSnapshot,
+          icOptions,
+        )
+      op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
+      configureCompilerArgs(op, compileClasspath, compilerPlugins)
+
+      // 4. Execute.
+      executeOrThrow(session, op)
+    }
+    return collectClassFiles(outputDir)
+  }
+
+  private fun configureCompilerArgs(
+    op: JvmCompilationOperation,
+    compileClasspath: List<Path>,
+    compilerPlugins: List<CompilerPlugin>,
+  ) {
+    val args = op.compilerArguments
+    args.set(
+      JvmCompilerArguments.CLASSPATH,
+      compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
+    )
+    args.set(JvmCompilerArguments.JVM_TARGET, JvmTarget.JVM_17)
+    args.set(JvmCompilerArguments.MODULE_NAME, "bta-spike")
+    if (compilerPlugins.isNotEmpty()) {
+      args.set(CommonCompilerArguments.COMPILER_PLUGINS, compilerPlugins)
+    }
+  }
+
+  private fun executeOrThrow(session: KotlinToolchains.BuildSession, op: JvmCompilationOperation) {
+    val result: CompilationResult =
+      session.executeOperation(op, toolchains.createInProcessExecutionPolicy(), StderrLogger)
+    check(result == CompilationResult.COMPILATION_SUCCESS) { "BTA compile failed: result=$result" }
+  }
+
+  private fun collectClassFiles(outputDir: Path): List<Path> =
+    outputDir
       .toFile()
       .walkTopDown()
       .filter { it.isFile && it.extension == "class" }
       .map { it.toPath() }
       .toList()
+
+  private fun sha1(s: String): String {
+    val digest = MessageDigest.getInstance("SHA-1").digest(s.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
   }
 }
 
