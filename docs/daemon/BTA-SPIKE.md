@@ -219,11 +219,32 @@ Concrete next checkpoints, in roughly increasing risk order:
    which sources actually got recompiled (KGP infers from
    `caches-jvm/inputs` files), source-set wiring (commonMain vs jvmMain),
    KSP/KAPT integration. None are blockers for the next checkpoint.
-3. **Bytecode equivalence.** Compile the same source through Gradle's
-   `compileKotlin` task and through BTA; assert byte-identical or
-   functionally-equivalent (constant-pool reordering ok, mangled method
-   names ok if predictable). This is what the daemon's child-classloader
-   hot-swap path needs to work.
+3. ✅ **Bytecode validation (structural).** `BtaCompilerBytecodeTest`
+   confirms two things the daemon's child-classloader hot-swap actually
+   needs:
+
+   - **Determinism.** Two BTA compiles of the same source produce
+     byte-identical `.class` output (`assertArrayEquals` over the raw
+     bytes). Without this the daemon's hot-swap would see "changes" on
+     every save even when source semantics didn't move, churning
+     Compose state for no reason.
+   - **Structural fingerprint.** The emitted bytecode for
+     `@Composable fun Greeting(name: String): String` contains:
+       - the Compose-transformed descriptor
+         `(Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;`
+         in the constant pool, and
+       - a `kotlin.Metadata` annotation (decodable by ClassGraph + Kotlin
+         reflection, same shape Gradle's output uses).
+
+   Cheap byte-search assertions on the raw class file — no ASM, no
+   classloading. What this checkpoint does **not** answer: whether BTA's
+   output is byte-by-byte (or shape-equivalent) to Gradle's
+   `compileKotlin` output for the same source. That's a separate
+   exercise — needs a parallel Gradle compile of the same fixture and a
+   structural diff that tolerates constant-pool reordering. Tracked as
+   the next checkpoint. For the hot-swap path the structural fingerprint
+   here is the load-bearing question; byte-by-byte parity is a
+   convenience, not a correctness requirement.
 4. **Android variants.** Plug in AGP-generated R class jars,
    BuildConfig, manifest-merger outputs. Most likely the boundary where
    we accept "fall back to stage 1 for Android".
