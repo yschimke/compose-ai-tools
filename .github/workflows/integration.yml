@@ -266,6 +266,31 @@ jobs:
             # below.
             use_cli: true
             render: true
+            # androidchka's `build-logic/build.gradle.kts` pins the plugin via
+            # `implementation("ee.schimke.composeai.preview:...:$composeAiPreviewVersion")`
+            # — its `gradle.properties` defaults to a released version (0.10.x). We want
+            # build-logic to resolve the SNAPSHOT we just published to mavenLocal so this
+            # cell tests the in-PR code, not the last release. The CLI's auto-inject
+            # detects the build-logic staging and stays out of the way; see
+            # composeAiPreviewBuildLogicStaging in cli/.../AutoInject.kt.
+            pre_gradle_script: |
+              python3 - <<'PY'
+              import re
+              from pathlib import Path
+              gp = Path("gradle.properties")
+              gp.write_text(
+                  re.sub(
+                      r"^composeAiPreviewVersion=.*$",
+                      "composeAiPreviewVersion=0.1.0-SNAPSHOT",
+                      gp.read_text(),
+                      flags=re.MULTILINE,
+                  )
+              )
+              print("--- patched composeAiPreviewVersion in gradle.properties ---")
+              for line in gp.read_text().splitlines():
+                  if line.startswith("composeAiPreviewVersion="):
+                      print(line)
+              PY
             # androidx-main + androidchka's build-logic require JDK 21.
             # The other matrix entries stay on the workflow-default 17.
             java_version: "21"

@@ -578,6 +578,42 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script detects build-logic-staged plugin and skips the allprojects apply path`() {
+    // AndroidX-style overlays (e.g. yschimke/androidchka) ship a composite `build-logic`
+    // includeBuild that declares this plugin as a regular `implementation` dep and stages it
+    // via `id("ee.schimke.composeai.preview") apply false` in a precompiled-script convention
+    // plugin. That keeps our plugin co-resident with AGP in build-logic's classloader. If the
+    // auto-inject ALSO injects our plugin into the project buildscript classpath, Gradle
+    // prefers our buildscript-loaded copy, our plugin loads into a classloader that doesn't
+    // see AGP, and configuration fails with `NoClassDefFoundError:
+    // com.android.build.api.variant.AndroidComponentsExtension` — the failure the integration
+    // matrix's `androidchka (compose:material3 samples)` cell exposed. The init script must
+    // detect the build-logic staging at `settingsEvaluated` time and short-circuit the whole
+    // `allprojects { ... }` block (NOT just the buildscript injection — auto-stubs in
+    // androidchka apply AGP without ever applying `androidchka.extras`, so a stray apply
+    // hook would still call `pluginManager.apply("...")` against an empty classpath).
+    val script = renderInitScript("0.1.0-SNAPSHOT")
+    assertTrue(
+      script.contains("composeAiPreviewBuildLogicStaging"),
+      "expected the script to define the build-logic staging detector",
+    )
+    assertTrue(
+      script.contains("ee.schimke.composeai.preview:"),
+      "expected the build-logic detector to grep for the plugin coordinate",
+    )
+    assertTrue(
+      script.contains(
+        "composeAiPreviewStagedByBuildLogic = composeAiPreviewBuildLogicStaging(rootDir)"
+      ),
+      "expected the staging flag to be set from settingsEvaluated",
+    )
+    assertTrue(
+      script.contains("if (composeAiPreviewStagedByBuildLogic) return@allprojects"),
+      "expected the staging flag to short-circuit the entire allprojects block",
+    )
+  }
+
+  @Test
   fun `init script restores default plugin repositories when seeding mavenLocal into an empty pluginManagement`() {
     // `gradle.settingsEvaluated` fires for every included build, including composite `build-logic`
     // modules (e.g. androidchka's). Gradle only auto-applies its `gradlePluginPortal()` default
