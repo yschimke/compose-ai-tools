@@ -151,6 +151,33 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("honors COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL via a script-runtime env read", () => {
+        // Mirrors the CLI's AutoInject.kt — the env var is read inside the
+        // rendered Kotlin (at Gradle invocation time), so users can flip
+        // mavenLocal on per-invocation without re-rendering the script.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                'val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"',
+            ),
+            "expected useMavenLocal to be read from env inside the rendered Kotlin",
+        );
+        assert.ok(
+            script.includes("if (useMavenLocal) mavenLocal()"),
+            "expected mavenLocal() to be guarded by useMavenLocal in buildscript repos",
+        );
+        assert.ok(
+            script.includes("pluginManagement.repositories.mavenLocal()"),
+            "expected pluginManagement-level mavenLocal seeding for plugins-DSL resolution",
+        );
+        assert.ok(
+            script.includes(
+                "dependencyResolutionManagement.repositories.mavenLocal()",
+            ),
+            "expected dependencyResolutionManagement-level seeding for runtime AAR resolution",
+        );
+    });
+
     it("uses pluginManager.withPlugin, NOT afterEvaluate (as a code construct)", () => {
         // AGP's `finalizeDsl` callbacks have to register before the DSL lock —
         // afterEvaluate runs after that lock and would skip preview registration
