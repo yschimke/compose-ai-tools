@@ -69,11 +69,22 @@ internal fun renderInitScript(pluginVersion: String): String =
 // rather than Maven Central. Plain users have no reason to flip this on:
 // it widens the search surface to whatever snapshots happen to be cached
 // locally and is therefore opt-in, not the default.
+//
+// Auto-inject is suppressed for modules that apply
+// `com.android.kotlin.multiplatform.library` — the AGP-KMP plugin's single
+// `android` variant trips a variant-ambiguity error on
+// `androidRuntimeClasspath` once the renderer-android artifact view kicks in,
+// breaking `compose-preview show` for any project where the plugin landed
+// purely via auto-inject. The supported KMP-Android layout
+// (samples/cmp-shared, with a `jvm("desktop")` target) still works when the
+// user adds `id("ee.schimke.composeai.preview")` to that module's plugins {}
+// block themselves — we just no longer apply it implicitly.
 
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
+var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -87,6 +98,30 @@ fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
         "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
             "\\{[^}]*\\bid\\s*=\\s*\"ee\\.schimke\\.composeai\\.preview\"[^}]*\\}|" +
             "\"ee\\.schimke\\.composeai\\.preview(?::[^\"]*)?\"" +
+            ")"
+    )
+    return entryRe.findAll(section).map { match ->
+        val accessor = match.groupValues[1].replace(Regex("[-_]"), ".")
+        Regex("\\blibs\\s*\\.\\s*plugins\\s*\\.\\s*" + Regex.escape(accessor) + "\\b")
+    }.toList()
+}
+
+// Catalog-alias accessors for `com.android.kotlin.multiplatform.library` — same shape as
+// composeAiPreviewCatalogAccessors but pinned to the KMP-Android plugin id so a module
+// declaring it via `alias(libs.plugins.android.kotlin.multiplatform.library)` is detected
+// alongside the literal `id("com.android.kotlin.multiplatform.library")` form.
+fun composeAiPreviewKmpAndroidCatalogAccessors(rootDir: java.io.File): List<Regex> {
+    val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
+    if (!catalog.isFile) return emptyList()
+    val text = runCatching { catalog.readText() }.getOrNull() ?: return emptyList()
+    val pluginsHeader = Regex("(?m)^\\[plugins\\]\\s*${'$'}").find(text) ?: return emptyList()
+    val sectionStart = pluginsHeader.range.last + 1
+    val nextSection = Regex("(?m)^\\[").find(text, sectionStart)
+    val section = text.substring(sectionStart, nextSection?.range?.first ?: text.length)
+    val entryRe = Regex(
+        "(?m)^[ \\t]*([A-Za-z0-9_.\\-]+)\\s*=\\s*(?:" +
+            "\\{[^}]*\\bid\\s*=\\s*\"com\\.android\\.kotlin\\.multiplatform\\.library\"[^}]*\\}|" +
+            "\"com\\.android\\.kotlin\\.multiplatform\\.library(?::[^\"]*)?\"" +
             ")"
     )
     return entryRe.findAll(section).map { match ->
@@ -148,6 +183,42 @@ fun scanForComposeAiPreviewDeclaration(
     return declared
 }
 
+// Scan for modules that apply `com.android.kotlin.multiplatform.library` — auto-inject
+// skips both the buildscript classpath injection and the withPlugin apply hooks for these
+// dirs. Applying compose-preview to a KMP-Android module trips an AGP-KMP variant model
+// mismatch on `androidRuntimeClasspath` once the consumer's CLI run resolves the renderer's
+// artifact view. Users who explicitly want previews on a KMP-Android module can add
+// `id("ee.schimke.composeai.preview")` to that module's plugins {} block themselves — the
+// supported layout in samples/cmp-shared (with a `jvm("desktop")` target) still works that
+// way; we just don't apply it implicitly anymore.
+fun scanForKmpAndroidDeclaration(
+    rootDir: java.io.File,
+    projectDirs: List<java.io.File>,
+): Set<java.io.File> {
+    val catalogAccessors = composeAiPreviewKmpAndroidCatalogAccessors(rootDir)
+    val literalRe = Regex(
+        "\\bid\\s*[(\\s]\\s*[\"']com\\.android\\.kotlin\\.multiplatform\\.library[\"']"
+    )
+    val declared = LinkedHashSet<java.io.File>()
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            if (literalRe.containsMatchIn(text)) {
+                declared.add(dir)
+                break
+            }
+            if (catalogAccessors.any { it.containsMatchIn(text) }) {
+                declared.add(dir)
+                break
+            }
+        }
+    }
+    return declared
+}
+
 gradle.settingsEvaluated {
     val projectDirs = mutableListOf<java.io.File>()
     fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
@@ -156,6 +227,7 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+    composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -185,7 +257,15 @@ gradle.settingsEvaluated {
 }
 
 allprojects {
-    if (projectDir !in composeAiPreviewPreAppliedDirs) {
+    // Skip BOTH the buildscript classpath injection AND the apply hooks for KMP-Android
+    // modules. Doing only one half leaves the other half active: skipping the classpath
+    // injection alone still fires the withPlugin hooks (which then fail to find the plugin
+    // class), and skipping only the hooks still drags an unused plugin marker onto the
+    // buildscript classpath. Both halves gated together is the safe shape — see
+    // scanForKmpAndroidDeclaration() above for the rationale.
+    val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs
+
+    if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             repositories {
                 gradlePluginPortal()
@@ -201,6 +281,8 @@ allprojects {
             }
         }
     }
+
+    if (composeAiPreviewSkipKmpAndroid) return@allprojects
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
