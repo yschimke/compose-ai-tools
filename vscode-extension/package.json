@@ -221,6 +221,7 @@
         "test": "npm run compile && mocha --exit out/test/runMocha.js",
         "test:electron": "npm run compile && node ./out/test/electron/runTest.js",
         "test:e2e": "npm run compile && COMPOSE_PREVIEW_E2E=1 node ./out/test/electron/runTest.js",
+        "test:e2e-external": "npm run compile && COMPOSE_PREVIEW_E2E_EXTERNAL=1 COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies",
         "harness:snapshot": "node esbuild.webview.mjs && node preview-harness/snapshot.mjs",
