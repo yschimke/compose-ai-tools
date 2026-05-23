@@ -141,6 +141,30 @@ internal fun isWearAmbientAvailable(loader: ClassLoader?): Boolean {
 }
 
 /**
+ * Returns `true` when `androidx.compose.remote.creation.compose.action.HostAction` is on the
+ * supplied classloader. Used to gate `:data-remotecompose-connector` registration on the consumer
+ * actually shipping the alpha `compose-remote` artifacts (`:samples:remotecompose` for the
+ * reference setup) — the connector's own classes reference these alpha types directly, so
+ * instantiating any of them on a non-Remote-Compose classpath raises `NoClassDefFoundError` at
+ * the lazy-init line. Mirrors [isWearAmbientAvailable] for the Wear ambient connector.
+ */
+internal fun isRemoteComposeAvailable(loader: ClassLoader?): Boolean {
+  val effective = loader ?: ClassLoader.getSystemClassLoader() ?: return false
+  return try {
+    Class.forName(
+      "androidx.compose.remote.creation.compose.action.HostAction",
+      false,
+      effective,
+    )
+    true
+  } catch (_: ClassNotFoundException) {
+    false
+  } catch (_: NoClassDefFoundError) {
+    false
+  }
+}
+
+/**
  * Cross-thread hints consumed by [SandboxHoldingRunner] during sandbox bootstrap. Lives at file
  * scope (not on a companion) so set/get is cheap and readable without instantiating a runner.
  *
