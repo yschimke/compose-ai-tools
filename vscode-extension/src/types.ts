@@ -694,6 +694,36 @@ export interface DaemonDataExtensionDescriptor {
     requiresInteractive?: boolean;
 }
 
+/**
+ * Platform profile the remote document is compiled against. Mirrors
+ * `RemoteComposeProfile` on the wire / `RcPlatformProfiles` constants on
+ * the JVM side. Duplicated here so `types.ts` (shared host+webview
+ * surface) stays free of a `daemon/daemonProtocol.ts` dep — the host
+ * imports the same string union from both modules and forwards as-is.
+ */
+export type RemoteComposeProfile =
+    | "androidx"
+    | "androidx7"
+    | "androidx8"
+    | "androidx9"
+    | "widgetsV6"
+    | "widgetsV7"
+    | "wearWidgets";
+
+/** Wire-shape mirror of `RemoteNamedValue` (see Messages.kt). */
+export type RemoteNamedValue =
+    | { kind: "float"; value: number }
+    | { kind: "dp"; value: number }
+    | { kind: "int"; value: number }
+    | { kind: "string"; value: string }
+    | { kind: "bool"; value: boolean }
+    | { kind: "color"; argb: string };
+
+/** Detail bag carried by `setRemoteComposeNamedValue`. */
+export type RemoteComposeChangeDetail =
+    | { field: "profile"; value: RemoteComposeProfile | null }
+    | { field: "namedValue"; name: string; value: RemoteNamedValue };
+
 /** Messages from webview to extension */
 export type WebviewToExtension =
     /**
@@ -1031,6 +1061,24 @@ export type WebviewToExtension =
           previewId: string;
           fontRowId: string;
           sourceFile: string;
+      }
+    /**
+     * Edit dispatched from the panel's Remote Compose tab body. The
+     * presenter's editable cells (profile `<select>`, typed inputs per
+     * named value) dispatch a `remote-compose-value-changed` CustomEvent
+     * that bubbles to the tab body wrapper; the wrapper wraps it in this
+     * message so the extension host can rebuild a fresh
+     * `renderNow.overrides.remoteCompose` and forward to the daemon.
+     *
+     * `change.field` discriminates which control fired: `"profile"`
+     * carries the next `RcPlatformProfiles` selection (or `null` to
+     * clear); `"namedValue"` carries the typed-sum value the daemon's
+     * `RemoteComposeController.setNamedValue(...)` should merge.
+     */
+    | {
+          command: "setRemoteComposeNamedValue";
+          previewId: string;
+          change: RemoteComposeChangeDetail;
       };
 
 /**

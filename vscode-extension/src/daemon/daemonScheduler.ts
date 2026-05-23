@@ -10,6 +10,7 @@ import {
     FileKind,
     HistoryAddedParams,
     HistoryPrunedParams,
+    PreviewOverrides,
     RenderFinishedParams,
     RenderTier,
     StreamFrameParams,
@@ -166,6 +167,7 @@ export interface DaemonScheduler {
         previewIds: string[],
         tier?: RenderTier,
         reason?: string,
+        overrides?: PreviewOverrides,
     ): Promise<boolean>;
     daemonEvents(moduleId: string): DaemonClientEvents;
 }
@@ -551,6 +553,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         previewIds: string[],
         tier: RenderTier = "fast",
         reason?: string,
+        overrides?: PreviewOverrides,
     ): Promise<boolean> {
         const client = await this.gate.getOrSpawn(
             module,
@@ -564,6 +567,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
                 previews: previewIds,
                 tier,
                 reason,
+                overrides,
             });
             for (const r of result.rejected) {
                 this.logger.appendLine(

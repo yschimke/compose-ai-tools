@@ -469,6 +469,20 @@ export interface PreviewOverrides {
      * app's natural IME signals.
      */
     keyboard?: KeyboardOverride;
+    /**
+     * Remote Compose override. Carries the daemon-requested platform
+     * profile (`RcPlatformProfiles` mirror), seeded named values (typed
+     * sum: float / dp / int / string / bool / color), and an optional
+     * accept-list filter for captured `HostAction` events. Drives the
+     * connector-side `RemoteComposeOverrideExtension` so user code inside
+     * a `RemotePreview { ... }` block can read seeded values via
+     * `LocalRemoteComposeHost.current.namedFloat(...)` and report fired
+     * actions via `reportHostAction(...)`. Sending a fresh `remoteCompose`
+     * on a subsequent `renderNow` replaces the named-value map + profile
+     * (host-action buffer persists across overrides until session reset).
+     * Android-only; desktop ignores.
+     */
+    remoteCompose?: RemoteComposeOverride;
 }
 
 /** Soft-keyboard (IME) override. See `PreviewOverrides.keyboard`. */
@@ -476,6 +490,37 @@ export interface KeyboardOverride {
     visible?: boolean;
     pressedKey?: string;
 }
+
+/**
+ * Remote Compose override. See `PreviewOverrides.remoteCompose`. The
+ * profile string matches `RemoteComposeProfile` in `types.ts` (re-typed
+ * here to keep daemon-protocol module standalone). `namedValues` keys
+ * are bound by user code via `LocalRemoteComposeHost`; values use the
+ * same typed sum the daemon's `data/fetch` returns so a round-trip
+ * (panel edit → renderNow → re-fetch) round-trips identity-equivalently.
+ */
+export interface RemoteComposeOverride {
+    profile?:
+        | "androidx"
+        | "androidx7"
+        | "androidx8"
+        | "androidx9"
+        | "widgetsV6"
+        | "widgetsV7"
+        | "wearWidgets"
+        | null;
+    namedValues?: Record<string, RemoteNamedValueWire>;
+    acceptedHostActions?: string[];
+}
+
+/** Wire-shape mirror of `RemoteNamedValue` (see Messages.kt). */
+export type RemoteNamedValueWire =
+    | { kind: "float"; value: number }
+    | { kind: "dp"; value: number }
+    | { kind: "int"; value: number }
+    | { kind: "string"; value: string }
+    | { kind: "bool"; value: boolean }
+    | { kind: "color"; argb: string };
 
 export interface RenderNowParams {
     previews: string[];

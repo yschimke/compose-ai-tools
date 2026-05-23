@@ -232,6 +232,19 @@ const previewModuleMap = new Map<string, ModuleInfo>();
  *  no longer participates in a11y at all — production is daemon-only —
  *  so this map drives daemon subscriptions only, never gradle args. */
 const moduleA11ySubscriptions = new Map<string, Set<string>>();
+/**
+ * previewId → latest Remote Compose override the panel pushed. The panel's
+ * editable tab body posts `setRemoteComposeNamedValue` per cell change; we
+ * merge into this map and forward the full bag on the next `renderNow` so
+ * the daemon's `RemoteComposeController.set(...)` applies the cumulative
+ * state. The map persists across renders so a user editing a value, then
+ * editing another, sees both reflected (the daemon-side controller resets
+ * on session close — this map mirrors that scope).
+ */
+const remoteComposeOverridesByPreview = new Map<
+    string,
+    import("./daemon/daemonProtocol").RemoteComposeOverride
+>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
 const firstSaveSeen = new Set<string>();
@@ -4606,6 +4619,21 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 );
             }
             break;
+        case "setRemoteComposeNamedValue":
+            // Panel-side Remote Compose tab body edit. Merges the change
+            // into the per-preview running override bag and dispatches a
+            // fresh `renderNow` so the daemon's
+            // `RemoteComposeOverrideExtension` re-seeds the controller
+            // for the next composition. Gated on early features so the
+            // panel surface ships behind the same flag as the other
+            // data-extension chips while the wire shape settles.
+            if (earlyFeaturesEnabled()) {
+                void handleSetRemoteComposeNamedValue(
+                    msg.previewId,
+                    msg.change,
+                );
+            }
+            break;
         case "openResourceFile":
             void openResourceFile(
                 {
@@ -4870,6 +4898,61 @@ async function handleSetDataExtensionEnabled(
             panel?.postMessage({ command: "updateA11y", ...update });
         }
     }
+}
+
+/**
+ * Apply one edit from the panel's Remote Compose tab body. Merges the
+ * change into [remoteComposeOverridesByPreview] and dispatches a fresh
+ * `renderNow` so the daemon's `RemoteComposeController.set(...)` picks
+ * up the new state on the next composition. Subsequent edits accumulate
+ * on the same override bag — the daemon-side controller treats
+ * `RemoteComposeOverride.namedValues` as a full-replacement map, so we
+ * carry the whole running snapshot in the message rather than letting
+ * the user lose previously-edited values on each new edit.
+ *
+ * No-op when the daemon scheduler isn't wired (Gradle-only mode) or the
+ * preview's owning module isn't yet known (panel rebuild race) — the
+ * webview will keep its optimistic value displayed in the input cell;
+ * the next `updateDataProducts` after a fresh render will reconcile it.
+ */
+async function handleSetRemoteComposeNamedValue(
+    previewId: string,
+    change: import("./types").RemoteComposeChangeDetail,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleInfo = previewModuleMap.get(previewId);
+    if (!moduleInfo) {
+        return;
+    }
+    const prior =
+        remoteComposeOverridesByPreview.get(previewId) ??
+        ({} as import("./daemon/daemonProtocol").RemoteComposeOverride);
+    const next: import("./daemon/daemonProtocol").RemoteComposeOverride = {
+        profile: prior.profile,
+        namedValues: { ...(prior.namedValues ?? {}) },
+        acceptedHostActions: prior.acceptedHostActions,
+    };
+    if (change.field === "profile") {
+        next.profile = change.value;
+    } else {
+        next.namedValues = {
+            ...(next.namedValues ?? {}),
+            [change.name]: change.value,
+        };
+    }
+    remoteComposeOverridesByPreview.set(previewId, next);
+    logInfo(
+        `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId}`,
+    );
+    void daemonScheduler.renderNow(
+        moduleInfo,
+        [previewId],
+        "fast",
+        "remotecompose-edit",
+        { remoteCompose: next },
+    );
 }
 
 /**
