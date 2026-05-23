@@ -53,6 +53,10 @@ public object PreviewDiscoveryCli {
         exitProcess(0)
       }
       is PreviewDiscovery.Outcome.Failure -> {
+        // Mirror the success branch's WARN emission so the failure path doesn't drop per-method
+        // skip reasons (private @Preview, unsupported parameters) — they're the most actionable
+        // signal when failOnEmpty filtered the run to zero previews.
+        outcome.warnings.forEach { System.err.println("WARN: $it") }
         outcome.diagnostics.forEach { System.err.println(it) }
         System.err.println("preview-discovery: ${outcome.reason}")
         exitProcess(1)

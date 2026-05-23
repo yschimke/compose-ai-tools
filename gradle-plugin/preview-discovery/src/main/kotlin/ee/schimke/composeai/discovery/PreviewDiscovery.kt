@@ -63,11 +63,17 @@ object PreviewDiscovery {
      * class isn't reachable on the ClassGraph classpath at all). [reason] is the one-line error
      * the adapter should surface as an exception message; [diagnostics] is the multi-line
      * dump (class dirs, dependency-jar sample, observed annotation FQNs) the adapter logs
-     * before the failure so users can see what the scan saw.
+     * before the failure so users can see what the scan saw. [warnings] are any per-method
+     * skip reasons collected during the scan (e.g. private `@Preview`, unsupported
+     * parameters) — they're the most actionable signal when discovery returned zero previews
+     * because methods were skipped, so the adapter should route them to its build system's
+     * WARN-level log alongside [diagnostics] before surfacing [reason]. Symmetric with
+     * [Success.warnings] so adapters can emit the same WARN stream on both branches.
      */
     data class Failure(
       val reason: String,
       val diagnostics: List<String>,
+      val warnings: List<String> = emptyList(),
     ) : Outcome()
   }
 
@@ -334,6 +340,7 @@ object PreviewDiscovery {
           "composePreview: discovered 0 previews in module '${input.moduleName}' — " +
             "$reason. See diagnostics above.",
         diagnostics = diagnostics,
+        warnings = warnings.toList(),
       )
     }
 
