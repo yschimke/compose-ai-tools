@@ -128,6 +128,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `WallpaperDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PreviewsKt.WallpaperDemoPreview_Wallpaper_Demo.png" width="150" /> |
 | `CmpPseudoBidi` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PseudolocalePreviewsKt.CmpPseudoBidi_bidi.png" width="150" /> |
 | `CmpPseudoDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PseudolocalePreviewsKt.CmpPseudoDefault_default.png" width="150" /> |
+| `ScrollingListPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List_SCROLL_long.png" width="150" /> |
+| `ScrollingListPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List_SCROLL_gif.gif" width="150" /> |
 
 ## samples:cmp-shared
 

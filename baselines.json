@@ -692,6 +692,20 @@
     "sha256": "6635005c9f4f146edb46a44124d849243794628adeef4c8c6cf2ab8d3d5979d8",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List": {
+    "captureLabel": "scroll long",
+    "functionName": "ScrollingListPreview",
+    "renderBasename": "ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List_SCROLL_long.png",
+    "sha256": "a7207b4bb0093392ba042b0d5d973afba729742a49dfe0c8a0e6803b6a45fc32",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List#1": {
+    "captureLabel": "scroll gif",
+    "functionName": "ScrollingListPreview",
+    "renderBasename": "ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List_SCROLL_gif.gif",
+    "sha256": "df71c44b8ee4bd79dc28aa517a31d64a10936e8a108056ca9d774993a667a057",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
     "captureLabel": "",
     "functionName": "BlueLabelPreview",
@@ -822,7 +836,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
