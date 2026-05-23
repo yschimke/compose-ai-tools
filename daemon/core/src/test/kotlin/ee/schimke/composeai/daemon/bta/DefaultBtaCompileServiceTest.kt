@@ -127,4 +127,66 @@ class DefaultBtaCompileServiceTest {
       reason.endsWith("IllegalStateException"),
     )
   }
+
+  @Test
+  fun `fromSysprops returns null when stage-2 sysprops are absent`() {
+    val service = DefaultBtaCompileService.fromSysprops { null }
+    assertEquals(null, service)
+  }
+
+  @Test
+  fun `fromSysprops returns null when implClasspath sysprop is empty`() {
+    // Partial wiring — moduleName + outputDir + icWorkingDir set but no impl classpath.
+    // The factory must short-circuit; the JSON-RPC handler falls back to stage 1.
+    val sysprops =
+      mapOf(
+        "composeai.daemon.bta.implClasspath" to "",
+        "composeai.daemon.bta.moduleName" to "samples-cmp",
+        "composeai.daemon.bta.outputDir" to "/abs/out",
+        "composeai.daemon.bta.icWorkingDir" to "/abs/ic",
+      )
+    val service = DefaultBtaCompileService.fromSysprops { sysprops[it] }
+    assertEquals(null, service)
+  }
+
+  @Test
+  fun `fromSysprops builds a service when every required sysprop is populated`() {
+    val sysprops =
+      mapOf(
+        "composeai.daemon.bta.implClasspath" to
+          "/abs/kotlin-build-tools-impl.jar${java.io.File.pathSeparator}/abs/kotlin-stdlib.jar",
+        "composeai.daemon.bta.compileClasspath" to "/abs/compose-runtime.jar",
+        "composeai.daemon.bta.compilerPlugins" to
+          "/abs/kotlin-compose-compiler-plugin-embeddable.jar",
+        "composeai.daemon.bta.moduleName" to "samples-cmp",
+        "composeai.daemon.bta.outputDir" to "/abs/build/classes/kotlin/main",
+        "composeai.daemon.bta.icWorkingDir" to "/abs/build/compose-previews/daemon-state/bta-ic",
+      )
+    val service = DefaultBtaCompileService.fromSysprops { sysprops[it] }
+    assertTrue("expected non-null service, got null", service != null)
+    // We don't drive a real compile here — that would bootstrap BTA's impl classloader,
+    // which the synthetic /abs/... paths can't satisfy. Constructing the service is enough
+    // to prove the sysprop wiring; the lazy `KotlinToolchains` doesn't fire until the
+    // first `compile()` call.
+  }
+
+  @Test
+  fun `fromSysprops propagates ineligibilityReason verbatim into the service`() {
+    val sysprops =
+      mapOf(
+        "composeai.daemon.bta.implClasspath" to "/abs/kotlin-build-tools-impl.jar",
+        "composeai.daemon.bta.moduleName" to "samples-cmp",
+        "composeai.daemon.bta.outputDir" to "/abs/out",
+        "composeai.daemon.bta.icWorkingDir" to "/abs/ic",
+        "composeai.daemon.bta.ineligibilityReason" to
+          "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet)",
+      )
+    val service = DefaultBtaCompileService.fromSysprops { sysprops[it] }!!
+    val outcome = service.compile(sources = listOf(Path.of("/tmp/Hi.kt")), changes = null)
+    assertTrue("expected Fallback, got $outcome", outcome is BtaCompileService.Outcome.Fallback)
+    assertEquals(
+      "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet)",
+      (outcome as BtaCompileService.Outcome.Fallback).reason,
+    )
+  }
 }

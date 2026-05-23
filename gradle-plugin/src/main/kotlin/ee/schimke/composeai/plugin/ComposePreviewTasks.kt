@@ -598,6 +598,45 @@ internal object ComposePreviewTasks {
     task.btaImplClasspath.from(btaImplConfig)
     task.btaCompilerPluginClasspath.from(btaPluginConfig)
     userRuntimeConfig?.let { task.btaCompileClasspath.from(it) }
+
+    // Mirror every BTA descriptor field into the daemon JVM's system properties — the
+    // daemon's `DefaultBtaCompileService.fromSysprops()` reads these at startup to
+    // construct the in-process compile service. Empty values (the common case when
+    // compileInProcess is false and the configs stay empty) produce blank sysprops and
+    // the daemon's factory returns null, which keeps the `compileSources` JSON-RPC
+    // handler on the fallback path. See COMPILE-IN-PROCESS.md.
+    //
+    // The sysprop NAMES are duplicated verbatim from `:daemon:core`'s
+    // `DefaultBtaCompileService.Companion.SYSPROP_*` constants — the gradle plugin and
+    // the daemon live in separate included builds, so we can't import the constants
+    // directly. Keep both halves in sync; the daemon's `CompileSourcesTest` exercises
+    // the read path against literal strings that match these.
+    val pathSep = java.io.File.pathSeparator
+    task.systemProperties.put(
+      "composeai.daemon.bta.implClasspath",
+      btaImplConfig.elements.map { elements ->
+        elements.joinToString(pathSep) { it.asFile.absolutePath }
+      },
+    )
+    task.systemProperties.put(
+      "composeai.daemon.bta.compilerPlugins",
+      btaPluginConfig.elements.map { elements ->
+        elements.joinToString(pathSep) { it.asFile.absolutePath }
+      },
+    )
+    task.systemProperties.put(
+      "composeai.daemon.bta.compileClasspath",
+      task.btaCompileClasspath.elements.map { elements ->
+        elements.joinToString(pathSep) { it.asFile.absolutePath }
+      },
+    )
+    task.systemProperties.put("composeai.daemon.bta.moduleName", task.btaModuleName)
+    task.systemProperties.put("composeai.daemon.bta.outputDir", task.btaOutputDir)
+    task.systemProperties.put("composeai.daemon.bta.icWorkingDir", task.btaIcWorkingDir)
+    task.systemProperties.put(
+      "composeai.daemon.bta.ineligibilityReason",
+      task.btaIneligibilityReason.orElse(""),
+    )
     // MODULE_NAME mirrors what KGP's default `compileKotlin` emits for non-multiplatform
     // JVM modules — `project.name` (the directory name), no path-mangling. The
     // bta-host-fixture spike confirmed Gradle uses this exact spelling in

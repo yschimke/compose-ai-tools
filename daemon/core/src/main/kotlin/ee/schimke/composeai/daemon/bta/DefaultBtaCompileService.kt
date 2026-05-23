@@ -87,6 +87,25 @@ class DefaultBtaCompileService(
 
   companion object {
     /**
+     * System-property keys the gradle plugin's daemon-bootstrap task populates when the consumer
+     * flips `composePreview { daemon { compileInProcess = true } }`. Mirror of `BtaCompileConfig`
+     * in the launch descriptor; see COMPILE-IN-PROCESS.md for the wire format. All path-list
+     * sysprops are `File.pathSeparator`-joined; an unset / empty value means "this part of the
+     * config is missing" and [fromSysprops] returns null.
+     */
+    const val SYSPROP_IMPL_CLASSPATH: String = "composeai.daemon.bta.implClasspath"
+    const val SYSPROP_COMPILE_CLASSPATH: String = "composeai.daemon.bta.compileClasspath"
+    const val SYSPROP_COMPILER_PLUGINS: String = "composeai.daemon.bta.compilerPlugins"
+    const val SYSPROP_MODULE_NAME: String = "composeai.daemon.bta.moduleName"
+    const val SYSPROP_OUTPUT_DIR: String = "composeai.daemon.bta.outputDir"
+    const val SYSPROP_IC_WORKING_DIR: String = "composeai.daemon.bta.icWorkingDir"
+    /**
+     * Optional. Non-empty value disables stage 2 for this module with the given reason surfaced
+     * verbatim in every `compileSources` result. See COMPILE-IN-PROCESS.md § "Eligibility".
+     */
+    const val SYSPROP_INELIGIBILITY_REASON: String = "composeai.daemon.bta.ineligibilityReason"
+
+    /**
      * Production factory — captures the [session] + its per-module compile config in a
      * [CompileBackend] lambda and constructs the service.
      */
@@ -110,5 +129,72 @@ class DefaultBtaCompileService(
           },
         ineligibilityReason = ineligibilityReason,
       )
+
+    /**
+     * Reads the BTA launch configuration from system properties and returns a wired-up service.
+     * Returns `null` when stage 2 wasn't opted in (any of [SYSPROP_IMPL_CLASSPATH],
+     * [SYSPROP_MODULE_NAME], [SYSPROP_OUTPUT_DIR], [SYSPROP_IC_WORKING_DIR] is missing or empty);
+     * in that case [JsonRpcServer]'s `compileSources` handler returns `result=fallback` for every
+     * call and the editor falls back to stage 1 / 0.
+     *
+     * Called once from each renderer module's `DaemonMain` at startup; the result is handed to
+     * [JsonRpcServer]'s `btaCompileService` constructor slot. The factory does NOT eagerly
+     * instantiate the [BtaCompileSession]'s `KotlinToolchains` — that happens lazily on first
+     * compile, paying the ~5 s BTA-impl bootstrap once per daemon JVM.
+     *
+     * [sysprops] is the lookup function — defaults to [System.getProperty] for production; tests
+     * pass a [Map.get]-shaped lambda so the factory can be exercised without polluting JVM-wide
+     * state.
+     */
+    fun fromSysprops(
+      sysprops: (String) -> String? = System::getProperty
+    ): DefaultBtaCompileService? {
+      val implClasspath = sysprops(SYSPROP_IMPL_CLASSPATH).toPathList()
+      val moduleName = sysprops(SYSPROP_MODULE_NAME)?.takeIf { it.isNotEmpty() }
+      val outputDirStr = sysprops(SYSPROP_OUTPUT_DIR)?.takeIf { it.isNotEmpty() }
+      val icWorkingDirStr = sysprops(SYSPROP_IC_WORKING_DIR)?.takeIf { it.isNotEmpty() }
+      if (
+        implClasspath.isEmpty() ||
+          moduleName == null ||
+          outputDirStr == null ||
+          icWorkingDirStr == null
+      ) {
+        return null
+      }
+      val compileClasspath = sysprops(SYSPROP_COMPILE_CLASSPATH).toPathList()
+      val pluginJars = sysprops(SYSPROP_COMPILER_PLUGINS).toPathList()
+      val ineligibilityReason = sysprops(SYSPROP_INELIGIBILITY_REASON)?.takeIf { it.isNotEmpty() }
+      val compilerPlugins =
+        if (pluginJars.isEmpty()) emptyList()
+        else
+          listOf(
+            CompilerPlugin(
+              "androidx.compose.compiler.plugins.kotlin",
+              pluginJars,
+              emptyList(),
+              emptySet(),
+            )
+          )
+      val session =
+        BtaCompileSession(
+          implClasspath = implClasspath,
+          icWorkingDir = java.nio.file.Path.of(icWorkingDirStr),
+          moduleName = moduleName,
+        )
+      return forSession(
+        session = session,
+        compileClasspath = compileClasspath,
+        outputDir = java.nio.file.Path.of(outputDirStr),
+        compilerPlugins = compilerPlugins,
+        ineligibilityReason = ineligibilityReason,
+      )
+    }
+
+    private fun String?.toPathList(): List<Path> =
+      if (this.isNullOrEmpty()) emptyList()
+      else
+        this.split(java.io.File.pathSeparator)
+          .filter { it.isNotEmpty() }
+          .map { java.nio.file.Path.of(it) }
   }
 }
