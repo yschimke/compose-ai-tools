@@ -22,6 +22,7 @@ private val STRATEGIES: Map<PreviewKind, PreviewRenderStrategy> = mapOf(
     PreviewKind.COMPOSE to ComposePreviewStrategy,
     PreviewKind.TILE to TilePreviewStrategy,
     PreviewKind.NOTIFICATION to NotificationPreviewStrategy,
+    PreviewKind.GLANCE_APPWIDGET to GlanceAppWidgetPreviewStrategy,
 )
 
 internal fun strategyFor(kind: PreviewKind): PreviewRenderStrategy =
@@ -172,6 +173,24 @@ private object NotificationPreviewStrategy : PreviewRenderStrategy {
             className = preview.className,
             functionName = preview.functionName,
             previewId = preview.id,
+        )
+    }
+}
+
+/**
+ * Glance app-widget strategy: wrap the user's `@Composable @GlanceComposable` function in a
+ * synthetic `GlanceAppWidget.providePreview(...)`, materialise it to `RemoteViews` via
+ * `composeForPreview(...)`, and host the inflated tree inside an `AndroidView`. See
+ * [GlanceAppWidgetPreviewComposable] for the heavy lifting.
+ */
+private object GlanceAppWidgetPreviewStrategy : PreviewRenderStrategy {
+    @Composable
+    override fun Render(preview: RenderPreviewEntry, widthDp: Int, heightDp: Int, previewArgs: List<Any?>) {
+        GlanceAppWidgetPreviewComposable(
+            className = preview.className,
+            functionName = preview.functionName,
+            widthDp = widthDp,
+            heightDp = heightDp,
         )
     }
 }
