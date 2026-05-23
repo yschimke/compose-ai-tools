@@ -47,6 +47,20 @@ dependencies {
   // building the `Notification` they pass to `NotificationContent` typically reach for
   // `androidx.core`'s `NotificationCompat`, but they already carry it for their own notification
   // posting paths; we don't pin a version onto their classpath from here.
+
+  // Robolectric-based recomposition test for `NotificationContent`. Compose UI test deps are
+  // `testImplementation` only — they don't leak into the published AAR. We use the same
+  // `compose-bom-compat` we compile against so the test JVM resolves the exact symbols the main
+  // source set was built with.
+  testImplementation(libs.robolectric)
+  testImplementation(libs.junit)
+  testImplementation(platform(libs.compose.bom.compat))
+  testImplementation(libs.compose.ui)
+  testImplementation(libs.compose.foundation)
+  testImplementation(libs.compose.runtime)
+  testImplementation(libs.activity.compose)
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  testImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 mavenPublishing {
