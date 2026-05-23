@@ -4,6 +4,8 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
@@ -312,70 +314,74 @@ open class DesktopHost(
     // interactive path doesn't write per-frame PNGs — keeps the spec shape symmetric and avoids a
     // null branch in `applyOverrides`.
     val spec = applyOverrides(baseSpec, overrides, recordingId = "interactive-$previewId")
-    val state = engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
-    val session =
-      DesktopInteractiveSession(
-        previewId = previewId,
-        engine = engine,
-        state = state,
-        sandboxStats = sandboxStats,
-        onCloseHook = onSessionClosed,
-      )
-    val listener = interactiveSessionListener
-    if (listener == null) {
-      return session
+    // Allocate a single-thread executor up-front and run setUp on it. Every subsequent scene
+    // touch — dispatch, render, the listener's observer install / dispose, and close — is also
+    // pinned to this thread by [DesktopInteractiveSession]. That serialises the Compose
+    // recomposer (and its `Dispatchers.Unconfined`-dispatched `LaunchedEffect` coroutines) onto
+    // one thread so an `interactive/stop` can't race a still-running effect body, which is what
+    // trips `Detected multithreaded access to SnapshotStateObserver` and the follow-on Skiko
+    // SIGABRT in issue #1229. The session takes ownership of the executor and shuts it down on
+    // [InteractiveSession.close]; on a setUp failure we shut it down here.
+    val sceneExecutor = Executors.newSingleThreadExecutor { r ->
+      Thread(r, "compose-ai-daemon-interactive-scene-$previewId").apply { isDaemon = true }
     }
-    // D5 — fire onSessionLifecycle(previewId, scene) so the recomposition producer can install
-    // its CompositionObserver against the live scene. Wrap the session so that close() also
-    // fires onSessionLifecycle(previewId, null) — without the wrapper the producer would leak
-    // the observer handle past `interactive/stop`.
-    try {
-      listener.onSessionLifecycle(previewId, state.scene)
-    } catch (t: Throwable) {
-      System.err.println(
-        "compose-ai-daemon: DesktopHost: interactiveSessionListener.acquire threw " +
-          "(${t.javaClass.simpleName}: ${t.message}); continuing with session"
-      )
-    }
-    return ListenerNotifyingSession(delegate = session, listener = listener, previewId = previewId)
-  }
-
-  /**
-   * Thin [InteractiveSession] wrapper that fires [interactiveSessionListener]'s "released"
-   * notification on [close]. All other calls forward to the wrapped [DesktopInteractiveSession].
-   * Idempotent: a second [close] is a no-op (matches the [DesktopInteractiveSession.close]
-   * contract).
-   */
-  private class ListenerNotifyingSession(
-    private val delegate: InteractiveSession,
-    private val listener: InteractiveSessionListener,
-    override val previewId: String,
-  ) : InteractiveSession {
-
-    @Volatile private var closed = false
-
-    override val isClosed: Boolean
-      get() = closed || delegate.isClosed
-
-    override fun dispatch(input: ee.schimke.composeai.daemon.protocol.InteractiveInputParams) =
-      delegate.dispatch(input)
-
-    override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult =
-      delegate.render(requestId, advanceTimeMs)
-
-    override fun close() {
-      if (closed) return
-      closed = true
+    val state =
       try {
-        listener.onSessionLifecycle(previewId, null)
-      } catch (t: Throwable) {
-        System.err.println(
-          "compose-ai-daemon: DesktopHost: interactiveSessionListener.release threw " +
-            "(${t.javaClass.simpleName}: ${t.message}); continuing with session.close()"
-        )
+        sceneExecutor
+          .submit<RenderEngine.SceneState> {
+            engine.setUp(spec, classLoader, inspectionMode = inspectionMode ?: false)
+          }
+          .get()
+      } catch (e: ExecutionException) {
+        sceneExecutor.shutdownNow()
+        throw e.cause ?: e
+      } catch (e: Throwable) {
+        sceneExecutor.shutdownNow()
+        throw e
       }
-      delegate.close()
-    }
+    // D5 — fire onSessionLifecycle(previewId, scene) on the scene executor so the recomposition
+    // producer's `CompositionObserver` install lands on the same thread that will later drive
+    // every recomposition, dispatch, and tear-down. The matching released-side hook
+    // (`onSessionLifecycle(_, null)`) is plumbed in as the session's `onSceneClose` so it also
+    // runs on the executor — pre-#1229, the released call ran on the JSON-RPC read thread which
+    // is exactly the cross-thread teardown the issue tracked.
+    val listener = interactiveSessionListener
+    val onSceneClose: (() -> Unit)? =
+      if (listener != null) {
+        try {
+          sceneExecutor.submit { listener.onSessionLifecycle(previewId, state.scene) }.get()
+        } catch (e: ExecutionException) {
+          System.err.println(
+            "compose-ai-daemon: DesktopHost: interactiveSessionListener.acquire threw " +
+              "(${e.cause?.javaClass?.simpleName ?: e.javaClass.simpleName}: " +
+              "${e.cause?.message ?: e.message}); continuing with session"
+          )
+        } catch (t: Throwable) {
+          System.err.println(
+            "compose-ai-daemon: DesktopHost: interactiveSessionListener.acquire threw " +
+              "(${t.javaClass.simpleName}: ${t.message}); continuing with session"
+          )
+        }
+        {
+          try {
+            listener.onSessionLifecycle(previewId, null)
+          } catch (t: Throwable) {
+            System.err.println(
+              "compose-ai-daemon: DesktopHost: interactiveSessionListener.release threw " +
+                "(${t.javaClass.simpleName}: ${t.message}); continuing with session.close()"
+            )
+          }
+        }
+      } else null
+    return DesktopInteractiveSession(
+      previewId = previewId,
+      engine = engine,
+      state = state,
+      sandboxStats = sandboxStats,
+      sceneExecutor = sceneExecutor,
+      onSceneClose = onSceneClose,
+      onCloseHook = onSessionClosed,
+    )
   }
 
   /**

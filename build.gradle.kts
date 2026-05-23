@@ -69,6 +69,8 @@ tasks.register("ktfmtFormatAll") {
 //       api :data-render-core
 //       api :data-render-compose
 //         api :data-render-core
+//     implementation :data-scroll-android
+//       api :data-scroll-core
 val androidFunctionalTestPublishTargets =
   listOf(
     ":renderer-android",
@@ -76,6 +78,7 @@ val androidFunctionalTestPublishTargets =
     ":data-render-core",
     ":data-render-compose",
     ":data-scroll-core",
+    ":data-scroll-android",
   )
 
 tasks.register("functionalTestWithAndroid") {
