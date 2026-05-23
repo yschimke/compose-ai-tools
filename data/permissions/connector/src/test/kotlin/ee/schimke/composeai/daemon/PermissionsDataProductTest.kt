@@ -25,8 +25,9 @@ import org.junit.Test
 
 /**
  * Pins the contract of `:data-permissions-connector`'s extension + registry surface. Mirrors
- * [KeyboardDataProductTest] — the planner is always-on so the controller's `LocalPermissionsHost`
- * is in scope on every render, even when the client hasn't sent an explicit override.
+ * [KeyboardDataProductTest] — the planner is always-on so the controller seed + the shadow
+ * tracker's recordQuery path are wired on every render, even when the client hasn't sent an
+ * explicit override.
  */
 class PermissionsDataProductTest {
 
@@ -51,12 +52,12 @@ class PermissionsDataProductTest {
   }
 
   @Test
-  fun `planner always returns an extension so the host is in scope even without an override`() {
+  fun `planner always returns an extension so the tracker is wired even without an override`() {
     val planner = PermissionsPreviewOverrideExtension()
     val planned = planner.plan(PreviewOverrides())
     assertNotNull(
-      "planner must always emit the extension so LocalPermissionsHost and the recordQuery path " +
-        "are in place for every render",
+      "planner must always emit the extension so the controller seed + shadow tracker recordQuery " +
+        "path are in place for every render",
       planned,
     )
     assertEquals(DataExtensionId(Material3PermissionsProduct.KIND), planned.id)

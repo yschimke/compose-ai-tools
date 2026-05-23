@@ -14,8 +14,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Three responsibilities:
  *
  * 1. **Grant map** — the effective permission -> grant-state mapping the around-composable applies
- *    for the current render. Snapshot-state so a screen reading `LocalPermissionsHost.check(perm)`
- *    inside a `@Composable` recomposes when [set] flips a grant.
+ *    for the current render. Held in snapshot state so future readers inside a `@Composable`
+ *    recompose on flips; nothing in-tree reads it from composition today (the override flows
+ *    through Robolectric's `ShadowApplication` grants) — kept observable so a future panel-driven
+ *    "live grants" mid-composition hook can plug in without changing the controller's shape.
  * 2. **Query tracker** — the set of permissions the screen has asked about so far in the render /
  *    interactive session, in insertion order. Written by the Robolectric shadow on
  *    `ContextWrapper.checkPermission(...)`, which covers every standard Android check API
@@ -146,15 +148,15 @@ object PermissionsController {
           .invoke(shadowApp, granted)
       }
     } catch (_: ClassNotFoundException) {
-      // No Robolectric on this classpath — `LocalPermissionsHost` opt-in still works for
-      // compositions that consult the controller directly. Production Android paths reach this
-      // controller only inside a Robolectric sandbox today, so the catch is defensive.
+      // No Robolectric on this classpath — the controller still tracks queries via the shadow
+      // and serves the captured set through the data product. Production Android paths reach
+      // this controller only inside a Robolectric sandbox today, so the catch is defensive.
     } catch (_: NoSuchMethodException) {
       // Robolectric API surface drifted — fall back to controller-only state without crashing the
       // render. A subsequent Robolectric bump that renames the methods will need a code update.
     } catch (_: ReflectiveOperationException) {
       // Underlying invocation failure (e.g. application not yet initialised). Drop silently — the
-      // controller's snapshot state still drives `LocalPermissionsHost` opt-in callers.
+      // controller's snapshot state still reflects the requested grants for the data product.
     }
   }
 }

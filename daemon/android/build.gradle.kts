@@ -94,13 +94,12 @@ dependencies {
   // session's `dispatch(KEY_*)` path also calls into `KeyboardController` from this module.
   implementation(project(":data-keyboard-connector"))
   // Runtime-permissions connector — `PermissionsController` (process-static grant + queried-set
-  // state), the always-on `AroundComposable` extension that installs `LocalPermissionsHost` and
-  // pushes `renderNow.overrides.permissions` into Robolectric's `ShadowApplication` grant state,
-  // the `PermissionsPreviewOverrideExtension` planner, the `PermissionsDataProductRegistry`
-  // serving the captured payload, and `ShadowContextWrapperPermissionTracker` (Robolectric shadow
-  // that records every `ContextCompat.checkSelfPermission(...)` call). Registered on the engine
-  // via `RobolectricHost.previewOverrideExtensions` and via the daemon's `ExtensionRegistry`
-  // below.
+  // state), the always-on `AroundComposable` extension that pushes
+  // `renderNow.overrides.permissions` into Robolectric's `ShadowApplication` grant state, the
+  // `PermissionsPreviewOverrideExtension` planner, the `PermissionsDataProductRegistry` serving
+  // the captured payload, and `ShadowContextWrapperPermissionTracker` (Robolectric shadow that
+  // records every `ContextCompat.checkSelfPermission(...)` call). Registered on the engine via
+  // `RobolectricHost.previewOverrideExtensions` and via the daemon's `ExtensionRegistry` below.
   implementation(project(":data-permissions-connector"))
   // Touch-event visualization connector — same module `:daemon:desktop` consumes. The
   // `TouchOverlayExtension` `AroundComposable` is pure Compose foundation/runtime so the single
