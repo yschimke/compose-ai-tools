@@ -352,3 +352,20 @@ project(":render-session-embedded-desktop").projectDir = file("render-session/em
 // Thin `java -cp` CLI over `:render-session-subprocess` for non-Gradle build systems
 // (Bazel rules, Amper tasks in `yschimke/compose-ai-contrib`). See `contrib/README.md`.
 include(":render-cli")
+
+// JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
+// is compiled to Java 21 bytecode and therefore can't load on this repo's
+// default JDK 17 build daemon (see `gradle/gradle-daemon-jvm.properties`,
+// pinned to `toolchainVersion=17`). Rather than bump the daemon repo-wide
+// and force every contributor onto JDK 21, we keep the pin at 17 and gate
+// inclusion on `JavaVersion.current()`. The dedicated CI workflow
+// `.github/workflows/samples-21.yml` rewrites the daemon-jvm-properties
+// file on the runner (never committed) so the daemon launches on 21 and
+// the subtree gets exercised on every PR that touches it.
+//
+// Currently:
+//  * `samples-21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
+//    plugin jar targets Java 21.
+if (JavaVersion.current() >= JavaVersion.VERSION_21) {
+  include(":samples-21:android-metro-viewmodel")
+}

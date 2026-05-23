@@ -119,6 +119,15 @@ checker-qual = "4.1.0"
 # manual decision (re-check `:data-wallpaper-connector:compileKotlin`
 # against `compose-bom-compat` when raising it).
 material-kolor = "4.0.5"
+# Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
+# `:samples-21:android-metro-viewmodel` module to demonstrate that
+# constructor-injected ViewModels render under the renderer's @Preview
+# pipeline. The 1.x Gradle plugin jar is compiled to Java 21 bytecode, so
+# the consuming module lives in the conditionally-included `samples-21/`
+# subtree (see `settings.gradle.kts`) — the rest of the repo can keep
+# building under JDK 17. Kotlin 2.3.21 is supported per Metro's
+# compatibility table (`docs/compatibility.md` upstream).
+metro = "1.1.1"
 
 [libraries]
 # Kotlin scripting host — consumed by `examples/scripting`'s contrib-reference
@@ -185,6 +194,9 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 asm = { module = "org.ow2.asm:asm", version = "9.10" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
+# `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
+# `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
+metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -199,3 +211,6 @@ maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publ
 android-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "android-compose-screenshot" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
 tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
+# Metro compiler plugin — `:samples:android-metro-viewmodel` applies this to
+# get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
+metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
