@@ -66,9 +66,16 @@ export class AndroidManifestCodeLensProvider
             );
             const pos = doc.positionAt(m.offset);
             const range = new vscode.Range(pos.line, 0, pos.line, 0);
+            // When a resource has multiple captures (typical for adaptive icons:
+            // FULL_COLOR / THEMED_LIGHT / THEMED_DARK / LEGACY) the lens flags
+            // that to the user — the hover provider renders the full grid, but
+            // a glance at the lens shouldn't suggest there's only one variant.
+            const variantCount = resource.captures.length;
+            const variantSuffix =
+                variantCount > 1 ? ` (${variantCount} variants)` : "";
             lenses.push(
                 new vscode.CodeLens(range, {
-                    title: `$(file-media) Preview ${resourceId}`,
+                    title: `$(file-media) Preview ${resourceId}${variantSuffix}`,
                     command: "composePreview.previewResource",
                     arguments: [pngPath, resourceId],
                 }),

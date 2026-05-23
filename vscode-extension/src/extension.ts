@@ -23,6 +23,7 @@ import { PreviewGutterDecorations } from "./previewGutterDecorations";
 import { PreviewHoverProvider } from "./previewHoverProvider";
 import { PreviewCodeLensProvider } from "./previewCodeLensProvider";
 import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvider";
+import { ManifestResourceHoverProvider } from "./manifestResourceHoverProvider";
 import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
@@ -1462,6 +1463,9 @@ export async function activate(
     const androidManifestCodeLensProvider = new AndroidManifestCodeLensProvider(
         gradleService,
     );
+    const manifestResourceHoverProvider = new ManifestResourceHoverProvider(
+        gradleService,
+    );
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
         vscode.languages.registerCodeLensProvider(
@@ -1471,6 +1475,10 @@ export async function activate(
         vscode.languages.registerCodeLensProvider(
             androidManifestFiles,
             androidManifestCodeLensProvider,
+        ),
+        vscode.languages.registerHoverProvider(
+            androidManifestFiles,
+            manifestResourceHoverProvider,
         ),
         codeLensProvider,
         androidManifestCodeLensProvider,
