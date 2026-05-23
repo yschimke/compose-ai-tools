@@ -174,6 +174,27 @@
     "sha256": "a540022f2ad90812de25bcfb46d31b1877b02e3cbff1dd2ba33f67523ab06688",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher widget \u2014 1\u00d71": {
+    "captureLabel": "",
+    "functionName": "LauncherWidget1x1Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher_widget_1_1.png",
+    "sha256": "597706acf2525ca41e5f9ff40ce51fbae04f96776be24f34636f813c07aff40c",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher widget \u2014 4\u00d72": {
+    "captureLabel": "",
+    "functionName": "LauncherWidget4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher_widget_4_2.png",
+    "sha256": "74d4a94d38d45d547ce2b3f403d24ebd6798589e3e16d36cfc9b6bb60b76aa4a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher widget \u2014 clamped to 4\u00d75": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetClampedPreview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
+    "sha256": "0576b5495bff504660e9e4f0cb33a86f93354deb99e23a30111101e35837e7f6",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72": {
     "captureLabel": "",
     "functionName": "RemoteViewsWeatherWidgetPreview",
@@ -934,7 +955,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
