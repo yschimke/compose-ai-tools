@@ -28,6 +28,7 @@ import com.github.takahirom.roborazzi.locale
 import com.github.takahirom.roborazzi.size
 import com.github.takahirom.roborazzi.uiMode
 import ee.schimke.composeai.daemon.AmbientOverrideExtension
+import ee.schimke.composeai.daemon.LauncherWidgetExtension
 import ee.schimke.composeai.daemon.FocusController
 import ee.schimke.composeai.daemon.FocusOverlay
 import ee.schimke.composeai.daemon.FocusOverrideExtension
@@ -35,6 +36,9 @@ import ee.schimke.composeai.daemon.KeyboardController
 import ee.schimke.composeai.daemon.KeyboardOverrideExtension
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.AmbientStateOverride
+import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.daemon.protocol.FocusOverride
@@ -698,6 +702,16 @@ abstract class RobolectricRenderTestBase(
                     preview.captures.firstNotNullOfOrNull { it.ambient }?.let {
                         AmbientOverrideExtension(it.toAmbientOverride())
                     }
+                // `@LauncherWidgetPreview` discovery stamps the same `LauncherWidgetCapture` onto
+                // every capture of an annotated function. Wrap the composition with
+                // `LauncherWidgetExtension` from `:data-launcher-widget-connector` so the rendered
+                // PNG sizes to the resolved dp footprint of a launcher cell. Daemon-driven
+                // `renderNow.overrides.launcherWidget` lands at the same extension via the
+                // `LauncherWidgetPreviewOverrideExtension` planner registered in `RobolectricHost`.
+                val launcherWidgetExtension =
+                    preview.captures.firstNotNullOfOrNull { it.launcherWidget }?.let {
+                        LauncherWidgetExtension(it.toLauncherWidgetOverride())
+                    }
                 // Pseudolocale: when `@Preview(locale = "en-XA" | "ar-XB")`, wrap composition with
                 // `PseudolocaleOverrideExtension` so `LocalContext.current.resources.getString(...)`
                 // — the path `androidx.compose.ui.res.stringResource` walks — returns the
@@ -775,11 +789,23 @@ abstract class RobolectricRenderTestBase(
                                 focusOrPlain()
                             }
                         }
-                        val pseudoOrPlain: @Composable () -> Unit = {
-                            if (pseudolocaleExtension != null) {
-                                pseudolocaleExtension.AroundComposable { ambientOrPlain() }
+                        // Launcher-widget sizing wraps OUTSIDE ambient/focus/curve so the
+                        // `Box.size(...)` constrains the visible viewport before any inner
+                        // override applies — the cell footprint is the launcher chrome, not
+                        // the preview's own surface chemistry. Matches the connector's
+                        // `DataExtensionPhase.OuterEnvironment` ordering.
+                        val launcherWidgetOrPlain: @Composable () -> Unit = {
+                            if (launcherWidgetExtension != null) {
+                                launcherWidgetExtension.AroundComposable { ambientOrPlain() }
                             } else {
                                 ambientOrPlain()
+                            }
+                        }
+                        val pseudoOrPlain: @Composable () -> Unit = {
+                            if (pseudolocaleExtension != null) {
+                                pseudolocaleExtension.AroundComposable { launcherWidgetOrPlain() }
+                            } else {
+                                launcherWidgetOrPlain()
                             }
                         }
                         keyboardExtension.AroundComposable { pseudoOrPlain() }
@@ -1976,6 +2002,31 @@ private fun AmbientCapture.toAmbientOverride(): AmbientOverride =
             },
         burnInProtectionRequired = burnInProtectionRequired,
         deviceHasLowBitAmbient = deviceHasLowBitAmbient,
+    )
+
+/**
+ * Maps the renderer-side [LauncherWidgetCapture] (read from `previews.json`) onto the
+ * connector's `protocol.LauncherWidgetOverride` wire shape. Discovery serialises optional
+ * `Int?` fields when the consumer left the annotation at its `-1` sentinel — those round-trip
+ * as `null` here and the connector applies its own defaults.
+ */
+private fun LauncherWidgetCapture.toLauncherWidgetOverride(): LauncherWidgetOverride =
+    LauncherWidgetOverride(
+        cells = LauncherWidgetSize(width, height),
+        cellSizeDp = cellSizeDp,
+        cellSpacingDp = cellSpacingDp,
+        minCells =
+            if (minWidth != null && minHeight != null) LauncherWidgetSize(minWidth, minHeight)
+            else null,
+        maxCells =
+            if (maxWidth != null && maxHeight != null) LauncherWidgetSize(maxWidth, maxHeight)
+            else null,
+        resizeOrder =
+            when (resizeOrder) {
+                LauncherWidgetCaptureResizeOrder.Diagonal -> LauncherResizeOrder.DIAGONAL
+                LauncherWidgetCaptureResizeOrder.WidthFirst -> LauncherResizeOrder.WIDTH_FIRST
+                LauncherWidgetCaptureResizeOrder.HeightFirst -> LauncherResizeOrder.HEIGHT_FIRST
+            },
     )
 
 /**

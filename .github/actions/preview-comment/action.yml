@@ -68,22 +68,55 @@ runs:
     - name: Install CLI from source
       if: inputs.cli-version == 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.2 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.3 # x-release-please-version
 
     - name: Install CLI from release
       if: inputs.cli-version != 'source'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.2 # x-release-please-version
+      uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.3 # x-release-please-version
       with:
         version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
         catalog-key: ${{ inputs.catalog-key }}
 
     - name: Render previews
+      id: render
       shell: bash
       env:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
-      run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+      # Don't fail this step on a non-zero CLI exit: the JSON envelope still
+      # carries the rows that did render (and flags failed ones via empty
+      # `sha256`), so the downstream compare-on-PR + comment step can post a
+      # diff with a `Render Failures` section listing the rows that didn't
+      # produce a PNG. The trailing `Surface render failures` step at the
+      # end of the action raises the overall workflow status once the
+      # comment has landed.
+      run: |
+        set +e
+        compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+        rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "compose-preview show exited $rc — continuing so the partial " \
+               "JSON envelope still drives a PR diff comment." >&2
+        fi
+        exit 0
+
+    # Mirrors `composePreviewRender-reports` on the baselines side: surface
+    # the per-task Robolectric stack traces whenever the CLI flagged a
+    # failure (build-wide or per-preview), regardless of whether the step
+    # itself succeeded.
+    - name: Upload composePreviewRender reports
+      if: steps.render.outputs.rc != '0'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: composePreviewRender-reports
+        path: |
+          **/build/reports/tests/composePreviewRender/
+          **/build/test-results/composePreviewRender/
+          _previews.json
+        if-no-files-found: ignore
+        retention-days: 14
 
     # Render Android XML resource previews (vector / animated-vector /
     # adaptive-icon) so the comment can include before/after for resource
@@ -98,13 +131,23 @@ runs:
       shell: bash
       env:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
-      run: compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+      # Same capture-don't-fail shape as the composable render above.
+      run: |
+        set +e
+        compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+        rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "compose-preview show-resources exited $rc — continuing so the " \
+               "partial JSON envelope still drives a PR diff comment." >&2
+        fi
+        exit 0
 
     # Same artifact-on-failure shape as `composePreviewRender-reports` for the
     # composable side — surfaces the actual stack trace from the
     # Robolectric run when it fails.
     - name: Upload composePreviewRenderAndroidResources reports
-      if: failure() && steps.render-resources.outcome == 'failure'
+      if: steps.render-resources.outputs.rc != '0'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRenderAndroidResources-reports
@@ -528,4 +571,30 @@ runs:
             -X PATCH -f body="$RESOLVED_BODY"
         elif [ "$COMMENT_ON_EMPTY_DIFF" = "true" ]; then
           gh pr comment "$PR_NUMBER" --body "$RESOLVED_BODY"
+        fi
+
+    # Surface render failures as a step failure now that the PR comment has
+    # been posted / updated. The comment body already carries the per-preview
+    # failure list (cmd_compare's `### Render Failures` section), and the
+    # reports artifact above attaches the per-task stack traces — this step
+    # just raises the workflow's overall status so a flaky render still flips
+    # the PR check red even though the diff was published. Final exit code
+    # is the worst of the two CLI invocations.
+    - name: Surface render failures
+      shell: bash
+      env:
+        RENDER_RC: ${{ steps.render.outputs.rc }}
+        RESOURCE_RC: ${{ steps.render-resources.outputs.rc }}
+      run: |
+        rc_show="${RENDER_RC:-0}"
+        rc_res="${RESOURCE_RC:-0}"
+        if [ "$rc_show" -ne 0 ] || [ "$rc_res" -ne 0 ]; then
+          echo "::error::compose-preview render exited non-zero (show=$rc_show, " \
+               "show-resources=$rc_res). The PR diff comment has been updated " \
+               "with a Render Failures section; the uploaded reports artifact " \
+               "has the per-task stack traces." >&2
+          if [ "$rc_show" -ne 0 ]; then
+            exit "$rc_show"
+          fi
+          exit "$rc_res"
         fi

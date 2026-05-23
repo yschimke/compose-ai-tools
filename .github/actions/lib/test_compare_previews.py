@@ -389,11 +389,14 @@ class GenerateTest(unittest.TestCase):
             output_dir=str(self.out),
             repo="owner/repo",
             branch="compose-preview/main",
+            prior_baselines=None,
+            prior_renders=None,
         ))
         self.assertEqual(rc, 0)
 
         baselines = json.loads((self.out / "baselines.json").read_text())
-        # Only the entry with a sha lands in baselines.
+        # Only the entry with a sha lands in baselines (the failure for B has
+        # no prior to carry over, so it stays out of baselines.json).
         self.assertEqual(set(baselines), {"m/A"})
         self.assertEqual(baselines["m/A"]["sha256"], "sha-a")
 
@@ -401,9 +404,61 @@ class GenerateTest(unittest.TestCase):
         # README references the rendered PNG via the raw GitHub URL.
         self.assertIn("raw.githubusercontent.com/owner/repo/compose-preview/main", readme)
         self.assertIn("`Fn`", readme)
+        # Failure for `B` shows up under "Render Failures" with no prior baseline.
+        self.assertIn("## Render Failures", readme)
+        self.assertIn("`FnB`", readme)
+        self.assertIn("m/B", readme)
 
         # PNG copied under renders/<module>/<id>.png.
         self.assertTrue((self.out / "renders" / "m" / "A.png").exists())
+
+    def test_failed_render_carries_prior_baseline_forward(self):
+        # When a single preview fails on this run and `--prior-baselines`
+        # plus `--prior-renders` point at the existing baseline branch,
+        # the prior sha + PNG carry over so a flaky single-preview render
+        # doesn't drop the entry from compose-preview/main.
+        from types import SimpleNamespace
+
+        prior_dir = self.tmp / "prior"
+        prior_dir.mkdir()
+        prior_renders = prior_dir / "renders" / "m"
+        prior_renders.mkdir(parents=True)
+        prior_png = prior_renders / "B.png"
+        prior_png.write_bytes(b"old-png-bytes")
+        prior_baselines_path = prior_dir / "baselines.json"
+        prior_baselines_path.write_text(json.dumps({
+            "m/B": {
+                "sha256": "old-sha-b",
+                "functionName": "FnB",
+                "sourceFile": "src/B.kt",
+                "renderBasename": "B.png",
+                "captureLabel": "",
+            },
+        }))
+
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli_path),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/main",
+            prior_baselines=str(prior_baselines_path),
+            prior_renders=str(prior_dir / "renders"),
+        ))
+        self.assertEqual(rc, 0)
+
+        baselines = json.loads((self.out / "baselines.json").read_text())
+        # B carries forward from the prior baseline; A is fresh.
+        self.assertEqual(set(baselines), {"m/A", "m/B"})
+        self.assertEqual(baselines["m/B"]["sha256"], "old-sha-b")
+        # Prior PNG is replayed into the new renders/ tree so the README
+        # inline image still resolves on the baseline branch.
+        carried = self.out / "renders" / "m" / "B.png"
+        self.assertTrue(carried.exists())
+        self.assertEqual(carried.read_bytes(), b"old-png-bytes")
+        # README still calls out the failure but labels it as "retained".
+        readme = (self.out / "README.md").read_text()
+        self.assertIn("## Render Failures", readme)
+        self.assertIn("retained", readme)
 
 
 class PerceptualFilterTest(unittest.TestCase):
@@ -546,6 +601,39 @@ class CompareMarkdownTest(unittest.TestCase):
         )
         self.assertIn("raw.githubusercontent.com/owner/repo/deadbeef/", out)
         self.assertIn("raw.githubusercontent.com/owner/repo/cafef00d/", out)
+
+    def test_lists_render_failures_separately_from_diff(self):
+        # Previews whose render produced no PNG land in their own section
+        # with a [!WARNING] callout up top so reviewers see the partial-run
+        # state on the PR even when the diff itself is clean.
+        out = self._run(
+            {
+                "previews": [
+                    _entry(id="Ok", function="Same", sha="s", png="/ok.png"),
+                    _entry(id="Broken", function="Crashy", sha="", png="",
+                           source="src/Crashy.kt"),
+                ],
+            },
+            {"app/Ok": {"sha256": "s", "functionName": "Same"}},
+        )
+        self.assertIn("[!WARNING]", out)
+        self.assertIn("1 preview(s) failed to render", out)
+        self.assertIn("### Render Failures", out)
+        self.assertIn("`Crashy`", out)
+        self.assertIn("src/Crashy.kt", out)
+        self.assertIn("app/Broken", out)
+
+    def test_emits_failure_section_even_when_diff_is_otherwise_empty(self):
+        # A run with no successful renders but discovery still saw the
+        # preview must NOT short-circuit on the "no visual changes" path —
+        # the comment needs to surface the failure.
+        out = self._run(
+            {"previews": [_entry(id="Broken", function="Crashy", sha="", png="")]},
+            {},
+        )
+        self.assertNotIn("No visual changes detected.", out)
+        self.assertIn("### Render Failures", out)
+        self.assertIn("Crashy", out)
 
 
 class MultiCaptureLoadTest(unittest.TestCase):
@@ -930,7 +1018,10 @@ class GenerateResourcesTests(unittest.TestCase):
     def test_skips_captures_whose_pngs_arent_in_envelope(self) -> None:
         # CLI emits null pngPath/sha256 when discovery saw the resource but
         # the renderer didn't produce a PNG (capture too expensive, error,
-        # etc.). These shouldn't land in the baseline.
+        # etc.). The successful-renders side of the baseline is empty (we
+        # have no PNG to record), but the failure is surfaced in the README
+        # so reviewers can see which resources flaked. `resource-baselines.json`
+        # is still written so the next run has a stable target to diff against.
         self._write_envelope(_resource_entry(
             id="drawable/ghost", module="app",
             captures=[_resource_capture(
@@ -939,8 +1030,12 @@ class GenerateResourcesTests(unittest.TestCase):
             )],
         ))
         self.assertEqual(self._run(), 0)
-        # No baselines file should be written, since no PNG exists to record.
-        self.assertFalse((self.output / "resource-baselines.json").exists())
+        baselines_path = self.output / "resource-baselines.json"
+        self.assertTrue(baselines_path.exists())
+        self.assertEqual(json.loads(baselines_path.read_text()), {})
+        readme = (self.output / "README.md").read_text()
+        self.assertIn("Resource Render Failures", readme)
+        self.assertIn("drawable/ghost", readme)
 
     def test_records_adaptive_icon_shape_per_capture(self) -> None:
         circle = self._stage_png("ic_launcher_xhdpi_SHAPE_circle.png", b"circle")

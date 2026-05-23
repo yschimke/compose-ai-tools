@@ -28,10 +28,10 @@ import kotlinx.serialization.json.Json
  * `java -jar <artifact>.jar` against the bare published JAR will fail with `NoClassDefFoundError` —
  * see the "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md`.
  *
- * `--classes`, `--dependency-jars`, `--source-files` accept a `File.pathSeparator`-separated
- * list (matching how `java -cp` already encodes classpaths on the consumer's platform) and can
- * be repeated to concatenate. Empty entries are skipped, so passing an empty value through is
- * harmless when a build rule's input list happens to be empty.
+ * `--classes`, `--dependency-jars`, `--source-files` accept a `File.pathSeparator`-separated list
+ * (matching how `java -cp` already encodes classpaths on the consumer's platform) and can be
+ * repeated to concatenate. Empty entries are skipped, so passing an empty value through is harmless
+ * when a build rule's input list happens to be empty.
  *
  * Exit codes: `0` on success (manifest written), `1` on discovery failure (e.g. zero previews
  * + `--fail-on-empty`), `2` on argument parsing failure.
@@ -96,8 +96,7 @@ public object PreviewDiscoveryCli {
         "--classes" -> classDirs += splitPathList(requireValue(args, i)).map { File(it) }
         "--dependency-jars" ->
           dependencyJars += splitPathList(requireValue(args, i)).map { File(it) }
-        "--source-files" ->
-          sourceFiles += splitPathList(requireValue(args, i)).map { File(it) }
+        "--source-files" -> sourceFiles += splitPathList(requireValue(args, i)).map { File(it) }
         "--module" -> moduleName = requireValue(args, i)
         "--variant" -> variantName = requireValue(args, i)
         "--project-directory" -> projectDirectory = File(requireValue(args, i))

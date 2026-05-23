@@ -30,6 +30,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider as GlanceFixedColorProvider
+import ee.schimke.composeai.preview.LauncherWidgetPreview
 import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
 
 // ---------------------------------------------------------------------------
@@ -94,8 +95,9 @@ fun AppWidgetContent(factory: (Context) -> RemoteViews) {
  * launcher grid (`cellSize = 72.dp`, `cellSpacing = 8.dp`) — the same arithmetic the
  * `LauncherWidgetExtension` daemon-side override uses when a client sends
  * `renderNow.overrides.launcherWidget = LauncherWidgetOverride(cells = (4, 2))`. The hard-coded
- * dimensions here let the preview render through the gradle plugin path (which doesn't have a
- * `@LauncherWidgetPreview` annotation yet — that's the next deliverable).
+ * dimensions here let the preview render through the gradle plugin path; the
+ * `@LauncherWidgetPreview`-annotated samples below drive the same cell footprint from discovery
+ * via the annotation in `:preview-annotations`.
  */
 @Preview(name = "RemoteViews widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
 @Composable
@@ -183,4 +185,77 @@ fun GlanceWeatherWidgetPreview() {
     widget = WeatherGlanceAppWidget(),
     size = DpSize(width = 312.dp, height = 152.dp),
   )
+}
+
+// ---------------------------------------------------------------------------
+// `@LauncherWidgetPreview` annotation samples
+//
+// Same widget content as `RemoteViewsWeatherWidgetPreview` above, but the cell footprint is
+// driven by `@LauncherWidgetPreview(width, height)` instead of `@Preview(widthDp, heightDp)`.
+// The gradle plugin's discovery picks the annotation up by FQN, stamps a
+// `LauncherWidgetCapture` onto every capture of the function, and the renderer wraps the
+// composition with `:data-launcher-widget-connector`'s `LauncherWidgetExtension` — the same
+// around-composable a daemon-driven `renderNow.overrides.launcherWidget` would apply. The
+// surrounding `@Preview(widthDp, heightDp)` still sets the Robolectric sandbox window; the
+// annotation-driven wrap then constrains the visible cell-shaped region inside it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Smallest cell shape supported by the default `1×1`..`5×5` bounds. Same widget body as
+ * [RemoteViewsWeatherWidgetPreview] but the cell footprint is annotation-driven.
+ */
+@Preview(name = "Launcher widget — 1×1", widthDp = 96, heightDp = 96, showBackground = true)
+@LauncherWidgetPreview(width = 1, height = 1)
+@Composable
+fun LauncherWidget1x1Preview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "SF")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "")
+    }
+  }
+}
+
+/**
+ * Full `4×2` cell footprint via the annotation — mirror of [RemoteViewsWeatherWidgetPreview]'s
+ * `@Preview(widthDp = 312, heightDp = 152)` but driven from the discovery-stamped
+ * `LauncherWidgetCapture` instead of hand-tuned `@Preview` dimensions.
+ */
+@Preview(name = "Launcher widget — 4×2", widthDp = 312, heightDp = 152, showBackground = true)
+@LauncherWidgetPreview(width = 4, height = 2)
+@Composable
+fun LauncherWidget4x2Preview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "San Francisco")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "Partly cloudy · H 70° / L 55°")
+    }
+  }
+}
+
+/**
+ * Demonstrates clamping: requested `7×7` is pegged into the configured `1×3`..`4×5` bounds, so
+ * the rendered footprint is `4×5`. Mirrors a real Android launcher's `minResizeWidth` /
+ * `minResizeHeight` behaviour.
+ */
+@Preview(name = "Launcher widget — clamped to 4×5", widthDp = 312, heightDp = 392, showBackground = true)
+@LauncherWidgetPreview(
+  width = 7,
+  height = 7,
+  minWidth = 1,
+  minHeight = 3,
+  maxWidth = 4,
+  maxHeight = 5,
+)
+@Composable
+fun LauncherWidgetClampedPreview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "Clamped → 4×5")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "Partly cloudy")
+    }
+  }
 }
