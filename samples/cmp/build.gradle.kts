@@ -20,4 +20,7 @@ dependencies {
   // compile classpath, but the sample composable references the annotation directly so the
   // dependency is needed for compilation.
   implementation(project(":preview-annotations"))
+  // `LauncherWidgetContainer` — composable helper used by `LauncherWidgetPreviews.kt` to
+  // demonstrate the stepped cell-resize animation inside a normal `@Preview`.
+  implementation(project(":launcher-preview-runtime"))
 }

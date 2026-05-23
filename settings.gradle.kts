@@ -83,6 +83,8 @@ include(":preview-annotations")
 
 include(":notification-preview-runtime")
 
+include(":launcher-preview-runtime")
+
 include(":samples:android")
 
 include(":samples:android-alpha")
