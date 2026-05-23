@@ -11,8 +11,8 @@ The two contracts you implement against:
 
 | Artifact | Schema | Wire-stable | Producer |
 | --- | --- | --- | --- |
-| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 1` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its `java -jar` CLI |
-| `previews.json` | [`PreviewData.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt) (published as `ee.schimke.composeai:preview-discovery`) | `schema = "compose-previews/v1"` | You — or [`PreviewDiscovery`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) / its `java -jar` CLI |
+| `daemon-launch.json` | [`DaemonClasspathDescriptor.kt`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt) (published as `ee.schimke.composeai:daemon-launch-builder`) | `schemaVersion = 1` | You — or [`DaemonLaunchBuilder`](../gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonLaunchBuilder.kt) / its [`java -cp` CLI](#cli-invocation) |
+| `previews.json` | [`PreviewData.kt`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewData.kt) (published as `ee.schimke.composeai:preview-discovery`) | `schema = "compose-previews/v1"` | You — or [`PreviewDiscovery`](../gradle-plugin/preview-discovery/src/main/kotlin/ee/schimke/composeai/discovery/PreviewDiscovery.kt) / its [`java -cp` CLI](#cli-invocation) |
 
 The consumer of both is the daemon JVM (`daemon/desktop` or `daemon/android`),
 driven by `RenderSessionFactory.open(...)` from the
@@ -275,8 +275,43 @@ Build-system-specific recipes (JetBrains Amper, Bazel) live in
 the dedicated repo for non-Gradle integrations. The recipes there
 drive the published `ee.schimke.composeai:preview-discovery` +
 `:daemon-launch-builder` + `:render-cli` artifacts through
-`java -jar` from a build-system-native rule. This document is the
-contract spec the recipes implement against.
+[`java -cp` invocations](#cli-invocation) from a build-system-native
+rule. This document is the contract spec the recipes implement
+against.
+
+## CLI invocation
+
+The three CLI-bearing artifacts (`preview-discovery`,
+`daemon-launch-builder`, `render-cli`) are published as **slim library
+JARs**. They carry a `Main-Class:` manifest entry as a convenience for
+build systems that have already materialised the runtime closure
+next to the artifact (e.g. Bazel's `runtime_jars` provider, or a
+hand-rolled `lib/` directory), but they do **not** carry a
+`Class-Path:` manifest entry and they do **not** bundle their
+transitive deps (`classgraph`, `asm`, `kotlinx-serialization`,
+`kotlin-stdlib`). Running `java -jar <artifact>.jar …` in isolation
+will fail immediately with `NoClassDefFoundError`.
+
+The integration shape these CLIs are designed for is the same shape
+Bazel `rules_jvm_external` and Amper task definitions already produce:
+ask the build system's resolver for the closure of the published
+Maven coordinate, then invoke
+
+```
+java -cp <resolved-classpath> ee.schimke.composeai.<package>.<Cli> [args]
+```
+
+with `<resolved-classpath>` being the platform-appropriate
+(`:`-separated on Unix, `;`-separated on Windows) join of every jar
+the resolver hands back. Concretely:
+
+| Artifact | Entry point |
+| --- | --- |
+| `ee.schimke.composeai:preview-discovery` | `ee.schimke.composeai.discovery.PreviewDiscoveryCli` |
+| `ee.schimke.composeai:daemon-launch-builder` | `ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli` |
+| `ee.schimke.composeai:render-cli` | `ee.schimke.composeai.render.cli.RenderCli` |
+
+Pass `--help` to any of them for the full flag list.
 
 ## Limitations and follow-ups
 

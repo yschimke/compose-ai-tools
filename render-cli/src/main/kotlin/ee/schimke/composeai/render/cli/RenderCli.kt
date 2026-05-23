@@ -12,14 +12,14 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `java -jar render-cli-<version>.jar` entry point. Thin CLI wrapper over
- * [SubprocessRenderSessions.open] for non-Gradle build systems. A Bazel `genrule` or an Amper task
- * can shell out here to drive a render against an existing `daemon-launch.json` without buying into
- * a Kotlin/JVM client.
+ * CLI entry point over [SubprocessRenderSessions.open] for non-Gradle build systems. A Bazel
+ * `genrule` or an Amper task can shell out here to drive a render against an existing
+ * `daemon-launch.json` without buying into a Kotlin/JVM client.
  *
- * Usage:
+ * The published `ee.schimke.composeai:render-cli` JAR is a **slim library JAR** (no shaded
+ * uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
  * ```
- * java -jar render-cli.jar \
+ * java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli \
  *   --descriptor <daemon-launch.json> \
  *   --workspace-root <dir> \
  *   --previews <id>[,<id>...] \
@@ -28,6 +28,12 @@ import kotlinx.serialization.json.jsonPrimitive
  *   [--timeout-seconds 60] \
  *   [--workspace-name <name>]
  * ```
+ *
+ * where `<resolved-classpath>` is the runtime closure of `ee.schimke.composeai:render-cli` as
+ * resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) and
+ * joined with the platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar`
+ * against the bare published JAR will fail with `NoClassDefFoundError` — see the "CLI
+ * invocation" section in `docs/NON_GRADLE_INTEGRATION.md`.
  *
  * `--previews` accepts a comma-separated list and can be repeated. The CLI waits for one
  * `renderFinished` notification per requested preview id, prints the resulting PNG path to stdout
@@ -188,7 +194,7 @@ public object RenderCli {
   private fun printUsage(out: java.io.PrintStream) {
     out.println(
       """
-      Usage: java -jar render-cli.jar [options]
+      Usage: java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli [options]
 
       Required:
         --descriptor <path>         Absolute path to daemon-launch.json.

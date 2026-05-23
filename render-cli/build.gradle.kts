@@ -3,10 +3,12 @@
 // and `:render-session-api`, both outer-build modules.
 //
 // Phase A of the contrib refactor (see `contrib/README.md`): contrib repo Bazel rules and
-// Amper tasks shell out to `java -jar render-cli.jar --descriptor X --previews Foo,Bar` to
-// drive a render, rather than re-implementing the JSON-RPC subprocess dance from scratch.
-// The library API surface lives in `:render-session-api`; this module is purely a CLI
-// adapter.
+// Amper tasks shell out to
+//   `java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli \
+//      --descriptor X --previews Foo,Bar`
+// to drive a render, rather than re-implementing the JSON-RPC subprocess dance from
+// scratch. The library API surface lives in `:render-session-api`; this module is purely a
+// CLI adapter.
 
 plugins {
   id("composeai.maven-publishing")
@@ -33,18 +35,22 @@ composeAiMavenPublishing {
     artifactId = "render-cli",
     displayName = "Compose Preview — Render CLI",
     description =
-      "`java -jar` CLI over the render-session-subprocess library. Lets non-Gradle build " +
+      "`java -cp` CLI over the render-session-subprocess library. Lets non-Gradle build " +
         "systems (Bazel rules, Amper tasks) drive a render against an existing " +
         "`daemon-launch.json` without buying into a Kotlin/JVM client.",
   )
   inceptionYear.set("2026")
 }
 
-// `Main-Class` stamp lets a build system invoke the artifact via `java -jar render-cli.jar ...`
-// when all transitive jars (render-session-subprocess, render-session-api, daemon-core, mcp,
-// kotlinx-serialization) sit alongside, or via `java -cp <classpath> ...RenderCli ...` when
-// the build system resolves the classpath itself. Same pattern as `:preview-discovery`
-// and `:daemon-launch-builder`.
+// Slim library JAR; the intended invocation is
+//   `java -cp <resolved-classpath> ee.schimke.composeai.render.cli.RenderCli ...`
+// with the build system resolving the runtime closure (render-session-subprocess,
+// render-session-api, daemon-core, mcp, kotlinx-serialization) through its own dep system.
+// The `Main-Class:` stamp is a convenience for build systems that have already materialised
+// the full runtime closure next to the artifact (Bazel `runtime_jars`, hand-rolled `lib/`);
+// `java -jar` against the bare published JAR will NOT work — no `Class-Path:` manifest
+// entry, no shaded uber-JAR. Same pattern as `:preview-discovery` and
+// `:daemon-launch-builder`.
 tasks.named<Jar>("jar").configure {
   manifest { attributes("Main-Class" to "ee.schimke.composeai.render.cli.RenderCli") }
 }

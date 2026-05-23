@@ -4,13 +4,13 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * `java -jar daemon-launch-builder-<version>.jar` entry point. Thin CLI wrapper over
- * [DaemonLaunchBuilder.build] for non-Gradle build systems. A Bazel `genrule` or an Amper task
- * can shell out here without buying into a Kotlin/JVM client.
+ * CLI entry point over [DaemonLaunchBuilder.build] for non-Gradle build systems. A Bazel `genrule`
+ * or an Amper task can shell out here without buying into a Kotlin/JVM client.
  *
- * Usage:
+ * The published `ee.schimke.composeai:daemon-launch-builder` JAR is a **slim library JAR** (no
+ * shaded uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
  * ```
- * java -jar daemon-launch-builder.jar \
+ * java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli \
  *   --module-path <path> \
  *   --variant <name> \
  *   --main-class <fqn> \
@@ -23,6 +23,13 @@ import kotlin.system.exitProcess
  *   --manifest-path <previews.json> \
  *   --out <daemon-launch.json>
  * ```
+ *
+ * where `<resolved-classpath>` is the runtime closure of
+ * `ee.schimke.composeai:daemon-launch-builder` as resolved by the caller's dep system (Bazel
+ * `rules_jvm_external`, Amper m2 cache, `mvn dependency:build-classpath`, etc.) and joined with the
+ * platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar` against the bare published
+ * JAR will fail with `NoClassDefFoundError` — see the "CLI invocation" section in
+ * `docs/NON_GRADLE_INTEGRATION.md`.
  *
  * `--classpath` accepts a `File.pathSeparator`-separated list and can be repeated; entries are
  * concatenated in order. `--jvm-arg` and `--system-property` are repeatable single-value flags
@@ -155,7 +162,7 @@ public object DaemonLaunchBuilderCli {
   private fun printUsage(out: java.io.PrintStream) {
     out.println(
       """
-      Usage: java -jar daemon-launch-builder.jar [options]
+      Usage: java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli [options]
 
       Required:
         --module-path <path>           Module path (e.g. ":app", "//app", "app").

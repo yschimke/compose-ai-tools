@@ -5,13 +5,13 @@ import kotlin.system.exitProcess
 import kotlinx.serialization.json.Json
 
 /**
- * `java -jar preview-discovery-<version>.jar` entry point. Thin CLI wrapper over
- * [PreviewDiscovery.discover] for non-Gradle build systems — a Bazel `genrule` or an Amper
- * task can shell out here without buying into a Gradle Tooling-API client.
+ * CLI entry point over [PreviewDiscovery.discover] for non-Gradle build systems — a Bazel `genrule`
+ * or an Amper task can shell out here without buying into a Gradle Tooling-API client.
  *
- * Usage:
+ * The published `ee.schimke.composeai:preview-discovery` JAR is a **slim library JAR** (no shaded
+ * uber-JAR, no `Class-Path:` manifest entry). The intended invocation is therefore:
  * ```
- * java -jar preview-discovery.jar \
+ * java -cp <resolved-classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli \
  *   --classes <dir>[:<dir>...] \
  *   --dependency-jars <jar>[:<jar>...] \
  *   --source-files <file>[:<file>...] \
@@ -21,6 +21,12 @@ import kotlinx.serialization.json.Json
  *   [--fail-on-empty] \
  *   --out <path>
  * ```
+ *
+ * where `<resolved-classpath>` is the runtime closure of `ee.schimke.composeai:preview-discovery`
+ * as resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, `mvn
+ * dependency:build-classpath`, etc.) and joined with the platform-appropriate `File.pathSeparator`.
+ * `java -jar <artifact>.jar` against the bare published JAR will fail with `NoClassDefFoundError` —
+ * see the "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md`.
  *
  * `--classes`, `--dependency-jars`, `--source-files` accept a `File.pathSeparator`-separated
  * list (matching how `java -cp` already encodes classpaths on the consumer's platform) and can
@@ -138,7 +144,7 @@ public object PreviewDiscoveryCli {
   private fun printUsage(out: java.io.PrintStream) {
     out.println(
       """
-      Usage: java -jar preview-discovery.jar [options]
+      Usage: java -cp <resolved-classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli [options]
 
       Required:
         --module <name>             Logical module name; surfaces as PreviewManifest.module.

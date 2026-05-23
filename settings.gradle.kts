@@ -335,6 +335,6 @@ include(":render-session-embedded-desktop")
 
 project(":render-session-embedded-desktop").projectDir = file("render-session/embedded-desktop")
 
-// Thin `java -jar` CLI over `:render-session-subprocess` for non-Gradle build systems
+// Thin `java -cp` CLI over `:render-session-subprocess` for non-Gradle build systems
 // (Bazel rules, Amper tasks in `yschimke/compose-ai-contrib`). See `contrib/README.md`.
 include(":render-cli")

@@ -47,9 +47,17 @@ composeAiMavenPublishing {
 }
 
 // CLI entry point (`DaemonLaunchBuilderCli`) is what Bazel rules and Amper tasks shell out
-// to. Same pattern as `:preview-discovery` — stamp the `Main-Class` so a build system can
-// invoke the artifact via `java -cp <classpath> ...DaemonLaunchBuilderCli ...` or
-// `java -jar` when transitive jars sit alongside.
+// to. Same pattern as `:preview-discovery`: slim library JAR (transitive deps —
+// kotlinx-serialization, kotlin-stdlib — are exposed as `api` and resolved by the consumer's
+// dep system), and the intended invocation is:
+//
+//     java -cp <resolved-classpath> ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli ...
+//
+// The `Main-Class:` stamp is a convenience for build systems that have already materialised
+// the full runtime closure next to the artifact (Bazel `runtime_jars`, hand-rolled `lib/`);
+// `java -jar` against the bare published JAR will NOT work — no `Class-Path:` manifest
+// entry, no shaded uber-JAR. See the "CLI invocation" section in
+// `docs/NON_GRADLE_INTEGRATION.md` for the consumer-facing contract.
 tasks.named<Jar>("jar").configure {
   manifest {
     attributes("Main-Class" to "ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli")
