@@ -195,6 +195,41 @@
     "sha256": "0576b5495bff504660e9e4f0cb33a86f93354deb99e23a30111101e35837e7f6",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetResize1x1To4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
+    "sha256": "c17feaa51f2d4e9194aeeabe32c7033dee209371a771970c38e6c02a3d36087a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72#1": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetResize1x1To4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_2x1.png",
+    "sha256": "c17feaa51f2d4e9194aeeabe32c7033dee209371a771970c38e6c02a3d36087a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72#2": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetResize1x1To4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_3x1.png",
+    "sha256": "c17feaa51f2d4e9194aeeabe32c7033dee209371a771970c38e6c02a3d36087a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72#3": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetResize1x1To4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_4x1.png",
+    "sha256": "c17feaa51f2d4e9194aeeabe32c7033dee209371a771970c38e6c02a3d36087a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72#4": {
+    "captureLabel": "",
+    "functionName": "LauncherWidgetResize1x1To4x2Preview",
+    "renderBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_4x2.png",
+    "sha256": "c17feaa51f2d4e9194aeeabe32c7033dee209371a771970c38e6c02a3d36087a",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.NativeGlanceWidgetPreview": {
     "captureLabel": "",
     "functionName": "NativeGlanceWidgetPreview",
@@ -969,7 +1004,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
