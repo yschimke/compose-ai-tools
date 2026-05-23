@@ -17,11 +17,13 @@
 
 import {
     buildInspectionTreeTable,
+    copyToClipboard,
     type TreeColumn,
     type TreeTableNode,
 } from "./inspectionTreeTable";
 import type { OverlayBox } from "./components/BoxOverlay";
 import { parseBounds as parseCardBounds } from "./cardData";
+import { buildSelectorSnippet } from "./uiaSelector";
 
 // ---- compose/semantics --------------------------------------------------
 
@@ -448,6 +450,15 @@ function computeUiaHierarchyBundleData(
         rows,
         hasOverlayFor: (n) => parseCardBounds(n.boundsInScreen) !== null,
         jsonForCopy: () => payload,
+        rowAction: {
+            icon: "copy",
+            label: "Selector",
+            title: "Copy as By.testTag(...) selector",
+            onClick: (n) => {
+                const snippet = buildSelectorSnippet(n, nodes);
+                if (snippet) void copyToClipboard(snippet);
+            },
+        },
     });
     return { body, summary, overlay };
 }
