@@ -209,11 +209,25 @@
     "sha256": "49de22e7b0f2305389fa16d5eb019118075870fec335e0bb6d44b603eb11c4dd",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt"
   },
+  "samples:android/com.example.sampleandroid.NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated custom view": {
+    "captureLabel": "",
+    "functionName": "DecoratedCustomViewPreview",
+    "renderBasename": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png",
+    "sha256": "2133dac01e95057a1784a1bd5ed13c60395c28d1201c56bb1fd2a393ed1df8c3",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt"
+  },
   "samples:android/com.example.sampleandroid.NotificationStyleGalleryKt.InboxStylePreview_Inbox style": {
     "captureLabel": "",
     "functionName": "InboxStylePreview",
     "renderBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
     "sha256": "cb49fcb4b532c85f11cc813a758d3ce4804232c8b9b01869b3456fa3cdc48386",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.NotificationStyleGalleryKt.MediaStylePreview_Media style": {
+    "captureLabel": "",
+    "functionName": "MediaStylePreview",
+    "renderBasename": "NotificationStyleGalleryKt.MediaStylePreview_Media_style.png",
+    "sha256": "2b34d82299dfc2a17c08159a40901509a07c588751e5062e2d8319bb5bf1200c",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt"
   },
   "samples:android/com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style": {
