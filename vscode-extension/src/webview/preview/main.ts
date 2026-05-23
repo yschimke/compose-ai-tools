@@ -2750,20 +2750,6 @@ export class PreviewApp extends LitElement {
                 ) {
                     refreshErrorsBundle();
                 }
-                // Auto-light the Errors chip when a test/failure
-                // payload arrives. Hooked here rather than on the
-                // daemon-side renderFailed because by the time
-                // test/failure is fetched the panel already has the
-                // payload via updateDataProducts; routing through the
-                // dispatcher would need a new PreviewMessageContext
-                // callback. Re-pressing the chip later still toggles
-                // it off.
-                if (dataProducts.some((dp) => dp.kind === "test/failure")) {
-                    bundleController.handleExternalKindToggle(
-                        "test/failure",
-                        true,
-                    );
-                }
                 if (
                     matchesTarget &&
                     activeBundles.includes("performance") &&
@@ -2851,6 +2837,8 @@ export class PreviewApp extends LitElement {
             focusOnCard,
             deactivateAllBundles: () => bundleController.deactivateAll(),
             refreshBundleState: () => reflectBundleState(),
+            promoteErrorsBundle: () =>
+                bundleController.handleExternalKindToggle("test/failure", true),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);

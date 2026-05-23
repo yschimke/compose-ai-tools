@@ -141,6 +141,18 @@ export interface PreviewMessageContext {
      * controller event.
      */
     refreshBundleState(): void;
+    /**
+     * Auto-light the Errors bundle chip when a render failure
+     * arrives via `setError` / `setImageError`. Routes through the
+     * same `BundleController.handleExternalKindToggle("test/failure", true)`
+     * call the legacy `updateDataProducts`-side promotion used,
+     * but fires immediately on `renderFailed` rather than waiting
+     * for the daemon's `test/failure` data product to land — that
+     * payload only ships when the Errors chip is already enabled,
+     * so the old path couldn't auto-light the chip on a cold render
+     * failure.
+     */
+    promoteErrorsBundle(): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -508,6 +520,13 @@ function handleErrorMessage(
             errCard.dataset.className ?? "",
         ),
     );
+    // Auto-light the Errors bundle chip — the bundle's `test/failure`
+    // kind is the postmortem fetch and starts subscribing the moment
+    // the chip is active. Doing this here (rather than waiting for a
+    // `test/failure` data product to arrive) means a first-time render
+    // failure surfaces the chip even though the user hadn't pre-
+    // subscribed.
+    ctx.promoteErrorsBundle();
 }
 
 function handlePreviewDiffReady(
