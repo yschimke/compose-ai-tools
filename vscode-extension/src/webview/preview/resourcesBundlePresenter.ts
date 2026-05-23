@@ -33,6 +33,13 @@ export interface ResourceUsedRow {
     resolvedFile: string | null;
     /** Number of node references that consumed this resource. */
     consumerCount: number;
+    /** Per-row consumer node ids sourced from
+     *  `ref.consumers[].nodeId`. Empty when the daemon attached no
+     *  consumers. The host uses this for the hover overlay: hovering
+     *  a row paints a transient layer over those nodes on the focused
+     *  card via `buildSemanticsBoundsMap` + `consumerOverlayBoxes`
+     *  (shared with the Theming bundle hover). */
+    consumerNodeIds: readonly string[];
 }
 
 export interface ResourcesBundleData {
@@ -60,6 +67,7 @@ export function computeResourcesBundleData(
         const resourceName =
             typeof ref.resourceName === "string" ? ref.resourceName : "";
         if (!resourceType || !resourceName) continue;
+        const consumerNodeIds = extractConsumerNodeIds(ref.consumers);
         rows.push({
             id: "resource-" + i + "-" + resourceType + "-" + resourceName,
             resourceType,
@@ -72,9 +80,8 @@ export function computeResourcesBundleData(
                     : null,
             resolvedFile:
                 typeof ref.resolvedFile === "string" ? ref.resolvedFile : null,
-            consumerCount: Array.isArray(ref.consumers)
-                ? ref.consumers.length
-                : 0,
+            consumerCount: consumerNodeIds.length,
+            consumerNodeIds,
         });
     }
     return { rows };
@@ -123,4 +130,25 @@ function renderResolved(row: ResourceUsedRow): TemplateResult | string {
         >`;
     }
     return "—";
+}
+
+/** Extract a unique, in-order list of consumer node ids from the
+ *  daemon's `consumers: [{ nodeId: string }, ...]` array. The wire
+ *  shape can shift across daemon versions — defensive narrowing
+ *  drops anything that isn't a `{ nodeId: string }`. Duplicates are
+ *  removed so the overlay paints one box per node even if the
+ *  daemon double-lists the same consumer. */
+function extractConsumerNodeIds(value: unknown): readonly string[] {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const entry of value) {
+        if (!entry || typeof entry !== "object") continue;
+        const id = (entry as { nodeId?: unknown }).nodeId;
+        if (typeof id !== "string" || id.length === 0) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(id);
+    }
+    return out;
 }

@@ -105,6 +105,7 @@ import {
 import {
     computeResourcesBundleData,
     resourcesTableColumns,
+    type ResourceUsedRow,
 } from "./resourcesBundlePresenter";
 import {
     computeErrorsBundleData,
@@ -1640,6 +1641,46 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Hover row → tint consumer nodes on the focused card.
+            // Same join as the Theming bundle hover (#1104): bounds
+            // come from cached `compose/semantics`, so the overlay
+            // is gated on both Resources and Inspection bundles being
+            // active.
+            b.table.addEventListener("row-selected", (evt) => {
+                const det = (
+                    evt as CustomEvent<RowSelectedDetail<ResourceUsedRow>>
+                ).detail;
+                const focused = focusController?.focusedCard?.();
+                if (!focused) return;
+                const active = bundleController.state().activeBundles;
+                if (
+                    !active.includes("resources") ||
+                    !active.includes("inspection") ||
+                    det.row === null ||
+                    det.overlayId === null
+                ) {
+                    clearBundleBoxes(focused, "resources-consumers");
+                    return;
+                }
+                const consumerIds = det.row.consumerNodeIds ?? [];
+                if (consumerIds.length === 0) {
+                    clearBundleBoxes(focused, "resources-consumers");
+                    return;
+                }
+                const focusedId = focused.dataset.previewId;
+                const byKind = focusedId
+                    ? dataProductsByPreview.get(focusedId)
+                    : undefined;
+                const semantics = byKind?.get("compose/semantics") as
+                    | SemanticsLookupPayload
+                    | undefined;
+                const boundsMap = buildSemanticsBoundsMap(
+                    semantics,
+                    "resources-consumer",
+                );
+                const boxes = consumerOverlayBoxes(boundsMap, consumerIds);
+                paintBundleBoxes(focused, "resources-consumers", boxes);
+            });
             bundleBodies.set("resources", b);
             return b;
         };
@@ -2209,7 +2250,14 @@ export class PreviewApp extends LitElement {
                 clearBundleBoxes(null, "theming-consumers");
             }
             if (s.activeBundles.includes("display")) refreshDisplayBundle();
-            if (s.activeBundles.includes("resources")) refreshResourcesBundle();
+            if (s.activeBundles.includes("resources")) {
+                refreshResourcesBundle();
+            } else {
+                // Same teardown rule as the Theming hover (#1104):
+                // the transient resources-consumers layer only makes
+                // sense while the Resources chip is on.
+                clearBundleBoxes(null, "resources-consumers");
+            }
             if (s.activeBundles.includes("watch")) {
                 refreshWatchBundle();
             } else {
@@ -2239,9 +2287,10 @@ export class PreviewApp extends LitElement {
                 // surface.
                 clearBundleBoxes(null, "inspection");
                 // Inspection supplies the bounds for the theming-
-                // consumer hover overlay (#1104). With Inspection
-                // gone, any existing hover layer is stale.
+                // and resources-consumer hover overlays (#1104). With
+                // Inspection gone, any existing hover layer is stale.
                 clearBundleBoxes(null, "theming-consumers");
+                clearBundleBoxes(null, "resources-consumers");
             }
             // Drop legend slices for bundles that are no longer
             // active so re-pressing the chip starts from a clean

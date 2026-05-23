@@ -77,6 +77,48 @@ describe("computeResourcesBundleData", () => {
         });
         assert.strictEqual(data.rows[0].packageName, "");
         assert.strictEqual(data.rows[0].consumerCount, 0);
+        assert.deepStrictEqual([...data.rows[0].consumerNodeIds], []);
+    });
+
+    it("extracts unique consumer node ids in first-seen order", () => {
+        const data = computeResourcesBundleData({
+            references: [
+                {
+                    resourceType: "drawable",
+                    resourceName: "ic_launcher",
+                    consumers: [
+                        { nodeId: "n3" },
+                        { nodeId: "n1" },
+                        { nodeId: "n3" },
+                    ],
+                },
+            ],
+        });
+        // Deduped: n3 listed twice but emitted once.
+        assert.deepStrictEqual([...data.rows[0].consumerNodeIds], ["n3", "n1"]);
+        // consumerCount tracks unique ids (matches the hover overlay's
+        // per-row box count).
+        assert.strictEqual(data.rows[0].consumerCount, 2);
+    });
+
+    it("drops malformed consumer entries instead of crashing the panel", () => {
+        const data = computeResourcesBundleData({
+            references: [
+                {
+                    resourceType: "string",
+                    resourceName: "app_name",
+                    consumers: [
+                        { nodeId: "valid" },
+                        null,
+                        { nodeId: "" },
+                        { nodeId: 42 },
+                        "string-not-object",
+                        {},
+                    ],
+                },
+            ],
+        });
+        assert.deepStrictEqual([...data.rows[0].consumerNodeIds], ["valid"]);
     });
 
     it("emits stable ids derived from index + type + name", () => {
