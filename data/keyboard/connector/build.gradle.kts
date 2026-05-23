@@ -56,10 +56,10 @@ dependencies {
   // matching compat floor (1.13.0) so the published AAR's bytecode stays binary-backward-
   // compatible with consumers on older `androidx.core` lines — same rationale as
   // `compose-foundation`.
-  compileOnly("androidx.core:core:1.13.0")
+  compileOnly("androidx.core:core:1.13.1")
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.foundation)
-  testImplementation("androidx.core:core:1.13.0")
+  testImplementation("androidx.core:core:1.13.1")
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)

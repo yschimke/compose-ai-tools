@@ -182,8 +182,8 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # bytecode at test time. The B2.0 disposable user-classloader test asserts that the daemon
 # actually re-reads bytecode after a `fileChanged` notification; without two distinct `.class`
 # files the test can't differentiate "stale" from "fresh".
-asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
-asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.9.1" }
+asm = { module = "org.ow2.asm:asm", version = "9.10" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 
 [plugins]
