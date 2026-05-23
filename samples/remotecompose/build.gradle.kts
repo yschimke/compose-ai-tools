@@ -53,10 +53,5 @@ dependencies {
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
   implementation(libs.activity.compose)
-  // Lights up `LocalRemoteComposeHost` so previews can read daemon-supplied
-  // named values via `LocalRemoteComposeHost.current.namedString(...)` etc.
-  // (see `RemoteButtonWithNamedLabel`). Without this, only static `.rs`
-  // strings reach the rendered button.
-  implementation(project(":data-remotecompose-connector"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
 }
