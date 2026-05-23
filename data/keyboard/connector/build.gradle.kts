@@ -63,6 +63,11 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
+  // Robolectric — `WindowInsetsCompat.Builder.setInsets(...)` wraps the framework `WindowInsets`
+  // class internally; against the Android-jar stubs it silently returns the empty inset set, so
+  // the test for [buildKeyboardInsets] (#1360 non-IME-inset preservation regression) needs a real
+  // Android runtime to exercise the merge behaviour.
+  testImplementation(libs.robolectric)
 }
 
 mavenPublishing {
