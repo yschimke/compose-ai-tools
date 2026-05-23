@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -30,6 +31,7 @@ import org.jetbrains.skia.EncodedImageFormat
  *
  * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile
  * [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit]
+ * [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs]
  *
  * The optional 9th argument is the FQN of a `PreviewWrapperProvider` (Compose 1.11+); pass an empty
  * string or omit to skip wrapping.
@@ -44,11 +46,20 @@ import org.jetbrains.skia.EncodedImageFormat
  * value using `outputFile` as a template (`_PARAM_<idx>` inserted before the extension). Looping
  * inside a single JVM — instead of spawning one subprocess per value — avoids N× Compose cold-start
  * cost; the same `ImageComposeScene` is reused across values.
+ *
+ * Args 15–18 carry `@ScrollingPreview` intent. When [scrollMode] is `"LONG"` or `"GIF"` the
+ * renderer leaves the [ImageComposeScene] path and dispatches to [renderScrollPreview] (which uses
+ * `runComposeUiTest` for paused-clock + semantic scroll). `"TOP"` / `"END"` / empty are handled by
+ * the default single-frame path — TOP is the natural unscrolled capture, END is best-effort because
+ * the desktop renderer doesn't yet drive scrolls outside the LONG / GIF code path. `scrollAxis` is
+ * `VERTICAL` or `HORIZONTAL` (default `VERTICAL`). `scrollMaxScrollPx` caps the total scrolled
+ * extent (`0` = unbounded). `scrollFrameIntervalMs` is the per-frame GIF dwell (`0` = encoder
+ * default).
  */
 fun main(args: Array<String>) {
   if (args.size < 8) {
     System.err.println(
-      "Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit]"
+      "Usage: DesktopRendererMain <className> <functionName> <widthPx> <heightPx> <density> <showBackground> <backgroundColor> <outputFile> [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit] [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs]"
     )
     exitProcess(1)
   }
@@ -87,6 +98,25 @@ fun main(args: Array<String>) {
   val previewParameterProviderFqn = args.getOrNull(11)?.takeIf { it.isNotBlank() }
   val previewParameterLimit = args.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: Int.MAX_VALUE
   val localeTag = args.getOrNull(13)?.takeIf { it.isNotBlank() }
+  // `@ScrollingPreview` knobs. Empty / missing scrollMode means "no scroll intent — render
+  // a single frame via the default ImageComposeScene path". LONG / GIF dispatch to the
+  // `runComposeUiTest`-driven `renderScrollPreview` instead. TOP / END fall through to the
+  // default path; the desktop renderer doesn't yet drive a scrollable for END (issue #1207
+  // tracks the followup), so an END capture is functionally identical to TOP on this side.
+  val scrollModeArg = args.getOrNull(14)?.takeIf { it.isNotBlank() }
+  val scrollAxis =
+    when (args.getOrNull(15)?.takeIf { it.isNotBlank() }?.uppercase()) {
+      "HORIZONTAL" -> ProductScrollAxis.HORIZONTAL
+      else -> ProductScrollAxis.VERTICAL
+    }
+  val scrollMaxScrollPx = args.getOrNull(16)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+  val scrollFrameIntervalMs = args.getOrNull(17)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+  val scrollDispatchMode: DesktopScrollMode? =
+    when (scrollModeArg?.uppercase()) {
+      "LONG" -> DesktopScrollMode.LONG
+      "GIF" -> DesktopScrollMode.GIF
+      else -> null
+    }
 
   // Provider enumeration is fatal to the whole subprocess — we can't
   // render anything if values can't be loaded. Per-value render failures
@@ -146,21 +176,62 @@ fun main(args: Array<String>) {
       // VS Code would surface yesterday's exception as if it were current.
       val sidecar = errorSidecarFor(targetFile)
       if (sidecar.exists()) sidecar.delete()
-      renderPreview(
-        className,
-        functionName,
-        widthPx,
-        heightPx,
-        density,
-        showBackground,
-        backgroundColor,
-        targetFile,
-        wrapperClassName,
-        wrapWidth,
-        wrapHeight,
-        previewArgs,
-        localeTag,
-      )
+      if (scrollDispatchMode != null) {
+        // @ScrollingPreview(modes = [LONG, GIF]) — drive the dedicated scroll path. Falls
+        // through to the default single-frame render on "no scrollable found" so a misuse
+        // produces SOMETHING on disk rather than a missing file.
+        val didCapture =
+          renderScrollPreview(
+            className = className,
+            functionName = functionName,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            density = density,
+            showBackground = showBackground,
+            backgroundColor = backgroundColor,
+            outputFile = targetFile,
+            wrapperClassName = wrapperClassName,
+            previewArgs = previewArgs,
+            localeTag = localeTag,
+            scrollMode = scrollDispatchMode,
+            axis = scrollAxis,
+            maxScrollPx = scrollMaxScrollPx,
+            frameIntervalMs = scrollFrameIntervalMs,
+          )
+        if (!didCapture) {
+          renderPreview(
+            className,
+            functionName,
+            widthPx,
+            heightPx,
+            density,
+            showBackground,
+            backgroundColor,
+            targetFile,
+            wrapperClassName,
+            wrapWidth,
+            wrapHeight,
+            previewArgs,
+            localeTag,
+          )
+        }
+      } else {
+        renderPreview(
+          className,
+          functionName,
+          widthPx,
+          heightPx,
+          density,
+          showBackground,
+          backgroundColor,
+          targetFile,
+          wrapperClassName,
+          wrapWidth,
+          wrapHeight,
+          previewArgs,
+          localeTag,
+        )
+      }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
       // simulations). Gated on `composeai.displayfilter.filters` being non-empty; the gradle plugin
       // forwards it from the `composePreview.displayFilter.filters` Gradle property. Wrapped in

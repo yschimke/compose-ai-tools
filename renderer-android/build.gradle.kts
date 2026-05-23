@@ -32,6 +32,12 @@ dependencies {
   api(project(":data-a11y-core"))
   implementation(project(":data-render-core"))
   implementation(project(":data-scroll-core"))
+  // `:data-scroll-android` carries the `AndroidComposeTestRule`-bound drivers
+  // (`driveScrollToEnd`, `driveScrollByViewport`, `driveScrollToStart`, `driveScrollBy`,
+  // `remainingScrollPx`). The pure-JVM stitcher, GIF encoder, frame planners and axis enum
+  // stay in `:data-scroll-core` so the desktop renderer can pull them in without dragging
+  // Compose test JUnit deps.
+  implementation(project(":data-scroll-android"))
   // Focus / keyboard-traversal connector. Owns `KeyboardInputModeManager`, the
   // `LaunchedEffect`-driven focus walk via `FocusOverrideExtension`, the per-capture state
   // holder `FocusController`, and the post-capture `FocusOverlay`. The renderer's per-capture

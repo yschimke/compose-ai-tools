@@ -101,6 +101,41 @@ export interface SpawnedDaemon {
     exited: Promise<number | null>;
 }
 
+/**
+ * Issue #1326 — recent-stderr tail size carried into spawn-failure messages.
+ * Sized for the typical Robolectric / Compose boot crash: the JVM prints
+ * `Exception in thread "main" ...` plus a stack trace that fits comfortably
+ * under 50 lines, and a fresh sandbox bootstrap prints ~20 informational
+ * lines before that, so 50 lines is enough to anchor the crash in its
+ * surrounding context without making test failures unscannable.
+ */
+const RECENT_STDERR_LIMIT = 50;
+
+/**
+ * Issue #1326 — build a spawn-failure message that includes the JVM exit code
+ * (when known) and the tail of the daemon's stderr, so callers that only see
+ * the rejected promise — most importantly the e2e test runner — can see why
+ * the JVM died instead of a bare `Daemon channel closed`. Exported for unit
+ * coverage; callers go through [spawnDaemon].
+ */
+export function formatDaemonSpawnFailure(opts: {
+    cause: string;
+    modulePath: string;
+    exitCode: number | null;
+    recentStderr: readonly string[];
+}): string {
+    const exitSuffix =
+        opts.exitCode !== null ? ` (JVM exit code=${opts.exitCode})` : "";
+    const head = `${opts.cause}${exitSuffix}`;
+    if (opts.recentStderr.length === 0) {
+        return head;
+    }
+    const tail = opts.recentStderr.slice(-RECENT_STDERR_LIMIT);
+    return [head, `[daemon stderr tail for ${opts.modulePath}]`, ...tail].join(
+        "\n",
+    );
+}
+
 export interface SpawnOptions {
     workspaceRoot: string;
     descriptor: DaemonLaunchDescriptor;
@@ -190,6 +225,18 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // of those prefixes, making every link/initialiser failure look like the
     // exception had no message.
     child.stderr.setEncoding("utf-8");
+    // Issue #1326 — keep the raw (unfiltered) tail so a spawn-time crash can
+    // surface its stderr through the rejected promise, not just the output
+    // channel. The display path below still applies the user's log-level
+    // filter; the diagnostic buffer is independent so the dropped Roborazzi
+    // banner doesn't hide the exception that landed on the next line.
+    const recentStderr: string[] = [];
+    const captureStderrLine = (line: string): void => {
+        recentStderr.push(line);
+        if (recentStderr.length > RECENT_STDERR_LIMIT * 2) {
+            recentStderr.splice(0, recentStderr.length - RECENT_STDERR_LIMIT);
+        }
+    };
     const emitStderrLine = (line: string): void => {
         if (line.length === 0) {
             return;
@@ -203,18 +250,22 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const stderrSplitter = new ChunkLineSplitter();
     child.stderr.on("data", (chunk: string) => {
         for (const line of stderrSplitter.feed(chunk)) {
+            captureStderrLine(line);
             emitStderrLine(line);
         }
     });
     child.stderr.on("end", () => {
         const tail = stderrSplitter.flush();
         if (tail !== null) {
+            captureStderrLine(tail);
             emitStderrLine(tail);
         }
     });
 
+    let exitCode: number | null = null;
     const exited = new Promise<number | null>((resolve) => {
         child.on("exit", (code) => {
+            exitCode = code;
             // Exit messages always print — the JVM exiting unexpectedly is
             // never noise. The successful exit case (code=0 on user-driven
             // shutdown) is rare enough that it's still useful at quiet.
@@ -243,7 +294,25 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         } catch {
             /* ignore */
         }
-        throw err;
+        // Issue #1326 — channel-closed rejections race the process exit
+        // event, and the stderr stream typically still has bytes buffered
+        // when initialize rejects. Wait a short grace period so the exit
+        // code and the final stderr lines are in hand before we build the
+        // failure message; cap at 500ms so a wedged JVM doesn't hang the
+        // warm path.
+        await Promise.race([
+            exited,
+            new Promise<void>((resolve) => setTimeout(resolve, 500)),
+        ]);
+        const cause = (err as Error)?.message ?? String(err);
+        throw new Error(
+            formatDaemonSpawnFailure({
+                cause,
+                modulePath: descriptor.modulePath,
+                exitCode,
+                recentStderr,
+            }),
+        );
     }
 
     // PROTOCOL.md § 3 — `initialized` MUST land before any further request, otherwise the

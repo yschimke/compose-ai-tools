@@ -74,8 +74,8 @@ object ScrollLongExtensionStateKeys {
  * Clean data-extension hook for planning long-scroll slice frames.
  *
  * Mirrors [ScrollGifFrameDriverExtension]: the extension owns the per-slice scroll deltas (uniform
- * stride at [ScrollLongFramePlan.stepFractionOfViewport] of the viewport, less than one viewport
- * so consecutive captures overlap for the content-aware stitcher) and their normalized frame
+ * stride at [ScrollLongFramePlan.stepFractionOfViewport] of the viewport, less than one viewport so
+ * consecutive captures overlap for the content-aware stitcher) and their normalized frame
  * projection. Hosts bind the planned deltas to their own scroll/capture implementation without
  * hardcoding scroll-LONG stride rules in the daemon or renderer.
  *

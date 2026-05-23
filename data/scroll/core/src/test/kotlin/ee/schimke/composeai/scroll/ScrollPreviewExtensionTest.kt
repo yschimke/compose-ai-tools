@@ -57,8 +57,7 @@ class ScrollPreviewExtensionTest {
 
   @Test
   fun longFrameDriverDeclaresScenarioHookAndPlansSlicesAtUniformStride() {
-    val plan =
-      ScrollLongFramePlan(contentExtentPxHint = 1600f, viewportPx = 400f, density = 1f)
+    val plan = ScrollLongFramePlan(contentExtentPxHint = 1600f, viewportPx = 400f, density = 1f)
     val extension = ScrollLongFrameDriverExtension(plan)
     val hook: FrameDriverHook = extension
     val states = RecordingExtensionStateRegistry()
@@ -154,7 +153,9 @@ class ScrollPreviewExtensionTest {
 
     assertEquals(DEFAULT_SCROLL_GIF_FRAME_INTERVAL_MS, sequence.frames[1].frame.delayMillis)
     assertEquals(HOLD_START_MS.toLong(), sequence.frames[1].frame.timeMillis)
-    assertTrue(sequence.frames.zipWithNext().all { (a, b) -> b.frame.timeMillis > a.frame.timeMillis })
+    assertTrue(
+      sequence.frames.zipWithNext().all { (a, b) -> b.frame.timeMillis > a.frame.timeMillis }
+    )
   }
 
   @Test

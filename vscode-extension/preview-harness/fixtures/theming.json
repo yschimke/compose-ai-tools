@@ -3,7 +3,6 @@
   "description": "Focused card with a baseline Material 3 light colour scheme, eight typography tokens (sans / serif-italic / cursive), and six shape tokens. Activates the Theming bundle so the Colors swatches paint via CSSOM, the Typography rows render their token names in the resolved Google Fonts family, and the Shapes column shows the 20×20 corner-radius preview square. Wallpaper payload is preloaded but its kind is default-OFF, so it stays available behind the Configure expander.",
   "dataset": {
     "earlyFeatures": "true",
-    "autoEnableCheap": "false",
     "collapseVariants": "false",
     "minimalMode": "false",
     "autoInject": "true"
