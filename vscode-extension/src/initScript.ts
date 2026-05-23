@@ -246,7 +246,8 @@ export function initScriptDigest(
 
 /**
  * True when [workspaceRoot]'s `settings.gradle[.kts]` declares
- * `includeBuild("gradle-plugin")` — the compose-ai-tools repo's own dev-loop
+ * `includeBuild("gradle-plugin")` AND that included build actually publishes
+ * `ee.schimke.composeai.preview` — the compose-ai-tools repo's own dev-loop
  * layout. Stacking a Maven-resolved classpath dep (auto-inject) on top of an
  * included build that already provides `ee.schimke.composeai.preview` makes
  * Gradle compile the consumer's build script against the published version
@@ -254,6 +255,16 @@ export function initScriptDigest(
  * a different (potentially newer) shape — so a build file that references a
  * property added since that published version fails with "Unresolved
  * reference". Skipping auto-inject in this case lets the included build win.
+ *
+ * The sentinel check (looking for the plugin id inside
+ * `gradle-plugin/build.gradle.kts`) is the issue #1362 narrowing: previously
+ * any workspace that happened to nest a local build-logic module under the
+ * conventional name `gradle-plugin` matched this guard and the extension
+ * silently dropped `--init-script`, regressing preview rendering for users
+ * who don't manually apply the plugin. The compose-ai-tools repo is the only
+ * shape that pairs that include name with the compose-preview plugin id, so
+ * requiring both keeps the dev-loop carve-out without false-positiving on
+ * unrelated workspaces.
  *
  * Mirrors the CLI's `hasIncludedPluginBuild` in `cli/.../AutoInject.kt`.
  */
@@ -263,6 +274,7 @@ export function hasIncludedPluginBuild(workspaceRoot: string): boolean {
         path.join(workspaceRoot, "settings.gradle"),
     ];
     const pattern = /includeBuild\s*\(\s*["']gradle-plugin["']\s*\)/;
+    let includedBuildDeclared = false;
     for (const file of candidates) {
         let text: string;
         try {
@@ -270,7 +282,30 @@ export function hasIncludedPluginBuild(workspaceRoot: string): boolean {
         } catch {
             continue;
         }
-        if (pattern.test(text)) return true;
+        if (pattern.test(text)) {
+            includedBuildDeclared = true;
+            break;
+        }
+    }
+    if (!includedBuildDeclared) return false;
+
+    // Sentinel: the included build must actually publish the compose-preview
+    // plugin id. Look at both build-script flavours so a Groovy-DSL
+    // gradle-plugin module is still recognised. Reading is best-effort — a
+    // missing/unreadable build script means it's not the compose-ai-tools
+    // shape, so auto-inject should stay on.
+    const sentinelCandidates = [
+        path.join(workspaceRoot, "gradle-plugin", "build.gradle.kts"),
+        path.join(workspaceRoot, "gradle-plugin", "build.gradle"),
+    ];
+    for (const file of sentinelCandidates) {
+        let text: string;
+        try {
+            text = fs.readFileSync(file, "utf-8");
+        } catch {
+            continue;
+        }
+        if (text.includes("ee.schimke.composeai.preview")) return true;
     }
     return false;
 }
