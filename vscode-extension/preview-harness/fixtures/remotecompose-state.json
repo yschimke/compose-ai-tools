@@ -1,0 +1,113 @@
+{
+  "name": "remotecompose-state",
+  "description": "Focused card with the Remote Compose bundle active. The tab body renders three sections (profile selector, editable named-values table, host-actions audit log) driven by a single `compose/remotecompose` data product. Use this when iterating on the editable cells (profile `<select>`, typed inputs for float/dp/int/string/bool/color) or the host-action row layout.",
+  "dataset": {
+    "earlyFeatures": "true",
+    "minimalMode": "false"
+  },
+  "messages": [
+    {
+      "command": "setPreviews",
+      "moduleDir": "/workspace/samples/remotecompose",
+      "heavyStaleIds": [],
+      "previews": [
+        {
+          "id": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
+          "functionName": "RemoteButtonWithBorderPreview",
+          "className": "com.example.sampleremotecompose.PreviewsKt",
+          "sourceFile": "Previews.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 220,
+            "heightDp": 220,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview.png",
+              "label": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command": "updateImage",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
+      "captureIndex": 0,
+      "imageData": "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"
+    },
+    {
+      "command": "updateDataProducts",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
+      "dataProducts": [
+        {
+          "kind": "compose/remotecompose",
+          "payload": {
+            "profile": "androidx",
+            "namedValues": {
+              "seedColor": {
+                "kind": "color",
+                "argb": "#FF3366FF"
+              },
+              "cornerRadius": {
+                "kind": "dp",
+                "value": 8
+              },
+              "opacity": {
+                "kind": "float",
+                "value": 0.85
+              },
+              "label": {
+                "kind": "string",
+                "value": "Bordered"
+              },
+              "tapCount": {
+                "kind": "int",
+                "value": 3
+              },
+              "enabled": {
+                "kind": "bool",
+                "value": true
+              }
+            },
+            "hostActions": [
+              {
+                "payload": "testAction",
+                "handlerId": 1,
+                "firedAtMillis": 1716470401000
+              },
+              {
+                "payload": "testAction",
+                "handlerId": 1,
+                "firedAtMillis": 1716470404500
+              },
+              {
+                "payload": "longPress",
+                "handlerId": 2,
+                "firedAtMillis": 1716470407200
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "click": ".preview-card[data-preview-id=\"com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview\"] .card-focus-btn"
+    },
+    {
+      "click": "bundle-chip-bar button[data-bundle=\"remotecompose\"]"
+    }
+  ]
+}
