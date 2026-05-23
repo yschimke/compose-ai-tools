@@ -5,10 +5,13 @@
 
 import * as assert from "assert";
 import {
+    buildSemanticsBoundsMap,
     computeThemingBundleData,
+    consumerOverlayBoxes,
     cssFontFamily,
     parseFontWeight,
     parseShapeBorderRadius,
+    type SemanticsLookupPayload,
     type ThemePayload,
     type ThemingColorRow,
     type ThemingShapeRow,
@@ -357,5 +360,213 @@ describe("parseShapeBorderRadius", () => {
     it("returns null for shapes outside our parser's scope", () => {
         assert.strictEqual(parseShapeBorderRadius("GenericShape(...)"), null);
         assert.strictEqual(parseShapeBorderRadius(null), null);
+    });
+});
+
+describe("ThemingRow.consumerNodeIds", () => {
+    it("attaches deduped consumer node ids to color rows", () => {
+        const data = computeThemingBundleData(
+            theme({
+                resolvedTokens: {
+                    colorScheme: { primary: "#FF1976D2" },
+                    typography: {},
+                    shapes: {},
+                },
+                consumers: [
+                    { nodeId: "n1", tokens: ["primary"] },
+                    { nodeId: "n2", tokens: ["primary"] },
+                    // Same nodeId mentioning the same token twice
+                    // (Compose can do this when a single semantic node
+                    // resolves the token through two reads). The row's
+                    // overlay only needs one box per consumer, so the
+                    // builder dedupes.
+                    { nodeId: "n2", tokens: ["primary"] },
+                ],
+            }),
+            null,
+        );
+        const primary = data.rows.find(
+            (r) => r.kind === "color" && r.name === "primary",
+        ) as ThemingColorRow;
+        assert.deepStrictEqual([...primary.consumerNodeIds], ["n1", "n2"]);
+        // Count tracks unique consumers, matching the new field.
+        assert.strictEqual(primary.consumerCount, 2);
+    });
+
+    it("leaves wallpaper-derived color rows with an empty consumer list", () => {
+        // The daemon only emits `consumers` against `compose/theme`
+        // tokens. Wallpaper-derived rows are projections of the seed
+        // scheme and have no per-node attribution, so the array
+        // should stay empty rather than borrow tokens from elsewhere.
+        const data = computeThemingBundleData(
+            theme({
+                resolvedTokens: {
+                    colorScheme: { primary: "#FF1976D2" },
+                    typography: {},
+                    shapes: {},
+                },
+                consumers: [{ nodeId: "n1", tokens: ["primary"] }],
+            }),
+            wallpaper(),
+        );
+        const wp = data.rows.find(
+            (r) =>
+                r.kind === "color" &&
+                (r as ThemingColorRow).source === "wallpaper" &&
+                r.name === "primary",
+        ) as ThemingColorRow;
+        assert.ok(wp);
+        assert.deepStrictEqual([...wp.consumerNodeIds], []);
+    });
+
+    it("populates consumer ids on typography and shape rows", () => {
+        const data = computeThemingBundleData(
+            theme({
+                resolvedTokens: {
+                    colorScheme: {},
+                    typography: { titleLarge: {} },
+                    shapes: { large: "RoundedCornerShape(16.0.dp)" },
+                },
+                consumers: [
+                    { nodeId: "title-node", tokens: ["titleLarge"] },
+                    { nodeId: "shape-node", tokens: ["large"] },
+                ],
+            }),
+            null,
+        );
+        const typo = data.rows.find(
+            (r) => r.kind === "typography",
+        ) as ThemingTypographyRow;
+        const shape = data.rows.find(
+            (r) => r.kind === "shape",
+        ) as ThemingShapeRow;
+        assert.deepStrictEqual([...typo.consumerNodeIds], ["title-node"]);
+        assert.deepStrictEqual([...shape.consumerNodeIds], ["shape-node"]);
+    });
+
+    it("seed row carries no consumerNodeIds field — narrowing pin", () => {
+        // The seed row is a wallpaper summary, not a per-token row.
+        // The hover-overlay path in `main.ts` narrows via
+        // `"consumerNodeIds" in row` before reading; this test pins
+        // that the seed row lacks the field so the narrowing remains
+        // load-bearing.
+        const data = computeThemingBundleData(null, wallpaper());
+        const seed = data.rows.find((r) => r.kind === "seed") as ThemingSeedRow;
+        assert.ok(seed);
+        assert.strictEqual(
+            "consumerNodeIds" in seed,
+            false,
+            "seed row should not carry consumerNodeIds",
+        );
+    });
+});
+
+describe("buildSemanticsBoundsMap", () => {
+    it("returns an empty map when the payload is null or missing", () => {
+        assert.strictEqual(
+            buildSemanticsBoundsMap(null, "x").size,
+            0,
+            "null payload",
+        );
+        assert.strictEqual(
+            buildSemanticsBoundsMap(undefined, "x").size,
+            0,
+            "undefined payload",
+        );
+    });
+
+    it("walks children and parses boundsInRoot into OverlayBox bounds", () => {
+        const payload: SemanticsLookupPayload = {
+            root: {
+                nodeId: "root",
+                boundsInRoot: "0,0,100,200",
+                children: [
+                    {
+                        nodeId: "child-1",
+                        boundsInRoot: "10,10,50,40",
+                        children: [
+                            {
+                                nodeId: "grandchild",
+                                boundsInRoot: "20,20,40,30",
+                            },
+                        ],
+                    },
+                    {
+                        nodeId: "child-2",
+                        boundsInRoot: "60,10,80,40",
+                    },
+                ],
+            },
+        };
+        const map = buildSemanticsBoundsMap(payload, "theming-consumer");
+        assert.strictEqual(map.size, 4);
+        const child1 = map.get("child-1");
+        assert.ok(child1);
+        assert.strictEqual(child1!.id, "theming-consumer-child-1");
+        assert.deepStrictEqual(child1!.bounds, {
+            left: 10,
+            top: 10,
+            right: 50,
+            bottom: 40,
+        });
+        assert.strictEqual(child1!.level, "info");
+        assert.ok(map.has("grandchild"));
+    });
+
+    it("skips nodes whose boundsInRoot fails to parse", () => {
+        const payload: SemanticsLookupPayload = {
+            root: {
+                nodeId: "root",
+                boundsInRoot: "not-a-bounds-string",
+                children: [{ nodeId: "good", boundsInRoot: "0,0,10,10" }],
+            },
+        };
+        const map = buildSemanticsBoundsMap(payload, "x");
+        assert.strictEqual(map.has("root"), false);
+        assert.strictEqual(map.has("good"), true);
+    });
+});
+
+describe("consumerOverlayBoxes", () => {
+    it("returns the matching boxes in node-id order", () => {
+        const map = new Map([
+            [
+                "a",
+                {
+                    id: "x-a",
+                    bounds: { left: 0, top: 0, right: 1, bottom: 1 },
+                    level: "info" as const,
+                },
+            ],
+            [
+                "b",
+                {
+                    id: "x-b",
+                    bounds: { left: 1, top: 1, right: 2, bottom: 2 },
+                    level: "info" as const,
+                },
+            ],
+        ]);
+        const boxes = consumerOverlayBoxes(map, ["b", "a"]);
+        assert.deepStrictEqual(
+            boxes.map((b) => b.id),
+            ["x-b", "x-a"],
+        );
+    });
+
+    it("drops node ids that have no bounds entry", () => {
+        const map = new Map([
+            [
+                "a",
+                {
+                    id: "x-a",
+                    bounds: { left: 0, top: 0, right: 1, bottom: 1 },
+                    level: "info" as const,
+                },
+            ],
+        ]);
+        const boxes = consumerOverlayBoxes(map, ["a", "missing", "b"]);
+        assert.strictEqual(boxes.length, 1);
+        assert.strictEqual(boxes[0].id, "x-a");
     });
 });

@@ -17,6 +17,8 @@
 import { html, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import type { DataTableColumn } from "./components/DataTable";
+import type { OverlayBox } from "./components/BoxOverlay";
+import { parseBounds } from "./cardData";
 
 /** Wire shape for one Material 3 typography token. Mirrors
  *  `TypographyToken` in `Material3ThemeModels.kt`. */
@@ -95,6 +97,14 @@ export interface ThemingColorRow {
     /** Number of `consumers[].nodeId` referencing this token; 0 when
      *  the wallpaper-derived scheme has no consumer data. */
     consumerCount: number;
+    /** Per-row consumer node ids referencing this token, sourced from
+     *  `theme.consumers[].nodeId` whose `tokens` array contains the
+     *  row's `name`. Empty for `wallpaper`-sourced rows (the daemon
+     *  doesn't ship per-derived-token consumers) and when the daemon
+     *  hasn't attached `consumers`. The host uses this to paint a
+     *  transient overlay on the focused card when the row is
+     *  hovered — bounds join via `compose/semantics`. */
+    consumerNodeIds: readonly string[];
     /** Provenance of this row — `theme` from `compose/theme`,
      *  `wallpaper` from the derived scheme. */
     source: ThemingColorSource;
@@ -111,6 +121,9 @@ export interface ThemingTypographyRow {
     style: string;
     lineHeight: string;
     letterSpacing: string;
+    /** Per-row consumer node ids — same shape and role as
+     *  `ThemingColorRow.consumerNodeIds`. */
+    consumerNodeIds: readonly string[];
     /** CSS `font-family` stack derived from the daemon's `FontFamily.X`
      *  toString. Used by the inline sample so the user sees the actual
      *  glyph shape rather than just the token name. */
@@ -129,6 +142,9 @@ export interface ThemingShapeRow {
     kind: "shape";
     name: string;
     value: string;
+    /** Per-row consumer node ids — same shape and role as
+     *  `ThemingColorRow.consumerNodeIds`. */
+    consumerNodeIds: readonly string[];
     /** CSS `border-radius` string derived from the shape value so the
      *  preview swatch paints the actual corner geometry. `null` when
      *  the shape couldn't be parsed (e.g. CutCornerShape, custom). */
@@ -175,7 +191,7 @@ export function computeThemingBundleData(
     previewId: string | null = null,
 ): ThemingBundleData {
     const rows: ThemingRow[] = [];
-    const consumerCount = countConsumersByToken(theme?.consumers ?? []);
+    const consumersByToken = indexConsumersByToken(theme?.consumers ?? []);
 
     // Seed + wallpaper-derived colours go first so the user reads top
     // to bottom: "this seed produced this scheme, layered into these
@@ -206,6 +222,7 @@ export function computeThemingBundleData(
                 hex,
                 swatchCss: cssColor(hex),
                 consumerCount: 0,
+                consumerNodeIds: [],
                 source: "wallpaper",
             });
         }
@@ -217,6 +234,7 @@ export function computeThemingBundleData(
     const scheme = theme?.resolvedTokens?.colorScheme ?? {};
     for (const name of Object.keys(scheme).sort()) {
         const hex = scheme[name];
+        const ids = consumersByToken.get(name) ?? [];
         rows.push({
             id: "theming-color-" + name,
             section: "Colors",
@@ -224,7 +242,8 @@ export function computeThemingBundleData(
             name,
             hex,
             swatchCss: cssColor(hex),
-            consumerCount: consumerCount.get(name) ?? 0,
+            consumerCount: ids.length,
+            consumerNodeIds: ids,
             source: "theme",
         });
     }
@@ -246,6 +265,7 @@ export function computeThemingBundleData(
                 tok.letterSpacing,
                 tok.letterSpacingUnit,
             ),
+            consumerNodeIds: consumersByToken.get(name) ?? [],
             cssFontFamily: cssFontFamily(tok.fontFamily),
             cssFontWeight: parseFontWeight(tok.fontWeight),
             cssFontStyle:
@@ -265,6 +285,7 @@ export function computeThemingBundleData(
             kind: "shape",
             name,
             value,
+            consumerNodeIds: consumersByToken.get(name) ?? [],
             previewBorderRadius: parseShapeBorderRadius(value),
         });
     }
@@ -277,6 +298,75 @@ export function computeThemingBundleData(
             wallpaper: wallpaper ?? null,
         },
     };
+}
+
+/** Lightweight view of a `compose/semantics` node carrying just the
+ *  fields the bounds-join needs. Mirrors the daemon's wire shape
+ *  (`ComposeSemanticsNode`) so callers can pass a raw payload through
+ *  without re-shaping. */
+export interface SemanticsLookupNode {
+    nodeId: string;
+    boundsInRoot: string;
+    children?: SemanticsLookupNode[];
+}
+
+/** Wire shape for `compose/semantics`; root + recursive children. */
+export interface SemanticsLookupPayload {
+    root: SemanticsLookupNode;
+}
+
+/**
+ * Build a `nodeId → OverlayBox` map from a `compose/semantics`
+ * payload. Used by the Theming and Resources bundles to paint
+ * transient hover overlays on the focused card: hovering a token row
+ * looks up the row's `consumerNodeIds` and asks this map for the
+ * bounds.
+ *
+ * Nodes whose `boundsInRoot` doesn't parse are skipped silently —
+ * the row's hover overlay simply leaves them out rather than
+ * crashing the panel.
+ *
+ * `null` / missing payload returns an empty map; callers should
+ * fall back to "no overlay" rather than rendering a phantom layer.
+ */
+export function buildSemanticsBoundsMap(
+    payload: SemanticsLookupPayload | null | undefined,
+    overlayIdPrefix: string,
+): Map<string, OverlayBox> {
+    const out = new Map<string, OverlayBox>();
+    if (!payload || !payload.root) return out;
+    const visit = (node: SemanticsLookupNode): void => {
+        const bounds = parseBounds(node.boundsInRoot);
+        if (bounds) {
+            out.set(node.nodeId, {
+                id: overlayIdPrefix + "-" + node.nodeId,
+                bounds,
+                level: "info",
+            });
+        }
+        for (const child of node.children ?? []) visit(child);
+    };
+    visit(payload.root);
+    return out;
+}
+
+/**
+ * Look [nodeIds] up in [boundsMap] and return the OverlayBoxes that
+ * have bounds. Ids without a hit are skipped silently — when the
+ * `compose/semantics` tree shrinks faster than a stale theming
+ * `consumers` array, an unmatched nodeId means "we don't know where
+ * this consumer is" and is preferable to a phantom box at (0,0).
+ */
+export function consumerOverlayBoxes(
+    boundsMap: ReadonlyMap<string, OverlayBox>,
+    nodeIds: readonly string[],
+): readonly OverlayBox[] {
+    const out: OverlayBox[] = [];
+    for (const id of nodeIds) {
+        const box = boundsMap.get(id);
+        if (box) out.push(box);
+    }
+    return out;
 }
 
 /**
@@ -428,16 +518,26 @@ function renderConsumers(row: ThemingRow): string {
     return String(row.consumerCount);
 }
 
-function countConsumersByToken(
+function indexConsumersByToken(
     consumers: readonly ThemeConsumer[],
-): Map<string, number> {
-    const counts = new Map<string, number>();
+): Map<string, readonly string[]> {
+    // First-seen order per token, deduped — a single consumer can
+    // list the same token twice (e.g. a Text that reads both
+    // `primary` and `onPrimary` from a wrapping container), but the
+    // overlay only wants one box per node.
+    const byToken = new Map<string, string[]>();
     for (const c of consumers) {
+        if (!c.nodeId) continue;
         for (const t of c.tokens ?? []) {
-            counts.set(t, (counts.get(t) ?? 0) + 1);
+            const existing = byToken.get(t);
+            if (!existing) {
+                byToken.set(t, [c.nodeId]);
+            } else if (!existing.includes(c.nodeId)) {
+                existing.push(c.nodeId);
+            }
         }
     }
-    return counts;
+    return byToken;
 }
 
 function formatScalar(

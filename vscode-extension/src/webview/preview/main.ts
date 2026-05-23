@@ -81,11 +81,16 @@ import {
     renderPerformanceSections,
 } from "./performanceBundlePresenter";
 import {
+    buildSemanticsBoundsMap,
     computeThemingBundleData,
+    consumerOverlayBoxes,
     themingTableColumns,
+    type SemanticsLookupPayload,
     type ThemePayload,
+    type ThemingRow,
     type WallpaperPayload,
 } from "./themingBundlePresenter";
+import type { RowSelectedDetail } from "./components/DataTable";
 import {
     ambientTableColumns,
     computeAmbientBundleData,
@@ -1225,6 +1230,51 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Hover swatch → tint consumer nodes on the focused card.
+            // The join needs both Theming and Inspection bundles
+            // active (Theming for the consumers list, Inspection for
+            // the `compose/semantics` bounds). Hover-leave fires the
+            // same listener with `overlayId === null`; we clear the
+            // transient layer there. See #1104.
+            b.table.addEventListener("row-selected", (evt) => {
+                const det = (evt as CustomEvent<RowSelectedDetail<ThemingRow>>)
+                    .detail;
+                const focused = focusController?.focusedCard?.();
+                if (!focused) return;
+                const active = bundleController.state().activeBundles;
+                if (
+                    !active.includes("theming") ||
+                    !active.includes("inspection") ||
+                    det.row === null ||
+                    det.overlayId === null
+                ) {
+                    clearBundleBoxes(focused, "theming-consumers");
+                    return;
+                }
+                // ThemingSeedRow has no `consumerNodeIds` (the wallpaper
+                // seed isn't a per-token row) — narrow before reading.
+                const consumerIds =
+                    "consumerNodeIds" in det.row
+                        ? (det.row.consumerNodeIds ?? [])
+                        : [];
+                if (consumerIds.length === 0) {
+                    clearBundleBoxes(focused, "theming-consumers");
+                    return;
+                }
+                const focusedId = focused.dataset.previewId;
+                const byKind = focusedId
+                    ? dataProductsByPreview.get(focusedId)
+                    : undefined;
+                const semantics = byKind?.get("compose/semantics") as
+                    | SemanticsLookupPayload
+                    | undefined;
+                const boundsMap = buildSemanticsBoundsMap(
+                    semantics,
+                    "theming-consumer",
+                );
+                const boxes = consumerOverlayBoxes(boundsMap, consumerIds);
+                paintBundleBoxes(focused, "theming-consumers", boxes);
+            });
             bundleBodies.set("theming", b);
             return b;
         };
@@ -2149,7 +2199,15 @@ export class PreviewApp extends LitElement {
             if (s.activeBundles.includes("performance")) {
                 refreshPerformanceBundle();
             }
-            if (s.activeBundles.includes("theming")) refreshThemingBundle();
+            if (s.activeBundles.includes("theming")) {
+                refreshThemingBundle();
+            } else {
+                // Transient hover overlay — theming-consumers paints
+                // when a swatch row is hovered while both Theming +
+                // Inspection are active. Clear it when the chip turns
+                // off so a lingering layer doesn't survive teardown.
+                clearBundleBoxes(null, "theming-consumers");
+            }
             if (s.activeBundles.includes("display")) refreshDisplayBundle();
             if (s.activeBundles.includes("resources")) refreshResourcesBundle();
             if (s.activeBundles.includes("watch")) {
@@ -2180,6 +2238,10 @@ export class PreviewApp extends LitElement {
                 // so chip dismissal wipes every bundle-attached card
                 // surface.
                 clearBundleBoxes(null, "inspection");
+                // Inspection supplies the bounds for the theming-
+                // consumer hover overlay (#1104). With Inspection
+                // gone, any existing hover layer is stale.
+                clearBundleBoxes(null, "theming-consumers");
             }
             // Drop legend slices for bundles that are no longer
             // active so re-pressing the chip starts from a clean
