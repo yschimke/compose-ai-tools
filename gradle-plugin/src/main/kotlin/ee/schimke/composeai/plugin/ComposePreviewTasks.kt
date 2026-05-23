@@ -164,6 +164,13 @@ internal object ComposePreviewTasks {
       discoverTaskName = "composePreviewDiscover",
     )
 
+    // Stage-2 BTA configurations + afterEvaluate dep wiring must happen at
+    // plugin-apply / config time, BEFORE `registerDesktopDaemonStartTask`'s
+    // `task.register {…}` block (which runs at task-realization time, by which point
+    // Gradle's MutationGuard rejects `Project.afterEvaluate(...)` calls). Lifted out
+    // here so the registration block is a pure consumer of the resulting configs.
+    setupBtaConfigurations(project, extension)
+
     registerDesktopDaemonStartTask(
       project,
       extension,
@@ -384,11 +391,16 @@ internal object ComposePreviewTasks {
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
       compileInProcess.set(extension.daemon.compileInProcess)
-      // Stage-2 BTA inputs (btaImplClasspath / btaCompileClasspath / btaCompilerPluginClasspath /
-      // btaModuleName / btaOutputDir / btaIcWorkingDir) intentionally left unwired here — the
-      // CMP-side classpath assembly is a follow-up. With compileInProcess defaulted false, the
-      // descriptor's btaCompile stays null and the daemon falls back to stage 1 / 0. See
-      // docs/daemon/COMPILE-IN-PROCESS.md.
+      // Stage-2 BTA wiring. The configurations + dep adds are owned by
+      // `wireDesktopBtaInputs` so the registration block stays scannable; deps are added
+      // afterEvaluate only when the consumer flipped compileInProcess on, so non-opt-in
+      // consumers don't pay the ~80 MB BTA-impl + Compose-plugin-embeddable download cost.
+      wireDesktopBtaInputs(
+        project = project,
+        extension = extension,
+        task = this,
+        userRuntimeConfig = project.configurations.findByName(dependencyConfigName()),
+      )
       // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
       // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
       // jar is FIRST on the classpath below, so this loads the Compose-Multiplatform path.
@@ -507,6 +519,150 @@ internal object ComposePreviewTasks {
     }
     return out.filter { it.isFile }
   }
+
+  /**
+   * Plugin-apply-time setup for stage-2 BTA configurations. Creates the two detached configurations
+   * idempotently (`maybeCreate`) and schedules `afterEvaluate` to populate them with the BTA impl +
+   * Compose-plugin-embeddable coordinates iff [PreviewExtension.daemon.compileInProcess] is `true`
+   * at evaluation time.
+   *
+   * Lazy population is load-bearing: a consumer who applies our plugin but doesn't opt in shouldn't
+   * pay an ~80 MB pull of `kotlin-build-tools-impl` + `kotlin-compose-compiler-plugin-embeddable`.
+   * The configurations are created always (so later `getByName(...)` lookups in task-registration
+   * blocks don't NPE), but stay empty unless the consumer flips the flag.
+   *
+   * MUST be called from config time, NOT from inside `task.register {…}` — Gradle's MutationGuard
+   * refuses `Project.afterEvaluate(...)` once task realization starts.
+   */
+  private fun setupBtaConfigurations(project: Project, extension: PreviewExtension) {
+    val btaImplConfig =
+      project.configurations.maybeCreate("composePreviewBtaImpl").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        description =
+          "Stage-2 BTA implementation classpath. Populated when " +
+            "composePreview.daemon.compileInProcess is true; empty otherwise."
+      }
+    val btaPluginConfig =
+      project.configurations.maybeCreate("composePreviewBtaPlugin").apply {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        description =
+          "Stage-2 Compose compiler plugin embeddable JAR (loaded into BTA's isolated " +
+            "classloader). Populated when composePreview.daemon.compileInProcess is true."
+      }
+    project.afterEvaluate {
+      if (!extension.daemon.compileInProcess.getOrElse(false)) return@afterEvaluate
+      val kotlinVersion = resolveConsumerKotlinVersion(project)
+      project.dependencies.add(
+        btaImplConfig.name,
+        "org.jetbrains.kotlin:kotlin-build-tools-impl:$kotlinVersion",
+      )
+      project.dependencies.add(
+        btaPluginConfig.name,
+        "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:$kotlinVersion",
+      )
+    }
+  }
+
+  /**
+   * Stage-2 BTA wiring for the CMP / desktop daemon-start task. Wires every BTA input on
+   * [DaemonBootstrapTask] from the configurations + project layout. The configurations themselves
+   * are created (and conditionally populated) by [setupBtaConfigurations], which must run BEFORE
+   * this method — see that method's KDoc for why. See `docs/daemon/COMPILE-IN-PROCESS.md` § "Module
+   * layout".
+   *
+   * Lazy-population is load-bearing: a non-opt-in consumer who just applies our plugin shouldn't
+   * pay an ~80 MB pull of `kotlin-build-tools-impl` + `kotlin-compose-compiler-plugin-embeddable`.
+   * With the convention default `false`, the `afterEvaluate` body short-circuits before adding any
+   * deps, the configurations stay empty, and [DaemonBootstrapTask.assembleBtaCompileConfig] emits
+   * `btaCompile = null`.
+   *
+   * Kotlin version sniff currently reads our `libs.versions.toml` Kotlin entry — the
+   * version-catalog convention this repo and its samples use. Out-of-repo consumers fall back to a
+   * constant matching the plugin's own bundled Kotlin (TODO: replace with KGP's
+   * `KotlinPluginWrapper.kotlinPluginVersion` once we're willing to take the compile-time dep on
+   * KGP types).
+   */
+  private fun wireDesktopBtaInputs(
+    project: Project,
+    extension: PreviewExtension,
+    task: ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask,
+    userRuntimeConfig: org.gradle.api.artifacts.Configuration?,
+  ) {
+    // The two detached configurations are created (idempotently) by `setupBtaConfigurations`
+    // at plugin-apply time, BEFORE this registration block runs. Look them up by name here so
+    // the task wiring sees the populated state when the `afterEvaluate` body fires.
+    val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
+    val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
+    task.btaImplClasspath.from(btaImplConfig)
+    task.btaCompilerPluginClasspath.from(btaPluginConfig)
+    userRuntimeConfig?.let { task.btaCompileClasspath.from(it) }
+    // MODULE_NAME mirrors what KGP's default `compileKotlin` emits for non-multiplatform
+    // JVM modules — `project.name` (the directory name), no path-mangling. The
+    // bta-host-fixture spike confirmed Gradle uses this exact spelling in
+    // kotlin.Metadata.d2[].
+    task.btaModuleName.set(project.name)
+    // Output dir mirrors KGP's `compileKotlin` for plain Kotlin/JVM. CMP-Desktop uses
+    // `classes/kotlin/desktop/main` instead under some plugin combinations; the daemon's
+    // child classloader watches both via `userClassDirs` (see the sysprop wiring above),
+    // so this picks the most common shape and the runtime handles the rest.
+    task.btaOutputDir.set(
+      project.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath }
+    )
+    task.btaIcWorkingDir.set(
+      project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
+        it.asFile.absolutePath
+      }
+    )
+    detectStageTwoIneligibility(project)?.let { task.btaIneligibilityReason.set(it) }
+  }
+
+  /**
+   * Daemon-warm-time KSP/KAPT detection. Returns a human-readable string when the consumer's module
+   * is NOT eligible for stage 2; `null` when eligible.
+   *
+   * - KSP-using modules need their generated sources recompiled on every save. BTA doesn't drive
+   *   KSP; stage 1's `gradle --continuous` covers KSP because Gradle drives KSP for it.
+   * - KAPT is the legacy variant of the same problem.
+   * - Plain `annotationProcessor` configurations (javac APs) similarly aren't BTA-driven.
+   *
+   * Listed by plugin id rather than dependency probing because the ids are stable across KGP
+   * versions and don't require resolving the consumer's classpath at config time.
+   */
+  private fun detectStageTwoIneligibility(project: Project): String? =
+    when {
+      project.plugins.hasPlugin("com.google.devtools.ksp") ->
+        "com.google.devtools.ksp plugin applied (stage 2 doesn't drive KSP yet — see " +
+          "docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
+      project.plugins.hasPlugin("org.jetbrains.kotlin.kapt") ->
+        "org.jetbrains.kotlin.kapt plugin applied (stage 2 doesn't drive KAPT yet)"
+      else -> null
+    }
+
+  /**
+   * Reads the consumer's Kotlin version from their `libs.versions.toml` `kotlin` entry — the
+   * convention this repo and its samples use. The BTA impl JAR version must EXACTLY match the
+   * Kotlin compiler version (an impl 2.3.21 + compiler 2.3.20 mismatch fails at
+   * `KotlinToolchains.loadImplementation` time, not a runtime surprise) so this sniff has to be
+   * right.
+   *
+   * Falls back to [KOTLIN_VERSION_FALLBACK] when no `libs.versions.toml` exists or no `kotlin`
+   * entry is declared. The fallback matches our own plugin's bundled Kotlin — good for in-repo
+   * samples, wrong for arbitrary out-of-repo consumers. Tracked as "switch to KGP's
+   * KotlinPluginWrapper.kotlinPluginVersion" in `docs/daemon/COMPILE-IN-PROCESS.md` follow-ups.
+   */
+  private fun resolveConsumerKotlinVersion(project: Project): String {
+    val catalogs =
+      project.extensions.findByType(org.gradle.api.artifacts.VersionCatalogsExtension::class.java)
+        ?: return KOTLIN_VERSION_FALLBACK
+    val catalog =
+      runCatching { catalogs.named("libs") }.getOrNull() ?: return KOTLIN_VERSION_FALLBACK
+    return catalog.findVersion("kotlin").orElse(null)?.requiredVersion ?: KOTLIN_VERSION_FALLBACK
+  }
+
+  /** See [resolveConsumerKotlinVersion]. Bumped in lockstep with the plugin's own KGP. */
+  private const val KOTLIN_VERSION_FALLBACK = "2.3.21"
 
   /**
    * Shared `Provider<String>` for the `composePreview.tier` Gradle property. `"fast"`
