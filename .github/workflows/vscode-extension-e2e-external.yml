@@ -1,0 +1,121 @@
+name: VS Code Extension E2E (external consumer)
+
+# Companion to `vscode-extension-e2e.yml`. That workflow drives the
+# extension against `:samples:cmp` / `:samples:wear`, both wired via
+# `includeBuild("gradle-plugin")` — the dev-loop path. This workflow drives
+# the extension against `joreilly/Confetti` (pinned SHA), with the plugin
+# resolved through the consumer's `gradle/libs.versions.toml` against the
+# local SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
+# plugin-coordinate gap: the in-repo suite can't catch regressions where the
+# plugin works fine via `includeBuild` but fails as a published artifact
+# against a real KMP/AGP/Compose classpath.
+#
+# Cost: a cold run is multi-tens of minutes (Confetti's Apollo codegen and
+# KMP target setup alone take 2-5 min before any compose-preview task
+# runs). Not on PRs. Not on every push to main. Manual + weekly.
+#
+# Triggers:
+#   workflow_dispatch — manual one-off runs (any branch). Bump the
+#                       Confetti SHA or the plugin version here when
+#                       investigating a regression.
+#   schedule          — weekly, Sundays 06:00 UTC. Picks up drift in
+#                       Confetti's transitive deps + our own renderer
+#                       compat with the latest published consumer code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confetti_ref:
+        description: "Confetti git SHA / branch / tag (defaults to the pin in setup-external-e2e.sh)"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 6 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Manual dispatches get their own slot via run_id; scheduled runs
+  # collapse onto a single in-flight per cron tick.
+  group: vscode-extension-e2e-external-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-external:
+    name: VS Code Extension E2E (Confetti, published plugin)
+    runs-on: ubuntu-latest
+    # 90 minutes ceiling — Confetti's cold configuration alone can be
+    # 5-10 min on a fresh CI runner before any compose-preview task
+    # touches the daemon. The mocha suite's own per-`it` ceiling
+    # (`this.timeout(30 * 60_000)`) trips first on a wedge.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+
+      # Same caches as vscode-extension-e2e.yml — the VS Code download is
+      # the larger of the two, and on a cron-driven schedule the cache key
+      # is usually a hit since the OS doesn't change.
+      - name: Cache VS Code download
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: vscode-extension/.vscode-test
+          key: vscode-test-electron-${{ runner.os }}
+
+      # Publish the plugin + every supporting module to mavenLocal so
+      # the consumer's catalog resolves to *this* commit, not the
+      # already-released coordinate Maven Central serves. `publishToMavenLocal`
+      # without a project filter fans out to every module the
+      # `composeai.maven-publishing` convention plugin applies to.
+      - name: Publish plugin to mavenLocal
+        run: ./gradlew publishToMavenLocal --no-daemon
+
+      - name: Install extension dependencies
+        working-directory: vscode-extension
+        run: npm ci
+
+      - name: Compile extension
+        working-directory: vscode-extension
+        run: npm run compile
+
+      # Prepare the external workspace: clone Confetti at the pinned SHA
+      # (or the workflow_dispatch override), rewrite its catalog to
+      # point at the SNAPSHOT we just published, seed local.properties
+      # with the runner's Android SDK path. Stdout is the prepared
+      # workspace path — capture it and forward to the test runner.
+      - name: Prepare external workspace (Confetti)
+        id: prepare
+        env:
+          EXTERNAL_REPO_REF: ${{ inputs.confetti_ref }}
+        run: |
+          workspace=$(vscode-extension/scripts/setup-external-e2e.sh \
+            "${RUNNER_TEMP}/compose-preview-external-e2e")
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          echo "[workflow] prepared external workspace at $workspace"
+
+      - name: Run external-consumer e2e under xvfb
+        working-directory: vscode-extension
+        env:
+          COMPOSE_PREVIEW_E2E_WORKSPACE: ${{ steps.prepare.outputs.workspace }}
+        run: xvfb-run -a npm run test:e2e-external
+
+      - name: Upload renders + daemon logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-external-renders
+          path: |
+            ${{ steps.prepare.outputs.workspace }}/androidApp/build/compose-previews/
+            ${{ steps.prepare.outputs.workspace }}/shared/build/compose-previews/
+            ${{ steps.prepare.outputs.workspace }}/wearApp/build/compose-previews/
+            vscode-extension/.vscode-test/user-data/logs/
+          if-no-files-found: ignore
+          retention-days: 7

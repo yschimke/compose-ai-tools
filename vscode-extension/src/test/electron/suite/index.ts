@@ -30,12 +30,32 @@ export async function run(): Promise<void> {
     // `npm run test:e2e`) runs only the slow real-Gradle suite; the fast
     // suite excludes it. Pattern selection here so each mode's run output
     // doesn't list "skipped" entries for the other mode's tests.
+    //
+    // External-consumer mode (COMPOSE_PREVIEW_E2E_EXTERNAL=1) is a third
+    // bucket: runs *only* `e2eExternal*.test.js` so the in-repo
+    // `:samples:*` suites don't pay the external workspace's
+    // configuration tax (they'd skip anyway because the file paths point
+    // at `samples/cmp/…`, but mocha still loads the modules and the
+    // `describe.skip` noise is unhelpful).
     const e2eMode = process.env.COMPOSE_PREVIEW_E2E === "1";
-    // Match every `e2e*.test.js` so the slow suite can be split across
-    // files (`e2e.test.js`, `e2eA11y.test.js`, …) without having to
-    // restate file names here.
-    const pattern = e2eMode ? "**/e2e*.test.js" : "**/*.test.js";
-    const ignore = e2eMode ? [] : ["**/e2e*.test.js"];
+    const e2eExternalMode = process.env.COMPOSE_PREVIEW_E2E_EXTERNAL === "1";
+    let pattern: string;
+    let ignore: string[];
+    if (e2eExternalMode) {
+        pattern = "**/e2eExternal*.test.js";
+        ignore = [];
+    } else if (e2eMode) {
+        // Match every `e2e*.test.js` so the slow suite can be split across
+        // files (`e2e.test.js`, `e2eA11y.test.js`, …) without having to
+        // restate file names here. Exclude the external-consumer suite
+        // explicitly — it shares the `e2e*` prefix but belongs to a
+        // different workspace.
+        pattern = "**/e2e*.test.js";
+        ignore = ["**/e2eExternal*.test.js"];
+    } else {
+        pattern = "**/*.test.js";
+        ignore = ["**/e2e*.test.js"];
+    }
     // Sort so execution order is deterministic across runners — glob's
     // filesystem-order traversal otherwise puts `e2eA11y.test.js` ahead of
     // `e2e.test.js` on the GitHub-hosted Linux image, which left the cmp
@@ -43,7 +63,8 @@ export async function run(): Promise<void> {
     // budget. Plain lexical order runs the lighter cmp suite first.
     const files = (await glob(pattern, { cwd: testsRoot, ignore })).sort();
     console.log(
-        `[suite] discovered ${files.length} test file(s) in ${testsRoot} (e2e=${e2eMode})`,
+        `[suite] discovered ${files.length} test file(s) in ${testsRoot} ` +
+            `(e2e=${e2eMode} external=${e2eExternalMode})`,
     );
     for (const f of files) {
         const abs = path.resolve(testsRoot, f);
