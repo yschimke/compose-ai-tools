@@ -508,6 +508,25 @@ data class PreviewOverrides(
    * Android-only — the desktop backend ignores this field.
    */
   val permissions: PermissionsOverride? = null,
+  /**
+   * Optional Remote Compose override. Drives the connector-side `RemoteComposeOverrideExtension`
+   * (see `:data-remotecompose-connector`). The around-composable installs a
+   * `LocalRemoteComposeHost` composition local that user code inside a `RemotePreview { ... }`
+   * block consults to:
+   *
+   * * read the daemon-requested [RemoteComposeOverride.profile] (passed to `RemotePreview(profile =
+   *   …)`) and named-value seeds in [RemoteComposeOverride.namedValues] (bound to remote
+   *   `RemoteFloat` / `RemoteString` etc.),
+   * * push named-value writes back to the daemon (`data/fetch?kind=compose/remotecompose` returns
+   *   the current map), and
+   * * report `HostAction` events the remote runtime fires so the daemon can surface them through
+   *   the same data product.
+   *
+   * Sending a fresh `remoteCompose` on a subsequent `renderNow` updates the seeded state — the
+   * "live update" path the Remote Compose data product covers. Android-only; the desktop backend
+   * has no Remote Compose runtime and ignores this field.
+   */
+  val remoteCompose: RemoteComposeOverride? = null,
 )
 
 /**
@@ -694,6 +713,109 @@ enum class WallpaperPaletteStyle {
   @SerialName("fidelity") FIDELITY,
   @SerialName("content") CONTENT,
 }
+
+/**
+ * Remote Compose override for previews. Drives the connector-side `RemoteComposeOverrideExtension`
+ * (see `:data-remotecompose-connector`).
+ *
+ * Three facets, all optional:
+ *
+ * * [profile] — the `RcPlatformProfiles` variant the host wants the remote document compiled
+ *   against (`ANDROIDX` / `CORE_WATCH` / `CORE_WIDGET`). User code reads this from
+ *   `LocalRemoteComposeHost.current.profile` and passes it to `RemotePreview(profile = …)`.
+ * * [namedValues] — daemon-side seeds for named state variables in the remote document. Keys are
+ *   the names the user code binds (`LocalRemoteComposeHost.current.namedFloat("score", default =
+ *   0f)`) and values are typed via the [RemoteNamedValue] sum. A fresh `renderNow.overrides
+ *   .remoteCompose` with a different map replaces the seeded values; entries not present in the new
+ *   map fall back to the user code's defaults.
+ * * [acceptedHostActions] — when non-null, restricts the set of `HostAction` ids the connector
+ *   captures (insertion-recorded for `data/fetch?kind=compose/remotecompose`). Null captures every
+ *   action user code reports.
+ *
+ * Android-only — the desktop backend has no Remote Compose runtime and ignores this field.
+ */
+@Serializable
+data class RemoteComposeOverride(
+  val profile: RemoteComposeProfile? = null,
+  val namedValues: Map<String, RemoteNamedValue> = emptyMap(),
+  val acceptedHostActions: List<String>? = null,
+)
+
+/**
+ * Platform profile the remote document is compiled against. Mirrors
+ * `androidx.compose.remote.creation.profile.RcPlatformProfiles` — the connector maps each value to
+ * the upstream `Profile` constant at render time so the protocol stays free of the alpha API.
+ *
+ * Values match the names in `RcPlatformProfiles` (Compose Remote `1.0.0-alpha010`):
+ *
+ * * [ANDROIDX] — the rolling "latest" AndroidX profile (currently aliased to the newest
+ *   `ANDROIDX9`). Use this when you want the same target the live AndroidX runtime expects.
+ * * [ANDROIDX7] / [ANDROIDX8] / [ANDROIDX9] — pinned AndroidX revisions. Sending a pinned value
+ *   freezes the operation set the document gets compiled against, useful for regression captures
+ *   where a moving "latest" would re-baseline silently.
+ * * [WIDGETS_V6] / [WIDGETS_V7] — the platform-widgets profile floor that ships in Android-platform
+ *   widget hosts. Documents targeting these stay compatible with hosts that haven't rolled a fresh
+ *   `androidx` profile.
+ * * [WEAR_WIDGETS] — Wear-OS-specific widget profile (smaller operation surface for tile / watch-
+ *   face hosts).
+ */
+@Serializable
+enum class RemoteComposeProfile {
+  @SerialName("androidx") ANDROIDX,
+  @SerialName("androidx7") ANDROIDX7,
+  @SerialName("androidx8") ANDROIDX8,
+  @SerialName("androidx9") ANDROIDX9,
+  @SerialName("widgetsV6") WIDGETS_V6,
+  @SerialName("widgetsV7") WIDGETS_V7,
+  @SerialName("wearWidgets") WEAR_WIDGETS,
+}
+
+/**
+ * Typed named-value variant for the Remote Compose extension. Mirrors the Compose Remote DSL's own
+ * typed state APIs (`.rf` / `.rs` / `.rb` / `.rdp` / `RemoteColor`) so the wire shape carries the
+ * same type fidelity. The connector picks the matching binding (`RemoteFloat`, `RemoteString`,
+ * `RemoteBoolean`, `RemoteInt`, `RemoteColor`) when seeding into the live remote runtime.
+ *
+ * `@JsonClassDiscriminator("kind")` so JSON payloads look like `{ "kind": "float", "value": 1.5 }`
+ * rather than carrying the polymorphic class name.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@kotlinx.serialization.json.JsonClassDiscriminator("kind")
+sealed class RemoteNamedValue {
+  /** Single-precision float. Matches `Float.rf` / `RemoteFloat`. */
+  @Serializable @SerialName("float") data class FloatValue(val value: Float) : RemoteNamedValue()
+
+  /**
+   * Density-independent pixel measurement. Carries the raw dp value; the connector wraps with
+   * `.rdp` at bind time so user code can read it as a `RemoteFloat` representing the dp.
+   */
+  @Serializable @SerialName("dp") data class DpValue(val value: Float) : RemoteNamedValue()
+
+  /** 32-bit integer. Matches `Int.rint` / `RemoteInt`. */
+  @Serializable @SerialName("int") data class IntValue(val value: Int) : RemoteNamedValue()
+
+  /** UTF-8 string. Matches `String.rs` / `RemoteString`. */
+  @Serializable @SerialName("string") data class StringValue(val value: String) : RemoteNamedValue()
+
+  /** Boolean flag. Matches `Boolean.rb` / `RemoteBoolean`. */
+  @Serializable @SerialName("bool") data class BooleanValue(val value: Boolean) : RemoteNamedValue()
+
+  /** Color as `#AARRGGBB`. Matches `RemoteColor(Color(...))`. */
+  @Serializable @SerialName("color") data class ColorValue(val argb: String) : RemoteNamedValue()
+}
+
+/**
+ * Wire shape of a `HostAction` event the remote document fired, captured for later inspection via
+ * `data/fetch?kind=compose/remotecompose`. Mirrors the
+ * `androidx.compose.remote.creation.compose.action.HostAction(payload: RemoteString, handlerId:
+ * RemoteFloat)` constructor — both fields surface unwrapped here.
+ *
+ * `firedAtMillis` is the receiver-side wall-clock at the moment the action was recorded so
+ * downstream consumers can order events without needing the remote runtime's own clock model.
+ */
+@Serializable
+data class RemoteHostAction(val payload: String, val handlerId: Float, val firedAtMillis: Long = 0L)
 
 @Serializable
 data class Material3ThemeOverrides(
@@ -1315,6 +1437,19 @@ data class RecordingInputParams(
   /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
+  /**
+   * Per-pointer identifier for multi-touch dispatch in live recordings — distinct pointers (e.g. a
+   * two-finger pinch) share the current virtual `tMs` boundary while carrying their own id. Defaults
+   * to `0` for backwards compatibility, so existing single-pointer scripts (the vast majority) keep
+   * working unchanged. Required when dispatching pinch-to-zoom or any other multi-pointer gesture
+   * over live mode: each finger keeps its own id across `pointerDown` → `pointerMove`(s) →
+   * `pointerUp` so the daemon's pointer pipeline groups events into the right gesture. Ignored for
+   * non-pointer kinds (`keyDown`, `keyUp`, `rotaryScroll`).
+   *
+   * Mirrors [InteractiveInputParams.pointerId] and [RecordingScriptEvent.pointerId] so the three
+   * input wire-shapes carry the same multi-touch signal end-to-end.
+   */
+  val pointerId: Int? = null,
   /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. Decimal-string Android `KEYCODE_*`; see `InteractiveKeyCodes`. */

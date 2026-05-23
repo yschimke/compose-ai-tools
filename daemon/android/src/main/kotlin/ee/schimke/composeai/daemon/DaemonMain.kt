@@ -371,6 +371,35 @@ fun main(args: Array<String>) {
               ),
           )
         }
+        // Remote Compose extension is gated on the consumer's classpath shipping
+        // `androidx.compose.remote.*`. The connector classes reference alpha API types at
+        // composition time (`HostAction`, `RcPlatformProfiles`); registering the extension on a
+        // non-Remote-Compose consumer would surface a confusing `NoClassDefFoundError` the first
+        // time a render fires the around-composable. Mirrors the Wear-AAR gate
+        // (`isWearAmbientAvailable`) used for `:data-ambient-connector`.
+        if (isRemoteComposeAvailable(javaClass.classLoader)) {
+          tryAdd("data/remotecompose") {
+            // Remote Compose data product. Registry serves the `compose/remotecompose` payload
+            // (named-value map applied / written during the render, ring-buffered HostAction
+            // emissions, active profile). The around-composable's `LocalRemoteComposeHost`
+            // composition local is in place on every render so a screen's `RemotePreview { ... }`
+            // block can read the daemon-seeded named values + profile and report fired actions
+            // back. `dataExtensionDescriptors` advertises the planner so the panel / MCP can
+            // discover the extension via `initialize.capabilities.dataExtensions`.
+            Extension(
+              id = "data/remotecompose",
+              displayName = "Remote Compose state + host actions",
+              dataProductRegistry = RemoteComposeDataProductRegistry(),
+              dataExtensionDescriptors =
+                listOf(
+                  DataExtensionDescriptor(
+                    id = RemoteComposeOverrideExtension.ID,
+                    displayName = "Remote Compose state + host actions",
+                  )
+                ),
+            )
+          }
+        }
         tryAdd("data/touch-overlay") {
           // Touch-event visualization overlay (`AroundComposableHook` from
           // `:data-touch-overlay-connector`) — paints a translucent ring at every active pointer

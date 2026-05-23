@@ -3212,3 +3212,155 @@ preview-app[data-bundle-mode="true"] bundle-chip-bar {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 1px;
 }
+
+/* ---- Remote Compose bundle (compose/remotecompose) ------------------- */
+.rc-name-cell {
+    width: 30%;
+    vertical-align: top;
+}
+.rc-type-cell {
+    width: 18%;
+    vertical-align: top;
+    white-space: nowrap;
+}
+.rc-value-cell {
+    width: 52%;
+    vertical-align: top;
+}
+.rc-name {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    color: var(--vscode-symbolIcon-variableForeground, inherit);
+}
+.rc-row-sub {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 2px;
+}
+.rc-action-label {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+.rc-action-index {
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-foreground);
+    margin-left: 2px;
+}
+.rc-type-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--rc-badge-bg, var(--vscode-badge-background));
+    color: var(--rc-badge-fg, var(--vscode-badge-foreground));
+}
+.rc-type-float,
+.rc-type-dp {
+    --rc-badge-bg: #1565c0;
+    --rc-badge-fg: #fff;
+}
+.rc-type-int {
+    --rc-badge-bg: #00838f;
+    --rc-badge-fg: #fff;
+}
+.rc-type-string {
+    --rc-badge-bg: #2e7d32;
+    --rc-badge-fg: #fff;
+}
+.rc-type-bool {
+    --rc-badge-bg: #6a1b9a;
+    --rc-badge-fg: #fff;
+}
+.rc-type-color {
+    --rc-badge-bg: #ef6c00;
+    --rc-badge-fg: #fff;
+}
+.rc-type-profile {
+    --rc-badge-bg: #455a64;
+    --rc-badge-fg: #fff;
+}
+.rc-type-action {
+    --rc-badge-bg: #5d4037;
+    --rc-badge-fg: #fff;
+}
+.rc-value-input {
+    font-family: inherit;
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 2px;
+    padding: 2px 6px;
+    box-sizing: border-box;
+}
+.rc-value-input:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.rc-number-input {
+    width: 110px;
+    font-variant-numeric: tabular-nums;
+}
+.rc-text-input {
+    width: 100%;
+    max-width: 280px;
+}
+.rc-profile-select {
+    min-width: 180px;
+}
+.rc-bool-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.rc-bool-input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+}
+.rc-number-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+.rc-unit {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+.rc-color-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.rc-color-input {
+    width: 28px;
+    height: 22px;
+    padding: 1px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.rc-color-hex {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground);
+}
+.rc-action-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.rc-action-payload {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    color: var(--vscode-foreground);
+}
+.rc-action-meta {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+}

@@ -103,6 +103,12 @@ import {
     type DisplayFilterVariantsPayload,
 } from "./displayFilterBundlePresenter";
 import {
+    computeRemoteComposeBundleData,
+    remoteComposeTableColumns,
+    type RemoteComposeChangeDetail,
+    type RemoteComposePayload,
+} from "./remoteComposeBundlePresenter";
+import {
     computeResourcesBundleData,
     resourcesTableColumns,
     type ResourceUsedRow,
@@ -1769,6 +1775,85 @@ export class PreviewApp extends LitElement {
             dataTabs.setTabBody("watch", body.wrapper);
             stampAmbientBadge(target, data.state, data.stateLevel);
         };
+
+        // ---- Remote Compose bundle (compose/remotecompose) ----------------
+        // Single-table body with three sections (profile / named values /
+        // host actions). The presenter renders editable `<input>` cells
+        // for the named-value rows + the profile `<select>`; the change
+        // events bubble through `remote-compose-value-changed`, caught by
+        // the body's listener below and forwarded to the host as a
+        // `setRemoteComposeNamedValue` post-message. Mirrors the daemon-
+        // side `:data-remotecompose-connector` controller shape — the
+        // host turns that message into a fresh `renderNow.overrides
+        // .remoteCompose` so the remote document picks up the new value
+        // on the next re-render (or via the held interactive session's
+        // `RemoteComposeController.setNamedValue(...)` path).
+        const remoteComposeBodyBuilt = (): BundleBody => {
+            let b = bundleBodies.get("remotecompose");
+            if (b) return b;
+            b = buildBundleBody(
+                "remotecompose",
+                "Remote Compose",
+                remoteComposeTableColumns() as unknown as ReadonlyArray<
+                    import("./components/DataTable").DataTableColumn<unknown>
+                >,
+            );
+            // Bubble the editable-cell change event up to the host's
+            // post-message channel. Attached once — the body is cached
+            // for the panel lifetime so this listener survives across
+            // refreshes.
+            b.wrapper.addEventListener(
+                "remote-compose-value-changed",
+                (evt) => {
+                    const det = (evt as CustomEvent<RemoteComposeChangeDetail>)
+                        .detail;
+                    const target = currentBundleTarget();
+                    if (!target) return;
+                    vscode.postMessage({
+                        command: "setRemoteComposeNamedValue",
+                        previewId: target,
+                        change: det,
+                    });
+                },
+            );
+            bundleBodies.set("remotecompose", b);
+            return b;
+        };
+        const refreshRemoteComposeBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const payload =
+                (byKind?.get("compose/remotecompose") as
+                    | RemoteComposePayload
+                    | undefined) ?? null;
+            const data = computeRemoteComposeBundleData(payload);
+            const body = remoteComposeBodyBuilt();
+            const table = body.table;
+            table.setRows(data.rows);
+            const namedSummary =
+                data.namedCount +
+                (data.namedCount === 1 ? " value" : " values");
+            const actionSummary =
+                data.actionCount +
+                (data.actionCount === 1 ? " action" : " actions");
+            table.summary =
+                (data.profile ?? "no profile") +
+                " · " +
+                namedSummary +
+                " · " +
+                actionSummary;
+            table.setOverlayId(
+                (row) => (row as { id?: string }).id ?? "remotecompose-row",
+            );
+            table.setJsonPayload(() => ({
+                previewId: target,
+                payload: data.jsonPayload,
+            }));
+            refreshExpanderFor("remotecompose");
+            dataTabs.setTabBody("remotecompose", body.wrapper);
+        };
+
         // Per-card ambient badge state — keyed on previewId so we can
         // clear or update it across focus changes without DOM churn.
         const ambientBadges = new Map<string, HTMLElement>();
@@ -2314,6 +2399,9 @@ export class PreviewApp extends LitElement {
                 // Inspection gone, any existing hover layer is stale.
                 clearBundleBoxes(null, "theming-consumers");
                 clearBundleBoxes(null, "resources-consumers");
+            }
+            if (s.activeBundles.includes("remotecompose")) {
+                refreshRemoteComposeBundle();
             }
             // Drop legend slices for bundles that are no longer
             // active so re-pressing the chip starts from a clean
@@ -2931,6 +3019,15 @@ export class PreviewApp extends LitElement {
                     dataProducts.some((dp) => dp.kind === "resources/used")
                 ) {
                     refreshResourcesBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("remotecompose") &&
+                    dataProducts.some(
+                        (dp) => dp.kind === "compose/remotecompose",
+                    )
+                ) {
+                    refreshRemoteComposeBundle();
                 }
             },
             applyFontPreviewBytes: (previewId, fontRowId, dataUri) => {

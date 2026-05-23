@@ -19,8 +19,9 @@ ktfmt { googleStyle() }
 // Maven Central and produce conforming `previews.json` manifests by running the same scan the
 // gradle plugin uses — without dragging :gradle-plugin or AGP onto their classpath.
 //
-// A2c (next PR) adds a `java -jar` CLI main so a Bazel `genrule` or Amper task can wrap a
-// shell call to drive discovery; the library API exposed here is enough for in-process
+// A2c (next PR) adds a `java -cp` CLI main (`PreviewDiscoveryCli`) so a Bazel `genrule` or
+// Amper task can wrap a shell call to drive discovery once it has resolved the runtime
+// closure through its own dep system; the library API exposed here is enough for in-process
 // Kotlin/JVM consumers today.
 //
 // Lives inside the `gradle-plugin` composite build (rather than the outer build) so the
@@ -54,13 +55,22 @@ composeAiMavenPublishing {
   inceptionYear.set("2026")
 }
 
-// CLI entry point (`PreviewDiscoveryCli`) is what Bazel rules and Amper tasks shell out to —
-// stamping the `Main-Class` attribute lets a build system invoke the artifact via
-// `java -cp <classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli ...` or
-// `java -jar preview-discovery-<v>.jar ...` (the latter only when all transitive jars sit
-// next to the artifact, which is the shape a Bazel `runtime_jars` provider produces). The
-// transitive deps (classgraph, asm, kotlinx-serialization) are `api` so consumers resolving
-// the pom get the full classpath without extra work.
+// CLI entry point (`PreviewDiscoveryCli`) is what Bazel rules and Amper tasks shell out to.
+// The published artifact is a slim library JAR — the transitive deps (classgraph, asm,
+// kotlinx-serialization) are exposed as `api` so consumers resolving the POM through their
+// own dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) get the full classpath,
+// and the intended invocation is:
+//
+//     java -cp <resolved-classpath> ee.schimke.composeai.discovery.PreviewDiscoveryCli ...
+//
+// The `Main-Class:` stamp is a convenience for build systems that have already materialised
+// the full runtime closure next to the artifact (e.g. Bazel's `runtime_jars` provider, or a
+// hand-rolled `lib/` directory); in that shape `java -jar preview-discovery-<v>.jar ...`
+// will work because the JVM happens to find every transitive class on the search path.
+// `java -jar` against the bare published JAR will NOT work — there is no `Class-Path:`
+// manifest entry and no shaded uber-JAR; it will fail with `NoClassDefFoundError`. See the
+// "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md` for the consumer-facing
+// contract.
 tasks.named<Jar>("jar").configure {
   manifest {
     attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli")

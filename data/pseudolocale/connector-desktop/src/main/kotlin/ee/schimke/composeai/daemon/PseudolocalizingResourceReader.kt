@@ -31,11 +31,14 @@ import org.jetbrains.compose.resources.ResourceReader
  * three string-shaped types — fonts, drawables, raw bytes — passes through untouched.
  *
  * **Cache caveat.** Compose Resources keeps a process-wide `stringItemsCache` keyed by
- * `path/offset-size`, populated by the *first* reader to answer a given key. Mixing pseudo and
- * non-pseudo renders inside one JVM (or two different pseudolocale modes back-to-back) will see the
- * earlier render's cached value on the second pass. The renderer doesn't fork per render, so
- * callers that need clean state between modes should restart the JVM — same caveat the renderer
- * notes for other process-wide Compose state.
+ * `path/offset-size`, populated by the *first* reader to answer a given key. To stop a prior
+ * non-pseudo render from silently no-opping the next pseudo render via stale cache hits,
+ * `PseudolocaleOverrideExtensionDesktop.AroundComposable` reflectively clears the cache on every
+ * composition entry (see [PseudolocaleResourceCache]). That clear is best-effort: it relies on
+ * private CMP internals (`StringResourcesUtilsKt.stringItemsCache` + `AsyncCache.cache`) and will
+ * degrade to "first mode wins" if a future CMP version reshapes those internals. Callers that hit
+ * the degraded path can still restart the JVM between modes — same fallback that lives here for
+ * defence in depth.
  */
 @OptIn(ExperimentalResourceApi::class, ExperimentalEncodingApi::class)
 internal class PseudolocalizingResourceReader(

@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 
@@ -33,6 +34,7 @@ data class PreviewOverrideBaseSpec(
   val focus: FocusOverride? = null,
   val touchOverlay: Boolean? = null,
   val permissions: PermissionsOverride? = null,
+  val remoteCompose: RemoteComposeOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -51,6 +53,7 @@ data class MergedPreviewOverrides(
   val focus: FocusOverride?,
   val touchOverlay: Boolean?,
   val permissions: PermissionsOverride?,
+  val remoteCompose: RemoteComposeOverride?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -74,6 +77,7 @@ data class MergedPreviewOverrides(
         focus == null &&
         touchOverlay != true &&
         permissions == null &&
+        remoteCompose == null &&
         !isPseudolocale
     ) {
       return null
@@ -86,6 +90,7 @@ data class MergedPreviewOverrides(
       localeTag = if (isPseudolocale) localeTag else null,
       touchOverlay = touchOverlay,
       permissions = permissions,
+      remoteCompose = remoteCompose,
     )
   }
 }
@@ -131,6 +136,7 @@ fun mergePreviewOverrides(
       focus = base.focus,
       touchOverlay = base.touchOverlay,
       permissions = base.permissions,
+      remoteCompose = base.remoteCompose,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -158,5 +164,6 @@ fun mergePreviewOverrides(
     focus = overrides.focus ?: base.focus,
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
     permissions = overrides.permissions ?: base.permissions,
+    remoteCompose = overrides.remoteCompose ?: base.remoteCompose,
   )
 }

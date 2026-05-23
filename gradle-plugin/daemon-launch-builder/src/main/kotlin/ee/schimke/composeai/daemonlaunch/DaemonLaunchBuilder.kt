@@ -10,8 +10,10 @@ import kotlinx.serialization.json.Json
  * sysprops + JVM args, emit a valid descriptor."
  *
  * Bazel rules and Amper tasks resolve their classpath through their own dep system
- * (`rules_jvm_external` / Amper's m2 cache) and hand the result to [build] (in-process) or
- * [DaemonLaunchBuilderCli] (via `java -jar`).
+ * (`rules_jvm_external` / Amper's m2 cache) and hand the result to [build] (in-process) or to
+ * [DaemonLaunchBuilderCli] via `java -cp <resolved-classpath>
+ * ee.schimke.composeai.daemonlaunch.DaemonLaunchBuilderCli …` (the published JAR is slim — see the
+ * CLI's KDoc for the full contract).
  */
 public object DaemonLaunchBuilder {
 
