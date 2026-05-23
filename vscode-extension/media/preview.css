@@ -2431,6 +2431,23 @@ bundle-chip-bar {
     --overlay-color: #1976d2;
 }
 
+/* Inline badge appended to the Size cell when an `a11y/touchTargets`
+   entry reports overlap with other targets. Sits next to the dp size
+   so the reviewer doesn't have to read the Findings cell to spot an
+   overlap collision. */
+.a11y-overlap-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #f57c00;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+}
+
 /* "Configure…" expander inside a bundle tab body. Default closed —
  * the chip already turned on the bundle's default-ON kinds, the
  * expander is for power users who want to add a default-OFF kind or
