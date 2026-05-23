@@ -52,6 +52,7 @@ import {
     WarmState,
 } from "./daemon/daemonScheduler";
 import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
+import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
 import {
     buildHistorySource,
     HistoryScope,
@@ -4934,22 +4935,8 @@ async function handleSetRemoteComposeNamedValue(
     if (!moduleInfo) {
         return;
     }
-    const prior =
-        remoteComposeOverridesByPreview.get(previewId) ??
-        ({} as import("./daemon/daemonProtocol").RemoteComposeOverride);
-    const next: import("./daemon/daemonProtocol").RemoteComposeOverride = {
-        profile: prior.profile,
-        namedValues: { ...(prior.namedValues ?? {}) },
-        acceptedHostActions: prior.acceptedHostActions,
-    };
-    if (change.field === "profile") {
-        next.profile = change.value;
-    } else {
-        next.namedValues = {
-            ...(next.namedValues ?? {}),
-            [change.name]: change.value,
-        };
-    }
+    const prior = remoteComposeOverridesByPreview.get(previewId);
+    const next = mergeRemoteComposeChange(prior, change);
     remoteComposeOverridesByPreview.set(previewId, next);
 
     // Prefer the live path when a `composestream/1` session is up — sub-frame controller
