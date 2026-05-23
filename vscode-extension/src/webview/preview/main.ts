@@ -61,7 +61,7 @@ import {
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
-import { wireExpanderToController } from "./bundleExpanderWiring";
+import { createBundleExpander } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { buildA11yRowDetail } from "./a11yRowDetail";
 import {
@@ -883,10 +883,7 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body";
             wrapper.dataset.bundle = id;
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(id, bundleController);
             const table = document.createElement(
                 "data-table",
             ) as DataTable<unknown>;
@@ -955,10 +952,10 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body";
             wrapper.dataset.bundle = "performance";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(
+                "performance",
+                bundleController,
+            );
             // Recomposition uses the shared `<data-table>` so row hover
             // and copy-JSON parity with the other bundles is automatic.
             // Render trace + Perfetto don't fit the row model, so they
@@ -1002,10 +999,7 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body text-bundle-body";
             wrapper.dataset.bundle = "text";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander("text", bundleController);
             const stringsTable = document.createElement(
                 "data-table",
             ) as DataTable<DrawnTextRow>;
@@ -1915,10 +1909,10 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body inspection-bundle-body";
             wrapper.dataset.bundle = "inspection";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(
+                "inspection",
+                bundleController,
+            );
             const host = document.createElement("section");
             host.className = "inspection-bundle-host";
             const rowDetail = document.createElement(
