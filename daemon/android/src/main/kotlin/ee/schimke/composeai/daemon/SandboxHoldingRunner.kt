@@ -105,12 +105,20 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
    * for `AmbientPreviewOverrideExtension` / `AmbientInputDispatchObserver` instantiation —
    * those concrete classes call into `AmbientStateController` which directly imports wear API.
    */
-  override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> =
+  override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> {
+    val shadows = mutableListOf<Class<*>>()
+    // Wear ambient shadow — only when the wear AAR is on the classpath (issue #1244).
     if (isWearAmbientAvailable(javaClass.classLoader)) {
-      arrayOf(ShadowAmbientLifecycleObserver::class.java)
-    } else {
-      emptyArray()
+      shadows += ShadowAmbientLifecycleObserver::class.java
     }
+    // Runtime-permissions tracker shadow. Always registered — `android.content.ContextWrapper`
+    // is core Android, present on every consumer classpath, so the symbolic links the shadow
+    // declares always resolve. The shadow forwards `checkPermission(...)` to the real
+    // implementation and records the query in `PermissionsController` for the
+    // `compose/permissions` data product.
+    shadows += ShadowContextWrapperPermissionTracker::class.java
+    return shadows.toTypedArray()
+  }
 }
 
 /**
