@@ -946,6 +946,20 @@ export class PreviewApp extends LitElement {
         // We reuse the expander wiring from `buildBundleBody` but route
         // section painting through `renderPerformanceSections` instead
         // of the single `<data-table>` slot the other bundles use.
+        //
+        // We considered widening `buildBundleBody` to accept N tables so
+        // Performance / Text / Inspection could share one builder (see
+        // #1104). The two non-table sub-sections here (the SVG bar chart
+        // and the Perfetto button) don't fit the `<data-table>` row
+        // model — they need a free-form `host` element repainted by
+        // `renderPerformanceSections`. A generalised builder would have
+        // to mix "N tables" with "plus an optional host" with "plus an
+        // optional rowDetail" (which Performance doesn't have at all),
+        // and the per-bundle callsites' wiring (row-click routing,
+        // expander state, payload→table glue) stays bespoke regardless.
+        // The duplication saved is ~6 lines per bundle; the cost of the
+        // generalised shape is a wider abstraction that has to be
+        // navigated at every consumer. Net: keep the shapes separate.
         interface PerformanceBody {
             wrapper: HTMLElement;
             expander: BundleExpander;
@@ -987,6 +1001,15 @@ export class PreviewApp extends LitElement {
         // the Performance bundle. The expander toggles the default-OFF
         // `i18n/translations` kind; drawn text + fonts are default-ON
         // so they appear as soon as the chip is pressed.
+        //
+        // The three sub-tables carry distinct row shapes
+        // (`DrawnTextRow` / `FontRow` / `TranslationRow`), each with
+        // its own `RowClickedDetail<T>` listener routing to a per-shape
+        // row-detail builder, plus cross-table deselection logic that
+        // only this bundle needs. See the note on `PerformanceBody`
+        // above (#1104) for the rationale on keeping these shapes
+        // separate from the shared `BundleBody` / `buildBundleBody`
+        // helper rather than widening it to accept N tables.
         interface TextBody {
             wrapper: HTMLElement;
             expander: BundleExpander;
