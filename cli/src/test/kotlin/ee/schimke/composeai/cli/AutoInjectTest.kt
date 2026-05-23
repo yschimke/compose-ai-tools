@@ -529,7 +529,7 @@ class AutoInjectTest {
       "expected the set to be populated during settingsEvaluated",
     )
     assertTrue(
-      script.contains("if (projectDir !in composeAiPreviewPreAppliedDirs) {"),
+      script.contains("projectDir !in composeAiPreviewPreAppliedDirs"),
       "expected the buildscript block to be guarded per-project on the directory set",
     )
     assertTrue(
@@ -635,6 +635,86 @@ class AutoInjectTest {
     assertTrue(
       script.contains("composeAiPreviewStripComments(raw)"),
       "expected the scanner to run text through the comment stripper",
+    )
+  }
+
+  @Test
+  fun `init script skips auto-inject for KMP-Android modules`() {
+    // Regression coverage for the meshcore-mobile report: applying compose-preview to a module
+    // that uses `com.android.kotlin.multiplatform.library` trips an AGP-KMP variant-ambiguity
+    // error on `androidRuntimeClasspath` once the renderer's artifact view kicks in, which
+    // breaks `compose-preview show` for any project where the plugin landed via auto-inject.
+    // Auto-inject must scan for the KMP-Android plugin id, mark those modules, and skip both
+    // the buildscript classpath injection AND the apply hooks for them — partial skipping
+    // leaves the other half active and still fails. Pins the wire shape of both halves.
+    val script = renderInitScript("0.11.4")
+    assertTrue(
+      script.contains("var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()"),
+      "expected the KMP-Android skip set declaration",
+    )
+    assertTrue(
+      script.contains(
+        "composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)"
+      ),
+      "expected settingsEvaluated to populate the KMP-Android skip set",
+    )
+    assertTrue(
+      script.contains(
+        "val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs"
+      ),
+      "expected the per-project skip flag",
+    )
+    assertTrue(
+      script.contains(
+        "if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {"
+      ),
+      "expected the buildscript classpath injection to be gated on the KMP-Android skip flag too",
+    )
+    assertTrue(
+      script.contains("if (composeAiPreviewSkipKmpAndroid) return@allprojects"),
+      "expected the withPlugin apply hooks to short-circuit for KMP-Android modules",
+    )
+  }
+
+  @Test
+  fun `init script's scanForKmpAndroidDeclaration matches the literal id form`() {
+    // Pins the regex contract so a future refactor doesn't drop literal-id detection. The
+    // canonical KMP-Android module shape is `id("com.android.kotlin.multiplatform.library")`
+    // in a `plugins { ... }` block; the regex anchors on the `id (` / `id "` prefix and the
+    // exact plugin coordinate.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains(
+        "fun scanForKmpAndroidDeclaration(\n    rootDir: java.io.File,\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {"
+      ),
+      "expected scanForKmpAndroidDeclaration to return Set<File> of KMP-Android project dirs",
+    )
+    assertTrue(
+      script.contains(
+        "\"\\\\bid\\\\s*[(\\\\s]\\\\s*[\\\"']com\\\\.android\\\\.kotlin\\\\.multiplatform\\\\.library[\\\"']\""
+      ),
+      "expected the literal-id regex for com.android.kotlin.multiplatform.library",
+    )
+  }
+
+  @Test
+  fun `init script's KMP-Android scan recognises catalog aliases`() {
+    // Mirrors the compose-preview catalog-accessor path so a project that declares the
+    // KMP-Android plugin in `gradle/libs.versions.toml` (e.g.
+    // `androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library",
+    // version = "..." }`) and references it via
+    // `alias(libs.plugins.androidKotlinMultiplatformLibrary)`
+    // is still detected — that's the shape the meshcore-mobile reproducer uses.
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains(
+        "fun composeAiPreviewKmpAndroidCatalogAccessors(rootDir: java.io.File): List<Regex>"
+      ),
+      "expected a catalog-accessor scanner pinned to the KMP-Android plugin id",
+    )
+    assertTrue(
+      script.contains("com\\\\.android\\\\.kotlin\\\\.multiplatform\\\\.library"),
+      "expected the catalog-accessor regex to anchor on the KMP-Android plugin id",
     )
   }
 
