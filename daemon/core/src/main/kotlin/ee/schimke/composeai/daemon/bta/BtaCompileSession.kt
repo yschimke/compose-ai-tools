@@ -107,6 +107,13 @@ class BtaCompileSession(
     outputDir: Path,
     compilerPlugins: List<CompilerPlugin> = emptyList(),
     sourcesChanges: SourcesChanges = SourcesChanges.ToBeCalculated,
+    /**
+     * When non-null, BTA's diagnostic stream is routed through this collector for the duration of
+     * the call. Production callers ([DefaultBtaCompileService.forSession]) pass a
+     * [DiagnosticCollector] so a `COMPILATION_ERROR` outcome carries structured diagnostics.
+     * Defaults to the session's constructor-supplied [logger].
+     */
+    diagnosticListener: KotlinLogger? = null,
   ): List<Path> {
     outputDir.toFile().mkdirs()
     icWorkingDir.toFile().mkdirs()
@@ -142,7 +149,7 @@ class BtaCompileSession(
         )
       op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
       configureCompilerArgs(op, compileClasspath, compilerPlugins)
-      executeOrThrow(session, op)
+      executeOrThrow(session, op, diagnosticListener ?: logger)
     }
     return collectClassFiles(outputDir)
   }
@@ -164,7 +171,11 @@ class BtaCompileSession(
     }
   }
 
-  private fun executeOrThrow(session: KotlinToolchains.BuildSession, op: JvmCompilationOperation) {
+  private fun executeOrThrow(
+    session: KotlinToolchains.BuildSession,
+    op: JvmCompilationOperation,
+    logger: KotlinLogger = this.logger,
+  ) {
     val result: CompilationResult =
       session.executeOperation(op, toolchains.createInProcessExecutionPolicy(), logger)
     check(result == CompilationResult.COMPILATION_SUCCESS) { "BTA compile failed: result=$result" }

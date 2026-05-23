@@ -74,11 +74,14 @@ class DefaultBtaCompileService(
     return try {
       backend.compile(sources, sourcesChanges)
       BtaCompileService.Outcome.Ok
+    } catch (diag: BtaCompileDiagnosticException) {
+      // Production backend collected diagnostics via `DiagnosticCollector` and re-threw them
+      // as a typed exception — surface them through the editor's existing compile-error
+      // banner shape. Classloader is NOT swapped (the backend never wrote new .class files).
+      BtaCompileService.Outcome.CompileError(diag.errors)
     } catch (t: Throwable) {
-      // TODO: parse diagnostic-bearing compile failures into Outcome.CompileError via a
-      // `KotlinLogger`-backed collector on the session. Until then a compile-error save
-      // falls through to stage 1, which still surfaces diagnostics through the existing
-      // `KotlinCompileErrorDetector` path. Tracked in COMPILE-IN-PROCESS.md follow-ups.
+      // Unrecoverable runtime error (BTA bootstrap fault, missing JAR, file system error).
+      // Fall back to stage 1 / 0; the editor retries through `gradleService.compileOnly`.
       BtaCompileService.Outcome.Fallback(
         "BTA compile threw: ${t.message ?: t.javaClass.simpleName}"
       )
@@ -119,13 +122,28 @@ class DefaultBtaCompileService(
       DefaultBtaCompileService(
         backend =
           CompileBackend { sources, sourcesChanges ->
-            session.compileIncremental(
-              sources = sources,
-              compileClasspath = compileClasspath,
-              outputDir = outputDir,
-              compilerPlugins = compilerPlugins,
-              sourcesChanges = sourcesChanges,
-            )
+            // Per-call collector: BTA's `error(...)` callbacks land here and parse into
+            // structured `CompileErrorDetail` entries. On `COMPILATION_ERROR` the session
+            // throws an IllegalStateException; if the collector caught any diagnostics, we
+            // re-throw as the typed [BtaCompileDiagnosticException] so the outer
+            // `compile()` maps to `Outcome.CompileError`. Empty collector → original throw
+            // propagates → outer maps to `Outcome.Fallback` (unrecoverable internal error).
+            val collector = DiagnosticCollector()
+            try {
+              session.compileIncremental(
+                sources = sources,
+                compileClasspath = compileClasspath,
+                outputDir = outputDir,
+                compilerPlugins = compilerPlugins,
+                sourcesChanges = sourcesChanges,
+                diagnosticListener = collector,
+              )
+            } catch (t: Throwable) {
+              if (collector.errors.isNotEmpty()) {
+                throw BtaCompileDiagnosticException(collector.errors)
+              }
+              throw t
+            }
           },
         ineligibilityReason = ineligibilityReason,
       )

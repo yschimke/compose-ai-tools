@@ -2,6 +2,7 @@
 
 package ee.schimke.composeai.daemon.bta
 
+import ee.schimke.composeai.daemon.protocol.CompileErrorDetail
 import ee.schimke.composeai.daemon.protocol.SourceChangeSet
 import java.nio.file.Path
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
@@ -168,6 +169,42 @@ class DefaultBtaCompileServiceTest {
     // which the synthetic /abs/... paths can't satisfy. Constructing the service is enough
     // to prove the sysprop wiring; the lazy `KotlinToolchains` doesn't fire until the
     // first `compile()` call.
+  }
+
+  @Test
+  fun `backend throwing BtaCompileDiagnosticException becomes Outcome_CompileError`() {
+    // Production backend path: the session's compileIncremental throws on
+    // COMPILATION_ERROR; forSession's wrapper checks the collector and re-throws as the
+    // typed BtaCompileDiagnosticException. The service maps that to CompileError so the
+    // editor's existing diagnostic-banner UI surfaces them.
+    val errors =
+      listOf(
+        CompileErrorDetail(
+          file = "/abs/path/Foo.kt",
+          line = 4,
+          column = 17,
+          message = "Unresolved reference 'R'",
+        ),
+        CompileErrorDetail(
+          file = "/abs/path/Bar.kt",
+          line = 7,
+          column = 3,
+          message = "Type mismatch.",
+        ),
+      )
+    val service =
+      DefaultBtaCompileService(
+        backend =
+          DefaultBtaCompileService.CompileBackend { _, _ ->
+            throw BtaCompileDiagnosticException(errors)
+          }
+      )
+    val outcome = service.compile(sources = listOf(Path.of("/tmp/Hi.kt")), changes = null)
+    assertTrue(
+      "expected CompileError, got $outcome",
+      outcome is BtaCompileService.Outcome.CompileError,
+    )
+    assertEquals(errors, (outcome as BtaCompileService.Outcome.CompileError).errors)
   }
 
   @Test
