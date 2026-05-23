@@ -56,6 +56,8 @@ include(":samples:android-alpha")
 
 include(":samples:android-library")
 
+include(":samples:android-metro-viewmodel")
+
 include(":samples:android-screenshot-test")
 
 include(":samples:android-daemon-bench")

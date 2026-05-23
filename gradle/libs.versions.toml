@@ -119,6 +119,18 @@ checker-qual = "4.1.0"
 # manual decision (re-check `:data-wallpaper-connector:compileKotlin`
 # against `compose-bom-compat` when raising it).
 material-kolor = "4.0.5"
+# Metro — Zac Sweers' compile-time DI framework, used only by
+# `:samples:android-metro-viewmodel` to demonstrate that constructor-injected
+# ViewModels render under the renderer's @Preview pipeline. Pinned to 0.11.4
+# rather than the 1.1.x stable line because the Metro 1.x Gradle plugin is
+# compiled to Java 21 bytecode and refuses to load on the JDK 17 build
+# daemon this repo is pinned to (`Toolchain: Java 17` — see AGENTS.md);
+# 0.11.4 is the latest release whose plugin jar still targets Java 11.
+# Per Metro's compatibility table (docs/compatibility.md upstream) this
+# version supports Kotlin 2.3.21. The compiler plugin is opt-in per
+# module — applying `id("dev.zacsweers.metro")` in another module is
+# what runs it; consumers that don't apply it pay no overhead.
+metro = "0.11.4"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -176,6 +188,9 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
 asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.9.1" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
+# `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
+# `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
+metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -190,3 +205,6 @@ maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publ
 android-compose-screenshot = { id = "com.android.compose.screenshot", version.ref = "android-compose-screenshot" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
 tapmoc = { id = "com.gradleup.tapmoc", version.ref = "tapmoc" }
+# Metro compiler plugin — `:samples:android-metro-viewmodel` applies this to
+# get `@DependencyGraph` / `@Inject` / `@ContributesIntoMap` codegen.
+metro = { id = "dev.zacsweers.metro", version.ref = "metro" }
