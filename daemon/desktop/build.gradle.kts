@@ -117,11 +117,39 @@ dependencies {
   // `compose.desktop.currentOs` bakes the *build host's* Skiko platform into
   // the published POM (e.g. `desktop-jvm-linux-x64` when CI builds on Linux),
   // which would lock consumers to that platform. Declare as `compileOnly` so
-  // it stays on our compile/test classpath but does NOT escape into the
-  // published POM. Consumers resolve their own host's Skiko via
-  // `implementation(compose.desktop.currentOs)` in their own build, the
-  // standard Compose Desktop library pattern.
+  // we get `ImageComposeScene`, `Window`, etc. on the compile classpath but
+  // the host-specific dep does NOT escape into the published POM.
   compileOnly(compose.desktop.currentOs)
+
+  // Per-platform Skiko native runtime bundles, runtime-only. Each
+  // `compose.desktop.<os_arch>` accessor resolves to
+  // `org.jetbrains.compose.desktop:desktop-jvm-<os>-<arch>:<version>`, which
+  // transitively pulls `org.jetbrains.skiko:skiko-awt-runtime-<os>-<arch>` —
+  // the jar carrying the per-OS `libskiko-<os>-<arch>.so/.dylib/.dll`.
+  // Skiko's loader picks the right native at runtime by inspecting
+  // `os.name` / `os.arch`, so shipping all six is safe; only the matching
+  // one is actually dlopen'd.
+  //
+  // Why this isn't `compose.desktop.currentOs`: that helper resolves to
+  // exactly *one* of the per-OS coordinates at *configuration* time on the
+  // build host, so the publication ends up advertising e.g. linux-x64 only
+  // (whichever CI runs on) and consumers on other platforms hit
+  // `LibraryLoadException: Cannot find libskiko-<their-os>-<their-arch>.so`
+  // the first time a render touches `ImageComposeScene`. Listing all six
+  // per-platform coordinates explicitly puts every native on the published
+  // POM / Gradle Module Metadata so a vanilla `implementation
+  // ("ee.schimke.composeai:daemon-desktop:<v>")` works on any
+  // Compose-Desktop-supported host without consumers having to know about
+  // Skiko, classifier resolution, or `compose.desktop.currentOs`. Trade-off
+  // is roughly 35–40 MB of extra native jars in the consumer's runtime
+  // closure for the platforms they're not on — acceptable for the
+  // out-of-the-box correctness this buys.
+  runtimeOnly(compose.desktop.linux_x64)
+  runtimeOnly(compose.desktop.linux_arm64)
+  runtimeOnly(compose.desktop.macos_x64)
+  runtimeOnly(compose.desktop.macos_arm64)
+  runtimeOnly(compose.desktop.windows_x64)
+  runtimeOnly(compose.desktop.windows_arm64)
 
   testImplementation(libs.junit)
   // Tests declare a small fixture composable + drive RenderEngine against it,
@@ -139,14 +167,14 @@ dependencies {
   // declarations above; only the foundation + runtime + ui surface area the fixtures actually
   // touch is needed here.
   //
-  // `compose.desktop.currentOs` is added so the harness (which consumes
-  // `testFixtures(project(":daemon:desktop"))`) inherits the per-OS Skiko native bundle
-  // transitively. Without it the spawned daemon JVM dies in `ImageComposeScene.<init>` with
-  // `LibraryLoadException: Cannot find libskiko-linux-x64.so.sha256` — the production
-  // `compileOnly(compose.desktop.currentOs)` above keeps the bundle off the published POM, so
-  // nothing else on the harness's classpath would otherwise pull it. testFixtures variants are
-  // skipped from the publishable component (see the `afterEvaluate` block below), so this stays
-  // out of `daemon-desktop`'s POM too.
+  // The per-OS Skiko native bundle propagates transitively through the main module's
+  // `runtimeOnly(compose.desktop.<os_arch>)` deps (all six platforms), so the spawned daemon
+  // JVM has `libskiko-<host>-<arch>.so/.dylib/.dll` resolvable on its classpath without the
+  // testFixtures variant having to add it. Belt-and-braces: also declare `currentOs` here so
+  // local in-process iteration on testFixtures (e.g. running just this module's tests against
+  // its fixtures) doesn't depend on the main runtimeOnly closure being honoured by every
+  // resolution path. testFixtures variants are skipped from the publishable component (see the
+  // `afterEvaluate` block below), so this stays out of `daemon-desktop`'s POM either way.
   "testFixturesImplementation"(compose.desktop.currentOs)
   "testFixturesImplementation"(compose.runtime)
   "testFixturesImplementation"(compose.foundation)
