@@ -104,11 +104,8 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
       val density = LocalDensity.current
       val imeBottomPx = with(density) { KEYBOARD_HEIGHT_DP.dp.roundToPx() }
       DisposableEffect(visible, imeBottomPx, view) {
-        val insets = if (visible) Insets.of(0, 0, 0, imeBottomPx) else Insets.NONE
-        val compat =
-          WindowInsetsCompat.Builder()
-            .setInsets(WindowInsetsCompat.Type.ime(), insets)
-            .build()
+        val imeInsets = if (visible) Insets.of(0, 0, 0, imeBottomPx) else Insets.NONE
+        val compat = buildKeyboardInsets(ViewCompat.getRootWindowInsets(view), imeInsets)
         ViewCompat.dispatchApplyWindowInsets(view, compat)
         onDispose {}
       }
@@ -155,6 +152,26 @@ class KeyboardOverrideExtension(private val seed: KeyboardOverride? = null) :
     private const val UI_MODE_NIGHT_MASK = 0x30
     private const val UI_MODE_NIGHT_YES = 0x20
   }
+}
+
+/**
+ * Build the synthetic `WindowInsetsCompat` payload dispatched to the host view on every IME
+ * visibility change. Seeds the builder from `existing` so non-IME inset types (status bar,
+ * navigation bar, system gestures, display cutout, …) survive the synthetic dispatch — without
+ * this seed, every IME visibility toggle would zero status / navigation / safe-drawing insets on
+ * `WindowInsetsHolder`, and consumer modifiers like `Modifier.systemBarsPadding()` or
+ * `WindowInsets.safeDrawing.asPaddingValues()` would briefly collapse their padding.
+ *
+ * Extracted from the `DisposableEffect` body so it can be unit-tested without standing up a real
+ * Android view tree (the dispatch site stays Compose-shaped; the merge is pure data).
+ */
+internal fun buildKeyboardInsets(
+  existing: WindowInsetsCompat?,
+  imeInsets: Insets,
+): WindowInsetsCompat {
+  val builder =
+    if (existing != null) WindowInsetsCompat.Builder(existing) else WindowInsetsCompat.Builder()
+  return builder.setInsets(WindowInsetsCompat.Type.ime(), imeInsets).build()
 }
 
 /**
