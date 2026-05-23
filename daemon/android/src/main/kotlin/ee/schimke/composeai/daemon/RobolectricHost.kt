@@ -1339,10 +1339,22 @@ open class RobolectricHost(
         } else {
           emptyList()
         }
+      // [RemoteComposePreviewOverrideExtension] instantiates [RemoteComposeOverrideExtension]
+      // every render, which reaches into `androidx.compose.remote.creation.compose.action
+      // .HostAction` / `RcPlatformProfiles` at composition time. The classloader gate skips
+      // registration on non-Remote-Compose consumers so the lazy init never tries to resolve
+      // those alpha-API types. Mirrors the Wear-AAR gate above.
+      val remoteComposeOverrides =
+        if (isRemoteComposeAvailable(javaClass.classLoader)) {
+          listOf(RemoteComposePreviewOverrideExtension())
+        } else {
+          emptyList()
+        }
       RenderEngine(
         previewOverrideExtensions =
           PreviewOverrideExtensions(
             ambientOverrides +
+              remoteComposeOverrides +
               listOf(
                 WallpaperPreviewOverrideExtension(),
                 Material3ThemePreviewOverrideExtension(),

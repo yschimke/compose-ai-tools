@@ -257,6 +257,20 @@ include(":data-permissions-connector")
 
 project(":data-permissions-connector").projectDir = file("data/permissions/connector")
 
+// Remote Compose connector — exposes the daemon's named-value store, host-action capture queue,
+// and active profile to user code rendering a `RemotePreview { ... }` block. Android-only:
+// `androidx.compose.remote.*` is an Android artifact requiring compileSdk 37 (see
+// `:samples:remotecompose`); the connector ships its alpha-API deps as `compileOnly` so daemon
+// modules at compileSdk 36 can still consume the AAR. The Compose API surface (composition local,
+// data product, override planner) registers on `:daemon:android` only.
+include(":data-remotecompose-core")
+
+project(":data-remotecompose-core").projectDir = file("data/remotecompose/core")
+
+include(":data-remotecompose-connector")
+
+project(":data-remotecompose-connector").projectDir = file("data/remotecompose/connector")
+
 // UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
 // the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
 // `record_preview`'s `uia.*` script events.

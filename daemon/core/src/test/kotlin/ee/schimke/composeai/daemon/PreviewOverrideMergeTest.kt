@@ -6,6 +6,9 @@ import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
+import ee.schimke.composeai.daemon.protocol.RemoteComposeProfile
+import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
 import ee.schimke.composeai.daemon.protocol.UiMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -136,6 +139,32 @@ class PreviewOverrideMergeTest {
 
     assertEquals(override, merged.permissions)
     assertEquals(override, merged.toExtensionOverrides()?.permissions)
+  }
+
+  @Test
+  fun `remoteCompose override merges into the bag and flows through toExtensionOverrides`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val override =
+      RemoteComposeOverride(
+        profile = RemoteComposeProfile.ANDROIDX,
+        namedValues = mapOf("score" to RemoteNamedValue.FloatValue(0.5f)),
+      )
+    val merged = mergePreviewOverrides(base, PreviewOverrides(remoteCompose = override))
+
+    assertEquals(override, merged.remoteCompose)
+    assertEquals(override, merged.toExtensionOverrides()?.remoteCompose)
   }
 
   @Test

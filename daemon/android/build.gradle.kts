@@ -102,6 +102,19 @@ dependencies {
   // via `RobolectricHost.previewOverrideExtensions` and via the daemon's `ExtensionRegistry`
   // below.
   implementation(project(":data-permissions-connector"))
+  // Remote Compose connector — `RemoteComposeController` (process-static named-value map +
+  // host-action ring buffer + active profile state), the always-on `AroundComposable` extension
+  // that installs `LocalRemoteComposeHost` so user code inside a `RemotePreview { ... }` block
+  // can read seeded named values + the daemon-requested profile and report `HostAction` events
+  // back, the `RemoteComposePreviewOverrideExtension` planner consuming
+  // `renderNow.overrides.remoteCompose`, and the `RemoteComposeDataProductRegistry` serving the
+  // captured payload (`compose/remotecompose`). Registered on the engine via
+  // `RobolectricHost.previewOverrideExtensions` and via the daemon's `ExtensionRegistry` below;
+  // both registrations are gated on `androidx.compose.remote.*` being loadable from the sandbox
+  // classloader so plain-Android consumers without the alpha artifacts don't trip a
+  // `NoClassDefFoundError` on extension instantiation. Mirrors the
+  // `isWearAmbientAvailable`-gated `:data-ambient-connector` pattern.
+  implementation(project(":data-remotecompose-connector"))
   // Touch-event visualization connector — same module `:daemon:desktop` consumes. The
   // `TouchOverlayExtension` `AroundComposable` is pure Compose foundation/runtime so the single
   // shared JVM module works on both backends (no Android/desktop fork needed, unlike
