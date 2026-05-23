@@ -495,7 +495,44 @@ data class PreviewOverrides(
    * band, the override just doesn't add anything.
    */
   val keyboard: KeyboardOverride? = null,
+  /**
+   * Optional Android runtime-permissions override. Drives the connector-side
+   * `PermissionsOverrideExtension` (see `:data-permissions-connector`). The around-composable seeds
+   * Robolectric's `ShadowApplication` grant state from [PermissionsOverride.grants] so consumer
+   * code reading the standard Android permission APIs (`ContextCompat.checkSelfPermission`,
+   * `Activity.checkSelfPermission`, `Context.checkPermission`, accompanist's
+   * `rememberPermissionState`) sees the requested value — no connector-specific Compose API for the
+   * screen to opt into. A subsequent `renderNow.overrides.permissions` re-renders the held preview
+   * with the new grants so the next `checkSelfPermission` read observes the change. Permission
+   * names are the `Manifest.permission.*` constant strings (e.g. `"android.permission.CAMERA"`).
+   * Android-only — the desktop backend ignores this field.
+   */
+  val permissions: PermissionsOverride? = null,
 )
+
+/**
+ * Android runtime-permissions override for previews. Drives the connector-side
+ * `PermissionsOverrideExtension` (see `:data-permissions-connector`).
+ *
+ * Sending a fresh `permissions` on a subsequent `renderNow` re-renders the held preview with the
+ * new grants; the connector also accepts live updates without a fresh render via
+ * `PermissionsController.set(...)` so an open interactive session can flip a grant and observe the
+ * screen react. Permissions not listed in [grants] keep whatever state Robolectric started them
+ * with — by default everything is denied except those baked into the manifest the consumer's
+ * preview JAR carries.
+ */
+@Serializable
+data class PermissionsOverride(
+  /** Permission name -> grant state. Keys are `Manifest.permission.*` constant strings. */
+  val grants: Map<String, PermissionGrantStateOverride> = emptyMap()
+)
+
+/** Wire spelling for [PermissionsOverride.grants] values. */
+@Serializable
+enum class PermissionGrantStateOverride {
+  @SerialName("granted") GRANTED,
+  @SerialName("denied") DENIED,
+}
 
 /**
  * Soft-keyboard (IME) override for previews. Drives the connector-side `KeyboardOverrideExtension`

@@ -77,9 +77,20 @@ val composePreviewDaemonDesktop =
   }
 
 dependencies {
+  // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
+  // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
+  // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
+  // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
+  // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
+  api(project(":preview-data-api"))
+
+  // Gradle Tooling-API render pipeline + the `GradleConnection` / `PreviewModule` /
+  // `CapturedTestFailure` / `TerminalProgress` plumbing the CLI used to host inline. `api` again
+  // for source-compat (existing in-package imports). Transitively brings in the Tooling-API and
+  // slf4j-nop dependencies the CLI used to declare directly.
+  api(project(":gradle-preview-driver"))
+
   implementation(libs.kotlinx.serialization.json)
-  implementation("org.gradle:gradle-tooling-api:9.3.1")
-  runtimeOnly("org.slf4j:slf4j-nop:2.0.16")
 
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.

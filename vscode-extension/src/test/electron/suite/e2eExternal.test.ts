@@ -208,6 +208,18 @@ describeExternal(
         it("warms the daemon for :androidApp and renders at least one preview", async function () {
             api.resetMessages();
 
+            // Confetti's `:androidApp` applies the compose-preview plugin
+            // via `alias(libs.plugins.composeai.preview)` — the literal
+            // `id(...)` text-scan in `appliesPlugin` doesn't match catalog
+            // aliases, so `resolveModule` stays null until Gradle writes
+            // `applied.json` for the module. The activation-time
+            // `bootstrapAppliedMarkers` call is fire-and-forget AND
+            // targets the original GradleService (the one `injectGradleApi`
+            // above replaced), so without an explicit await the warm below
+            // races the marker write and intermittently fails on cold
+            // workspaces. Regression for #1362.
+            await api.triggerBootstrapAppliedMarkers();
+
             // Drive the same activation-time path the user hits: warm
             // the daemon (composePreviewDaemonStart → JVM spawn →
             // initialize → extensions/list+enable) and then refresh.

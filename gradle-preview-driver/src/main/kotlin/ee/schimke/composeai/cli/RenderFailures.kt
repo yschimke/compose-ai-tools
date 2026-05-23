@@ -29,7 +29,7 @@ data class CapturedTestFailure(
  * Default [stackLines] keeps the per-failure block short; agents can still rerun with `--verbose`
  * for the full Gradle output.
  */
-internal fun printCapturedTestFailures(
+fun printCapturedTestFailures(
   failures: List<CapturedTestFailure>,
   err: PrintStream = System.err,
   stackLines: Int = 6,

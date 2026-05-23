@@ -63,15 +63,21 @@ export function paintBundleBoxes(
         return;
     }
     // Image not yet decoded — defer to the load event. Guard against
-    // stacking listeners across rapid refreshes via a per-bundle
-    // dataset flag on the `<img>`.
-    const flag = "bundleOverlayPaint_" + bundleId.replace(/[^a-z0-9]/gi, "_");
-    if (img.dataset[flag] === "1") return;
-    img.dataset[flag] = "1";
+    // stacking listeners across rapid refreshes via a single dataset
+    // field on the `<img>` holding a JSON-encoded `{ [bundleId]: true }`
+    // map. One field for all bundles avoids proliferating
+    // `bundleOverlayPaint_<id>` keys on the dataset as the catalogue
+    // grows (issue #1104).
+    const pending = readPendingPaintMap(img);
+    if (pending[bundleId]) return;
+    pending[bundleId] = true;
+    writePendingPaintMap(img, pending);
     img.addEventListener(
         "load",
         () => {
-            delete img.dataset[flag];
+            const after = readPendingPaintMap(img);
+            delete after[bundleId];
+            writePendingPaintMap(img, after);
             const stillThere = container.querySelector<BoxOverlay>(
                 'box-overlay[data-bundle="' + bundleId + '"]',
             );
@@ -81,6 +87,46 @@ export function paintBundleBoxes(
         },
         { once: true },
     );
+}
+
+/**
+ * Read the pending-paint map off [img]. Returns a fresh object — never
+ * shares the underlying record so callers can mutate freely before
+ * writing it back. The dataset value is JSON; if it's missing,
+ * malformed, or decodes to something other than a plain object we treat
+ * it as empty rather than throwing, so a corrupted dataset attribute
+ * (set by external code in tests, devtools, etc.) can't wedge the
+ * paint pipeline.
+ */
+function readPendingPaintMap(img: HTMLImageElement): Record<string, true> {
+    const raw = img.dataset.bundleOverlayPaint;
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return { ...(parsed as Record<string, true>) };
+        }
+    } catch {
+        // Malformed JSON — fall through to empty map.
+    }
+    return {};
+}
+
+/**
+ * Write the pending-paint map back onto [img]. When the map is empty we
+ * delete the dataset attribute so the DOM stays tidy (and so a read of
+ * a never-set image returns `{}` cleanly).
+ */
+function writePendingPaintMap(
+    img: HTMLImageElement,
+    map: Record<string, true>,
+): void {
+    const keys = Object.keys(map);
+    if (keys.length === 0) {
+        delete img.dataset.bundleOverlayPaint;
+        return;
+    }
+    img.dataset.bundleOverlayPaint = JSON.stringify(map);
 }
 
 /**

@@ -61,7 +61,7 @@ import {
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
 import { getBundle, type BundleId } from "./bundleRegistry";
-import { wireExpanderToController } from "./bundleExpanderWiring";
+import { createBundleExpander } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { buildA11yRowDetail } from "./a11yRowDetail";
 import {
@@ -81,11 +81,16 @@ import {
     renderPerformanceSections,
 } from "./performanceBundlePresenter";
 import {
+    buildSemanticsBoundsMap,
     computeThemingBundleData,
+    consumerOverlayBoxes,
     themingTableColumns,
+    type SemanticsLookupPayload,
     type ThemePayload,
+    type ThemingRow,
     type WallpaperPayload,
 } from "./themingBundlePresenter";
+import type { RowSelectedDetail } from "./components/DataTable";
 import {
     ambientTableColumns,
     computeAmbientBundleData,
@@ -100,6 +105,7 @@ import {
 import {
     computeResourcesBundleData,
     resourcesTableColumns,
+    type ResourceUsedRow,
 } from "./resourcesBundlePresenter";
 import {
     computeErrorsBundleData,
@@ -883,10 +889,7 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body";
             wrapper.dataset.bundle = id;
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(id, bundleController);
             const table = document.createElement(
                 "data-table",
             ) as DataTable<unknown>;
@@ -943,6 +946,20 @@ export class PreviewApp extends LitElement {
         // We reuse the expander wiring from `buildBundleBody` but route
         // section painting through `renderPerformanceSections` instead
         // of the single `<data-table>` slot the other bundles use.
+        //
+        // We considered widening `buildBundleBody` to accept N tables so
+        // Performance / Text / Inspection could share one builder (see
+        // #1104). The two non-table sub-sections here (the SVG bar chart
+        // and the Perfetto button) don't fit the `<data-table>` row
+        // model — they need a free-form `host` element repainted by
+        // `renderPerformanceSections`. A generalised builder would have
+        // to mix "N tables" with "plus an optional host" with "plus an
+        // optional rowDetail" (which Performance doesn't have at all),
+        // and the per-bundle callsites' wiring (row-click routing,
+        // expander state, payload→table glue) stays bespoke regardless.
+        // The duplication saved is ~6 lines per bundle; the cost of the
+        // generalised shape is a wider abstraction that has to be
+        // navigated at every consumer. Net: keep the shapes separate.
         interface PerformanceBody {
             wrapper: HTMLElement;
             expander: BundleExpander;
@@ -955,10 +972,10 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body";
             wrapper.dataset.bundle = "performance";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(
+                "performance",
+                bundleController,
+            );
             // Recomposition uses the shared `<data-table>` so row hover
             // and copy-JSON parity with the other bundles is automatic.
             // Render trace + Perfetto don't fit the row model, so they
@@ -984,6 +1001,15 @@ export class PreviewApp extends LitElement {
         // the Performance bundle. The expander toggles the default-OFF
         // `i18n/translations` kind; drawn text + fonts are default-ON
         // so they appear as soon as the chip is pressed.
+        //
+        // The three sub-tables carry distinct row shapes
+        // (`DrawnTextRow` / `FontRow` / `TranslationRow`), each with
+        // its own `RowClickedDetail<T>` listener routing to a per-shape
+        // row-detail builder, plus cross-table deselection logic that
+        // only this bundle needs. See the note on `PerformanceBody`
+        // above (#1104) for the rationale on keeping these shapes
+        // separate from the shared `BundleBody` / `buildBundleBody`
+        // helper rather than widening it to accept N tables.
         interface TextBody {
             wrapper: HTMLElement;
             expander: BundleExpander;
@@ -1002,10 +1028,7 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body text-bundle-body";
             wrapper.dataset.bundle = "text";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander("text", bundleController);
             const stringsTable = document.createElement(
                 "data-table",
             ) as DataTable<DrawnTextRow>;
@@ -1231,6 +1254,51 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Hover swatch → tint consumer nodes on the focused card.
+            // The join needs both Theming and Inspection bundles
+            // active (Theming for the consumers list, Inspection for
+            // the `compose/semantics` bounds). Hover-leave fires the
+            // same listener with `overlayId === null`; we clear the
+            // transient layer there. See #1104.
+            b.table.addEventListener("row-selected", (evt) => {
+                const det = (evt as CustomEvent<RowSelectedDetail<ThemingRow>>)
+                    .detail;
+                const focused = focusController?.focusedCard?.();
+                if (!focused) return;
+                const active = bundleController.state().activeBundles;
+                if (
+                    !active.includes("theming") ||
+                    !active.includes("inspection") ||
+                    det.row === null ||
+                    det.overlayId === null
+                ) {
+                    clearBundleBoxes(focused, "theming-consumers");
+                    return;
+                }
+                // ThemingSeedRow has no `consumerNodeIds` (the wallpaper
+                // seed isn't a per-token row) — narrow before reading.
+                const consumerIds =
+                    "consumerNodeIds" in det.row
+                        ? (det.row.consumerNodeIds ?? [])
+                        : [];
+                if (consumerIds.length === 0) {
+                    clearBundleBoxes(focused, "theming-consumers");
+                    return;
+                }
+                const focusedId = focused.dataset.previewId;
+                const byKind = focusedId
+                    ? dataProductsByPreview.get(focusedId)
+                    : undefined;
+                const semantics = byKind?.get("compose/semantics") as
+                    | SemanticsLookupPayload
+                    | undefined;
+                const boundsMap = buildSemanticsBoundsMap(
+                    semantics,
+                    "theming-consumer",
+                );
+                const boxes = consumerOverlayBoxes(boundsMap, consumerIds);
+                paintBundleBoxes(focused, "theming-consumers", boxes);
+            });
             bundleBodies.set("theming", b);
             return b;
         };
@@ -1596,6 +1664,46 @@ export class PreviewApp extends LitElement {
                     import("./components/DataTable").DataTableColumn<unknown>
                 >,
             );
+            // Hover row → tint consumer nodes on the focused card.
+            // Same join as the Theming bundle hover (#1104): bounds
+            // come from cached `compose/semantics`, so the overlay
+            // is gated on both Resources and Inspection bundles being
+            // active.
+            b.table.addEventListener("row-selected", (evt) => {
+                const det = (
+                    evt as CustomEvent<RowSelectedDetail<ResourceUsedRow>>
+                ).detail;
+                const focused = focusController?.focusedCard?.();
+                if (!focused) return;
+                const active = bundleController.state().activeBundles;
+                if (
+                    !active.includes("resources") ||
+                    !active.includes("inspection") ||
+                    det.row === null ||
+                    det.overlayId === null
+                ) {
+                    clearBundleBoxes(focused, "resources-consumers");
+                    return;
+                }
+                const consumerIds = det.row.consumerNodeIds ?? [];
+                if (consumerIds.length === 0) {
+                    clearBundleBoxes(focused, "resources-consumers");
+                    return;
+                }
+                const focusedId = focused.dataset.previewId;
+                const byKind = focusedId
+                    ? dataProductsByPreview.get(focusedId)
+                    : undefined;
+                const semantics = byKind?.get("compose/semantics") as
+                    | SemanticsLookupPayload
+                    | undefined;
+                const boundsMap = buildSemanticsBoundsMap(
+                    semantics,
+                    "resources-consumer",
+                );
+                const boxes = consumerOverlayBoxes(boundsMap, consumerIds);
+                paintBundleBoxes(focused, "resources-consumers", boxes);
+            });
             bundleBodies.set("resources", b);
             return b;
         };
@@ -1915,10 +2023,10 @@ export class PreviewApp extends LitElement {
             const wrapper = document.createElement("div");
             wrapper.className = "bundle-tab-body inspection-bundle-body";
             wrapper.dataset.bundle = "inspection";
-            const expander = document.createElement(
-                "bundle-expander",
-            ) as BundleExpander;
-            wireExpanderToController(expander, bundleController);
+            const expander = createBundleExpander(
+                "inspection",
+                bundleController,
+            );
             const host = document.createElement("section");
             host.className = "inspection-bundle-host";
             const rowDetail = document.createElement(
@@ -2155,9 +2263,24 @@ export class PreviewApp extends LitElement {
             if (s.activeBundles.includes("performance")) {
                 refreshPerformanceBundle();
             }
-            if (s.activeBundles.includes("theming")) refreshThemingBundle();
+            if (s.activeBundles.includes("theming")) {
+                refreshThemingBundle();
+            } else {
+                // Transient hover overlay — theming-consumers paints
+                // when a swatch row is hovered while both Theming +
+                // Inspection are active. Clear it when the chip turns
+                // off so a lingering layer doesn't survive teardown.
+                clearBundleBoxes(null, "theming-consumers");
+            }
             if (s.activeBundles.includes("display")) refreshDisplayBundle();
-            if (s.activeBundles.includes("resources")) refreshResourcesBundle();
+            if (s.activeBundles.includes("resources")) {
+                refreshResourcesBundle();
+            } else {
+                // Same teardown rule as the Theming hover (#1104):
+                // the transient resources-consumers layer only makes
+                // sense while the Resources chip is on.
+                clearBundleBoxes(null, "resources-consumers");
+            }
             if (s.activeBundles.includes("watch")) {
                 refreshWatchBundle();
             } else {
@@ -2186,6 +2309,11 @@ export class PreviewApp extends LitElement {
                 // so chip dismissal wipes every bundle-attached card
                 // surface.
                 clearBundleBoxes(null, "inspection");
+                // Inspection supplies the bounds for the theming-
+                // and resources-consumer hover overlays (#1104). With
+                // Inspection gone, any existing hover layer is stale.
+                clearBundleBoxes(null, "theming-consumers");
+                clearBundleBoxes(null, "resources-consumers");
             }
             // Drop legend slices for bundles that are no longer
             // active so re-pressing the chip starts from a clean
@@ -2750,20 +2878,6 @@ export class PreviewApp extends LitElement {
                 ) {
                     refreshErrorsBundle();
                 }
-                // Auto-light the Errors chip when a test/failure
-                // payload arrives. Hooked here rather than on the
-                // daemon-side renderFailed because by the time
-                // test/failure is fetched the panel already has the
-                // payload via updateDataProducts; routing through the
-                // dispatcher would need a new PreviewMessageContext
-                // callback. Re-pressing the chip later still toggles
-                // it off.
-                if (dataProducts.some((dp) => dp.kind === "test/failure")) {
-                    bundleController.handleExternalKindToggle(
-                        "test/failure",
-                        true,
-                    );
-                }
                 if (
                     matchesTarget &&
                     activeBundles.includes("performance") &&
@@ -2851,6 +2965,8 @@ export class PreviewApp extends LitElement {
             focusOnCard,
             deactivateAllBundles: () => bundleController.deactivateAll(),
             refreshBundleState: () => reflectBundleState(),
+            promoteErrorsBundle: () =>
+                bundleController.handleExternalKindToggle("test/failure", true),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);

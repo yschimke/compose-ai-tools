@@ -11,6 +11,7 @@ import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -44,7 +45,9 @@ import java.io.File
  * (`createHeadsUpContentView()` — the popup variant shown for high-importance channels). On AOSP
  * heads-up returns the same `RemoteViews` as the expanded layout for most styles; the parameter
  * is still distinct in the API so multi-preview meta-annotations can author 3-way surface
- * fan-outs.
+ * fan-outs. [surface] is recomposition-aware: the composable is internally wrapped in
+ * `key(surface)`, so binding it to state (e.g. a runtime toggle in an interactive session) causes
+ * the inflated tree to re-render on change rather than sticking on the first-composition value.
  *
  * [previewId] is the first parameter so [factory] stays the trailing-lambda slot — `NotificationContent
  * { ctx -> ... }` is the common shape and shouldn't require named arguments. Pass `previewId` only
@@ -57,41 +60,53 @@ fun NotificationContent(
   factory: (Context) -> Notification,
 ) {
   val context = LocalContext.current
-  AndroidView(
-    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-    factory = { ctx ->
-      val parent =
-        FrameLayout(ctx).apply {
-          layoutParams =
-            ViewGroup.LayoutParams(
-              ViewGroup.LayoutParams.MATCH_PARENT,
-              ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-          // RemoteViews title rows resolve `?attr/textColorPrimary` against the activity theme,
-          // which is near-white under `uiMode = NIGHT_YES`. Without a matching dark surface
-          // behind the inflated tree, the title text renders white-on-white. SystemUI on-device
-          // paints the dark notification surface for us; here we have to do it ourselves. Read
-          // `android.R.attr.colorBackground` from the theme so the colour tracks the active
-          // night-mode configuration without us hard-coding light / dark values.
-          setBackgroundColor(resolveBackgroundColor(ctx))
+  // `AndroidView`'s `factory` block runs once per view instance — Compose recompositions do not
+  // rerun it. Without keying, callers that bind [surface] to state (e.g. a runtime toggle between
+  // collapsed / expanded / heads-up) would see the rendered notification stay on whichever
+  // surface was active at first composition. Wrapping the `AndroidView` in `key(surface)` forces
+  // Compose to throw away the previous view instance and re-run `factory` whenever [surface]
+  // changes, so the inflated RemoteViews tree tracks the parameter. The factory body is cheap
+  // (a `FrameLayout` plus a one-shot RemoteViews inflation) so the recreation cost is fine for
+  // a surface change — these are infrequent compared to per-frame recompositions, and the only
+  // mutable state inside the tree is the inflated RemoteViews itself, which is regenerated from
+  // scratch on every surface anyway.
+  key(surface) {
+    AndroidView(
+      modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+      factory = { ctx ->
+        val parent =
+          FrameLayout(ctx).apply {
+            layoutParams =
+              ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+              )
+            // RemoteViews title rows resolve `?attr/textColorPrimary` against the activity theme,
+            // which is near-white under `uiMode = NIGHT_YES`. Without a matching dark surface
+            // behind the inflated tree, the title text renders white-on-white. SystemUI on-device
+            // paints the dark notification surface for us; here we have to do it ourselves. Read
+            // `android.R.attr.colorBackground` from the theme so the colour tracks the active
+            // night-mode configuration without us hard-coding light / dark values.
+            setBackgroundColor(resolveBackgroundColor(ctx))
+          }
+        val notification = factory(context)
+        if (previewId != null) {
+          NotificationSidecar.write(previewId, notification, context)
         }
-      val notification = factory(context)
-      if (previewId != null) {
-        NotificationSidecar.write(previewId, notification, context)
-      }
-      val view =
-        inflateNotificationView(context, notification, parent, surface)
-          ?: error("NotificationContent produced no inflatable RemoteViews")
-      parent.addView(
-        view,
-        FrameLayout.LayoutParams(
-          ViewGroup.LayoutParams.MATCH_PARENT,
-          ViewGroup.LayoutParams.WRAP_CONTENT,
-        ),
-      )
-      parent
-    },
-  )
+        val view =
+          inflateNotificationView(context, notification, parent, surface)
+            ?: error("NotificationContent produced no inflatable RemoteViews")
+        parent.addView(
+          view,
+          FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+          ),
+        )
+        parent
+      },
+    )
+  }
 }
 
 /**

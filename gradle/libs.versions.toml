@@ -130,6 +130,15 @@ material-kolor = "4.0.5"
 metro = "1.1.1"
 
 [libraries]
+# Kotlin scripting host — consumed by `examples/scripting`'s contrib-reference
+# `compose-preview-scripting` binary to compile + evaluate `*.composepreview.kts`
+# files. Not on the main CLI's classpath (the deletion of `:cli-scripting` in
+# the clean-API step C kept the ~50 MB compiler-embeddable closure out of the
+# published `compose-preview` tarball); only ships in the standalone scripting
+# binary that contrib mirrors.
+kotlin-scripting-common = { module = "org.jetbrains.kotlin:kotlin-scripting-common", version.ref = "kotlin" }
+kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
+kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }
@@ -182,8 +191,8 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # bytecode at test time. The B2.0 disposable user-classloader test asserts that the daemon
 # actually re-reads bytecode after a `fileChanged` notification; without two distinct `.class`
 # files the test can't differentiate "stale" from "fresh".
-asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
-asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.9.1" }
+asm = { module = "org.ow2.asm:asm", version = "9.10" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.

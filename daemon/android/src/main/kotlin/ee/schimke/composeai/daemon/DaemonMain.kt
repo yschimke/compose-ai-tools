@@ -349,6 +349,28 @@ fun main(args: Array<String>) {
             dataProductRegistry = AmbientDataProductRegistry(),
           )
         }
+        tryAdd("data/permissions") {
+          // Runtime-permissions override + query tracker. Registry serves the
+          // `compose/permissions` payload (effective grant map + permissions the screen has
+          // queried). The actual planner lives in `RobolectricHost`'s
+          // `previewOverrideExtensions` list — same wiring shape as keyboard / focus — so the
+          // controller seed + shadow-tracker hookup are in place even when no client has
+          // explicitly enabled this extension. `dataExtensionDescriptors` advertises the planner
+          // so panel / MCP clients can gate their permission-override UI on the daemon actually
+          // shipping it.
+          Extension(
+            id = "data/permissions",
+            displayName = "Runtime permissions override",
+            dataProductRegistry = PermissionsDataProductRegistry(),
+            dataExtensionDescriptors =
+              listOf(
+                DataExtensionDescriptor(
+                  id = PermissionsOverrideExtension.ID,
+                  displayName = "Runtime permissions override",
+                )
+              ),
+          )
+        }
         tryAdd("data/touch-overlay") {
           // Touch-event visualization overlay (`AroundComposableHook` from
           // `:data-touch-overlay-connector`) — paints a translucent ring at every active pointer

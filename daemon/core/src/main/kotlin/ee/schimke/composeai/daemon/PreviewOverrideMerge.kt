@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
@@ -31,6 +32,7 @@ data class PreviewOverrideBaseSpec(
   val ambient: AmbientOverride? = null,
   val focus: FocusOverride? = null,
   val touchOverlay: Boolean? = null,
+  val permissions: PermissionsOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -48,6 +50,7 @@ data class MergedPreviewOverrides(
   val ambient: AmbientOverride?,
   val focus: FocusOverride?,
   val touchOverlay: Boolean?,
+  val permissions: PermissionsOverride?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -70,6 +73,7 @@ data class MergedPreviewOverrides(
         ambient == null &&
         focus == null &&
         touchOverlay != true &&
+        permissions == null &&
         !isPseudolocale
     ) {
       return null
@@ -81,6 +85,7 @@ data class MergedPreviewOverrides(
       focus = focus,
       localeTag = if (isPseudolocale) localeTag else null,
       touchOverlay = touchOverlay,
+      permissions = permissions,
     )
   }
 }
@@ -125,6 +130,7 @@ fun mergePreviewOverrides(
       ambient = base.ambient,
       focus = base.focus,
       touchOverlay = base.touchOverlay,
+      permissions = base.permissions,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -151,5 +157,6 @@ fun mergePreviewOverrides(
     ambient = overrides.ambient ?: base.ambient,
     focus = overrides.focus ?: base.focus,
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
+    permissions = overrides.permissions ?: base.permissions,
   )
 }

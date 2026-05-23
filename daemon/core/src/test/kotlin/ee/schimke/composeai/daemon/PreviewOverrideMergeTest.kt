@@ -3,6 +3,8 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.protocol.FocusDirection
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride
+import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.UiMode
 import org.junit.Assert.assertEquals
@@ -109,6 +111,31 @@ class PreviewOverrideMergeTest {
 
     val empty = mergePreviewOverrides(base, PreviewOverrides()).toExtensionOverrides()
     assertNull("merged extension bag should be null when no extension fields are set", empty)
+  }
+
+  @Test
+  fun `permissions override merges into the bag and flows through toExtensionOverrides`() {
+    val base =
+      PreviewOverrideBaseSpec(
+        widthPx = 320,
+        heightPx = 480,
+        density = 2.0f,
+        device = null,
+        localeTag = null,
+        fontScale = null,
+        uiMode = null,
+        orientation = null,
+        inspectionMode = null,
+      )
+
+    val override =
+      PermissionsOverride(
+        grants = mapOf("android.permission.CAMERA" to PermissionGrantStateOverride.GRANTED)
+      )
+    val merged = mergePreviewOverrides(base, PreviewOverrides(permissions = override))
+
+    assertEquals(override, merged.permissions)
+    assertEquals(override, merged.toExtensionOverrides()?.permissions)
   }
 
   @Test

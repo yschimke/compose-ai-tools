@@ -76,34 +76,48 @@ describe("renderInitScript", () => {
         );
     });
 
-    it("gates the buildscript classpath injection on pre-applied detection", () => {
-        // When the consumer already declares the plugin (via plugins {} with
-        // version, or `alias(libs.plugins.<x>)`), unconditionally injecting
-        // the plugin onto the buildscript classpath makes Gradle reject the
-        // user's plugins block with "plugin already on the classpath with an
-        // unknown version". The init script must scan the project tree and
-        // skip injection when any build file declares the plugin with a
-        // version.
+    it("gates the buildscript classpath injection on per-project pre-applied detection", () => {
+        // Regression for #305 (homeassistant-remotecompose): the original gate was a single
+        // global boolean, so a mixed-shape project where some modules declare the plugin via
+        // `alias(libs.plugins.compose.preview)` and others don't would skip buildscript
+        // injection *everywhere*. Then `pluginManager.apply` from the withPlugin hooks would
+        // fail in the modules without the catalog alias ("Plugin with id
+        // 'ee.schimke.composeai.preview' not found."). The gate is now a per-project set of
+        // project directories that declare the plugin themselves; modules without their own
+        // declaration still get the buildscript classpath injection so withPlugin's
+        // pluginManager.apply can resolve the plugin class.
         const script = renderInitScript();
         assert.ok(
-            script.includes("var composeAiPreviewPreApplied = false"),
-            "expected the pre-applied flag declaration",
+            script.includes(
+                "var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()",
+            ),
+            "expected the per-project pre-applied directory set declaration",
         );
         assert.ok(
             script.includes(
-                "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)",
+                "composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)",
             ),
-            "expected the flag to be set during settingsEvaluated",
+            "expected the set to be populated during settingsEvaluated",
         );
         assert.ok(
-            script.includes("if (!composeAiPreviewPreApplied) {"),
-            "expected the buildscript block to be guarded by the flag",
+            script.includes(
+                "if (projectDir !in composeAiPreviewPreAppliedDirs) {",
+            ),
+            "expected the buildscript block to be guarded per-project on the directory set",
         );
         // Catalog alias resolution: the scanner must look at gradle/libs.versions.toml
         // so that `alias(libs.plugins.<x>)` references are detected.
         assert.ok(
             script.includes("gradle/libs.versions.toml"),
             "expected the catalog accessor scanner to read libs.versions.toml",
+        );
+        // Pin the per-project return shape so a future refactor doesn't silently drop back
+        // to the global Boolean (which is the #305 regression mode).
+        assert.ok(
+            script.includes(
+                "fun scanForComposeAiPreviewDeclaration(\n    rootDir: java.io.File,\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {",
+            ),
+            "expected scanForComposeAiPreviewDeclaration to return Set<File> of pre-applied project dirs",
         );
     });
 
@@ -257,13 +271,31 @@ describe("materializeInitScript", () => {
 });
 
 describe("hasIncludedPluginBuild", () => {
+    /**
+     * Seeds the included build's `build.gradle.kts` with the compose-preview
+     * plugin id so the sentinel check (#1362) passes. Callers that want to
+     * verify the *negative* path can skip this helper.
+     */
+    function writeComposePreviewGradlePlugin(dir: string): void {
+        const pluginDir = path.join(dir, "gradle-plugin");
+        fs.mkdirSync(pluginDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(pluginDir, "build.gradle.kts"),
+            "plugins { `java-gradle-plugin` }\n" +
+                "gradlePlugin {\n" +
+                '  plugins { create("composePreview") { id = "ee.schimke.composeai.preview" } }\n' +
+                "}\n",
+        );
+    }
+
     it(
-        'returns true for settings.gradle.kts declaring includeBuild("gradle-plugin")',
+        'returns true for settings.gradle.kts declaring includeBuild("gradle-plugin") when the included build publishes the compose-preview plugin',
         withTempDir((dir) => {
             fs.writeFileSync(
                 path.join(dir, "settings.gradle.kts"),
                 'rootProject.name = "demo"\nincludeBuild("gradle-plugin")\n',
             );
+            writeComposePreviewGradlePlugin(dir);
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
     );
@@ -275,6 +307,7 @@ describe("hasIncludedPluginBuild", () => {
                 path.join(dir, "settings.gradle"),
                 "rootProject.name = 'demo'\nincludeBuild('gradle-plugin')\n",
             );
+            writeComposePreviewGradlePlugin(dir);
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
     );
@@ -285,6 +318,25 @@ describe("hasIncludedPluginBuild", () => {
             fs.writeFileSync(
                 path.join(dir, "settings.gradle.kts"),
                 'includeBuild( "gradle-plugin" )\n',
+            );
+            writeComposePreviewGradlePlugin(dir);
+            assert.strictEqual(hasIncludedPluginBuild(dir), true);
+        }),
+    );
+
+    it(
+        "accepts a Groovy-DSL sentinel build script too",
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild("gradle-plugin")\n',
+            );
+            const pluginDir = path.join(dir, "gradle-plugin");
+            fs.mkdirSync(pluginDir, { recursive: true });
+            fs.writeFileSync(
+                path.join(pluginDir, "build.gradle"),
+                "// Groovy DSL\n" +
+                    'gradlePlugin { plugins { composePreview { id = "ee.schimke.composeai.preview" } } }\n',
             );
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
@@ -304,6 +356,45 @@ describe("hasIncludedPluginBuild", () => {
                 path.join(dir, "settings.gradle.kts"),
                 'includeBuild("build-logic")\n',
             );
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
+        }),
+    );
+
+    it(
+        'returns false when includeBuild("gradle-plugin") matches but the included build is an unrelated local build-logic project (issue #1362)',
+        withTempDir((dir) => {
+            // A common convention in unrelated workspaces: a local
+            // `gradle-plugin/` included build that publishes convention
+            // plugins under a different id. Auto-inject must stay enabled
+            // there — the workspace doesn't have a local source of truth
+            // for `ee.schimke.composeai.preview`, so dropping
+            // `--init-script` regresses preview rendering.
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'rootProject.name = "demo"\nincludeBuild("gradle-plugin")\n',
+            );
+            const pluginDir = path.join(dir, "gradle-plugin");
+            fs.mkdirSync(pluginDir, { recursive: true });
+            fs.writeFileSync(
+                path.join(pluginDir, "build.gradle.kts"),
+                "plugins { `java-gradle-plugin` }\n" +
+                    "gradlePlugin {\n" +
+                    '  plugins { create("conventions") { id = "com.example.conventions" } }\n' +
+                    "}\n",
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
+        }),
+    );
+
+    it(
+        'returns false when includeBuild("gradle-plugin") matches but the included build has no build script at all',
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild("gradle-plugin")\n',
+            );
+            // No gradle-plugin/build.gradle{.kts} on disk — the sentinel
+            // can't confirm the dev-loop shape, so auto-inject stays on.
             assert.strictEqual(hasIncludedPluginBuild(dir), false);
         }),
     );
