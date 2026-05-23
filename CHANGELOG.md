@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.11.1](https://github.com/yschimke/compose-ai-tools/compare/v0.11.0...v0.11.1) (2026-05-23)
+
+
+### Features
+
+* **cli:** add `compose-preview script` Kotlin scripting MVP ([#1084](https://github.com/yschimke/compose-ai-tools/issues/1084)) ([#1375](https://github.com/yschimke/compose-ai-tools/issues/1375)) ([a2e98b6](https://github.com/yschimke/compose-ai-tools/commit/a2e98b663b94d2a3457d82ab9dd31d3b4592f805))
+* **data-permissions:** add runtime-permissions data extension ([#1370](https://github.com/yschimke/compose-ai-tools/issues/1370)) ([3ce360c](https://github.com/yschimke/compose-ai-tools/commit/3ce360c4c0021a3730d8182e40c3635fcc5db512))
+* **data-permissions:** sample preview + panel bundle entry ([#1395](https://github.com/yschimke/compose-ai-tools/issues/1395)) ([07d5938](https://github.com/yschimke/compose-ai-tools/commit/07d5938c6f26b2c27c795a7b2b4a2a1cc7d42bf1))
+* **data-remotecompose:** add Remote Compose data extension ([#1378](https://github.com/yschimke/compose-ai-tools/issues/1378)) ([77dad95](https://github.com/yschimke/compose-ai-tools/commit/77dad958cad92e950828a09a035744d2ee86f3f6))
+* **data/pseudolocale:** pseudolocalise stringResource on CMP Desktop ([#1339](https://github.com/yschimke/compose-ai-tools/issues/1339)) ([bf26bd8](https://github.com/yschimke/compose-ai-tools/commit/bf26bd884b6f203bc23754d97fa6be6f4ed11271))
+* **notification-preview-runtime:** surface axis + content edge-case gallery ([#1354](https://github.com/yschimke/compose-ai-tools/issues/1354)) ([ce08046](https://github.com/yschimke/compose-ai-tools/commit/ce08046d1905df3d63d1005914bc880ddc434273))
+* **renderer-desktop:** wire @ScrollingPreview LONG / GIF on CMP Desktop ([#1346](https://github.com/yschimke/compose-ai-tools/issues/1346)) ([42d634c](https://github.com/yschimke/compose-ai-tools/commit/42d634cfa59e5df067811871cf12a16fb1864a13))
+* **samples:** MediaStyle + DecoratedCustomViewStyle in notification gallery ([#1350](https://github.com/yschimke/compose-ai-tools/issues/1350)) ([4ab03c9](https://github.com/yschimke/compose-ai-tools/commit/4ab03c9a3c645e293861ee6da10f573c6c2acbb4))
+* **vscode-extension:** auto-light Errors chip on renderFailed via dispatcher ([#1365](https://github.com/yschimke/compose-ai-tools/issues/1365)) ([35ab16a](https://github.com/yschimke/compose-ai-tools/commit/35ab16a71869a1974a8df7f890793a669fe080cf))
+* **vscode-extension:** paint compose/semantics mergeDescendants nodes with warning palette ([#1358](https://github.com/yschimke/compose-ai-tools/issues/1358)) ([653eb60](https://github.com/yschimke/compose-ai-tools/commit/653eb607ad833568f12ba710bd0944de1733e2ab))
+* **vscode-extension:** surface a11y/touchTargets overlap count as a Size-cell badge ([#1359](https://github.com/yschimke/compose-ai-tools/issues/1359)) ([498aee1](https://github.com/yschimke/compose-ai-tools/commit/498aee12de426ceecb65f6d7ec7af906f0fb449f))
+* **vscode-extension:** tint consumer nodes on resources row hover ([#1380](https://github.com/yschimke/compose-ai-tools/issues/1380)) ([aa6a20d](https://github.com/yschimke/compose-ai-tools/commit/aa6a20decc6e7a2cc78045a0d0978859e4d57a33))
+* **vscode-extension:** tint consumer nodes on theming swatch hover ([#1376](https://github.com/yschimke/compose-ai-tools/issues/1376)) ([89f0b11](https://github.com/yschimke/compose-ai-tools/commit/89f0b112dbe5f0479b3571bf5b7f0c981aa4444d))
+* **vscode-extension:** wire 'Copy as selector' row action on uia/hierarchy rows ([#1357](https://github.com/yschimke/compose-ai-tools/issues/1357)) ([365f09f](https://github.com/yschimke/compose-ai-tools/commit/365f09f20db360efed148c019b4c388b55a9c239))
+* **vscode:** spike continuous-compile worker behind opt-in flag ([#1332](https://github.com/yschimke/compose-ai-tools/issues/1332)) ([0706934](https://github.com/yschimke/compose-ai-tools/commit/07069347edefd6595f5b86dca7eb119965b61a56))
+
+
+### Bug Fixes
+
+* **cli:** gate auto-inject buildscript classpath per project ([#1388](https://github.com/yschimke/compose-ai-tools/issues/1388)) ([ee7201a](https://github.com/yschimke/compose-ai-tools/commit/ee7201aa6315f3b72a95a91b00e11b1de28e382d))
+* **contrib:** document `java -cp` as the only supported CLI invocation ([#1383](https://github.com/yschimke/compose-ai-tools/issues/1383)) ([01d5b50](https://github.com/yschimke/compose-ai-tools/commit/01d5b50a6b3698b6fed88a57dd4207535a2ee0b2))
+* **daemon-desktop:** pin held-scene operations to a single-thread executor ([#1229](https://github.com/yschimke/compose-ai-tools/issues/1229)) ([#1348](https://github.com/yschimke/compose-ai-tools/issues/1348)) ([b04e5e5](https://github.com/yschimke/compose-ai-tools/commit/b04e5e51088d917c5b4ebd1f9d089ab04fee7f91))
+* **data-extensions:** address recent codex P1s ([#1360](https://github.com/yschimke/compose-ai-tools/issues/1360)) ([#1387](https://github.com/yschimke/compose-ai-tools/issues/1387)) ([6804c88](https://github.com/yschimke/compose-ai-tools/commit/6804c8870121adebd7e67bde6d8f493111171a2c))
+* **deps:** update gradle minor/patch ([#1377](https://github.com/yschimke/compose-ai-tools/issues/1377)) ([aa3d71b](https://github.com/yschimke/compose-ai-tools/commit/aa3d71b94990df89a88cef911b0a7e1318968372))
+* **gradle-plugin:** open jdk.internal.access for Robolectric on JDK 25+ ([#1335](https://github.com/yschimke/compose-ai-tools/issues/1335)) ([cee6030](https://github.com/yschimke/compose-ai-tools/commit/cee60301e4e5b6c41c80ec94292becd75787d284))
+* **notification-preview-runtime:** make surface parameter recompose-aware ([#1363](https://github.com/yschimke/compose-ai-tools/issues/1363)) ([#1385](https://github.com/yschimke/compose-ai-tools/issues/1385)) ([53ba5c6](https://github.com/yschimke/compose-ai-tools/commit/53ba5c68ae6d00bc155f304ca643c5ac14043ea5))
+* **preview-discovery:** surface skip-reason warnings on failure path ([#1364](https://github.com/yschimke/compose-ai-tools/issues/1364)) ([#1386](https://github.com/yschimke/compose-ai-tools/issues/1386)) ([a5124cf](https://github.com/yschimke/compose-ai-tools/commit/a5124cf78ca9929d4ba8f20afd7bfb4a9e16642d))
+* **samples:** default sdk-matrix to compileSdk=35 so JDK 17 baselines render ([#1330](https://github.com/yschimke/compose-ai-tools/issues/1330)) ([57ac24f](https://github.com/yschimke/compose-ai-tools/commit/57ac24f365da0826fab375cc7ed951f9356bfd29))
+* **vscode-extension:** close recent codex robustness findings ([#1362](https://github.com/yschimke/compose-ai-tools/issues/1362)) ([#1366](https://github.com/yschimke/compose-ai-tools/issues/1366)) ([406e4ba](https://github.com/yschimke/compose-ai-tools/commit/406e4ba27aa4389b6dbf8c4ddcd0d3c94ff92ebf))
+* **vscode-extension:** close recent codex robustness findings ([#1362](https://github.com/yschimke/compose-ai-tools/issues/1362)) ([#1379](https://github.com/yschimke/compose-ai-tools/issues/1379)) ([c3bbea8](https://github.com/yschimke/compose-ai-tools/commit/c3bbea8a3f34284722b9bef6318abdf1e9de8fd9))
+* **vscode-extension:** hide bundle legend when leaving focus mode ([#1347](https://github.com/yschimke/compose-ai-tools/issues/1347)) ([3bc8e96](https://github.com/yschimke/compose-ai-tools/commit/3bc8e96d2987bb8b8c2f0814a3e1d27fd81b04de))
+* **vscode-extension:** include JVM exit code + stderr tail when daemon spawn fails ([#1343](https://github.com/yschimke/compose-ai-tools/issues/1343)) ([fb722e2](https://github.com/yschimke/compose-ai-tools/commit/fb722e2600153b638ec16b4e042f03895a4520cd))
+* **vscode:** skip auto-inject when settings.gradle includes :gradle-plugin ([#1337](https://github.com/yschimke/compose-ai-tools/issues/1337)) ([ca9a0b7](https://github.com/yschimke/compose-ai-tools/commit/ca9a0b7851a45ae0ed3190ba46d0228e4f3d01d3))
+* **vscode:** skip Gradle auto-render during activation when the daemon will render ([#1331](https://github.com/yschimke/compose-ai-tools/issues/1331)) ([86b4493](https://github.com/yschimke/compose-ai-tools/commit/86b4493b2138e6698ea5866fea6427d018a6ff80))
+
 ## [0.11.0](https://github.com/yschimke/compose-ai-tools/compare/v0.10.19...v0.11.0) (2026-05-22)
 
 
