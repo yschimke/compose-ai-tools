@@ -81,6 +81,17 @@
       "allowedVersions": "/^1\\.10\\./"
     },
     {
+      "description": "org.slf4j:slf4j-nop: track gradle-tooling-api's bundled slf4j-api. Tooling API declares `slf4j-api {strictly <X>}` and bumping `-nop` past that drags in a newer `slf4j-api` that can't reconcile with the strict constraint. The matching `-nop` version moves whenever the Tooling-API release ships a newer slf4j-api floor — bump this pin in lockstep then.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "org.slf4j:slf4j-nop"
+      ],
+      "matchCurrentValue": "/^2\\.0\\.17$/",
+      "allowedVersions": "/^2\\.0\\.17$/"
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"
