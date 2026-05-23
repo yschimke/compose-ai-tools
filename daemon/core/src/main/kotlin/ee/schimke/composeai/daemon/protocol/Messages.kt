@@ -499,11 +499,13 @@ data class PreviewOverrides(
    * Optional Android runtime-permissions override. Drives the connector-side
    * `PermissionsOverrideExtension` (see `:data-permissions-connector`). The around-composable seeds
    * Robolectric's `ShadowApplication` grant state from [PermissionsOverride.grants] so consumer
-   * code reading `ContextCompat.checkSelfPermission(...)` sees the requested value, *and* installs
-   * a `LocalPermissionsHost` composition local so a screen consulting it observes live updates the
-   * panel pushes via subsequent `renderNow.overrides.permissions` calls without a fresh render.
-   * Permission names are the `Manifest.permission.*` constant strings (e.g.
-   * `"android.permission.CAMERA"`). Android-only — the desktop backend ignores this field.
+   * code reading the standard Android permission APIs (`ContextCompat.checkSelfPermission`,
+   * `Activity.checkSelfPermission`, `Context.checkPermission`, accompanist's
+   * `rememberPermissionState`) sees the requested value — no connector-specific Compose API for the
+   * screen to opt into. A subsequent `renderNow.overrides.permissions` re-renders the held preview
+   * with the new grants so the next `checkSelfPermission` read observes the change. Permission
+   * names are the `Manifest.permission.*` constant strings (e.g. `"android.permission.CAMERA"`).
+   * Android-only — the desktop backend ignores this field.
    */
   val permissions: PermissionsOverride? = null,
 )

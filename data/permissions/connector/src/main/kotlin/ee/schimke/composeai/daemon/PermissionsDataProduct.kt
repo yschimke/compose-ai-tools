@@ -1,10 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
@@ -28,62 +25,40 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Compose composition local exposing the live permission state to consumer screens. Two
- * affordances:
- *
- * * [PermissionsHost.check] — returns the current grant for [permission] and records the query so
- *   the `compose/permissions` data product can surface what the screen asked about. Reads from
- *   the snapshot-state-backed [PermissionsController.grants], so a screen calling `check(...)`
- *   inside a `@Composable` recomposes when the panel pushes a fresh
- *   `renderNow.overrides.permissions`.
- * * [PermissionsHost.grants] — direct read of the current grant map for screens that want to
- *   iterate all granted/denied permissions without naming each up front.
- *
- * The `ContextCompat.checkSelfPermission(...)` platform path also works (the controller seeds
- * Robolectric's `ShadowApplication`) — `LocalPermissionsHost` exists for screens that want
- * tracking + automatic recomposition on flip without going through the platform call.
- */
-val LocalPermissionsHost = compositionLocalOf<PermissionsHost> { ControllerPermissionsHost }
-
-/**
- * Façade over [PermissionsController] for consumer code. Sealed so future facets (rationale flags,
- * per-permission timestamps) can land without breaking the call shape.
- */
-interface PermissionsHost {
-  /**
-   * Read [permission]'s current grant and record the query. Returns `null` when no override
-   * applies for [permission] — caller decides the default (Compose code typically treats this as
-   * `denied` to surface the "request permission" UI).
-   */
-  @Composable fun check(permission: String): PermissionGrantStateOverride?
-}
-
-private object ControllerPermissionsHost : PermissionsHost {
-  @Composable
-  override fun check(permission: String): PermissionGrantStateOverride? {
-    PermissionsController.recordQuery(permission)
-    // Read the snapshot-state map so the composition recomposes when the controller flips.
-    val current by PermissionsController.grants
-    return current[permission]
-  }
-}
-
-/**
  * `AroundComposable` extension that owns the runtime-permissions surface. The extension is
- * **always active** — the planner emits an instance for every render so [LocalPermissionsHost] is
- * in scope and the controller's `recordQuery` path is wired regardless of whether the client sent
- * an explicit `PermissionsOverride`.
+ * **always active** — the planner emits an instance for every render so the controller-driven
+ * Robolectric grant state is seeded and the shadow tracker's `recordQuery` path is wired
+ * regardless of whether the client sent an explicit `PermissionsOverride`.
+ *
+ * **No custom Compose API.** Consumer screens drive the standard Android permission APIs —
+ * `ContextCompat.checkSelfPermission(...)`, `Activity.checkSelfPermission(...)`,
+ * `PackageManager.checkPermission(...)`, accompanist's `rememberPermissionState`, and the
+ * AndroidX `ActivityResultContracts.RequestPermission` launcher — and the connector hooks them
+ * transparently:
+ *
+ * * **Apply overrides** — [PermissionsController.set] pushes the grant map into Robolectric's
+ *   `ShadowApplication.grantPermissions/denyPermissions`, so the platform `checkPermission`
+ *   path returns the requested value without the screen reaching for a connector-specific
+ *   composition local.
+ * * **Track queries** — [ShadowContextWrapperPermissionTracker] intercepts every
+ *   `ContextWrapper.checkPermission(...)` call (the union of all the public check APIs above)
+ *   and records the queried permission in the controller for the `compose/permissions`
+ *   data-product payload.
+ * * **Live updates** — a follow-up `renderNow.overrides.permissions` re-renders the held
+ *   preview with the new grants; the screen reads `ContextCompat.checkSelfPermission(...)` on
+ *   recomposition and observes the new value through the standard platform call.
  *
  * Lifecycle:
  *
  * * On enter — [PermissionsController.set] is called with the seed (clears the map when null).
  *   `DisposableEffect(seed)` re-runs only when the override identity changes, so a subsequent
  *   `renderNow.overrides.permissions` with the same shape doesn't churn the controller.
- * * On dispose — clears the override (matches `KeyboardOverrideExtension`'s on-dispose semantics).
+ * * On dispose — clears the override (matches `KeyboardOverrideExtension`'s on-dispose
+ *   semantics).
  *
- * Runs in [DataExtensionPhase.OuterEnvironment] so the shadow `LocalPermissionsHost` is in place
- * before the user-environment phase reaches preview content — text fields, buttons, and any
- * `LaunchedEffect`-driven permission check composed in user code see the controller's view.
+ * Runs in [DataExtensionPhase.OuterEnvironment] so the controller's Robolectric grant state is
+ * primed before the user-environment phase reaches preview content — any `LaunchedEffect`-driven
+ * permission check composed in user code sees the override.
  */
 class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null) :
   AroundComposableExtension(
@@ -100,7 +75,7 @@ class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null
       PermissionsController.set(seed)
       onDispose { PermissionsController.set(null) }
     }
-    CompositionLocalProvider(LocalPermissionsHost provides ControllerPermissionsHost) { content() }
+    content()
   }
 
   companion object {
