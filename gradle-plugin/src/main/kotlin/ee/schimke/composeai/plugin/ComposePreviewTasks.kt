@@ -590,27 +590,65 @@ internal object ComposePreviewTasks {
     task: ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask,
     userRuntimeConfig: org.gradle.api.artifacts.Configuration?,
   ) {
-    // The two detached configurations are created (idempotently) by `setupBtaConfigurations`
-    // at plugin-apply time, BEFORE this registration block runs. Look them up by name here so
-    // the task wiring sees the populated state when the `afterEvaluate` body fires.
+    val _unused = extension // kept in signature for parity with Android wrapper
+    wireBtaInputs(
+      project = project,
+      task = task,
+      // CMP / Kotlin-JVM: the consumer's runtime classpath is the compile classpath. Empty
+      // file collection when no runtime config was found (rare; the desktop task wiring
+      // would have logged that case).
+      userCompileClasspath = userRuntimeConfig ?: project.files(),
+      // MODULE_NAME mirrors KGP's default `compileKotlin` for non-multiplatform JVM modules
+      // — `project.name`, no path-mangling. The bta-host-fixture spike confirmed Gradle
+      // uses this exact spelling in `kotlin.Metadata.d2[]`.
+      moduleName = project.name,
+      // Output dir mirrors KGP's `compileKotlin` for plain Kotlin/JVM. CMP-Desktop uses
+      // `classes/kotlin/desktop/main` instead under some plugin combinations; the daemon's
+      // child classloader watches both via `userClassDirs`, so this picks the most common
+      // shape and the runtime handles the rest.
+      outputDirProvider =
+        project.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath },
+      icWorkingDirProvider =
+        project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
+          it.asFile.absolutePath
+        },
+      ineligibilityReason = detectStageTwoIneligibility(project),
+    )
+  }
+
+  /**
+   * Shared by [wireDesktopBtaInputs] (CMP path) and `AndroidPreviewSupport`'s analogous call site.
+   * Wires every BTA input on [DaemonBootstrapTask] from a per-target compile classpath
+   * + module-name + output dir + IC dir, then mirrors every value into the daemon JVM's sysprops so
+   *   `DefaultBtaCompileService.fromSysprops()` constructs the in-process service at startup. The
+   *   configurations themselves are created (and conditionally populated) by
+   *   [setupBtaConfigurations], which must run BEFORE this method.
+   *
+   * The sysprop NAMES are duplicated verbatim from `:daemon:core`'s
+   * `DefaultBtaCompileService.Companion.SYSPROP_*` constants — the gradle plugin and the daemon
+   * live in separate included builds, so we can't import the constants directly. Keep both halves
+   * in sync; the daemon's `CompileSourcesTest` and `DefaultBtaCompileServiceTest.fromSysprops*`
+   * exercise the read path against literal strings that match these.
+   */
+  internal fun wireBtaInputs(
+    project: Project,
+    task: ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask,
+    userCompileClasspath: org.gradle.api.file.FileCollection,
+    moduleName: String,
+    outputDirProvider: org.gradle.api.provider.Provider<String>,
+    icWorkingDirProvider: org.gradle.api.provider.Provider<String>,
+    ineligibilityReason: String?,
+  ) {
     val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
     val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
     task.btaImplClasspath.from(btaImplConfig)
     task.btaCompilerPluginClasspath.from(btaPluginConfig)
-    userRuntimeConfig?.let { task.btaCompileClasspath.from(it) }
+    task.btaCompileClasspath.from(userCompileClasspath)
+    task.btaModuleName.set(moduleName)
+    task.btaOutputDir.set(outputDirProvider)
+    task.btaIcWorkingDir.set(icWorkingDirProvider)
+    ineligibilityReason?.let { task.btaIneligibilityReason.set(it) }
 
-    // Mirror every BTA descriptor field into the daemon JVM's system properties — the
-    // daemon's `DefaultBtaCompileService.fromSysprops()` reads these at startup to
-    // construct the in-process compile service. Empty values (the common case when
-    // compileInProcess is false and the configs stay empty) produce blank sysprops and
-    // the daemon's factory returns null, which keeps the `compileSources` JSON-RPC
-    // handler on the fallback path. See COMPILE-IN-PROCESS.md.
-    //
-    // The sysprop NAMES are duplicated verbatim from `:daemon:core`'s
-    // `DefaultBtaCompileService.Companion.SYSPROP_*` constants — the gradle plugin and
-    // the daemon live in separate included builds, so we can't import the constants
-    // directly. Keep both halves in sync; the daemon's `CompileSourcesTest` exercises
-    // the read path against literal strings that match these.
     val pathSep = java.io.File.pathSeparator
     task.systemProperties.put(
       "composeai.daemon.bta.implClasspath",
@@ -637,25 +675,23 @@ internal object ComposePreviewTasks {
       "composeai.daemon.bta.ineligibilityReason",
       task.btaIneligibilityReason.orElse(""),
     )
-    // MODULE_NAME mirrors what KGP's default `compileKotlin` emits for non-multiplatform
-    // JVM modules — `project.name` (the directory name), no path-mangling. The
-    // bta-host-fixture spike confirmed Gradle uses this exact spelling in
-    // kotlin.Metadata.d2[].
-    task.btaModuleName.set(project.name)
-    // Output dir mirrors KGP's `compileKotlin` for plain Kotlin/JVM. CMP-Desktop uses
-    // `classes/kotlin/desktop/main` instead under some plugin combinations; the daemon's
-    // child classloader watches both via `userClassDirs` (see the sysprop wiring above),
-    // so this picks the most common shape and the runtime handles the rest.
-    task.btaOutputDir.set(
-      project.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath }
-    )
-    task.btaIcWorkingDir.set(
-      project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
-        it.asFile.absolutePath
-      }
-    )
-    detectStageTwoIneligibility(project)?.let { task.btaIneligibilityReason.set(it) }
   }
+
+  /**
+   * Public to `AndroidPreviewSupport` — the KSP/KAPT predicate is shared between CMP and Android.
+   * See [detectStageTwoIneligibility]'s docstring.
+   */
+  internal fun detectStageTwoIneligibilityFor(project: Project): String? =
+    detectStageTwoIneligibility(project)
+
+  /**
+   * Public to `AndroidPreviewSupport` so it can call `setupBtaConfigurations` at its apply-time
+   * hook. The Android registration calls this immediately on the apply side (before the `Variant`
+   * callback fires) so the configurations exist by the time the per-variant `tasks.register {…}`
+   * blocks read them. Idempotent — `maybeCreate`.
+   */
+  internal fun setupBtaConfigurationsFor(project: Project, extension: PreviewExtension) =
+    setupBtaConfigurations(project, extension)
 
   /**
    * Daemon-warm-time KSP/KAPT detection. Returns a human-readable string when the consumer's module
