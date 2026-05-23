@@ -18,6 +18,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import ee.schimke.composeai.preview.notification.NotificationContent
+import ee.schimke.composeai.preview.notification.NotificationSurface
 
 /**
  * Gallery of additional `NotificationCompat` styles routed through the `NotificationContent`
@@ -28,7 +29,10 @@ import ee.schimke.composeai.preview.notification.NotificationContent
  * Covers the surfaces real apps mostly ship: Messaging (Signal / WhatsApp / Discord),
  * Inbox-summary (Gmail), `BigPictureStyle` (camera / share notifications), actions
  * (reply / dismiss button row), `MediaStyle` (now-playing card), and
- * `DecoratedCustomViewStyle` (custom progress body under default chrome).
+ * `DecoratedCustomViewStyle` (custom progress body under default chrome). Below the style
+ * gallery are two additional sections: a surface-axis fan-out (collapsed / expanded / heads-up
+ * of the same notification through `NotificationSurface`) and a content-edge-case set
+ * (long-title truncation, no-text, no-large-icon, action overflow, grouped summary).
  */
 private const val GALLERY_CHANNEL_ID = "gallery"
 
@@ -215,6 +219,181 @@ fun DecoratedCustomViewPreview() {
       .setCustomContentView(body)
       .setCustomBigContentView(body)
       .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+      .build()
+  }
+}
+
+// --- Surface axis (collapsed / expanded / heads-up) -------------------------------------------
+//
+// The three previews below render the *same* notification through the three `NotificationSurface`
+// values, so the rendered PNGs document how each `createXxxContentView()` path differs. Authors
+// who only care about one surface keep using the default (`EXPANDED`) on `NotificationContent`;
+// the surface parameter is opt-in.
+
+private fun surfaceAxisNotification(ctx: Context) =
+  NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+    .setSmallIcon(android.R.drawable.ic_dialog_email)
+    .setContentTitle("Compose preview")
+    .setContentText("Tap to read the update")
+    .setStyle(
+      NotificationCompat.BigTextStyle()
+        .bigText(
+          "Notification previews now expose the three SystemUI surfaces — collapsed shade row, " +
+            "expanded body, and heads-up popup — through the `NotificationSurface` enum on the " +
+            "`NotificationContent` helper."
+        )
+    )
+    .build()
+
+@Preview(name = "Surface — collapsed")
+@Composable
+fun CollapsedSurfacePreview() {
+  NotificationContent(surface = NotificationSurface.COLLAPSED) { ctx ->
+    ensureGalleryChannel(ctx)
+    surfaceAxisNotification(ctx)
+  }
+}
+
+@Preview(name = "Surface — expanded")
+@Composable
+fun ExpandedSurfacePreview() {
+  NotificationContent(surface = NotificationSurface.EXPANDED) { ctx ->
+    ensureGalleryChannel(ctx)
+    surfaceAxisNotification(ctx)
+  }
+}
+
+@Preview(name = "Surface — heads-up")
+@Composable
+fun HeadsUpSurfacePreview() {
+  NotificationContent(surface = NotificationSurface.HEADS_UP) { ctx ->
+    ensureGalleryChannel(ctx)
+    surfaceAxisNotification(ctx)
+  }
+}
+
+// --- Content edge cases -----------------------------------------------------------------------
+//
+// One preview per edge case from issue #1249's "Content edge cases" row of the variants matrix.
+// These exist so the rendered PNGs document how the AOSP layout degrades — long-string truncation,
+// missing optional fields, action overflow, group-summary chrome.
+
+/**
+ * Very long title — exercises the AOSP layout's collapsed truncation behaviour. SystemUI clips
+ * the title to one line on collapsed surfaces; the expanded layout (rendered here) lets the title
+ * wrap to two lines and then ellipsises.
+ */
+@Preview(name = "Edge — long title")
+@Composable
+fun LongTitlePreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setContentTitle(
+        "A notification title that goes on far past the width of any reasonable phone shade " +
+          "to exercise the AOSP layout's title-row ellipsisation"
+      )
+      .setContentText("Tap to open")
+      .build()
+  }
+}
+
+/**
+ * Title only — no `setContentText`, no `setStyle`. Demonstrates the minimum-viable layout the
+ * AOSP renderer falls back to when the builder doesn't carry a body. The text row collapses to
+ * nothing; the small-icon header still draws.
+ */
+@Preview(name = "Edge — no text")
+@Composable
+fun NoTextPreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setContentTitle("Sync complete")
+      .build()
+  }
+}
+
+/**
+ * `MessagingStyle` *without* `Person` icons — `setIcon(...)` omitted on both senders. The
+ * inflated layout drops the avatar column and the name rows reflow to the left edge. Mirrors how
+ * the gallery's main [MessagingStylePreview] would degrade for apps that haven't wired up
+ * per-contact avatars yet.
+ */
+@Preview(name = "Edge — no large icon")
+@Composable
+fun NoLargeIconPreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    val you = Person.Builder().setName("You").build()
+    val alice = Person.Builder().setName("Alice").build()
+    val now = System.currentTimeMillis()
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.sym_action_chat)
+      .setStyle(
+        NotificationCompat.MessagingStyle(you)
+          .setConversationTitle("Alice")
+          .addMessage("No avatars on this one", now - 120_000, alice)
+          .addMessage("Just the small icon row", now - 60_000, you)
+      )
+      .build()
+  }
+}
+
+/**
+ * Six actions — SystemUI silently caps the visible action row at three on most layouts, so the
+ * later three never paint. The rendered PNG documents the truncation point.
+ */
+@Preview(name = "Edge — many actions")
+@Composable
+fun ManyActionsPreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    val noopIntent =
+      PendingIntent.getActivity(
+        ctx,
+        0,
+        Intent("com.example.sampleandroid.NOOP"),
+        PendingIntent.FLAG_IMMUTABLE,
+      )
+    val builder =
+      NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+        .setSmallIcon(android.R.drawable.ic_dialog_alert)
+        .setContentTitle("Action overflow")
+        .setContentText("System truncates beyond three")
+    listOf("Reply", "Archive", "Snooze", "Mute", "Delete", "Star").forEach { label ->
+      builder.addAction(android.R.drawable.ic_menu_more, label, noopIntent)
+    }
+    builder.build()
+  }
+}
+
+/**
+ * Group summary notification — `setGroupSummary(true)` + the same `setGroup(...)` key the
+ * children carry. SystemUI shows the summary as a single collapsed row with a counter; the
+ * rendered PNG here uses the standard `setContentTitle` / `setContentText` fields the summary
+ * inflater falls back to when no `InboxStyle` is attached.
+ */
+@Preview(name = "Edge — grouped summary")
+@Composable
+fun GroupedSummaryPreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.ic_dialog_email)
+      .setContentTitle("3 new messages")
+      .setContentText("From Alice, Bob, Carol")
+      .setGroup("messages")
+      .setGroupSummary(true)
+      .setStyle(
+        NotificationCompat.InboxStyle()
+          .setSummaryText("project-updates@")
+          .addLine("Alice  Did the previews land?")
+          .addLine("Bob  Reviewed the PR, ship it")
+          .addLine("Carol  Question about MessagingStyle")
+      )
       .build()
   }
 }

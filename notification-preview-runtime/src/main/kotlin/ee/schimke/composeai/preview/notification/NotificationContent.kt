@@ -25,10 +25,10 @@ import java.io.File
  * pick each `@Preview` up as a separate entry, so no notification-specific plumbing is required.
  *
  * Inflation path mirrors the renderer-side `NotificationPreviewComposable`:
- * `Notification.Builder.recoverBuilder(context, notification)` → `createBigContentView()` (with
- * `createContentView()` as the collapsed fallback) → `RemoteViews.apply(...)`. This is the AOSP
- * visual; OEM chrome (Pixel rounded corners, Samsung tinting) is drawn by SystemUI on-device and
- * isn't reproducible under Robolectric.
+ * `Notification.Builder.recoverBuilder(context, notification)` → [surface]'s matching
+ * `createXxxContentView()` (with `createContentView()` as the collapsed fallback) →
+ * `RemoteViews.apply(...)`. This is the AOSP visual; OEM chrome (Pixel rounded corners, Samsung
+ * tinting) is drawn by SystemUI on-device and isn't reproducible under Robolectric.
  *
  * Pass [previewId] to opt into the structured-fields JSON sidecar — when the renderer's
  * `composeai.render.outputDir` system property is set (i.e. running under the
@@ -37,12 +37,25 @@ import java.io.File
  * FQN-discovered `@NotificationPreview` strategy in `:renderer-android`. Helper-based call sites
  * that don't know their preview id at compile time can leave it `null`; sidecar emission is opt-in.
  *
+ * Pass [surface] to render a specific notification surface: [NotificationSurface.EXPANDED]
+ * (default, the shade-expanded `createBigContentView()` layout — the most informative variant and
+ * what the rest of the gallery uses), [NotificationSurface.COLLAPSED]
+ * (`createContentView()` — the one-line shade row), or [NotificationSurface.HEADS_UP]
+ * (`createHeadsUpContentView()` — the popup variant shown for high-importance channels). On AOSP
+ * heads-up returns the same `RemoteViews` as the expanded layout for most styles; the parameter
+ * is still distinct in the API so multi-preview meta-annotations can author 3-way surface
+ * fan-outs.
+ *
  * [previewId] is the first parameter so [factory] stays the trailing-lambda slot — `NotificationContent
  * { ctx -> ... }` is the common shape and shouldn't require named arguments. Pass `previewId` only
  * when you actually want the sidecar: `NotificationContent(previewId = "Foo") { ctx -> ... }`.
  */
 @Composable
-fun NotificationContent(previewId: String? = null, factory: (Context) -> Notification) {
+fun NotificationContent(
+  previewId: String? = null,
+  surface: NotificationSurface = NotificationSurface.EXPANDED,
+  factory: (Context) -> Notification,
+) {
   val context = LocalContext.current
   AndroidView(
     modifier = Modifier.fillMaxWidth().wrapContentHeight(),
@@ -67,7 +80,7 @@ fun NotificationContent(previewId: String? = null, factory: (Context) -> Notific
         NotificationSidecar.write(previewId, notification, context)
       }
       val view =
-        inflateNotificationView(context, notification, parent)
+        inflateNotificationView(context, notification, parent, surface)
           ?: error("NotificationContent produced no inflatable RemoteViews")
       parent.addView(
         view,
@@ -79,6 +92,26 @@ fun NotificationContent(previewId: String? = null, factory: (Context) -> Notific
       parent
     },
   )
+}
+
+/**
+ * Notification surface the [NotificationContent] helper inflates. The three values map to the
+ * three `Notification.Builder.createXxxContentView()` entry points SystemUI uses on-device:
+ *
+ *  - [COLLAPSED] → `createContentView()`, the one-line row that appears when the shade lists
+ *    the notification alongside others. Wide-and-short.
+ *  - [EXPANDED] → `createBigContentView()`, the layout shown when the user taps to expand. Most
+ *    style classes (`BigTextStyle`, `MessagingStyle`, `InboxStyle`, …) only differ from
+ *    collapsed in this layout, so it's the most informative variant and the default.
+ *  - [HEADS_UP] → `createHeadsUpContentView()`, the popup variant shown for high-importance
+ *    channels (or `setPriority(PRIORITY_HIGH)` pre-O). On stock AOSP this returns the same
+ *    `RemoteViews` tree as the expanded layout for most styles — we still surface it as a
+ *    distinct value because OEM skins (and the platform's `MediaStyle`) do diverge.
+ */
+enum class NotificationSurface {
+  COLLAPSED,
+  EXPANDED,
+  HEADS_UP,
 }
 
 /**
@@ -104,12 +137,23 @@ private fun inflateNotificationView(
   context: Context,
   notification: Notification,
   parent: ViewGroup,
+  surface: NotificationSurface,
 ): android.view.View? {
-  // `createBigContentView` / `createContentView` are marked deprecated for production posting
-  // paths (where the system inflates them for you) but there's no non-deprecated alternative when
-  // you specifically want the RemoteViews tree for offline rendering.
+  // `createBigContentView` / `createContentView` / `createHeadsUpContentView` are marked
+  // deprecated for production posting paths (where the system inflates them for you) but there's
+  // no non-deprecated alternative when you specifically want the RemoteViews tree for offline
+  // rendering. Each surface falls back to `createContentView()` so notifications without a
+  // `setStyle(...)` (which produce no big / heads-up layout) still render at least the collapsed
+  // row instead of erroring out.
   val builder = Notification.Builder.recoverBuilder(context, notification)
-  val remoteViews = builder.createBigContentView() ?: builder.createContentView() ?: return null
+  val remoteViews =
+    when (surface) {
+      NotificationSurface.COLLAPSED -> builder.createContentView()
+      NotificationSurface.EXPANDED ->
+        builder.createBigContentView() ?: builder.createContentView()
+      NotificationSurface.HEADS_UP ->
+        builder.createHeadsUpContentView() ?: builder.createContentView()
+    } ?: return null
   return remoteViews.apply(context, parent)
 }
 
