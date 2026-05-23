@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.3](https://github.com/yschimke/compose-ai-tools/compare/v0.11.2...v0.11.3) (2026-05-23)
+
+
+### Features
+
+* launcher widget previews — data extension + Glance/RemoteViews runtime ([#1368](https://github.com/yschimke/compose-ai-tools/issues/1368)) ([c0e7347](https://github.com/yschimke/compose-ai-tools/commit/c0e7347eb99ec63452beeb576c4b313758e485a9))
+* **vscode-extension:** wire Remote Compose tab body edits back to the daemon ([#1401](https://github.com/yschimke/compose-ai-tools/issues/1401)) ([fcabe8d](https://github.com/yschimke/compose-ai-tools/commit/fcabe8dad1bf6886ae7899980d701453f04f04c9))
+
+
+### Bug Fixes
+
+* **install:** resolve `latest` to the last release with a complete CLI asset ([#1403](https://github.com/yschimke/compose-ai-tools/issues/1403)) ([49399db](https://github.com/yschimke/compose-ai-tools/commit/49399db540359451f6b3736a5cc62be8da3f72cc))
+* **mcp:** publish :mcp to Maven Central ([#1404](https://github.com/yschimke/compose-ai-tools/issues/1404)) ([ff60b57](https://github.com/yschimke/compose-ai-tools/commit/ff60b5724e24d0d27b1e41e1d4826cd6d3882844))
+
 ## [0.11.2](https://github.com/yschimke/compose-ai-tools/compare/v0.11.1...v0.11.2) (2026-05-23)
 
 
