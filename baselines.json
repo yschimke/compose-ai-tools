@@ -195,6 +195,13 @@
     "sha256": "0576b5495bff504660e9e4f0cb33a86f93354deb99e23a30111101e35837e7f6",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.NativeGlanceWidgetPreview": {
+    "captureLabel": "",
+    "functionName": "NativeGlanceWidgetPreview",
+    "renderBasename": "AppWidgetPreviewsKt.NativeGlanceWidgetPreview.png",
+    "sha256": "17a2a6bdfe62a05c3de2310271d5168ff446d336bf58b46335a50da19021d631",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt"
+  },
   "samples:android/com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72": {
     "captureLabel": "",
     "functionName": "RemoteViewsWeatherWidgetPreview",
@@ -962,7 +969,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
