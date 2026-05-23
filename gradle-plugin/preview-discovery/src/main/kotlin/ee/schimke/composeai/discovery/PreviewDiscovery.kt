@@ -92,6 +92,7 @@ object PreviewDiscovery {
       "androidx.compose.desktop.ui.tooling.preview.Preview",
       TILE_PREVIEW_FQN,
       NOTIFICATION_PREVIEW_FQN,
+      GLANCE_APPWIDGET_PREVIEW_FQN,
     )
   private val CONTAINER_FQNS =
     setOf(
@@ -132,6 +133,12 @@ object PreviewDiscovery {
   // `(android.content.Context) -> android.app.Notification`; same FQN-match
   // policy as the other annotations we own. See `NotificationPreview.kt`.
   internal const val NOTIFICATION_PREVIEW_FQN = "ee.schimke.composeai.preview.NotificationPreview"
+
+  // Glance's own preview annotation. The annotation lives in `androidx.glance:glance-preview` and
+  // is `@ExperimentalGlancePreviewApi`-gated upstream — same FQN-match policy as notification /
+  // tile. The annotated function is a `@Composable @GlanceComposable () -> Unit` body invoked
+  // from a synthetic `GlanceAppWidget.providePreview(...)` at render time.
+  internal const val GLANCE_APPWIDGET_PREVIEW_FQN = "androidx.glance.preview.Preview"
 
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
@@ -599,9 +606,11 @@ object PreviewDiscovery {
     val previewParameter = extractPreviewParameter(method)
     val isTilePreview = isAnyTilePreviewAnnotation(annotations, scanResult)
     val isNotificationPreview = isAnyNotificationPreviewAnnotation(annotations, scanResult)
+    val isGlanceAppWidgetPreview = isAnyGlanceAppWidgetPreviewAnnotation(annotations, scanResult)
     val hasUnsupportedParameters =
       !isTilePreview &&
         !isNotificationPreview &&
+        !isGlanceAppWidgetPreview &&
         hasUnsupportedPreviewParameters(method, previewParameter)
     if (hasUnsupportedParameters) {
       warnings.add(
@@ -716,6 +725,27 @@ object PreviewDiscovery {
     return false
   }
 
+  /**
+   * Glance preview functions (`GLANCE_APPWIDGET_PREVIEW_FQN`) are `@Composable @GlanceComposable ()
+   * -> Unit` bodies — their JVM signature ends with the compiler-added `Composer, Int` pair the
+   * standard composable-parameter check would flag as "unsupported parameter(s)". Treat them the
+   * same way as tile / notification previews so the check is skipped: the renderer reflects the
+   * function and invokes it via a synthetic `GlanceAppWidget.providePreview(...)` instead.
+   */
+  private fun isAnyGlanceAppWidgetPreviewAnnotation(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    if (collectDirectPreviews(annotations).any { it.name == GLANCE_APPWIDGET_PREVIEW_FQN }) {
+      return true
+    }
+    for (ann in annotations) {
+      val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
+      if (resolved.any { it.name == GLANCE_APPWIDGET_PREVIEW_FQN }) return true
+    }
+    return false
+  }
+
   private fun hasUnsupportedPreviewParameters(
     method: MethodInfo,
     previewParameter: Pair<String, Int>?,
@@ -794,7 +824,13 @@ object PreviewDiscovery {
     // owner. Treat them the same as tiles for every dimensional fan-out so the single-capture
     // path runs unmodified.
     val isNotification = ann.name == NOTIFICATION_PREVIEW_FQN
-    val nonComposable = isTile || isNotification
+    // Glance preview functions are technically `@Composable`, but they're a closed Glance
+    // composition driven by `composeForPreview(...)` rather than the standard Compose machinery.
+    // Treat them the same way as tile / notification for fan-out gating — no scroll / animation
+    // / focus drive, no `mainClock` tick, the renderer handles the whole materialise + inflate
+    // in one shot.
+    val isGlanceAppWidget = ann.name == GLANCE_APPWIDGET_PREVIEW_FQN
+    val nonComposable = isTile || isNotification || isGlanceAppWidget
     val effectiveTimings = if (nonComposable) emptyList() else timings
     val effectiveScrolls = if (nonComposable) emptyList() else scrolls
     // Tile / notification previews don't go through `mainClock` — there's no animation surface to
@@ -1338,7 +1374,12 @@ object PreviewDiscovery {
     // `TilePreviewData` / `Notification` and the renderer reflects them directly. Skipping the
     // lazy means the bytecode walk never runs for these methods.
     val targets =
-      if (params.kind == PreviewKind.TILE || params.kind == PreviewKind.NOTIFICATION) emptyList()
+      if (
+        params.kind == PreviewKind.TILE ||
+          params.kind == PreviewKind.NOTIFICATION ||
+          params.kind == PreviewKind.GLANCE_APPWIDGET
+      )
+        emptyList()
       else inferredTargets.value
     return PreviewInfo(
       id = id,
@@ -1418,6 +1459,19 @@ object PreviewDiscovery {
     // will be added when the variants matrix from #1249 lands.
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
       return PreviewParams(kind = PreviewKind.NOTIFICATION)
+    }
+    // Glance's own `androidx.glance.preview.Preview(widthDp, heightDp)`. The annotation's params
+    // started life as `()` in 1.0.x, gained `widthDp` / `heightDp` in 1.1.0-rc01. Read both
+    // optimistically; missing entries fall through to the renderer's default sandbox size.
+    if (ann.name == GLANCE_APPWIDGET_PREVIEW_FQN) {
+      val pv = ann.parameterValues
+      val widthDp = (pv.getValue("widthDp") as? Int)?.takeIf { it > 0 }
+      val heightDp = (pv.getValue("heightDp") as? Int)?.takeIf { it > 0 }
+      return PreviewParams(
+        kind = PreviewKind.GLANCE_APPWIDGET,
+        widthDp = widthDp,
+        heightDp = heightDp,
+      )
     }
     val pv = ann.parameterValues
     val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE

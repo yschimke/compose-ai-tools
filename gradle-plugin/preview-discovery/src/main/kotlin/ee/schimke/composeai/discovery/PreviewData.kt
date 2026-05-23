@@ -8,12 +8,17 @@ import kotlinx.serialization.Serializable
  * functions returning `androidx.wear.tiles.tooling.preview.TilePreviewData` that need to be
  * inflated via `androidx.wear.tiles.renderer.TileRenderer`; [NOTIFICATION] previews are plain
  * functions taking a `Context` and returning `android.app.Notification`, inflated via
- * `Notification.Builder.recoverBuilder` + `RemoteViews.apply` (see issue #1249).
+ * `Notification.Builder.recoverBuilder` + `RemoteViews.apply` (see issue #1249); [GLANCE_APPWIDGET]
+ * previews are `@Composable @GlanceComposable` functions annotated with
+ * `androidx.glance.preview.Preview` — the renderer wraps the function in a synthetic
+ * `GlanceAppWidget.providePreview(...)`, runs `composeForPreview(...)` to materialise the tree to
+ * `RemoteViews`, and inflates the result the same way `NOTIFICATION` does.
  */
 enum class PreviewKind {
   COMPOSE,
   TILE,
   NOTIFICATION,
+  GLANCE_APPWIDGET,
 }
 
 /**

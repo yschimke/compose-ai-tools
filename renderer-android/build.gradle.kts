@@ -63,6 +63,12 @@ dependencies {
   // planner registered in `RobolectricHost`. Same architectural rule as ambient / focus: **no
   // hardcoded launcher-widget sizing logic in this module — extend the connector instead.**
   implementation(project(":data-launcher-widget-connector"))
+  // Glance — drives the native `@androidx.glance.preview.Preview` strategy
+  // (`GlanceAppWidgetPreviewRenderer.kt`). `compileOnly` so the artefact isn't dragged onto every
+  // renderer-android consumer's unit-test classpath; consumers who annotate Glance previews must
+  // already have `androidx.glance:glance-appwidget` on their compile classpath, which then flows
+  // onto the test classpath via the discovery → render fanout.
+  compileOnly(libs.glance.appwidget)
   // Soft-keyboard (IME) connector. Owns `KeyboardController` (state) and
   // `KeyboardOverrideExtension`
   // (the `AroundComposable` that installs the shadow `LocalSoftwareKeyboardController` and overlays

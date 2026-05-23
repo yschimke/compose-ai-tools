@@ -28,6 +28,8 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.preview.ExperimentalGlancePreviewApi
+import androidx.glance.preview.Preview as GlancePreview
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider as GlanceFixedColorProvider
 import ee.schimke.composeai.preview.LauncherWidgetPreview
@@ -257,5 +259,53 @@ fun LauncherWidgetClampedPreview() {
       setTextViewText(R.id.widget_temperature, "67°")
       setTextViewText(R.id.widget_condition, "Partly cloudy")
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Native `@androidx.glance.preview.Preview` discovery
+//
+// Same Glance composable body as the `GlanceWeatherWidgetPreview` above, but the function is
+// annotated with Glance's own `@Preview` instead of the standard
+// `@androidx.compose.ui.tooling.preview.Preview` + `GlanceAppWidgetContent` helper. The gradle
+// plugin's discovery picks the FQN up, marks the entry as `PreviewKind.GLANCE_APPWIDGET`, and
+// the renderer wraps the function in a synthetic `GlanceAppWidget.providePreview(...)` driven
+// by `composeForPreview(...)` — same end-state as the helper-based path, just authored from a
+// single annotation.
+// ---------------------------------------------------------------------------
+
+/**
+ * Glance preview annotated with Glance's own `@androidx.glance.preview.Preview`. Discovery
+ * recognises the FQN and treats the function as `PreviewKind.GLANCE_APPWIDGET`; the renderer
+ * reflects the body into a synthetic `GlanceAppWidget` and materialises via
+ * `composeForPreview(...)`.
+ */
+@OptIn(ExperimentalGlancePreviewApi::class)
+@GlancePreview(widthDp = 312, heightDp = 152)
+@Composable
+fun NativeGlanceWidgetPreview() {
+  Column(
+    modifier =
+      GlanceModifier.fillMaxSize()
+        .background(GlanceFixedColorProvider(ComposeColor(0xFF1A237E)))
+        .padding(12.dp)
+  ) {
+    Text(
+      text = "Native @glance.preview.Preview",
+      style =
+        TextStyle(
+          color = GlanceFixedColorProvider(ComposeColor.White),
+          fontWeight = FontWeight.Bold,
+        ),
+    )
+    Spacer(GlanceModifier.height(8.dp))
+    Text(
+      text = "67°",
+      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor.White)),
+    )
+    Text(
+      text = "Discovered by FQN",
+      style = TextStyle(color = GlanceFixedColorProvider(ComposeColor(0xB3FFFFFF))),
+    )
   }
 }
