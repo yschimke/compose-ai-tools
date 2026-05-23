@@ -1257,6 +1257,52 @@ data class InteractiveStartResult(
 
 @Serializable data class InteractiveStopParams(val frameStreamId: String)
 
+/**
+ * `interactive/setRemoteCompose` notification — push a single Remote Compose state edit into a held
+ * interactive session without forcing a fresh `renderNow`. Mirrors the `setRemoteComposeNamedValue`
+ * post-message the VS Code panel emits when the user edits a cell in the Remote Compose tab body;
+ * the daemon-side handler routes the change to the matching `RemoteComposeController` instance and
+ * lets snapshot-state recomposition repaint the held scene on the next frame.
+ *
+ * Distinct from `renderNow.overrides.remoteCompose` (which still works and re-renders from
+ * scratch): this notification is the snappy live-session path that bypasses the override-apply +
+ * full-recompose round-trip. Backends without a live RemoteComposeController binding silently drop
+ * the notification.
+ */
+@Serializable
+data class InteractiveSetRemoteComposeParams(
+  /**
+   * Routing key — same `frameStreamId` `interactive/start` allocated and `interactive/input` uses.
+   */
+  val frameStreamId: String,
+  /** The edit to apply. Discriminated by [RemoteComposeChange.field]. */
+  val change: RemoteComposeChange,
+)
+
+/**
+ * Discriminated edit shape for `interactive/setRemoteCompose`. Mirrors the VS Code panel's
+ * `RemoteComposeChangeDetail` so the wire shape is the same on both sides — the host can forward
+ * the panel's payload verbatim without restructuring.
+ *
+ * `@JsonClassDiscriminator("field")` so the wire looks like `{ "field": "namedValue", "name":
+ * "score", "value": { "kind": "float", "value": 0.5 } }` — matches the JS-side discriminated union
+ * without an outer wrapper.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@kotlinx.serialization.json.JsonClassDiscriminator("field")
+sealed class RemoteComposeChange {
+  /** Replace the active platform profile. `value = null` clears it. */
+  @Serializable
+  @SerialName("profile")
+  data class Profile(val value: RemoteComposeProfile? = null) : RemoteComposeChange()
+
+  /** Merge a single typed named value. Preserves other entries in the controller. */
+  @Serializable
+  @SerialName("namedValue")
+  data class NamedValue(val name: String, val value: RemoteNamedValue) : RemoteComposeChange()
+}
+
 @Serializable
 data class InteractiveInputParams(
   val frameStreamId: String,

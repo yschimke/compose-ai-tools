@@ -2424,6 +2424,31 @@ class JsonRpcServer(
     }
   }
 
+  /**
+   * `interactive/setRemoteCompose` — push a panel-side edit (profile selection or named-value
+   * change) into the held `RemoteComposeController` so the next composition pass paints the updated
+   * remote document without a fresh `renderNow`. Looks up the session by frameStreamId, forwards to
+   * [InteractiveSession.dispatchRemoteComposeChange], and falls back silently when the host doesn't
+   * carry the binding (defaults to `false`, which the VS Code panel reads as "I should retry
+   * through `renderNow.overrides.remoteCompose`"). The fallback is implicit — we don't emit an
+   * error to the client because the client's renderNow path is the canonical source of truth and
+   * was already wired before this notification was added.
+   */
+  private fun handleInteractiveSetRemoteCompose(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveSetRemoteComposeParams
+  ) {
+    if (classpathDirtyEmitted.get() || shutdownRequested.get()) return
+    val session = interactiveSessions[params.frameStreamId] ?: return
+    try {
+      session.dispatchRemoteComposeChange(params.change)
+    } catch (e: Throwable) {
+      System.err.println(
+        "compose-ai-daemon: interactive/setRemoteCompose dispatch failed: ${e.message}"
+      )
+      e.printStackTrace(System.err)
+    }
+  }
+
   private fun handleInteractiveInput(
     params: ee.schimke.composeai.daemon.protocol.InteractiveInputParams
   ) {
@@ -2837,6 +2862,13 @@ class JsonRpcServer(
       "interactive/input" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveInputParams.serializer(), n) {
           handleInteractiveInput(it)
+        }
+      "interactive/setRemoteCompose" ->
+        tryDecode(
+          ee.schimke.composeai.daemon.protocol.InteractiveSetRemoteComposeParams.serializer(),
+          n,
+        ) {
+          handleInteractiveSetRemoteCompose(it)
         }
       "stream/stop" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.StreamStopParams.serializer(), n) {
