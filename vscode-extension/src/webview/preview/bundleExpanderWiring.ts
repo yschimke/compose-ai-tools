@@ -21,6 +21,7 @@
 // `src/test/eventBusContract.test.ts` also covers the
 // producer/consumer pairing for `kind-toggled`.
 
+import type { BundleId } from "./bundleRegistry";
 import type { BundleController } from "./bundleController";
 import type { BundleExpander } from "./components/BundleExpander";
 import { on } from "../shared/eventBus";
@@ -39,4 +40,25 @@ export function wireExpanderToController(
     return on(expander, "kind-toggled", (det) => {
         controller.setKindEnabled(det.bundleId, det.kind, det.enabled);
     });
+}
+
+/**
+ * Create + wire a `<bundle-expander>` for [bundleId]. Each per-bundle
+ * tab body builder in `main.ts` previously inlined the same three-
+ * line construct (createElement + cast + `wireExpanderToController`);
+ * the helper keeps the wiring contract in one place so a future
+ * refactor can change the expander shape without sweeping every body
+ * builder. The element's `data-bundle` attribute is stamped so the
+ * DOM inspector can tell expanders apart at a glance.
+ */
+export function createBundleExpander(
+    bundleId: BundleId,
+    controller: BundleController,
+): BundleExpander {
+    const expander = document.createElement(
+        "bundle-expander",
+    ) as BundleExpander;
+    expander.dataset.bundle = bundleId;
+    wireExpanderToController(expander, controller);
+    return expander;
 }
