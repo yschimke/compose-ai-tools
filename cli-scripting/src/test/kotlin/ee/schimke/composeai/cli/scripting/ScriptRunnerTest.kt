@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli.scripting
 
+import ee.schimke.composeai.cli.AccessibilityFinding
 import ee.schimke.composeai.cli.CaptureResult
 import ee.schimke.composeai.cli.PreviewResult
 import java.io.File
@@ -12,12 +13,9 @@ import kotlin.test.fail
 
 /**
  * Exercises the actual Kotlin scripting host end-to-end: a tiny `*.composepreview.kts` is written
- * to disk, compiled, evaluated, and the resulting [ScriptState] is asserted against. These tests
- * pay the full ~1–3 s compile cost — keep them few, but keep them.
- *
- * The host JARs (`kotlin-scripting-jvm-host` + `kotlin-compiler-embeddable`) sit on the JVM
- * classpath in this module via `implementation(libs.kotlin.scripting.*)`. If a future refactor
- * splits them onto a sidecar, this test moves with them.
+ * to disk, compiled, evaluated against a pre-populated [ScriptState], and the resulting failure
+ * list is asserted against. These tests pay the full ~1–3 s compile cost — keep them few, but keep
+ * them.
  */
 class ScriptRunnerTest {
 
@@ -34,67 +32,139 @@ class ScriptRunnerTest {
     return file
   }
 
+  private fun preview(
+    id: String,
+    module: String = ":app",
+    a11yFindings: List<AccessibilityFinding>? = null,
+    pngPath: String? = "/tmp/$id.png",
+  ): RenderedPreview =
+    RenderedPreview(
+      PreviewResult(
+        id = id,
+        module = module,
+        functionName = id,
+        className = "com.app.${id}Kt",
+        captures = listOf(CaptureResult(pngPath = pngPath)),
+        pngPath = pngPath,
+        a11yFindings = a11yFindings,
+      )
+    )
+
   @Test
-  fun `script populates state with extensions and handlers`() {
+  fun `show returns the requested preview and fail accumulates`() {
+    val state = ScriptState()
+    state.results["HomeScreen"] = preview("HomeScreen")
+    state.results["Settings"] = preview("Settings")
+
     val script =
       writeScript(
-        "simple.composepreview.kts",
+        "show.composepreview.kts",
         """
-        extensions("a11y", "theme")
-        filter { it.module == ":app" }
-        onResult { result ->
-          if (result.id.startsWith("Bad")) fail("bad preview: " + result.id)
-        }
+        val home = show("HomeScreen")
+        fail("checked " + home.id + " in " + home.module)
         """
           .trimIndent(),
       )
 
-    val outcome = ScriptRunner.load(script)
+    val outcome = ScriptRunner.evaluate(script, state)
     assertTrue(outcome is ScriptRunner.Outcome.Ok, "expected Ok, got $outcome")
-    val state = outcome.state
-
-    assertEquals(listOf("a11y", "theme"), state.extensions)
-    assertEquals(1, state.filters.size)
-    assertEquals(1, state.handlers.size)
-    assertEquals(emptyList(), state.failures)
-
-    // Verify the filter predicate sees `PreviewResult` from `:cli` correctly.
-    val goodPreview = PreviewResult(id = "X", module = ":app", functionName = "f", className = "C")
-    val otherPreview =
-      PreviewResult(id = "Y", module = ":other", functionName = "f", className = "C")
-    assertTrue(state.filters.single().invoke(goodPreview))
-    assertTrue(!state.filters.single().invoke(otherPreview))
+    assertEquals(listOf("checked HomeScreen in :app"), state.failures)
   }
 
   @Test
-  fun `handler call back into fail accumulates failures on shared state`() {
+  fun `previews returns every preview in id-sorted order`() {
+    val state = ScriptState()
+    state.results["Zeta"] = preview("Zeta")
+    state.results["Alpha"] = preview("Alpha")
+
     val script =
       writeScript(
-        "fail.composepreview.kts",
+        "list.composepreview.kts",
         """
-        onResult { result ->
-          fail("preview " + result.id + " tripped")
+        for (ui in previews()) fail(ui.id)
+        """
+          .trimIndent(),
+      )
+
+    val outcome = ScriptRunner.evaluate(script, state)
+    assertTrue(outcome is ScriptRunner.Outcome.Ok)
+    assertEquals(listOf("Alpha", "Zeta"), state.failures)
+  }
+
+  @Test
+  fun `show on unknown id surfaces a Failed outcome with available ids in the message`() {
+    val state = ScriptState()
+    state.results["HomeScreen"] = preview("HomeScreen")
+
+    val script =
+      writeScript(
+        "missing.composepreview.kts",
+        """
+        show("Nope")
+        """
+          .trimIndent(),
+      )
+
+    val outcome = ScriptRunner.evaluate(script, state)
+    val failed = outcome as? ScriptRunner.Outcome.Failed ?: fail("expected Failed, got $outcome")
+    assertTrue(
+      failed.message.contains("preview not found: 'Nope'"),
+      "expected lookup miss in: ${failed.message}",
+    )
+    assertTrue(
+      failed.message.contains("HomeScreen"),
+      "expected available ids listed in: ${failed.message}",
+    )
+  }
+
+  /**
+   * The viability bar from issue #1084 + `docs/AGENTS.md` ("Built-in scripts"): a user script
+   * should be able to express what `compose-preview a11y --filter Home --fail-on errors` does
+   * today, without needing to be hardcoded into the CLI's command list. This proves the shape is
+   * expressive enough to displace per-command code.
+   */
+  @Test
+  fun `a11y audit example from the issue translates cleanly to the shape-C DSL`() {
+    val errorFinding =
+      AccessibilityFinding(
+        level = "ERROR",
+        type = "TouchTargetSize",
+        message = "View is smaller than 48dp",
+      )
+    val warningFinding =
+      AccessibilityFinding(
+        level = "WARNING",
+        type = "TextContrast",
+        message = "Contrast below 4.5:1",
+      )
+
+    val state = ScriptState()
+    // ":app" module with an ERROR finding on Home, a WARNING on HomeSecondary, and a clean Profile.
+    state.results["HomeScreen"] = preview("HomeScreen", a11yFindings = listOf(errorFinding))
+    state.results["HomeSecondary"] = preview("HomeSecondary", a11yFindings = listOf(warningFinding))
+    state.results["Profile"] = preview("Profile", a11yFindings = emptyList())
+    // ":other" module — should be excluded by the script's filter even though it has an error.
+    state.results["HomeOther"] =
+      preview("HomeOther", module = ":other", a11yFindings = listOf(errorFinding))
+
+    val script =
+      writeScript(
+        "a11y-audit.composepreview.kts",
+        """
+        for (ui in previews().filter { it.module == ":app" && it.id.startsWith("Home") }) {
+          if (ui.a11y.hasErrors) {
+            fail("a11y errors on " + ui.id + ": " + ui.a11y.errors.size)
+          }
         }
         """
           .trimIndent(),
       )
 
-    val outcome = ScriptRunner.load(script)
-    assertTrue(outcome is ScriptRunner.Outcome.Ok)
-    val state = outcome.state
-
-    val sample =
-      PreviewResult(
-        id = "HomeScreen",
-        module = ":app",
-        functionName = "HomeScreen",
-        className = "com.app.HomeScreenKt",
-        captures = listOf(CaptureResult(pngPath = null)),
-      )
-    state.handlers.single().invoke(sample)
-    state.handlers.single().invoke(sample.copy(id = "Profile"))
-
-    assertEquals(listOf("preview HomeScreen tripped", "preview Profile tripped"), state.failures)
+    val outcome = ScriptRunner.evaluate(script, state)
+    assertTrue(outcome is ScriptRunner.Outcome.Ok, "expected Ok, got $outcome")
+    // HomeScreen has an error → reported. HomeSecondary only has a warning → not reported.
+    // HomeOther is in `:other` → filtered out. Profile has no findings → nothing.
+    assertEquals(listOf("a11y errors on HomeScreen: 1"), state.failures)
   }
 
   @Test
@@ -102,16 +172,13 @@ class ScriptRunnerTest {
     val script =
       writeScript(
         "broken.composepreview.kts",
-        // `noSuchSymbol` is undefined — the compiler should reject this with an
-        // unresolved-reference
-        // diagnostic that mentions the source path.
         """
         noSuchSymbol("a11y")
         """
           .trimIndent(),
       )
 
-    val outcome = ScriptRunner.load(script)
+    val outcome = ScriptRunner.evaluate(script, ScriptState())
     val failed = outcome as? ScriptRunner.Outcome.Failed ?: fail("expected Failed, got $outcome")
     assertTrue(
       failed.message.contains("noSuchSymbol"),

@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli.scripting
 
-import ee.schimke.composeai.cli.PreviewResult
 import kotlin.script.experimental.annotations.KotlinScript
 import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.defaultImports
@@ -10,27 +9,34 @@ import kotlin.script.experimental.jvm.jvm
 /**
  * Base class every `*.composepreview.kts` file inherits — the DSL surface the script body sees.
  *
- * A v1 script body looks like:
+ * Shape-C semantics: the host renders the preview set up-front (using the same render pipeline as
+ * the canned-report commands, honouring `--with-extension` / `--module` / `--filter` flags) and
+ * then evaluates the script body against the populated [state]. The script reaches every preview
+ * via [previews] (full list) or [show] (lookup by id), reads typed extension data off the handle
+ * ([RenderedPreview.a11y] etc.), and accumulates failures via [fail].
+ *
+ * Example — the a11y-audit shape originally sketched on issue #1084:
  * ```kotlin
- * extensions("a11y")
- * filter { it.module == ":app" && it.id.startsWith("Home") }
- * onResult { result ->
- *   if (result.a11yFindings?.any { it.level == "ERROR" } == true) {
- *     fail("a11y errors on ${result.id}")
- *   }
- *   println("${result.id}: ${result.captures.size} captures")
+ * for (ui in previews().filter { it.module == ":app" && it.id.startsWith("Home") }) {
+ *   if (ui.a11y.hasErrors) fail("a11y errors on ${ui.id}: ${ui.a11y.errors.size}")
+ *   println("${ui.id}: ${ui.captures.size} captures")
  * }
  * ```
  *
- * All four methods just push onto [state]; the host ([ScriptCommand]) drives the render pipeline,
- * AND-composes the filters, calls every `onResult` handler per surviving result, and exits non-zero
- * when [ScriptState.failures] is non-empty.
+ * This is the same intent as `compose-preview a11y --filter Home --module :app --fail-on errors` —
+ * proving the scripting surface is expressive enough to displace per-command code, per the
+ * "Built-in scripts" note in `docs/AGENTS.md`. The canned `a11y` command stays as a one-line
+ * convenience; the script path is for teams who want to layer additional logic on top.
  *
- * The [state] is passed via constructor injection ([kotlin.script.experimental.api.constructorArgs]
- * on the evaluation configuration), so the host's caller keeps a live reference to the same
- * collections the script body mutates. Handlers registered via [onResult] can therefore still call
- * [fail] after the script's top-level statements have returned — the captured `this` (the script
- * instance) remains reachable as long as the host holds [state].
+ * **What's not here yet.** The interactive sub-handles sketched in the shape-C discussion —
+ * `ui.keyboard.type(...)`, `ui.uia.byText(...).hasFocus` — are deliberately not part of this MVP.
+ * They require live-session JSON-RPC plumbing to the daemon's keyboard / uiautomator data products;
+ * tracked on issue #1084.
+ *
+ * State is passed via constructor injection ([kotlin.script.experimental.api.constructorArgs]), so
+ * the host's caller keeps a live reference to the same [ScriptState] the script body mutates
+ * through [fail]. Standard Kotlin `require(condition) { "…" }` works inside a script body too — the
+ * host catches script-body throwables and surfaces them as evaluation failures.
  */
 @KotlinScript(
   displayName = "Compose Preview script",
@@ -40,40 +46,28 @@ import kotlin.script.experimental.jvm.jvm
 abstract class ComposePreviewScript(@Suppress("unused") val state: ScriptState) {
 
   /**
-   * Enable one or more data extensions for this run, equivalent to passing `--with-extension <id>`
-   * per id on the CLI. Repeatable across multiple `extensions(...)` calls; ids dedupe at the host
-   * level. Empty / blank ids are silently dropped so `extensions(*ids.toTypedArray())` against a
-   * possibly-empty list is safe.
+   * Every rendered preview, in stable id-sorted order. Returns the snapshot the host pre-populated
+   * — calling it twice yields the same list. Filter with stock Kotlin: `previews().filter { … }`.
    */
-  fun extensions(vararg ids: String) {
-    for (id in ids) {
-      val trimmed = id.trim()
-      if (trimmed.isNotEmpty() && trimmed !in state.extensions) state.extensions += trimmed
-    }
-  }
+  fun previews(): List<RenderedPreview> = state.results.values.sortedBy { it.id }
 
   /**
-   * Register a per-result predicate. Multiple `filter { … }` calls AND together (a result must
-   * satisfy every registered predicate to survive). Predicates run after the CLI's own `--id` /
-   * `--filter` matching so a script can narrow further but not widen past the user's flags.
+   * Look up one rendered preview by exact id. Throws [IllegalArgumentException] when the id isn't
+   * in the rendered set — that's almost always a typo in the script and the script author wants a
+   * loud failure, not a silent null. List available ids in the error message so the fix is obvious.
    */
-  fun filter(predicate: (PreviewResult) -> Boolean) {
-    state.filters += predicate
-  }
+  fun show(id: String): RenderedPreview =
+    state.results[id]
+      ?: throw IllegalArgumentException(
+        "preview not found: '$id'. " +
+          "Available (${state.results.size}): ${state.results.keys.sorted().joinToString(", ")}"
+      )
 
   /**
-   * Register a per-result handler. Handlers run in registration order against every result that
-   * passes [filter]. Each handler is free to call [fail] (accumulating a non-zero exit) and/or
-   * write to stdout/stderr.
-   */
-  fun onResult(handler: (PreviewResult) -> Unit) {
-    state.handlers += handler
-  }
-
-  /**
-   * Mark the run failed with [message]. Accumulating, not fail-fast — every `fail(...)` call adds
-   * one line, the CLI prints them all to stderr at the end of the run and exits with code 2 (same
-   * code the canned-report commands use for a tripped threshold).
+   * Mark the run failed with [message]. Accumulating — multiple `fail(…)` calls all surface as
+   * separate stderr lines at the end of the run, and the process exits with code 2. The script body
+   * keeps executing after a `fail()`, so an `a11y`-style audit can report every failing preview in
+   * one go rather than aborting on the first.
    */
   fun fail(message: String) {
     state.failures += message
@@ -83,23 +77,24 @@ abstract class ComposePreviewScript(@Suppress("unused") val state: ScriptState) 
 /**
  * Compilation config for [ComposePreviewScript].
  *
- * `dependenciesFromCurrentContext(wholeClasspath = true)` is the MVP shortcut: it lets the script
- * `import` anything on the host JVM's classpath (including [PreviewResult] and the `:cli` types it
- * transitively pulls in), so users don't have to learn `@file:DependsOn(...)` just to write a
- * one-line `onResult` handler. The compiler walks the entire CLI classpath, which is fine for the
+ * `dependenciesFromCurrentContext(wholeClasspath = true)` lets the script `import` anything on the
+ * host JVM's classpath, so users don't have to learn `@file:DependsOn(...)` just to reference the
+ * `AccessibilityFinding` DTO. The compiler walks the entire CLI classpath, which is fine for the
  * host-side use case but is the bloat lever the lazy-fetch follow-up on issue #1084 will tighten.
  *
- * The default imports below cover the DTOs a typical `onResult` body references — adding more here
- * is preferable to making users sprinkle `import ee.schimke.composeai.cli.…` at the top of every
- * script.
+ * The default imports cover the DTOs a typical script body references — `RenderedPreview` and
+ * `A11yHandle` are in scope unqualified so `previews().filter { it.a11y.hasErrors }` reads cleanly;
+ * `AccessibilityFinding` is in scope so callers can write `.errors.any { it.type ==
+ * "TouchTargetSize" }` without an `import`.
  */
 object ComposePreviewScriptCompilationConfig :
   ScriptCompilationConfiguration({
     defaultImports(
-      "ee.schimke.composeai.cli.PreviewResult",
+      "ee.schimke.composeai.cli.scripting.RenderedPreview",
+      "ee.schimke.composeai.cli.scripting.A11yHandle",
+      "ee.schimke.composeai.cli.AccessibilityFinding",
       "ee.schimke.composeai.cli.CaptureResult",
       "ee.schimke.composeai.cli.ScrollCapture",
-      "ee.schimke.composeai.cli.AccessibilityFinding",
     )
     jvm { dependenciesFromCurrentContext(wholeClasspath = true) }
   })

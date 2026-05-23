@@ -149,9 +149,10 @@ private fun printUsage() {
                        (--path, default) or its rendered body (--print). Useful for driving
                        Gradle directly with the same `--init-script` body the CLI uses
                        internally.
-      script           Run a `*.composepreview.kts` Kotlin script — typed DSL with
-                       extensions(...), filter { … }, onResult { … }, fail(...). See issue
-                       #1084 for the DSL surface and the in-progress lazy-fetch story.
+      script           Run a `*.composepreview.kts` Kotlin script — handle-returning DSL:
+                       `previews()` / `show(id)` access rendered previews; `fail(msg)`
+                       accumulates non-zero exit. See issue #1084 for the DSL surface and the
+                       in-progress lazy-fetch / live-session story.
       version          Print the installed bundle version and exit
       help             Show this help message
 
