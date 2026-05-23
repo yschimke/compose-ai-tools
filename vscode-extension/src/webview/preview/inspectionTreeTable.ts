@@ -1,15 +1,15 @@
-// Tree-table primitive used by the Inspection-bundle presenters
+// Tree-table primitive used by the Inspection-bundle data builders
 // (`compose/semantics`, `layout/inspector`, `uia/hierarchy`).
 //
 // Each kind in the bundle is hierarchical (a semantics tree, a layout
 // tree, a filtered semantics-actionable subtree), and the differences
-// across kinds are only in the column shape: presenter declares the
+// across kinds are only in the column shape: the caller declares the
 // columns, the primitive owns the rest — row expand/collapse, header
 // "Copy JSON" button, hover → overlay correlation via `data-legend-id`
-// (matched against `data-overlay-id` boxes by `LegendArrowController`,
-// the same wiring the a11y-hierarchy presenter uses), and the optional
-// per-row action chip (the `uia/hierarchy` presenter wires
-// "Copy selector" through it).
+// (matched against `data-overlay-id` boxes painted by the bundle
+// overlay layer), and the optional per-row action chip (reserved for
+// the "Copy as selector" affordance on `uia/hierarchy`, currently
+// unwired — see #1104).
 //
 // Light DOM only — the inspector's CSS targets descendants by class.
 
@@ -63,8 +63,8 @@ export interface TreeTableOptions<T> {
     /**
      * When defined, rows whose data has bounds shown as
      * `data-has-overlay="true"` so CSS can paint an overlay handle. The
-     * actual overlay boxes are produced by the presenter (`overlay`
-     * surface in `ProductPresentation`) — this is just the visual cue.
+     * actual overlay boxes are produced by the caller's bundle data
+     * builder — this is just the visual cue.
      */
     hasOverlayFor?(node: T): boolean;
     /**
@@ -77,9 +77,8 @@ export interface TreeTableOptions<T> {
 }
 
 /**
- * Build the tree-table DOM. The returned element is meant to be slotted
- * into a `PresentationReport.body`; presenters wrap it in their own
- * `<details>` via the inspector's report surface.
+ * Build the tree-table DOM. The returned element is slotted into the
+ * Inspection bundle tab body by `computeInspectionBundleData`.
  */
 export function buildInspectionTreeTable<T>(
     opts: TreeTableOptions<T>,

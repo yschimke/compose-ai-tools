@@ -22,8 +22,8 @@ import type {
 
 /** Narrow inspector surface — `applyA11yUpdate` only ever calls
  *  `render(card)` to repaint the focus inspector when fresh a11y data
- *  lands for the focused card. Structural typing keeps
- *  `FocusInspectorController` out of this module. */
+ *  lands for the focused card. Implemented in `main.ts` by the
+ *  `applyFocusInspectorState` adapter around `<focus-inspector>`. */
 export interface InspectorRenderer {
     render(card: HTMLElement): void;
 }
