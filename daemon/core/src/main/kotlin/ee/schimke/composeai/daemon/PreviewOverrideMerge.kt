@@ -3,6 +3,7 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PermissionsOverride
@@ -35,6 +36,7 @@ data class PreviewOverrideBaseSpec(
   val touchOverlay: Boolean? = null,
   val permissions: PermissionsOverride? = null,
   val remoteCompose: RemoteComposeOverride? = null,
+  val launcherWidget: LauncherWidgetOverride? = null,
 )
 
 data class MergedPreviewOverrides(
@@ -54,6 +56,7 @@ data class MergedPreviewOverrides(
   val touchOverlay: Boolean?,
   val permissions: PermissionsOverride?,
   val remoteCompose: RemoteComposeOverride?,
+  val launcherWidget: LauncherWidgetOverride?,
 ) {
   /**
    * Project the merged overrides down to a [PreviewOverrides] bag that only carries fields
@@ -78,6 +81,7 @@ data class MergedPreviewOverrides(
         touchOverlay != true &&
         permissions == null &&
         remoteCompose == null &&
+        launcherWidget == null &&
         !isPseudolocale
     ) {
       return null
@@ -91,6 +95,7 @@ data class MergedPreviewOverrides(
       touchOverlay = touchOverlay,
       permissions = permissions,
       remoteCompose = remoteCompose,
+      launcherWidget = launcherWidget,
     )
   }
 }
@@ -137,6 +142,7 @@ fun mergePreviewOverrides(
       touchOverlay = base.touchOverlay,
       permissions = base.permissions,
       remoteCompose = base.remoteCompose,
+      launcherWidget = base.launcherWidget,
     )
   }
   val deviceOverride = overrides.device?.takeIf { it.isNotBlank() }
@@ -165,5 +171,6 @@ fun mergePreviewOverrides(
     touchOverlay = overrides.touchOverlay ?: base.touchOverlay,
     permissions = overrides.permissions ?: base.permissions,
     remoteCompose = overrides.remoteCompose ?: base.remoteCompose,
+    launcherWidget = overrides.launcherWidget ?: base.launcherWidget,
   )
 }

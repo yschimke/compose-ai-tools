@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hand-built RemoteViews layout for the `RemoteViewsWeatherWidgetPreview` @Preview in
+  `AppWidgetPreviews.kt`. Colours and sizes are hard-coded rather than reading theme attrs
+  (`?attr/colorPrimary`, `?attr/textColorPrimary`, …) because RemoteViews resolves those
+  against the host activity's theme — the renderer's sandbox activity uses a generic theme that
+  picks lavender for everything, which makes a "real" launcher widget visual hard to assess.
+  Matches the same trade-off `NotificationContent` made for notification RemoteViews.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#FF1A237E">
+
+  <TextView
+      android:id="@+id/widget_title"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:textColor="#FFFFFFFF"
+      android:textSize="14sp"
+      android:textStyle="bold" />
+
+  <TextView
+      android:id="@+id/widget_temperature"
+      android:layout_width="match_parent"
+      android:layout_height="0dp"
+      android:layout_weight="1"
+      android:textColor="#FFFFFFFF"
+      android:textSize="36sp"
+      android:gravity="center" />
+
+  <TextView
+      android:id="@+id/widget_condition"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:textColor="#B3FFFFFF"
+      android:textSize="12sp" />
+
+</LinearLayout>
