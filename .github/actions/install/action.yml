@@ -81,7 +81,15 @@ runs:
         trap 'rm -rf "$tmp"' EXIT
 
         printf 'Downloading %s\n' "$url"
-        curl -fL --retry 3 --retry-connrefused -o "$tmp/$asset" "$url"
+        # `--connect-timeout` and `--max-time` bound the worst case if the
+        # release-asset URL redirects to a partially-uploaded blob (the
+        # incomplete-release race that `resolve-version.py` defends against
+        # for `version: latest`). With a literal version we can still be
+        # pointed at an in-progress release; without timeouts the curl can
+        # hang for minutes per retry instead of failing fast.
+        curl -fL --retry 3 --retry-connrefused \
+          --connect-timeout 30 --max-time 300 \
+          -o "$tmp/$asset" "$url"
 
         # Best-effort sha256 verification via the releases API. The
         # asset's `digest` field is "sha256:<hex>". On failure (network,
