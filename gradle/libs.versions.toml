@@ -121,14 +121,6 @@ checker-qual = "4.1.0"
 material-kolor = "4.0.5"
 
 [libraries]
-# Kotlin scripting host — used by `:cli-scripting` to compile + evaluate
-# `*.composepreview.kts` files at `compose-preview script <path>` time. MVP
-# bundle: today the host JARs ride on the default CLI runtime classpath
-# (~50 MB tarball bloat), tracked on issue #1084 for the eventual
-# classloader-split + lazy-fetch story.
-kotlin-scripting-common = { module = "org.jetbrains.kotlin:kotlin-scripting-common", version.ref = "kotlin" }
-kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
-kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }

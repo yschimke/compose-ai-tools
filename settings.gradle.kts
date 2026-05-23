@@ -62,15 +62,11 @@ include(":gradle-preview-driver")
 
 project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
 
-// Kotlin scripting host for `compose-preview script <path.composepreview.kts>`.
-//
-// MVP per issue #1084: rides on the default `:cli` runtime classpath (the
-// `kotlin-scripting-jvm-host` + `kotlin-compiler-embeddable` closure adds
-// ~50 MB to the tarball). The eventual lazy-fetch + classloader-split story
-// is still tracked on #1084; today this module is a single-purpose host plus
-// a thin DSL, with `:cli` reaching into it via reflection so the dispatch
-// seam already exists for the future split.
-include(":cli-scripting")
+// `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
+// in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
+// `yschimke/compose-ai-contrib` as a standalone consumer of `:preview-data-api` +
+// `:gradle-preview-driver` + `:data-a11y-core`. Its absence from this repo is the proof the
+// published API is expressive enough to build features against, not just inside.
 
 include(":bundle-viewer")
 

@@ -105,14 +105,6 @@ dependencies {
   implementation(project(":render-session-api"))
   implementation(project(":render-session-subprocess"))
 
-  // Kotlin scripting host (`compose-preview script <path.composepreview.kts>`). `runtimeOnly`
-  // because (a) the compile graph would cycle if `:cli` saw `:cli-scripting`'s symbols
-  // directly — `:cli-scripting` depends on `:cli` for the `PreviewResult` / `Command` surfaces
-  // it exposes — and (b) the seam between `Main.kt` and `ScriptCommand` is the same one the
-  // future classloader-split + lazy-fetch on issue #1084 will widen, so reflective dispatch
-  // already lives at the right boundary.
-  runtimeOnly(project(":cli-scripting"))
-
   // `compose-preview bundle render` ships the desktop renderer + its full Compose Multiplatform
   // runtime in `lib-renderer/`. Subprocess only; never on the CLI's own classpath.
   add("composePreviewRenderer", project(":renderer-desktop"))
