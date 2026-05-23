@@ -452,6 +452,24 @@ export interface ComposePreviewTestApi {
      */
     triggerWarmDaemon(filePath: string): Promise<boolean>;
     /**
+     * Drive `composePreviewApplied` against the currently-wired
+     * `gradleService` and await completion, so subsequent
+     * `resolveModule()`/`findPreviewModules()` calls see the authoritative
+     * `applied.json` markers.
+     *
+     * Background: production activation fires `bootstrapAppliedMarkers`
+     * fire-and-forget *before* tests can `injectGradleApi(...)`, and the
+     * injection replaces the GradleService instance — so the in-flight
+     * activation bootstrap is targeted at the original (now-orphaned)
+     * service. Tests that depend on marker-driven module discovery
+     * (catalog-alias modules like Confetti's `:androidApp`, which
+     * `appliesPlugin` text-scan can't resolve) must drive the bootstrap
+     * explicitly on the injected service before warming the daemon, or
+     * they race the async marker write and intermittently see
+     * `resolveModule returned null`.
+     */
+    triggerBootstrapAppliedMarkers(): Promise<void>;
+    /**
      * Most recent failure reason recorded by `warmDaemonForFile`, or `null`
      * if the last call succeeded (or none was made yet). Exposed so the
      * wear a11y `before()` hook can surface the underlying cause when the
@@ -1841,6 +1859,12 @@ export async function activate(
             },
             triggerWarmDaemon(filePath: string): Promise<boolean> {
                 return warmDaemonForFile(filePath);
+            },
+            async triggerBootstrapAppliedMarkers(): Promise<void> {
+                if (!gradleService) {
+                    return;
+                }
+                await gradleService.bootstrapAppliedMarkers();
             },
             getLastWarmDaemonError(): string | null {
                 return lastWarmDaemonError;
