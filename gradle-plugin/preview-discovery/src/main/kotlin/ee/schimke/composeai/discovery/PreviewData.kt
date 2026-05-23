@@ -190,6 +190,37 @@ enum class AmbientCaptureState {
 }
 
 /**
+ * Per-preview launcher-widget container-size override discovered from a `@LauncherWidgetPreview`
+ * annotation. Stamped onto every capture of the annotated function — renderer wraps the composition
+ * with `:data-launcher-widget-connector`'s `LauncherWidgetExtension`, which mirrors `MyWidget`
+ * inside a `Box(Modifier.size(widthDp, heightDp))` at the resolved dp footprint.
+ *
+ * Field shape matches `LauncherWidgetOverride` in `:daemon:core` so the renderer can translate
+ * one-for-one. Optional bounds / cell size carry `null` here when the annotation left them at their
+ * `-1` sentinel — the connector then applies its defaults.
+ */
+@Serializable
+data class LauncherWidgetCapture(
+  val width: Int,
+  val height: Int,
+  val cellSizeDp: Int? = null,
+  val cellSpacingDp: Int? = null,
+  val minWidth: Int? = null,
+  val minHeight: Int? = null,
+  val maxWidth: Int? = null,
+  val maxHeight: Int? = null,
+  val resizeOrder: LauncherWidgetCaptureResizeOrder = LauncherWidgetCaptureResizeOrder.WidthFirst,
+)
+
+/** Mirror of `LauncherResizeOrder` in `:daemon:core`. */
+@Serializable
+enum class LauncherWidgetCaptureResizeOrder {
+  Diagonal,
+  WidthFirst,
+  HeightFirst,
+}
+
+/**
  * Cost catalogue, normalised so a static `@Preview` (single compose pass + one screenshot) is
  * `1.0`. The discovery task stamps the right value onto each [Capture]; tooling reads them back to
  * throttle interactive renders.
@@ -308,6 +339,13 @@ data class Capture(
    * `AmbientOverrideExtension` when present.
    */
   val ambient: AmbientCapture? = null,
+  /**
+   * `null` → no launcher-widget container-size override. Set when the preview carries a
+   * `@LauncherWidgetPreview` annotation. Renderer wraps the composition with
+   * `:data-launcher-widget-connector`'s `LauncherWidgetExtension` when present so the rendered PNG
+   * sizes to the resolved dp footprint of a launcher cell.
+   */
+  val launcherWidget: LauncherWidgetCapture? = null,
   /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
   val renderOutput: String = "",
   /**
