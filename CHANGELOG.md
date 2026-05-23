@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.4](https://github.com/yschimke/compose-ai-tools/compare/v0.11.3...v0.11.4) (2026-05-23)
+
+
+### Features
+
+* **launcher-widget:** add @LauncherWidgetPreview annotation + discovery ([#1407](https://github.com/yschimke/compose-ai-tools/issues/1407)) ([767e531](https://github.com/yschimke/compose-ai-tools/commit/767e5311879ceb99c43a9bdbf665333a7e697be8))
+
+
+### Bug Fixes
+
+* **cli:** skip auto-inject for KMP-Android modules ([#1411](https://github.com/yschimke/compose-ai-tools/issues/1411)) ([298f381](https://github.com/yschimke/compose-ai-tools/commit/298f381a057231bc96a8922bab0f06cb8d698356))
+* **daemon-desktop:** bundle per-platform Skiko native runtimes in the POM ([#1413](https://github.com/yschimke/compose-ai-tools/issues/1413)) ([5ef1de0](https://github.com/yschimke/compose-ai-tools/commit/5ef1de0ae975622f88ed415afc6466a4d849ea60))
+
 ## [0.11.3](https://github.com/yschimke/compose-ai-tools/compare/v0.11.2...v0.11.3) (2026-05-23)
 
 
