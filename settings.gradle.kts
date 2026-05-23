@@ -83,8 +83,6 @@ include(":preview-annotations")
 
 include(":notification-preview-runtime")
 
-include(":launcher-preview-runtime")
-
 include(":samples:android")
 
 include(":samples:android-alpha")
@@ -254,6 +252,10 @@ project(":data-keyboard-connector-desktop").projectDir = file("data/keyboard/con
 include(":data-touch-overlay-connector")
 
 project(":data-touch-overlay-connector").projectDir = file("data/touch-overlay/connector")
+
+include(":data-launcher-widget-connector")
+
+project(":data-launcher-widget-connector").projectDir = file("data/launcher-widget/connector")
 
 include(":data-pseudolocale-core")
 

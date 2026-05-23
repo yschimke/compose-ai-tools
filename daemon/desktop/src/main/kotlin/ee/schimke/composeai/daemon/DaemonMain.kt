@@ -624,6 +624,25 @@ internal fun buildDesktopExtensions(
         ),
     )
   }
+  tryAdd("data/launcher-widget") {
+    // Launcher-widget container-size override. The around-composable wraps the preview body in a
+    // sized `Box` matching the clamped whole-cell footprint on a launcher grid. Activated by
+    // `renderNow.overrides.launcherWidget = LauncherWidgetOverride(cells = ...)`. Snap-only — a
+    // future daemon-side resize-loop orchestrator (issue: launcher-widget resize loop) will walk
+    // intermediate stops via `launcherWidgetStops(...)` and emit one render per stop.
+    Extension(
+      id = "data/launcher-widget",
+      displayName = "Launcher widget container size",
+      previewOverrideExtensions = listOf(LauncherWidgetPreviewOverrideExtension()),
+      dataExtensionDescriptors =
+        listOf(
+          DataExtensionDescriptor(
+            id = LauncherWidgetExtension.ID,
+            displayName = "Launcher widget container size",
+          )
+        ),
+    )
+  }
   tryAdd("data/recomposition") {
     Extension(
       id = "data/recomposition",

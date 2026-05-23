@@ -422,6 +422,23 @@ fun main(args: Array<String>) {
               ),
           )
         }
+        tryAdd("data/launcher-widget") {
+          // Launcher-widget container-size override — same shape as the touch-overlay registration
+          // above. The actual planner is wired into `RobolectricHost.previewOverrideExtensions`;
+          // this entry only carries the discoverable descriptor so the panel / MCP can report the
+          // extension via `extensions/list` and `initialize.capabilities.dataExtensions`.
+          Extension(
+            id = "data/launcher-widget",
+            displayName = "Launcher widget container size",
+            dataExtensionDescriptors =
+              listOf(
+                DataExtensionDescriptor(
+                  id = LauncherWidgetExtension.ID,
+                  displayName = "Launcher widget container size",
+                )
+              ),
+          )
+        }
         if (historyManager != null) {
           tryAdd("history/diff-regions") {
             Extension(

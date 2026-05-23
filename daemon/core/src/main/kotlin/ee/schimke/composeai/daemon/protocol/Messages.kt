@@ -527,6 +527,20 @@ data class PreviewOverrides(
    * has no Remote Compose runtime and ignores this field.
    */
   val remoteCompose: RemoteComposeOverride? = null,
+  /**
+   * Optional launcher-widget container-size override. Drives the connector-side
+   * `LauncherWidgetExtension` (see `:data-launcher-widget-connector`) so a held preview can be laid
+   * out at a specific whole-cell size on the host's launcher grid — `cells = (4, 2)` at the default
+   * `72dp` cell size resolves to a `4*72 + 3*8 = 312.dp` wide by `2*72 + 1*8 = 152.dp` tall
+   * container. The around-composable wraps the preview body in a `Box(Modifier.size(...))` at the
+   * resolved pixel dimensions; the value is clamped into `minCells`..`maxCells` (defaulting to
+   * `1×1`..`5×5`) before reaching the layout pass, mirroring Android's `minResizeWidth` /
+   * `minResizeHeight` on widget metadata. A single `renderNow` snaps to the target. A future
+   * daemon-side orchestrator (issue: launcher-widget resize loop) walks intermediate whole-cell
+   * stops in [LauncherResizeOrder] when the caller wants the resize to play as an animation;
+   * [resizeOrder] is the protocol hook for that orchestration.
+   */
+  val launcherWidget: LauncherWidgetOverride? = null,
 )
 
 /**
@@ -816,6 +830,77 @@ sealed class RemoteNamedValue {
  */
 @Serializable
 data class RemoteHostAction(val payload: String, val handlerId: Float, val firedAtMillis: Long = 0L)
+
+/**
+ * Whole-cell size on a launcher's grid, expressed as integer cell counts.
+ *
+ * Same units Android's launcher / AppWidget host uses when it asks "how many cells wide and tall is
+ * this widget?". Negative values are rejected at construction. Zero is permitted so a caller can
+ * express "below min" on either axis — `LauncherWidgetOverride.clampedCells` then lifts the value
+ * up to the configured floor.
+ */
+@Serializable
+data class LauncherWidgetSize(val width: Int, val height: Int) {
+  init {
+    require(width >= 0) { "LauncherWidgetSize.width must be >= 0, was $width" }
+    require(height >= 0) { "LauncherWidgetSize.height must be >= 0, was $height" }
+  }
+}
+
+/**
+ * How an orchestrator walks per-axis steps when animating the launcher-widget container between two
+ * whole-cell sizes.
+ *
+ * Real Android launcher widgets have edge handles, not corner handles — the user grabs one edge and
+ * drags it, so width and height never change simultaneously in a single gesture. [WidthFirst] and
+ * [HeightFirst] mirror that two-gesture path; [Diagonal] is the relaxed mode that advances both
+ * axes in lock-step. Carried on [LauncherWidgetOverride] but **not consumed** by the
+ * around-composable connector — the connector snaps to the target on every render. A future
+ * daemon-side stepping loop (issue: launcher-widget resize loop) reads this field to compute the
+ * intermediate frames it emits between source and target.
+ */
+@Serializable
+enum class LauncherResizeOrder {
+  @SerialName("diagonal") DIAGONAL,
+  @SerialName("widthFirst") WIDTH_FIRST,
+  @SerialName("heightFirst") HEIGHT_FIRST,
+}
+
+/**
+ * Launcher-widget container-size override.
+ *
+ * The connector-side `LauncherWidgetExtension` (see `:data-launcher-widget-connector`) wraps the
+ * preview body in a `Box(Modifier.size(widthDp, heightDp))` where each dp dimension is computed
+ * from the clamped cell count plus inter-cell spacing:
+ *
+ * widthDp = cellSizeDp * cells.width + cellSpacingDp * max(0, cells.width - 1) heightDp =
+ * cellSizeDp * cells.height + cellSpacingDp * max(0, cells.height - 1)
+ *
+ * Defaults match the Pixel launcher's `5×5` grid arithmetic on a 411dp screen: `72.dp` cells,
+ * `8.dp` gaps, range `1×1`..`5×5`.
+ *
+ * @property cells target whole-cell size on the grid. Clamped into [minCells]..[maxCells].
+ * @property cellSizeDp one cell's edge length in dp. `null` falls back to the connector's default
+ *   (`72`).
+ * @property cellSpacingDp dp gap between adjacent cells. `null` falls back to the connector's
+ *   default (`8`).
+ * @property minCells inclusive lower bound on the cell count (per axis). `null` falls back to
+ *   `1×1`.
+ * @property maxCells inclusive upper bound on the cell count (per axis). `null` falls back to
+ *   `5×5`.
+ * @property resizeOrder hint for a future daemon-side resize-loop orchestrator on how to walk
+ *   intermediate stops between two sizes. The single-shot around-composable ignores this field — it
+ *   always snaps to [cells].
+ */
+@Serializable
+data class LauncherWidgetOverride(
+  val cells: LauncherWidgetSize,
+  val cellSizeDp: Int? = null,
+  val cellSpacingDp: Int? = null,
+  val minCells: LauncherWidgetSize? = null,
+  val maxCells: LauncherWidgetSize? = null,
+  val resizeOrder: LauncherResizeOrder? = null,
+)
 
 @Serializable
 data class Material3ThemeOverrides(
