@@ -2,8 +2,8 @@ package ee.schimke.composeai.daemon
 
 /**
  * Reflective shim that clears Compose Multiplatform Resources' process-wide string-item cache. The
- * cache is the private static field `StringResourcesUtilsKt.stringItemsCache` (an `AsyncCache<String,
- * StringItem>`), keyed by `path/offset-size` and populated by the *first*
+ * cache is the private static field `StringResourcesUtilsKt.stringItemsCache` (an
+ * `AsyncCache<String, StringItem>`), keyed by `path/offset-size` and populated by the *first*
  * [org.jetbrains.compose.resources.ResourceReader] to answer a given key.
  *
  * **Why this exists.** `:data-pseudolocale-connector-desktop` wraps [LocalResourceReader] so every
@@ -59,15 +59,14 @@ internal object PseudolocaleResourceCache {
    * Safe to call from any thread; the underlying `Map.clear()` is a single instruction the JVM
    * publishes promptly enough that subsequent `getOrLoad` callers see an empty map. Concurrent
    * `getOrLoad` calls during the clear might still observe a transient value; we don't try to
-   * synchronize against `AsyncCache.mutex` because (a) it's a `kotlinx.coroutines.sync.Mutex` (not a
-   * `java.util.concurrent.locks.Lock` — no synchronous `lock()` we can call from outside a
+   * synchronize against `AsyncCache.mutex` because (a) it's a `kotlinx.coroutines.sync.Mutex` (not
+   * a `java.util.concurrent.locks.Lock` — no synchronous `lock()` we can call from outside a
    * coroutine context), and (b) the renderer issues renders sequentially anyway.
    */
   fun clearStringResourcesCacheBestEffort(): Boolean {
     return try {
       val utilsClass = Class.forName(UTILS_CLASS)
-      val cacheField =
-        utilsClass.getDeclaredField(CACHE_FIELD).apply { isAccessible = true }
+      val cacheField = utilsClass.getDeclaredField(CACHE_FIELD).apply { isAccessible = true }
       val asyncCache = cacheField.get(null) ?: return false
       val mapField =
         asyncCache.javaClass.getDeclaredField(ASYNC_CACHE_MAP_FIELD).apply { isAccessible = true }

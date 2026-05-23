@@ -7,11 +7,12 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
- * Regression coverage for compose-ai-tools#1360 finding #2: live-mode multi-touch was broken because
- * `DesktopRecordingSession.toScriptEvent` collapsed every live-recorded input to pointer 0,
+ * Regression coverage for compose-ai-tools#1360 finding #2: live-mode multi-touch was broken
+ * because `DesktopRecordingSession.toScriptEvent` collapsed every live-recorded input to pointer 0,
  * regardless of what the wire payload said. Two-finger pinches in `live = true` recordings never
- * reached Compose's gesture pipeline as simultaneous pointers, so `Modifier.transformable {}`'s zoom
- * / rotate callbacks silently no-opped despite the multi-pointer dispatch the same PR advertised.
+ * reached Compose's gesture pipeline as simultaneous pointers, so `Modifier.transformable {}`'s
+ * zoom / rotate callbacks silently no-opped despite the multi-pointer dispatch the same PR
+ * advertised.
  *
  * The mapping itself is pure data, so testing it in isolation — without spinning up a
  * `RenderEngine` / `ImageComposeScene` per assertion — is the cheapest way to pin the contract. The
