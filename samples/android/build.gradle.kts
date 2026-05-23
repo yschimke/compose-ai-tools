@@ -84,7 +84,7 @@ dependencies {
   // the sample classpath (not pinned in `:notification-preview-runtime`) because consumers may
   // be on Media3 / no media stack at all; we don't want to drag this artifact onto every
   // notification-preview consumer.
-  implementation("androidx.media:media:1.7.0")
+  implementation("androidx.media:media:1.8.0")
   // Soft-keyboard data extension — `SoftKeyboardAnimatedPreview` uses
   // `LocalSoftwareKeyboardController.show()` (the natural app-side IME path the connector's
   // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
