@@ -180,28 +180,6 @@ jobs:
           mkdir -p skills/compose-preview-review/scripts
           curl -fsSL -o skills/compose-preview-review/scripts/run-agent-audit-samples.py \
             "https://raw.githubusercontent.com/yschimke/skills/main/skills/compose-preview-review/scripts/run-agent-audit-samples.py"
-          # v2 wire-shape bridge: #1392 dropped `PreviewResult.a11yFindings` and moved findings
-          # to `dataExtensions["a11y"].payload.findings` (see preview-data-api/.../PreviewData.kt
-          # `ExtensionPayload`). The skills script still reads the v1 field; until it lands a v2
-          # update, fall back to the v2 path in the same expression so both shapes work. Drops
-          # cleanly the moment skills updates upstream.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("skills/compose-preview-review/scripts/run-agent-audit-samples.py")
-          src = p.read_text()
-          old = '    findings = preview.get("a11yFindings") or []'
-          new = (
-              '    findings = (\n'
-              '        preview.get("a11yFindings")\n'
-              '        or ((preview.get("dataExtensions") or {})\n'
-              '            .get("a11y", {}).get("payload", {}).get("findings"))\n'
-              '        or []\n'
-              '    )'
-          )
-          if old not in src:
-              raise SystemExit(f"v1 a11yFindings read not found in {p}; skills script shape changed — drop this shim")
-          p.write_text(src.replace(old, new))
-          PY
       - name: Run agent audit sample scripts
         run: python3 skills/compose-preview-review/scripts/run-agent-audit-samples.py
       - name: Upload agent audit outputs
