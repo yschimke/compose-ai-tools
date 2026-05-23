@@ -1,9 +1,3 @@
-// Suppress at file scope: the renderer test asserts on the v1 `a11yFindings` field by design —
-// it covers the deprecation slope. A separate test (`a11y carrier dataExtensions payload …`)
-// covers the new `dataExtensions["a11y"]` path. When the deprecated fields are removed in v2,
-// the v1 assertions delete and this suppression goes with them.
-@file:Suppress("DEPRECATION")
-
 package ee.schimke.composeai.cli
 
 import java.io.ByteArrayOutputStream
@@ -17,13 +11,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 /**
  * Unit coverage for the a11y strategy impl. The Gradle Tooling API path (the renders that produce
  * `accessibility.json`) isn't exercised here — we point [A11yReportRenderer.load] at a synthetic
- * on-disk JSON and verify the surrounding contract: it reads via the manifest's v2/v1 pointer,
- * populates [PreviewResult.a11yFindings], reports `hasData`, and prints what `A11yCommand` used to
- * print directly.
+ * on-disk JSON and verify the surrounding contract: it reads via the manifest pointer, populates
+ * `dataExtensions["a11y"]` (the v2 carrier), reports `hasData`, and prints what `A11yCommand` used
+ * to print directly.
  */
 class A11yReportRendererTest {
 
@@ -98,14 +93,16 @@ class A11yReportRendererTest {
     assertEquals(setOf("sample"), enabled)
 
     val foo = renderer.annotate(previewResult("Foo"), module())
-    assertEquals(1, foo.a11yFindings?.size)
-    assertEquals("ERROR", foo.a11yFindings?.first()?.level)
+    val fooEntry = foo.a11yEntry() ?: error("expected a11y entry on Foo")
+    assertEquals(1, fooEntry.findings.size)
+    assertEquals("ERROR", fooEntry.findings.first().level)
     assertTrue(renderer.hasData(foo))
 
-    // Same module, different preview that has no entry: a11yFindings is set to an empty list
-    // (the "checks ran, found nothing" signal) rather than null.
+    // Same module, different preview that has no entry in accessibility.json: the carrier still
+    // gets populated with an empty-findings entry (the "checks ran, found nothing" signal) so
+    // downstream `hasData` returns true.
     val bar = renderer.annotate(previewResult("Bar"), module())
-    assertEquals(emptyList(), bar.a11yFindings)
+    assertEquals(emptyList(), bar.a11yEntry()?.findings)
     assertTrue(renderer.hasData(bar))
   }
 
@@ -115,19 +112,17 @@ class A11yReportRendererTest {
     renderer.load(listOf(module() to manifest(reportsView = emptyMap())), verbose = false)
 
     val result = renderer.annotate(previewResult("Foo"), module())
-    assertNull(result.a11yFindings)
-    assertFalse(renderer.hasData(result))
-    // Same for the new generic carrier: no extension data when the pointer is absent.
     assertNull(result.dataExtensions["a11y"])
+    assertFalse(renderer.hasData(result))
   }
 
   /**
-   * Locks in the new generic `dataExtensions["a11y"]` carrier alongside the deprecated v1 fields.
-   * This is the path contrib scripting and other external consumers read from — the v1 fields
-   * disappear after the deprecation window but the carrier stays.
+   * Locks in the `dataExtensions["a11y"]` carrier shape — schema string pinned, decoded body
+   * matches the v1 `AccessibilityEntry`. External consumers (contrib scripting, third-party
+   * tooling) read this path.
    */
   @Test
-  fun `annotate populates the new dataExtensions a11y carrier with the AccessibilityEntry payload`() {
+  fun `annotate populates the dataExtensions a11y carrier with the AccessibilityEntry payload`() {
     writeReport(
       """
       {
@@ -153,11 +148,7 @@ class A11yReportRendererTest {
 
     val payload = foo.dataExtensions["a11y"] ?: error("expected dataExtensions[\"a11y\"] populated")
     assertEquals(A11Y_PAYLOAD_SCHEMA_V1, payload.schema)
-    val decoded =
-      kotlinx.serialization.json.Json.decodeFromJsonElement(
-        AccessibilityEntry.serializer(),
-        payload.payload,
-      )
+    val decoded = Json.decodeFromJsonElement(AccessibilityEntry.serializer(), payload.payload)
     assertEquals("Foo", decoded.previewId)
     assertEquals(1, decoded.findings.size)
     assertEquals("ERROR", decoded.findings.first().level)
@@ -209,14 +200,10 @@ class A11yReportRendererTest {
     val renderer = A11yReportRenderer()
     val errorRow =
       previewResult("Foo")
-        .copy(
-          a11yFindings = listOf(AccessibilityFinding(level = "ERROR", type = "X", message = "x"))
-        )
+        .withA11yFindings(AccessibilityFinding(level = "ERROR", type = "X", message = "x"))
     val warningRow =
       previewResult("Bar")
-        .copy(
-          a11yFindings = listOf(AccessibilityFinding(level = "WARNING", type = "Y", message = "y"))
-        )
+        .withA11yFindings(AccessibilityFinding(level = "WARNING", type = "Y", message = "y"))
 
     assertEquals(2, renderer.thresholdExitCode(listOf(errorRow), failOn = "errors"))
     assertNull(renderer.thresholdExitCode(listOf(warningRow), failOn = "errors"))
@@ -227,5 +214,19 @@ class A11yReportRendererTest {
       EXIT_UNKNOWN_FAIL_ON,
       renderer.thresholdExitCode(listOf(errorRow), failOn = "bogus"),
     )
+  }
+
+  /**
+   * Build a `dataExtensions["a11y"]` payload with the given findings — the v2 way to attach
+   * findings to a test fixture. Used in place of the dropped `copy(a11yFindings = ...)`.
+   */
+  private fun PreviewResult.withA11yFindings(vararg findings: AccessibilityFinding): PreviewResult {
+    val entry = AccessibilityEntry(previewId = id, findings = findings.toList())
+    val payload =
+      ExtensionPayload(
+        schema = A11Y_PAYLOAD_SCHEMA_V1,
+        payload = Json.encodeToJsonElement(AccessibilityEntry.serializer(), entry),
+      )
+    return copy(dataExtensions = dataExtensions + ("a11y" to payload))
   }
 }

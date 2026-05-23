@@ -149,9 +149,9 @@ data class CaptureResult(
  * CLI output DTO — enriches manifest entries with runtime data agents need.
  *
  * Extension data flows through [dataExtensions] — a generic id→payload map so the data API stays
- * agnostic of which extensions exist. The deprecated [a11yFindings] / [a11yAnnotatedPath] fields
- * are populated by `:cli`'s `A11yReportRenderer` alongside the new `dataExtensions["a11y"]` payload
- * for one release; after the deprecation window they're removed and the schema bumps to v2.
+ * agnostic of which extensions exist. Consumers decode each extension's payload against its typed
+ * DTOs (a11y: this module's [AccessibilityEntry] mirror — the JVM-side typed-decode surface for the
+ * `compose-preview-data-a11y/v1` payload body).
  */
 @Serializable
 data class PreviewResult(
@@ -175,33 +175,12 @@ data class PreviewResult(
   val changed: Boolean? = null,
   /**
    * Generic per-extension data carrier — keyed by extension id, value is the typed payload
-   * envelope. Consumers decode `dataExtensions["a11y"]?.payload` against `:data-a11y-core`'s
-   * `AccessibilityEntry`, `dataExtensions["theme"]` against the theme extension's published DTOs,
+   * envelope. Consumers decode `dataExtensions["a11y"]?.payload` against this module's
+   * [AccessibilityEntry], `dataExtensions["theme"]` against the theme extension's published DTOs,
    * and so on.
    *
-   * Replaces the per-extension fields (`a11yFindings`, `a11yAnnotatedPath`) that grew on this class
-   * — the data API has no business knowing which extensions exist. See `docs/AGENTS.md` "Important
+   * The data API has no business knowing which extensions exist — see `docs/AGENTS.md` "Important
    * constraints" / "No hardcoded special-case logic for extensions."
    */
   val dataExtensions: Map<String, ExtensionPayload> = emptyMap(),
-  /**
-   * ATF findings for this preview, or `null` when accessibility checks were disabled for this
-   * module. Empty list means checks ran and found nothing.
-   */
-  @Deprecated(
-    "Decode dataExtensions[\"a11y\"] against :data-a11y-core's AccessibilityEntry. Populated " +
-      "for back-compat during the v1→v2 deprecation window; will be removed when the " +
-      "compose-preview-show wire format bumps to v2."
-  )
-  val a11yFindings: List<AccessibilityFinding>? = null,
-  /**
-   * Absolute path to an annotated screenshot showing each finding as a numbered badge + legend.
-   * `null` when there were no findings or accessibility checks are disabled.
-   */
-  @Deprecated(
-    "Decode dataExtensions[\"a11y\"] and read AccessibilityEntry.annotatedPath. Populated for " +
-      "back-compat during the v1→v2 deprecation window; will be removed when the wire format " +
-      "bumps to v2."
-  )
-  val a11yAnnotatedPath: String? = null,
 )
