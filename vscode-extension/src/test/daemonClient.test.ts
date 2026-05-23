@@ -263,6 +263,49 @@ describe("DaemonClient", () => {
         client.exit();
     });
 
+    it("interactiveSetRemoteCompose emits a notification carrying a profile change", async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        client.interactiveSetRemoteCompose({
+            frameStreamId: "stream-42",
+            change: { field: "profile", value: "androidx9" },
+        });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, "interactive/setRemoteCompose");
+        assert.strictEqual((sent as unknown as { id?: number }).id, undefined);
+        assert.deepStrictEqual(sent.params, {
+            frameStreamId: "stream-42",
+            change: { field: "profile", value: "androidx9" },
+        });
+        client.exit();
+    });
+
+    it("interactiveSetRemoteCompose emits a notification carrying a named-value change", async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        client.interactiveSetRemoteCompose({
+            frameStreamId: "stream-42",
+            change: {
+                field: "namedValue",
+                name: "seedColor",
+                value: { kind: "color", argb: "#FF3366FF" },
+            },
+        });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, "interactive/setRemoteCompose");
+        assert.deepStrictEqual(sent.params, {
+            frameStreamId: "stream-42",
+            change: {
+                field: "namedValue",
+                name: "seedColor",
+                value: { kind: "color", argb: "#FF3366FF" },
+            },
+        });
+        client.exit();
+    });
+
     it("issues monotonically increasing ids", async () => {
         const { toServer, toClient } = bidiPair();
         const frames = captureFrames(toServer);

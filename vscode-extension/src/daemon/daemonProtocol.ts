@@ -835,6 +835,44 @@ export interface InteractiveStopParams {
     frameStreamId: string;
 }
 
+/**
+ * `interactive/setRemoteCompose` notification — push one Remote Compose state edit (profile
+ * selection or named-value change) into the held interactive session's
+ * `RemoteComposeController` without forcing a fresh `renderNow`. The daemon's session
+ * dispatches into the controller's `setProfile(...)` / `setNamedValue(...)` and snapshot-state
+ * recomposition repaints the held scene on the next streaming frame.
+ *
+ * Distinct from `renderNow.overrides.remoteCompose` (which still works and re-renders from
+ * scratch): this is the snappy live-session path that bypasses the override-apply + full-
+ * recompose round-trip. Hosts without a live binding silently drop the notification — the
+ * caller's fallback re-issues `renderNow` with overrides as the canonical source-of-truth path.
+ */
+export interface InteractiveSetRemoteComposeParams {
+    frameStreamId: string;
+    change: RemoteComposeChangeDetail;
+}
+
+/**
+ * Discriminated edit shape carried by `interactive/setRemoteCompose`. Mirrors the
+ * `RemoteComposeChange` Kotlin sealed class on the daemon wire side and the
+ * `RemoteComposeChangeDetail` discriminated union the VS Code panel emits. Single shape across
+ * all three boundaries so the host can forward the panel's payload verbatim.
+ */
+export type RemoteComposeChangeDetail =
+    | {
+          field: "profile";
+          value:
+              | "androidx"
+              | "androidx7"
+              | "androidx8"
+              | "androidx9"
+              | "widgetsV6"
+              | "widgetsV7"
+              | "wearWidgets"
+              | null;
+      }
+    | { field: "namedValue"; name: string; value: RemoteNamedValueWire };
+
 export type InteractiveInputKind =
     | "click"
     | "pointerDown"

@@ -4901,19 +4901,27 @@ async function handleSetDataExtensionEnabled(
 }
 
 /**
- * Apply one edit from the panel's Remote Compose tab body. Merges the
- * change into [remoteComposeOverridesByPreview] and dispatches a fresh
- * `renderNow` so the daemon's `RemoteComposeController.set(...)` picks
- * up the new state on the next composition. Subsequent edits accumulate
- * on the same override bag — the daemon-side controller treats
- * `RemoteComposeOverride.namedValues` as a full-replacement map, so we
- * carry the whole running snapshot in the message rather than letting
- * the user lose previously-edited values on each new edit.
+ * Apply one edit from the panel's Remote Compose tab body. Picks between two daemon paths
+ * depending on whether the preview has a live `composestream/1` session up:
  *
- * No-op when the daemon scheduler isn't wired (Gradle-only mode) or the
- * preview's owning module isn't yet known (panel rebuild race) — the
- * webview will keep its optimistic value displayed in the input cell;
- * the next `updateDataProducts` after a fresh render will reconcile it.
+ *  * **Live session active** — push the change as an `interactive/setRemoteCompose`
+ *    notification. The daemon's session forwards directly to
+ *    `RemoteComposeController.setProfile(...)` / `setNamedValue(...)`; the controller's
+ *    snapshot state triggers a sub-frame recomposition, so the panel's streaming view
+ *    repaints on the very next frame without an override+rerender round-trip.
+ *  * **No live session** — merge into [remoteComposeOverridesByPreview] and dispatch
+ *    `renderNow.overrides.remoteCompose` carrying the cumulative bag. This is the canonical
+ *    source-of-truth path: it always works even on backends without a live
+ *    `RemoteComposeController` binding, and an explicit re-render guarantees the next
+ *    `updateDataProducts` payload reflects the merged state.
+ *
+ * Both paths merge into the same per-preview running bag so toggling between live and
+ * non-live mid-edit doesn't lose previously-edited values. The render-path fallback also
+ * fires when the live-path daemon dispatch can't be reached (gate disabled, module unknown).
+ *
+ * No-op when the daemon scheduler isn't wired (Gradle-only mode) or the preview's owning
+ * module isn't yet known (panel rebuild race) — the webview keeps its optimistic value
+ * displayed in the input cell; the next `updateDataProducts` reconciles it.
  */
 async function handleSetRemoteComposeNamedValue(
     previewId: string,
@@ -4943,8 +4951,33 @@ async function handleSetRemoteComposeNamedValue(
         };
     }
     remoteComposeOverridesByPreview.set(previewId, next);
+
+    // Prefer the live path when a `composestream/1` session is up — sub-frame controller
+    // mutation beats a full re-render every time. `activeInteractiveStreams` is the legacy
+    // `interactive/start` map (still used by recording); both can carry the live streamId,
+    // and either is a valid routing key for `interactive/setRemoteCompose`.
+    const liveStreamId =
+        activeStreamFrameStreams.get(previewId) ??
+        activeInteractiveStreams.get(previewId);
+    if (liveStreamId && daemonGate) {
+        const client = await daemonGate.getOrSpawn(
+            moduleInfo,
+            daemonScheduler.daemonEvents(moduleInfo.modulePath),
+        );
+        if (client) {
+            logInfo(
+                `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId} via live session ${liveStreamId}`,
+            );
+            client.interactiveSetRemoteCompose({
+                frameStreamId: liveStreamId,
+                change,
+            });
+            return;
+        }
+    }
+
     logInfo(
-        `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId}`,
+        `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId} via renderNow`,
     );
     void daemonScheduler.renderNow(
         moduleInfo,
