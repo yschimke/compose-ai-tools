@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.RemoteComposeChange
 
 /**
  * Held-scene interactive session for one `frameStreamId` — see
@@ -62,6 +63,26 @@ interface InteractiveSession : AutoCloseable {
    * them in a batch followed by a single [render].
    */
   fun dispatch(input: InteractiveInputParams)
+
+  /**
+   * Push one Remote Compose state edit into the held composition's `RemoteComposeController`
+   * without forcing a full re-render. The connector-side controller holds the named-value map /
+   * active profile in Compose snapshot state, so calling `set(...)` / `setNamedValue(...)` triggers
+   * a recomposition automatically — the next `interactive/input` (or a follow-up frame produced by
+   * an in-flight streaming session) paints the updated remote document.
+   *
+   * Default returns `false` so hosts without a live RemoteComposeController binding (desktop today;
+   * any non-Remote-Compose Android consumer where the connector isn't loaded) cleanly surface "no
+   * live dispatch available" — the caller's fallback re-issues a `renderNow` with
+   * `overrides.remoteCompose` populated. The Android session implementation reaches into
+   * `RemoteComposeController` reflectively (the singleton lives in the sandbox classloader, not the
+   * daemon's host loader) and returns `true` on success.
+   *
+   * @param change profile edit or named-value edit, mirroring the panel's
+   *   `RemoteComposeChangeDetail`. The implementation maps each variant onto the controller's
+   *   matching method.
+   */
+  fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean = false
 
   /**
    * Accessibility-driven dispatch: resolve a node by its visible content description and invoke the
