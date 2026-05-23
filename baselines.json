@@ -874,6 +874,13 @@
     "sha256": "05ca78c9a948b395eaec4d713f11c55e8fc631b2e921a7737ce5f3edd395e30e",
     "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
   },
+  "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview": {
+    "captureLabel": "",
+    "functionName": "RemoteButtonWithNamedLabelPreview",
+    "renderBasename": "RemoteButtonWithNamedLabelPreview.png",
+    "sha256": "cc9b35225e66d6e6b73d41235c60ad4e79294bfa59ce0744023e261caa0b9995",
+    "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt"
+  },
   "samples:remotecompose/com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview": {
     "captureLabel": "",
     "functionName": "RemoteButtonWithShapePreview",
