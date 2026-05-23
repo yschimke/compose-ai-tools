@@ -44,6 +44,16 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
+// Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
+// third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
+// API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENTS.md
+// "Built-in scripts" / clean-API discussion. The eventual `:gradle-preview-driver` (step B) will
+// sit alongside this and expose the render pipeline as a library.
+include(":preview-data-api")
+
+project(":preview-data-api").projectDir = file("preview-data-api")
+
 // Kotlin scripting host for `compose-preview script <path.composepreview.kts>`.
 //
 // MVP per issue #1084: rides on the default `:cli` runtime classpath (the

@@ -1,8 +1,11 @@
 package ee.schimke.composeai.cli.scripting
 
+import ee.schimke.composeai.cli.A11Y_PAYLOAD_SCHEMA_V1
+import ee.schimke.composeai.cli.AccessibilityEntry
 import ee.schimke.composeai.cli.AccessibilityFinding
 import ee.schimke.composeai.cli.CaptureResult
 import ee.schimke.composeai.cli.PreviewResult
+import kotlinx.serialization.json.Json
 
 /**
  * Script-facing handle for a rendered preview. Returned by `show("id")` / `previews()` on
@@ -64,13 +67,37 @@ class RenderedPreview internal constructor(internal val backing: PreviewResult) 
     get() = backing.changed
 
   /**
-   * Accessibility-extension data. Findings are `null` (not empty list) when ATF wasn't enabled for
-   * this preview's module — the script can distinguish "checks ran and found nothing" from "no
-   * checks ran" via [A11yHandle.ran].
+   * Accessibility-extension data. Decoded lazily from `backing.dataExtensions["a11y"]` against the
+   * `:preview-data-api` wire mirror of `:data-a11y-core`'s `AccessibilityEntry`. Findings are
+   * `null` (not empty list) when ATF wasn't enabled for this preview's module — the script can
+   * distinguish "checks ran and found nothing" from "no checks ran" via [A11yHandle.ran].
+   *
+   * Note: this is the *clean* path through `dataExtensions`. The deprecated `a11yFindings` field on
+   * `PreviewResult` still exists for one release as the v1 → v2 deprecation slope; contrib
+   * scripting deliberately doesn't read it, so the shape demonstrates the published-API contract a
+   * third-party consumer should follow.
    */
-  val a11y: A11yHandle by lazy { A11yHandle(backing.a11yFindings) }
+  val a11y: A11yHandle by lazy { decodeA11y(backing) }
 
   override fun toString(): String = "RenderedPreview(id=$id, module=$module)"
+
+  internal companion object {
+    private val a11yJson = Json { ignoreUnknownKeys = true }
+
+    private fun decodeA11y(result: PreviewResult): A11yHandle {
+      val payload = result.dataExtensions["a11y"] ?: return A11yHandle(findings = null)
+      // Pin to the v1 schema string. A future v2 payload would deliberately NOT decode against
+      // the v1 entry shape — the contract is "string-equal the schema constant or fall back to
+      // unknown." For MVP we only know about v1.
+      if (payload.schema != A11Y_PAYLOAD_SCHEMA_V1) return A11yHandle(findings = null)
+      val entry =
+        runCatching {
+            a11yJson.decodeFromJsonElement(AccessibilityEntry.serializer(), payload.payload)
+          }
+          .getOrNull() ?: return A11yHandle(findings = null)
+      return A11yHandle(findings = entry.findings)
+    }
+  }
 }
 
 /**

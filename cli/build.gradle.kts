@@ -77,6 +77,13 @@ val composePreviewDaemonDesktop =
   }
 
 dependencies {
+  // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
+  // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
+  // CLI tests) keep resolving without an explicit `import` change — same source-compat pattern
+  // `:data-a11y-core` used for the D2.2 extraction. External consumers (contrib scripting,
+  // third-party tooling) pull `:preview-data-api` directly, not transitively through `:cli`.
+  api(project(":preview-data-api"))
+
   implementation(libs.kotlinx.serialization.json)
   implementation("org.gradle:gradle-tooling-api:9.3.1")
   runtimeOnly("org.slf4j:slf4j-nop:2.0.16")

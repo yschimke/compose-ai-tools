@@ -12,158 +12,23 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** On-disk shape mirrors gradle-plugin/PreviewData.kt (parsed with ignoreUnknownKeys). */
-@Serializable
-data class PreviewParams(
-  val name: String? = null,
-  val device: String? = null,
-  val widthDp: Int? = null,
-  val heightDp: Int? = null,
-  /**
-   * Compose density factor (= densityDpi / 160) resolved at discovery from the @Preview device;
-   * null means "use the renderer default". Carried through so agents can spot per-device fan-outs
-   * without re-reading the Gradle manifest.
-   */
-  val density: Float? = null,
-  val fontScale: Float = 1.0f,
-  val showSystemUi: Boolean = false,
-  val showBackground: Boolean = false,
-  val backgroundColor: Long = 0,
-  val uiMode: Int = 0,
-  val locale: String? = null,
-  val group: String? = null,
-  val wrapperClassName: String? = null,
-  /**
-   * FQN of the `PreviewParameterProvider` harvested from `@PreviewParameter` on one of the preview
-   * function's parameters, if any. Discovery records this but does NOT expand captures — the
-   * renderer fans out on disk as `<id>_PARAM_<idx>.<ext>` and the CLI globs those files in
-   * [buildResults].
-   */
-  val previewParameterProviderClassName: String? = null,
-  /** Mirrors `@PreviewParameter.limit`. `Int.MAX_VALUE` = take every value. */
-  val previewParameterLimit: Int = Int.MAX_VALUE,
-  /** "COMPOSE" or "TILE". Free-form string so unknown future kinds round-trip. */
-  val kind: String = "COMPOSE",
-)
-
 /**
- * Scroll state of a capture. Mirrors `ScrollCapture` in gradle-plugin/PreviewData.kt — kept as a
- * string-typed mirror so unknown future modes/axes round-trip cleanly through the CLI.
+ * On-disk shape mirrors gradle-plugin/PreviewData.kt (parsed with ignoreUnknownKeys).
+ *
+ * The wire-format DTOs (`PreviewParams`, `ScrollCapture`, `Capture`, `PreviewInfo`,
+ * `PreviewDataProduct`, `PreviewManifest`, `CaptureResult`, `PreviewResult`) carved out to
+ * `:preview-data-api` so external consumers (contrib scripting, third-party tooling) can compile
+ * against the published wire shapes without dragging in `:cli`'s Gradle Tooling API + scripting
+ * closure. Package preserved (`ee.schimke.composeai.cli`) so existing importers in this module
+ * don't change — same pattern `:data-a11y-core` used for the D2.2 extraction.
  */
-@Serializable
-data class ScrollCapture(
-  val mode: String,
-  val axis: String = "VERTICAL",
-  val maxScrollPx: Int = 0,
-  val reduceMotion: Boolean = true,
-  val atEnd: Boolean = false,
-  val reachedPx: Int? = null,
-)
-
-@Serializable
-data class Capture(
-  val advanceTimeMillis: Long? = null,
-  val scroll: ScrollCapture? = null,
-  val renderOutput: String = "",
-)
-
-@Serializable
-data class PreviewInfo(
-  val id: String,
-  val functionName: String,
-  val className: String,
-  val sourceFile: String? = null,
-  val params: PreviewParams = PreviewParams(),
-  val captures: List<Capture> = listOf(Capture()),
-  val dataProducts: List<PreviewDataProduct> = emptyList(),
-)
-
-@Serializable
-data class PreviewDataProduct(
-  val kind: String,
-  val output: String = "",
-  val mediaTypes: List<String> = emptyList(),
-  val advanceTimeMillis: Long? = null,
-  val scroll: ScrollCapture? = null,
-)
-
-@Serializable
-data class PreviewManifest(
-  val module: String,
-  val variant: String,
-  val previews: List<PreviewInfo>,
-  /**
-   * Generic per-extension report pointer map. Keys are extension ids (e.g. `"a11y"`), values are
-   * module-relative paths to that extension's aggregated sidecar JSON. Empty when no extension
-   * produced a canned report.
-   *
-   * Strategy layer (see [ExtensionReportRenderer]) iterates this map; callers prefer [reportsView]
-   * to keep the access seam in case future wire-format evolutions need it.
-   */
-  val dataExtensionReports: Map<String, String> = emptyMap(),
-) {
-  /**
-   * Thin alias over [dataExtensionReports] kept as an access seam — the v1 `accessibilityReport`
-   * back-compat path used to be hidden behind it, and future wire-format changes are easier to
-   * introduce here than at every callsite. Today it's a pass-through.
-   */
-  val reportsView: Map<String, String>
-    get() = dataExtensionReports
-}
 
 // AccessibilityFinding / AccessibilityEntry / AccessibilityReport moved to A11yReportRenderer.kt
 // as part of the per-extension strategy refactor — they're a11y-specific wire-format DTOs that
 // have no business in the shared Command base layer.
-
-/**
- * One rendered snapshot inside a [PreviewResult]. Carries the dimensional coordinates
- * ([advanceTimeMillis], [scroll]) that distinguish this capture from its siblings, plus runtime
- * data the agent needs to act on it ([pngPath], [sha256], [changed]).
- *
- * A static preview produces a single `CaptureResult` with both dimensions null; an animation/scroll
- * fan-out produces N entries — one row per capture filename on disk.
- */
-@Serializable
-data class CaptureResult(
-  val advanceTimeMillis: Long? = null,
-  val scroll: ScrollCapture? = null,
-  val pngPath: String? = null,
-  val sha256: String? = null,
-  val changed: Boolean? = null,
-)
-
-/** CLI output DTO — enriches manifest entries with runtime data agents need. */
-@Serializable
-data class PreviewResult(
-  val id: String,
-  val module: String,
-  val functionName: String,
-  val className: String,
-  val sourceFile: String? = null,
-  val params: PreviewParams = PreviewParams(),
-  /**
-   * All rendered snapshots for this preview. Always at least one element. `length > 1` ⇔ a
-   * `@RoboComposePreviewOptions` time fan-out or a scroll-with-progress capture — agents that need
-   * every PNG should iterate this list rather than reading [pngPath].
-   */
-  val captures: List<CaptureResult> = emptyList(),
-  /** First capture's PNG path. Kept for back-compat with existing agents. */
-  val pngPath: String? = null,
-  /** First capture's PNG sha256. Kept for back-compat. */
-  val sha256: String? = null,
-  /** First capture's `changed` flag. Kept for back-compat. */
-  val changed: Boolean? = null,
-  /**
-   * ATF findings for this preview, or `null` when accessibility checks were disabled for this
-   * module. Empty list means checks ran and found nothing.
-   */
-  val a11yFindings: List<AccessibilityFinding>? = null,
-  /**
-   * Absolute path to an annotated screenshot showing each finding as a numbered badge + legend.
-   * `null` when there were no findings or accessibility checks are disabled.
-   */
-  val a11yAnnotatedPath: String? = null,
-)
+// (Those types then carved out to `:preview-data-api` alongside `PreviewResult` for the
+// clean-API step A — they're the wire-format mirrors that the deprecated
+// `PreviewResult.a11yFindings` field references.)
 
 /**
  * Versioned envelope for `compose-preview show|list|a11y --json`. Pinning the schema lets agents
@@ -778,6 +643,10 @@ abstract class Command(protected val args: List<String>) {
     if (brief) {
       val multiModule = results.map { it.module }.distinct().size > 1
       val brief = results.map { r ->
+        // v1 deprecation slope — `a11yFindings` stays populated alongside
+        // `dataExtensions["a11y"]` for one release. Read here so the `--brief` count keeps
+        // working for existing agents.
+        @Suppress("DEPRECATION") val a11yCount = r.a11yFindings?.size
         BriefPreviewResult(
           id = r.id,
           module = r.module.takeIf { multiModule },
@@ -791,7 +660,7 @@ abstract class Command(protected val args: List<String>) {
                 scroll = c.scroll?.mode,
               )
             },
-          a11y = r.a11yFindings?.size,
+          a11y = a11yCount,
         )
       }
       return briefJson.encodeToString(

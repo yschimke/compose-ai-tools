@@ -1,31 +1,22 @@
+// Suppress at file scope: this is the deprecation slope. `A11yReportRenderer` populates and reads
+// `PreviewResult.a11yFindings` / `a11yAnnotatedPath` *by design* during the v1 → v2 window,
+// alongside the new `dataExtensions["a11y"]` payload. Once the deprecated fields are removed,
+// this file-level suppress goes away too.
+@file:Suppress("DEPRECATION")
+
 package ee.schimke.composeai.cli
 
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/**
+/*
  * On-disk shape mirrors the daemon-side aggregation in
  * `ee.schimke.composeai.daemon.AccessibilityDataProductRegistry`. The standalone gradle path no
  * longer produces this file; it's strictly a daemon-mode artefact now.
+ *
+ * The DTOs (`AccessibilityFinding`, `AccessibilityEntry`, `AccessibilityReport`) carved out to
+ * `:preview-data-api` alongside `PreviewResult` — they're the wire-format mirrors that the
+ * deprecated `PreviewResult.a11yFindings` references. See `preview-data-api/A11yWireFormat.kt`.
  */
-@Serializable
-data class AccessibilityFinding(
-  val level: String,
-  val type: String,
-  val message: String,
-  val viewDescription: String? = null,
-  val boundsInScreen: String? = null,
-)
-
-@Serializable
-data class AccessibilityEntry(
-  val previewId: String,
-  val findings: List<AccessibilityFinding>,
-  val annotatedPath: String? = null,
-)
-
-@Serializable
-data class AccessibilityReport(val module: String, val entries: List<AccessibilityEntry>)
 
 /**
  * [ExtensionReportRenderer] for the built-in `a11y` extension. Reads each module's
@@ -101,9 +92,32 @@ class A11yReportRenderer : ExtensionReportRenderer {
   override fun annotate(result: PreviewResult, module: PreviewModule): PreviewResult {
     if (module.gradlePath !in enabledModules) return result
     val pair = a11yByKey["${module.gradlePath}/${result.id}"]
+    val findings = pair?.first ?: emptyList()
+    val annotatedPath = pair?.second
+    // Populate the new generic `dataExtensions["a11y"]` carrier alongside the deprecated
+    // `a11yFindings` / `a11yAnnotatedPath` fields. Both are written for one release so external
+    // consumers can migrate to decoding from `dataExtensions` against `:data-a11y-core`'s
+    // typed DTOs at their own pace.
+    val a11yPayload =
+      ExtensionPayload(
+        schema = A11Y_PAYLOAD_SCHEMA_V1,
+        payload =
+          json.encodeToJsonElement(
+            AccessibilityEntry.serializer(),
+            AccessibilityEntry(
+              previewId = result.id,
+              findings = findings,
+              annotatedPath = annotatedPath,
+            ),
+          ),
+      )
     // Module had a11y enabled but no findings for this preview: empty list (not null) tells
     // downstream consumers "checks ran and found nothing" vs "feature off."
-    return result.copy(a11yFindings = pair?.first ?: emptyList(), a11yAnnotatedPath = pair?.second)
+    return result.copy(
+      a11yFindings = findings,
+      a11yAnnotatedPath = annotatedPath,
+      dataExtensions = result.dataExtensions + (id to a11yPayload),
+    )
   }
 
   override fun hasData(result: PreviewResult): Boolean = result.a11yFindings != null
@@ -142,6 +156,13 @@ class A11yReportRenderer : ExtensionReportRenderer {
       .takeIf { it != 0 }
   }
 }
+
+/**
+ * Schema string stamped into `ExtensionPayload.schema` for the `a11y` entry of
+ * `PreviewResult.dataExtensions`. Pinned — consumers should string-equal this constant rather than
+ * parsing it. Bump to `/v2` when the underlying `AccessibilityEntry` shape breaks.
+ */
+const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
 
 /** Sentinel returned by [a11yExitCode] when `failOn` is not one of the accepted values. */
 internal const val EXIT_UNKNOWN_FAIL_ON = 1

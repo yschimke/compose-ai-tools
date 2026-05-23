@@ -1,7 +1,10 @@
 package ee.schimke.composeai.cli.scripting
 
+import ee.schimke.composeai.cli.A11Y_PAYLOAD_SCHEMA_V1
+import ee.schimke.composeai.cli.AccessibilityEntry
 import ee.schimke.composeai.cli.AccessibilityFinding
 import ee.schimke.composeai.cli.CaptureResult
+import ee.schimke.composeai.cli.ExtensionPayload
 import ee.schimke.composeai.cli.PreviewResult
 import java.io.File
 import java.nio.file.Files
@@ -10,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import kotlinx.serialization.json.Json
 
 /**
  * Exercises the actual Kotlin scripting host end-to-end: a tiny `*.composepreview.kts` is written
@@ -32,13 +36,37 @@ class ScriptRunnerTest {
     return file
   }
 
+  private val json = Json { ignoreUnknownKeys = true }
+
+  /**
+   * Build a [RenderedPreview] via the new `dataExtensions["a11y"]` carrier — the same path `:cli`'s
+   * `A11yReportRenderer` populates in production. Exercises the decode-on-the-script-side flow
+   * end-to-end. `null` [a11yFindings] means "ATF didn't run for this module," same as before, but
+   * expressed through the absence of the `dataExtensions` entry rather than a deprecated field.
+   */
   private fun preview(
     id: String,
     module: String = ":app",
     a11yFindings: List<AccessibilityFinding>? = null,
     pngPath: String? = "/tmp/$id.png",
-  ): RenderedPreview =
-    RenderedPreview(
+  ): RenderedPreview {
+    val dataExtensions =
+      if (a11yFindings == null) {
+        emptyMap()
+      } else {
+        mapOf(
+          "a11y" to
+            ExtensionPayload(
+              schema = A11Y_PAYLOAD_SCHEMA_V1,
+              payload =
+                json.encodeToJsonElement(
+                  AccessibilityEntry.serializer(),
+                  AccessibilityEntry(previewId = id, findings = a11yFindings),
+                ),
+            )
+        )
+      }
+    return RenderedPreview(
       PreviewResult(
         id = id,
         module = module,
@@ -46,9 +74,10 @@ class ScriptRunnerTest {
         className = "com.app.${id}Kt",
         captures = listOf(CaptureResult(pngPath = pngPath)),
         pngPath = pngPath,
-        a11yFindings = a11yFindings,
+        dataExtensions = dataExtensions,
       )
     )
+  }
 
   @Test
   fun `show returns the requested preview and fail accumulates`() {
