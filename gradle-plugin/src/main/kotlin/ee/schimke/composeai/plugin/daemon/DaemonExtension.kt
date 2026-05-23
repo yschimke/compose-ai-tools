@@ -67,4 +67,23 @@ abstract class DaemonExtension @Inject constructor(objects: ObjectFactory) {
    * inline and emit a `daemonWarming` notification while the new sandbox builds.
    */
   val warmSpare: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Stage-2 opt-in: when `true`, [DaemonBootstrapTask] populates the launch descriptor's
+   * `btaCompile` field so the daemon constructs a `DefaultBtaCompileService` at startup and the
+   * editor's save loop can dispatch `compileSources` JSON-RPC requests at it directly, bypassing
+   * the per-save Gradle round-trip entirely on eligible modules. See
+   * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../docs/daemon/COMPILE-IN-PROCESS.md).
+   *
+   * Default: `false`. Stage 1's `composePreview.daemon.continuousCompile` (the VS Code setting)
+   * remains the universal fallback — turning this on at the build level merely makes the daemon
+   * CAPABLE of in-process compile; the editor still has to opt in via
+   * `composePreview.daemon.compileInProcess` to actually use that path.
+   *
+   * Build-level opt-in is gated separately from the editor-level setting because the descriptor
+   * change has on-disk consequences (adds the BTA-impl classpath to the daemon launcher, ~80 MB of
+   * resident memory the daemon JVM then carries). Consumers who don't want the resident footprint
+   * leave this `false` and the daemon launch descriptor stays slim.
+   */
+  val compileInProcess: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 }

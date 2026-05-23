@@ -281,4 +281,125 @@ class DaemonBootstrapTaskTest {
     // fall back to extension JDK detection."
     assertThat(descriptor.javaLauncher).isNull()
   }
+
+  @Test
+  fun `btaCompile is null when compileInProcess is false`() {
+    // Default-off path — even when all the BTA inputs are populated (unlikely in practice,
+    // since the variant wiring sites only populate them when the flag is true), the assembler
+    // must short-circuit on the flag. Keeps the production wire-up's "schema-version-2 with
+    // null btaCompile" the universal pre-stage-2 shape.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
+    val task =
+      project.tasks.register("bootstrapOff", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        compileInProcess.set(false)
+        // Populate BTA inputs anyway to prove the off-flag short-circuit ignores them.
+        btaImplClasspath.from(implJar)
+        btaModuleName.set("would-have-been-used")
+        btaOutputDir.set("/tmp/out")
+        btaIcWorkingDir.set("/tmp/ic")
+      }
+    task.get().emit()
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.btaCompile).isNull()
+  }
+
+  @Test
+  fun `btaCompile is null when compileInProcess is true but required inputs are missing`() {
+    // The flag is on but the variant wiring hasn't populated implClasspath / moduleName /
+    // outputDir / icWorkingDir yet. The assembler emits a stderr warning + null rather than
+    // shipping a half-populated BtaCompileConfig that would explode at the daemon's startup.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val task =
+      project.tasks.register("bootstrapPartial", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        compileInProcess.set(true)
+        // Deliberately leave btaImplClasspath / btaModuleName / btaOutputDir / btaIcWorkingDir
+        // unset.
+      }
+    task.get().emit()
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    assertThat(descriptor.btaCompile).isNull()
+  }
+
+  @Test
+  fun `btaCompile is populated when compileInProcess is true and inputs are wired`() {
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
+    val cpJar = File(tempDir.root, "kotlin-stdlib-2.3.21.jar").apply { writeText("p") }
+    val pluginJar =
+      File(tempDir.root, "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar").apply {
+        writeText("p")
+      }
+    val task =
+      project.tasks.register("bootstrapOn", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        compileInProcess.set(true)
+        btaImplClasspath.from(implJar)
+        btaCompileClasspath.from(cpJar)
+        btaCompilerPluginClasspath.from(pluginJar)
+        btaModuleName.set("samples-android")
+        btaOutputDir.set("/abs/build/intermediates/.../classes")
+        btaIcWorkingDir.set("/abs/build/compose-previews/daemon-state/bta-ic")
+        // Eligibility predicate fires when this module has KSP/KAPT applied; here it's
+        // unset, meaning eligible.
+      }
+    task.get().emit()
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val bta = descriptor.btaCompile
+    assertThat(bta).isNotNull()
+    assertThat(bta!!.implClasspath.single()).endsWith("kotlin-build-tools-impl-2.3.21.jar")
+    assertThat(bta.compileClasspath.single()).endsWith("kotlin-stdlib-2.3.21.jar")
+    assertThat(bta.compilerPlugins.single())
+      .endsWith("kotlin-compose-compiler-plugin-embeddable-2.3.21.jar")
+    assertThat(bta.moduleName).isEqualTo("samples-android")
+    assertThat(bta.outputDir).isEqualTo("/abs/build/intermediates/.../classes")
+    assertThat(bta.icWorkingDir).isEqualTo("/abs/build/compose-previews/daemon-state/bta-ic")
+    assertThat(bta.ineligibilityReason).isNull()
+  }
+
+  @Test
+  fun `btaCompile carries ineligibilityReason verbatim when the predicate trips`() {
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
+    val task =
+      project.tasks.register("bootstrapKsp", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        compileInProcess.set(true)
+        btaImplClasspath.from(implJar)
+        btaModuleName.set("samples-android")
+        btaOutputDir.set("/abs/out")
+        btaIcWorkingDir.set("/abs/ic")
+        btaIneligibilityReason.set("com.google.devtools.ksp plugin applied")
+      }
+    task.get().emit()
+    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    val bta = descriptor.btaCompile
+    assertThat(bta).isNotNull()
+    assertThat(bta!!.ineligibilityReason).isEqualTo("com.google.devtools.ksp plugin applied")
+  }
+
+  /** Shared filler for the descriptor fields stage-2 tests don't care about. */
+  private fun DaemonBootstrapTask.baseInputs(outFile: File) {
+    modulePath.set(":samples:fake")
+    variant.set("debug")
+    daemonEnabled.set(true)
+    maxHeapMb.set(1024)
+    maxRendersPerSandbox.set(1000)
+    warmSpare.set(true)
+    mainClass.set("ee.schimke.composeai.daemon.DaemonMain")
+    classpath.from(
+      File(tempDir.root, "stub-cp.jar").apply { if (!exists()) writeText("placeholder") }
+    )
+    jvmArgs.set(listOf("-Xmx1024m"))
+    systemProperties.set(mapOf("composeai.daemon.maxHeapMb" to "1024"))
+    workingDirectory.set(tempDir.root.absolutePath)
+    manifestPath.set("/abs/previews.json")
+    outputFile.set(outFile)
+  }
 }

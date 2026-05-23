@@ -383,6 +383,12 @@ internal object ComposePreviewTasks {
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
+      compileInProcess.set(extension.daemon.compileInProcess)
+      // Stage-2 BTA inputs (btaImplClasspath / btaCompileClasspath / btaCompilerPluginClasspath /
+      // btaModuleName / btaOutputDir / btaIcWorkingDir) intentionally left unwired here — the
+      // CMP-side classpath assembly is a follow-up. With compileInProcess defaulted false, the
+      // descriptor's btaCompile stays null and the daemon falls back to stage 1 / 0. See
+      // docs/daemon/COMPILE-IN-PROCESS.md.
       // `:daemon:desktop`'s `DaemonMain` and `:daemon:android`'s `DaemonMain` share the FQN
       // intentionally (see the kdoc on `daemon/desktop/.../DaemonMain.kt`). The desktop classes
       // jar is FIRST on the classpath below, so this loads the Compose-Multiplatform path.

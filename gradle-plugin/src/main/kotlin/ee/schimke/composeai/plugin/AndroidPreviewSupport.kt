@@ -1532,6 +1532,13 @@ internal object AndroidPreviewSupport {
       this.maxHeapMb.set(extension.daemon.maxHeapMb)
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
+      this.compileInProcess.set(extension.daemon.compileInProcess)
+      // Stage-2 BTA inputs (btaImplClasspath / btaCompileClasspath / btaCompilerPluginClasspath /
+      // btaModuleName / btaOutputDir / btaIcWorkingDir / btaIneligibilityReason) intentionally
+      // left unwired here — the Android-variant classpath assembly + KSP/KAPT eligibility
+      // predicate is a follow-up. With compileInProcess defaulted false, the descriptor's
+      // btaCompile stays null and the daemon falls back to stage 1 / 0. See
+      // docs/daemon/COMPILE-IN-PROCESS.md.
       // Conventional entry-point name — `daemon/android` / Stream B
       // (task B1.1) will provide the implementation. Surfacing it as a
       // Property leaves room for future variants (foreground / debug) without
