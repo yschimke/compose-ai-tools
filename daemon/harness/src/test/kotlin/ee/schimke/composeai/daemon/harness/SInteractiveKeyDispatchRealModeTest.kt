@@ -138,18 +138,16 @@ class SInteractiveKeyDispatchRealModeTest {
         keyCode = "29",
       )
 
-      // 4. Shutdown — the daemon tears down the held session as part of shutdown sequencing.
-      // We deliberately don't drive an explicit `interactive/stop` notification here: the
-      // `LaunchedEffect { requestFocus() }` in `KeyPressColorSquare` triggers a known
-      // Compose `SnapshotStateObserver` multithread warning when the host's idle thread
-      // races the close path's render-thread teardown. The warning is benign (the close
-      // path catches it and continues), but the same race trips a SIGABRT in Skiko native
-      // code on this sandbox when the test drives the explicit stop before shutdown.
-      // Letting `shutdown` drive teardown serialises everything onto the daemon's shutdown
-      // sequencer and sidesteps the race. The wire-shape contract this scenario pins
-      // (`interactive/start` returns a held session, `interactive/input` notifications
-      // round-trip without serialisation faults) is already proven by the time we reach
-      // this point.
+      // 4. Explicit `interactive/stop` — the daemon tears down the held session synchronously.
+      // Issue #1229: pre-fix, this raced the `LaunchedEffect { requestFocus() }` in
+      // `KeyPressColorSquare`, tripping a Compose `SnapshotStateObserver` multithread warning
+      // (and a follow-on Skiko SIGABRT). The fix pins every scene touch — setUp, dispatch,
+      // render, the listener's observer install/dispose, and tearDown — to a single
+      // per-session executor thread inside `DesktopInteractiveSession`, so an explicit stop
+      // here is wire-equivalent to letting shutdown drive the teardown.
+      client.interactiveStop(frameStreamId = startResult.frameStreamId)
+
+      // 5. Shutdown — daemon exits cleanly.
       val exitCode = client.shutdownAndExit(timeout = 30.seconds)
       assertEquals("daemon must exit cleanly. Stderr=\n${client.dumpStderr()}", 0, exitCode)
 
@@ -160,6 +158,17 @@ class SInteractiveKeyDispatchRealModeTest {
           "round-trip; got:\n$stderr",
         stderr.contains("SerializationException") ||
           stderr.contains("at ee.schimke.composeai.daemon.JsonRpcServer.tryDecode"),
+      )
+      // Issue #1229 regression guard — pre-fix, the explicit `interactive/stop` above raced the
+      // `LaunchedEffect { requestFocus() }` in `KeyPressColorSquare` and tripped Compose's
+      // multithread-access warning on the global `SnapshotStateObserver`. The per-session
+      // scene executor pins every recomposer/effect/teardown step to one thread; if a future
+      // change regresses that and the warning starts firing again, fail loudly here instead of
+      // letting the follow-on Skiko SIGABRT take down the subprocess silently.
+      assertFalse(
+        "daemon stderr must not contain a SnapshotStateObserver multithread-access warning " +
+          "(issue #1229 regression); got:\n$stderr",
+        stderr.contains("Detected multithreaded access to SnapshotStateObserver"),
       )
     } catch (t: Throwable) {
       System.err.println(
