@@ -86,9 +86,9 @@ class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null
 /**
  * Planner that maps `renderNow.overrides.permissions` to a [PermissionsOverrideExtension].
  * **Always** returns a non-null extension — like `KeyboardPreviewOverrideExtension`. The
- * around-composable's `LocalPermissionsHost` needs to be in place on every render so a screen
- * that consults the host (or one whose `checkSelfPermission` call lands in the shadow tracker)
- * reaches the controller's tracking path.
+ * around-composable's controller seed + shadow-tracker hookup need to be in place on every render
+ * so a screen's `ContextCompat.checkSelfPermission(...)` (or any standard Android check API) lands
+ * in the controller's recordQuery path.
  */
 class PermissionsPreviewOverrideExtension : DataExtension<PreviewOverrides> {
   override val id: DataExtensionId = PermissionsOverrideExtension.ID
@@ -123,8 +123,9 @@ class PermissionsDataProductRegistry : DataProductRegistry {
         attachable = true,
         fetchable = true,
         // Flipping a grant via a fresh `renderNow.overrides.permissions` triggers a re-render
-        // anyway, and the `LocalPermissionsHost`-based screens recompose live during a held
-        // session — no need to ask the dispatcher to queue an extra render.
+        // anyway — the next `ContextCompat.checkSelfPermission(...)` read in the recomposition
+        // picks up the new value through the platform path — no need to ask the dispatcher to
+        // queue an extra render.
         requiresRerender = false,
       )
     )
