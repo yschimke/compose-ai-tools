@@ -659,22 +659,6 @@ class DesktopRecordingSession(
     // (RenderEngine.tearDown is idempotent) but unnecessary.
   }
 
-  /**
-   * Translate a typed live-mode [RecordingInputParams] into a synthetic [RecordingScriptEvent]
-   * keyed by the same wire-name string the scripted path emits — so [scriptHandlers] dispatches
-   * both modes through one registry. `tMs` is the **frame's** virtual time (live mode stamps the
-   * input at the current frame boundary, same convention scripted playback uses).
-   */
-  private fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
-    RecordingScriptEvent(
-      tMs = tMs,
-      kind = kind.wireName(),
-      pixelX = pixelX,
-      pixelY = pixelY,
-      scrollDeltaY = scrollDeltaY,
-      keyCode = keyCode,
-    )
-
   private fun writeFramePng(image: Image, frameIndex: Int) {
     writeFramePng(image, frameIndex, virtualTimeMs = 0L)
   }
@@ -733,3 +717,29 @@ class DesktopRecordingSession(
     return androidx.compose.ui.geometry.Offset(px.toFloat() / d, py.toFloat() / d)
   }
 }
+
+/**
+ * Translate a typed live-mode [RecordingInputParams] into a synthetic [RecordingScriptEvent] keyed
+ * by the same wire-name string the scripted path emits — so the script-event handler registry can
+ * dispatch both modes through one path. `tMs` is the **frame's** virtual time (live mode stamps the
+ * input at the current frame boundary, same convention scripted playback uses).
+ *
+ * `pointerId` is threaded through so live multi-touch (pinch / two-finger rotate) groups events by
+ * finger the same way scripted mode does — without this, every live input collapsed to pointer 0
+ * and Compose's gesture pipeline never saw two simultaneous fingers, so `Modifier.transformable {}`
+ * zoom / rotate callbacks never fired despite the multi-pointer dispatch the same PR landed. See
+ * compose-ai-tools#1360 finding #2.
+ *
+ * Top-level (not a member of [DesktopRecordingSession]) so the unit test can exercise the data
+ * mapping without standing up an `ImageComposeScene` / `RenderEngine` per assertion.
+ */
+internal fun RecordingInputParams.toScriptEvent(tMs: Long): RecordingScriptEvent =
+  RecordingScriptEvent(
+    tMs = tMs,
+    kind = kind.wireName(),
+    pixelX = pixelX,
+    pixelY = pixelY,
+    pointerId = pointerId,
+    scrollDeltaY = scrollDeltaY,
+    keyCode = keyCode,
+  )

@@ -1315,6 +1315,19 @@ data class RecordingInputParams(
   /** Image-natural pixel coordinates. Daemon translates to dp using the held scene's density. */
   val pixelX: Int? = null,
   val pixelY: Int? = null,
+  /**
+   * Per-pointer identifier for multi-touch dispatch in live recordings — distinct pointers (e.g. a
+   * two-finger pinch) share the current virtual `tMs` boundary while carrying their own id. Defaults
+   * to `0` for backwards compatibility, so existing single-pointer scripts (the vast majority) keep
+   * working unchanged. Required when dispatching pinch-to-zoom or any other multi-pointer gesture
+   * over live mode: each finger keeps its own id across `pointerDown` → `pointerMove`(s) →
+   * `pointerUp` so the daemon's pointer pipeline groups events into the right gesture. Ignored for
+   * non-pointer kinds (`keyDown`, `keyUp`, `rotaryScroll`).
+   *
+   * Mirrors [InteractiveInputParams.pointerId] and [RecordingScriptEvent.pointerId] so the three
+   * input wire-shapes carry the same multi-touch signal end-to-end.
+   */
+  val pointerId: Int? = null,
   /** Browser wheel delta for `rotaryScroll`; positive means wheel-down. */
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. Decimal-string Android `KEYCODE_*`; see `InteractiveKeyCodes`. */
