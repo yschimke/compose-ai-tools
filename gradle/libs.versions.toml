@@ -121,6 +121,15 @@ checker-qual = "4.1.0"
 material-kolor = "4.0.5"
 
 [libraries]
+# Kotlin scripting host — consumed by `examples/scripting`'s contrib-reference
+# `compose-preview-scripting` binary to compile + evaluate `*.composepreview.kts`
+# files. Not on the main CLI's classpath (the deletion of `:cli-scripting` in
+# the clean-API step C kept the ~50 MB compiler-embeddable closure out of the
+# published `compose-preview` tarball); only ships in the standalone scripting
+# binary that contrib mirrors.
+kotlin-scripting-common = { module = "org.jetbrains.kotlin:kotlin-scripting-common", version.ref = "kotlin" }
+kotlin-scripting-jvm = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm", version.ref = "kotlin" }
+kotlin-scripting-jvm-host = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host", version.ref = "kotlin" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }

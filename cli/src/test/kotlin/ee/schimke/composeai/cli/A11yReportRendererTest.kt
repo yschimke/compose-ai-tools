@@ -1,3 +1,9 @@
+// Suppress at file scope: the renderer test asserts on the v1 `a11yFindings` field by design —
+// it covers the deprecation slope. A separate test (`a11y carrier dataExtensions payload …`)
+// covers the new `dataExtensions["a11y"]` path. When the deprecated fields are removed in v2,
+// the v1 assertions delete and this suppression goes with them.
+@file:Suppress("DEPRECATION")
+
 package ee.schimke.composeai.cli
 
 import java.io.ByteArrayOutputStream
@@ -111,6 +117,50 @@ class A11yReportRendererTest {
     val result = renderer.annotate(previewResult("Foo"), module())
     assertNull(result.a11yFindings)
     assertFalse(renderer.hasData(result))
+    // Same for the new generic carrier: no extension data when the pointer is absent.
+    assertNull(result.dataExtensions["a11y"])
+  }
+
+  /**
+   * Locks in the new generic `dataExtensions["a11y"]` carrier alongside the deprecated v1 fields.
+   * This is the path contrib scripting and other external consumers read from — the v1 fields
+   * disappear after the deprecation window but the carrier stays.
+   */
+  @Test
+  fun `annotate populates the new dataExtensions a11y carrier with the AccessibilityEntry payload`() {
+    writeReport(
+      """
+      {
+        "module": "sample",
+        "entries": [
+          {
+            "previewId": "Foo",
+            "annotatedPath": "annotated/Foo.a11y.png",
+            "findings": [
+              {"level": "ERROR", "type": "TouchTargetSize",
+               "message": "24x24 below 48dp"}
+            ]
+          }
+        ]
+      }
+      """
+        .trimIndent()
+    )
+
+    val renderer = A11yReportRenderer()
+    renderer.load(listOf(module() to manifest()), verbose = false)
+    val foo = renderer.annotate(previewResult("Foo"), module())
+
+    val payload = foo.dataExtensions["a11y"] ?: error("expected dataExtensions[\"a11y\"] populated")
+    assertEquals(A11Y_PAYLOAD_SCHEMA_V1, payload.schema)
+    val decoded =
+      kotlinx.serialization.json.Json.decodeFromJsonElement(
+        AccessibilityEntry.serializer(),
+        payload.payload,
+      )
+    assertEquals("Foo", decoded.previewId)
+    assertEquals(1, decoded.findings.size)
+    assertEquals("ERROR", decoded.findings.first().level)
   }
 
   @Test

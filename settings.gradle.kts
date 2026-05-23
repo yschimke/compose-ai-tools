@@ -44,6 +44,39 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
+// Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
+// third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
+// API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENTS.md
+// "Built-in scripts" / clean-API discussion.
+include(":preview-data-api")
+
+project(":preview-data-api").projectDir = file("preview-data-api")
+
+// Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
+// lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
+// external consumers (contrib scripting, third-party tooling) can render previews and read the
+// result without taking a dependency on `:cli`. The CLI's own commands are refactored to drive
+// this library, keeping a single source of truth.
+include(":gradle-preview-driver")
+
+project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
+
+// `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
+// in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
+// `yschimke/compose-ai-contrib` as a standalone consumer of `:preview-data-api` +
+// `:gradle-preview-driver` + `:data-a11y-core`. Its absence from this repo is the proof the
+// published API is expressive enough to build features against, not just inside.
+
+// Reference implementation of contrib's `compose-preview-scripting` binary. Lives here as a
+// validated, build-tested template that consumes only the published surface (`:preview-data-api`
+// + `:gradle-preview-driver` + `:data-a11y-core`). The `yschimke/compose-ai-contrib` repo lifts
+// this code wholesale into its own published module; the copy here gets deleted once contrib's
+// copy job has run, at which point the carve-out is fully closed.
+include(":examples-scripting")
+
+project(":examples-scripting").projectDir = file("examples/scripting")
+
 include(":bundle-viewer")
 
 include(":preview-annotations")
