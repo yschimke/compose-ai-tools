@@ -170,6 +170,126 @@ describe("cardBundleOverlay", () => {
         assert.strictEqual(card.querySelectorAll("box-overlay").length, 0);
     });
 
+    describe("deferred-load paint (img not yet decoded)", () => {
+        // Build a card whose `<img>` is *not* yet complete so
+        // `paintBundleBoxes` takes the deferred-load branch. Returns
+        // the helpers needed to flip the natural dims in and fire
+        // `load` once the test is ready.
+        function buildPendingCard(previewId: string): {
+            card: HTMLElement;
+            img: HTMLImageElement;
+            settle: (width: number, height: number) => void;
+        } {
+            const card = document.createElement("div");
+            card.className = "preview-card";
+            card.id = "preview-" + sanitizeId(previewId);
+            card.dataset.previewId = previewId;
+            const container = document.createElement("div");
+            container.className = "image-container";
+            const img = document.createElement("img");
+            Object.defineProperty(img, "naturalWidth", {
+                configurable: true,
+                value: 0,
+            });
+            Object.defineProperty(img, "naturalHeight", {
+                configurable: true,
+                value: 0,
+            });
+            Object.defineProperty(img, "complete", {
+                configurable: true,
+                value: false,
+            });
+            container.appendChild(img);
+            card.appendChild(container);
+            document.body.appendChild(card);
+            return {
+                card,
+                img,
+                settle(width: number, height: number) {
+                    Object.defineProperty(img, "naturalWidth", {
+                        configurable: true,
+                        value: width,
+                    });
+                    Object.defineProperty(img, "naturalHeight", {
+                        configurable: true,
+                        value: height,
+                    });
+                    Object.defineProperty(img, "complete", {
+                        configurable: true,
+                        value: true,
+                    });
+                    img.dispatchEvent(new Event("load"));
+                },
+            };
+        }
+
+        it("two pending bundles on the same <img> both receive setNaturalSize on load (#1104 regression)", () => {
+            const { card, img, settle } = buildPendingCard("p:1");
+            paintBundleBoxes(card, "history", [box("h-0")]);
+            paintBundleBoxes(card, "a11y", [box("a-0")]);
+            // The pending map should hold both bundles, JSON-encoded
+            // in a single dataset field.
+            const pending = JSON.parse(
+                img.dataset.bundleOverlayPaint ?? "{}",
+            ) as Record<string, true>;
+            assert.deepStrictEqual(pending, { history: true, a11y: true });
+            // Re-painting either bundle before load fires must not
+            // stack a second listener — semantics inherited from the
+            // pre-refactor per-bundle guard.
+            paintBundleBoxes(card, "history", [box("h-0"), box("h-1")]);
+            paintBundleBoxes(card, "a11y", [box("a-0"), box("a-1")]);
+            settle(400, 200);
+            // Both layers must have learnt the natural size — that's
+            // what the `<box-overlay>` needs to render boxes at all.
+            const historyLayer = card.querySelector<BoxOverlay>(
+                "box-overlay[data-bundle='history']",
+            );
+            const a11yLayer = card.querySelector<BoxOverlay>(
+                "box-overlay[data-bundle='a11y']",
+            );
+            assert.ok(historyLayer);
+            assert.ok(a11yLayer);
+            // Force a synchronous render so the natural-size state
+            // becomes observable via the rendered DOM.
+            (
+                historyLayer as unknown as { performUpdate(): void }
+            ).performUpdate();
+            (a11yLayer as unknown as { performUpdate(): void }).performUpdate();
+            assert.ok(
+                historyLayer.querySelector(".box-overlay"),
+                "history layer renders boxes once natural size lands",
+            );
+            assert.ok(
+                a11yLayer.querySelector(".box-overlay"),
+                "a11y layer renders boxes once natural size lands",
+            );
+            // The pending map should be empty once both loads have
+            // settled — verified by the dataset attribute being
+            // removed entirely.
+            assert.strictEqual(img.dataset.bundleOverlayPaint, undefined);
+        });
+
+        it("treats a malformed dataset value as an empty map (defensive parse)", () => {
+            const { card, img, settle } = buildPendingCard("p:1");
+            // Seed an invalid JSON value the way a stray devtools poke
+            // or external script could. The next paint must recover
+            // rather than throw.
+            img.dataset.bundleOverlayPaint = "{not json";
+            assert.doesNotThrow(() =>
+                paintBundleBoxes(card, "history", [box("h-0")]),
+            );
+            // After the defensive overwrite, the map should be the
+            // single-entry shape we wrote — proving the parse failure
+            // didn't poison the state.
+            assert.deepStrictEqual(
+                JSON.parse(img.dataset.bundleOverlayPaint ?? "{}"),
+                { history: true },
+            );
+            settle(400, 200);
+            assert.strictEqual(img.dataset.bundleOverlayPaint, undefined);
+        });
+    });
+
     describe("getVisiblePreviewIds", () => {
         it("returns the preview ids of every mounted card in DOM order", () => {
             buildCard("p:a");
