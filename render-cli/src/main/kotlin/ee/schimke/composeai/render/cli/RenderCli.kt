@@ -30,10 +30,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * ```
  *
  * where `<resolved-classpath>` is the runtime closure of `ee.schimke.composeai:render-cli` as
- * resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) and
- * joined with the platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar`
- * against the bare published JAR will fail with `NoClassDefFoundError` — see the "CLI
- * invocation" section in `docs/NON_GRADLE_INTEGRATION.md`.
+ * resolved by the caller's dep system (Bazel `rules_jvm_external`, Amper m2 cache, etc.) and joined
+ * with the platform-appropriate `File.pathSeparator`. `java -jar <artifact>.jar` against the bare
+ * published JAR will fail with `NoClassDefFoundError` — see the "CLI invocation" section in
+ * `docs/NON_GRADLE_INTEGRATION.md`.
  *
  * `--previews` accepts a comma-separated list and can be repeated. The CLI waits for one
  * `renderFinished` notification per requested preview id, prints the resulting PNG path to stdout

@@ -120,6 +120,11 @@ export const BUNDLES: readonly BundleDescriptor[] = [
                 label: "UI Automator",
                 defaultOn: false,
             },
+            {
+                kind: "compose/permissions",
+                label: "Permissions",
+                defaultOn: false,
+            },
         ],
     },
     {
