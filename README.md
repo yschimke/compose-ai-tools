@@ -46,6 +46,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![notifications/dark](renders/notifications.dark.png) |
 | `light` | ![notifications/light](renders/notifications.light.png) |
 
+## remotecompose-state
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
+| `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
+
 ## text-strings
 
 | Theme | Capture |
