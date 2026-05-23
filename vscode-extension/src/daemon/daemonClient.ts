@@ -25,6 +25,7 @@ import {
     InitializeParams,
     InitializeResult,
     InteractiveInputParams,
+    InteractiveSetRemoteComposeParams,
     InteractiveStartParams,
     InteractiveStartResult,
     InteractiveStopParams,
@@ -290,6 +291,23 @@ export class DaemonClient {
      *  before the prior frame arrives. */
     interactiveInput(params: InteractiveInputParams): void {
         this.notify("interactive/input", params);
+    }
+
+    /**
+     * Notification — push a Remote Compose state edit into the held
+     * composition's `RemoteComposeController`. The controller's snapshot
+     * state triggers a recomposition automatically; the next streaming
+     * frame paints the updated remote document without a fresh
+     * `renderNow.overrides.remoteCompose` round-trip.
+     *
+     * Backends without a live RemoteComposeController binding silently
+     * drop the notification at the daemon's JSON-RPC layer — the caller's
+     * fallback re-issues `renderNow` with overrides as before.
+     */
+    interactiveSetRemoteCompose(
+        params: InteractiveSetRemoteComposeParams,
+    ): void {
+        this.notify("interactive/setRemoteCompose", params);
     }
 
     /**

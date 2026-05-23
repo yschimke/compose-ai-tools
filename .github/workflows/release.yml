@@ -70,6 +70,13 @@ jobs:
   # third-party tooling) can consume the daemon by coordinate. See
   # docs/daemon/DESIGN.md § 17 for the publishing decision and § 19 for the
   # captureToImage fallback if Roborazzi's API ever does break binary compat.
+  # `mcp` is published because `render-session-subprocess` and
+  # `render-session-embedded-desktop` compile-time-reference its `DaemonClient`
+  # + `SubprocessDaemonClientFactory` types; without it on Central, downstream
+  # `SubprocessRenderSessions.open(...)` calls fail with a linkage error. The
+  # standalone MCP server still ships as a `compose-preview-mcp-*.tar.gz`
+  # GitHub Release asset (see `build-applications` below) — the Maven jar is
+  # the library face of the same code.
   publish-gradle-plugin:
     needs: [build-applications, build-vscode-extension]
     runs-on: ubuntu-latest
@@ -91,7 +98,7 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Publish plugin, renderer-android, data-*, preview-annotations, daemon-* to Maven Central
+      - name: Publish plugin, renderer-android, data-*, preview-annotations, daemon-*, mcp to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}

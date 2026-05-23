@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.bridge.InteractiveCommand
 import ee.schimke.composeai.daemon.bridge.SandboxSlot
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.RemoteComposeChange
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -253,6 +254,33 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
+  }
+
+  /**
+   * Override of [InteractiveSession.dispatchRemoteComposeChange]. Pushes the edit directly into
+   * [RemoteComposeController] — the controller's snapshot state triggers a recomposition in the
+   * held sandbox composition without an extra `renderNow` round-trip, so the panel's editable-
+   * cell change repaints on the next streaming frame.
+   *
+   * The controller's `setProfile(...)` / `setNamedValue(...)` are the "merge, don't replace"
+   * facets — the live edit lands cleanly on top of whatever override the daemon last seeded via
+   * `renderNow.overrides.remoteCompose`. Returns `true` unconditionally on Android since the
+   * connector module is on `:daemon:android`'s classpath; the controller is a process-static
+   * Kotlin `object` so class init is at worst a single-thread first-touch cost.
+   *
+   * No-op when the session is closed — mirrors [dispatch]'s closed-check; the caller still gets
+   * `true` because the change was structurally valid (the wire-edge ignore happens at the JSON-
+   * RPC handler layer for a missing session, not here).
+   */
+  override fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean {
+    if (closed) return false
+    lastUsedAtMs.set(System.currentTimeMillis())
+    when (change) {
+      is RemoteComposeChange.Profile -> RemoteComposeController.setProfile(change.value)
+      is RemoteComposeChange.NamedValue ->
+        RemoteComposeController.setNamedValue(change.name, change.value)
+    }
+    return true
   }
 
   /**

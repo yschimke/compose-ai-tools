@@ -87,7 +87,12 @@ data class BriefCapture(
   val scroll: String? = null,
 )
 
-internal const val SHOW_LIST_SCHEMA = "compose-preview-show/v1"
+// Bumped to `/v2` when `PreviewResult.a11yFindings` + `a11yAnnotatedPath` were removed —
+// consumers that read those top-level fields break here. Findings + annotated-path migrate to
+// `dataExtensions["a11y"]` against `AccessibilityEntry`. Brief format stays at `/v1`: the
+// `a11y: Int?` count field is unchanged (the count source migrated from `a11yFindings` to
+// decoded `dataExtensions["a11y"]`, but the wire shape is identical).
+internal const val SHOW_LIST_SCHEMA = "compose-preview-show/v2"
 internal const val SHOW_LIST_BRIEF_SCHEMA = "compose-preview-show-brief/v1"
 
 @Serializable private data class CliState(val shas: Map<String, String> = emptyMap())
@@ -540,10 +545,11 @@ abstract class Command(protected val args: List<String>) {
     if (brief) {
       val multiModule = results.map { it.module }.distinct().size > 1
       val brief = results.map { r ->
-        // v1 deprecation slope — `a11yFindings` stays populated alongside
-        // `dataExtensions["a11y"]` for one release. Read here so the `--brief` count keeps
-        // working for existing agents.
-        @Suppress("DEPRECATION") val a11yCount = r.a11yFindings?.size
+        // Decode the a11y count from the generic `dataExtensions["a11y"]` carrier — the
+        // previous `r.a11yFindings?.size` read disappeared with the v1→v2 bump. `null` when
+        // ATF didn't run for the module (no `dataExtensions["a11y"]` entry), matching the v1
+        // null vs. `0` semantics that agents already grep for.
+        val a11yCount = decodeA11yFindingsCount(r)
         BriefPreviewResult(
           id = r.id,
           module = r.module.takeIf { multiModule },

@@ -106,6 +106,18 @@ object RemoteComposeController {
   }
 
   /**
+   * Replace just the active profile without touching named values or the accept-list. Mirrors
+   * [setNamedValue]'s "merge, don't replace" semantics for the profile facet so a live edit
+   * dispatched by `interactive/setRemoteCompose` lands cleanly on top of an existing override
+   * bag. Idempotent — writing the same profile twice doesn't notify listeners.
+   */
+  fun setProfile(profile: RemoteComposeProfile?) {
+    if (profileState.value == profile) return
+    profileState.value = profile
+    listeners.toList().forEach { it() }
+  }
+
+  /**
    * Record a `HostAction` emission. Filtered against the override's [RemoteComposeOverride
    * .acceptedHostActions] set when present (null accepts every action). The ring buffer is capped
    * at [RemoteComposePayload.HOST_ACTION_BUFFER_SIZE] entries — once full, the oldest entry drops

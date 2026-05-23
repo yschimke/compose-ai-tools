@@ -60,11 +60,13 @@ class PreviewListResponseTest {
   }
 
   @Test
-  fun `default schema field stays at v1`() {
-    // Bump this test deliberately when rolling to v2 — guards against
-    // accidentally breaking the CLI→agent contract.
+  fun `default schema field pins to compose-preview-show v2`() {
+    // Bumped from v1 to v2 when `PreviewResult.a11yFindings` + `a11yAnnotatedPath` were
+    // dropped from the wire format — agents that read either field break here, that's the
+    // point. Findings + annotated path now live on `dataExtensions["a11y"]` (see
+    // `A11yReportRendererTest`).
     val response = PreviewListResponse(previews = emptyList())
-    assertEquals("compose-preview-show/v1", response.schema)
+    assertEquals("compose-preview-show/v2", response.schema)
   }
 
   @Test
