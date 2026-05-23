@@ -70,13 +70,31 @@ runs:
       shell: bash
       env:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
-      run: compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+      # Don't fail the step on a non-zero CLI exit: the JSON envelope still
+      # carries the rows that did render (and flags the ones that didn't via
+      # empty `sha256`), so the downstream generate/push can push the partial
+      # update + a "Render Failures" section in the README. The trailing
+      # `Surface render failures` step sets the overall workflow status once
+      # the push has landed, so reviewers always see the partial state on
+      # `compose-preview/main` even when this run is flagged red.
+      run: |
+        set +e
+        compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+        rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "compose-preview show exited $rc — continuing so the partial " \
+               "JSON envelope still drives a baseline update." >&2
+        fi
+        exit 0
 
     # When `composePreviewRender` fails the actual stack traces only live in
     # samples/*/build/reports/tests/composePreviewRender/ and test-results/.
-    # Upload them so the failure is debuggable from the run page.
+    # Upload them so the failure is debuggable from the run page. Fires on
+    # any non-zero CLI exit (full build failure or partial per-preview
+    # failure) so the reports are always one click away from the diff.
     - name: Upload composePreviewRender reports
-      if: failure() && steps.render.outcome == 'failure'
+      if: steps.render.outputs.rc != '0'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRender-reports
@@ -86,6 +104,34 @@ runs:
           _previews.json
         if-no-files-found: ignore
         retention-days: 14
+
+    # Fetch the existing baseline tree before generate runs so the prior
+    # entry + PNG for any preview that failed in this run can carry forward.
+    # Without this, a single flaky render would drop the entry from
+    # compose-preview/main until the next clean run lands. `git archive`
+    # writes to stdout so the working tree stays clean; absent branch (first
+    # run on a fresh repo) falls back to "no prior, treat every failure as
+    # dropped" — same shape as the existing first-run path.
+    - name: Fetch prior baselines for carry-over
+      shell: bash
+      env:
+        BASELINE_BRANCH: ${{ inputs.branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        mkdir -p _prior_baselines
+        if git ls-remote --exit-code \
+              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+              "refs/heads/${BASELINE_BRANCH}" >/dev/null 2>&1; then
+          git fetch --depth=1 --quiet \
+              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+              "${BASELINE_BRANCH}"
+          git show "FETCH_HEAD:baselines.json" > _prior_baselines/baselines.json \
+              2>/dev/null || true
+          git archive FETCH_HEAD renders 2>/dev/null \
+              | tar -x -C _prior_baselines/ 2>/dev/null || true
+        fi
 
     - name: Generate baselines
       shell: bash
@@ -97,7 +143,9 @@ runs:
         python3 "$ACTION_PATH/../lib/compare-previews.py" generate _previews.json \
           --output-dir _baselines \
           --repo "$REPO" \
-          --branch "$BASELINE_BRANCH"
+          --branch "$BASELINE_BRANCH" \
+          --prior-baselines _prior_baselines/baselines.json \
+          --prior-renders _prior_baselines/renders
 
     - name: Push to baselines branch
       shell: bash
@@ -165,10 +213,25 @@ runs:
       # `compose-preview show-resources` self-no-ops on workspaces without
       # any `resources.json` (exit 0 with "No Android resource previews
       # found.") — the subsequent generate / push steps then short-circuit.
-      run: compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+      #
+      # Mirrors the composable render step: capture the exit code so partial
+      # failures don't abort the workflow before the prior baseline can be
+      # carried forward + the failure surfaced in the README. The trailing
+      # `Surface render failures` step at the end of the action raises the
+      # overall workflow status after the push lands.
+      run: |
+        set +e
+        compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+        rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "compose-preview show-resources exited $rc — continuing so the " \
+               "partial JSON envelope still drives a resource baseline update." >&2
+        fi
+        exit 0
 
     - name: Upload composePreviewRenderAndroidResources reports
-      if: failure() && steps.render-resources.outcome == 'failure'
+      if: steps.render-resources.outputs.rc != '0'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: composePreviewRenderAndroidResources-reports
@@ -178,6 +241,32 @@ runs:
           _resources.json
         if-no-files-found: ignore
         retention-days: 14
+
+    # Same carry-over flow as the composable side — fetch the prior resource
+    # baseline tree so per-capture flakes don't drop resources from
+    # compose-preview/resources/main. Absent branch is fine; we treat every
+    # failure as dropped in that case.
+    - name: Fetch prior resource baselines for carry-over
+      if: inputs.resource-branch != ''
+      shell: bash
+      env:
+        RESOURCE_BRANCH: ${{ inputs.resource-branch }}
+        REPO: ${{ github.repository }}
+        GITHUB_TOKEN_INLINE: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        mkdir -p _prior_resource_baselines
+        if git ls-remote --exit-code \
+              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+              "refs/heads/${RESOURCE_BRANCH}" >/dev/null 2>&1; then
+          git fetch --depth=1 --quiet \
+              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
+              "${RESOURCE_BRANCH}"
+          git show "FETCH_HEAD:resource-baselines.json" \
+              > _prior_resource_baselines/resource-baselines.json 2>/dev/null || true
+          git archive FETCH_HEAD renders 2>/dev/null \
+              | tar -x -C _prior_resource_baselines/ 2>/dev/null || true
+        fi
 
     - name: Generate resource baselines
       if: inputs.resource-branch != ''
@@ -191,7 +280,9 @@ runs:
       run: |
         python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
           _resources.json \
-          --output-dir _resource_baselines
+          --output-dir _resource_baselines \
+          --prior-baselines _prior_resource_baselines/resource-baselines.json \
+          --prior-renders _prior_resource_baselines/renders
 
     - name: Push to resource baselines branch
       if: inputs.resource-branch != ''
@@ -237,3 +328,30 @@ runs:
           COMMIT=$(git commit-tree "$TREE" -m "$MSG")
         fi
         git push --quiet origin "${COMMIT}:refs/heads/${RESOURCE_BRANCH}"
+
+    # Surface render failures as a step failure now that the partial baseline
+    # has been pushed. We deferred the non-zero exit so the prior-baseline
+    # carry-over + README "Render Failures" section land on the branch even
+    # when the CLI flagged some previews as missing PNGs. The artifact upload
+    # steps above already attached the per-task reports for triage. Final
+    # exit code is the worst of the two CLI invocations.
+    - name: Surface render failures
+      shell: bash
+      env:
+        RENDER_RC: ${{ steps.render.outputs.rc }}
+        RESOURCE_RC: ${{ steps.render-resources.outputs.rc }}
+      run: |
+        rc_show="${RENDER_RC:-0}"
+        rc_res="${RESOURCE_RC:-0}"
+        if [ "$rc_show" -ne 0 ] || [ "$rc_res" -ne 0 ]; then
+          echo "::error::compose-preview render exited non-zero (show=$rc_show, " \
+               "show-resources=$rc_res). The partial baseline has been pushed; " \
+               "see the README on the baseline branch and the uploaded reports " \
+               "artifact for the failing previews." >&2
+          # Prefer the show exit code when both fired, fall back to the
+          # resource exit code, default to 1.
+          if [ "$rc_show" -ne 0 ]; then
+            exit "$rc_show"
+          fi
+          exit "$rc_res"
+        fi
