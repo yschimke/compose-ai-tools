@@ -47,7 +47,6 @@ import { PreviewCard } from "./components/PreviewCard";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { buildErrorPanel } from "./errorPanel";
 import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
-import { FocusInspectorController } from "./focusInspector";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import {
@@ -68,7 +67,6 @@ export interface PreviewMessageContext {
      *  rather than importing the Lit class directly so the dispatcher
      *  doesn't pull in Lit at type level. */
     filterToolbar: FilterToolbarApi;
-    inspector: FocusInspectorController;
     liveState: LiveStateController;
     staleBadge: StaleBadgeController;
     loadingOverlay: LoadingOverlay;
@@ -638,7 +636,6 @@ function handleSetEarlyFeatures(
             .forEach((el) => el.remove());
         clearCardA11yFindings();
         clearCardA11yNodes();
-        ctx.inspector.clearProducts();
         const a11yId = ctx.getA11yOverlayId();
         if (a11yId) {
             ctx.vscode.postMessage({

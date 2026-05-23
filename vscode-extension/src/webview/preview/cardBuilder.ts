@@ -30,7 +30,7 @@ import {
     sanitizeId,
 } from "./cardData";
 import type { DiffOverlayConfig } from "./diffOverlay";
-import type { FocusInspectorController } from "./focusInspector";
+import type { InspectorRenderer } from "./applyA11yUpdate";
 import type {
     CapturePresentation,
     FrameCarouselController,
@@ -76,7 +76,7 @@ export interface CardBuilderConfig {
     diffOverlayConfig: DiffOverlayConfig;
     /** Focus-inspector handle so `applyA11yUpdate` can re-render when
      *  a11y data lands for the focused card. */
-    inspector: FocusInspectorController;
+    inspector: InspectorRenderer;
     /** Latest `setPreviews` manifest — `applyA11yUpdate` mutates the
      *  matching entry's `a11yFindings` so legend rebuilds via
      *  `buildA11yLegend(card, p)` see the fresh findings without a
