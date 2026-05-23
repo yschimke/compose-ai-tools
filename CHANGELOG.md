@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/yschimke/compose-ai-tools/compare/v0.11.1...v0.11.2) (2026-05-23)
+
+
+### Features
+
+* **samples:** add Metro ViewModel preview sample ([#1369](https://github.com/yschimke/compose-ai-tools/issues/1369)) ([7c68b02](https://github.com/yschimke/compose-ai-tools/commit/7c68b020082462aed8595e4ddce9b6ab70e34106))
+
 ## [0.11.1](https://github.com/yschimke/compose-ai-tools/compare/v0.11.0...v0.11.1) (2026-05-23)
 
 
