@@ -47,7 +47,6 @@ import { PreviewCard } from "./components/PreviewCard";
 import { PreviewGrid } from "./components/PreviewGrid";
 import { buildErrorPanel } from "./errorPanel";
 import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
-import { FocusInspectorController } from "./focusInspector";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import {
@@ -68,7 +67,6 @@ export interface PreviewMessageContext {
      *  rather than importing the Lit class directly so the dispatcher
      *  doesn't pull in Lit at type level. */
     filterToolbar: FilterToolbarApi;
-    inspector: FocusInspectorController;
     liveState: LiveStateController;
     staleBadge: StaleBadgeController;
     loadingOverlay: LoadingOverlay;
@@ -472,15 +470,14 @@ function handleErrorMessage(
     if (caps && cur !== captureIndex) return;
 
     errCard.classList.add("has-error");
-    // Stamp the error onto the card's dataset so the focus inspector's
-    // implicit `local/render/error` presenter can surface it as a top-
-    // level banner (focusPresentation.ts:renderErrorPresenter). Cleared
-    // by the next successful `updateImage` paint via the matching
-    // delete in cardImage / paintCapture (see follow-up — currently
-    // the dataset persists until the card is rebuilt; acceptable since
-    // the banner rebuilds on every inspector render and an updated
-    // `has-error` removal driven by paintCapture would also trigger a
-    // re-render of the inspector through the live-state path).
+    // Stamp the error onto the card's dataset so the focus inspector
+    // can surface it as a top-level banner. Cleared by the next
+    // successful `updateImage` paint via the matching delete in
+    // cardImage / paintCapture (see follow-up — currently the dataset
+    // persists until the card is rebuilt; acceptable since the banner
+    // rebuilds on every inspector render and an updated `has-error`
+    // removal driven by paintCapture would also trigger a re-render
+    // of the inspector through the live-state path).
     errCard.dataset.renderError = msg.message;
     if (renderError) {
         const detail = [renderError.exception, renderError.message]
@@ -639,7 +636,6 @@ function handleSetEarlyFeatures(
             .forEach((el) => el.remove());
         clearCardA11yFindings();
         clearCardA11yNodes();
-        ctx.inspector.clearProducts();
         const a11yId = ctx.getA11yOverlayId();
         if (a11yId) {
             ctx.vscode.postMessage({

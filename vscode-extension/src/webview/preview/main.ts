@@ -133,7 +133,11 @@ import {
     FocusController,
     type FocusControllerPersistedState,
 } from "./focusController";
-import { FocusInspectorController } from "./focusInspector";
+import {
+    applyFocusInspectorState,
+    type FocusInspector,
+} from "./components/FocusInspector";
+import "./components/FocusInspector";
 import {
     FocusToolbarController,
     isFocusedInteractiveSupported,
@@ -207,7 +211,7 @@ export class PreviewApp extends LitElement {
     // `requireElementById` / `requireSelector` setup body — step 3+ will lift
     // these onto controllers and the locals will go away naturally.
     @query("#preview-grid") private _grid!: PreviewGrid;
-    @query("#focus-inspector") private _focusInspector!: HTMLElement;
+    @query("focus-inspector") private _focusInspector!: FocusInspector;
     @query("message-banner") private _messageBanner!: MessageBanner;
     @query("filter-toolbar") private _filterToolbar!: FilterToolbar;
     @query("bundle-chip-bar") private _bundleChipBar!: BundleChipBar;
@@ -399,12 +403,11 @@ export class PreviewApp extends LitElement {
                 ></bundle-legend>
             </div>
             <data-tabs hidden></data-tabs>
-            <div
-                id="focus-inspector"
+            <focus-inspector
                 class="focus-inspector"
                 hidden
                 aria-label="Focused preview data"
-            ></div>
+            ></focus-inspector>
             <bundle-chip-bar></bundle-chip-bar>
         `;
     }
@@ -650,7 +653,6 @@ export class PreviewApp extends LitElement {
         // these `let !` declarations. Each binding is dereferenced only at
         // runtime (inside arrow callbacks fired by user events / message
         // handlers), by which point all three are initialised.
-        let inspector!: FocusInspectorController;
         let liveState!: LiveStateController;
         let focusController!: FocusController;
         let bundleController!: BundleController;
@@ -734,16 +736,16 @@ export class PreviewApp extends LitElement {
             return fontPreviewBytesByPreview.get(target)?.get(rowId);
         };
 
-        inspector = new FocusInspectorController({
-            el: focusInspector,
-            earlyFeatures,
-            getPreview: (id) =>
-                previewStore.getState().allPreviews.find((p) => p.id === id),
-            isHistoryActive: () =>
-                bundleController.state().activeBundles.includes("history"),
-            onRequestFocusedDiff: (against) =>
-                focusController.requestFocusedDiff(against),
-        });
+        focusInspector.onRequestDiff = (against) =>
+            focusController.requestFocusedDiff(against);
+        const renderFocusInspector = (card: HTMLElement | null): void =>
+            applyFocusInspectorState(focusInspector, card, {
+                earlyFeatures: earlyFeatures(),
+                historyActive: bundleController
+                    .state()
+                    .activeBundles.includes("history"),
+            });
+        const inspector = { render: renderFocusInspector };
 
         // Bundle controller — owns the chip ↔ tab ↔ overlay state machine
         // for the new panel shell. Additive to the existing focus-inspector
@@ -2367,7 +2369,7 @@ export class PreviewApp extends LitElement {
             dataTabs,
             refreshBundleLegend: () => reflectLegendActiveTab(),
             focusToolbar,
-            inspector,
+            inspectorRender: renderFocusInspector,
             liveState,
             diffOverlayConfig,
             state,
@@ -2649,7 +2651,6 @@ export class PreviewApp extends LitElement {
             vscode,
             grid,
             filterToolbar,
-            inspector,
             liveState,
             staleBadge,
             loadingOverlay,

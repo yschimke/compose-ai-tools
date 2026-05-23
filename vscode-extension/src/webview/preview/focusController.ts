@@ -16,7 +16,6 @@
 // panel uses.
 
 import { showDiffOverlay, type DiffOverlayConfig } from "./diffOverlay";
-import type { FocusInspectorController } from "./focusInspector";
 import {
     type FocusToolbarController,
     isFocusedInteractiveSupported,
@@ -72,7 +71,9 @@ export interface FocusControllerConfig {
      *  leaves the legend rendering next to the preview grid. */
     refreshBundleLegend(): void;
     focusToolbar: FocusToolbarController;
-    inspector: FocusInspectorController;
+    /** Repaint the focus inspector for the given card, or clear it
+     *  when `null` (no card focused / exiting focus layout). */
+    inspectorRender(card: HTMLElement | null): void;
     liveState: LiveStateController;
     diffOverlayConfig: DiffOverlayConfig;
     /** Shared mutable persisted state. The controller writes
@@ -214,7 +215,7 @@ export class FocusController {
             enabled: turningOn,
         });
         this.applyA11yOverlayButtonState();
-        this.config.inspector.render(card);
+        this.config.inspectorRender(card);
     }
 
     applyLayout(): void {
@@ -234,13 +235,13 @@ export class FocusController {
         // show in the grid); in focus mode the user has already picked.
         // `<filter-toolbar>` and the focus-inspector sidebar are also
         // managed elsewhere — the inspector toggles its own `hidden`
-        // through `inspector.render(card | null)` below.
+        // through `inspectorRender(card | null)` below.
         this.config.filterToolbar.hidden = inFocus;
 
         if (inFocus) {
             const visible = this.getVisibleCards();
             if (visible.length === 0) {
-                this.config.inspector.render(null);
+                this.config.inspectorRender(null);
                 this.publishScopedPreview();
                 this.config.refreshBundleLegend();
                 return;
@@ -255,10 +256,10 @@ export class FocusController {
                 this.config.setFocusIndex(0);
             }
             this.config.grid.applyFocusVisibility(visible[focusIndex]);
-            this.config.inspector.render(visible[focusIndex]);
+            this.config.inspectorRender(visible[focusIndex]);
         } else {
             this.config.grid.applyFocusVisibility(null);
-            this.config.inspector.render(null);
+            this.config.inspectorRender(null);
         }
         document
             .querySelectorAll(".image-container")
@@ -318,11 +319,6 @@ export class FocusController {
         }
         const prev = this.config.getLastScopedPreviewId();
         if (previewId === prev) return;
-        // Focus has moved: tell the inspector to drop any data-extension
-        // subscriptions it asked the daemon to attach for the previous
-        // preview. Mirrors the a11y-overlay teardown in `applyLayout` —
-        // off-screen previews aren't worth the daemon attaching data to.
-        if (prev) this.config.inspector.releasePreview(prev);
         this.config.setLastScopedPreviewId(previewId);
         // Mirror to the store so subscribed components (the upcoming
         // `<focus-controls>`, `<focus-inspector>`, etc.) react without

@@ -1,7 +1,6 @@
 // Resources bundle presenter — pins the wire-payload → row mapping
-// for the new `<data-table>`-based Resources tab. Mirrors the
-// defensive parse the legacy `focusPresentation.resourcesUsedPresenter`
-// does so a malformed daemon payload doesn't blank the panel.
+// for the `<data-table>`-based Resources tab. Defensive parse so a
+// malformed daemon payload doesn't blank the panel.
 
 import * as assert from "assert";
 import { computeResourcesBundleData } from "../webview/preview/resourcesBundlePresenter";

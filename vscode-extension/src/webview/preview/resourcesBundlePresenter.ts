@@ -8,10 +8,9 @@
 //
 // resolvedValue is non-null for values like strings / colors / dimens;
 // resolvedFile is non-null for binary assets (drawable / mipmap / raw)
-// where the resource resolves to a file on disk. The legacy focus-
-// inspector presenter at `focusPresentation.ts:408` already handles
-// click-through deep-linking — that path stays in use for the inspector
-// chrome; this presenter feeds the new `<data-table>`-based bundle UI.
+// where the resource resolves to a file on disk. This presenter feeds
+// the `<data-table>`-based bundle UI; click-through deep-linking on the
+// resolved file/value cells lives in the table renderer.
 //
 // No overlay layer: a resource is not bound to a single rectangle on
 // the canvas (a string is used by N text nodes; a drawable by M image
@@ -43,8 +42,7 @@ export interface ResourcesBundleData {
 /**
  * Defensive parse — the daemon payload shape can drift across
  * versions, and presenters in this tree treat unknown / malformed
- * fields as "skip the row" rather than crash the panel. Matches the
- * legacy `resourcesUsedPresenter` in `focusPresentation.ts`.
+ * fields as "skip the row" rather than crash the panel.
  */
 export function computeResourcesBundleData(
     payload: unknown,
