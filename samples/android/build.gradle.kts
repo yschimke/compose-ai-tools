@@ -99,6 +99,13 @@ dependencies {
   // (`RemoteViewsWeatherWidgetPreview`) doesn't use this — it builds the `RemoteViews` tree by
   // hand from `res/layout/widget_weather.xml`.
   implementation(project(":glance-preview-runtime"))
+  // `androidx.glance.preview.Preview` annotation (a separate `glance-preview` artefact from the
+  // appwidget runtime). Used by `NativeGlanceWidgetPreview` so the sample exercises the native
+  // FQN-discovered Glance preview path — discovery picks up the annotation, the renderer's
+  // `GlanceAppWidgetPreviewStrategy` wraps the body in a synthetic `GlanceAppWidget`, and
+  // `composeForPreview(...)` materialises the same `RemoteViews` tree the helper-based sample
+  // produces.
+  implementation(libs.glance.preview)
   debugImplementation("androidx.compose.ui:ui-tooling")
   // `@AnimatedPreview(showCurves = true)` reflectively probes
   // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /

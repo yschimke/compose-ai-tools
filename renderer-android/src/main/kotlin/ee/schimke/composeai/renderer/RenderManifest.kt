@@ -7,6 +7,7 @@ enum class PreviewKind {
     COMPOSE,
     TILE,
     NOTIFICATION,
+    GLANCE_APPWIDGET,
 }
 
 /**
