@@ -1,6 +1,6 @@
 # Notification Previews
 
-_Auto-generated from `compose-preview/notifications/pr`. 12 notification preview(s)._
+_Auto-generated from `compose-preview/notifications/pr`. 14 notification preview(s)._
 
 Browse inline; image URLs reference the branch tip so links keep resolving as long as the branch advances.
 
@@ -20,9 +20,17 @@ Browse inline; image URLs reference the branch tip so links keep resolving as lo
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/pr/renders/NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png" width="400" />
 
+### `NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/pr/renders/NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png" width="400" />
+
 ### `NotificationStyleGalleryKt.InboxStylePreview_Inbox_style`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/pr/renders/NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png" width="400" />
+
+### `NotificationStyleGalleryKt.MediaStylePreview_Media_style`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/notifications/pr/renders/NotificationStyleGalleryKt.MediaStylePreview_Media_style.png" width="400" />
 
 ### `NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style`
 

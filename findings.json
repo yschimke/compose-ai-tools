@@ -25,9 +25,21 @@
       "sidecarBasename": ""
     },
     {
+      "pngBasename": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png",
+      "previewId": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view",
+      "sha256": "2133dac01e95057a1784a1bd5ed13c60395c28d1201c56bb1fd2a393ed1df8c3",
+      "sidecarBasename": ""
+    },
+    {
       "pngBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
       "previewId": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style",
       "sha256": "cb49fcb4b532c85f11cc813a758d3ce4804232c8b9b01869b3456fa3cdc48386",
+      "sidecarBasename": ""
+    },
+    {
+      "pngBasename": "NotificationStyleGalleryKt.MediaStylePreview_Media_style.png",
+      "previewId": "NotificationStyleGalleryKt.MediaStylePreview_Media_style",
+      "sha256": "2b34d82299dfc2a17c08159a40901509a07c588751e5062e2d8319bb5bf1200c",
       "sidecarBasename": ""
     },
     {
