@@ -21,7 +21,7 @@ class CounterRepository {
 }
 
 @Inject
-@ViewModelKey(CounterViewModel::class)
+@ViewModelKey
 @ContributesIntoMap(AppScope::class)
 class CounterViewModel(private val repository: CounterRepository) : ViewModel() {
   private val _count = MutableStateFlow(repository.initialCount())

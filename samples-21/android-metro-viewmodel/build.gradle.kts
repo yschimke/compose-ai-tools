@@ -19,13 +19,11 @@ plugins {
 //    `AppGraph` the app would (via `createGraph<AppGraph>()`) and
 //    provides its `MetroViewModelFactory` to the composition. Exercises
 //    the production wiring under Robolectric.
-
-composePreview {
-  // JDK 17 toolchain — Robolectric 4.16.1 supports SDK 36 only on JDK 21+,
-  // so the rest of the samples pin to 35 too. See `:samples:android` for
-  // the rationale block.
-  sdkVersion.set(35)
-}
+//
+// No `composePreview.sdkVersion.set(35)` rescue here — the `samples-21/`
+// subtree only runs under a JDK 21 daemon (see settings.gradle.kts), so
+// Robolectric 4.16.1 can render against the auto-detected SDK 36 the way
+// `compileSdk` declares.
 
 android {
   namespace = "com.example.metroviewmodel"
