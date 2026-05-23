@@ -415,6 +415,43 @@ export interface FileChangedParams {
     changeType: FileChangeType;
 }
 
+/**
+ * Stage-2 in-process compile (COMPILE-IN-PROCESS.md).
+ *
+ * Client → daemon request: "compile these sources via the BTA host inside the daemon JVM and
+ * swap the user classloader once the new `.class` files are on disk". The daemon side does
+ * the same `host.swapUserClassLoaders()` that a `fileChanged({kind:"source"})` notification
+ * would, then returns synchronously. Render dispatch happens via the existing per-preview
+ * mechanism; this request handles the compile leg only.
+ */
+export interface CompileSourcesParams {
+    sources: string[];
+    /** When the editor knows the dirty set, pass it; otherwise null/undefined and the
+     *  daemon recalculates from BTA's IC cache. */
+    changes?: SourceChangeSet | null;
+}
+
+export interface SourceChangeSet {
+    modified: string[];
+    removed: string[];
+}
+
+export type CompileResultKind = "ok" | "compileError" | "fallback";
+
+export interface CompileSourcesResult {
+    result: CompileResultKind;
+    /** Populated when `result === "compileError"`. Empty otherwise. */
+    errors?: CompileErrorDetail[];
+    durationMs: number;
+}
+
+export interface CompileErrorDetail {
+    file: string;
+    line: number;
+    column: number;
+    message: string;
+}
+
 // Client → daemon requests (PROTOCOL.md § 5)
 
 export type RenderTier = "fast" | "full";

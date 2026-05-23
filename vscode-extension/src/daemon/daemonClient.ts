@@ -2,6 +2,8 @@ import { Readable, Writable } from "stream";
 import { FrameDecoder, encodeFrame } from "./daemonFraming";
 import {
     ClasspathDirtyParams,
+    CompileSourcesParams,
+    CompileSourcesResult,
     DaemonWarmingParams,
     DataFetchParams,
     DataFetchResult,
@@ -196,6 +198,19 @@ export class DaemonClient {
 
     fileChanged(params: FileChangedParams): void {
         this.notify("fileChanged", params);
+    }
+
+    /**
+     * Stage-2 in-process compile — see COMPILE-IN-PROCESS.md. Returns `{result:"ok"}` after
+     * the daemon swapped its user classloader against the freshly-compiled bytecode (the
+     * next `renderNow` reads the new classes), `{result:"compileError", errors}` when BTA
+     * surfaced Kotlin diagnostics, or `{result:"fallback", …}` when the daemon refused
+     * in-process compile and the caller should retry through stage 1 / 0.
+     */
+    compileSources(
+        params: CompileSourcesParams,
+    ): Promise<CompileSourcesResult> {
+        return this.request<CompileSourcesResult>("compileSources", params);
     }
 
     renderNow(params: RenderNowParams): Promise<RenderNowResult> {
