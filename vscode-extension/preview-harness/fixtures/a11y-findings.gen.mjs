@@ -260,9 +260,7 @@ const fixture = {
     dataset: {
         // `earlyFeatures` is the gate for the chip bar + data tabs.
         earlyFeatures: "true",
-        collapseVariants: "false",
         minimalMode: "false",
-        autoInject: "true",
     },
     messages: [
         setPreviews,
