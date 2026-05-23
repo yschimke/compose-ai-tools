@@ -96,6 +96,28 @@ data class AmbientCapture(
     val deviceHasLowBitAmbient: Boolean = false,
 )
 
+/** Renderer-side mirror of the plugin's `LauncherWidgetCaptureResizeOrder`. */
+@Serializable
+enum class LauncherWidgetCaptureResizeOrder {
+    Diagonal,
+    WidthFirst,
+    HeightFirst,
+}
+
+/** Renderer-side mirror of the plugin's `LauncherWidgetCapture`. */
+@Serializable
+data class LauncherWidgetCapture(
+    val width: Int,
+    val height: Int,
+    val cellSizeDp: Int? = null,
+    val cellSpacingDp: Int? = null,
+    val minWidth: Int? = null,
+    val minHeight: Int? = null,
+    val maxWidth: Int? = null,
+    val maxHeight: Int? = null,
+    val resizeOrder: LauncherWidgetCaptureResizeOrder = LauncherWidgetCaptureResizeOrder.WidthFirst,
+)
+
 /**
  * Heavy/fast threshold for [RenderPreviewCapture.cost]. Mirrors the plugin's
  * `HEAVY_COST_THRESHOLD` — anything strictly greater is considered "heavy"
@@ -150,6 +172,7 @@ data class RenderPreviewCapture(
     val focus: FocusCapture? = null,
     val focusGif: FocusGifCapture? = null,
     val ambient: AmbientCapture? = null,
+    val launcherWidget: LauncherWidgetCapture? = null,
     val renderOutput: String = "",
     /**
      * Estimated render cost normalised so a static `@Preview` is `1.0`. See

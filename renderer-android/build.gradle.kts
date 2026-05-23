@@ -54,6 +54,15 @@ dependencies {
   // architectural rule as focus: **no hardcoded ambient / `LocalAmbientModeManager` logic in
   // this module — extend the connector instead.**
   implementation(project(":data-ambient-connector"))
+  // Launcher-widget container-size connector. Owns `LauncherWidgetExtension` (the
+  // `AroundComposable` that wraps the preview in `Box(Modifier.size(...))` at the resolved cell
+  // footprint) and the `LauncherWidgetPreviewOverrideExtension` planner. The renderer reads
+  // `Capture.launcherWidget` (set when the consumer's `@Preview` carries a
+  // `@LauncherWidgetPreview`) and builds the extension directly via `toLauncherWidgetOverride()`;
+  // daemon-driven `renderNow.overrides.launcherWidget` lands at the same extension through the
+  // planner registered in `RobolectricHost`. Same architectural rule as ambient / focus: **no
+  // hardcoded launcher-widget sizing logic in this module — extend the connector instead.**
+  implementation(project(":data-launcher-widget-connector"))
   // Soft-keyboard (IME) connector. Owns `KeyboardController` (state) and
   // `KeyboardOverrideExtension`
   // (the `AroundComposable` that installs the shadow `LocalSoftwareKeyboardController` and overlays

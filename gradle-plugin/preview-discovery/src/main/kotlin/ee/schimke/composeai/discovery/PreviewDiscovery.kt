@@ -12,17 +12,17 @@ import java.io.File
 
 /**
  * Pure-JVM library that scans compiled Kotlin classes for `@Preview`-annotated functions and
- * produces a [PreviewManifest] conforming to the `compose-previews/v1` schema. The Gradle
- * plugin's `DiscoverPreviewsTask` is one adapter; non-Gradle build systems (Bazel rules,
- * Amper task definitions in `yschimke/compose-ai-contrib`) call this directly to produce
- * conforming manifests without depending on Gradle or AGP.
+ * produces a [PreviewManifest] conforming to the `compose-previews/v1` schema. The Gradle plugin's
+ * `DiscoverPreviewsTask` is one adapter; non-Gradle build systems (Bazel rules, Amper task
+ * definitions in `yschimke/compose-ai-contrib`) call this directly to produce conforming manifests
+ * without depending on Gradle or AGP.
  *
  * Logger-agnostic — diagnostics are returned as structured strings, not emitted to a Gradle
  * `Logger`. Each adapter routes them to its build system's logging surface.
  *
- * Wire-stable contract: the [Outcome.Success.manifest] is `kotlinx-serialization`-encoded by
- * the caller (typically with `Json { prettyPrint = true; encodeDefaults = true }`) and lands
- * on disk as `previews.json`.
+ * Wire-stable contract: the [Outcome.Success.manifest] is `kotlinx-serialization`-encoded by the
+ * caller (typically with `Json { prettyPrint = true; encodeDefaults = true }`) and lands on disk as
+ * `previews.json`.
  */
 object PreviewDiscovery {
 
@@ -30,17 +30,26 @@ object PreviewDiscovery {
   data class Input(
     /** Directories of compiled `.class` files belonging to the consumer module. */
     val classDirs: List<File>,
-    /** Dependency JARs to merge onto the scan classpath. Filtered down to a preview-relevant subset by the scanner. */
+    /**
+     * Dependency JARs to merge onto the scan classpath. Filtered down to a preview-relevant subset
+     * by the scanner.
+     */
     val dependencyJars: List<File>,
     /** Source files used to attach module-relative `sourceFile` paths to each [PreviewInfo]. */
     val sourceFiles: List<File>,
-    /** Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label; Gradle uses the project path. */
+    /**
+     * Logical module name surfaced via [PreviewManifest.module]. Bazel rules use the target label;
+     * Gradle uses the project path.
+     */
     val moduleName: String,
     /** Build variant ("debug" / "release" / "desktop"). Surfaced via [PreviewManifest.variant]. */
     val variantName: String,
     /** Module root — `PreviewInfo.sourceFile` is rendered relative to this. */
     val projectDirectory: File,
-    /** When `true` and zero previews are discovered, the scan returns [Outcome.Failure] with a diagnostics block. */
+    /**
+     * When `true` and zero previews are discovered, the scan returns [Outcome.Failure] with a
+     * diagnostics block.
+     */
     val failOnEmpty: Boolean,
   )
 
@@ -59,16 +68,16 @@ object PreviewDiscovery {
     ) : Outcome()
 
     /**
-     * The scan terminated with a hard failure (zero previews + `failOnEmpty`, or the @Preview
-     * class isn't reachable on the ClassGraph classpath at all). [reason] is the one-line error
-     * the adapter should surface as an exception message; [diagnostics] is the multi-line
-     * dump (class dirs, dependency-jar sample, observed annotation FQNs) the adapter logs
-     * before the failure so users can see what the scan saw. [warnings] are any per-method
-     * skip reasons collected during the scan (e.g. private `@Preview`, unsupported
-     * parameters) — they're the most actionable signal when discovery returned zero previews
-     * because methods were skipped, so the adapter should route them to its build system's
-     * WARN-level log alongside [diagnostics] before surfacing [reason]. Symmetric with
-     * [Success.warnings] so adapters can emit the same WARN stream on both branches.
+     * The scan terminated with a hard failure (zero previews + `failOnEmpty`, or the @Preview class
+     * isn't reachable on the ClassGraph classpath at all). [reason] is the one-line error the
+     * adapter should surface as an exception message; [diagnostics] is the multi-line dump (class
+     * dirs, dependency-jar sample, observed annotation FQNs) the adapter logs before the failure so
+     * users can see what the scan saw. [warnings] are any per-method skip reasons collected during
+     * the scan (e.g. private `@Preview`, unsupported parameters) — they're the most actionable
+     * signal when discovery returned zero previews because methods were skipped, so the adapter
+     * should route them to its build system's WARN-level log alongside [diagnostics] before
+     * surfacing [reason]. Symmetric with [Success.warnings] so adapters can emit the same WARN
+     * stream on both branches.
      */
     data class Failure(
       val reason: String,
@@ -108,6 +117,8 @@ object PreviewDiscovery {
   // @AnimatedPreview, same FQN-match policy. See `FocusedPreview.kt`.
   private const val FOCUSED_PREVIEW_FQN = "ee.schimke.composeai.preview.FocusedPreview"
   private const val AMBIENT_PREVIEW_FQN = "ee.schimke.composeai.preview.AmbientPreview"
+  private const val LAUNCHER_WIDGET_PREVIEW_FQN =
+    "ee.schimke.composeai.preview.LauncherWidgetPreview"
   // The stable FQN is shared by both Android's ui-tooling-preview and CMP's
   // `org.jetbrains.compose.components:components-ui-tooling-preview` — Kotlin
   // `expect`/`actual` collapses onto the same `androidx...` class name on
@@ -298,13 +309,9 @@ object PreviewDiscovery {
         dataExtensionReports = emptyMap(),
       )
 
-    infoMessages.add(
-      "Discovered ${normalized.size} preview(s) in module '${input.moduleName}':"
-    )
+    infoMessages.add("Discovered ${normalized.size} preview(s) in module '${input.moduleName}':")
     for (preview in normalized) {
-      infoMessages.add(
-        "  ${preview.className}.${preview.functionName}${describeVariant(preview)}"
-      )
+      infoMessages.add("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
     }
 
     // Unconditional fail: the plugin scanned non-empty class dirs but
@@ -579,6 +586,7 @@ object PreviewDiscovery {
     val focusSpecs = extractFocusSpecs(annotations)
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
+    val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -638,6 +646,7 @@ object PreviewDiscovery {
             focusSpecs,
             focusGifSpec,
             ambientSpec,
+            launcherWidgetSpec,
             timings,
             previewParameter,
             previewSourceFile,
@@ -660,6 +669,7 @@ object PreviewDiscovery {
           focusSpecs,
           focusGifSpec,
           ambientSpec,
+          launcherWidgetSpec,
           timings,
           previewParameter,
           previewSourceFile,
@@ -776,6 +786,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    launcherWidget: LauncherWidgetCapture?,
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
@@ -798,6 +809,10 @@ object PreviewDiscovery {
     // previews render outside the Compose composition where the local lives, so the override is a
     // no-op there.
     val effectiveAmbient = if (nonComposable) null else ambient
+    // `@LauncherWidgetPreview` wraps the composition in a sized Box — same reasoning as ambient:
+    // non-composable previews have no Compose layout pass to wrap. The override is also dropped
+    // for tile / notification renders.
+    val effectiveLauncherWidget = if (nonComposable) null else launcherWidget
 
     // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
     // function. When one is paired with anything else on the same function — scroll/time
@@ -820,6 +835,7 @@ object PreviewDiscovery {
           Capture(
             focusGif = effectiveFocusGif,
             ambient = effectiveAmbient,
+            launcherWidget = effectiveLauncherWidget,
             renderOutput = "renders/${previewId}${suffix}.gif",
             cost = FOCUS_GIF_COST,
           )
@@ -914,6 +930,7 @@ object PreviewDiscovery {
                 scroll = scroll,
                 focus = focus,
                 ambient = effectiveAmbient,
+                launcherWidget = effectiveLauncherWidget,
                 renderOutput =
                   "renders/${previewId}${scrollSuffix}${timeSuffix}${focusSuffix}.${ext}",
                 cost = captureCost,
@@ -1098,6 +1115,39 @@ object PreviewDiscovery {
     )
   }
 
+  /**
+   * Reads `@LauncherWidgetPreview(width, height, cellSizeDp, cellSpacingDp, minWidth, …)` off the
+   * function annotation list. Returns a single [LauncherWidgetCapture] when present, `null`
+   * otherwise. Mirrors `extractAmbientSpec` — single-shot per function, applied to every preview
+   * variant. Optional `Int` parameters use `-1` as the "not set" sentinel (annotation parameters
+   * can't be nullable in Kotlin); we map that back to `null` so the renderer / connector apply
+   * their own defaults rather than treating `-1` as a literal.
+   */
+  private fun extractLauncherWidgetSpec(annotations: List<AnnotationInfo>): LauncherWidgetCapture? {
+    val ann = annotations.firstOrNull { it.name == LAUNCHER_WIDGET_PREVIEW_FQN } ?: return null
+    val pv = ann.parameterValues
+    val width = (pv.getValue("width") as? Int) ?: return null
+    val height = (pv.getValue("height") as? Int) ?: return null
+    fun optionalInt(name: String): Int? = (pv.getValue(name) as? Int)?.takeIf { it >= 0 }
+    val orderName =
+      (pv.getValue("resizeOrder") as? AnnotationEnumValue)?.valueName
+        ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
+    val order =
+      runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
+        .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    return LauncherWidgetCapture(
+      width = width,
+      height = height,
+      cellSizeDp = optionalInt("cellSizeDp"),
+      cellSpacingDp = optionalInt("cellSpacingDp"),
+      minWidth = optionalInt("minWidth"),
+      minHeight = optionalInt("minHeight"),
+      maxWidth = optionalInt("maxWidth"),
+      maxHeight = optionalInt("maxHeight"),
+      resizeOrder = order,
+    )
+  }
+
   private fun extractFocusSpecs(annotations: List<AnnotationInfo>): List<FocusCapture> {
     val ann = annotations.firstOrNull { it.name == FOCUSED_PREVIEW_FQN } ?: return emptyList()
     return readFocusSteps(ann)
@@ -1262,6 +1312,7 @@ object PreviewDiscovery {
     focuses: List<FocusCapture>,
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
+    launcherWidget: LauncherWidgetCapture?,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
     previewSourceFile: String?,
@@ -1272,7 +1323,17 @@ object PreviewDiscovery {
     val suffix = buildVariantSuffix(params)
     val id = fqn + suffix
     val outputPlan =
-      buildOutputPlan(ann, id, scrolls, animation, focuses, focusGif, ambient, timings)
+      buildOutputPlan(
+        ann,
+        id,
+        scrolls,
+        animation,
+        focuses,
+        focusGif,
+        ambient,
+        launcherWidget,
+        timings,
+      )
     // Tile / notification previews don't go through @Composable invocations — they return a
     // `TilePreviewData` / `Notification` and the renderer reflects them directly. Skipping the
     // lazy means the bytecode walk never runs for these methods.
