@@ -257,13 +257,31 @@ describe("materializeInitScript", () => {
 });
 
 describe("hasIncludedPluginBuild", () => {
+    /**
+     * Seeds the included build's `build.gradle.kts` with the compose-preview
+     * plugin id so the sentinel check (#1362) passes. Callers that want to
+     * verify the *negative* path can skip this helper.
+     */
+    function writeComposePreviewGradlePlugin(dir: string): void {
+        const pluginDir = path.join(dir, "gradle-plugin");
+        fs.mkdirSync(pluginDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(pluginDir, "build.gradle.kts"),
+            "plugins { `java-gradle-plugin` }\n" +
+                "gradlePlugin {\n" +
+                '  plugins { create("composePreview") { id = "ee.schimke.composeai.preview" } }\n' +
+                "}\n",
+        );
+    }
+
     it(
-        'returns true for settings.gradle.kts declaring includeBuild("gradle-plugin")',
+        'returns true for settings.gradle.kts declaring includeBuild("gradle-plugin") when the included build publishes the compose-preview plugin',
         withTempDir((dir) => {
             fs.writeFileSync(
                 path.join(dir, "settings.gradle.kts"),
                 'rootProject.name = "demo"\nincludeBuild("gradle-plugin")\n',
             );
+            writeComposePreviewGradlePlugin(dir);
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
     );
@@ -275,6 +293,7 @@ describe("hasIncludedPluginBuild", () => {
                 path.join(dir, "settings.gradle"),
                 "rootProject.name = 'demo'\nincludeBuild('gradle-plugin')\n",
             );
+            writeComposePreviewGradlePlugin(dir);
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
     );
@@ -285,6 +304,25 @@ describe("hasIncludedPluginBuild", () => {
             fs.writeFileSync(
                 path.join(dir, "settings.gradle.kts"),
                 'includeBuild( "gradle-plugin" )\n',
+            );
+            writeComposePreviewGradlePlugin(dir);
+            assert.strictEqual(hasIncludedPluginBuild(dir), true);
+        }),
+    );
+
+    it(
+        "accepts a Groovy-DSL sentinel build script too",
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild("gradle-plugin")\n',
+            );
+            const pluginDir = path.join(dir, "gradle-plugin");
+            fs.mkdirSync(pluginDir, { recursive: true });
+            fs.writeFileSync(
+                path.join(pluginDir, "build.gradle"),
+                "// Groovy DSL\n" +
+                    'gradlePlugin { plugins { composePreview { id = "ee.schimke.composeai.preview" } } }\n',
             );
             assert.strictEqual(hasIncludedPluginBuild(dir), true);
         }),
@@ -304,6 +342,45 @@ describe("hasIncludedPluginBuild", () => {
                 path.join(dir, "settings.gradle.kts"),
                 'includeBuild("build-logic")\n',
             );
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
+        }),
+    );
+
+    it(
+        'returns false when includeBuild("gradle-plugin") matches but the included build is an unrelated local build-logic project (issue #1362)',
+        withTempDir((dir) => {
+            // A common convention in unrelated workspaces: a local
+            // `gradle-plugin/` included build that publishes convention
+            // plugins under a different id. Auto-inject must stay enabled
+            // there — the workspace doesn't have a local source of truth
+            // for `ee.schimke.composeai.preview`, so dropping
+            // `--init-script` regresses preview rendering.
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'rootProject.name = "demo"\nincludeBuild("gradle-plugin")\n',
+            );
+            const pluginDir = path.join(dir, "gradle-plugin");
+            fs.mkdirSync(pluginDir, { recursive: true });
+            fs.writeFileSync(
+                path.join(pluginDir, "build.gradle.kts"),
+                "plugins { `java-gradle-plugin` }\n" +
+                    "gradlePlugin {\n" +
+                    '  plugins { create("conventions") { id = "com.example.conventions" } }\n' +
+                    "}\n",
+            );
+            assert.strictEqual(hasIncludedPluginBuild(dir), false);
+        }),
+    );
+
+    it(
+        'returns false when includeBuild("gradle-plugin") matches but the included build has no build script at all',
+        withTempDir((dir) => {
+            fs.writeFileSync(
+                path.join(dir, "settings.gradle.kts"),
+                'includeBuild("gradle-plugin")\n',
+            );
+            // No gradle-plugin/build.gradle{.kts} on disk — the sentinel
+            // can't confirm the dev-loop shape, so auto-inject stays on.
             assert.strictEqual(hasIncludedPluginBuild(dir), false);
         }),
     );

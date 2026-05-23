@@ -24,6 +24,13 @@ import { GradleService, ModuleInfo } from "../gradleService";
  * up there at save time. The manager keeps the lookup map authoritative
  * so a failed startup (subprocess exits immediately) cleanly unregisters
  * the worker and the next save falls back to the one-shot Gradle path.
+ *
+ * Crash handling: once a worker's subprocess emits `exit`, the manager
+ * drops it from [workers] and the GradleService registration. A later
+ * [ensureWorker] call for the same module will spawn a fresh worker —
+ * without this, a Gradle-daemon crash or immediate task failure would
+ * leave the entry stuck in the map and the early-return in `ensureWorker`
+ * would silently degrade `compileOnly()` to the one-shot fallback forever.
  */
 export class ContinuousCompileManager {
     private readonly workers = new Map<string, ContinuousCompileWorker>();
@@ -37,7 +44,13 @@ export class ContinuousCompileManager {
         private readonly spawnFn?: typeof spawn,
     ) {}
 
-    /** Idempotent — second call for the same module is a no-op. */
+    /**
+     * Idempotent — a second call for the same module while a worker is
+     * still live is a no-op. If the previous worker's subprocess exited
+     * (Gradle daemon crash, immediate task failure, etc.) the stale entry
+     * has already been cleared by the `exit` listener, so this call
+     * spawns a replacement instead of early-returning.
+     */
     ensureWorker(module: ModuleInfo): void {
         const key = module.modulePath;
         if (this.workers.has(key)) {
@@ -60,6 +73,17 @@ export class ContinuousCompileManager {
         }
         this.workers.set(key, worker);
         this.gradleService.setContinuousCompileWorker(key, worker);
+        // Clear the slot on subprocess exit so a subsequent `ensureWorker`
+        // call can spawn a fresh subprocess instead of returning the
+        // already-dead one. `disposeWorker` removes the entry before
+        // calling `stop()`, so the guard against double-clearing keeps
+        // the orderly-shutdown path a no-op here.
+        worker.onceExit(() => {
+            if (this.workers.get(key) === worker) {
+                this.workers.delete(key);
+                this.gradleService.setContinuousCompileWorker(key, null);
+            }
+        });
     }
 
     async disposeWorker(modulePath: string): Promise<void> {

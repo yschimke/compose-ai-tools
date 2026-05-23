@@ -120,6 +120,16 @@ export class ContinuousCompileWorker {
         return this.child !== null && !this.stopped;
     }
 
+    /**
+     * Fires once when the underlying subprocess exits (either spawn error
+     * or normal `exit`), regardless of whether the exit was caller-driven
+     * via [stop] or a crash. Lets the manager clear stale entries from
+     * its lookup map so a subsequent `ensureWorker` call can respawn.
+     */
+    onceExit(listener: () => void): void {
+        this.events.once("exit", listener);
+    }
+
     /** Spawn the long-running gradle process. Resolves once the child has been spawned;
      *  does NOT wait for the warm-up build to finish. */
     start(): void {
