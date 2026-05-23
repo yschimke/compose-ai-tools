@@ -32,10 +32,31 @@ async function main(): Promise<void> {
     // into the local plugin via `includeBuild("gradle-plugin")`, without
     // duplicating fixture build files. The fast suite keeps its tiny
     // pre-baked workspace.
+    //
+    // External-consumer e2e (COMPOSE_PREVIEW_E2E_EXTERNAL=1, set by `npm
+    // run test:e2e-external` and the matching CI workflow) opens whatever
+    // path COMPOSE_PREVIEW_E2E_WORKSPACE points at — typically a
+    // setup-external-e2e.sh checkout of joreilly/Confetti. Exercises the
+    // *published* plugin coordinate path against a real third-party
+    // build, complementing the in-repo `includeBuild` suite.
     const e2eMode = process.env.COMPOSE_PREVIEW_E2E === "1";
-    const workspacePath = e2eMode
-        ? path.resolve(extensionDevelopmentPath, "..")
-        : path.join(fixturesRoot, "workspace");
+    const e2eExternal = process.env.COMPOSE_PREVIEW_E2E_EXTERNAL === "1";
+    let workspacePath: string;
+    if (e2eExternal) {
+        const external = process.env.COMPOSE_PREVIEW_E2E_WORKSPACE;
+        if (!external) {
+            throw new Error(
+                "COMPOSE_PREVIEW_E2E_EXTERNAL=1 requires COMPOSE_PREVIEW_E2E_WORKSPACE " +
+                    "(absolute path to the prepared external-consumer Gradle workspace; " +
+                    "see vscode-extension/scripts/setup-external-e2e.sh)",
+            );
+        }
+        workspacePath = external;
+    } else if (e2eMode) {
+        workspacePath = path.resolve(extensionDevelopmentPath, "..");
+    } else {
+        workspacePath = path.join(fixturesRoot, "workspace");
+    }
     const fakeGradleExtensionPath = path.join(
         fixturesRoot,
         "fake-vscode-gradle",
@@ -86,6 +107,31 @@ async function main(): Promise<void> {
             ELECTRON_RUN_AS_NODE: undefined,
             COMPOSE_PREVIEW_TEST_MODE: "1",
             ...(e2eMode ? { COMPOSE_PREVIEW_E2E: "1" } : {}),
+            // Forward the external-consumer flag (and the workspace
+            // path, for diagnostic logs) into the extension host so the
+            // gated `describeExternal(...)` actually runs. The
+            // `runTest.ts` parent only inspects the bare flag, but the
+            // host needs the path so e2eExternal.test.ts can sanity-check
+            // the workspace layout in `before()`.
+            ...(e2eExternal
+                ? {
+                      COMPOSE_PREVIEW_E2E_EXTERNAL: "1",
+                      COMPOSE_PREVIEW_E2E_WORKSPACE: workspacePath,
+                  }
+                : {}),
+            // Pulled through so the renderer-resolving init script (see
+            // initScript.ts → `useMavenLocal`) seeds mavenLocal into the
+            // plugin classpath. Tests don't toggle this themselves —
+            // the workflow + `npm run test:e2e-external` set it from
+            // the outside, and forwarding it here keeps the contract
+            // explicit instead of relying on environment inheritance
+            // semantics of @vscode/test-electron.
+            ...(process.env.COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL
+                ? {
+                      COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL:
+                          process.env.COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL,
+                  }
+                : {}),
         },
     });
     console.log(`[runTest] tests complete`);
