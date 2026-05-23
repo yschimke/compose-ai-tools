@@ -162,6 +162,50 @@ describe("computeA11yBundleData", () => {
         assert.strictEqual(data.rows[0].findingCount, 1);
     });
 
+    it("counts overlapping touch targets on the row's overlap badge field", () => {
+        const data = computeA11yBundleData(
+            [
+                node({ label: "PrimaryBtn", boundsInScreen: "0,0,100,40" }),
+                node({ label: "SecondaryBtn", boundsInScreen: "50,0,150,40" }),
+            ],
+            [],
+            [
+                touchTarget({
+                    nodeId: "primary",
+                    boundsInScreen: "0,0,100,40",
+                    findings: ["overlapping"],
+                    overlappingNodeIds: ["secondary"],
+                }),
+                touchTarget({
+                    nodeId: "secondary",
+                    boundsInScreen: "50,0,150,40",
+                    findings: ["overlapping"],
+                    overlappingNodeIds: ["primary"],
+                }),
+            ],
+        );
+        assert.strictEqual(data.rows.length, 2);
+        // Each row picks up the matching target's overlap count.
+        assert.strictEqual(data.rows[0].touchTargetOverlapCount, 1);
+        assert.strictEqual(data.rows[1].touchTargetOverlapCount, 1);
+    });
+
+    it("leaves touchTargetOverlapCount at 0 when no overlap data is attached", () => {
+        const data = computeA11yBundleData(
+            [node({ boundsInScreen: "0,0,10,10" })],
+            [],
+            [
+                touchTarget({
+                    boundsInScreen: "0,0,10,10",
+                    widthDp: 48,
+                    heightDp: 48,
+                    findings: [],
+                }),
+            ],
+        );
+        assert.strictEqual(data.rows[0].touchTargetOverlapCount, 0);
+    });
+
     it("does not downgrade an ATF error when a touch target also applies", () => {
         const data = computeA11yBundleData(
             [node({ boundsInScreen: "0,0,10,10" })],
