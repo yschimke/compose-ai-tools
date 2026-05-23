@@ -57,6 +57,11 @@ export interface A11yRow {
      *  a corresponding `a11y/touchTargets` entry. `null` otherwise —
      *  the "Size" column renders a dash. */
     touchTargetSizeDp: string | null;
+    /** Number of other targets this row's touch target overlaps with,
+     *  per `AccessibilityTouchTarget.overlappingNodeIds`. `0` when the
+     *  target has no overlap data or no other-target hits — the "Size"
+     *  cell renders no overlap badge in that case. */
+    touchTargetOverlapCount: number;
     /** Visual indent depth (`0` for top-level / merged nodes, `1`
      *  for unmerged children of the nearest preceding merged
      *  ancestor in emission order). The wire format
@@ -173,6 +178,7 @@ export function computeA11yBundleData(
             boundsInScreen: node.boundsInScreen,
             bounds,
             touchTargetSizeDp: target ? formatTargetSize(target) : null,
+            touchTargetOverlapCount: target?.overlappingNodeIds?.length ?? 0,
             // Unmerged nodes sit under the nearest preceding merged
             // ancestor in emission order; render them indented so
             // the structure is visible without inventing parent ids.
@@ -225,6 +231,7 @@ export function computeA11yBundleData(
             boundsInScreen: fBounds,
             bounds,
             touchTargetSizeDp: null,
+            touchTargetOverlapCount: 0,
             depth: 0,
         });
         if (bounds) {
@@ -267,6 +274,7 @@ export function computeA11yBundleData(
             boundsInScreen: t.boundsInScreen ?? "",
             bounds,
             touchTargetSizeDp: formatTargetSize(t),
+            touchTargetOverlapCount: t.overlappingNodeIds?.length ?? 0,
             depth: 0,
         });
         if (bounds) {
@@ -384,7 +392,25 @@ export function a11yTableColumns(): readonly DataTableColumn<A11yRow>[] {
         {
             header: "Size",
             cellClass: "a11y-size-cell",
-            render: (row) => row.touchTargetSizeDp ?? "—",
+            render: (row) => {
+                if (!row.touchTargetSizeDp) return "—";
+                if (row.touchTargetOverlapCount === 0) {
+                    return row.touchTargetSizeDp;
+                }
+                const overlapTitle =
+                    row.touchTargetOverlapCount === 1
+                        ? "Overlaps 1 other touch target"
+                        : `Overlaps ${row.touchTargetOverlapCount} other touch targets`;
+                return html`
+                    ${row.touchTargetSizeDp}
+                    <span
+                        class="a11y-overlap-badge"
+                        title=${overlapTitle}
+                        data-overlap-count=${row.touchTargetOverlapCount}
+                        >↔${row.touchTargetOverlapCount}</span
+                    >
+                `;
+            },
         },
         {
             header: "Findings",
