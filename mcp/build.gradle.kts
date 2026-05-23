@@ -8,24 +8,22 @@
 //
 // One server process can multiplex per-(workspace, module) daemons across multiple distinct
 // projects or worktrees — see `DaemonSupervisor` for the workspace-id derivation.
+//
+// Published to Maven Central as `ee.schimke.composeai:mcp` because :render-session-subprocess
+// and :render-session-embedded-desktop compile-time-reference its `DaemonClient` /
+// `SubprocessDaemonClientFactory` / `DaemonLaunchDescriptor` / `WorkspaceId` /
+// `RegisteredProject` / `DaemonSpawn` types. Without this coordinate on Central, downstream
+// consumers calling `SubprocessRenderSessions.open(...)` hit a runtime linkage failure even
+// though they resolved the rest of the published graph. The MCP server's `main()` ships in
+// the `compose-preview-mcp-*.tar.gz` GitHub Release artifact (see release.yml) — the Maven
+// jar is the library face of the same code.
 
 plugins {
-  id("composeai.jvm-conventions")
+  id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
   application
 }
-
-group = "ee.schimke.composeai"
-
-version =
-  providers.environmentVariable("PLUGIN_VERSION").orNull
-    ?: run {
-      val manifest = rootDir.resolve(".release-please-manifest.json").readText()
-      val current = Regex(""""\.":\s*"([^"]+)"""").find(manifest)!!.groupValues[1]
-      val (major, minor, patch) = current.split(".").map { it.toInt() }
-      "$major.$minor.${patch + 1}-SNAPSHOT"
-    }
 
 base { archivesName.set("compose-preview-mcp") }
 
@@ -68,4 +66,17 @@ tasks.withType<Test>().configureEach {
   providers.gradleProperty("mcp.workdir").orNull?.let {
     systemProperty("composeai.mcp.workdir", it)
   }
+}
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "mcp",
+    displayName = "Compose Preview — MCP Server",
+    description =
+      "Model Context Protocol server for the compose-preview daemon. Multiplexes per-(workspace, " +
+        "module) daemon JVMs spawned from launch descriptors emitted by composePreviewDaemonStart, " +
+        "and exposes the JSON-RPC `DaemonClient` / `SubprocessDaemonClientFactory` reused by the " +
+        "render-session-subprocess and render-session-embedded-desktop libraries.",
+  )
+  inceptionYear.set("2025")
 }
