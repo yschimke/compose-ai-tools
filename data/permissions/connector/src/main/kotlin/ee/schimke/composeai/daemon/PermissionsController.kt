@@ -17,9 +17,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  *    for the current render. Snapshot-state so a screen reading `LocalPermissionsHost.check(perm)`
  *    inside a `@Composable` recomposes when [set] flips a grant.
  * 2. **Query tracker** — the set of permissions the screen has asked about so far in the render /
- *    interactive session, in insertion order. Written by either the Robolectric shadow on
- *    `ContextWrapper.checkPermission(...)` (covering `ContextCompat.checkSelfPermission(...)`) or
- *    the explicit `LocalPermissionsHost.check(...)` opt-in helper.
+ *    interactive session, in insertion order. Written by the Robolectric shadow on
+ *    `ContextWrapper.checkPermission(...)`, which covers every standard Android check API
+ *    (`ContextCompat.checkSelfPermission`, `Activity.checkSelfPermission`,
+ *    `Context.checkPermission`, accompanist's `rememberPermissionState`).
  * 3. **Robolectric grant sync** — when the override is applied the controller calls into
  *    `ShadowApplication.grantPermissions(...)` / `denyPermissions(...)` via reflection so consumer
  *    code reading the permission through the platform path also sees the requested state without

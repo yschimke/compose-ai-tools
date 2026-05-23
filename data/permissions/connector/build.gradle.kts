@@ -7,10 +7,11 @@
 //    of permissions the screen has queried during the active render / interactive session.
 //  - `PermissionsOverrideExtension` / `PermissionsPreviewOverrideExtension` — `AroundComposable`
 //    plumbing that seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions` from
-//    the override and installs `LocalPermissionsHost` so consumer code can read the live grant
-//    state and recompose when the controller flips. Planner is always-on (like
-//    `KeyboardPreviewOverrideExtension`) so the controller's CompositionLocal is in place on every
-//    render — the panel still sees an empty `queried` list when no permission was checked.
+//    the override so consumer screens reading `ContextCompat.checkSelfPermission(...)` (or any
+//    standard Android check API) observe the requested value without a connector-specific Compose
+//    API. Planner is always-on (like `KeyboardPreviewOverrideExtension`) so the shadow tracker
+//    sees every query on every render — the panel still sees an empty `queried` list when no
+//    permission was checked.
 //  - `ShadowContextWrapperPermissionTracker` — Robolectric shadow that intercepts
 //    `ContextWrapper.checkPermission(String, int, int)` so `ContextCompat.checkSelfPermission(...)`
 //    calls land in `PermissionsController.recordQuery`. The shadow forwards to the real

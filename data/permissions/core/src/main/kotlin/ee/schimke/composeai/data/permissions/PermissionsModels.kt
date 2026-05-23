@@ -23,11 +23,12 @@ object Material3PermissionsProduct {
  *   updates the `PermissionsController` accepted while a live preview is held. Permission names
  *   match the Android `Manifest.permission.*` constant strings (e.g.
  *   `"android.permission.CAMERA"`).
- * * [queried] lists the permissions the screen asked about during the captured frame — either via
- *   `ContextCompat.checkSelfPermission(...)` (intercepted by the connector's shadow on
- *   `ContextWrapper.checkPermission`) or via the explicit `LocalPermissionsHost.check(...)` opt-in
- *   helper. Order is insertion order so the panel can display queries in roughly the sequence the
- *   composition issued them. Permissions that were not yet queried at capture time do not appear.
+ * * [queried] lists the permissions the screen asked about during the captured frame, captured by
+ *   the connector's shadow on `ContextWrapper.checkPermission` — the union of every standard
+ *   Android check API (`ContextCompat.checkSelfPermission`, `Activity.checkSelfPermission`,
+ *   `Context.checkPermission`, accompanist's `rememberPermissionState`). Order is insertion order
+ *   so the panel can display queries in roughly the sequence the composition issued them.
+ *   Permissions that were not yet queried at capture time do not appear.
  */
 @Serializable
 data class PermissionsPayload(
