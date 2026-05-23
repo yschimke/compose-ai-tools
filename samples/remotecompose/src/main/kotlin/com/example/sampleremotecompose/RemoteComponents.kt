@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.remote.material3.RemoteButton
 import androidx.wear.compose.remote.material3.RemoteText
 import androidx.wear.compose.remote.material3.buttonSizeModifier
+import ee.schimke.composeai.daemon.LocalRemoteComposeHost
 
 /**
  * Pure-remote composables — each one is the kind of component a real Remote
@@ -63,6 +64,29 @@ fun RemoteButtonWithBorder() {
     ) {
         RemoteText("Bordered".rs)
     }
+}
+
+/**
+ * Reads its label from `LocalRemoteComposeHost.current.namedString("label", ...)` — the panel-side
+ * Remote Compose editor sets the `label` named value via
+ * `interactive/setRemoteCompose` / `renderNow.overrides.remoteCompose`, and the next render picks
+ * it up here. Without an override the default `"Tap me"` shows, so the preview is still a useful
+ * static screenshot in agent-driven `composePreviewRenderAll` runs.
+ *
+ * Demonstrates the consumer side of the named-value pipeline that
+ * `:data-remotecompose-connector` installs: every render brings `LocalRemoteComposeHost` into
+ * scope (the around-composable is always-on), so this read is safe even when no override has been
+ * sent yet.
+ */
+@Composable
+@RemoteComposable
+fun RemoteButtonWithNamedLabel() {
+  val label = LocalRemoteComposeHost.current.namedString("label", default = "Tap me")
+  RemoteButton(
+    onClick = testAction,
+    modifier = RemoteModifier.buttonSizeModifier(),
+    content = { RemoteText(label.rs) },
+  )
 }
 
 @Composable
