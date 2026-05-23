@@ -3,9 +3,7 @@
   "description": "Focused card with realistic history/diff/regions payload (three regions, ~12% of pixels changed from baseline). Activates the History bundle so the diff overlay paints each region, the side legend lists them with pixel-count subtitles, and the tab body renders the diff table with the baseline header.",
   "dataset": {
     "earlyFeatures": "true",
-    "collapseVariants": "false",
-    "minimalMode": "false",
-    "autoInject": "true"
+    "minimalMode": "false"
   },
   "messages": [
     {
