@@ -73,6 +73,10 @@ dependencies {
   // `:daemon:android` (the extension's source is pure Compose foundation/runtime — portable).
   // Activated by `renderNow.overrides.touchOverlay = true` or for live recording sessions.
   implementation(project(":data-touch-overlay-connector"))
+  // Launcher-widget container-size connector — same module Android consumes. The around-composable
+  // wraps the preview body in a sized `Box` matching the clamped whole-cell footprint, driven
+  // from `renderNow.overrides.launcherWidget`.
+  implementation(project(":data-launcher-widget-connector"))
   implementation(project(":data-recomposition-connector"))
   // Display-filter connector — `DisplayFilterDataProducer.writeArtifacts` runs the post-capture
   // pipeline and writes per-variant PNGs + the `displayfilter-variants.json` manifest after each

@@ -1379,6 +1379,12 @@ open class RobolectricHost(
                 // `renderNow.overrides.touchOverlay = true` so existing pixel-exact recordings
                 // stay byte-identical.
                 TouchOverlayPreviewOverrideExtension(),
+                // Launcher-widget container-size override. Plans an extension only when
+                // `renderNow.overrides.launcherWidget` is set; the around-composable wraps the
+                // preview in a sized `Box` matching the clamped whole-cell footprint. Snap-only
+                // today — the daemon-side resize-loop orchestrator that walks intermediate stops
+                // is tracked as a follow-up.
+                LauncherWidgetPreviewOverrideExtension(),
                 // Runtime pseudolocale: when `localeTag` is `en-XA` / `ar-XB`, wrap LocalContext
                 // with a Resources subclass that pseudolocalises `getString*` returns. The
                 // planner returns null for any other tag, so non-pseudo locales keep going through

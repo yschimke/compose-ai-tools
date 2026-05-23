@@ -119,6 +119,12 @@ dependencies {
   // shared JVM module works on both backends (no Android/desktop fork needed, unlike
   // `:data-keyboard-connector` which forks for Android-specific `WindowInsetsCompat`).
   implementation(project(":data-touch-overlay-connector"))
+  // Launcher-widget container-size connector — same shape as `:data-touch-overlay-connector`
+  // (single shared JVM module on both backends). `LauncherWidgetExtension` wraps the preview in
+  // a sized `Box` matching the clamped whole-cell footprint, driven from
+  // `renderNow.overrides.launcherWidget` via the planner registered in `RobolectricHost`'s
+  // `previewOverrideExtensions` list.
+  implementation(project(":data-launcher-widget-connector"))
   // Pseudolocale connector — `Pseudolocalizer` (en-XA / ar-XB transforms), `PseudolocaleResources`
   // / `PseudolocaleContext` runtime resource interception, and the
   // `PseudolocalePreviewOverrideExtension` planner mapped to `localeTag` in {en-XA, ar-XB}. No
