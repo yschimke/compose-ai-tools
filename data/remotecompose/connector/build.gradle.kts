@@ -106,6 +106,14 @@ dependencies {
   compileOnly(libs.compose.remote.creation)
   compileOnly(libs.compose.remote.creation.compose)
   compileOnly(libs.compose.remote.tooling.preview)
+  // Player-side APIs used by `RemoteOverridablePreview` to wire daemon-supplied named-value
+  // overrides into the running `RemoteComposePlayer` via its `StateUpdater`. Same `compileOnly`
+  // pattern as the creation deps above — only consumers that actually pull `compose-remote`
+  // light up the override path; everyone else gets a no-op classloader guard.
+  compileOnly(libs.compose.remote.player.compose)
+  compileOnly(libs.compose.remote.player.core)
+  compileOnly(libs.compose.remote.player.view)
+  testImplementation(libs.compose.remote.player.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)

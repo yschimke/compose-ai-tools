@@ -7,6 +7,7 @@ import androidx.compose.remote.tooling.preview.RemotePreview
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewWrapper
+import ee.schimke.composeai.daemon.RemoteOverridablePreview
 
 /**
  * Two ways to preview a Remote Compose component — same output, different
@@ -44,15 +45,17 @@ fun RemoteButtonWithShapePreview() {
 }
 
 /**
- * Companion preview for [RemoteButtonWithNamedLabel]. Default render shows
- * `"Tap me"`; the panel-side Remote Compose editor (or any caller passing
- * `renderNow.overrides.remoteCompose.namedValues = {"label": ...}`) swaps
- * that for a live label without rebuilding the document.
+ * Companion preview for [RemoteButtonWithNamedLabel]. Wrapped with
+ * [RemoteOverridablePreview] instead of plain `RemotePreview` so the
+ * connector-side named-value overrides reach the running player. Default
+ * render shows `"Tap me"`; the panel-side Remote Compose editor (or any
+ * caller passing `renderNow.overrides.remoteCompose.namedValues = {"label":
+ * ...}`) swaps that for a live label without rebuilding the document.
  */
 @Preview(showBackground = true, widthDp = 200, heightDp = 200)
 @Composable
 fun RemoteButtonWithNamedLabelPreview() {
-    RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+    RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
         Container { RemoteButtonWithNamedLabel() }
     }
 }

@@ -53,5 +53,10 @@ dependencies {
   implementation(libs.compose.remote.creation.compose)
   implementation(libs.wear.compose.remote.material3)
   implementation(libs.activity.compose)
+  // `RemoteOverridablePreview` bridges connector-side named-value overrides into the running
+  // Remote Compose player. Sample uses it in place of upstream `RemotePreview` so the panel
+  // editor's `renderNow.overrides.remoteCompose.namedValues` flips `rememberNamedRemoteString`
+  // bindings without rebuilding the document.
+  implementation(project(":data-remotecompose-connector"))
   debugImplementation(libs.compose.ui.tooling.prerelease)
 }
