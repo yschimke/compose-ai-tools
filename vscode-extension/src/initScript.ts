@@ -46,16 +46,24 @@ export function renderInitScript(
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so
 // AGP finalizeDsl / onVariants callbacks register before the DSL lock.
 //
-// Pre-applied detection: if any build file in the project tree declares the
-// plugin with a version — either literal \`id("...") version "..."\` or via
-// \`alias(libs.plugins.<x>)\` where the version catalog maps <x> to this
-// plugin id — we skip the buildscript classpath injection below. Gradle's
-// plugins {} DSL rejects \`id(...) version "..."\` when the same plugin is
-// also on the buildscript classpath ("the plugin is already on the
-// classpath with an unknown version, so compatibility cannot be checked"),
-// and the user's own declaration provides resolution via plugin marker
-// repos. The withPlugin hooks remain registered and no-op via the
-// plugins.hasPlugin(...) guard.
+// Pre-applied detection is *per project*: for each subproject whose build
+// file declares the plugin with a version — either literal
+// \`id("...") version "..."\` or via \`alias(libs.plugins.<x>)\` where the
+// version catalog maps <x> to this plugin id — we skip the buildscript
+// classpath injection for that project. Gradle's plugins {} DSL rejects
+// \`id(...) version "..."\` when the same plugin is also on the buildscript
+// classpath ("the plugin is already on the classpath with an unknown
+// version, so compatibility cannot be checked"), and the user's own
+// declaration provides resolution via plugin marker repos. Projects that
+// don't declare the plugin themselves still get the buildscript classpath
+// injection so the withPlugin / pluginManager.apply path can find the
+// plugin class — this is what mixed-shape multi-module projects need
+// (e.g. an \`:app\` module that applies the plugin via catalog alias, plus
+// a sibling \`:rc-components\` android-library module that doesn't; the
+// init script's withPlugin("com.android.library") hook fires in
+// rc-components too and the plugin must be resolvable from its buildscript
+// classpath). The withPlugin hooks in projects that already apply the
+// plugin no-op via the plugins.hasPlugin(...) guard.
 //
 // \`COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1\` opts the buildscript repos into
 // \`mavenLocal()\` — mirrors the CLI's AutoInject.kt behavior. Useful for
@@ -67,7 +75,7 @@ export function renderInitScript(
 val pluginVersion = "${pluginVersion}"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
-var composeAiPreviewPreApplied = false
+var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -119,24 +127,29 @@ fun composeAiPreviewStripComments(source: String): String {
 fun scanForComposeAiPreviewDeclaration(
     rootDir: java.io.File,
     projectDirs: List<java.io.File>,
-): Boolean {
+): Set<java.io.File> {
     val catalogAccessors = composeAiPreviewCatalogAccessors(rootDir)
     val literalVersionedRe = Regex(
         "\\\\bid\\\\s*[(\\\\s]\\\\s*[\\"']ee\\\\.schimke\\\\.composeai\\\\.preview[\\"']\\\\s*\\\\)?\\\\s*(?:\\\\.\\\\s*)?version\\\\b"
     )
+    val declared = LinkedHashSet<java.io.File>()
     for (dir in projectDirs) {
         for (name in listOf("build.gradle.kts", "build.gradle")) {
             val buildFile = java.io.File(dir, name)
             if (!buildFile.isFile) continue
             val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
             val text = composeAiPreviewStripComments(raw)
-            if (literalVersionedRe.containsMatchIn(text)) return true
-            for (re in catalogAccessors) {
-                if (re.containsMatchIn(text)) return true
+            if (literalVersionedRe.containsMatchIn(text)) {
+                declared.add(dir)
+                break
+            }
+            if (catalogAccessors.any { it.containsMatchIn(text) }) {
+                declared.add(dir)
+                break
             }
         }
     }
-    return false
+    return declared
 }
 
 gradle.settingsEvaluated {
@@ -146,7 +159,7 @@ gradle.settingsEvaluated {
         descriptor.children.forEach { collect(it) }
     }
     collect(rootProject)
-    composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+    composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -173,7 +186,7 @@ gradle.settingsEvaluated {
 }
 
 allprojects {
-    if (!composeAiPreviewPreApplied) {
+    if (projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             repositories {
                 gradlePluginPortal()

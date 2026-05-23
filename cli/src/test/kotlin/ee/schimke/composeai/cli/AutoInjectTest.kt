@@ -509,25 +509,49 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `init script gates the buildscript classpath injection on pre-applied detection`() {
+  fun `init script gates the buildscript classpath injection on per-project pre-applied detection`() {
+    // Regression for #305 (homeassistant-remotecompose): the original gate was a single global
+    // boolean, so a mixed-shape project where some modules declare the plugin via
+    // `alias(libs.plugins.compose.preview)` and others don't would skip buildscript injection
+    // *everywhere* and then `pluginManager.apply` from the withPlugin hooks would fail in the
+    // modules without the catalog alias ("Plugin with id 'ee.schimke.composeai.preview' not
+    // found."). The gate is now a per-project set of project directories that declare the
+    // plugin themselves.
     val script = renderInitScript("0.10.15")
     assertTrue(
-      script.contains("var composeAiPreviewPreApplied = false"),
-      "expected the pre-applied flag declaration",
+      script.contains("var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()"),
+      "expected the per-project pre-applied directory set declaration",
     )
     assertTrue(
       script.contains(
-        "composeAiPreviewPreApplied = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)"
+        "composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)"
       ),
-      "expected the flag to be set during settingsEvaluated",
+      "expected the set to be populated during settingsEvaluated",
     )
     assertTrue(
-      script.contains("if (!composeAiPreviewPreApplied) {"),
-      "expected the buildscript block to be guarded by the flag",
+      script.contains("if (projectDir !in composeAiPreviewPreAppliedDirs) {"),
+      "expected the buildscript block to be guarded per-project on the directory set",
     )
     assertTrue(
       script.contains("gradle/libs.versions.toml"),
       "expected the catalog accessor scanner to read libs.versions.toml so alias(...) declarations are detected",
+    )
+  }
+
+  @Test
+  fun `init script's scanForComposeAiPreviewDeclaration returns the matching project dirs`() {
+    // Pins the per-project return shape so a future refactor doesn't silently drop back to a
+    // global Boolean (which is the #305 regression mode).
+    val script = renderInitScript("1.0.0")
+    assertTrue(
+      script.contains(
+        "fun scanForComposeAiPreviewDeclaration(\n    rootDir: java.io.File,\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {"
+      ),
+      "expected scanForComposeAiPreviewDeclaration to return Set<File> of pre-applied project dirs",
+    )
+    assertFalse(
+      script.contains("): Boolean {\n    val catalogAccessors = composeAiPreviewCatalogAccessors"),
+      "expected scanForComposeAiPreviewDeclaration to no longer return a single global Boolean",
     )
   }
 
