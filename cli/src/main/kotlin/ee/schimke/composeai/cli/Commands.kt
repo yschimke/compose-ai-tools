@@ -2,8 +2,6 @@ package ee.schimke.composeai.cli
 
 import java.awt.image.BufferedImage
 import java.io.File
-import java.nio.ByteBuffer
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
@@ -387,17 +385,12 @@ abstract class Command(protected val args: List<String>) {
     printCapturedTestFailures(gradle.lastTestFailures())
   }
 
-  protected fun readManifest(module: PreviewModule): PreviewManifest? {
-    val manifestFile = module.projectDir.resolve("build/compose-previews/previews.json")
-    if (!manifestFile.exists()) return null
-    return json.decodeFromString(manifestFile.readText())
-  }
+  protected fun readManifest(module: PreviewModule): PreviewManifest? =
+    PreviewResultBuilder.readManifest(module)
 
   protected fun readAllManifests(
     modules: List<PreviewModule>
-  ): List<Pair<PreviewModule, PreviewManifest>> {
-    return modules.mapNotNull { module -> readManifest(module)?.let { module to it } }
-  }
+  ): List<Pair<PreviewModule, PreviewManifest>> = PreviewResultBuilder.readAllManifests(modules)
 
   /**
    * Per-CLI-invocation renderer set, built once and cached. Iterated by [buildResults] (via
@@ -436,193 +429,97 @@ abstract class Command(protected val args: List<String>) {
   }
 
   /**
-   * Reads PNGs for every capture of every manifest entry, hashes them, compares against the
-   * per-module sidecar state file to emit per-capture `changed`, and persists the new hashes.
-   * Sidecar lives under `build/compose-previews/` so it gets wiped on `./gradlew clean`.
+   * Per-capture result builder. Delegates the manifest → base-result transform (PNG glob, sha256,
+   * `@PreviewParameter` fan-out, data-product artefact captures) to [PreviewResultBuilder] from
+   * `:gradle-preview-driver`; layers the CLI-only concerns on top:
    *
-   * State is keyed `<id>` for the first capture (preserves legacy state files from before
-   * per-capture tracking) and `<id>#<n>` for subsequent captures of an animation/scroll fan-out.
+   * 1. [ImageSizeOverride] — resize PNGs in place when running inside a hosting agent that caps
+   *    image dimensions. Recomputes sha256 for files that actually got resized.
+   * 2. State-file diff — read the per-module `.cli-state.json`, fill `changed` per capture based on
+   *    the prior run's sha, write the new shas back. State key is `<id>` for the first capture
+   *    (preserves legacy state files from before per-capture tracking) and `<id>#<n>` for
+   *    subsequent captures of an animation / scroll / param fan-out.
+   * 3. Extension annotation — every registered [ExtensionReportRenderer] (today: a11y) loads its
+   *    sidecar JSON and layers per-preview data onto the result (populating both the new
+   *    `dataExtensions[ext]` carrier and the v1 deprecated `a11yFindings` field).
+   *
    * The top-level `pngPath` / `sha256` / `changed` on [PreviewResult] mirror the first capture
    * verbatim so existing agents keep working.
    */
   protected fun buildResults(
     manifests: List<Pair<PreviewModule, PreviewManifest>>
   ): List<PreviewResult> {
-    val results = mutableListOf<PreviewResult>()
+    val base = PreviewResultBuilder.build(manifests)
     val imageSizeOverride = ImageSizeOverride.detect()
     // Load every registered extension's sidecar JSON up-front; the per-row [annotateExtensions]
     // step below does pure lookups against the cached decoded state.
     loadExtensionReports(manifests)
 
-    for ((module, manifest) in manifests) {
+    // Group base results by module so per-module state-file I/O is one pass.
+    val moduleByPath = manifests.associate { (m, _) -> m.gradlePath to m }
+    val resultsByModule = base.groupBy { it.module }
+    val out = mutableListOf<PreviewResult>()
+    for ((modulePath, moduleResults) in resultsByModule) {
+      val module = moduleByPath[modulePath] ?: continue
       val prior = readState(module).shas
       val updated = mutableMapOf<String, String>()
-
-      // Files owned by non-parameterized siblings — exclude them from
-      // the `<stem>_*` glob so a `Foo_header.png` that belongs to a
-      // different preview never gets attributed to `Foo`'s fan-out.
-      val siblingRenderOutputs =
-        manifest.previews
-          .filter { it.params.previewParameterProviderClassName == null }
-          .flatMap { it.captures.map { c -> c.renderOutput } }
-          .filter { it.isNotEmpty() }
-          .toSet()
-
-      for (p in manifest.previews) {
-        // `@PreviewParameter`-driven previews render at
-        // `<stem>_<suffix>.<ext>`, one file per provider value. The
-        // manifest carries a single template capture; here we glob
-        // the actual fan-out and synthesize a `CaptureResult` per
-        // file on disk — keeps the manifest shape a pure discovery
-        // artifact while the CLI reports one entry per rendered PNG.
-        val captures =
-          if (p.params.previewParameterProviderClassName != null) {
-            p.captures.flatMap { capture ->
-              expandParamCaptures(module, capture, siblingRenderOutputs)
-            }
-          } else {
-            p.captures
-          }
-        val productCaptures = p.dataProducts.mapNotNull { it.asPreviewArtifactCapture(module) }
-        val resultCaptures =
-          if (captures.isSingleStaticCapture() && productCaptures.isNotEmpty()) {
-            productCaptures
-          } else {
-            captures + productCaptures
-          }
-        val captureResults = resultCaptures.mapIndexed { index, capture ->
-          val pngFile =
-            capture.renderOutput
-              .takeIf { it.isNotEmpty() }
-              ?.let { module.projectDir.resolve("build/compose-previews/$it").canonicalFile }
-              ?.takeIf { it.exists() }
-          val normalizedPngFile = pngFile?.let { applyImageSizeOverride(it, imageSizeOverride) }
-          val sha = normalizedPngFile?.let { previewSha256(it) }
-          val stateKey = if (index == 0) p.id else "${p.id}#$index"
-          if (sha != null) updated[stateKey] = sha
-          val priorSha = prior[stateKey]
-          val changed =
-            when {
-              sha == null -> null
-              priorSha == null -> true
-              else -> priorSha != sha
-            }
-          CaptureResult(
-            advanceTimeMillis = capture.advanceTimeMillis,
-            scroll = capture.scroll,
-            pngPath = normalizedPngFile?.absolutePath,
-            sha256 = sha,
-            changed = changed,
-          )
-        }
-        val first = captureResults.firstOrNull()
-        val baseResult =
-          PreviewResult(
-            id = p.id,
-            module = module.gradlePath,
-            functionName = p.functionName,
-            className = p.className,
-            sourceFile = p.sourceFile,
-            params = p.params,
-            captures = captureResults,
-            pngPath = first?.pngPath,
-            sha256 = first?.sha256,
-            changed = first?.changed,
-          )
-        // Layer every registered extension's data onto the row. Today only [A11yReportRenderer]
-        // contributes (it fills `a11yFindings` / `a11yAnnotatedPath`); adding a future renderer
-        // is a registry-entry change with no edits here.
-        results += annotateExtensions(baseResult, module)
+      for (result in moduleResults) {
+        val overlayed = applyImageOverrideAndStateDiff(result, prior, updated, imageSizeOverride)
+        out += annotateExtensions(overlayed, module)
       }
-
       writeState(module, CliState(updated))
     }
-    return results
+    return out
+  }
+
+  /**
+   * Apply [ImageSizeOverride] to each capture's PNG (resize in place if oversized; recompute sha256
+   * for resized files), then compute the `changed` flag per capture from the prior state sha.
+   * Mutates [updated] with the new shas to write back to the state file.
+   */
+  private fun applyImageOverrideAndStateDiff(
+    base: PreviewResult,
+    prior: Map<String, String>,
+    updated: MutableMap<String, String>,
+    imageSizeOverride: ImageSizeOverride,
+  ): PreviewResult {
+    // `applyImageSizeOverride` rewrites the file in place when it resizes, so the driver-computed
+    // sha is no longer trustworthy whenever an override is active. Recompute the sha across the
+    // module in that case; otherwise trust the driver's sha to avoid a redundant hash pass.
+    val overrideActive = imageSizeOverride.maxEdgePx != null
+    val captures =
+      base.captures.mapIndexed { index, capture ->
+        val pngFile = capture.pngPath?.let(::File)
+        val normalizedFile = pngFile?.let { applyImageSizeOverride(it, imageSizeOverride) }
+        val sha =
+          when {
+            normalizedFile == null -> null
+            overrideActive -> previewSha256(normalizedFile)
+            else -> capture.sha256
+          }
+        val stateKey = if (index == 0) base.id else "${base.id}#$index"
+        if (sha != null) updated[stateKey] = sha
+        val priorSha = prior[stateKey]
+        val changed =
+          when {
+            sha == null -> null
+            priorSha == null -> true
+            else -> priorSha != sha
+          }
+        capture.copy(pngPath = normalizedFile?.absolutePath, sha256 = sha, changed = changed)
+      }
+    val first = captures.firstOrNull()
+    return base.copy(
+      captures = captures,
+      pngPath = first?.pngPath,
+      sha256 = first?.sha256,
+      changed = first?.changed,
+    )
   }
 
   /** True if the preview has at least one capture with `changed = true`. */
   protected fun PreviewResult.anyChanged(): Boolean =
     captures.any { it.changed == true } || changed == true
-
-  private fun List<Capture>.isSingleStaticCapture(): Boolean =
-    size == 1 && single().advanceTimeMillis == null && single().scroll == null
-
-  private fun PreviewDataProduct.asPreviewArtifactCapture(module: PreviewModule): Capture? {
-    if (output.isBlank()) return null
-    val isImageOrAnimation =
-      mediaTypes.any { it.startsWith("image/") } ||
-        output.endsWith(".png") ||
-        output.endsWith(".gif")
-    if (!isImageOrAnimation) return null
-    if (!module.projectDir.resolve("build/compose-previews/$output").exists()) return null
-    return Capture(advanceTimeMillis = advanceTimeMillis, scroll = scroll, renderOutput = output)
-  }
-
-  /**
-   * Globs the on-disk `<stem>_<suffix>.<ext>` fan-out for a parameterized preview capture. The
-   * manifest carries one template capture (e.g. `renders/foo.png`); the renderer writes one file
-   * per provider value, keying each by a derived label (`renders/foo_on.png`) or by numeric index
-   * (`renders/foo_PARAM_0.png`) when the label can't be derived. Returns synthetic `Capture` rows
-   * pointing at each file, or an empty list when nothing matched — the plugin's
-   * `composePreviewRenderAll` verification already fails loudly when a parameterized preview
-   * rendered no files at all, so we don't duplicate the error surface here.
-   */
-  private fun expandParamCaptures(
-    module: PreviewModule,
-    template: Capture,
-    siblingRenderOutputs: Set<String>,
-  ): List<Capture> {
-    val rel =
-      template.renderOutput.ifEmpty {
-        return listOf(template)
-      }
-    val file = module.projectDir.resolve("build/compose-previews/$rel").canonicalFile
-    val dir = file.parentFile ?: return listOf(template)
-    val prefix = file.nameWithoutExtension + "_"
-    val ext = ".${file.extension}"
-    val templateDir = rel.substringBeforeLast('/', "")
-    val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
-    val matches =
-      (dir.listFiles() ?: emptyArray())
-        .filter { f ->
-          f.name.startsWith(prefix) &&
-            f.name.endsWith(ext) &&
-            (dirPrefix + f.name) !in siblingRenderOutputs
-        }
-        .sortedWith(paramFanoutOrder(prefix, ext))
-    if (matches.isEmpty()) return emptyList()
-    // Preserve the template's time/scroll coordinates — a parameterized
-    // preview is orthogonal to those dimensions. Each fan-out file
-    // points back at the same conceptual capture, just at a different
-    // provider value.
-    return matches.map { f ->
-      Capture(
-        advanceTimeMillis = template.advanceTimeMillis,
-        scroll = template.scroll,
-        renderOutput = dirPrefix + f.name,
-      )
-    }
-  }
-
-  /**
-   * Stable ordering for a fan-out's on-disk files. Numeric `_PARAM_<idx>` entries come first,
-   * sorted by index (so `PARAM_10` lands after `PARAM_2` rather than before it as lexicographic
-   * ordering would produce). Label-based entries sort alphabetically by their suffix — provider
-   * order isn't recoverable from the filename alone, but alphabetical is stable and readable.
-   */
-  private fun paramFanoutOrder(prefix: String, ext: String): Comparator<java.io.File> =
-    Comparator { a, b ->
-      val sa = a.name.removePrefix(prefix).removeSuffix(ext)
-      val sb = b.name.removePrefix(prefix).removeSuffix(ext)
-      val ia = sa.removePrefix("PARAM_").toIntOrNull()?.takeIf { sa.startsWith("PARAM_") }
-      val ib = sb.removePrefix("PARAM_").toIntOrNull()?.takeIf { sb.startsWith("PARAM_") }
-      when {
-        ia != null && ib != null -> ia.compareTo(ib)
-        ia != null -> -1
-        ib != null -> 1
-        else -> sa.compareTo(sb)
-      }
-    }
 
   /** Filters by `--id` / `--filter` and (optionally) `--changed-only`. */
   protected fun applyFilters(all: List<PreviewResult>): List<PreviewResult> = all.filter {
@@ -1091,10 +988,10 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
   }
 }
 
-private fun sha256(bytes: ByteArray): String {
-  val md = MessageDigest.getInstance("SHA-256")
-  return md.digest(bytes).joinToString("") { "%02x".format(it) }
-}
+// `sha256` / `previewSha256` / `gifBookendFrameSha256` carved out to `:gradle-preview-driver`
+// alongside `PreviewResultBuilder` — the same hash function the driver returns to external
+// consumers, so CLI state files stay compatible with contrib-side tooling. Re-imported from
+// the same package so existing callers (`PreviewSha256Test`, in-CLI usage) don't need to change.
 
 private data class ImageSizeOverride(val maxEdgePx: Int?) {
   companion object {
@@ -1148,56 +1045,6 @@ private fun applyImageSizeOverride(file: File, override: ImageSizeOverride): Fil
   return file
 }
 
-/**
- * Hash used for change detection of a rendered preview file.
- *
- * For PNGs (the common case) this is just sha256 of the file bytes — the renderer is deterministic
- * so the encoded bytes are stable across runs.
- *
- * For GIFs (`@ScrollingPreview(modes = [GIF])` output) we instead hash the first and last frames'
- * pixels. The scripted scroll walk reads `liveRemaining` from a `LazyColumn` mid-walk, so
- * progressive item materialisation produces a slightly different frame sequence on every run — and
- * therefore a different encoded GIF — even when the source composable hasn't changed (issue #209).
- * The bookend frames are the hold-start dwell at scroll position 0 and the settled hold-end at
- * content end, both of which are stable for fixed source content. Mid-scroll frames are ignored, so
- * changes that only manifest while scrolling won't show as Changed.
- */
-internal fun previewSha256(file: File): String =
-  if (file.extension.equals("gif", ignoreCase = true)) {
-    gifBookendFrameSha256(file) ?: sha256(file.readBytes())
-  } else {
-    sha256(file.readBytes())
-  }
-
-/** Hash a GIF's first + last frames as `(w:int)(h:int)(pixels:int[w*h])` ARGB bytes per frame. */
-private fun gifBookendFrameSha256(file: File): String? {
-  val reader = ImageIO.getImageReadersByFormatName("gif").asSequence().firstOrNull() ?: return null
-  return try {
-    ImageIO.createImageInputStream(file).use { stream ->
-      reader.input = stream
-      val numFrames = reader.getNumImages(true)
-      if (numFrames <= 0) return null
-      val first = reader.read(0) ?: return null
-      val last = if (numFrames == 1) first else reader.read(numFrames - 1) ?: return null
-      sha256(framesToBytes(listOf(first, last)))
-    }
-  } catch (_: Exception) {
-    null
-  } finally {
-    reader.dispose()
-  }
-}
-
-private fun framesToBytes(frames: List<BufferedImage>): ByteArray {
-  val totalPixels = frames.sumOf { it.width * it.height }
-  val buffer = ByteBuffer.allocate(frames.size * 8 + totalPixels * 4)
-  for (img in frames) {
-    val w = img.width
-    val h = img.height
-    val pixels = img.getRGB(0, 0, w, h, null, 0, w)
-    buffer.putInt(w)
-    buffer.putInt(h)
-    for (p in pixels) buffer.putInt(p)
-  }
-  return buffer.array()
-}
+// `previewSha256`, `gifBookendFrameSha256`, `framesToBytes`, `sha256` carved out to
+// `:gradle-preview-driver/PreviewSha256.kt`. Same package, same callers, just lives in the
+// driver module now so contrib consumers get the same change-detection hash.

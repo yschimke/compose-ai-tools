@@ -48,11 +48,19 @@ include(":cli")
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
 // third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling
 // API + scripting closure. Step A of the clean-API carve-out — issue #1084 / docs/AGENTS.md
-// "Built-in scripts" / clean-API discussion. The eventual `:gradle-preview-driver` (step B) will
-// sit alongside this and expose the render pipeline as a library.
+// "Built-in scripts" / clean-API discussion.
 include(":preview-data-api")
 
 project(":preview-data-api").projectDir = file("preview-data-api")
+
+// Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
+// lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
+// external consumers (contrib scripting, third-party tooling) can render previews and read the
+// result without taking a dependency on `:cli`. The CLI's own commands are refactored to drive
+// this library, keeping a single source of truth.
+include(":gradle-preview-driver")
+
+project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
 
 // Kotlin scripting host for `compose-preview script <path.composepreview.kts>`.
 //
