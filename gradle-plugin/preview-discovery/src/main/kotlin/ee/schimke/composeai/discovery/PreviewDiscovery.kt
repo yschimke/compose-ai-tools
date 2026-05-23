@@ -140,6 +140,15 @@ object PreviewDiscovery {
   // from a synthetic `GlanceAppWidget.providePreview(...)` at render time.
   internal const val GLANCE_APPWIDGET_PREVIEW_FQN = "androidx.glance.preview.Preview"
 
+  // `@LauncherWidgetResize` — fan-out annotation that emits one capture per whole-cell stop on
+  // the walk between source and target sizes. The renderer renders each stop through the same
+  // `LauncherWidgetExtension` the single-shot `@LauncherWidgetPreview` annotation uses. The
+  // discovery side computes the stops inline via `launcherWidgetResizeStops(...)` below — the
+  // canonical algorithm lives in `:data-launcher-widget-connector`'s `launcherWidgetStops(...)`
+  // but the gradle plugin can't depend on the connector at discovery time.
+  internal const val LAUNCHER_WIDGET_RESIZE_FQN =
+    "ee.schimke.composeai.preview.LauncherWidgetResize"
+
   // failOnEmpty diagnostics: cap the JAR + annotation FQN sample sizes
   // so the lifecycle log stays readable on projects with huge classpaths.
   private const val DIAG_JAR_SAMPLE = 15
@@ -594,6 +603,7 @@ object PreviewDiscovery {
     val focusGifSpec = extractFocusGifSpec(annotations)
     val ambientSpec = extractAmbientSpec(annotations)
     val launcherWidgetSpec = extractLauncherWidgetSpec(annotations)
+    val launcherWidgetResizeSpec = extractLauncherWidgetResizeSpec(annotations)
     // @RoboComposePreviewOptions, similarly, applies to the function as a
     // whole — each timing fans out into its own manifest entry, orthogonal
     // to any multi-preview expansion.
@@ -656,6 +666,7 @@ object PreviewDiscovery {
             focusGifSpec,
             ambientSpec,
             launcherWidgetSpec,
+            launcherWidgetResizeSpec,
             timings,
             previewParameter,
             previewSourceFile,
@@ -679,6 +690,7 @@ object PreviewDiscovery {
           focusGifSpec,
           ambientSpec,
           launcherWidgetSpec,
+          launcherWidgetResizeSpec,
           timings,
           previewParameter,
           previewSourceFile,
@@ -817,6 +829,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     launcherWidget: LauncherWidgetCapture?,
+    launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
   ): PreviewOutputPlan {
     val isTile = ann.name == TILE_PREVIEW_FQN
@@ -849,6 +862,39 @@ object PreviewDiscovery {
     // non-composable previews have no Compose layout pass to wrap. The override is also dropped
     // for tile / notification renders.
     val effectiveLauncherWidget = if (nonComposable) null else launcherWidget
+    val effectiveLauncherWidgetResize = if (nonComposable) null else launcherWidgetResize
+
+    // `@LauncherWidgetResize` owns the capture list when present — it walks N whole-cell stops
+    // between source and target sizes and emits one PNG per stop. Coexisting with the standard
+    // scroll / time / focus fan-out doesn't make sense (a resize walk is its own dimensional
+    // axis), so the resize captures fully replace the regular capture grid. focusGif /
+    // animation GIFs still fan out independently — the resize annotation isn't meant to combine
+    // with those either, but if a consumer stacks them the GIFs come out alongside the resize
+    // PNGs with their existing suffixes.
+    if (effectiveLauncherWidgetResize != null) {
+      val stops =
+        launcherWidgetResizeStops(
+          from = effectiveLauncherWidgetResize.from,
+          to = effectiveLauncherWidgetResize.to,
+          order = effectiveLauncherWidgetResize.resizeOrder,
+        )
+      val resizeCaptures = stops.map { (w, h) ->
+        Capture(
+          launcherWidget =
+            LauncherWidgetCapture(
+              width = w,
+              height = h,
+              cellSizeDp = effectiveLauncherWidgetResize.cellSizeDp,
+              cellSpacingDp = effectiveLauncherWidgetResize.cellSpacingDp,
+              resizeOrder = effectiveLauncherWidgetResize.resizeOrder,
+            ),
+          ambient = effectiveAmbient,
+          renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
+          cost = STATIC_COST,
+        )
+      }
+      return PreviewOutputPlan(captures = resizeCaptures, dataProducts = emptyList())
+    }
 
     // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
     // function. When one is paired with anything else on the same function — scroll/time
@@ -1152,6 +1198,100 @@ object PreviewDiscovery {
   }
 
   /**
+   * Walking-state for a `@LauncherWidgetResize` annotation: the source / target cell counts plus
+   * the shared cell-grid knobs every stop on the walk inherits. The cell-bound clamp from
+   * `@LauncherWidgetPreview` is intentionally absent — `@LauncherWidgetResize` is point-to-point
+   * (from explicitly given), not slider-style.
+   */
+  private data class LauncherWidgetResizeSpec(
+    val from: Pair<Int, Int>,
+    val to: Pair<Int, Int>,
+    val cellSizeDp: Int?,
+    val cellSpacingDp: Int?,
+    val resizeOrder: LauncherWidgetCaptureResizeOrder,
+    val frameDelayMs: Int,
+  )
+
+  /**
+   * Whole-cell stops on the walk between `from` and `to` under [order]. Algorithm copy of
+   * `:data-launcher-widget-connector`'s `launcherWidgetStops(...)` — the gradle plugin can't depend
+   * on the connector at discovery time, so the algorithm is duplicated here. Keep in sync with the
+   * connector if the underlying behaviour ever changes.
+   */
+  private fun launcherWidgetResizeStops(
+    from: Pair<Int, Int>,
+    to: Pair<Int, Int>,
+    order: LauncherWidgetCaptureResizeOrder,
+  ): List<Pair<Int, Int>> {
+    if (from == to) return listOf(from)
+    return when (order) {
+      LauncherWidgetCaptureResizeOrder.Diagonal -> {
+        val dw = to.first - from.first
+        val dh = to.second - from.second
+        val n = maxOf(kotlin.math.abs(dw), kotlin.math.abs(dh))
+        (0..n).map { i ->
+          val w = from.first + Math.round(dw.toDouble() * i / n).toInt()
+          val h = from.second + Math.round(dh.toDouble() * i / n).toInt()
+          w to h
+        }
+      }
+      LauncherWidgetCaptureResizeOrder.WidthFirst -> {
+        val stops = mutableListOf(from)
+        walkAxis(from.first, to.first) { w -> stops.add(w to from.second) }
+        walkAxis(from.second, to.second) { h -> stops.add(to.first to h) }
+        stops
+      }
+      LauncherWidgetCaptureResizeOrder.HeightFirst -> {
+        val stops = mutableListOf(from)
+        walkAxis(from.second, to.second) { h -> stops.add(from.first to h) }
+        walkAxis(from.first, to.first) { w -> stops.add(w to to.second) }
+        stops
+      }
+    }
+  }
+
+  private inline fun walkAxis(from: Int, to: Int, emit: (Int) -> Unit) {
+    if (from == to) return
+    val step = if (to > from) 1 else -1
+    var v = from
+    while (v != to) {
+      v += step
+      emit(v)
+    }
+  }
+
+  /**
+   * Reads `@LauncherWidgetResize(fromWidth, fromHeight, toWidth, toHeight, ...)` off the function
+   * annotation list. Returns a single [LauncherWidgetResizeSpec] when present, `null` otherwise.
+   */
+  private fun extractLauncherWidgetResizeSpec(
+    annotations: List<AnnotationInfo>
+  ): LauncherWidgetResizeSpec? {
+    val ann = annotations.firstOrNull { it.name == LAUNCHER_WIDGET_RESIZE_FQN } ?: return null
+    val pv = ann.parameterValues
+    val fromWidth = (pv.getValue("fromWidth") as? Int) ?: return null
+    val fromHeight = (pv.getValue("fromHeight") as? Int) ?: return null
+    val toWidth = (pv.getValue("toWidth") as? Int) ?: return null
+    val toHeight = (pv.getValue("toHeight") as? Int) ?: return null
+    fun optionalInt(name: String): Int? = (pv.getValue(name) as? Int)?.takeIf { it >= 0 }
+    val orderName =
+      (pv.getValue("resizeOrder") as? AnnotationEnumValue)?.valueName
+        ?: LauncherWidgetCaptureResizeOrder.WidthFirst.name
+    val order =
+      runCatching { LauncherWidgetCaptureResizeOrder.valueOf(orderName) }
+        .getOrDefault(LauncherWidgetCaptureResizeOrder.WidthFirst)
+    val frameDelay = (pv.getValue("frameDelayMs") as? Int)?.coerceAtLeast(0) ?: 600
+    return LauncherWidgetResizeSpec(
+      from = fromWidth to fromHeight,
+      to = toWidth to toHeight,
+      cellSizeDp = optionalInt("cellSizeDp"),
+      cellSpacingDp = optionalInt("cellSpacingDp"),
+      resizeOrder = order,
+      frameDelayMs = frameDelay,
+    )
+  }
+
+  /**
    * Reads `@LauncherWidgetPreview(width, height, cellSizeDp, cellSpacingDp, minWidth, …)` off the
    * function annotation list. Returns a single [LauncherWidgetCapture] when present, `null`
    * otherwise. Mirrors `extractAmbientSpec` — single-shot per function, applied to every preview
@@ -1349,6 +1489,7 @@ object PreviewDiscovery {
     focusGif: FocusGifCapture?,
     ambient: AmbientCapture?,
     launcherWidget: LauncherWidgetCapture?,
+    launcherWidgetResize: LauncherWidgetResizeSpec?,
     timings: List<Long>,
     previewParameter: Pair<String, Int>?,
     previewSourceFile: String?,
@@ -1368,6 +1509,7 @@ object PreviewDiscovery {
         focusGif,
         ambient,
         launcherWidget,
+        launcherWidgetResize,
         timings,
       )
     // Tile / notification previews don't go through @Composable invocations — they return a

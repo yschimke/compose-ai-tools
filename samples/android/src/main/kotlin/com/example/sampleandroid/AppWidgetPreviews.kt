@@ -33,6 +33,8 @@ import androidx.glance.preview.Preview as GlancePreview
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider as GlanceFixedColorProvider
 import ee.schimke.composeai.preview.LauncherWidgetPreview
+import ee.schimke.composeai.preview.LauncherWidgetResize
+import ee.schimke.composeai.preview.LauncherWidgetResizeOrder
 import ee.schimke.composeai.preview.glance.GlanceAppWidgetContent
 
 // ---------------------------------------------------------------------------
@@ -256,6 +258,31 @@ fun LauncherWidgetClampedPreview() {
   AppWidgetContent { context ->
     RemoteViews(context.packageName, R.layout.widget_weather).apply {
       setTextViewText(R.id.widget_title, "Clamped → 4×5")
+      setTextViewText(R.id.widget_temperature, "67°")
+      setTextViewText(R.id.widget_condition, "Partly cloudy")
+    }
+  }
+}
+
+/**
+ * The original spec's `1×1 → 4×2` resize walk. `@LauncherWidgetResize` fans the function out into
+ * one capture per whole-cell stop (`1×1, 2×1, 3×1, 4×1, 4×2` under the default `WidthFirst`
+ * order); PNGs land at `renders/<id>_RESIZE_<w>x<h>.png` and can be flipped through like a
+ * flipbook. A future Phase-B stitch will encode them into an animated GIF.
+ */
+@Preview(name = "Launcher widget — resize 1×1 → 4×2", widthDp = 312, heightDp = 152, showBackground = true)
+@LauncherWidgetResize(
+  fromWidth = 1,
+  fromHeight = 1,
+  toWidth = 4,
+  toHeight = 2,
+  resizeOrder = LauncherWidgetResizeOrder.WidthFirst,
+)
+@Composable
+fun LauncherWidgetResize1x1To4x2Preview() {
+  AppWidgetContent { context ->
+    RemoteViews(context.packageName, R.layout.widget_weather).apply {
+      setTextViewText(R.id.widget_title, "Resize walk")
       setTextViewText(R.id.widget_temperature, "67°")
       setTextViewText(R.id.widget_condition, "Partly cloudy")
     }
