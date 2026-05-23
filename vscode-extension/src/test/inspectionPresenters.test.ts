@@ -6,6 +6,7 @@ import {
     computeInspectionBundleData,
     type InspectionKind,
 } from "../webview/preview/inspectionPresenters";
+import { flushMicrotasks, stubClipboard } from "./helpers/clipboard";
 
 describe("computeInspectionBundleData (cardBundleOverlay path)", () => {
     afterEach(() => {
@@ -172,5 +173,44 @@ describe("computeInspectionBundleData (cardBundleOverlay path)", () => {
         );
         assert.strictEqual(data.overlay.length, 0);
         assert.strictEqual(data.sections.length, 0);
+    });
+
+    it("wires a 'Copy as selector' row action on uia/hierarchy rows", async () => {
+        const payload = {
+            nodes: [
+                {
+                    text: "Submit",
+                    testTag: "submit",
+                    boundsInScreen: "0,0,100,40",
+                    actions: ["click"],
+                },
+                {
+                    text: "Cancel",
+                    testTag: "cancel",
+                    boundsInScreen: "0,40,100,80",
+                    actions: ["click"],
+                },
+            ],
+        };
+        const captured = stubClipboard();
+        try {
+            const data = computeInspectionBundleData(
+                (kind) => (kind === "uia/hierarchy" ? payload : undefined),
+                new Set<InspectionKind>(["uia/hierarchy"]),
+            );
+            const rows = data.sections[0].data.body.querySelectorAll(
+                "tbody tr[data-legend-id]",
+            );
+            assert.strictEqual(rows.length, 2);
+            const actBtn = rows[0].querySelector<HTMLButtonElement>(
+                ".inspection-tree-action-btn",
+            );
+            assert.ok(actBtn, "row action button missing");
+            actBtn!.click();
+            await flushMicrotasks();
+            assert.strictEqual(captured.text, 'By.testTag("submit")');
+        } finally {
+            captured.restore();
+        }
     });
 });

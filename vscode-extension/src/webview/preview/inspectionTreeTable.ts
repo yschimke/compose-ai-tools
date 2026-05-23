@@ -288,7 +288,7 @@ function setExpanded(
  * unavailable (older webviews / non-secure contexts). Failures swallow
  * silently — the button has no visible result anyway.
  */
-async function copyToClipboard(text: string): Promise<void> {
+export async function copyToClipboard(text: string): Promise<void> {
     try {
         const nav = (globalThis as { navigator?: Navigator }).navigator;
         if (nav?.clipboard?.writeText) {
