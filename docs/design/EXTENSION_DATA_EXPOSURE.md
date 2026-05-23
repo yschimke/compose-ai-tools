@@ -1,8 +1,11 @@
 # Exposing data-extension output in the VS Code preview panel
 
-Working design for surfacing every data extension's output in the
-"Compose Preview" webview through one consistent shell, plus a per-kind
-catalogue of how each extension should present its data.
+The shipped panel shell exposes every data extension's output through
+one consistent UI, plus a per-kind catalogue of how each extension
+presents its data. The original design landed across #1054 and its
+cluster migrations (#1066, #1068, #1069, #1075–#1081, #1086, #1087,
+#1090, #1092, #1093, #1095, #1096, #1097, #1099, #1100, #1102, #1103);
+remaining follow-throughs are tracked in #1104.
 
 ## Goals
 
@@ -104,7 +107,7 @@ Decisions:
    fold. Once enabled, a kind earns a tab and moves to the front.
 6. **Each enabled data extension owns one tab.** Two enabled = two
    tabs, in the order they were enabled. Tab order is sticky per
-   scope (re-uses the MRU machinery in `focusInspector.ts`).
+   scope.
 7. **Active tab body is a table, not a `<details>`.** No
    click-to-expand for the default view — the data the user just
    asked for must be on screen.
@@ -129,35 +132,32 @@ For each bundle:
 | OFF via chip re-press | tab removed; if it was active, the next-most-recent active tab takes over (or no tab row if it was the last) | cleared |
 | OFF via tab `×` | identical to chip re-press | cleared |
 
-This is the **missing affordance** in today's panel: once a kind's
-overlay paints, the only way to dismiss it is to scroll back to the
-focus-inspector chip row and toggle it off — easy to miss. The tab's
-own `×` + the chip's toggle-off behaviour are redundant on purpose so
-the dismissal path is always visible from wherever the user's eye lands.
+The tab's own `×` and the chip's toggle-off behaviour are redundant on
+purpose: the dismissal path is always visible from wherever the user's
+eye lands. The pre-#1054 panel had only the chip-row toggle, which sat
+below the preview grid and was easy to miss once a kind's overlay was
+painting.
 
 ### Standardising overlay + legend
 
-Today `focusPresentation.ts` already defines the four surfaces a
-presenter can contribute to (overlay / legend / report / error). The
-proposal is:
+The shipped shell standardises two in-card surfaces — **overlay**
+(tinted box on the image) and **legend** (sidecar list correlated by
+`data-overlay-id` / `data-legend-id`) — plus the **table tab** that
+replaces what the pre-shell focus inspector called the "report"
+surface. The previous four-surface presenter framework
+(`focusPresentation.ts` and friends) was retired in #1349 once every
+runtime caller had migrated to the bundle shell.
 
-- Drop "report" as a primary surface; promote it into the **table tab**
-  surface managed by the panel shell.
-- Keep **overlay** (tinted box on the image) and **legend** (sidecar
-  list correlated by `data-overlay-id` / `data-legend-id`) as the
-  in-card surfaces. These are what `legendArrow.ts` already wires up.
-- Provide one shared `BoxOverlay` primitive that takes
-  `{ id, bounds, level?, color? }[]` and a matching `Legend` primitive
-  that takes `{ id, label, detail?, level? }[]`. Presenters that fit
-  the bounds-on-image model use these instead of hand-rolling DOM.
-  Presenters that don't (e.g. fonts, theme tokens, ambient state) skip
-  the overlay surface and only contribute a table.
-
-This is what most of the new per-kind issues need: their data already
-has bounds (`text/strings`, `resources/used`, `layout/inspector`,
-`compose/semantics`, `a11y/touchTargets`, `uia/hierarchy`,
-`history/diff/regions`) so they can ride the shared `BoxOverlay`
-without each writing their own DOM.
+- Bundles that fit the bounds-on-image model paint through the shared
+  `<box-overlay>` Lit component (`{ id, bounds, level?, tooltip? }[]`)
+  and the shared `<bundle-legend>` (`{ id, label, detail?, level? }[]`)
+  rather than hand-rolling DOM. The data already has bounds for
+  `text/strings`, `resources/used`, `layout/inspector`,
+  `compose/semantics`, `a11y/touchTargets`, `uia/hierarchy`, and
+  `history/diff/regions`.
+- Bundles whose data has no bounds-on-image model (fonts, theme
+  tokens, ambient state) skip the overlay surface and only contribute
+  a table.
 
 ## Per-extension presentation notes
 
@@ -313,35 +313,42 @@ Cluster: **Text / i18n**.
 
 ## Cluster summary
 
-Each cluster matches a **bundle** above, and gets its own tracking
-issue. Cluster A is the framework prerequisite for everything but the
-simplest swatch-only presenters.
+Each cluster matches a **bundle** above. Cluster A — the panel shell —
+was the framework prerequisite for everything but the simplest
+swatch-only presenters; it landed in #1054 and the subsequent
+cluster-specific PRs (listed at the top of this doc) migrated each
+bundle off the pre-shell focus inspector.
 
-| Cluster | Bundle | Kinds | Existing issues |
-|---|---|---|---|
-| A | Panel shell — bundle chips, tabs, table, Copy JSON, shared overlay/legend primitive, "More" tab | (framework) | — |
-| B | A11y | `a11y/atf`, `a11y/hierarchy`, `a11y/touchTargets`, `a11y/overlay` | #1010 |
-| C | Theming | `compose/theme`, `compose/wallpaper` | — |
-| D | Text / i18n | `fonts/used`, `text/strings`, `i18n/translations`, pseudolocale | — |
-| E | Resources | `resources/used` | — |
-| F | Inspection | `layout/inspector`, `compose/semantics`, `uia/hierarchy` | — |
-| G | Performance | `compose/recomposition`, `render/trace`, `render/composeAiTrace` | #1046, #1047 |
-| H | Misc — Display / Ambient / History-diff / Errors | `displayfilter/*`, `compose/ambient`, `history/diff/regions`, `test/failure` | — |
+| Cluster | Bundle | Kinds |
+|---|---|---|
+| A | Panel shell — bundle chips, tabs, table, Copy JSON, shared overlay/legend primitive, "More" tab | (framework) |
+| B | A11y | `a11y/atf`, `a11y/hierarchy`, `a11y/touchTargets`, `a11y/overlay` |
+| C | Theming | `compose/theme`, `compose/wallpaper` |
+| D | Text / i18n | `fonts/used`, `text/strings`, `i18n/translations`, pseudolocale |
+| E | Resources | `resources/used` |
+| F | Inspection | `layout/inspector`, `compose/semantics`, `uia/hierarchy` |
+| G | Performance | `compose/recomposition`, `render/trace`, `render/composeAiTrace` |
+| H | Misc — Display / Ambient / History-diff / Errors | `displayfilter/*`, `compose/ambient`, `history/diff/regions`, `test/failure` |
 
-## Open questions
+## Deferred work
 
-1. **Multi-preview selection.** The current panel renders many cards
-   simultaneously. Does a kind's tab show the union across all
-   visible previews, or scope to the focused preview only? Default:
-   focused preview; fall back to "all visible" when no card is
-   focused.
-2. **Persistence.** Per-scope MRU of which kinds had tabs open
-   (re-use the focus-inspector MRU keying), so re-opening a panel
-   re-restores the layout.
-3. **Tab overflow.** If the user enables 6+ kinds, do tabs scroll
-   horizontally or collapse to a `…` overflow menu? Lean toward
-   horizontal scroll + a "Pin" affordance.
-4. **Copy JSON shape.** Whole-payload (scoped to the preview the user
-   is viewing) vs the table-as-rendered (post-sort, post-filter).
-   Default: whole-payload, since agents are the dominant Copy JSON
-   audience and they want the wire shape.
+Polish and follow-throughs remaining after the shell + cluster
+migrations landed are tracked in **#1104** — that issue is the
+authoritative punch list (per-bundle UX gaps, framework cleanup,
+e2e + smoke tests, doc refreshes).
+
+The original open-questions list resolved as follows:
+
+1. **Multi-preview selection.** Settled: each bundle scopes to the
+   focused preview. `bundleChipBar` and `<data-tabs>` are hidden
+   outside focus layout (`focusController.applyLayout`), so the
+   bundles never act on an ambient grid selection.
+2. **Persistence.** Chip-on/off, per-bundle enabled-kinds, and the
+   active tab persist via the panel's `vscode.setState`
+   `PersistedState` snapshot (`bundles` field) — survives panel
+   hide/show.
+3. **Tab overflow.** Still open. The data tab strip is a plain flex
+   row with no pin / overflow affordance yet. See #1104 if you pick
+   this up.
+4. **Copy JSON shape.** Settled: whole-payload (scoped to the focused
+   preview), matching agent consumers' need for the wire shape.
