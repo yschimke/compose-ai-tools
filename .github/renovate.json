@@ -58,6 +58,29 @@
       "allowedVersions": "/^4\\.0\\./"
     },
     {
+      "description": "androidx.core:core: pin to the 1.13.x line. `:data-keyboard-connector` declares this as a `compileOnly` compat floor so the published AAR's bytecode stays binary-backward-compatible with consumers on older `androidx.core` lines (same rationale as `compose-foundation` via `compose-bom-compat`). Raising the floor is a manual decision.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchDepNames": [
+        "androidx.core:core"
+      ],
+      "matchCurrentValue": "/^1\\.13\\./",
+      "allowedVersions": "/^1\\.13\\./"
+    },
+    {
+      "description": "compose-multiplatform: pin to the 1.10.x line. `:data-render-compose` exposes `org.jetbrains.compose.{runtime,ui}` as `api` on a published artifact, so the Compose Multiplatform version is part of the supported-minimum floor for consumers. 1.11.0 ships ABI-breaking changes (non-Android `Shader` becomes a Compose wrapper type, `NativePaint`/`NativeCanvas` typealiases deprecated, `Paint.asFrameworkPaint`/`Canvas.nativeCanvas` replaced) and bumps the required Kotlin language/API to 2.2 — raising the floor is a manual decision. Keep `samples/cmp-shared`'s explicit `ui-tooling-preview` coord in lockstep so the plugin's compose-runtime compatibility check stays happy.",
+      "matchManagers": [
+        "gradle"
+      ],
+      "matchPackageNames": [
+        "org.jetbrains.compose",
+        "org.jetbrains.compose{/,}**"
+      ],
+      "matchCurrentValue": "/^1\\.10\\./",
+      "allowedVersions": "/^1\\.10\\./"
+    },
+    {
       "description": "VS Code API floor declarations — bumping these drops support for older editors, must be a manual decision.",
       "matchFileNames": [
         "vscode-extension/package.json"
