@@ -7,6 +7,10 @@
 export interface ManifestIconMatch {
     /** Byte offset of the matched attribute within the document text. */
     offset: number;
+    /** Total length of the matched attribute (`android:icon="@drawable/foo"`), so callers can
+     *  build a Range that covers the whole attribute — important for the hover provider, which
+     *  fires anywhere within the attribute span rather than only at the `android:` prefix. */
+    length: number;
     /** Local attribute name without the `android:` prefix — `icon` / `roundIcon` / `logo` / `banner`. */
     attribute: "icon" | "roundIcon" | "logo" | "banner";
     /** `drawable` or `mipmap`. */
@@ -33,6 +37,7 @@ export function findManifestIconReferences(text: string): ManifestIconMatch[] {
     while ((match = re.exec(text)) !== null) {
         out.push({
             offset: match.index,
+            length: match[0].length,
             attribute: match[1] as ManifestIconMatch["attribute"],
             resourceType: match[3] as ManifestIconMatch["resourceType"],
             resourceName: match[4],
