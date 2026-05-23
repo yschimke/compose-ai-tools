@@ -354,7 +354,7 @@ fun main(args: Array<String>) {
           // `compose/permissions` payload (effective grant map + permissions the screen has
           // queried). The actual planner lives in `RobolectricHost`'s
           // `previewOverrideExtensions` list — same wiring shape as keyboard / focus — so the
-          // around-composable's `LocalPermissionsHost` is in place even when no client has
+          // controller seed + shadow-tracker hookup are in place even when no client has
           // explicitly enabled this extension. `dataExtensionDescriptors` advertises the planner
           // so panel / MCP clients can gate their permission-override UI on the daemon actually
           // shipping it.

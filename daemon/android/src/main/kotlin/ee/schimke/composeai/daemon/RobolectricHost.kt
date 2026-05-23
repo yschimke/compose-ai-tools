@@ -1355,11 +1355,11 @@ open class RobolectricHost(
                 // `KeyboardController` state holder.
                 KeyboardPreviewOverrideExtension(),
                 // Runtime-permissions override + tracker. Planner always emits the extension so
-                // `LocalPermissionsHost` is in scope on every render and screens consulting it
-                // (or whose `ContextCompat.checkSelfPermission(...)` calls land in
-                // `ShadowContextWrapperPermissionTracker`) reach the controller's recordQuery
-                // path. `renderNow.overrides.permissions.grants` flips the effective
-                // `ShadowApplication` grant state and the `LocalPermissionsHost` snapshot map.
+                // every screen's `ContextCompat.checkSelfPermission(...)` (or any standard Android
+                // check API) lands in `ShadowContextWrapperPermissionTracker` and reaches the
+                // controller's recordQuery path. `renderNow.overrides.permissions.grants` flips
+                // the effective `ShadowApplication` grant state so the next platform check reads
+                // the requested value.
                 PermissionsPreviewOverrideExtension(),
                 // Touch-event visualization overlay. Mirrors `DesktopHost`'s registration — same
                 // `TouchOverlayPreviewOverrideExtension` planner from the shared
