@@ -9,8 +9,10 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.os.Build
+import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.NotificationCompat
@@ -24,8 +26,9 @@ import ee.schimke.composeai.preview.notification.NotificationContent
  * notification surface render correctly*, not how many variants of one notification we produce.
  *
  * Covers the surfaces real apps mostly ship: Messaging (Signal / WhatsApp / Discord),
- * Inbox-summary (Gmail), `BigPictureStyle` (camera / share notifications), and actions
- * (reply / dismiss button row).
+ * Inbox-summary (Gmail), `BigPictureStyle` (camera / share notifications), actions
+ * (reply / dismiss button row), `MediaStyle` (now-playing card), and
+ * `DecoratedCustomViewStyle` (custom progress body under default chrome).
  */
 private const val GALLERY_CHANNEL_ID = "gallery"
 
@@ -142,6 +145,113 @@ fun BigPictureStylePreview() {
       .setStyle(NotificationCompat.BigPictureStyle().bigPicture(sampleBigPicture()))
       .build()
   }
+}
+
+/**
+ * Now-playing media card rendered with `androidx.media.app.NotificationCompat.MediaStyle`. Three
+ * actions (previous / play / next) collapse into the inline transport row that the media-style
+ * layout reserves; `setLargeIcon` becomes the album-art slot on the right edge. This is the
+ * surface music apps (Spotify / YouTube Music / Apple Music) use for the now-playing card in the
+ * shade.
+ *
+ * `MediaStyle` ordinarily ties the notification to a `MediaSessionCompat.Token`
+ * (`setMediaSession(...)`) so SystemUI can route hardware media keys; for a static render we
+ * skip the session — the layout draws identically with or without it because the inflater pulls
+ * title / text / icon from the notification's own fields.
+ */
+@Preview(name = "Media style")
+@Composable
+fun MediaStylePreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    val noopIntent =
+      PendingIntent.getActivity(
+        ctx,
+        0,
+        Intent("com.example.sampleandroid.NOOP"),
+        PendingIntent.FLAG_IMMUTABLE,
+      )
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.ic_media_play)
+      .setContentTitle("Saturday Mix")
+      .setContentText("Lo-Fi Radio")
+      .setLargeIcon(sampleAlbumArt())
+      .addAction(android.R.drawable.ic_media_previous, "Previous", noopIntent)
+      .addAction(android.R.drawable.ic_media_pause, "Pause", noopIntent)
+      .addAction(android.R.drawable.ic_media_next, "Next", noopIntent)
+      .setStyle(
+        androidx.media.app.NotificationCompat.MediaStyle().setShowActionsInCompactView(0, 1, 2)
+      )
+      .build()
+  }
+}
+
+/**
+ * Custom progress body wrapped in `DecoratedCustomViewStyle` — the system keeps its standard
+ * header (small icon, app name, timestamp) and replaces only the body region with the inflated
+ * `RemoteViews` from [R.layout.notification_custom_view]. The surface long-running download /
+ * upload / build-progress notifications use when the default progress row isn't expressive enough.
+ *
+ * `setCustomContentView` *and* `setCustomBigContentView` are both set to the same RemoteViews so
+ * the renderer's `createBigContentView()` path resolves to the custom layout rather than falling
+ * back to the standard expanded chrome.
+ */
+@Preview(name = "Decorated custom view")
+@Composable
+fun DecoratedCustomViewPreview() {
+  NotificationContent { ctx ->
+    ensureGalleryChannel(ctx)
+    val body =
+      RemoteViews(ctx.packageName, R.layout.notification_custom_view).apply {
+        setTextViewText(R.id.notification_custom_title, "Building project")
+        setTextViewText(R.id.notification_custom_progress_label, "37 of 100 modules compiled")
+        setProgressBar(R.id.notification_custom_progress, 100, 37, false)
+      }
+    NotificationCompat.Builder(ctx, GALLERY_CHANNEL_ID)
+      .setSmallIcon(android.R.drawable.stat_sys_download)
+      .setContentTitle("Building project")
+      .setContentText("37 of 100 modules compiled")
+      .setOngoing(true)
+      .setCustomContentView(body)
+      .setCustomBigContentView(body)
+      .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+      .build()
+  }
+}
+
+/**
+ * Synthetic 256×256 "album art" for [MediaStylePreview] — a diagonal teal-to-pink gradient with a
+ * radial highlight in the upper-left. Generated in-process so the sample doesn't ship a raster
+ * asset; real apps would call `BitmapFactory.decodeResource` on a packaged album cover or pull the
+ * artwork off `MediaMetadata`.
+ */
+private fun sampleAlbumArt(): Bitmap {
+  val size = 256
+  val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+  val canvas = Canvas(bmp)
+  val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+  paint.shader =
+    LinearGradient(
+      0f,
+      0f,
+      size.toFloat(),
+      size.toFloat(),
+      0xFF26A69A.toInt(),
+      0xFFE91E63.toInt(),
+      Shader.TileMode.CLAMP,
+    )
+  canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+  paint.shader =
+    RadialGradient(
+      size * 0.3f,
+      size * 0.3f,
+      size * 0.5f,
+      0x66FFFFFF,
+      0x00FFFFFF,
+      Shader.TileMode.CLAMP,
+    )
+  canvas.drawRect(0f, 0f, size.toFloat(), size.toFloat(), paint)
+  return bmp
 }
 
 /**

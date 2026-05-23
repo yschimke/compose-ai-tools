@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Body layout for `DecoratedCustomViewPreview` in `NotificationStyleGallery`. Inflated through
+  `RemoteViews`, which only accepts an allowlist of view tags — `LinearLayout`, `TextView`, and
+  `ProgressBar` are all on it. Adding a non-allowlisted view (e.g. a `View` subclass not registered
+  with `RemoteViews.RemoteView`) would throw `ClassNotFoundException` at inflate time.
+
+  Sized for the notification body region only; `DecoratedCustomViewStyle` wraps this with the
+  standard header (small icon, app name, timestamp), so the layout doesn't render its own chrome.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="4dp"
+    android:paddingBottom="8dp"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp">
+
+    <TextView
+        android:id="@+id/notification_custom_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearance"
+        android:textStyle="bold"/>
+
+    <TextView
+        android:id="@+id/notification_custom_progress_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textAppearance="?android:attr/textAppearanceSmall"/>
+
+    <ProgressBar
+        android:id="@+id/notification_custom_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:max="100"/>
+
+</LinearLayout>
