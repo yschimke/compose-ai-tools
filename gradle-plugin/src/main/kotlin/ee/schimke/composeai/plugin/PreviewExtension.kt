@@ -295,4 +295,16 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
    */
   val styles: ListProperty<AdaptiveStyle> =
     objects.listProperty(AdaptiveStyle::class.java).convention(AdaptiveStyle.entries.toList())
+
+  /**
+   * 9-patch stretch variants to render. Each value drives a different `(width, height)` target on
+   * the same `NinePatchDrawable`, so a reviewer can see how the patches stretch as the container
+   * grows — [NinePatchStretch.INTRINSIC] at natural size, [NinePatchStretch.HORIZONTAL] /
+   * [NinePatchStretch.VERTICAL] at 2× one axis, [NinePatchStretch.BOTH] at 2× both axes.
+   *
+   * Default: every variant (4 captures per 9-patch per qualifier). Trim this list on modules with
+   * many 9-patches and only one stretch axis of interest.
+   */
+  val stretches: ListProperty<NinePatchStretch> =
+    objects.listProperty(NinePatchStretch::class.java).convention(NinePatchStretch.entries.toList())
 }

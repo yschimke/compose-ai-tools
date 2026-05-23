@@ -20,10 +20,24 @@ class ResourceDiscoveryTest {
     return file
   }
 
+  /**
+   * Discovery looks at file extensions, not at PNG chunks — an empty file is fine for testing the
+   * walk + capture fan-out. Real `.9.png` rendering is covered by the Robolectric renderer test.
+   */
+  private fun writeBinary(dir: String, name: String, content: ByteArray = ByteArray(0)): File {
+    val resDir = File(temp.root, "res")
+    val target = File(resDir, dir)
+    target.mkdirs()
+    val file = File(target, name)
+    file.writeBytes(content)
+    return file
+  }
+
   private fun discover(
     densities: List<String> = listOf("xhdpi"),
     shapes: List<AdaptiveShape> = listOf(AdaptiveShape.CIRCLE, AdaptiveShape.SQUARE),
     styles: List<AdaptiveStyle> = listOf(AdaptiveStyle.FULL_COLOR),
+    stretches: List<NinePatchStretch> = NinePatchStretch.entries.toList(),
   ): List<ResourcePreview> =
     ResourceDiscovery.discover(
       ResourceDiscovery.Config(
@@ -31,6 +45,7 @@ class ResourceDiscoveryTest {
         densities = densities,
         shapes = shapes,
         styles = styles,
+        stretches = stretches,
         sourceRootRelativePath = { "res" },
       )
     )
@@ -166,6 +181,88 @@ class ResourceDiscoveryTest {
         extension = "png",
       )
     assertThat(path).isEqualTo("renders/resources/drawable/foo_bar_night-xhdpi.png")
+  }
+
+  @Test
+  fun `nine-patch with default qualifier produces one capture per stretch`() {
+    writeBinary("drawable", "bg_button.9.png")
+    val preview = discover().single()
+    assertThat(preview.id).isEqualTo("drawable/bg_button")
+    assertThat(preview.type).isEqualTo(ResourceType.NINE_PATCH)
+    assertThat(preview.captures.map { it.variant?.stretch })
+      .containsExactly(
+        NinePatchStretch.INTRINSIC,
+        NinePatchStretch.HORIZONTAL,
+        NinePatchStretch.VERTICAL,
+        NinePatchStretch.BOTH,
+      )
+      .inOrder()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/drawable/bg_button_xhdpi_STRETCH_intrinsic.png",
+        "renders/resources/drawable/bg_button_xhdpi_STRETCH_horizontal.png",
+        "renders/resources/drawable/bg_button_xhdpi_STRETCH_vertical.png",
+        "renders/resources/drawable/bg_button_xhdpi_STRETCH_both.png",
+      )
+      .inOrder()
+    assertThat(preview.captures.map { it.cost })
+      .containsExactly(
+        RESOURCE_NINE_PATCH_COST,
+        RESOURCE_NINE_PATCH_COST,
+        RESOURCE_NINE_PATCH_COST,
+        RESOURCE_NINE_PATCH_COST,
+      )
+  }
+
+  @Test
+  fun `nine-patch source file recorded with module-relative path`() {
+    writeBinary("drawable", "bg_button.9.png")
+    val preview = discover().single()
+    assertThat(preview.sourceFiles).containsExactly("", "res/drawable/bg_button.9.png")
+  }
+
+  @Test
+  fun `nine-patch stretches list trims fan-out`() {
+    writeBinary("drawable", "bg_button.9.png")
+    val preview =
+      discover(stretches = listOf(NinePatchStretch.INTRINSIC, NinePatchStretch.BOTH)).single()
+    assertThat(preview.captures.map { it.variant?.stretch })
+      .containsExactly(NinePatchStretch.INTRINSIC, NinePatchStretch.BOTH)
+      .inOrder()
+  }
+
+  @Test
+  fun `nine-patch fan-out multiplies with density and qualifier`() {
+    writeBinary("drawable", "bg_button.9.png")
+    writeBinary("drawable-night", "bg_button.9.png")
+    val preview =
+      discover(
+          densities = listOf("mdpi", "xhdpi"),
+          stretches = listOf(NinePatchStretch.INTRINSIC, NinePatchStretch.HORIZONTAL),
+        )
+        .single()
+    // 2 qualifiers (default, night) × 2 densities × 2 stretches = 8 captures.
+    assertThat(preview.captures).hasSize(8)
+    assertThat(preview.captures.map { it.variant?.qualifiers }.distinct())
+      .containsExactly("mdpi", "xhdpi", "night-mdpi", "night-xhdpi")
+      .inOrder()
+  }
+
+  @Test
+  fun `plain png files are ignored - only 9-patch raster is in scope`() {
+    writeBinary("drawable", "photo.png")
+    writeBinary("drawable", "bg_button.9.png")
+    assertThat(discover().map { it.id }).containsExactly("drawable/bg_button")
+  }
+
+  @Test
+  fun `nine-patch and vector with different names coexist`() {
+    writeBinary("drawable", "bg_button.9.png")
+    writeXml("drawable", "ic_foo.xml", "<vector />")
+    val previews = discover().sortedBy { it.id }
+    assertThat(previews.map { it.id }).containsExactly("drawable/bg_button", "drawable/ic_foo")
+    assertThat(previews.map { it.type })
+      .containsExactly(ResourceType.NINE_PATCH, ResourceType.VECTOR)
   }
 
   @Test
