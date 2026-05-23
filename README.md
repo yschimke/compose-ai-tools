@@ -8,6 +8,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 |---------|-------|
 | `FadeInBoxAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AnimatedPreviewsKt.FadeInBoxAnimatedPreview.gif" width="150" /> |
 | `RevealLabelAnimatedPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AnimatedPreviewsKt.RevealLabelAnimatedPreview.gif" width="150" /> |
+| `GlanceWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance_widget_4_2.png" width="150" /> |
+| `RemoteViewsWeatherWidgetPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png" width="150" /> |
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
 | `NavHostHomePreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png" width="150" /> |
 | `bigTextNotificationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/NotificationPreviewsKt.bigTextNotificationPreview.png" width="150" /> |
