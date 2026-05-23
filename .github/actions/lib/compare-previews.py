@@ -137,6 +137,20 @@ def _is_changed(
     return _perceptually_changed(prior, Path(png_path))
 
 
+def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
+    """Return CLI rows whose render produced no PNG.
+
+    The CLI's `show` / `show-resources` envelopes carry every discovered
+    preview — including those whose `composePreviewRender` task completed but
+    the PNG never landed on disk (Robolectric sandbox crash, NO-SOURCE
+    classpath gap, etc.). Those rows have an empty `sha256`. Surfacing them as
+    "render failed in this run" lets the baseline and PR-comment flows push
+    the successful subset while still warning reviewers about the partial
+    state. Sorted by key so the markdown output is deterministic.
+    """
+    return [(key, info) for key, info in sorted(rows.items()) if not info.get("sha256")]
+
+
 def _capture_label(capture: dict) -> str:
     """Human-readable summary of a capture's non-null dimensions.
 
@@ -329,11 +343,33 @@ def cmd_generate(args: argparse.Namespace) -> int:
     out_dir = Path(args.output_dir)
     repo = args.repo
     branch = args.branch
+    prior_baselines_path = (
+        Path(args.prior_baselines) if getattr(args, "prior_baselines", None) else None
+    )
+    prior_renders = (
+        Path(args.prior_renders) if getattr(args, "prior_renders", None) else None
+    )
 
     previews = load_cli_output(cli_json)
     if not previews:
         print("No previews in CLI output.", file=sys.stderr)
         return 1
+
+    # When the CLI emitted a row with no `sha256`, the render task ran but no
+    # PNG landed on disk — treat the prior baseline branch as the source of
+    # truth for that preview so a flaky single-preview failure doesn't wipe
+    # the entry out of `compose-preview/main`. Empty / missing prior is fine;
+    # the row drops out of the baseline (same as today) and is listed as a
+    # "no baseline retained" failure in the README.
+    prior_baselines = (
+        _load_baselines(prior_baselines_path) if prior_baselines_path else {}
+    )
+    failures = _collect_failures(previews)
+    carried_over: dict[str, dict] = {}
+    for key, _info in failures:
+        prior = prior_baselines.get(key)
+        if isinstance(prior, dict) and prior.get("sha256") and prior.get("renderBasename"):
+            carried_over[key] = prior
 
     # --- baselines.json ---
     # Persist the renderBasename alongside the sha so the compare run can
@@ -350,6 +386,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
         for key, info in previews.items()
         if info["sha256"]  # skip entries without a rendered PNG
     }
+    # Carry forward the prior entry as-is for previews that failed in this
+    # run. Same shape as `_load_baselines` returns, so downstream
+    # compare-on-PR keeps matching them.
+    for key, prior in carried_over.items():
+        baselines.setdefault(key, prior)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "baselines.json").write_text(
         json.dumps(baselines, indent=2, sort_keys=True) + "\n")
@@ -370,6 +411,19 @@ def cmd_generate(args: argparse.Namespace) -> int:
         dest = renders_out / info["module"] / info["renderBasename"]
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(png, dest)
+    # Carry forward the prior PNG for previews whose render failed but had a
+    # prior baseline — keeps the README inline image resolving even though
+    # this run didn't produce a fresh capture.
+    if prior_renders is not None:
+        for key, prior in carried_over.items():
+            module = previews[key]["module"]
+            basename = prior["renderBasename"]
+            src = prior_renders / module / basename
+            if not src.exists():
+                continue
+            dest = renders_out / module / basename
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
 
     # --- README.md (browsable gallery) ---
     lines = [
@@ -378,6 +432,41 @@ def cmd_generate(args: argparse.Namespace) -> int:
         "Auto-generated from `main`. Browse inline or compare against PR branches.",
         "",
     ]
+    if failures:
+        retained = sum(1 for key, _ in failures if key in carried_over)
+        dropped = len(failures) - retained
+        warning_bits = []
+        if retained:
+            warning_bits.append(f"{retained} retained from the prior baseline")
+        if dropped:
+            warning_bits.append(f"{dropped} with no prior baseline to retain")
+        warning = (
+            f"> [!WARNING]"
+            f"\n> {len(failures)} preview(s) failed to render in the latest update"
+            f" ({'; '.join(warning_bits)}). See **Render Failures** below."
+        )
+        lines.append(warning)
+        lines.append("")
+        lines.append("## Render Failures")
+        lines.append("")
+        lines.append(
+            "The render task completed but no PNG was produced for these previews. "
+            "Entries with a prior baseline keep their previous image; the rest are "
+            "absent from the gallery until a successful render lands."
+        )
+        lines.append("")
+        lines.append("| Preview | Module | Function | Source | Baseline |")
+        lines.append("|---------|--------|----------|--------|----------|")
+        for key, info in failures:
+            label_suffix = f" · {info['captureLabel']}" if info.get("captureLabel") else ""
+            fn = f"{info.get('functionName', '?')}{label_suffix}"
+            source = info.get("sourceFile") or "—"
+            state = "retained" if key in carried_over else "none"
+            lines.append(
+                f"| `{key}` | {info.get('module', '?')} | `{fn}` | `{source}` | {state} |"
+            )
+        lines.append("")
+
     by_module: dict[str, list[tuple[str, dict]]] = {}
     for key, info in sorted(previews.items()):
         if not info["sha256"]:
@@ -401,8 +490,11 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
     (out_dir / "README.md").write_text("\n".join(lines) + "\n")
 
-    print(f"Generated baselines for {len(baselines)} preview(s) in {out_dir}",
-          file=sys.stderr)
+    print(
+        f"Generated baselines for {len(baselines)} preview(s) "
+        f"({len(failures)} failure(s)) in {out_dir}",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -472,17 +564,27 @@ def cmd_compare(args: argparse.Namespace) -> int:
         if key not in current:
             removed.append((key, bl_info))
 
+    failures = _collect_failures(current)
+
     # --- generate markdown ---
     marker = "<!-- preview-diff -->"
     lines = [marker, "## Preview Changes", ""]
 
-    if not new and not changed and not removed:
+    if not new and not changed and not removed and not failures:
         lines.append("No visual changes detected.")
         lines.append("")
         if unchanged:
             lines.append(f"_{len(unchanged)} preview(s) unchanged._")
         print("\n".join(lines))
         return 0
+
+    if failures:
+        lines.append(
+            f"> [!WARNING]"
+            f"\n> {len(failures)} preview(s) failed to render in this PR's render run. "
+            f"The diff below covers only the previews that produced a PNG."
+        )
+        lines.append("")
 
     if changed:
         # Group changed variants by (module, functionName) — a function
@@ -555,6 +657,34 @@ def cmd_compare(args: argparse.Namespace) -> int:
         lines.append("")
         for fn in sorted(fn_set):
             lines.append(f"- ~`{fn}`~")
+        lines.append("")
+
+    if failures:
+        # Group by (module, functionName) so multi-capture failures land
+        # under one heading — mirrors how Changed/New collapse fan-outs.
+        fail_groups: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+        for key, info in failures:
+            gk = (info.get("module", "?"), info.get("functionName", "?"))
+            fail_groups.setdefault(gk, []).append((key, info))
+        lines.append(
+            f"### Render Failures ({len(failures)} variant(s) across {len(fail_groups)} function(s))"
+        )
+        lines.append("")
+        lines.append(
+            "The render task completed but produced no PNG for these previews. "
+            "Common causes: Robolectric sandbox crash, `composePreviewRender` "
+            "NO-SOURCE, or a runtime exception inside the composable. Check the "
+            "`composePreviewRender-reports` artifact attached to this run."
+        )
+        lines.append("")
+        for (module, fn), entries in sorted(fail_groups.items()):
+            sources = sorted({info.get("sourceFile") or "" for _, info in entries})
+            sources = [s for s in sources if s]
+            source_hint = f" — `{sources[0]}`" if sources else ""
+            lines.append(f"- **`{fn}`** ({module}){source_hint}")
+            for key, info in entries:
+                label = info.get("captureLabel") or _entry_label(info)
+                lines.append(f"  - `{key}` · {label}")
         lines.append("")
 
     if unchanged:
@@ -704,6 +834,12 @@ def load_resource_results(cli_json_path: Path) -> dict[str, dict]:
 def cmd_generate_resources(args: argparse.Namespace) -> int:
     cli_json = Path(args.cli_json)
     out_dir = Path(args.output_dir)
+    prior_baselines_path = (
+        Path(args.prior_baselines) if getattr(args, "prior_baselines", None) else None
+    )
+    prior_renders = (
+        Path(args.prior_renders) if getattr(args, "prior_renders", None) else None
+    )
 
     entries = load_resource_results(cli_json)
     if not entries:
@@ -711,6 +847,20 @@ def cmd_generate_resources(args: argparse.Namespace) -> int:
         print("No Android resource manifests found; skipping resource baselines.",
               file=sys.stderr)
         return 0
+
+    # Carry-over flow mirrors `cmd_generate` for composables: when a resource
+    # render flakes (empty sha), keep the prior baseline entry + PNG so the
+    # branch keeps a usable gallery row instead of dropping the resource
+    # entirely.
+    prior_baselines = (
+        _load_baselines(prior_baselines_path) if prior_baselines_path else {}
+    )
+    failures = _collect_failures(entries)
+    carried_over: dict[str, dict] = {}
+    for key, _info in failures:
+        prior = prior_baselines.get(key)
+        if isinstance(prior, dict) and prior.get("sha256") and prior.get("renderBasename"):
+            carried_over[key] = prior
 
     out_dir.mkdir(parents=True, exist_ok=True)
     resource_baselines: dict[str, dict] = {}
@@ -732,7 +882,20 @@ def cmd_generate_resources(args: argparse.Namespace) -> int:
         }
         by_module.setdefault(info["module"], []).append((key, info))
 
-    if not resource_baselines:
+    # Carry forward the prior entry + PNG for resources that failed to render
+    # in this run. Same shape as `_load_baselines` returns for resources.
+    for key, prior in carried_over.items():
+        resource_baselines.setdefault(key, prior)
+        if prior_renders is not None:
+            module = entries[key]["module"]
+            basename = prior["renderBasename"]
+            src = prior_renders / module / basename
+            if src.exists():
+                dest = out_dir / "renders" / module / basename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+
+    if not resource_baselines and not failures:
         print("Resource manifests existed but no rendered PNGs were on disk; "
               "skipping resource baselines.",
               file=sys.stderr)
@@ -759,6 +922,39 @@ def cmd_generate_resources(args: argparse.Namespace) -> int:
         "for the rendering catalogue.",
         "",
     ]
+    if failures:
+        retained = sum(1 for key, _ in failures if key in carried_over)
+        dropped = len(failures) - retained
+        warning_bits = []
+        if retained:
+            warning_bits.append(f"{retained} retained from the prior baseline")
+        if dropped:
+            warning_bits.append(f"{dropped} with no prior baseline to retain")
+        body_lines.append(
+            f"> [!WARNING]"
+            f"\n> {len(failures)} resource capture(s) failed to render in the latest update"
+            f" ({'; '.join(warning_bits)}). See **Resource Render Failures** below."
+        )
+        body_lines.append("")
+        body_lines.append("### Resource Render Failures")
+        body_lines.append("")
+        body_lines.append(
+            "The render task completed but no PNG was produced for these resource "
+            "captures. Entries with a prior baseline keep their previous image; the "
+            "rest are absent from the gallery until a successful render lands."
+        )
+        body_lines.append("")
+        body_lines.append("| Resource | Module | Type | Qualifiers | Shape | Baseline |")
+        body_lines.append("|---|---|---|---|---|---|")
+        for key, info in failures:
+            qualifiers = info.get("qualifiers") or "—"
+            shape = info.get("shape") or "—"
+            state = "retained" if key in carried_over else "none"
+            body_lines.append(
+                f"| `{info.get('resourceId', '?')}` | {info.get('module', '?')} | "
+                f"{info.get('resourceType', '')} | `{qualifiers}` | {shape} | {state} |"
+            )
+        body_lines.append("")
     for module in sorted(by_module):
         module_entries = sorted(by_module[module], key=lambda kv: kv[0])
         body_lines.append(f"### {module}")
@@ -904,15 +1100,25 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
         if key not in current:
             removed.append((key, bl_info))
 
+    failures = _collect_failures(current)
+
     marker = "<!-- preview-diff-resources -->"
-    if not (new or changed or removed):
-        # Empty stdout when nothing diffed — the action treats no output as
-        # "skip the resource comment entirely" rather than posting a "no
-        # changes" sticky comment that would clutter PRs that don't touch
-        # resources.
+    if not (new or changed or removed or failures):
+        # Empty stdout when nothing diffed and nothing failed — the action
+        # treats no output as "skip the resource comment entirely" rather
+        # than posting a "no changes" sticky comment that would clutter PRs
+        # that don't touch resources.
         return 0
 
     lines: list[str] = [marker, "## Resource Changes", ""]
+
+    if failures:
+        lines.append(
+            f"> [!WARNING]"
+            f"\n> {len(failures)} resource capture(s) failed to render in this PR's run. "
+            f"The diff below covers only the captures that produced a PNG."
+        )
+        lines.append("")
 
     if changed:
         # Group by (module, resourceId) so all captures of the same resource
@@ -983,6 +1189,31 @@ def cmd_compare_resources(args: argparse.Namespace) -> int:
             lines.append(f"- ~`{resource_id}`~ ({module})")
         lines.append("")
 
+    if failures:
+        # Group by (module, resourceId) so multi-capture failures collapse
+        # under one heading — same shape as Changed/New above.
+        fail_groups: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+        for key, info in failures:
+            gk = (info.get("module", "?"), info.get("resourceId", "?"))
+            fail_groups.setdefault(gk, []).append((key, info))
+        lines.append(
+            f"### Render Failures ({len(failures)} variant(s) across {len(fail_groups)} resource(s))"
+        )
+        lines.append("")
+        lines.append(
+            "The render task completed but produced no PNG for these resource "
+            "captures. Check the `composePreviewRenderAndroidResources-reports` "
+            "artifact attached to this run."
+        )
+        lines.append("")
+        for (module, resource_id), entries in sorted(fail_groups.items()):
+            kind = entries[0][1].get("resourceType", "")
+            lines.append(f"- **`{resource_id}`** ({module}, {kind})")
+            for _key, info in entries:
+                label = _resource_label(info)
+                lines.append(f"  - {label}")
+        lines.append("")
+
     print("\n".join(lines))
     return 0
 
@@ -1003,6 +1234,16 @@ def main() -> int:
     gen.add_argument("--output-dir", required=True)
     gen.add_argument("--repo", required=True, help="owner/repo")
     gen.add_argument("--branch", default="compose-preview/main")
+    # Optional. When the render task produced no PNG for some previews,
+    # pull their prior entry from this `baselines.json` instead of dropping
+    # them — keeps `compose-preview/main` complete across flaky single-preview
+    # render failures. The matching `renders/` tree is the
+    # `--prior-renders` arg below.
+    gen.add_argument("--prior-baselines",
+                     help="Path to the existing baselines.json on the baseline branch.")
+    gen.add_argument("--prior-renders",
+                     help="Directory containing the existing renders/<module>/<basename> "
+                          "PNG tree on the baseline branch.")
 
     cmp = sub.add_parser("compare", help="Compare CLI output against baselines")
     cmp.add_argument("cli_json", help="Path to compose-preview show --json output")
@@ -1037,6 +1278,16 @@ def main() -> int:
     gen_res.add_argument("cli_json",
                          help="Path to compose-preview show-resources --json output")
     gen_res.add_argument("--output-dir", required=True)
+    # Same carry-over inputs as `generate` — when a resource render flakes,
+    # the prior baseline entry + PNG come from these paths so the branch
+    # keeps its gallery row instead of dropping the resource entirely.
+    gen_res.add_argument("--prior-baselines",
+                         help="Path to the existing resource-baselines.json on the "
+                              "resource baseline branch.")
+    gen_res.add_argument("--prior-renders",
+                         help="Directory containing the existing "
+                              "renders/<module>/resources/... PNG tree on the "
+                              "resource baseline branch.")
 
     cp_res = sub.add_parser(
         "copy-changed-resources",
