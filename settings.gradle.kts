@@ -249,6 +249,14 @@ include(":data-displayfilter-connector")
 
 project(":data-displayfilter-connector").projectDir = file("data/displayfilter/connector")
 
+include(":data-permissions-core")
+
+project(":data-permissions-core").projectDir = file("data/permissions/core")
+
+include(":data-permissions-connector")
+
+project(":data-permissions-connector").projectDir = file("data/permissions/connector")
+
 // UIAutomator-shaped query/action API for the Compose preview renderer. Carries the matcher,
 // the Selector DSL, and the JSON wire format — consumed by `:daemon:android` for
 // `record_preview`'s `uia.*` script events.
