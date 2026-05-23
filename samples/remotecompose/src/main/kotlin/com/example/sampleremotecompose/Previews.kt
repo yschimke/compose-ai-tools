@@ -43,6 +43,20 @@ fun RemoteButtonWithShapePreview() {
     }
 }
 
+/**
+ * Companion preview for [RemoteButtonWithNamedLabel]. Default render shows
+ * `"Tap me"`; the panel-side Remote Compose editor (or any caller passing
+ * `renderNow.overrides.remoteCompose.namedValues = {"label": ...}`) swaps
+ * that for a live label without rebuilding the document.
+ */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@Composable
+fun RemoteButtonWithNamedLabelPreview() {
+    RemotePreview(profile = RcPlatformProfiles.ANDROIDX) {
+        Container { RemoteButtonWithNamedLabel() }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Approach 2 — `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a
 // `@Preview`-annotated composable that only emits remote content.

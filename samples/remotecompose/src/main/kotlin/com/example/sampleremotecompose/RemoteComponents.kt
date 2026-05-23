@@ -12,6 +12,7 @@ import androidx.compose.remote.creation.compose.shapes.RemoteRoundedCornerShape
 import androidx.compose.remote.creation.compose.state.RemoteColor
 import androidx.compose.remote.creation.compose.state.rb
 import androidx.compose.remote.creation.compose.state.rdp
+import androidx.compose.remote.creation.compose.state.rememberNamedRemoteString
 import androidx.compose.remote.creation.compose.state.rf
 import androidx.compose.remote.creation.compose.state.rs
 import androidx.compose.runtime.Composable
@@ -63,6 +64,24 @@ fun RemoteButtonWithBorder() {
     ) {
         RemoteText("Bordered".rs)
     }
+}
+
+/**
+ * Reads its label from a Remote Compose named-value binding declared via
+ * [rememberNamedRemoteString]. The panel-side Remote Compose editor sets the `label` named value
+ * via `interactive/setRemoteCompose` / `renderNow.overrides.remoteCompose`, and the next render
+ * picks it up here. Without an override the default `"Tap me"` shows, so the preview is still a
+ * useful static screenshot in agent-driven `composePreviewRenderAll` runs.
+ */
+@Composable
+@RemoteComposable
+fun RemoteButtonWithNamedLabel() {
+    val label = rememberNamedRemoteString("label", "Tap me")
+    RemoteButton(
+        onClick = testAction,
+        modifier = RemoteModifier.buttonSizeModifier(),
+        content = { RemoteText(label) },
+    )
 }
 
 @Composable
