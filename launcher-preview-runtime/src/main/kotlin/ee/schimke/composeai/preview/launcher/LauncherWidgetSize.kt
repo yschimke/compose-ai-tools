@@ -4,12 +4,12 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Whole-cell size of a [LauncherWidgetContainer], measured in launcher-grid cells.
+ * Whole-cell size passed to [Modifier.launcherWidgetCells], measured in launcher-grid cells.
  *
  * Both [width] and [height] are expressed as cell counts (the same units Android's launcher /
  * AppWidget host uses when it asks "how many cells wide and tall is this widget?"). The value is
- * always coerced into the surrounding [LauncherWidgetContainer]'s `minCells` / `maxCells` bounds
- * before it ever reaches the layout pass — see [LauncherWidgetSize.coerceIn].
+ * always coerced into the surrounding modifier's `minCells` / `maxCells` bounds before it ever
+ * reaches the layout pass — see [LauncherWidgetSize.coerceIn].
  */
 data class LauncherWidgetSize(val width: Int, val height: Int) {
   init {
@@ -37,7 +37,7 @@ data class LauncherWidgetSize(val width: Int, val height: Int) {
 }
 
 /**
- * How a [LauncherWidgetContainer] orders its per-axis steps when animating between sizes.
+ * How [Modifier.launcherWidgetCells] orders its per-axis steps when animating between sizes.
  *
  * Real launcher widgets have edge handles, not corner handles — the user grabs one edge and drags
  * it, so width and height never change simultaneously in a single gesture. [WidthFirst] and
