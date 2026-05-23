@@ -105,7 +105,7 @@ class A11yCommandTest {
   }
 
   @Test
-  fun `json output preserves a11yFindings for enabled module`() {
+  fun `json output emits findings on the v2 dataExtensions a11y carrier`() {
     val cmd = TestableCommand(listOf("--json"))
     val results =
       listOf(
@@ -133,11 +133,26 @@ class A11yCommandTest {
     assertEquals(JsonPrimitive(SHOW_LIST_SCHEMA), payload["schema"])
     val previews = payload["previews"]?.jsonArray ?: error("missing previews")
     assertEquals(1, previews.size)
-    val findings = previews[0].jsonObject["a11yFindings"]?.jsonArray ?: error("missing findings")
+    // v2 wire format: findings live on `dataExtensions["a11y"].payload.findings`, not as a
+    // top-level `a11yFindings` array. Asserting both the schema pin and the body shape so a
+    // regression in either is caught here.
+    val dataExtensions =
+      previews[0].jsonObject["dataExtensions"]?.jsonObject ?: error("missing dataExtensions")
+    val a11y = dataExtensions["a11y"]?.jsonObject ?: error("missing dataExtensions[\"a11y\"]")
+    assertEquals(
+      JsonPrimitive(A11Y_PAYLOAD_SCHEMA_V1),
+      a11y["schema"],
+      "expected a11y payload schema pinned to v1",
+    )
+    val findings =
+      a11y["payload"]?.jsonObject?.get("findings")?.jsonArray ?: error("missing findings")
     assertEquals(2, findings.size)
     assertEquals("ERROR", findings[0].jsonObject["level"]?.jsonPrimitive?.contentOrNull)
     assertEquals("TouchTargetSize", findings[0].jsonObject["type"]?.jsonPrimitive?.contentOrNull)
     assertEquals("WARNING", findings[1].jsonObject["level"]?.jsonPrimitive?.contentOrNull)
+    // The dropped v1 top-level field must be absent.
+    assertNull(previews[0].jsonObject["a11yFindings"])
+    assertNull(previews[0].jsonObject["a11yAnnotatedPath"])
   }
 
   @Test
@@ -234,6 +249,22 @@ class A11yCommandTest {
         sha256 = null,
         changed = changed,
       )
+    val dataExtensions =
+      if (findings == null) {
+        emptyMap()
+      } else {
+        // Mirror what `A11yReportRenderer.annotate` writes in production: encode an
+        // `AccessibilityEntry` into the `dataExtensions["a11y"]` carrier with the v1 schema
+        // pin. `null` findings means "ATF didn't run for the module" — no carrier entry.
+        val entry = AccessibilityEntry(previewId = id, findings = findings)
+        mapOf(
+          "a11y" to
+            ExtensionPayload(
+              schema = A11Y_PAYLOAD_SCHEMA_V1,
+              payload = Json.encodeToJsonElement(AccessibilityEntry.serializer(), entry),
+            )
+        )
+      }
     return PreviewResult(
       id = id,
       module = ":sample",
@@ -245,8 +276,7 @@ class A11yCommandTest {
       pngPath = png,
       sha256 = null,
       changed = changed,
-      a11yFindings = findings,
-      a11yAnnotatedPath = null,
+      dataExtensions = dataExtensions,
     )
   }
 }

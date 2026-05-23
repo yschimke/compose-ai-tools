@@ -1,9 +1,3 @@
-// Suppress at file scope: this is the deprecation slope. `A11yReportRenderer` populates and reads
-// `PreviewResult.a11yFindings` / `a11yAnnotatedPath` *by design* during the v1 → v2 window,
-// alongside the new `dataExtensions["a11y"]` payload. Once the deprecated fields are removed,
-// this file-level suppress goes away too.
-@file:Suppress("DEPRECATION")
-
 package ee.schimke.composeai.cli
 
 import kotlinx.serialization.json.Json
@@ -13,16 +7,17 @@ import kotlinx.serialization.json.Json
  * `ee.schimke.composeai.daemon.AccessibilityDataProductRegistry`. The standalone gradle path no
  * longer produces this file; it's strictly a daemon-mode artefact now.
  *
- * The DTOs (`AccessibilityFinding`, `AccessibilityEntry`, `AccessibilityReport`) carved out to
- * `:preview-data-api` alongside `PreviewResult` — they're the wire-format mirrors that the
- * deprecated `PreviewResult.a11yFindings` references. See `preview-data-api/A11yWireFormat.kt`.
+ * The DTOs (`AccessibilityFinding`, `AccessibilityEntry`, `AccessibilityReport`) live in
+ * `:preview-data-api/A11yWireFormat.kt` — they're the JVM-side typed-decode surface for the
+ * `compose-preview-data-a11y/v1` payload body. The renderer-side `:data-a11y-core` ships the
+ * canonical types in `ee.schimke.composeai.renderer`; this module mirrors them so JVM consumers
+ * (CLI, contrib) don't have to pull an `android-library` to decode.
  */
 
 /**
  * [ExtensionReportRenderer] for the built-in `a11y` extension. Reads each module's
- * `accessibility.json`, joins per-preview findings onto [PreviewResult.a11yFindings] (kept on the
- * result for back-compat with the v1 `compose-preview-show/v1` JSON wire format), and prints
- * findings grouped by preview with optional `--fail-on` thresholding.
+ * `accessibility.json`, packages each entry as a `dataExtensions["a11y"]` payload on the matching
+ * [PreviewResult], and prints findings grouped by preview with optional `--fail-on` thresholding.
  *
  * Owned state: [a11yByKey] is the per-preview lookup the [annotate] step reads from. It's built by
  * [load] and cached for the duration of one CLI invocation.
@@ -40,8 +35,8 @@ class A11yReportRenderer : ExtensionReportRenderer {
     encodeDefaults = true
   }
 
-  /** `"<module>/<previewId>"` -> (findings, absolute annotated PNG path). */
-  private var a11yByKey: Map<String, Pair<List<AccessibilityFinding>, String?>> = emptyMap()
+  /** `"<module>/<previewId>"` -> the decoded entry (findings + absolute annotated PNG path). */
+  private var a11yByKey: Map<String, AccessibilityEntry> = emptyMap()
 
   /** Set of module gradle-paths whose manifest claims a11y is enabled (pointer non-null). */
   private var enabledModules: Set<String> = emptySet()
@@ -50,7 +45,7 @@ class A11yReportRenderer : ExtensionReportRenderer {
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
     verbose: Boolean,
   ): Set<String> {
-    val out = mutableMapOf<String, Pair<List<AccessibilityFinding>, String?>>()
+    val out = mutableMapOf<String, AccessibilityEntry>()
     val enabled = mutableSetOf<String>()
     for ((module, manifest) in manifests) {
       // Prefer the manifest pointer when a producer stamped one (legacy gradle-aggregated reports,
@@ -81,7 +76,10 @@ class A11yReportRenderer : ExtensionReportRenderer {
             ?.let { reportDir.resolve(it).canonicalFile }
             ?.takeIf { it.exists() }
             ?.absolutePath
-        out["${module.gradlePath}/${entry.previewId}"] = entry.findings to annotatedAbs
+        // Resolve `annotatedPath` to an absolute path now so downstream consumers don't have
+        // to know the sidecar dir. `null` when the renderer didn't produce one — same signal as
+        // before.
+        out["${module.gradlePath}/${entry.previewId}"] = entry.copy(annotatedPath = annotatedAbs)
       }
     }
     a11yByKey = out
@@ -91,49 +89,33 @@ class A11yReportRenderer : ExtensionReportRenderer {
 
   override fun annotate(result: PreviewResult, module: PreviewModule): PreviewResult {
     if (module.gradlePath !in enabledModules) return result
-    val pair = a11yByKey["${module.gradlePath}/${result.id}"]
-    val findings = pair?.first ?: emptyList()
-    val annotatedPath = pair?.second
-    // Populate the new generic `dataExtensions["a11y"]` carrier alongside the deprecated
-    // `a11yFindings` / `a11yAnnotatedPath` fields. Both are written for one release so external
-    // consumers can migrate to decoding from `dataExtensions` against `:data-a11y-core`'s
-    // typed DTOs at their own pace.
-    val a11yPayload =
+    // Module had a11y enabled but no findings for this preview: empty entry (not null) tells
+    // downstream consumers "checks ran and found nothing" vs "feature off."
+    val entry =
+      a11yByKey["${module.gradlePath}/${result.id}"]
+        ?: AccessibilityEntry(previewId = result.id, findings = emptyList())
+    val payload =
       ExtensionPayload(
         schema = A11Y_PAYLOAD_SCHEMA_V1,
-        payload =
-          json.encodeToJsonElement(
-            AccessibilityEntry.serializer(),
-            AccessibilityEntry(
-              previewId = result.id,
-              findings = findings,
-              annotatedPath = annotatedPath,
-            ),
-          ),
+        payload = json.encodeToJsonElement(AccessibilityEntry.serializer(), entry),
       )
-    // Module had a11y enabled but no findings for this preview: empty list (not null) tells
-    // downstream consumers "checks ran and found nothing" vs "feature off."
-    return result.copy(
-      a11yFindings = findings,
-      a11yAnnotatedPath = annotatedPath,
-      dataExtensions = result.dataExtensions + (id to a11yPayload),
-    )
+    return result.copy(dataExtensions = result.dataExtensions + (id to payload))
   }
 
-  override fun hasData(result: PreviewResult): Boolean = result.a11yFindings != null
+  override fun hasData(result: PreviewResult): Boolean = result.a11yEntry() != null
 
   override fun printAll(filtered: List<PreviewResult>) {
-    val totalFindings = filtered.sumOf { it.a11yFindings?.size ?: 0 }
+    val totalFindings = filtered.sumOf { it.a11yEntry()?.findings?.size ?: 0 }
     println("$totalFindings accessibility finding(s):")
     for (result in filtered) {
-      val findings = result.a11yFindings ?: continue
+      val entry = result.a11yEntry() ?: continue
       var annotatedPrinted = false
-      for (f in findings) {
+      for (f in entry.findings) {
         println("  [${f.level}] ${result.id} · ${f.type}")
         println("      ${f.message}")
         f.viewDescription?.let { println("      element: $it") }
         if (!annotatedPrinted) {
-          result.a11yAnnotatedPath?.let { println("      annotated: $it") }
+          entry.annotatedPath?.let { println("      annotated: $it") }
           annotatedPrinted = true
         }
       }
@@ -145,8 +127,12 @@ class A11yReportRenderer : ExtensionReportRenderer {
   }
 
   override fun thresholdExitCode(results: List<PreviewResult>, failOn: String?): Int? {
-    val errorCount = results.sumOf { it.a11yFindings?.count { f -> f.level == "ERROR" } ?: 0 }
-    val warnCount = results.sumOf { it.a11yFindings?.count { f -> f.level == "WARNING" } ?: 0 }
+    val errorCount = results.sumOf {
+      it.a11yEntry()?.findings?.count { f -> f.level == "ERROR" } ?: 0
+    }
+    val warnCount = results.sumOf {
+      it.a11yEntry()?.findings?.count { f -> f.level == "WARNING" } ?: 0
+    }
     return a11yExitCode(
         buildOk = true,
         errorCount = errorCount,
@@ -157,10 +143,33 @@ class A11yReportRenderer : ExtensionReportRenderer {
   }
 }
 
-// `A11Y_PAYLOAD_SCHEMA_V1` moved to `:preview-data-api/A11yWireFormat.kt` alongside the v1 mirror
-// types so contrib consumers can pin to it without a `:cli` dep. Same package
-// (`ee.schimke.composeai.cli`), so the existing `A11Y_PAYLOAD_SCHEMA_V1` references in this file
-// keep resolving without an `import`.
+/** Json decoder shared by every `a11yEntry()` call — Json instances are expensive to construct. */
+private val a11yDecodeJson = Json { ignoreUnknownKeys = true }
+
+/**
+ * Decode the `dataExtensions["a11y"]` payload (if any) into a typed [AccessibilityEntry]. Returns
+ * `null` when ATF didn't run for this preview's module (no payload), the payload's schema doesn't
+ * match the v1 pin, or the body fails to decode. Same null-vs-empty semantics every consumer in
+ * this file relies on: `null` means "checks didn't run"; an entry with empty `findings` means
+ * "checks ran, nothing tripped."
+ *
+ * Internal — also used by `Commands.kt`'s `--brief` encoder for the a11y count.
+ */
+internal fun PreviewResult.a11yEntry(): AccessibilityEntry? {
+  val payload = dataExtensions["a11y"] ?: return null
+  if (payload.schema != A11Y_PAYLOAD_SCHEMA_V1) return null
+  return runCatching {
+      a11yDecodeJson.decodeFromJsonElement(AccessibilityEntry.serializer(), payload.payload)
+    }
+    .getOrNull()
+}
+
+/**
+ * a11y-finding count for `--brief` output. `null` when ATF didn't run for the preview's module,
+ * matching the v1 wire-format semantics agents already grep for.
+ */
+internal fun decodeA11yFindingsCount(result: PreviewResult): Int? =
+  result.a11yEntry()?.findings?.size
 
 /** Sentinel returned by [a11yExitCode] when `failOn` is not one of the accepted values. */
 internal const val EXIT_UNKNOWN_FAIL_ON = 1
