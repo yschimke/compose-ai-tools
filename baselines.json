@@ -335,6 +335,20 @@
     "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationVariantPreviews.kt"
   },
+  "samples:android/com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera permission \u2014 denied": {
+    "captureLabel": "",
+    "functionName": "CameraPermissionDeniedPreview",
+    "renderBasename": "PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera_permission_denied.png",
+    "sha256": "04d6202046790b0a5b6ca36340b1f7cf703fda31d351fd4684b79ec0027726e5",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt"
+  },
+  "samples:android/com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera permission \u2014 granted": {
+    "captureLabel": "",
+    "functionName": "CameraPermissionGrantedPreview",
+    "renderBasename": "PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera_permission_granted.png",
+    "sha256": "04d6202046790b0a5b6ca36340b1f7cf703fda31d351fd4684b79ec0027726e5",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt"
+  },
   "samples:android/com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text": {
     "captureLabel": "",
     "functionName": "BodyTextPreview",
@@ -906,7 +920,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
