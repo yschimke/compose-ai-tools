@@ -157,12 +157,10 @@ class A11yReportRenderer : ExtensionReportRenderer {
   }
 }
 
-/**
- * Schema string stamped into `ExtensionPayload.schema` for the `a11y` entry of
- * `PreviewResult.dataExtensions`. Pinned — consumers should string-equal this constant rather than
- * parsing it. Bump to `/v2` when the underlying `AccessibilityEntry` shape breaks.
- */
-const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
+// `A11Y_PAYLOAD_SCHEMA_V1` moved to `:preview-data-api/A11yWireFormat.kt` alongside the v1 mirror
+// types so contrib consumers can pin to it without a `:cli` dep. Same package
+// (`ee.schimke.composeai.cli`), so the existing `A11Y_PAYLOAD_SCHEMA_V1` references in this file
+// keep resolving without an `import`.
 
 /** Sentinel returned by [a11yExitCode] when `failOn` is not one of the accepted values. */
 internal const val EXIT_UNKNOWN_FAIL_ON = 1

@@ -68,6 +68,15 @@ project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
 // `:gradle-preview-driver` + `:data-a11y-core`. Its absence from this repo is the proof the
 // published API is expressive enough to build features against, not just inside.
 
+// Reference implementation of contrib's `compose-preview-scripting` binary. Lives here as a
+// validated, build-tested template that consumes only the published surface (`:preview-data-api`
+// + `:gradle-preview-driver` + `:data-a11y-core`). The `yschimke/compose-ai-contrib` repo lifts
+// this code wholesale into its own published module; the copy here gets deleted once contrib's
+// copy job has run, at which point the carve-out is fully closed.
+include(":examples-scripting")
+
+project(":examples-scripting").projectDir = file("examples/scripting")
+
 include(":bundle-viewer")
 
 include(":preview-annotations")

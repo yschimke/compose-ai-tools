@@ -45,3 +45,13 @@ data class AccessibilityEntry(
 
 @Serializable
 data class AccessibilityReport(val module: String, val entries: List<AccessibilityEntry>)
+
+/**
+ * Schema string stamped into `ExtensionPayload.schema` for the `a11y` entry of
+ * `PreviewResult.dataExtensions`. Pinned — consumers string-equal this constant rather than parsing
+ * it. Bump to `/v2` when the underlying [AccessibilityEntry] shape breaks.
+ *
+ * Lives in `:preview-data-api` (not `:cli`) so external consumers (contrib scripting, third-party
+ * tooling) can pin to it without taking a CLI dependency.
+ */
+const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
