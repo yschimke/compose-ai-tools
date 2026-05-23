@@ -280,6 +280,15 @@ jobs:
           ref: ${{ matrix.ref }}
           path: external
           persist-credentials: false
+          # Use anonymous HTTPS for cross-org public checkouts. The default
+          # GITHUB_TOKEN is scoped to this repo; when actions/checkout sets it
+          # as the Authorization header against `android/wear-os-samples`,
+          # github.com rejects it (401) and git falls back to an interactive
+          # askpass prompt that does not exist on the runner — surfacing as
+          # `fatal: could not read Username for 'https://github.com': terminal
+          # prompts disabled`. Passing an empty token tells the action to
+          # skip auth header setup; anonymous HTTPS works for any public repo.
+          token: ""
 
       - name: Checkout ${{ matrix.secondary_repo }} (secondary)
         if: matrix.secondary_repo != ''
@@ -290,6 +299,8 @@ jobs:
           path: ${{ matrix.secondary_path }}
           filter: ${{ matrix.secondary_filter }}
           persist-credentials: false
+          # See note on the primary checkout above — same reasoning.
+          token: ""
 
       - name: Wire androidx symlink in androidchka workspace
         if: matrix.wire_androidx_symlink
