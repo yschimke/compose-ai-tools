@@ -90,13 +90,15 @@ dependencies {
   // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
   // directly to drive per-cap press highlights in the absence of an interactive daemon session.
   implementation(project(":data-keyboard-connector"))
-  // Glance — `androidx.glance.appwidget.GlanceAppWidget`. Used by the Glance-widget @Preview
-  // (`GlanceWidgetPreview` in `AppWidgetPreviews.kt`) which materializes the Glance composable
-  // tree to `RemoteViews` via `GlanceAppWidget.compose(...)` and inflates the result into the
-  // preview surface, same path real AppWidgetHost code takes on-device. The sister RemoteViews
-  // preview (`RemoteViewsWeatherWidgetPreview`) doesn't need this dep — it builds the
-  // `RemoteViews` tree by hand from `res/layout/widget_weather.xml`.
-  implementation(libs.glance.appwidget)
+  // `GlanceAppWidgetContent` composable helper for the Glance-widget @Preview. The runtime
+  // module re-exposes `androidx.glance:glance-appwidget` as `api`, so the sample's
+  // `GlanceWidgetPreview` can declare a `GlanceAppWidget` subclass and pass it to the helper
+  // — the helper materialises it to `RemoteViews` via `composeForPreview(...)` (Glance 1.2.0+)
+  // and inflates the tree into the surrounding @Preview, same path
+  // `AppWidgetHost.createView(...)` takes on-device. The sister RemoteViews preview
+  // (`RemoteViewsWeatherWidgetPreview`) doesn't use this — it builds the `RemoteViews` tree by
+  // hand from `res/layout/widget_weather.xml`.
+  implementation(project(":glance-preview-runtime"))
   debugImplementation("androidx.compose.ui:ui-tooling")
   // `@AnimatedPreview(showCurves = true)` reflectively probes
   // `androidx.compose.ui.tooling.animation.PreviewAnimationClock` /
