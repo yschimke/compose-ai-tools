@@ -33,6 +33,12 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
+          # Pass GITHUB_TOKEN explicitly. v5 of the action falls back to the
+          # env token, but making the source explicit means a misconfigured
+          # job-level `permissions:` or a missing token surfaces here instead
+          # of as a "Bad credentials" failure on the first API call (which is
+          # what tanked the v0.11.1 release run).
+          token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           # When the release PR is merged, release-please creates the tag and
