@@ -34,10 +34,18 @@ describe("findManifestIconReferences", () => {
         assert.strictEqual(matches.length, 1);
         assert.deepStrictEqual(matches[0], {
             offset: matches[0].offset,
+            length: matches[0].length,
             attribute: "icon",
             resourceType: "drawable",
             resourceName: "ic_settings",
         });
+        // length should span the whole `android:icon="@drawable/ic_settings"`
+        // attribute so the hover provider can fire across the full attribute,
+        // not just over the `android:` prefix.
+        assert.strictEqual(
+            xml.slice(matches[0].offset, matches[0].offset + matches[0].length),
+            'android:icon="@drawable/ic_settings"',
+        );
     });
 
     it("handles attributes split across lines with single quotes", () => {
