@@ -65,17 +65,11 @@ project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
 // `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
 // in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
 // `yschimke/compose-ai-contrib` as a standalone consumer of `:preview-data-api` +
-// `:gradle-preview-driver` + `:data-a11y-core`. Its absence from this repo is the proof the
-// published API is expressive enough to build features against, not just inside.
-
-// Reference implementation of contrib's `compose-preview-scripting` binary. Lives here as a
-// validated, build-tested template that consumes only the published surface (`:preview-data-api`
-// + `:gradle-preview-driver` + `:data-a11y-core`). The `yschimke/compose-ai-contrib` repo lifts
-// this code wholesale into its own published module; the copy here gets deleted once contrib's
-// copy job has run, at which point the carve-out is fully closed.
-include(":examples-scripting")
-
-project(":examples-scripting").projectDir = file("examples/scripting")
+// `:gradle-preview-driver`. Its absence from this repo is the proof the published API is
+// expressive enough to build features against, not just inside. The intermediate
+// `:examples-scripting` reference (a build-tested template that contrib's copy job pulled into
+// its own published module) has also been removed now that contrib hosts the canonical
+// implementation.
 
 include(":bundle-viewer")
 
