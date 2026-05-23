@@ -63,11 +63,12 @@ dependencies {
   // test source set is on this module's test runtime classpath.
   testImplementation(project(":daemon:desktop"))
   testImplementation(testFixtures(project(":daemon:desktop")))
-  // Compose runtime/foundation/ui + the per-OS Skiko native bundle propagate transitively via
-  // `testFixtures(project(":daemon:desktop"))` above — see that module's
-  // `testFixturesImplementation(compose.desktop.currentOs)` for why the testFixtures variant is
-  // the seam (production `compileOnly(compose.desktop.currentOs)` keeps the Skiko bundle off the
-  // published POM, so nothing else on the harness's classpath would otherwise pull it).
+  // Compose runtime/foundation/ui + the per-OS Skiko native bundles propagate transitively from
+  // `:daemon:desktop`'s main `runtimeOnly(compose.desktop.<os_arch>)` declarations (all six
+  // platforms). The harness JVM's classpath therefore has `libskiko-<host>-<arch>.so/.dylib/.dll`
+  // resolvable for whichever OS/arch the test machine happens to be. The `testFixtures(...)`
+  // dep above redundantly re-declares `currentOs` for the same purpose — see the comment on
+  // that module's `testFixturesImplementation` block.
 
   // D-harness.v2 — Android target (`-Ptarget=android`). Strategy diverges from desktop:
   //
