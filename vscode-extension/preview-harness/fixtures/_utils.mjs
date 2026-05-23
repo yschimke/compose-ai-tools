@@ -176,9 +176,7 @@ export function buildPreviewPair({ focusId, width, height, fnName, file }) {
  */
 export const EARLY_FEATURES_DATASET = {
     earlyFeatures: "true",
-    collapseVariants: "false",
     minimalMode: "false",
-    autoInject: "true",
 };
 
 /**
