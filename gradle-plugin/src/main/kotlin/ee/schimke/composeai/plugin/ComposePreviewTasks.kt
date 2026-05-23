@@ -125,6 +125,10 @@ internal object ComposePreviewTasks {
           onlyIf { extension.enabled.get() }
           previewsJson.set(previewOutputDir.map { it.file("previews.json") })
           outputDir.set(previewOutputDir.map { it.dir("renders") })
+          // `@ScrollingPreview(modes = [LONG, GIF])` outputs land here (sibling of `renders/`).
+          // Declared as a tracked task output so Gradle's caching + up-to-date checks cover the
+          // long-PNG and GIF artifacts; older Android Test wiring uses the same `data/` subdir.
+          dataProductsDir.set(previewOutputDir.map { it.dir("data") })
           renderBackend.set("desktop")
           useComposeRenderer.set(true)
           tier.set(tierProperty(project))

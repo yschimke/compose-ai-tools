@@ -15,4 +15,9 @@ dependencies {
   implementation(compose.ui)
   implementation(compose.uiTooling)
   implementation(compose.components.uiToolingPreview)
+  // `@ScrollingPreview(modes = [LONG, GIF])` — drives the desktop renderer's scroll path. The
+  // gradle plugin's discovery picks up the annotation by FQN even without it on the consumer's
+  // compile classpath, but the sample composable references the annotation directly so the
+  // dependency is needed for compilation.
+  implementation(project(":preview-annotations"))
 }
