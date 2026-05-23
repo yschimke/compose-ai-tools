@@ -2365,6 +2365,7 @@ export class PreviewApp extends LitElement {
             focusControls,
             bundleChipBar,
             dataTabs,
+            refreshBundleLegend: () => reflectLegendActiveTab(),
             focusToolbar,
             inspector,
             liveState,
