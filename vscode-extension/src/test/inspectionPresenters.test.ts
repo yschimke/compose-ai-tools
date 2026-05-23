@@ -158,6 +158,40 @@ describe("computeInspectionBundleData (cardBundleOverlay path)", () => {
         });
     });
 
+    it("flags compose/semantics mergeDescendants nodes with the warning palette", () => {
+        // mergeDescendants → child semantics get absorbed into the
+        // parent, so the parent's overlay box represents merged
+        // information. `clearAndSet` and the default (null) stay on
+        // info — only the mergeDescendants case warrants the warning
+        // accent.
+        const payload = {
+            root: {
+                nodeId: "1",
+                boundsInRoot: "0,0,100,100",
+                mergeMode: "mergeDescendants",
+                children: [
+                    {
+                        nodeId: "2",
+                        boundsInRoot: "10,10,40,40",
+                        mergeMode: "clearAndSet",
+                    },
+                    {
+                        nodeId: "3",
+                        boundsInRoot: "50,10,90,40",
+                    },
+                ],
+            },
+        };
+        const data = computeInspectionBundleData(
+            (kind) => (kind === "compose/semantics" ? payload : undefined),
+            new Set<InspectionKind>(["compose/semantics"]),
+        );
+        const byId = new Map(data.overlay.map((b) => [b.id, b]));
+        assert.strictEqual(byId.get("semantics-1")?.level, "warning");
+        assert.strictEqual(byId.get("semantics-2")?.level, "info");
+        assert.strictEqual(byId.get("semantics-3")?.level, "info");
+    });
+
     it("ignores kinds the user has not enabled", () => {
         const payload = {
             root: {

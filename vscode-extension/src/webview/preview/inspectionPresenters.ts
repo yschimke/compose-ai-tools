@@ -313,10 +313,20 @@ function computeComposeSemanticsBundleData(
         nodeById.set(id, { kind: "compose/semantics", node: entry.node });
         const bounds = parseCardBounds(entry.node.boundsInRoot);
         if (!bounds) continue;
+        // `mergeDescendants` nodes absorb their children's semantics into
+        // the parent, so the box stands in for multiple nodes' worth of
+        // a11y data — worth visually distinguishing on the overlay so a
+        // reviewer can spot where the merge boundary sits. (`clearAndSet`
+        // stays on `info`: it drops descendants rather than absorbing
+        // them, and is rare enough that surfacing it competes with the
+        // more useful merge-boundary signal.)
         overlay.push({
             id,
             bounds,
-            level: "info",
+            level:
+                entry.node.mergeMode === "mergeDescendants"
+                    ? "warning"
+                    : "info",
             tooltip: semanticsTooltip(entry.node),
         });
     }
