@@ -8,6 +8,10 @@ Rendered from `:<module>:composePreviewRenderAndroidResources`. One row per (res
 | Resource | Type | Qualifiers | Shape | Image |
 |---|---|---|---|---|
 | `drawable/avd_pulse` | ANIMATED_VECTOR | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/avd_pulse_xhdpi.gif" height="96" /> |
+| `drawable/bg_button` | NINE_PATCH | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/bg_button_xhdpi_STRETCH_both.png" height="96" /> |
+| `drawable/bg_button` | NINE_PATCH | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/bg_button_xhdpi_STRETCH_horizontal.png" height="96" /> |
+| `drawable/bg_button` | NINE_PATCH | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/bg_button_xhdpi_STRETCH_intrinsic.png" height="96" /> |
+| `drawable/bg_button` | NINE_PATCH | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/bg_button_xhdpi_STRETCH_vertical.png" height="96" /> |
 | `drawable/ic_compose_logo` | VECTOR | `night-xhdpi` | — | <img src="renders/samples/android/resources/drawable/ic_compose_logo_night-xhdpi.png" height="96" /> |
 | `drawable/ic_compose_logo` | VECTOR | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/ic_compose_logo_xhdpi.png" height="96" /> |
 | `drawable/ic_launcher_background` | VECTOR | `xhdpi` | — | <img src="renders/samples/android/resources/drawable/ic_launcher_background_xhdpi.png" height="96" /> |
