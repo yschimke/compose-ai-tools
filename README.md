@@ -90,6 +90,9 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `TruncatedHeightClipPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedHeightClipPreview.png" width="150" /> |
 | `TruncatedMaxLinesEllipsisPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview.png" width="150" /> |
 | `TruncatedWidthNoWrapPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TruncationPreviewsKt.TruncatedWidthNoWrapPreview.png" width="150" /> |
+| `FallbackCoverageSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png" width="150" /> |
+| `FontFamilySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily_specimen.png" width="150" /> |
+| `TypographySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographyGalleryKt.TypographySpecimenPreview_Typography_specimen.png" width="150" /> |
 
 ## samples:android-alpha
 
