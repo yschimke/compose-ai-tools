@@ -433,6 +433,12 @@ abstract class RobolectricRenderTestBase(
         // `require`/`check` calls in user code surface the same way as
         // RuntimeExceptions. JVM-fatal throwables already terminated the
         // JVM before we got here.
+        // Stamp the current preview id onto the launcher-widget metadata channel so render-side
+        // helpers (`:glance-preview-runtime`'s `GlanceAppWidgetContent`) can `offer(...)` widget
+        // metadata without an explicit `previewId` parameter. The connector's registry consumes
+        // the offered entry post-render via the same id. Cleared in `finally` so the next
+        // preview's render doesn't accidentally carry this one's id.
+        ee.schimke.composeai.daemon.LauncherWidgetMetadataChannel.setCurrentPreviewId(preview.id)
         try {
             renderDefault(
                 params = params,
@@ -455,6 +461,8 @@ abstract class RobolectricRenderTestBase(
             // travels through the sidecar; VS Code reads it via
             // `gradleService.readPreviewRenderError` and shows the
             // exception detail on the failing card.
+        } finally {
+            ee.schimke.composeai.daemon.LauncherWidgetMetadataChannel.setCurrentPreviewId(null)
         }
     }
 

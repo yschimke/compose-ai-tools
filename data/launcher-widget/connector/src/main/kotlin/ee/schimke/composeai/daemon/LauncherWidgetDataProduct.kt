@@ -9,6 +9,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.LauncherResizeAxes
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetPayload
@@ -265,26 +266,34 @@ class LauncherWidgetDataProductRegistry : DataProductRegistry {
     previewContext: PreviewContext?,
   ) {
     val applied = overrides?.launcherWidget
-    if (applied == null) {
+    // Drain the per-preview metadata channel even when no override is set — a Glance widget
+    // might still want to surface its `previewSizeMode` so a picker UI can constrain itself,
+    // even before the first override fires. The channel is single-shot per preview; the read
+    // also clears so the same metadata doesn't bleed into the next render of a different
+    // preview that happens to reuse the channel slot.
+    val metadata = LauncherWidgetMetadataChannel.consume(previewId)
+    if (applied == null && metadata == null) {
       clear(previewId)
       return
     }
-    val resolved = applied.resolve()
-    val widthDp =
-      resolved.cellSizeDp * resolved.cells.width +
-        resolved.cellSpacingDp * maxOf(0, resolved.cells.width - 1)
-    val heightDp =
-      resolved.cellSizeDp * resolved.cells.height +
-        resolved.cellSpacingDp * maxOf(0, resolved.cells.height - 1)
+    val resolved = applied?.resolve()
+    val cells =
+      resolved?.cells ?: metadata?.supportedCells?.firstOrNull() ?: LauncherWidgetSize(1, 1)
+    val cellSizeDp = resolved?.cellSizeDp ?: 72
+    val cellSpacingDp = resolved?.cellSpacingDp ?: 8
+    val widthDp = cellSizeDp * cells.width + cellSpacingDp * maxOf(0, cells.width - 1)
+    val heightDp = cellSizeDp * cells.height + cellSpacingDp * maxOf(0, cells.height - 1)
     capture(
       previewId,
       LauncherWidgetPayload(
-        cells = resolved.cells,
-        cellSizeDp = resolved.cellSizeDp,
-        cellSpacingDp = resolved.cellSpacingDp,
+        cells = cells,
+        cellSizeDp = cellSizeDp,
+        cellSpacingDp = cellSpacingDp,
         widthDp = widthDp,
         heightDp = heightDp,
-        resizeOrder = applied.resizeOrder,
+        resizeOrder = applied?.resizeOrder,
+        supportedCells = metadata?.supportedCells,
+        resizeAxes = metadata?.resizeAxes ?: LauncherResizeAxes.BOTH,
       ),
     )
   }
@@ -299,3 +308,60 @@ class LauncherWidgetDataProductRegistry : DataProductRegistry {
     }
   }
 }
+
+/**
+ * Per-preview widget metadata snapshot — captured by render-side helpers (Glance's
+ * [androidx.glance.appwidget.GlanceAppWidget.previewSizeMode] reflection in
+ * `:glance-preview-runtime`, and a future `appwidget-provider/...xml` auto-discovery pass) before
+ * [LauncherWidgetDataProductRegistry.onRender] runs, then drained into the rendered payload.
+ *
+ * Held off the payload type itself because the metadata sources live in modules that don't (and
+ * shouldn't) depend on `:daemon:core` — the connector is the lowest module both the registry and
+ * the metadata sources can share. The channel keeps the consumer-facing [LauncherWidgetExtension] /
+ * `GlanceAppWidgetContent` APIs free of an explicit `previewId` parameter: the renderer sets
+ * [currentPreviewId] before each render, the helpers read it.
+ */
+object LauncherWidgetMetadataChannel {
+  private val pending = java.util.concurrent.ConcurrentHashMap<String, LauncherWidgetMetadata>()
+  private val currentPreviewIdHolder = ThreadLocal<String?>()
+
+  /**
+   * Renderer-side: set the preview id for the current render thread before invoking the preview's
+   * composition; clear in a `finally`. The helpers ([offer]) read this via [currentPreviewId] so
+   * consumer-facing APIs don't need an explicit `previewId` parameter.
+   */
+  fun setCurrentPreviewId(previewId: String?) {
+    if (previewId == null) currentPreviewIdHolder.remove()
+    else currentPreviewIdHolder.set(previewId)
+  }
+
+  /** Current render thread's preview id, or `null` outside a render. */
+  fun currentPreviewId(): String? = currentPreviewIdHolder.get()
+
+  /**
+   * Stash metadata for the current render's preview. No-op when [currentPreviewId] is unset (e.g.
+   * running outside a daemon render — bare unit tests, IDE preview pane). Multiple offers for the
+   * same preview within one render replace the previous entry.
+   */
+  fun offer(metadata: LauncherWidgetMetadata) {
+    val previewId = currentPreviewIdHolder.get() ?: return
+    pending[previewId] = metadata
+  }
+
+  /** Drain (read + remove) the metadata for [previewId]. */
+  internal fun consume(previewId: String): LauncherWidgetMetadata? = pending.remove(previewId)
+}
+
+/**
+ * Widget-source-agnostic metadata bag the channel transports. Populated by whichever source can
+ * speak to the widget's declared constraints; consumed by [LauncherWidgetDataProductRegistry].
+ *
+ * @property supportedCells whole-cell sizes the widget composes correctly at, or `null` when the
+ *   source doesn't enumerate (e.g. Glance `SizeMode.Exact`). An empty list means "no resizing"
+ *   (Glance `SizeMode.Single` or `resizeMode="none"`).
+ * @property resizeAxes which axes the widget allows resizing along.
+ */
+data class LauncherWidgetMetadata(
+  val supportedCells: List<LauncherWidgetSize>? = null,
+  val resizeAxes: LauncherResizeAxes = LauncherResizeAxes.BOTH,
+)

@@ -594,7 +594,28 @@ export interface LauncherWidgetPayload {
     heightDp: number;
     /** Echo of the resize-order hint from the request, plumbed for a future orchestrator. */
     resizeOrder?: LauncherResizeOrder;
+    /**
+     * Set of cell sizes the underlying widget declared support for. Populated by render-side
+     * metadata sources (today: Glance's `previewSizeMode` reflection; future:
+     * `appwidget-provider/...xml` auto-discovery). `null` means "no constraint surfaced"
+     * (picker falls back to a default rectangle). Empty array means "no resizing" (Glance
+     * `SizeMode.Single`, `resizeMode="none"`).
+     */
+    supportedCells?: LauncherWidgetSize[] | null;
+    /**
+     * Which axes the underlying widget allows resizing along, mirroring
+     * `AppWidgetProviderInfo.resizeMode`. Picker should grey out drag handles for locked axes.
+     * Defaults to `"both"` when no metadata source surfaced a constraint.
+     */
+    resizeAxes?: LauncherResizeAxes;
 }
+
+/**
+ * Which axes the launcher-widget container can be resized along. Mirrors Glance's
+ * `previewSizeMode` (`SizeMode.Single` → `"none"`; `SizeMode.Responsive` / `SizeMode.Exact` →
+ * `"both"`) and `AppWidgetProviderInfo.resizeMode` (`horizontal | vertical | both | none`).
+ */
+export type LauncherResizeAxes = "none" | "horizontal" | "vertical" | "both";
 
 /** Soft-keyboard (IME) override. See `PreviewOverrides.keyboard`. */
 export interface KeyboardOverride {
