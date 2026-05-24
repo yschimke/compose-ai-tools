@@ -448,6 +448,7 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     fontScale = params.fontScale ?: defaults.fontScale,
     uiMode = uiMode,
     orientation = defaults.orientation,
+    wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
   )
 }
 
