@@ -144,6 +144,23 @@ describe("findXmlResourceReferences", () => {
         );
         assert.strictEqual(slice, "@drawable/foo");
     });
+
+    it("extracts indented text-node refs (style/item patterns)", () => {
+        const xml = `
+            <item name="android:windowBackground">
+                @drawable/ic_launcher_background
+            </item>
+        `;
+        const refs = findXmlResourceReferences(xml);
+        assert.strictEqual(refs.length, 1);
+        assert.strictEqual(refs[0].resourceType, "drawable");
+        assert.strictEqual(refs[0].resourceName, "ic_launcher_background");
+        const slice = xml.substring(
+            refs[0].offset,
+            refs[0].offset + refs[0].length,
+        );
+        assert.strictEqual(slice, "@drawable/ic_launcher_background");
+    });
 });
 
 describe("refAt", () => {
