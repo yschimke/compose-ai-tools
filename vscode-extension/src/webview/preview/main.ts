@@ -16,6 +16,10 @@ import type {
     AccessibilityNode,
     PreviewInfo,
 } from "../shared/types";
+import type {
+    LauncherWidgetPayload,
+    LauncherWidgetSize,
+} from "../../daemon/daemonProtocol";
 import { getVsCodeApi, type VsCodeApi } from "../shared/vscode";
 import {
     applyA11yUpdate,
@@ -206,6 +210,13 @@ interface PersistedState {
      * reload doesn't snap the tab row back to "no inspector" mid-session.
      */
     bundles?: BundleSnapshot;
+    /**
+     * Per-preview launcher-widget cell-size override (issue-1450 follow-up).
+     * Picker writes flow through `LiveStateController` and are mirrored here
+     * so the choice survives a panel reload. Keyed by `previewId`, value is
+     * the chosen `{ width, height }` cells.
+     */
+    launcherWidgetOverrides?: Record<string, LauncherWidgetSize>;
 }
 
 @customElement("preview-app")
@@ -2701,7 +2712,32 @@ export class PreviewApp extends LitElement {
             applyFocusedToggleButtonStates: () =>
                 focusController.applyFocusedToggleButtonStates(),
             renderInspector: (card) => inspector.render(card),
+            onLauncherWidgetCellsChanged: (previewId, cells) => {
+                const overrides = { ...(state.launcherWidgetOverrides ?? {}) };
+                if (cells === null) {
+                    delete overrides[previewId];
+                } else {
+                    overrides[previewId] = cells;
+                }
+                state.launcherWidgetOverrides = Object.keys(overrides).length
+                    ? overrides
+                    : undefined;
+                vscode.setState(state);
+            },
         });
+
+        // Replay persisted launcher-widget overrides from the prior session
+        // so the picker button paints "modified" and the override survives a
+        // panel reload. Hydration uses a dedicated entry point that doesn't
+        // re-fire the `onLauncherWidgetCellsChanged` callback above, which
+        // would otherwise rewrite the same state we're loading from.
+        if (state.launcherWidgetOverrides) {
+            for (const [previewId, cells] of Object.entries(
+                state.launcherWidgetOverrides,
+            )) {
+                liveState.hydrateLauncherWidgetOverride(previewId, cells);
+            }
+        }
 
         // Config for `showDiffOverlay` — reads/writes the persisted Side/
         // Overlay/Onion mode through the same `state` object that holds the
@@ -2904,40 +2940,102 @@ export class PreviewApp extends LitElement {
         });
 
         // Launcher-widget container-size picker. Click opens a popover with a
-        // 5×5-style cell grid (rendered by `./launcherWidgetPicker.ts`); a
-        // cell click writes the override via `liveState` and closes the
-        // popover. The popover is dismissed on outside click or Escape; the
-        // payload (`supportedCells` / `resizeAxes` constraints from
-        // `compose/launcher-widget`) isn't plumbed in yet, so the picker
-        // falls back to its default 5×5 unconstrained grid — sufficient to
-        // exercise the override pipeline; constraint-aware rendering lands
-        // when `LauncherWidgetPayload` is wired into the panel state.
+        // cell grid (rendered by `./launcherWidgetPicker.ts`). The
+        // `LauncherWidgetPayload` from the `compose/launcher-widget` data
+        // product is consumed from `dataProductsByPreview` when available —
+        // that gives the picker `supportedCells` / `resizeAxes` for
+        // constraint-aware gating and the resolved (post-clamp)
+        // `cells` / `cellSizeDp` / `cellSpacingDp` for the dp-footprint
+        // summary. When the inspection bundle's `compose/launcher-widget`
+        // kind isn't subscribed, no payload is in the cache and the picker
+        // falls back to its default 5×5 unconstrained grid.
         const closeLauncherWidgetPicker = (): void => {
             launcherWidgetPickerPopover.hidden = true;
             launcherWidgetPickerPopover.replaceChildren();
             btnLauncherWidget.setAttribute("aria-expanded", "false");
         };
+        const launcherWidgetPayloadFor = (
+            previewId: string,
+        ): LauncherWidgetPayload | null => {
+            const payload = dataProductsByPreview
+                .get(previewId)
+                ?.get("compose/launcher-widget");
+            return (payload as LauncherWidgetPayload | undefined) ?? null;
+        };
+        const launcherWidgetFootprintDp = (
+            payload: LauncherWidgetPayload | null,
+            cells: LauncherWidgetSize,
+        ): { widthDp: number; heightDp: number } | null => {
+            if (!payload) return null;
+            // Reuse the cached widthDp/heightDp when the chosen cells match
+            // the payload's resolved cells exactly (avoids a stale derivation
+            // when the daemon's clamp differs from a naive formula). For
+            // other cells use the same `cell * count + spacing * (count - 1)`
+            // arithmetic the daemon applies — `widthDp` / `heightDp` in
+            // `LauncherWidgetPayload` are computed that way.
+            if (
+                cells.width === payload.cells.width &&
+                cells.height === payload.cells.height
+            ) {
+                return { widthDp: payload.widthDp, heightDp: payload.heightDp };
+            }
+            const widthDp =
+                payload.cellSizeDp * cells.width +
+                payload.cellSpacingDp * Math.max(0, cells.width - 1);
+            const heightDp =
+                payload.cellSizeDp * cells.height +
+                payload.cellSpacingDp * Math.max(0, cells.height - 1);
+            return { widthDp, heightDp };
+        };
+        const renderLauncherWidgetFootprintRow = (
+            payload: LauncherWidgetPayload | null,
+            cells: LauncherWidgetSize,
+        ): HTMLElement => {
+            const row = document.createElement("div");
+            row.className = "launcher-widget-picker-summary";
+            const footprint = launcherWidgetFootprintDp(payload, cells);
+            const sizeText = `${cells.width}×${cells.height}`;
+            row.textContent = footprint
+                ? `${sizeText} cells (${footprint.widthDp}×${footprint.heightDp} dp)`
+                : `${sizeText} cells`;
+            return row;
+        };
         const openLauncherWidgetPicker = (): void => {
             const card = focusController.focusedCard();
             const previewId = card?.dataset.previewId ?? null;
             if (!card || !previewId) return;
-            const current = liveState.launcherWidgetCellsForPreview(
-                previewId,
-            ) ?? { width: 5, height: 5 };
-            const table = renderLauncherWidgetPicker(null, current, (cells) => {
-                liveState.setLauncherWidgetCellsForCard(card, cells);
-                closeLauncherWidgetPicker();
-            });
+            const payload = launcherWidgetPayloadFor(previewId);
+            const override = liveState.launcherWidgetCellsForPreview(previewId);
+            // Three-way fallback for the highlighted "current" rectangle:
+            // the override (if set) wins, then the payload's resolved cells
+            // (so the picker shows what the widget is laid out as today),
+            // then a default 5×5 when nothing is known.
+            const current = override ??
+                payload?.cells ?? { width: 5, height: 5 };
+            const table = renderLauncherWidgetPicker(
+                payload,
+                current,
+                (cells) => {
+                    liveState.setLauncherWidgetCellsForCard(card, cells);
+                    closeLauncherWidgetPicker();
+                },
+            );
+            const summary = renderLauncherWidgetFootprintRow(payload, current);
             const resetBtn = document.createElement("button");
             resetBtn.type = "button";
             resetBtn.className = "launcher-widget-picker-reset";
             resetBtn.textContent = "Reset";
             resetBtn.title = "Clear launcher-widget size override";
+            resetBtn.disabled = override === null;
             resetBtn.addEventListener("click", () => {
                 liveState.setLauncherWidgetCellsForCard(card, null);
                 closeLauncherWidgetPicker();
             });
-            launcherWidgetPickerPopover.replaceChildren(table, resetBtn);
+            launcherWidgetPickerPopover.replaceChildren(
+                table,
+                summary,
+                resetBtn,
+            );
             launcherWidgetPickerPopover.hidden = false;
             btnLauncherWidget.setAttribute("aria-expanded", "true");
         };

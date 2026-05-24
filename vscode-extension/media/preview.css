@@ -3415,6 +3415,12 @@ preview-app[data-bundle-mode="true"] bundle-chip-bar {
     opacity: 0.4;
     cursor: not-allowed;
 }
+.launcher-widget-picker-summary {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
 .launcher-widget-picker-reset {
     align-self: stretch;
     padding: 4px 8px;
@@ -3425,9 +3431,13 @@ preview-app[data-bundle-mode="true"] bundle-chip-bar {
     cursor: pointer;
     font: inherit;
 }
-.launcher-widget-picker-reset:hover {
+.launcher-widget-picker-reset:hover:not(:disabled) {
     background: var(
         --vscode-button-secondaryHoverBackground,
         color-mix(in srgb, var(--vscode-button-background) 60%, transparent)
     );
+}
+.launcher-widget-picker-reset:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
