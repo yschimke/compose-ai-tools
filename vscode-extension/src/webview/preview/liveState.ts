@@ -47,7 +47,10 @@ import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import {
+    ensureControlsToggleButton,
+    ensureKeyboardBandToggleButton,
     ensureLiveCardControls,
+    ensureTouchOverlayToggleButton,
     removeControlsToggleButton,
     removeKeyboardBandToggleButton,
     removeTouchOverlayToggleButton,
@@ -387,16 +390,52 @@ export class LiveStateController {
      * overrides, not input dispatch.
      */
     applyControlsToggleButtons(): void {
-        // The touch-overlay, soft-keyboard band, and #1203 controls toggles
-        // now live exclusively on the focus-controls bar (see
-        // `FocusController.applyFocusedToggleButtonStates`); they no longer
-        // stamp icons on top of the rendered preview. Strip any leftover
-        // per-card buttons in case an older webview state left them behind.
+        // The focus-controls bar is the home for these toggles when the user
+        // is in focus mode — the per-card overlay versions stay stripped there
+        // so they don't double up with (and cover the preview alongside) the
+        // bar mirrors. In grid / flow / column layouts the focus bar is hidden
+        // (`FocusController.applyLayout`), so we re-stamp the per-card
+        // overlays as the only UI path to touch / keyboard / controls
+        // toggles outside focus mode.
+        const inFocus = this.cfg.inFocus();
+        const controlsAdvertised = this.isControlsAdvertised();
+        const touchOverlayAdvertised = this.isTouchOverlayAdvertised();
+        const keyboardBandAdvertised = this.isKeyboardBandAdvertised();
         const cards = document.querySelectorAll<HTMLElement>(".preview-card");
         for (const card of cards) {
-            removeControlsToggleButton(card);
-            removeTouchOverlayToggleButton(card);
-            removeKeyboardBandToggleButton(card);
+            const previewId = card.dataset.previewId;
+            if (inFocus || !previewId) {
+                removeControlsToggleButton(card);
+                removeTouchOverlayToggleButton(card);
+                removeKeyboardBandToggleButton(card);
+                continue;
+            }
+            if (controlsAdvertised) {
+                ensureControlsToggleButton(card, {
+                    enabled: this.controlsEnabledPreviewIds.has(previewId),
+                    onToggle: (c, next) => this.toggleControlsForCard(c, next),
+                });
+            } else {
+                removeControlsToggleButton(card);
+            }
+            if (touchOverlayAdvertised) {
+                ensureTouchOverlayToggleButton(card, {
+                    enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
+                    onToggle: (c, next) =>
+                        this.toggleTouchOverlayForCard(c, next),
+                });
+            } else {
+                removeTouchOverlayToggleButton(card);
+            }
+            if (keyboardBandAdvertised) {
+                ensureKeyboardBandToggleButton(card, {
+                    enabled: this.keyboardBandForcedPreviewIds.has(previewId),
+                    onToggle: (c, next) =>
+                        this.toggleKeyboardBandForCard(c, next),
+                });
+            } else {
+                removeKeyboardBandToggleButton(card);
+            }
         }
         this.cfg.applyFocusedToggleButtonStates?.();
     }

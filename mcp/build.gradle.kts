@@ -43,13 +43,13 @@ dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.mcp.kotlin.sdk.server)
-  // For DaemonClasspathDescriptor (read at supervisor spawn time) and the protocol message types
-  // exchanged with daemon JVMs.
-  implementation(project(":daemon:core"))
-  // Public render-session API. `SupervisedDaemon` exposes a `RenderSession` view of its private
-  // `DaemonClient` so callers that prefer the published library surface have a path. The
-  // implementation stays internal to `:mcp` for now — the supervisor owns subprocess lifecycle.
-  implementation(project(":render-session-api"))
+  // `:daemon:core` and `:render-session-api` are advertised as `api` because `:mcp` exposes
+  // their types on its public surface (e.g. `SupervisedDaemon.session: RenderSession`,
+  // `DaemonClasspathDescriptor`, the protocol message types reused by
+  // `:render-session-subprocess`). Without `api` the generated POM scopes them as `runtime`
+  // only and consumers resolving from POM metadata fail to compile against the MCP APIs.
+  api(project(":daemon:core"))
+  api(project(":render-session-api"))
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)

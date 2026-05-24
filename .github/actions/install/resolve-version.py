@@ -71,6 +71,34 @@ def _release_is_complete(release: dict) -> bool:
     return False
 
 
+_MAX_RELEASES_PAGES = 5
+_RELEASES_PER_PAGE = 30
+
+
+def _parse_next_link(link_header: str | None) -> str | None:
+    """Extract the `rel="next"` URL from a GitHub `Link` response header.
+
+    GitHub returns paginated endpoints with `Link: <url>; rel="next", <url>; rel="last"`;
+    we follow the `next` URL verbatim (it already carries the right `page=…` query
+    parameter) until exhausted. Returns `None` when the header is missing or has
+    no `next` segment, signalling we've reached the last page.
+    """
+    if not link_header:
+        return None
+    for part in link_header.split(","):
+        segment = part.strip()
+        if not segment.startswith("<"):
+            continue
+        close = segment.find(">")
+        if close == -1:
+            continue
+        url = segment[1:close]
+        params = segment[close + 1 :]
+        if 'rel="next"' in params:
+            return url
+    return None
+
+
 def latest_version() -> str:
     """Resolve `latest` to the most recent release with a complete CLI asset.
 
@@ -78,42 +106,63 @@ def latest_version() -> str:
     the first tag whose CLI tarball is fully uploaded. This avoids the race
     window where `/releases/latest` returns a tag whose assets haven't been
     uploaded yet — see _release_is_complete for the failure mode.
+
+    Paginates the listing because busy repos with frequent prereleases / drafts
+    can fill page 1 entirely with skipped entries before a complete published
+    release shows up. Bounded at `_MAX_RELEASES_PAGES` pages
+    (`= _MAX_RELEASES_PAGES * _RELEASES_PER_PAGE` entries) so a misconfigured
+    pipeline fails loudly instead of walking the whole release history.
     """
-    # `per_page=30` is the API default and covers ~weeks of releases at the
-    # project's current cadence; a half-baked release at the head plus its
-    # complete predecessor will both be on page 1. Skip pagination — if the
-    # first 30 releases are all incomplete the right answer is to fail loudly,
-    # not to walk further back.
-    try:
-        with urllib.request.urlopen(_api_request("releases?per_page=30"), timeout=15) as resp:
-            releases = json.load(resp)
-    except urllib.error.URLError as exc:
-        fail(f"could not reach api.github.com: {exc}")
-    if not isinstance(releases, list):
-        fail("releases payload was not a list")
-
     skipped: list[str] = []
-    for release in releases:
-        if release.get("draft") or release.get("prerelease"):
-            continue
-        tag = release.get("tag_name")
-        if not tag:
-            continue
-        if _release_is_complete(release):
-            if skipped:
-                # Surface the fall-back so a flaky release pipeline shows up
-                # in run logs instead of silently pinning consumers backwards.
-                print(
-                    f"::warning::compose-preview install: skipped incomplete release(s) "
-                    f"{', '.join(skipped)} (CLI tarball not yet uploaded); "
-                    f"resolved latest to {tag}",
-                    file=sys.stderr,
-                )
-            return tag.lstrip("v")
-        skipped.append(tag)
+    next_url: str | None = (
+        f"https://api.github.com/repos/{REPO}/releases?per_page={_RELEASES_PER_PAGE}"
+    )
+    pages_fetched = 0
+    while next_url and pages_fetched < _MAX_RELEASES_PAGES:
+        req = urllib.request.Request(
+            next_url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        token = os.environ.get("GITHUB_TOKEN", "")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                releases = json.load(resp)
+                link_header = resp.headers.get("Link")
+        except urllib.error.URLError as exc:
+            fail(f"could not reach api.github.com: {exc}")
+        pages_fetched += 1
+        if not isinstance(releases, list):
+            fail("releases payload was not a list")
 
+        for release in releases:
+            if release.get("draft") or release.get("prerelease"):
+                continue
+            tag = release.get("tag_name")
+            if not tag:
+                continue
+            if _release_is_complete(release):
+                if skipped:
+                    # Surface the fall-back so a flaky release pipeline shows up
+                    # in run logs instead of silently pinning consumers backwards.
+                    print(
+                        f"::warning::compose-preview install: skipped incomplete release(s) "
+                        f"{', '.join(skipped)} (CLI tarball not yet uploaded); "
+                        f"resolved latest to {tag}",
+                        file=sys.stderr,
+                    )
+                return tag.lstrip("v")
+            skipped.append(tag)
+
+        next_url = _parse_next_link(link_header)
+
+    cap = _MAX_RELEASES_PAGES * _RELEASES_PER_PAGE
     fail(
-        "no published release in the last 30 has a fully-uploaded CLI tarball; "
+        f"no published release in the last {cap} has a fully-uploaded CLI tarball; "
         f"checked: {', '.join(skipped) if skipped else '(none)'}"
     )
 
