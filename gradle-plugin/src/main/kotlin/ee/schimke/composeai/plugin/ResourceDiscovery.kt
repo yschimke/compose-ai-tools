@@ -29,6 +29,18 @@ object ResourceDiscovery {
     val shapes: List<AdaptiveShape>,
     val styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     val stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
+    /**
+     * When `true`, every [ResourceType.ANIMATED_VECTOR] capture is paired with a sibling filmstrip
+     * capture sampling [filmstripFractions] × `totalDuration`. Mirror of
+     * `composePreview.resourcePreviews.filmstrip`.
+     */
+    val filmstrip: Boolean = true,
+    /**
+     * Keyframe fractions for the [ResourceType.ANIMATED_VECTOR] filmstrip capture. Each value in
+     * `[0, 1]`. Defaults to [DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS] — 5 cells at
+     * 0%/25%/50%/75%/100%.
+     */
+    val filmstripFractions: List<Float> = DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS,
     /** Module-relative path to use as the [ManifestReference.source] root, e.g. `src/main`. */
     val sourceRootRelativePath: (File) -> String = { it.path },
   )
@@ -97,6 +109,8 @@ object ResourceDiscovery {
     resourceId: String,
     styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
+    filmstrip: Boolean = true,
+    filmstripFractions: List<Float> = DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS,
   ): List<ResourceCapture> {
     val out = linkedSetOf<ResourceCapture>()
     val baseQualifierSets =
@@ -164,6 +178,23 @@ object ResourceDiscovery {
                   ),
                 cost = RESOURCE_ANIMATED_COST,
               )
+            if (filmstrip && filmstripFractions.isNotEmpty()) {
+              out +=
+                ResourceCapture(
+                  variant = ResourceVariant(qualifiers = combined, filmstrip = true),
+                  renderOutput =
+                    renderOutputPath(
+                      resourceId = resourceId,
+                      qualifier = combined,
+                      shape = null,
+                      style = null,
+                      extension = "png",
+                      filmstrip = true,
+                    ),
+                  cost = RESOURCE_ANIMATED_FILMSTRIP_COST,
+                  filmstripFractions = filmstripFractions,
+                )
+            }
           }
           ResourceType.VECTOR -> {
             out +=
@@ -241,6 +272,7 @@ object ResourceDiscovery {
     style: AdaptiveStyle?,
     extension: String,
     stretch: NinePatchStretch? = null,
+    filmstrip: Boolean = false,
   ): String {
     val (base, name) = resourceId.split('/', limit = 2).let { it[0] to it[1] }
     val safeName = sanitiseFilename(name)
@@ -257,6 +289,7 @@ object ResourceDiscovery {
         AdaptiveStyle.LEGACY -> add("LEGACY")
       }
       if (stretch != null) add("STRETCH_${stretch.name.lowercase()}")
+      if (filmstrip) add("filmstrip")
     }
     return "renders/resources/$base/${parts.joinToString("_")}.$extension"
   }
@@ -286,6 +319,8 @@ object ResourceDiscovery {
           resourceId = id,
           styles = config.styles,
           stretches = config.stretches,
+          filmstrip = config.filmstrip,
+          filmstripFractions = config.filmstripFractions,
         )
       return ResourcePreview(
         id = id,
