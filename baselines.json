@@ -706,6 +706,34 @@
     "sha256": "453afd2b9ed4abc4c5f5e3c9bb32726583c1cf8d44baaae8eb830e069bf0ed05",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt"
   },
+  "samples:android/com.example.sampleandroid.SplashScreenGalleryKt.SplashDarkThemePreview_Splash \u2014 dark theme": {
+    "captureLabel": "",
+    "functionName": "SplashDarkThemePreview",
+    "renderBasename": "SplashScreenGalleryKt.SplashDarkThemePreview_Splash_dark_theme.png",
+    "sha256": "a227f9476e05bea7740bc124a1a7dec460347b0ae5907984140790cb40b23408",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashScreenGalleryKt.SplashIconOnlyPreview_Splash \u2014 icon only": {
+    "captureLabel": "",
+    "functionName": "SplashIconOnlyPreview",
+    "renderBasename": "SplashScreenGalleryKt.SplashIconOnlyPreview_Splash_icon_only.png",
+    "sha256": "a81700d1327f8b5305bc59fef3a04016583a105b14e6d9fa767440a664c25c0b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash \u2014 icon with background ring": {
+    "captureLabel": "",
+    "functionName": "SplashIconWithBackgroundPreview",
+    "renderBasename": "SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
+    "sha256": "a0e4329320515df80f6342e1ba7abad4e9e508f6c656cbe1d74fc7e467b0b72b",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt"
+  },
+  "samples:android/com.example.sampleandroid.SplashScreenGalleryKt.SplashWithBrandingPreview_Splash \u2014 icon with branding": {
+    "captureLabel": "",
+    "functionName": "SplashWithBrandingPreview",
+    "renderBasename": "SplashScreenGalleryKt.SplashWithBrandingPreview_Splash_icon_with_branding.png",
+    "sha256": "a6cd0247eb00521b075220f2ff55e4dea35be5b7d1d9243b62fa82cbbf35eb14",
+    "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt"
+  },
   "samples:android/com.example.sampleandroid.TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle Button Transparent": {
     "captureLabel": "",
     "functionName": "CircleButtonTransparentPreview",
