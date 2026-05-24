@@ -46,6 +46,12 @@ dependencies {
   // 1.2.0+ is required for that API; pin via libs.versions.toml so a consumer-side bump moves
   // the entire toolchain together.
   api(libs.glance.appwidget)
+
+  // `LauncherWidgetMetadataChannel` — the helper reflectively reads `widget.previewSizeMode` and
+  // offers it into the per-render channel so `LauncherWidgetDataProductRegistry` can surface the
+  // declared supported sizes / resize-axes on the payload. Without this dep the helper still
+  // renders the widget; the payload just doesn't carry the size-mode constraints.
+  implementation(project(":data-launcher-widget-connector"))
 }
 
 mavenPublishing {
