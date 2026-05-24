@@ -1,13 +1,9 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { GradleService } from "./gradleService";
+import { readVariantImages } from "./manifestResourceHoverImages";
 import { findManifestIconReferences } from "./manifestIconReferences";
-import {
-    buildResourceVariantHoverMarkdown,
-    VariantImage,
-} from "./resourceVariantHover";
-import { ResourcePreview } from "./types";
+import { buildResourceVariantHoverMarkdown } from "./resourceVariantHover";
 
 /**
  * Renders a hover over every `android:icon` / `roundIcon` / `logo` / `banner` attribute in
@@ -68,40 +64,16 @@ export class ManifestResourceHoverProvider implements vscode.HoverProvider {
         const md = new vscode.MarkdownString(
             buildResourceVariantHoverMarkdown({ resource, images }),
         );
-        md.isTrusted = true;
+        // `resources.json` is workspace-controlled (could be authored by an
+        // attacker if a victim opens a hostile project). The hover only needs
+        // `supportHtml` for the inline data-URI `<img>` previews — it never
+        // emits `command:` links — so leave `isTrusted` off and the markdown
+        // builder also escapes interpolated fields. See issue #1442.
+        md.isTrusted = false;
         md.supportHtml = true;
 
         const startPos = doc.positionAt(hit.offset);
         const endPos = doc.positionAt(hit.offset + hit.length);
         return new vscode.Hover(md, new vscode.Range(startPos, endPos));
     }
-}
-
-/**
- * Read each capture's PNG/GIF off disk and base64-encode it for the markdown `<img>` tag.
- * Captures whose file is missing are skipped silently — the renderer might have failed on that
- * particular variant, or a heavy-tier filter could have dropped it; the hover still shows
- * whichever variants did land.
- *
- * Exported for tests; production callers go through the hover provider.
- */
-export function readVariantImages(
-    resource: ResourcePreview,
-    moduleBuildRoot: string,
-): VariantImage[] {
-    const out: VariantImage[] = [];
-    for (const capture of resource.captures) {
-        const abs = path.join(moduleBuildRoot, capture.renderOutput);
-        try {
-            const bytes = fs.readFileSync(abs);
-            out.push({
-                renderOutput: capture.renderOutput,
-                base64: bytes.toString("base64"),
-            });
-        } catch {
-            // File missing — render run produced no output for this variant.
-            // Drop silently; the hover renders whatever did land.
-        }
-    }
-    return out;
 }

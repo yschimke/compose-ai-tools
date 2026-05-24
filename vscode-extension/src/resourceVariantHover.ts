@@ -48,18 +48,24 @@ export interface VariantHoverInput {
 /**
  * Build the markdown body for [input]. Returns the raw markdown string;
  * the caller wraps it in `new vscode.MarkdownString(...)` and sets
- * `isTrusted` / `supportHtml` per provider conventions. Captures whose
+ * `supportHtml` per provider conventions (the hover does NOT need
+ * `isTrusted` — see `manifestResourceHoverProvider.ts`). Captures whose
  * `renderOutput` doesn't appear in [VariantHoverInput.images] are
  * skipped silently — the host decides which variants are worth the
  * base64 cost (a tier=fast render might have skipped the heavy
  * adaptive captures, for instance).
+ *
+ * `resource.id` and `resource.type` originate from the workspace
+ * `resources.json`, which is user-controlled input — both fields are
+ * escaped before being interpolated into markdown so a crafted manifest
+ * cannot inject markdown / HTML structure into the hover.
  */
 export function buildResourceVariantHoverMarkdown(
     input: VariantHoverInput,
 ): string {
     const lines: string[] = [];
     lines.push(
-        `**${input.resource.id}** — ${friendlyType(input.resource.type)}`,
+        `**${escapeMarkdown(input.resource.id)}** — ${escapeMarkdown(friendlyType(input.resource.type))}`,
     );
     const byOutput = new Map(
         input.images.map((i) => [i.renderOutput, i.base64]),
@@ -177,4 +183,21 @@ function escapeAttr(s: string): string {
                 return c;
         }
     });
+}
+
+/**
+ * Escape markdown / HTML metacharacters in a workspace-controlled string
+ * (`resource.id`, `resource.type`) before splicing it into the hover.
+ *
+ * Defense in depth: the hover provider already renders with
+ * `isTrusted = false`, so `command:` links cannot fire even if smuggled
+ * in. This escaper additionally prevents structural injection — bold
+ * markers, raw HTML tags, link constructors, code spans, and pipes —
+ * so a crafted `resources.json` cannot rewrite the hover layout. Also
+ * defangs a leading `command:` substring so it cannot read as a link
+ * target if a future caller flips `isTrusted` on.
+ */
+function escapeMarkdown(s: string): string {
+    const defanged = s.replace(/^command:/i, "command​:");
+    return defanged.replace(/[\\`*_{}\[\]()#+\-!|<>]/g, (c) => `\\${c}`);
 }

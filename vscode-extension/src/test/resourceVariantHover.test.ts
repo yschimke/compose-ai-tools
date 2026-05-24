@@ -119,7 +119,8 @@ describe("buildResourceVariantHoverMarkdown", () => {
                 base64: "AAAA",
             })),
         });
-        assert.match(md, /\*\*mipmap\/ic_launcher\*\*/);
+        // The resource id `_` is escaped so markdown can't read it as italics.
+        assert.match(md, /\*\*mipmap\/ic\\_launcher\*\*/);
         assert.match(md, /Adaptive icon/);
         const imgCount = (md.match(/<img /g) ?? []).length;
         assert.strictEqual(imgCount, 4);
@@ -186,5 +187,51 @@ describe("buildResourceVariantHoverMarkdown", () => {
         });
         assert.match(md, /No rendered captures available/);
         assert.doesNotMatch(md, /<img /);
+    });
+
+    // Issue #1442: `resources.json` is workspace-controlled; a hostile
+    // project could craft `resource.id` / `resource.type` to inject
+    // markdown structure (raw `<img>`, `command:` links, italic /
+    // emphasis takeover, broken-out HTML) into the hover. The provider
+    // renders with `isTrusted = false` so `command:` cannot execute, and
+    // the builder additionally escapes structural metacharacters so the
+    // rendered hover preserves the user's literal text.
+    it("escapes markdown / HTML metacharacters in resource.id and resource.type", () => {
+        const hostile: ResourcePreview = {
+            id: "drawable/x](command:foo)![pwn",
+            type: "<script>alert(1)</script>",
+            sourceFiles: { "": "src/main/res/drawable/x.xml" },
+            captures: [],
+        };
+        const md = buildResourceVariantHoverMarkdown({
+            resource: hostile,
+            images: [],
+        });
+        // Brackets / parens / `<` / `>` / `!` all escaped — no raw HTML
+        // tag, no link constructor, no image constructor survive.
+        assert.doesNotMatch(md, /<script>/);
+        assert.doesNotMatch(md, /\]\(command:/);
+        assert.doesNotMatch(md, /!\[pwn/);
+        // The literal escaped form is what reaches the renderer.
+        assert.match(md, /drawable\/x\\\]\\\(command:foo\\\)\\!\\\[pwn/);
+        assert.match(md, /\\<script\\>alert\\\(1\\\)\\<\/script\\>/);
+    });
+
+    it("defangs a leading 'command:' so resource.id can't masquerade as a link target", () => {
+        const hostile: ResourcePreview = {
+            id: "command:workbench.action.terminal.sendSequence",
+            type: "VECTOR",
+            sourceFiles: { "": "src/main/res/drawable/x.xml" },
+            captures: [],
+        };
+        const md = buildResourceVariantHoverMarkdown({
+            resource: hostile,
+            images: [],
+        });
+        // Bold marker is still there, but `command:` is no longer the
+        // literal prefix VS Code would accept as a trusted link target
+        // (a zero-width-space is inserted between `command` and `:`).
+        assert.doesNotMatch(md, /\*\*command:workbench/);
+        assert.match(md, /\*\*command​:workbench/);
     });
 });
