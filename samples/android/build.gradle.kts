@@ -103,6 +103,10 @@ dependencies {
   // (`RemoteViewsWeatherWidgetPreview`) doesn't use this — it builds the `RemoteViews` tree by
   // hand from `res/layout/widget_weather.xml`.
   implementation(project(":glance-preview-runtime"))
+  // `SplashScreenSurface` composable helper for previewing the Android 12+ SplashScreen window
+  // appearance (`SplashScreenGallery.kt`). The runtime module is JVM-friendly and consumed
+  // inside a regular `@Preview` — no annotation, no renderer strategy.
+  implementation(project(":splash-preview-runtime"))
   // `androidx.glance.preview.Preview` annotation (a separate `glance-preview` artefact from the
   // appwidget runtime). Used by `NativeGlanceWidgetPreview` so the sample exercises the native
   // FQN-discovered Glance preview path — discovery picks up the annotation, the renderer's

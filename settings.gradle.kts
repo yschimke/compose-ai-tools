@@ -81,6 +81,8 @@ include(":glance-preview-runtime")
 
 include(":typography-preview-runtime")
 
+include(":splash-preview-runtime")
+
 include(":samples:android")
 
 include(":samples:android-alpha")
