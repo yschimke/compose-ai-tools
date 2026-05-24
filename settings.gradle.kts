@@ -79,6 +79,8 @@ include(":notification-preview-runtime")
 
 include(":glance-preview-runtime")
 
+include(":appwidget-preview-runtime")
+
 include(":typography-preview-runtime")
 
 include(":splash-preview-runtime")
