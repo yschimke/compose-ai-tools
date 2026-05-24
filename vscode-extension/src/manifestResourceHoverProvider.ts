@@ -68,7 +68,12 @@ export class ManifestResourceHoverProvider implements vscode.HoverProvider {
         const md = new vscode.MarkdownString(
             buildResourceVariantHoverMarkdown({ resource, images }),
         );
-        md.isTrusted = true;
+        // `resources.json` is workspace-controlled (could be authored by an
+        // attacker if a victim opens a hostile project). The hover only needs
+        // `supportHtml` for the inline data-URI `<img>` previews — it never
+        // emits `command:` links — so leave `isTrusted` off and the markdown
+        // builder also escapes interpolated fields. See issue #1442.
+        md.isTrusted = false;
         md.supportHtml = true;
 
         const startPos = doc.positionAt(hit.offset);
