@@ -14,8 +14,10 @@ import android.graphics.drawable.NinePatchDrawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import ee.schimke.composeai.scroll.ScrollGifEncoder
+import java.awt.Graphics2D
 import java.awt.image.BufferedImage
 import java.io.File
+import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,7 +31,8 @@ import org.robolectric.annotation.Config
  * PNG / GIF to the directory pointed at by `composeai.resources.outputDir`.
  *
  * Supported types: `VECTOR` (PNG), `ADAPTIVE_ICON` (PNG with shape mask + LEGACY fallback),
- * `ANIMATED_VECTOR` (GIF), `NINE_PATCH` (PNG per stretch variant).
+ * `ANIMATED_VECTOR` (GIF, plus a horizontal keyframe filmstrip PNG when
+ * `composePreview.resourcePreviews.filmstrip` is enabled), `NINE_PATCH` (PNG per stretch variant).
  *
  * Robolectric setup mirrors [RobolectricRenderTest]'s pin: SDK 35, NATIVE graphics, paused looper,
  * hardware pixel-copy. The Gradle task wiring (`composePreviewRenderAndroidResources`) sets the same system
@@ -140,7 +143,19 @@ class ResourcePreviewRenderTest {
               missing++
               continue
             }
-            renderAnimatedVector(drawable, animatable, outFile)
+            if (capture.variant?.filmstrip == true) {
+              val fractions = capture.filmstripFractions
+              if (fractions.isEmpty()) {
+                System.err.println(
+                  "compose-preview: ${preview.id} filmstrip capture has no fractions; skipping"
+                )
+                missing++
+                continue
+              }
+              renderAnimatedVectorFilmstrip(drawable, animatable, fractions, outFile)
+            } else {
+              renderAnimatedVector(drawable, animatable, outFile)
+            }
             rendered++
           }
           RenderResourceType.NINE_PATCH -> {
@@ -380,6 +395,104 @@ class ResourcePreviewRenderTest {
       outputFile = outFile,
       frameDelayMs = ANIMATED_FRAME_INTERVAL_MS.toInt(),
     )
+  }
+
+  /**
+   * Filmstrip companion to [renderAnimatedVector]: samples one Bitmap per fraction in [fractions] ×
+   * the animator's `totalDuration`, composites them side-by-side into a horizontal PNG.
+   *
+   * Reuses the [extractAnimatorSet] reflection seam — `AnimatorSet.setCurrentPlayTime` is the same
+   * timeline driver the GIF path uses, so a sample point that ticks under one path ticks under the
+   * other. Falls back to a single-cell strip rendered from one `draw()` call when reflection misses
+   * (same degradation contract as the GIF path's single-frame fallback). The PNG extension stays
+   * intact either way.
+   *
+   * Fractions outside `[0, 1]` are clamped; values are NOT sorted — the renderer respects the
+   * authoring order so a consumer can supply `[0.0, 1.0, 0.5]` to put the midpoint last if that's
+   * what they want. Each cell is `width × height` (the drawable's intrinsic size); the output
+   * BufferedImage is `(width × fractions.size, height)` ARGB.
+   */
+  private fun renderAnimatedVectorFilmstrip(
+    drawable: Drawable,
+    animatable: Animatable,
+    fractions: List<Float>,
+    outFile: File,
+  ) {
+    val width = drawable.intrinsicWidth.coerceAtLeast(1)
+    val height = drawable.intrinsicHeight.coerceAtLeast(1)
+    drawable.setBounds(0, 0, width, height)
+    drawable.setVisible(true, true)
+    val cells =
+      try {
+        val animatorSet = extractAnimatorSet(drawable, animatable)
+        if (animatorSet != null) {
+          captureFilmstripCells(drawable, animatorSet, fractions, width, height)
+        } else {
+          // Reflection miss — degrade to one cell per fraction holding the same t=0 frame, so the
+          // output dimensions still match the consumer's fractions count and downstream tooling
+          // (which keys on cell count) keeps working.
+          val singleFrame = captureSingleFrame(drawable, width, height)
+          List(fractions.size) { singleFrame }
+        }
+      } finally {
+        drawable.setVisible(false, false)
+      }
+    val composite = BufferedImage(width * fractions.size, height, BufferedImage.TYPE_INT_ARGB)
+    val g: Graphics2D = composite.createGraphics()
+    try {
+      for ((index, cell) in cells.withIndex()) {
+        g.drawImage(cell, index * width, 0, null)
+      }
+    } finally {
+      g.dispose()
+    }
+    ImageIO.write(composite, "PNG", outFile)
+  }
+
+  /**
+   * Walks [fractions] × [animatorSet].totalDuration (bounded by [ANIMATED_DURATION_MS] when the
+   * animator reports `DURATION_INFINITE` — same ceiling the GIF path uses) and captures one bitmap
+   * per fraction. Same `setCurrentPlayTime` + `invalidateSelf` + `draw()` sequence as
+   * [captureAnimatedFrames], so the sample points tick consistently with the GIF.
+   */
+  private fun captureFilmstripCells(
+    drawable: Drawable,
+    animatorSet: AnimatorSet,
+    fractions: List<Float>,
+    width: Int,
+    height: Int,
+  ): List<BufferedImage> {
+    val rawDuration = animatorSet.totalDuration
+    val duration =
+      if (rawDuration <= 0L || rawDuration == AnimatorSet.DURATION_INFINITE) {
+        ANIMATED_DURATION_MS
+      } else {
+        rawDuration.coerceAtMost(ANIMATED_DURATION_MS)
+      }
+    val cells = ArrayList<BufferedImage>(fractions.size)
+    animatorSet.start()
+    try {
+      for (fraction in fractions) {
+        val clamped = fraction.coerceIn(0f, 1f)
+        // Clamp to (duration - 1) for parity with the GIF path — `setCurrentPlayTime(duration)`
+        // on a non-looping animator snaps to the end state, while `duration - 1` keeps us inside
+        // the running range. The 1ms difference is invisible at the densities we render at.
+        val t = (clamped * duration).toLong().coerceIn(0L, (duration - 1).coerceAtLeast(0L))
+        animatorSet.currentPlayTime = t
+        drawable.invalidateSelf()
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        try {
+          val canvas = Canvas(bitmap)
+          drawable.draw(canvas)
+          cells += bitmap.toBufferedImage()
+        } finally {
+          bitmap.recycle()
+        }
+      }
+    } finally {
+      animatorSet.cancel()
+    }
+    return cells
   }
 
   /**

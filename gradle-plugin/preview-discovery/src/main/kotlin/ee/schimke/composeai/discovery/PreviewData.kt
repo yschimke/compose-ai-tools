@@ -540,6 +540,20 @@ const val RESOURCE_ADAPTIVE_COST: Float = 4.0f
 const val RESOURCE_ANIMATED_COST: Float = 35.0f
 
 /**
+ * Per-capture cost for an [ResourceType.ANIMATED_VECTOR] filmstrip render. Fewer frames than the
+ * GIF capture (5 keyframes vs ~30) and no GIF encode loop — a small constant factor of the GIF cost
+ * is a fair approximation.
+ */
+const val RESOURCE_ANIMATED_FILMSTRIP_COST: Float = RESOURCE_ANIMATED_COST / 5f
+
+/**
+ * Default keyframe fractions for an AnimatedVectorDrawable filmstrip capture — 0%, 25%, 50%, 75%,
+ * 100% of the animation's reported `totalDuration`. Five cells gives reviewers enough sampling to
+ * see the start/mid/end shape of a typical UI animation without the GIF's scrubbing overhead.
+ */
+val DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS: List<Float> = listOf(0.0f, 0.25f, 0.5f, 0.75f, 1.0f)
+
+/**
  * Per-capture cost for a 9-patch stretch render. Each capture is one `NinePatchDrawable.draw` into
  * a target-sized bitmap plus a PNG encode — within a constant factor of [RESOURCE_STATIC_COST].
  * The 4-stretch fan-out per qualifier means the aggregate cost for one 9-patch is ~6x a vector;
@@ -634,6 +648,11 @@ enum class AdaptiveStyle {
  * [stretch] is the 9-patch-only axis. Non-null on [ResourceType.NINE_PATCH] captures, `null`
  * elsewhere. Carried alongside [shape] / [style] rather than overloading them so the renderer can
  * switch on the type-specific axis without inspecting the resource type up front.
+ *
+ * [filmstrip] is the [ResourceType.ANIMATED_VECTOR]-only axis. `true` means the capture is the
+ * keyframe filmstrip PNG (one cell per fraction in [ResourceCapture.filmstripFractions], composited
+ * side-by-side) rather than the per-frame GIF. Mutually exclusive with the GIF capture on the same
+ * variant — both captures fan out together when [ResourcePreviewsExtension.filmstrip] is enabled.
  */
 @Serializable
 data class ResourceVariant(
@@ -641,6 +660,7 @@ data class ResourceVariant(
   val shape: AdaptiveShape? = null,
   val style: AdaptiveStyle? = null,
   val stretch: NinePatchStretch? = null,
+  val filmstrip: Boolean = false,
 )
 
 @Serializable
@@ -648,6 +668,15 @@ data class ResourceCapture(
   val variant: ResourceVariant? = null,
   val renderOutput: String = "",
   val cost: Float = RESOURCE_STATIC_COST,
+  /**
+   * Animation keyframe fractions for filmstrip captures (`variant.filmstrip == true`). Empty on
+   * every other capture. Each value is a fraction of the resolved animation duration in `[0, 1]`;
+   * the renderer samples one bitmap per fraction via `AnimatorSet.setCurrentPlayTime` and
+   * composites them side-by-side into a single horizontal PNG. Default values are seeded from
+   * [DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS] but the consumer can override via
+   * `composePreview.resourcePreviews.filmstripFractions`.
+   */
+  val filmstripFractions: List<Float> = emptyList(),
 )
 
 /**

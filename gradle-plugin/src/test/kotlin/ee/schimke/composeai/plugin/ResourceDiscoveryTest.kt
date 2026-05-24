@@ -38,6 +38,8 @@ class ResourceDiscoveryTest {
     shapes: List<AdaptiveShape> = listOf(AdaptiveShape.CIRCLE, AdaptiveShape.SQUARE),
     styles: List<AdaptiveStyle> = listOf(AdaptiveStyle.FULL_COLOR),
     stretches: List<NinePatchStretch> = NinePatchStretch.entries.toList(),
+    filmstrip: Boolean = true,
+    filmstripFractions: List<Float> = DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS,
   ): List<ResourcePreview> =
     ResourceDiscovery.discover(
       ResourceDiscovery.Config(
@@ -46,6 +48,8 @@ class ResourceDiscoveryTest {
         shapes = shapes,
         styles = styles,
         stretches = stretches,
+        filmstrip = filmstrip,
+        filmstripFractions = filmstripFractions,
         sourceRootRelativePath = { "res" },
       )
     )
@@ -138,11 +142,62 @@ class ResourceDiscoveryTest {
   @Test
   fun `animated vector emits gif renderOutput`() {
     writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
-    val preview = discover().single()
+    val preview = discover(filmstrip = false).single()
     assertThat(preview.type).isEqualTo(ResourceType.ANIMATED_VECTOR)
     assertThat(preview.captures.single().renderOutput)
       .isEqualTo("renders/resources/drawable/avd_pulse_xhdpi.gif")
     assertThat(preview.captures.single().cost).isEqualTo(RESOURCE_ANIMATED_COST)
+  }
+
+  @Test
+  fun `animated vector filmstrip emits one extra capture per qualifier`() {
+    writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
+    val preview = discover().single()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/drawable/avd_pulse_xhdpi.gif",
+        "renders/resources/drawable/avd_pulse_xhdpi_filmstrip.png",
+      )
+      .inOrder()
+    val filmstripCapture = preview.captures[1]
+    assertThat(filmstripCapture.variant?.filmstrip).isTrue()
+    assertThat(filmstripCapture.cost).isEqualTo(RESOURCE_ANIMATED_FILMSTRIP_COST)
+    assertThat(filmstripCapture.filmstripFractions)
+      .containsExactly(0.0f, 0.25f, 0.5f, 0.75f, 1.0f)
+      .inOrder()
+  }
+
+  @Test
+  fun `animated vector filmstrip false suppresses the filmstrip capture`() {
+    writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
+    val preview = discover(filmstrip = false).single()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly("renders/resources/drawable/avd_pulse_xhdpi.gif")
+    assertThat(preview.captures.single().variant?.filmstrip).isFalse()
+    assertThat(preview.captures.single().filmstripFractions).isEmpty()
+  }
+
+  @Test
+  fun `animated vector filmstripFractions controls cell count and fraction list`() {
+    writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
+    val preview = discover(filmstripFractions = listOf(0.0f, 0.5f, 1.0f)).single()
+    val filmstripCapture = preview.captures.single { it.variant?.filmstrip == true }
+    assertThat(filmstripCapture.filmstripFractions).containsExactly(0.0f, 0.5f, 1.0f).inOrder()
+  }
+
+  @Test
+  fun `animated vector filmstrip fans out across qualifiers`() {
+    writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
+    writeXml("drawable-night", "avd_pulse.xml", "<animated-vector />")
+    val preview = discover().single()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/drawable/avd_pulse_xhdpi.gif",
+        "renders/resources/drawable/avd_pulse_xhdpi_filmstrip.png",
+        "renders/resources/drawable/avd_pulse_night-xhdpi.gif",
+        "renders/resources/drawable/avd_pulse_night-xhdpi_filmstrip.png",
+      )
+      .inOrder()
   }
 
   @Test

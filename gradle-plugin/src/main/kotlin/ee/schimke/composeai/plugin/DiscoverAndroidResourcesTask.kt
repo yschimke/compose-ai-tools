@@ -56,6 +56,10 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
 
   @get:Input abstract val stretches: ListProperty<NinePatchStretch>
 
+  @get:Input abstract val filmstrip: Property<Boolean>
+
+  @get:Input abstract val filmstripFractions: ListProperty<Float>
+
   /**
    * Project root path used to render module-relative paths in the manifest. Captured at
    * configuration time (via `project.layout.projectDirectory.asFile.absolutePath`) so the task
@@ -77,6 +81,8 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
           shapes = shapes.get(),
           styles = styles.get(),
           stretches = stretches.get(),
+          filmstrip = filmstrip.get(),
+          filmstripFractions = filmstripFractions.get(),
           sourceRootRelativePath = { root -> root.toRelativeStringSafe(projectRoot) },
         )
       )
