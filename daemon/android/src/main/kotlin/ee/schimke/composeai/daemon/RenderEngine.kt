@@ -13,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.tooling.CompositionData
@@ -39,6 +40,7 @@ import ee.schimke.composeai.data.render.extensions.ExtensionContextValue
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
+import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
 import ee.schimke.composeai.renderer.AccessibilityHierarchyContextKeys
@@ -346,7 +348,7 @@ class RenderEngine(
                             previewId = spec.previewId,
                           )
                         } else {
-                          InvokeComposable(composableMethod!!)
+                          InvokeWithOptionalWrapper(composableMethod!!)
                         }
                       }
                     }
@@ -848,6 +850,75 @@ internal fun isRoundDevice(device: String?): Boolean {
 @Composable
 private fun InvokeComposable(composableMethod: ComposableMethod) {
   composableMethod.invoke(currentComposer, null)
+}
+
+/**
+ * Wraps [InvokeComposable] in the preview's `@PreviewWrapper(SomeProvider::class)` `Wrap { … }` if
+ * one is present on the composable method. Without this the daemon would call the preview body
+ * directly and bypass the wrapper — e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews
+ * would crash with `IllegalStateException: Invalid applier` the moment they emit a
+ * `RemoteBox` / `RemoteColumn` / `RemoteRow`, because those composables require the RemoteCompose
+ * applier the wrapper installs. `:renderer-android` does the equivalent in
+ * [ee.schimke.composeai.renderer.PreviewRenderStrategy]'s ComposePreviewStrategy.
+ *
+ * Wrapper class resolution flows through [loadPreviewWrapperClass], so connector-provided SPI
+ * substitutions (e.g. `:data-remotecompose-connector` swapping `RemotePreviewWrapper` for
+ * `RemoteOverridablePreviewWrapper`) apply transparently.
+ */
+@Composable
+private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
+  val wrapper = remember(composableMethod) { resolveWrapperOrNull(composableMethod) }
+  if (wrapper == null) {
+    InvokeComposable(composableMethod)
+  } else {
+    val (wrapMethod, wrapperInstance) = wrapper
+    val body: @Composable () -> Unit = { InvokeComposable(composableMethod) }
+    wrapMethod.invoke(currentComposer, wrapperInstance, body)
+  }
+}
+
+/**
+ * Reads `@androidx.compose.ui.tooling.preview.PreviewWrapper(SomeProvider::class)` reflectively off
+ * the composable's underlying JVM method, then resolves the wrapper's `Wrap(content)` method plus a
+ * fresh instance. Returns null when the annotation is absent, the wrapper class can't be loaded, or
+ * instantiation fails — callers fall back to invoking the preview body directly.
+ *
+ * Reflective lookup (rather than a compile-time import of `PreviewWrapper`) keeps the daemon
+ * runnable on older Compose runtimes that predate the annotation (1.11.0-beta+). The annotation
+ * parameter name (`wrapper`) matches what the ClassGraph-based discovery in
+ * `gradle-plugin/preview-discovery` reads.
+ */
+private fun resolveWrapperOrNull(composableMethod: ComposableMethod): Pair<ComposableMethod, Any>? {
+  val jvmMethod = composableMethod.asMethod()
+  val ann =
+    jvmMethod.annotations.firstOrNull {
+      it.annotationClass.java.name == "androidx.compose.ui.tooling.preview.PreviewWrapper"
+    } ?: return null
+  val wrapperValue =
+    runCatching { ann.annotationClass.java.getDeclaredMethod("wrapper").invoke(ann) }.getOrNull()
+      ?: return null
+  val wrapperFqn =
+    when (wrapperValue) {
+      is Class<*> -> wrapperValue.name
+      is kotlin.reflect.KClass<*> -> wrapperValue.java.name
+      else -> return null
+    }
+  return runCatching {
+      val resolved = loadPreviewWrapperClass(wrapperFqn)
+      val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+      // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
+      // Wrap(Function2, Composer, int); getDeclaredComposableMethod handles the synthetic
+      // Composer/changed tail, so we look up by the content param's JVM type.
+      val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
+      wrapMethod to instance
+    }
+    .onFailure { t ->
+      System.err.println(
+        "compose-ai-daemon: [render] wrapper resolution failed for $wrapperFqn " +
+          "(${t.javaClass.simpleName}: ${t.message}); rendering without wrapper"
+      )
+    }
+    .getOrNull()
 }
 
 @Composable
