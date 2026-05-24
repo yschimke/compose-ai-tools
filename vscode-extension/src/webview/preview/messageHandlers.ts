@@ -133,6 +133,16 @@ export interface PreviewMessageContext {
      */
     deactivateAllBundles(): void;
     /**
+     * Drive `BundleController.toggleBundle` from an extension-side
+     * trigger. Used by the e2e bundle-chain suite via
+     * `ComposePreviewTestApi.triggerWebviewBundleToggle`: posting
+     * `setDataExtensionEnabled` only subscribes the daemon and never
+     * activates the webview's chip, so the test needs a webview-bound
+     * entry point that drives the full chip-click code path
+     * (chip / tab / overlay paint + outbound subscribe).
+     */
+    toggleBundle(bundleId: string): void;
+    /**
      * Re-render the bundle chip bar / tab row from the controller's
      * current state. The chip bar filters which bundle chips paint
      * based on the early-features snapshot, so the host runs this
@@ -219,6 +229,9 @@ export function handleExtensionMessage(
                 msg.fontRowId,
                 msg.dataUri,
             );
+            return;
+        case "triggerBundleToggle":
+            ctx.toggleBundle(msg.bundleId);
             return;
         case "setModules":
             // Module selector removed from UI — module is resolved from the

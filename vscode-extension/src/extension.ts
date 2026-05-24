@@ -490,6 +490,25 @@ export interface ComposePreviewTestApi {
         enabled: boolean,
     ): Promise<void>;
     /**
+     * Drive `BundleController.toggleBundle` in the webview by posting
+     * a `triggerBundleToggle` message. Activating the chip from the
+     * webview side cascades through the production code path:
+     * `reflectBundleState` paints the chip / tab / overlay surfaces
+     * and calls `host.setKindsEnabled`, which posts
+     * `setDataExtensionEnabled` back to the extension and triggers a
+     * daemon `data/subscribe`. Returns once the message has been sent
+     * — the test should poll `webviewBundleState` for the expected
+     * surface state.
+     *
+     * Used by the bundle chip ↔ tab ↔ overlay e2e suite (issue
+     * #1391). `triggerSetDataExtensionEnabled` skips the webview chip
+     * by subscribing the daemon directly; this is the chip-driven
+     * counterpart that covers `firstUpdated` wiring,
+     * `reflectBundleState` ordering, and the focus-mode visibility
+     * gates the issue calls out.
+     */
+    triggerWebviewBundleToggle(bundleId: string): void;
+    /**
      * Run the same `composePreviewDaemonStart` + JVM spawn the activation
      * flow does, so chip-toggle tests can issue `data/subscribe` against a
      * live daemon. Resolves to whether the daemon ended up ready. Used by
@@ -2011,6 +2030,12 @@ export async function activate(
                 enabled: boolean,
             ): Promise<void> {
                 return handleSetDataExtensionEnabled(previewId, kinds, enabled);
+            },
+            triggerWebviewBundleToggle(bundleId: string): void {
+                panel?.postMessage({
+                    command: "triggerBundleToggle",
+                    bundleId,
+                });
             },
             triggerWarmDaemon(filePath: string): Promise<boolean> {
                 return warmDaemonForFile(filePath);
@@ -4632,6 +4657,23 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                     `kinds=[${msg.kinds.join(",")}]`,
             );
             break;
+        case "webviewBundleState": {
+            // Chip ↔ tab ↔ overlay surface diagnostic. The webview emits
+            // this after every `reflectBundleState()` and from the data-
+            // update handlers that repaint overlays; the e2e bundle-chain
+            // suite asserts on it through `getReceivedMessages()`.
+            const overlayPairs = Object.entries(msg.overlayCountByBundle)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(",");
+            logInfo(
+                `[daemon] webview ack bundleState ` +
+                    `active=[${msg.activeBundles.join(",")}] ` +
+                    `tab=${msg.activeTab ?? "<none>"} ` +
+                    `tabs=${msg.tabHandleCount} ` +
+                    `overlays={${overlayPairs}}`,
+            );
+            break;
+        }
         case "openFile":
             openPreviewSource(msg.className, msg.functionName);
             break;

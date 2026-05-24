@@ -73,6 +73,7 @@ function buildContextStub(): ContextWithSpy {
         promoteErrorsBundle: () => {
             calls.promote += 1;
         },
+        toggleBundle: noop,
     };
     return { ctx, promoteCalls: () => calls.promote };
 }
