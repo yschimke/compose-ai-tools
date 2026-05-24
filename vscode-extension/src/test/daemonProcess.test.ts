@@ -322,6 +322,7 @@ describe("formatDaemonSpawnFailure (issue #1326)", () => {
                 systemProperties: {},
                 workingDirectory: dir,
                 manifestPath: path.join(dir, "previews.json"),
+                btaCompile: null,
             };
             let err: Error | null = null;
             try {
