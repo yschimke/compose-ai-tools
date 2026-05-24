@@ -128,10 +128,15 @@ object RemoteComposeController {
   fun recordHostAction(action: RemoteHostAction) {
     val accepted = acceptedActionPayloads
     if (accepted != null && action.payload !in accepted) return
+    // Stamp receiver-side wall-clock at ingest so consumers can order/time events;
+    // most callers default to 0, which would otherwise emit zero timestamps downstream.
+    val stamped =
+      if (action.firedAtMillis == 0L) action.copy(firedAtMillis = System.currentTimeMillis())
+      else action
     val current = hostActionsState.value
     val next =
-      if (current.size < RemoteComposePayload.HOST_ACTION_BUFFER_SIZE) current + action
-      else current.drop(current.size - RemoteComposePayload.HOST_ACTION_BUFFER_SIZE + 1) + action
+      if (current.size < RemoteComposePayload.HOST_ACTION_BUFFER_SIZE) current + stamped
+      else current.drop(current.size - RemoteComposePayload.HOST_ACTION_BUFFER_SIZE + 1) + stamped
     hostActionsState.value = next
     listeners.toList().forEach { it() }
   }
