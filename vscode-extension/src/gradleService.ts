@@ -111,6 +111,17 @@ function expandParamCaptures(
 
 const TASK_TIMEOUT_MS = 5 * 60 * 1000;
 const MANIFEST_CACHE_TTL_MS = 30_000;
+/**
+ * How long after a successful `composePreviewApplied` invocation we treat
+ * the `applied.json` markers as fresh enough to skip a redundant run. The
+ * markers are tiny and the task itself is incremental, but each invocation
+ * still pays a full Gradle configuration-cache calculation on a cold daemon
+ * (~2 min on this workspace). 5 minutes is long enough to absorb the
+ * cluster of activation-time callers (the background bootstrap + the first
+ * cold-start bundle from the focused module) without holding stale state
+ * across a typical session of plugin edits.
+ */
+const APPLIED_MARKERS_FRESHNESS_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Distinguishes cancellation (a normal lifecycle event when a new refresh
@@ -304,6 +315,33 @@ export class GradleService {
         string,
         Promise<PreviewManifest | null>
     >();
+    /**
+     * In-flight `coldStartBundle` runs per module. Coalesces concurrent callers
+     * the same way [inFlightDiscover] does for the post-warm reconcile, so the
+     * activation refresh + the daemon-warm path can both kick off a cold-start
+     * and only one Gradle invocation results.
+     */
+    private inFlightColdStart = new Map<
+        string,
+        Promise<PreviewManifest | null>
+    >();
+    /**
+     * In-flight standalone `composePreviewApplied` invocation, when one is
+     * running. Cross-checked by [coldStartBundle] so the bundle can drop
+     * `composePreviewApplied` from its task list (and just await this) instead
+     * of running it twice — duplicate invocations don't repeat work
+     * (Gradle reports UP-TO-DATE), but each one still pays the full
+     * configuration-cache calculation, which is the cold-start pain point we
+     * are trying to remove.
+     */
+    private appliedBootstrapPromise: Promise<void> | null = null;
+    /**
+     * Wall-clock deadline after which the on-disk `applied.json` markers are
+     * considered stale enough to re-run `composePreviewApplied`. Bumped after
+     * any successful invocation (standalone bootstrap OR cold-start bundle
+     * that included `composePreviewApplied`). See [APPLIED_MARKERS_FRESHNESS_TTL_MS].
+     */
+    private appliedMarkersFreshUntilMs = 0;
     private taskCounter = 0;
     private activeKeys = new Set<string>();
     /**
@@ -338,6 +376,15 @@ export class GradleService {
         const inFlight = this.inFlightDiscover.get(key);
         if (inFlight) {
             return inFlight;
+        }
+        // The cold-start bundle includes `:<module>:composePreviewDiscover` and
+        // writes the manifest into [manifestCache] on completion. Awaiting an
+        // in-flight bundle here keeps the post-warm `reconcilePreviewManifestAfterDaemonReady`
+        // call from starting a second Gradle invocation while the bundle's
+        // own discover is still on the daemon's queue.
+        const inFlightBundle = this.inFlightColdStart.get(key);
+        if (inFlightBundle) {
+            return inFlightBundle;
         }
         const cached = this.manifestCache.get(key);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
@@ -822,7 +869,12 @@ export class GradleService {
     }
 
     async cancel(opts?: { keepDiscoverFor?: string }): Promise<void> {
-        // Three task families are intentionally excluded from the cancel pool:
+        // Three task families are intentionally excluded from the cancel pool.
+        // The spare matches on the head task of the Gradle invocation, so
+        // bundles started by [coldStartBundle] — whose head is either
+        // `composePreviewApplied` or `:<module>:composePreviewDaemonStart` —
+        // are spared transitively along with their trailing
+        // `:<module>:composePreviewDiscover`:
         //
         //   - `composePreviewDaemonStart`: a one-shot, cheap, idempotent task
         //     that writes the launch descriptor every subsequent refresh
@@ -831,11 +883,10 @@ export class GradleService {
         //     refresh it was supposed to enable, leaving "no launch
         //     descriptor" / "Build cancelled" forever.
         //
-        //   - `composePreviewApplied`: the activation-time marker bootstrap.
-        //     Cancelling it (e.g. when the activation `setTimeout` fires
-        //     while bootstrap is still running) breaks `findPreviewModules`
-        //     for the rest of the session — markers stay missing until the
-        //     user reloads.
+        //   - `composePreviewApplied`: the activation-time marker bootstrap
+        //     (and the head of the cold-start bundle when markers aren't
+        //     fresh). Cancelling it breaks `findPreviewModules` for the rest
+        //     of the session — markers stay missing until the user reloads.
         //
         //   - `:<module>:composePreviewDiscover` for [keepDiscoverFor]: the silent
         //     reconcile path (`reconcilePreviewManifestAfterDaemonReady`)
@@ -1028,22 +1079,51 @@ export class GradleService {
     async bootstrapAppliedMarkers(
         onTypedError?: (err: ClassVersionError | JdkImageError) => void,
     ): Promise<void> {
+        // Activation fires this immediately and the first focused-file refresh
+        // fires [coldStartBundle] for its module ~100-1000ms later. The two
+        // would otherwise both run `composePreviewApplied` against a cold
+        // Gradle daemon — two task-graph calculations of ~2 min each. Coalesce
+        // so the second caller awaits the first's Gradle invocation instead.
+        if (Date.now() < this.appliedMarkersFreshUntilMs) {
+            return;
+        }
+        if (this.appliedBootstrapPromise) {
+            try {
+                await this.appliedBootstrapPromise;
+            } catch {
+                /* originator logged + dispatched to onTypedError */
+            }
+            return;
+        }
+        const promise = (async () => {
+            try {
+                await this.runTask("composePreviewApplied");
+                this.appliedMarkersFreshUntilMs =
+                    Date.now() + APPLIED_MARKERS_FRESHNESS_TTL_MS;
+            } catch (e) {
+                this.logger.appendLine(
+                    `[applied] composePreviewApplied bootstrap failed: ${(e as Error).message}`,
+                );
+                // Bootstrap still swallows so the scan fallback can produce a
+                // sensible module list — but if Gradle bailed for a JDK reason
+                // that won't recover on its own, surface it to the caller. The
+                // user might never trigger a render that would otherwise raise
+                // it (e.g. activation-only sessions).
+                if (
+                    onTypedError &&
+                    (e instanceof ClassVersionError ||
+                        e instanceof JdkImageError)
+                ) {
+                    onTypedError(e);
+                }
+            }
+        })();
+        this.appliedBootstrapPromise = promise;
         try {
-            await this.runTask("composePreviewApplied");
-        } catch (e) {
-            this.logger.appendLine(
-                `[applied] composePreviewApplied bootstrap failed: ${(e as Error).message}`,
-            );
-            // Bootstrap still swallows so the scan fallback can produce a
-            // sensible module list — but if Gradle bailed for a JDK reason
-            // that won't recover on its own, surface it to the caller. The
-            // user might never trigger a render that would otherwise raise
-            // it (e.g. activation-only sessions).
-            if (
-                onTypedError &&
-                (e instanceof ClassVersionError || e instanceof JdkImageError)
-            ) {
-                onTypedError(e);
+            await promise;
+        } finally {
+            if (this.appliedBootstrapPromise === promise) {
+                this.appliedBootstrapPromise = null;
             }
         }
     }
@@ -1052,9 +1132,119 @@ export class GradleService {
      * Runs `:<module>:composePreviewDaemonStart` so the daemon launch
      * descriptor (`build/compose-previews/daemon-launch.json`) is up to date.
      * Cheap and cacheable — emits a small JSON. The caller (DaemonGate) handles errors.
+     *
+     * Delegates to [coldStartBundle] so the daemon-start invocation also
+     * folds in `composePreviewApplied` (when not already fresh) and the
+     * per-module `composePreviewDiscover`. All three tasks share a single
+     * Gradle invocation, which means one configuration-cache entry to warm
+     * on first launch instead of three.
      */
     async runDaemonBootstrap(module: ModuleInfo): Promise<void> {
-        await this.runTask(`${module.modulePath}:composePreviewDaemonStart`);
+        await this.coldStartBundle(module);
+    }
+
+    /**
+     * Cold-start path for a single module: bundles `composePreviewApplied`
+     * (when markers aren't fresh), `:<module>:composePreviewDaemonStart`, and
+     * `:<module>:composePreviewDiscover` into a single Gradle invocation. The
+     * payoff is the configuration-cache entry: one cold task-graph calculation
+     * instead of one per task family, cutting ~2 min × 2 off first-launch
+     * latency on this workspace.
+     *
+     * Side effects:
+     *   - Populates [manifestCache] from the resulting `previews.json` so the
+     *     post-warm `reconcilePreviewManifestAfterDaemonReady` hits the cache
+     *     instead of starting another Gradle round-trip.
+     *   - Bumps [appliedMarkersFreshUntilMs] when the bundle included
+     *     `composePreviewApplied`, so a concurrent [bootstrapAppliedMarkers]
+     *     skips its own redundant run.
+     *
+     * Returns the discovered manifest, or null when discover produced no
+     * `previews.json` (rare — usually means the module hasn't compiled
+     * cleanly). Errors propagate so the daemon scheduler can surface
+     * bootstrap failures the same way it did under the previous
+     * single-task path.
+     */
+    async coldStartBundle(
+        module: ModuleInfo,
+        opts?: TaskOptions,
+    ): Promise<PreviewManifest | null> {
+        const key = module.modulePath;
+        const inFlight = this.inFlightColdStart.get(key);
+        if (inFlight) {
+            return inFlight;
+        }
+        const includeApplied =
+            !this.appliedBootstrapPromise &&
+            Date.now() >= this.appliedMarkersFreshUntilMs;
+        const daemonStartTask = `${key}:composePreviewDaemonStart`;
+        const discoverTask = `${key}:composePreviewDiscover`;
+        // `composePreviewApplied` (root, no project prefix) fans out to every
+        // applying subproject. Placing it FIRST in the task list lets the
+        // cancel pool's `task === "composePreviewApplied"` spare rule (and
+        // the `endsWith(":composePreviewDaemonStart")` spare) match the
+        // invocation's cancellation key, so a sibling refresh that fires
+        // `gradleService.cancel(...)` can't kill the cold-start mid-config.
+        const headTask = includeApplied
+            ? "composePreviewApplied"
+            : daemonStartTask;
+        const tailTasks = includeApplied
+            ? [daemonStartTask, discoverTask]
+            : [discoverTask];
+        const inner = (async (): Promise<PreviewManifest | null> => {
+            // If a standalone `composePreviewApplied` is already running,
+            // wait for it to finish before we add a per-module Gradle
+            // invocation behind it on the daemon's serialised queue. Two
+            // back-to-back invocations on the same daemon still each pay
+            // their own configuration-cache calc; sequencing them at least
+            // avoids two parallel cold task-graphs racing the same daemon
+            // and doubling memory pressure.
+            if (!includeApplied && this.appliedBootstrapPromise) {
+                try {
+                    await this.appliedBootstrapPromise;
+                } catch {
+                    /* surfaced by the bootstrap originator */
+                }
+            }
+            await this.runTask(headTask, tailTasks, opts);
+            if (includeApplied) {
+                this.appliedMarkersFreshUntilMs =
+                    Date.now() + APPLIED_MARKERS_FRESHNESS_TTL_MS;
+            }
+            const manifest = this.readManifest(module);
+            if (manifest) {
+                this.manifestCache.set(key, {
+                    manifest,
+                    timestamp: Date.now(),
+                });
+            }
+            return manifest;
+        })();
+        const promise = inner.finally(() => {
+            if (this.inFlightColdStart.get(key) === promise) {
+                this.inFlightColdStart.delete(key);
+            }
+        });
+        this.inFlightColdStart.set(key, promise);
+        // Publish the bundle's lifetime as an `appliedBootstrapPromise` when it
+        // includes `composePreviewApplied`. A concurrent `bootstrapAppliedMarkers`
+        // call then awaits this bundle instead of kicking off its own redundant
+        // task. Swallow the bundle's error in this view — `bootstrapAppliedMarkers`
+        // surfaces problems through its own `onTypedError` path; doubling them
+        // up would post duplicate remediation toasts.
+        if (includeApplied) {
+            const voidPromise = promise.then(
+                () => undefined,
+                () => undefined,
+            );
+            this.appliedBootstrapPromise = voidPromise;
+            void voidPromise.finally(() => {
+                if (this.appliedBootstrapPromise === voidPromise) {
+                    this.appliedBootstrapPromise = null;
+                }
+            });
+        }
+        return promise;
     }
 
     /**
