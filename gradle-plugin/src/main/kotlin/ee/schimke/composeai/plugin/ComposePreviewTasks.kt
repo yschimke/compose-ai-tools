@@ -390,11 +390,12 @@ internal object ComposePreviewTasks {
       maxHeapMb.set(extension.daemon.maxHeapMb)
       maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       warmSpare.set(extension.daemon.warmSpare)
-      compileInProcess.set(extension.daemon.compileInProcess)
       // Stage-2 BTA wiring. The configurations + dep adds are owned by
-      // `wireDesktopBtaInputs` so the registration block stays scannable; deps are added
-      // afterEvaluate only when the consumer flipped compileInProcess on, so non-opt-in
-      // consumers don't pay the ~80 MB BTA-impl + Compose-plugin-embeddable download cost.
+      // `wireDesktopBtaInputs` so the registration block stays scannable. Daemon JVM
+      // lazily loads BTA only when the editor's save loop calls `compileSources` (gated
+      // by the VS Code workspace setting `composePreview.daemon.compileInProcess`), so
+      // populating the descriptor unconditionally costs only the on-disk classpath
+      // resolution at config time.
       wireDesktopBtaInputs(
         project = project,
         extension = extension,
@@ -523,36 +524,30 @@ internal object ComposePreviewTasks {
   /**
    * Plugin-apply-time setup for stage-2 BTA configurations. Creates the two detached configurations
    * idempotently (`maybeCreate`) and schedules `afterEvaluate` to populate them with the BTA impl +
-   * Compose-plugin-embeddable coordinates iff [PreviewExtension.daemon.compileInProcess] is `true`
-   * at evaluation time.
-   *
-   * Lazy population is load-bearing: a consumer who applies our plugin but doesn't opt in shouldn't
-   * pay an ~80 MB pull of `kotlin-build-tools-impl` + `kotlin-compose-compiler-plugin-embeddable`.
-   * The configurations are created always (so later `getByName(...)` lookups in task-registration
-   * blocks don't NPE), but stay empty unless the consumer flips the flag.
+   * Compose-plugin-embeddable coordinates against the consumer's Kotlin version. Always populated:
+   * the runtime cost lives on the daemon JVM and is paid only when the editor's save loop actually
+   * calls `compileSources` (gated by `composePreview.daemon.compileInProcess` in VS Code) — the
+   * classpath itself is small enough at config time that gating doesn't earn its UX complexity.
    *
    * MUST be called from config time, NOT from inside `task.register {…}` — Gradle's MutationGuard
    * refuses `Project.afterEvaluate(...)` once task realization starts.
    */
   private fun setupBtaConfigurations(project: Project, extension: PreviewExtension) {
+    val _unused = extension
     val btaImplConfig =
       project.configurations.maybeCreate("composePreviewBtaImpl").apply {
         isCanBeResolved = true
         isCanBeConsumed = false
-        description =
-          "Stage-2 BTA implementation classpath. Populated when " +
-            "composePreview.daemon.compileInProcess is true; empty otherwise."
+        description = "Stage-2 BTA implementation classpath."
       }
     val btaPluginConfig =
       project.configurations.maybeCreate("composePreviewBtaPlugin").apply {
         isCanBeResolved = true
         isCanBeConsumed = false
         description =
-          "Stage-2 Compose compiler plugin embeddable JAR (loaded into BTA's isolated " +
-            "classloader). Populated when composePreview.daemon.compileInProcess is true."
+          "Stage-2 Compose compiler plugin embeddable JAR (loaded into BTA's isolated classloader)."
       }
     project.afterEvaluate {
-      if (!extension.daemon.compileInProcess.getOrElse(false)) return@afterEvaluate
       val kotlinVersion = resolveConsumerKotlinVersion(project)
       project.dependencies.add(
         btaImplConfig.name,
@@ -568,15 +563,8 @@ internal object ComposePreviewTasks {
   /**
    * Stage-2 BTA wiring for the CMP / desktop daemon-start task. Wires every BTA input on
    * [DaemonBootstrapTask] from the configurations + project layout. The configurations themselves
-   * are created (and conditionally populated) by [setupBtaConfigurations], which must run BEFORE
-   * this method — see that method's KDoc for why. See `docs/daemon/COMPILE-IN-PROCESS.md` § "Module
-   * layout".
-   *
-   * Lazy-population is load-bearing: a non-opt-in consumer who just applies our plugin shouldn't
-   * pay an ~80 MB pull of `kotlin-build-tools-impl` + `kotlin-compose-compiler-plugin-embeddable`.
-   * With the convention default `false`, the `afterEvaluate` body short-circuits before adding any
-   * deps, the configurations stay empty, and [DaemonBootstrapTask.assembleBtaCompileConfig] emits
-   * `btaCompile = null`.
+   * are created (and populated) by [setupBtaConfigurations], which must run BEFORE this method —
+   * see that method's KDoc for why. See `docs/daemon/COMPILE-IN-PROCESS.md` § "Module layout".
    *
    * Kotlin version sniff currently reads our `libs.versions.toml` Kotlin entry — the
    * version-catalog convention this repo and its samples use. Out-of-repo consumers fall back to a

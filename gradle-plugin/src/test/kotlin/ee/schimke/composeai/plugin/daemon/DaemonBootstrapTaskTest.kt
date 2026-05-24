@@ -283,40 +283,16 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
-  fun `btaCompile is null when compileInProcess is false`() {
-    // Default-off path — even when all the BTA inputs are populated (unlikely in practice,
-    // since the variant wiring sites only populate them when the flag is true), the assembler
-    // must short-circuit on the flag. Keeps the production wire-up's "schema-version-2 with
-    // null btaCompile" the universal pre-stage-2 shape.
-    val project = newProject()
-    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
-    val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
-    val task =
-      project.tasks.register("bootstrapOff", DaemonBootstrapTask::class.java) {
-        baseInputs(outFile)
-        compileInProcess.set(false)
-        // Populate BTA inputs anyway to prove the off-flag short-circuit ignores them.
-        btaImplClasspath.from(implJar)
-        btaModuleName.set("would-have-been-used")
-        btaOutputDir.set("/tmp/out")
-        btaIcWorkingDir.set("/tmp/ic")
-      }
-    task.get().emit()
-    val descriptor = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
-    assertThat(descriptor.btaCompile).isNull()
-  }
-
-  @Test
-  fun `btaCompile is null when compileInProcess is true but required inputs are missing`() {
-    // The flag is on but the variant wiring hasn't populated implClasspath / moduleName /
-    // outputDir / icWorkingDir yet. The assembler emits a stderr warning + null rather than
-    // shipping a half-populated BtaCompileConfig that would explode at the daemon's startup.
+  fun `btaCompile is null when required inputs are missing`() {
+    // No variant wiring yet (implClasspath / moduleName / outputDir / icWorkingDir all unset)
+    // — the assembler emits null rather than shipping a half-populated BtaCompileConfig that
+    // would explode at the daemon's startup. Keeps the descriptor's "schema-version-2 with
+    // null btaCompile" the universal not-yet-wired shape.
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
     val task =
       project.tasks.register("bootstrapPartial", DaemonBootstrapTask::class.java) {
         baseInputs(outFile)
-        compileInProcess.set(true)
         // Deliberately leave btaImplClasspath / btaModuleName / btaOutputDir / btaIcWorkingDir
         // unset.
       }
@@ -326,7 +302,7 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
-  fun `btaCompile is populated when compileInProcess is true and inputs are wired`() {
+  fun `btaCompile is populated when inputs are wired`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
     val implJar = File(tempDir.root, "kotlin-build-tools-impl-2.3.21.jar").apply { writeText("p") }
@@ -338,7 +314,6 @@ class DaemonBootstrapTaskTest {
     val task =
       project.tasks.register("bootstrapOn", DaemonBootstrapTask::class.java) {
         baseInputs(outFile)
-        compileInProcess.set(true)
         btaImplClasspath.from(implJar)
         btaCompileClasspath.from(cpJar)
         btaCompilerPluginClasspath.from(pluginJar)
@@ -370,7 +345,6 @@ class DaemonBootstrapTaskTest {
     val task =
       project.tasks.register("bootstrapKsp", DaemonBootstrapTask::class.java) {
         baseInputs(outFile)
-        compileInProcess.set(true)
         btaImplClasspath.from(implJar)
         btaModuleName.set("samples-android")
         btaOutputDir.set("/abs/out")

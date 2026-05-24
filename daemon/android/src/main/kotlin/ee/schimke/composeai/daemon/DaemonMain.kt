@@ -582,11 +582,13 @@ fun main(args: Array<String>) {
     )
 
   // Stage-2 in-process compile service — same read path as :daemon:desktop's DaemonMain.
-  // Reads the `composeai.daemon.bta.*` sysprops the gradle plugin populates when the
-  // consumer opts into `composePreview { daemon { compileInProcess = true } }`. Returns
-  // null when the sysprops are absent or the module is KSP/KAPT-tainted (Android's
-  // ineligibilityReason flows verbatim through `BtaCompileService.Outcome.Fallback`).
-  // See docs/daemon/COMPILE-IN-PROCESS.md.
+  // Reads the `composeai.daemon.bta.*` sysprops the gradle plugin populates whenever the
+  // variant wiring resolved the BTA classpath. Returns null when the sysprops are absent
+  // or the module is KSP/KAPT-tainted (Android's ineligibilityReason flows verbatim
+  // through `BtaCompileService.Outcome.Fallback`). The editor's save loop only calls
+  // `compileSources` when the VS Code workspace setting
+  // `composePreview.daemon.compileInProcess` is on, so an active service still costs
+  // nothing until that switch is flipped. See docs/daemon/COMPILE-IN-PROCESS.md.
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(

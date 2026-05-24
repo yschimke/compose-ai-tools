@@ -120,11 +120,12 @@ gradle-plugin/                ADDITIVE ONLY
                               EXTENDS the launch JSON with the BTA
                               compiler classpath (kotlin-build-tools-impl
                               + kotlin-compiler-embeddable + the
-                              Compose plugin embeddable). Gated on the
-                              build-side opt-in
-                              `composePreview { daemon { compileInProcess = true } }`
-                              so consumers who don't want the extra
-                              ~80 MB don't get it.
+                              Compose plugin embeddable). Always
+                              populated — the daemon only loads these
+                              JARs into BTA's isolated classloader on
+                              the first `compileSources` call, which
+                              is itself gated by the VS Code workspace
+                              setting `composePreview.daemon.compileInProcess`.
 
 vscode-extension/             ADDITIVE ONLY
   src/daemon/
@@ -179,11 +180,13 @@ The render dispatch after compile is also unchanged — same
 
 ## Eligibility
 
-Stage 2 is **opt-in per workspace** (`composePreview.daemon.compileInProcess`)
-AND **opt-in per build** (`composePreview { daemon { compileInProcess
-= true } }` in the consumer's `build.gradle.kts`). Both gates are off
-by default. Within an enabled workspace, the daemon picks the path per
-module:
+Stage 2 is **opt-in per workspace**
+(`composePreview.daemon.compileInProcess` in VS Code settings). The
+gate is off by default. The gradle plugin always populates the BTA
+classpath in the daemon launch descriptor, but the daemon only loads
+BTA lazily — when the editor's save loop actually calls
+`compileSources`, which is gated by the workspace setting. Within an
+enabled workspace, the daemon picks the path per module:
 
 | Predicate                                                          | Path     | Why                                                                                                                                                     |
 | ------------------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -199,8 +202,8 @@ is logged so consumers can see why their module is on a particular
 path.
 
 Stage 1 stays available as the universal fallback. Stage 0 (per-save
-Gradle invocation) stays as the floor when both flags are off — exactly
-the same code path as today.
+Gradle invocation) stays as the floor when the workspace flag is off
+— exactly the same code path as today.
 
 ## What we expect to measure
 
@@ -236,10 +239,11 @@ kotlin-daemon-embeddable + kotlin-build-tools-impl + the compose
 compiler plugin). The daemon's resident set climbs by roughly the
 same once BTA's frontend is loaded.
 
-**Mitigation:** the gradle-side opt-in is the right gate. Consumers
-who don't want the extra resident memory leave `compileInProcess =
-false` at the build level and the launch descriptor stays slim. The
-VS Code setting alone doesn't add the JARs.
+**Mitigation:** lazy load. `BtaCompileSession.toolchains` is `by lazy`,
+so the daemon JVM only pulls those JARs into its (isolated) BTA
+classloader on the first `compileSources` call. Consumers who don't
+flip the VS Code workspace flag never reach that call, and the
+resident memory stays where stage 1's daemon sat.
 
 ### Classpath cache invalidation when a JAR is rebuilt in place
 

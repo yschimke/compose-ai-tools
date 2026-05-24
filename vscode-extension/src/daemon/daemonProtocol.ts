@@ -1119,10 +1119,12 @@ export interface DaemonLaunchDescriptor {
     manifestPath: string;
     /**
      * Stage-2 in-process compile config (see `docs/daemon/COMPILE-IN-PROCESS.md`). Non-null when
-     * the consumer opted into in-process compile via
-     * `composePreview { daemon { compileInProcess = true } }`. The VS Code extension exposes
-     * the presence of this field via `daemonScheduler.compileSources()` — when null, the
-     * scheduler falls back to stage 1 (`gradle --continuous`) or stage 0 (one-shot Gradle).
+     * the gradle plugin resolved the BTA classpath for this variant (the common case — KSP/KAPT
+     * modules emit a populated block carrying an `ineligibilityReason` so the daemon can refuse
+     * gracefully). Null only when the wiring is incomplete. The VS Code extension dispatches
+     * `daemonScheduler.compileSourcesInProcess()` through this path only when the workspace
+     * setting `composePreview.daemon.compileInProcess` is on; otherwise the scheduler falls
+     * back to stage 1 (`gradle --continuous`) or stage 0 (one-shot Gradle).
      */
     btaCompile: BtaCompileConfig | null;
 }
