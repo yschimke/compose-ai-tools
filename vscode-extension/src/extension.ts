@@ -892,12 +892,15 @@ export async function activate(
                           // Multi-capture (animated) renders still come through the
                           // Gradle path; the daemon's predictive pre-warm focuses
                           // on the cheap interactive loop.
-                          const ownerModule = previewModuleMap.get(previewId);
-                          const previewInfo = ownerModule
-                              ? moduleManifestCache
-                                    .get(ownerModule.modulePath)
-                                    ?.find((p) => p.id === previewId)
-                              : undefined;
+                          //
+                          // Resolve the owning manifest directly from `moduleId`
+                          // (which is the daemon-side module path); previewModuleMap
+                          // is keyed on previewId only, which is ambiguous if two
+                          // modules share an id, and would land the frame in the
+                          // wrong capture slot.
+                          const previewInfo = moduleManifestCache
+                              .get(moduleId)
+                              ?.find((p) => p.id === previewId);
                           const captureIndex = previewInfo
                               ? staticBaseCaptureIndex(previewInfo)
                               : 0;

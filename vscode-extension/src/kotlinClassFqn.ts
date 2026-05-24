@@ -119,16 +119,68 @@ export function topLevelClassFqns(source: string): string[] {
 }
 
 /**
- * True iff the [declaration] mentions one of the platform component
- * base classes — used to decide whether the `<application>` icon is a
- * sensible fallback when the file's FQN has no manifest override. Plain
- * substring match: we'd rather miss an unusual base (and skip the
- * fallback) than show the app icon next to a random data class.
+ * True iff the [declaration]'s supertype clause names one of the platform
+ * component base classes — used to decide whether the `<application>` icon
+ * is a sensible fallback when the file's FQN has no manifest override.
+ *
+ * The match is scoped to the supertype clause (the substring after the
+ * `:` separating the class header from its base list). A whole-declaration
+ * match would false-positive on classes that merely mention `Activity` /
+ * `Service` in a constructor parameter type — e.g.
+ * `class Foo(private val host: Activity) : ViewModel()` would incorrectly
+ * pick up the app icon under the old whole-string match.
  */
 export function isActivityLikeDeclaration(
     decl: KotlinClassDeclaration,
 ): boolean {
-    return ACTIVITY_LIKE_BASE_RE.test(decl.declaration);
+    const supertypeClause = extractSupertypeClause(decl.declaration);
+    if (supertypeClause === null) return false;
+    return ACTIVITY_LIKE_BASE_RE.test(supertypeClause);
+}
+
+/**
+ * Return the substring of [declaration] starting at the supertype-list
+ * `:`, or `null` when the declaration has no supertype clause.
+ *
+ * Skips over the primary-constructor parameter list so a `:` inside the
+ * ctor's parameter types (`val x: Activity`) doesn't get mistaken for the
+ * supertype separator. When there's no primary ctor (or the primary
+ * ctor's `(` follows the supertype `:` — only possible with malformed
+ * Kotlin, but we want to be defensive) the first `:` is the supertype
+ * separator and is returned as-is.
+ */
+function extractSupertypeClause(declaration: string): string | null {
+    const parenOpen = declaration.indexOf("(");
+    const firstColon = declaration.indexOf(":");
+    if (firstColon === -1) return null;
+    if (parenOpen === -1 || firstColon < parenOpen) {
+        return declaration.substring(firstColon);
+    }
+    const parenClose = findMatchingClose(declaration, parenOpen);
+    if (parenClose === -1) return null;
+    const colon = declaration.indexOf(":", parenClose + 1);
+    if (colon === -1) return null;
+    return declaration.substring(colon);
+}
+
+/**
+ * Find the index of the `)` matching the `(` at [openIndex] in [source].
+ * Returns `-1` when unbalanced. Naive depth counter — kotlin allows
+ * nested parens inside default-value expressions, and the discovery
+ * regex bounds the scanned substring to a few lines, so a full Kotlin
+ * lexer would be overkill.
+ */
+function findMatchingClose(source: string, openIndex: number): number {
+    let depth = 0;
+    for (let i = openIndex; i < source.length; i += 1) {
+        const ch = source.charAt(i);
+        if (ch === "(") depth += 1;
+        else if (ch === ")") {
+            depth -= 1;
+            if (depth === 0) return i;
+        }
+    }
+    return -1;
 }
 
 /**
