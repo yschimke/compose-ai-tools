@@ -90,6 +90,10 @@ dependencies {
   // around-composable shadows) to raise the band, and writes `KeyboardController.notifyKeyDown`
   // directly to drive per-cap press highlights in the absence of an interactive daemon session.
   implementation(project(":data-keyboard-connector"))
+  // `TypographySpecimen` / `FontFamilySpecimen` / `FallbackCoverageSpecimen` helpers — Material 3
+  // type-role audit sheet, font-family weight ladder, and a fixed script-coverage check set,
+  // each wrapped in a normal `@Preview`. Sister to `:notification-preview-runtime`.
+  implementation(project(":typography-preview-runtime"))
   // `GlanceAppWidgetContent` composable helper for the Glance-widget @Preview. The runtime
   // module re-exposes `androidx.glance:glance-appwidget` as `api`, so the sample's
   // `GlanceWidgetPreview` can declare a `GlanceAppWidget` subclass and pass it to the helper
