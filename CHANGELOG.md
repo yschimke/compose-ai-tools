@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.11.5](https://github.com/yschimke/compose-ai-tools/compare/v0.11.4...v0.11.5) (2026-05-24)
+
+
+### Features
+
+* **daemon:** stage-2 BTA spike — in-process compile with Compose plugin ([#1338](https://github.com/yschimke/compose-ai-tools/issues/1338)) ([83cec58](https://github.com/yschimke/compose-ai-tools/commit/83cec583d3e6ccb2e8d71f159ab4b271f0d046d6))
+* **data-remotecompose:** bridge connector overrides into the remote player ([#1422](https://github.com/yschimke/compose-ai-tools/issues/1422)) ([d9822ea](https://github.com/yschimke/compose-ai-tools/commit/d9822eadbdc1c6f60fd513f9938cc3d91f1c6e87))
+* **glance:** native FQN discovery of androidx.glance.preview.Preview ([#1414](https://github.com/yschimke/compose-ai-tools/issues/1414)) ([c75581f](https://github.com/yschimke/compose-ai-tools/commit/c75581f65c8bb43207919046eb0ceee25230d392))
+* **launcher-widget:** add @LauncherWidgetResize multi-capture annotation ([#1421](https://github.com/yschimke/compose-ai-tools/issues/1421)) ([461fa48](https://github.com/yschimke/compose-ai-tools/commit/461fa48b367c9bd63e7bbc5abfc0d9b27a3582c1))
+* **launcher-widget:** add data product registry + VS Code protocol types ([#1428](https://github.com/yschimke/compose-ai-tools/issues/1428)) ([c3123b8](https://github.com/yschimke/compose-ai-tools/commit/c3123b89457077d8a2bde1dda770a2cd5190d66e))
+* **launcher-widget:** auto-discover appwidget-provider XML metadata ([#1445](https://github.com/yschimke/compose-ai-tools/issues/1445)) ([0e999b1](https://github.com/yschimke/compose-ai-tools/commit/0e999b153e4d1acf07f9cd5362061732d9f2ff1f))
+* **launcher-widget:** plumb Glance previewSizeMode into payload constraints ([#1432](https://github.com/yschimke/compose-ai-tools/issues/1432)) ([e2d6420](https://github.com/yschimke/compose-ai-tools/commit/e2d64208439d906c56fdf4e90bed18f773ea667a))
+* **resources:** keyframe filmstrip output for AVD previews ([#1426](https://github.com/yschimke/compose-ai-tools/issues/1426)) ([563434f](https://github.com/yschimke/compose-ai-tools/commit/563434f3212aeabcba570f5fc3bc64ef1eb93dd9))
+* **resources:** preview 9-patch drawables at intrinsic + 2× stretch variants ([#1423](https://github.com/yschimke/compose-ai-tools/issues/1423)) ([6bfc6a6](https://github.com/yschimke/compose-ai-tools/commit/6bfc6a60f4885f38f4811e2586c0f7606a17d87e))
+* **samples/remotecompose:** demonstrate `LocalRemoteComposeHost` named-value bind ([#1412](https://github.com/yschimke/compose-ai-tools/issues/1412)) ([d351c0b](https://github.com/yschimke/compose-ai-tools/commit/d351c0b12935eb65d99f55aaa3f2ea626acee4ac))
+* **samples:** flesh out wear and remotecompose manifests with launcher icons and strings ([#1437](https://github.com/yschimke/compose-ai-tools/issues/1437)) ([aa22755](https://github.com/yschimke/compose-ai-tools/commit/aa227558972446aae1af9119755f531c02a197bb))
+* **splash:** SplashScreenSurface runtime helper for Android 12 splash window previews ([#1425](https://github.com/yschimke/compose-ai-tools/issues/1425)) ([75b7afa](https://github.com/yschimke/compose-ai-tools/commit/75b7afadc0976df97df328de30ef94b0ae405c07))
+* **typography:** runtime helpers for Typography / FontFamily / fallback specimens ([#1424](https://github.com/yschimke/compose-ai-tools/issues/1424)) ([68bb70b](https://github.com/yschimke/compose-ai-tools/commit/68bb70b14e52760e17fd92782ffb8e8cbff6d404))
+* **vscode-extension:** add launcher-widget cell-grid picker module ([#1451](https://github.com/yschimke/compose-ai-tools/issues/1451)) ([5726ff3](https://github.com/yschimke/compose-ai-tools/commit/5726ff35089cfc0c409ab62d4f9b14452597e829))
+* **vscode-extension:** add launcher-widget cell-grid picker module ([#1459](https://github.com/yschimke/compose-ai-tools/issues/1459)) ([3eef7f7](https://github.com/yschimke/compose-ai-tools/commit/3eef7f7c6c14887865e8956c5fafe4a8f2b478bd))
+* **vscode-extension:** hover + CodeLens for R.drawable / R.mipmap references in Kotlin and res XML ([#1431](https://github.com/yschimke/compose-ai-tools/issues/1431)) ([d6fd79f](https://github.com/yschimke/compose-ai-tools/commit/d6fd79f138b69ba63b0df992f9432853601fe5d6))
+* **vscode-extension:** launcher-widget picker payload + persistence ([#1460](https://github.com/yschimke/compose-ai-tools/issues/1460)) ([7e97d3c](https://github.com/yschimke/compose-ai-tools/commit/7e97d3c31518ff068bd9a260e9a7a3d27f7755b6))
+* **vscode-extension:** move per-card touch / keyboard / controls toggles into focus bar ([#1433](https://github.com/yschimke/compose-ai-tools/issues/1433)) ([8dd05c3](https://github.com/yschimke/compose-ai-tools/commit/8dd05c3a04a58ccc256b6097b46f1ecd17defba8))
+* **vscode-extension:** show all adaptive-icon variants on AndroidManifest.xml hover ([#1420](https://github.com/yschimke/compose-ai-tools/issues/1420)) ([f99306c](https://github.com/yschimke/compose-ai-tools/commit/f99306cb9a91b52f0d54275bcfafc118a31aa1d5))
+* **vscode-extension:** surface manifest-backed icon when an Activity Kotlin file is open ([#1429](https://github.com/yschimke/compose-ai-tools/issues/1429)) ([da51f9b](https://github.com/yschimke/compose-ai-tools/commit/da51f9b0962779d231274c621342201568c0e11d))
+
+
+### Bug Fixes
+
+* **a11y:** surface ATF-unavailable instead of synthesising "no findings" ([#1456](https://github.com/yschimke/compose-ai-tools/issues/1456)) ([36ee8ac](https://github.com/yschimke/compose-ai-tools/commit/36ee8ac3463c0cff0f6dc06b32f0f436e73df1e6))
+* address simple codex review findings from last 24h ([#1447](https://github.com/yschimke/compose-ai-tools/issues/1447)) ([2aff7b8](https://github.com/yschimke/compose-ai-tools/commit/2aff7b89bc15c47040d14d5fbf15f5503dce704e))
+* close live-edit override pipeline gaps ([#1448](https://github.com/yschimke/compose-ai-tools/issues/1448)) ([d02f909](https://github.com/yschimke/compose-ai-tools/commit/d02f9092620b4738099312494b2dd83840169336))
+* codex follow-ups — discovery, inspection UI, install + publishing ([#1450](https://github.com/yschimke/compose-ai-tools/issues/1450)) ([eac5b8a](https://github.com/yschimke/compose-ai-tools/commit/eac5b8a02ce353af1a1fa97c82c25d05a1cc1939))
+* **daemon:** honour @PreviewWrapper in render engine ([#1439](https://github.com/yschimke/compose-ai-tools/issues/1439)) ([006269f](https://github.com/yschimke/compose-ai-tools/commit/006269f1c338603ad182a0ecca30368c1f7893f2))
+* **daemon:** plumb @PreviewWrapper FQN through manifest and dispatch GLANCE_APPWIDGET ([#1449](https://github.com/yschimke/compose-ai-tools/issues/1449)) ([29d81a0](https://github.com/yschimke/compose-ai-tools/commit/29d81a05770325c8319148ac76c2b14739165333))
+* **data-remotecompose:** guard hex parse when applying ColorValue override ([#1444](https://github.com/yschimke/compose-ai-tools/issues/1444)) ([b7c2ca9](https://github.com/yschimke/compose-ai-tools/commit/b7c2ca92dd125bd1e787852716bcac6f9834406a))
+* **touch-overlay:** stamp pulses with event uptimeMillis so single clicks render ([#1435](https://github.com/yschimke/compose-ai-tools/issues/1435)) ([fa58bb0](https://github.com/yschimke/compose-ai-tools/commit/fa58bb08240b4ca202239d55c7019e2d3f10d67e))
+* **vscode-extension:** route daemon static PNG to the matching capture slot ([#1434](https://github.com/yschimke/compose-ai-tools/issues/1434)) ([31c960e](https://github.com/yschimke/compose-ai-tools/commit/31c960e8d30498bc46ca207cabdf62267c0b59eb))
+* **vscode-extension:** trust boundary for workspace `resources.json` hover ([#1446](https://github.com/yschimke/compose-ai-tools/issues/1446)) ([bbfa0f1](https://github.com/yschimke/compose-ai-tools/commit/bbfa0f16cd5a39c90023dc1a9eb37a079380030c))
+
+
+### Performance Improvements
+
+* **vscode-extension:** bundle cold-start Gradle tasks into one invocation ([#1438](https://github.com/yschimke/compose-ai-tools/issues/1438)) ([94e63af](https://github.com/yschimke/compose-ai-tools/commit/94e63af049db37830db485e0c62a10228e6d7de6))
+
 ## [0.11.4](https://github.com/yschimke/compose-ai-tools/compare/v0.11.3...v0.11.4) (2026-05-23)
 
 
