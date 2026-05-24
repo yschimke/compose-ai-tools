@@ -124,15 +124,23 @@ data class PreviewParamsDto(
    */
   val backgroundColor: Long? = null,
   /**
-   * Preview flavour — mirrors `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"`).
-   * String-typed so the daemon's renderer-agnostic surface doesn't depend on the plugin's enum;
-   * `null` and `"COMPOSE"` both mean the default Compose path. `"TILE"` routes through the
-   * tile-render strategy on the Android backend (top-level
-   * `@androidx.wear.tiles.tooling.preview.Preview` functions are not `@Composable`, so the
-   * Compose-method reflection path throws `NoSuchMethodException` unless the renderer is told to
-   * dispatch differently).
+   * Preview flavour — mirrors `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"` /
+   * `"NOTIFICATION"` / `"GLANCE_APPWIDGET"`). String-typed so the daemon's renderer-agnostic
+   * surface doesn't depend on the plugin's enum; `null` and `"COMPOSE"` both mean the default
+   * Compose path. The non-default values route through dedicated render strategies on the Android
+   * backend (top-level Tile / Notification functions are not `@Composable`; Glance previews ARE
+   * `@Composable` but must be hosted inside a `GlanceAppWidget.providePreview(...)` →
+   * `composeForPreview(...)` → `RemoteViews.apply` pipeline, see issue #1440).
    */
   val kind: String? = null,
+  /**
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
+   * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
+   * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so
+   * `Method.annotations` is empty for it at runtime — see issue #1440). Threaded into
+   * `RenderSpec.wrapperClassName` for the render body.
+   */
+  val wrapperClassName: String? = null,
 )
 
 /**

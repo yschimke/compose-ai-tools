@@ -149,4 +149,20 @@ describe("isActivityLikeDeclaration", () => {
         assert.ok(decl);
         assert.strictEqual(isActivityLikeDeclaration(decl), false);
     });
+
+    it("does not match Activity mentioned only in a constructor parameter", () => {
+        const [decl] = extractClassDeclarations(
+            "class Foo(private val host: Activity) : ViewModel()",
+        );
+        assert.ok(decl);
+        assert.strictEqual(isActivityLikeDeclaration(decl), false);
+    });
+
+    it("matches when the supertype is Activity even with a ctor parameter", () => {
+        const [decl] = extractClassDeclarations(
+            "class Foo(private val helper: Helper) : Activity()",
+        );
+        assert.ok(decl);
+        assert.ok(isActivityLikeDeclaration(decl));
+    });
 });

@@ -210,7 +210,14 @@ export class FocusController {
         this.config.focusToolbar.applyKeyboardBandButtonState({
             inFocus,
             focusedPreviewId: previewId,
-            advertised: live.isKeyboardBandAdvertised(),
+            // Wear OS surfaces have no software keyboard to force open, so
+            // the toggle is meaningless there — hide it on round-watch
+            // previews instead of showing a dead button on an already
+            // cramped focus toolbar. `data-wear-preview` is stamped by
+            // cardBuilder/cardMetadata via `isWearPreview`.
+            advertised:
+                live.isKeyboardBandAdvertised() &&
+                card?.dataset.wearPreview !== "1",
             enabled: previewId !== null && live.isKeyboardBandForced(previewId),
         });
         this.config.focusToolbar.applyControlsButtonState({

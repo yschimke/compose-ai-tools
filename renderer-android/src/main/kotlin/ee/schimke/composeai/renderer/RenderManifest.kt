@@ -117,6 +117,11 @@ data class LauncherWidgetCapture(
     val maxWidth: Int? = null,
     val maxHeight: Int? = null,
     val resizeOrder: LauncherWidgetCaptureResizeOrder = LauncherWidgetCaptureResizeOrder.WidthFirst,
+    /**
+     * Per-frame delay carried through from `@LauncherWidgetResize.frameDelayMs` for the
+     * future GIF-stitch pass. `null` when the capture didn't originate from a resize walk.
+     */
+    val frameDelayMs: Int? = null,
 )
 
 /**
