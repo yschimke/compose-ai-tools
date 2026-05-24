@@ -22,7 +22,10 @@
   `composePreview.daemon.continuousCompile` — long-running `gradle
   --continuous` worker per module — landed for measurement. See
   [CONTINUOUS-COMPILE.md](CONTINUOUS-COMPILE.md). Stage-2 in-daemon Kotlin
-  Build Tools API integration is gated on that spike's exit criteria.)
+  Build Tools API integration unblocked by the spike in
+  [BTA-SPIKE.md](BTA-SPIKE.md) (all five checkpoints green); production
+  wire-up design in [COMPILE-IN-PROCESS.md](COMPILE-IN-PROCESS.md), gated
+  behind `composePreview.daemon.compileInProcess`.)
 - Tier-3 dependency-graph reachability index — v1 uses a conservative
   "module-changed = all previews stale, filtered by visibility" rule.
 

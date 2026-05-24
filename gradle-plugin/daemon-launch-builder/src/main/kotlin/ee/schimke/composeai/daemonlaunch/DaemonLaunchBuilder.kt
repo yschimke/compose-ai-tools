@@ -3,11 +3,11 @@ package ee.schimke.composeai.daemonlaunch
 import kotlinx.serialization.json.Json
 
 /**
- * Pure-JVM library for producing `daemon-launch.json` from pre-resolved inputs. Generic by
- * design — the Android-specific classpath layering (AGP `artifactView` resolution, R.jar
- * appending, the Robolectric-on-JDK-17 `--add-opens` set) stays in the Gradle plugin's
- * `AndroidPreviewClasspath`; this library's contract is "given these resolved jar lists +
- * sysprops + JVM args, emit a valid descriptor."
+ * Pure-JVM library for producing `daemon-launch.json` from pre-resolved inputs. Generic by design —
+ * the Android-specific classpath layering (AGP `artifactView` resolution, R.jar appending, the
+ * Robolectric-on-JDK-17 `--add-opens` set) stays in the Gradle plugin's `AndroidPreviewClasspath`;
+ * this library's contract is "given these resolved jar lists + sysprops + JVM args, emit a valid
+ * descriptor."
  *
  * Bazel rules and Amper tasks resolve their classpath through their own dep system
  * (`rules_jvm_external` / Amper's m2 cache) and hand the result to [build] (in-process) or to
@@ -18,10 +18,10 @@ import kotlinx.serialization.json.Json
 public object DaemonLaunchBuilder {
 
   /**
-   * Canonical JSON encoder. Pretty-printed because the descriptor is a debug surface (devs
-   * `cat` it when the daemon misbehaves); `encodeDefaults = true` + `explicitNulls = true` so
-   * optional fields like `javaLauncher` render explicitly as `null` rather than being omitted,
-   * removing "is the field missing or is it null?" ambiguity for downstream readers.
+   * Canonical JSON encoder. Pretty-printed because the descriptor is a debug surface (devs `cat` it
+   * when the daemon misbehaves); `encodeDefaults = true` + `explicitNulls = true` so optional
+   * fields like `javaLauncher` render explicitly as `null` rather than being omitted, removing "is
+   * the field missing or is it null?" ambiguity for downstream readers.
    */
   public val json: Json = Json {
     prettyPrint = true
@@ -31,9 +31,9 @@ public object DaemonLaunchBuilder {
 
   /**
    * Constructs a [DaemonClasspathDescriptor] with [schemaVersion] stamped at
-   * [DAEMON_DESCRIPTOR_SCHEMA_VERSION]. All other fields are passed through verbatim — the
-   * builder is intentionally thin, so it stays decoupled from how a given build system resolved
-   * its classpath / system properties / JVM args.
+   * [DAEMON_DESCRIPTOR_SCHEMA_VERSION]. All other fields are passed through verbatim — the builder
+   * is intentionally thin, so it stays decoupled from how a given build system resolved its
+   * classpath / system properties / JVM args.
    */
   public fun build(
     modulePath: String,

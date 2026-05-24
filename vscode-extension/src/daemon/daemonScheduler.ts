@@ -138,6 +138,16 @@ export interface DaemonScheduler {
         absPath: string,
         changeType?: FileChangeType,
     ): Promise<void>;
+    /**
+     * Stage-2: send a `compileSources` JSON-RPC request. Returns the daemon's outcome
+     * verbatim; null when the daemon isn't reachable (caller should treat that as a
+     * fallback). See `compileSourcesInProcess` implementation comment in
+     * [LiveDaemonScheduler] for routing semantics.
+     */
+    compileSourcesInProcess(
+        module: ModuleInfo,
+        sources: string[],
+    ): Promise<import("./daemonProtocol").CompileSourcesResult | null>;
     setFocus(module: ModuleInfo, previewIds: string[]): Promise<void>;
     setVisible(
         module: ModuleInfo,
@@ -325,6 +335,40 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             kind: classifyKind(absPath),
             changeType,
         });
+    }
+
+    /**
+     * Stage-2 in-process compile dispatch — see
+     * [docs/daemon/COMPILE-IN-PROCESS.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/COMPILE-IN-PROCESS.md).
+     *
+     * Sends a `compileSources` JSON-RPC request to the daemon. The daemon's handler
+     * dispatches through `DefaultBtaCompileService` when its launch descriptor opted into
+     * `btaCompile`; otherwise it returns `{result:"fallback"}`. Returns the daemon's
+     * outcome verbatim to the caller; null when the daemon channel isn't available at all
+     * (no spawn / module disabled), which is functionally equivalent to a fallback.
+     *
+     * Callers should treat `result === "fallback"` AND `null` as "use the stage-1 / 0
+     * path" and `result === "compileError"` as a real Kotlin source diagnostic.
+     */
+    async compileSourcesInProcess(
+        module: ModuleInfo,
+        sources: string[],
+    ): Promise<import("./daemonProtocol").CompileSourcesResult | null> {
+        const client = await this.gate.getOrSpawn(
+            module,
+            this.daemonEvents(module.modulePath),
+        );
+        if (!client) {
+            return null;
+        }
+        try {
+            return await client.compileSources({ sources });
+        } catch (err) {
+            this.logger.appendLine(
+                `[daemon] compileSources failed for ${module.modulePath}: ${(err as Error).message}`,
+            );
+            return null;
+        }
     }
 
     /**
@@ -767,6 +811,14 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         _changeType?: FileChangeType,
     ): Promise<void> {
         /* no-op: minimal mode never notifies the daemon */
+    }
+
+    async compileSourcesInProcess(
+        _module: ModuleInfo,
+        _sources: string[],
+    ): Promise<import("./daemonProtocol").CompileSourcesResult | null> {
+        /* no-op: minimal mode never reaches the daemon, callers fall back to Gradle */
+        return null;
     }
 
     async setFocus(_module: ModuleInfo, _previewIds: string[]): Promise<void> {

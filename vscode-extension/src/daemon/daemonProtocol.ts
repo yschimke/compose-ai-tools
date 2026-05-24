@@ -415,6 +415,43 @@ export interface FileChangedParams {
     changeType: FileChangeType;
 }
 
+/**
+ * Stage-2 in-process compile (COMPILE-IN-PROCESS.md).
+ *
+ * Client → daemon request: "compile these sources via the BTA host inside the daemon JVM and
+ * swap the user classloader once the new `.class` files are on disk". The daemon side does
+ * the same `host.swapUserClassLoaders()` that a `fileChanged({kind:"source"})` notification
+ * would, then returns synchronously. Render dispatch happens via the existing per-preview
+ * mechanism; this request handles the compile leg only.
+ */
+export interface CompileSourcesParams {
+    sources: string[];
+    /** When the editor knows the dirty set, pass it; otherwise null/undefined and the
+     *  daemon recalculates from BTA's IC cache. */
+    changes?: SourceChangeSet | null;
+}
+
+export interface SourceChangeSet {
+    modified: string[];
+    removed: string[];
+}
+
+export type CompileResultKind = "ok" | "compileError" | "fallback";
+
+export interface CompileSourcesResult {
+    result: CompileResultKind;
+    /** Populated when `result === "compileError"`. Empty otherwise. */
+    errors?: CompileErrorDetail[];
+    durationMs: number;
+}
+
+export interface CompileErrorDetail {
+    file: string;
+    line: number;
+    column: number;
+    message: string;
+}
+
 // Client → daemon requests (PROTOCOL.md § 5)
 
 export type RenderTier = "fast" | "full";
@@ -1045,7 +1082,7 @@ export interface RecordingEncodeResult {
 /**
  * Wire format of `<module>/build/compose-previews/daemon-launch.json`,
  * authored by `DaemonBootstrapTask`. See
- * `gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/daemon/DaemonClasspathDescriptor.kt`.
+ * `gradle-plugin/daemon-launch-builder/src/main/kotlin/ee/schimke/composeai/daemonlaunch/DaemonClasspathDescriptor.kt`.
  */
 export interface DaemonLaunchDescriptor {
     schemaVersion: number;
@@ -1059,9 +1096,42 @@ export interface DaemonLaunchDescriptor {
     systemProperties: Record<string, string>;
     workingDirectory: string;
     manifestPath: string;
+    /**
+     * Stage-2 in-process compile config (see `docs/daemon/COMPILE-IN-PROCESS.md`). Non-null when
+     * the consumer opted into in-process compile via
+     * `composePreview { daemon { compileInProcess = true } }`. The VS Code extension exposes
+     * the presence of this field via `daemonScheduler.compileSources()` — when null, the
+     * scheduler falls back to stage 1 (`gradle --continuous`) or stage 0 (one-shot Gradle).
+     */
+    btaCompile: BtaCompileConfig | null;
 }
 
-export const DAEMON_DESCRIPTOR_SCHEMA_VERSION = 1;
+/**
+ * Stage-2 in-process compile config — see `docs/daemon/COMPILE-IN-PROCESS.md`. Mirrors the
+ * `BtaCompileConfig` data class in `DaemonClasspathDescriptor.kt`; field-for-field. The
+ * extension doesn't act on these fields directly — they're for the daemon JVM, which reads
+ * the launch JSON at startup and constructs a `DefaultBtaCompileService` from them. The
+ * extension only checks whether the field is present to decide whether the
+ * `compileSources` JSON-RPC method is worth calling.
+ */
+export interface BtaCompileConfig {
+    implClasspath: string[];
+    compileClasspath: string[];
+    compilerPlugins: string[];
+    outputDir: string;
+    moduleName: string;
+    icWorkingDir: string;
+    /** Non-null = module is NOT eligible for stage 2; the daemon's `compileSources` will
+     *  return `result=fallback` with this reason. The extension can short-circuit even
+     *  earlier and skip the JSON-RPC round-trip. */
+    ineligibilityReason: string | null;
+}
+
+/**
+ * Bumped to 2 when `btaCompile` landed (the v1 reader fails on any unknown field, so adding
+ * a field IS a breaking schema change even though the field defaults to null).
+ */
+export const DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2;
 
 // =====================================================================
 // Live-frame streaming (`composestream/1`) — buttery follow-up to

@@ -3580,6 +3580,44 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
     }
 
     invalidateModuleCache(filePath);
+
+    // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). When the workspace
+    // setting is on AND the daemon's launch descriptor opted into BTA at the
+    // build level, dispatch to the daemon's `compileSources` JSON-RPC method
+    // and skip the Gradle round-trip entirely on success. Any non-ok outcome
+    // (fallback / compileError / null) falls through to the existing Gradle
+    // path below — `gradleService.compileOnly` is the universal floor.
+    if (inProcessCompileEnabled() && daemonScheduler) {
+        const t0 = Date.now();
+        const outcome = await daemonScheduler.compileSourcesInProcess(module, [
+            filePath,
+        ]);
+        const elapsed = Date.now() - t0;
+        if (outcome?.result === "ok") {
+            logLine(
+                `[compile-in-process] ${module.modulePath} ok in ${elapsed} ms (daemon reported ${outcome.durationMs} ms)`,
+            );
+            return true;
+        }
+        if (outcome?.result === "compileError") {
+            logLine(
+                `[compile-in-process] ${module.modulePath} compileError after ${elapsed} ms ` +
+                    `(${outcome.errors?.length ?? 0} diagnostic(s)) — surfacing as build failure`,
+            );
+            // Treat the same as a Gradle compile failure — caller surfaces the
+            // banner via the existing flow. The Gradle path will pick up the same
+            // diagnostics on the retry, so the editor sees them consistently.
+            return false;
+        }
+        if (outcome?.result === "fallback") {
+            logLine(
+                `[compile-in-process] ${module.modulePath} fallback — ` +
+                    `falling through to Gradle compileOnly`,
+            );
+        }
+        // outcome === null or fallback: fall through to the existing path.
+    }
+
     try {
         await gradleService.compileOnly(module);
     } catch (err) {
@@ -3593,6 +3631,12 @@ async function runDaemonCompileOnly(filePath: string): Promise<boolean> {
         return false;
     }
     return true;
+}
+
+function inProcessCompileEnabled(): boolean {
+    return vscode.workspace
+        .getConfiguration("composePreview")
+        .get<boolean>("daemon.compileInProcess", false);
 }
 
 /**

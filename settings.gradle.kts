@@ -330,6 +330,17 @@ include(":daemon:desktop")
 
 include(":daemon:harness")
 
+// Stage-2 spike for the kotlinc-in-daemon investigation (#1332 → follow-up). Standalone
+// proof-of-concept that the Kotlin Build Tools API can compile a `@Composable` source file
+// with the Compose compiler plugin loaded, in-process, with no Gradle. NOT wired into the
+// daemon yet — see docs/daemon/BTA-SPIKE.md. Remove this module if the spike abandons.
+include(":daemon:bta-host")
+
+// Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
+// standard `compileKotlin`, so the BTA spike's Gradle-parity test has a reference artefact
+// to diff against. Same lifecycle as `:daemon:bta-host`; remove together with it.
+include(":daemon:bta-host-fixture")
+
 include(":mcp")
 
 // Public render-session library. `:render-session-api` is the pure-interface surface every
