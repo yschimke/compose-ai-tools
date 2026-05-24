@@ -2349,8 +2349,24 @@ export class PreviewApp extends LitElement {
             // panel doesn't reserve layout space next to the preview.
             bundleLegend.hidden = count === 0;
         };
+        // Track the previous active tab so we can tear down the transient
+        // theming-/resources-consumers hover overlay when the user switches
+        // tabs away from those bundles. The overlay was painted from
+        // `row-selected` events; if the user moves to another tab while
+        // still hovering a row, the hover-leave never fires and the tint
+        // would persist on the focused card. See #1380.
+        let lastActiveTab: BundleId | null = bundleController.state().activeTab;
         const reflectBundleState = (): void => {
             const s = bundleController.state();
+            if (lastActiveTab !== s.activeTab) {
+                if (lastActiveTab === "theming") {
+                    clearBundleBoxes(null, "theming-consumers");
+                }
+                if (lastActiveTab === "resources") {
+                    clearBundleBoxes(null, "resources-consumers");
+                }
+                lastActiveTab = s.activeTab;
+            }
             // Without early features only the graduated bundles (a11y for
             // now) show their chip — the rest are still in-progress and
             // shouldn't surface from the always-visible chip bar.
@@ -2500,6 +2516,14 @@ export class PreviewApp extends LitElement {
                     postSetDataExtensionEnabled(prev, [...prevKinds], false);
                 }
             }
+            // Transient hover overlays (`theming-consumers`,
+            // `resources-consumers`) are painted on whichever card was
+            // focused when the user hovered a row. When the focus moves
+            // to a different card the hover-leave never fires on the old
+            // card, so any existing tint there has to be cleared
+            // explicitly. See #1380.
+            clearBundleBoxes(null, "theming-consumers");
+            clearBundleBoxes(null, "resources-consumers");
             if (!next) return;
             const desired = desiredKindsForActiveBundles();
             if (desired.length === 0) return;
