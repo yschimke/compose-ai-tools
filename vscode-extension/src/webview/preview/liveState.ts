@@ -118,6 +118,19 @@ export interface LiveStateConfig {
     /** Re-render the focus inspector for [card] — the inspector reads
      *  `isLive` / `isRecording` to keep its Tools strip in sync. */
     renderInspector(card: HTMLElement | null): void;
+    /**
+     * Notified after the launcher-widget cell-size override for [previewId]
+     * has changed — `cells` is the new value, or `null` when the user reset
+     * the override. Wired by main.ts to persist the choice into
+     * `PersistedState.launcherWidgetOverrides` via `vscode.setState`, so a
+     * panel reload restores the override on the next boot. Not fired from
+     * [hydrateLauncherWidgetOverride] — that path is the persistence
+     * replay itself and would self-trigger an extra `setState` round-trip.
+     */
+    onLauncherWidgetCellsChanged?(
+        previewId: string,
+        cells: LauncherWidgetSize | null,
+    ): void;
 }
 
 export class LiveStateController {
@@ -516,6 +529,22 @@ export class LiveStateController {
         }
         this.restartLiveIfActive(previewId);
         this.applyControlsToggleButtons();
+        this.cfg.onLauncherWidgetCellsChanged?.(previewId, cells);
+    }
+
+    /**
+     * Replay a launcher-widget override persisted across a panel reload. Seeds
+     * the in-memory map without firing [onLauncherWidgetCellsChanged] (so the
+     * boot hydration doesn't bounce straight back into `setState`), and
+     * without restarting any stream — at boot no card is live yet anyway, so
+     * the picker button will pick the value up via
+     * [launcherWidgetCellsForPreview] when the user focuses the card.
+     */
+    hydrateLauncherWidgetOverride(
+        previewId: string,
+        cells: LauncherWidgetSize,
+    ): void {
+        this.launcherWidgetCellsByPreviewId.set(previewId, cells);
     }
 
     /** Symmetric to {@link toggleTouchOverlayForCard} for the soft-keyboard band. */

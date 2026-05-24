@@ -18,7 +18,17 @@ function makeCard(previewId: string): HTMLElement {
     return el;
 }
 
-function makeController(): LiveStateController {
+interface ChangeRecord {
+    previewId: string;
+    cells: LauncherWidgetSize | null;
+}
+
+function makeController(
+    onLauncherWidgetCellsChanged?: (
+        previewId: string,
+        cells: LauncherWidgetSize | null,
+    ) => void,
+): LiveStateController {
     const recordingFormat = document.createElement("select");
     return new LiveStateController({
         vscode: {
@@ -41,6 +51,7 @@ function makeController(): LiveStateController {
         applyInteractiveButtonState: () => {},
         applyRecordingButtonState: () => {},
         renderInspector: () => {},
+        onLauncherWidgetCellsChanged,
     });
 }
 
@@ -97,5 +108,53 @@ describe("LiveStateController — launcher-widget override", () => {
         const card = document.createElement("div");
         live.setLauncherWidgetCellsForCard(card, { width: 2, height: 2 });
         assert.strictEqual(live.overridesForPreview(""), undefined);
+    });
+
+    it("fires onLauncherWidgetCellsChanged on set and clear", () => {
+        const changes: ChangeRecord[] = [];
+        const live = makeController((previewId, cells) =>
+            changes.push({ previewId, cells }),
+        );
+        const card = makeCard("preview:A");
+        live.setLauncherWidgetCellsForCard(card, { width: 3, height: 2 });
+        live.setLauncherWidgetCellsForCard(card, null);
+        assert.deepStrictEqual(changes, [
+            { previewId: "preview:A", cells: { width: 3, height: 2 } },
+            { previewId: "preview:A", cells: null },
+        ]);
+    });
+
+    it("does not fire onLauncherWidgetCellsChanged for redundant writes", () => {
+        const changes: ChangeRecord[] = [];
+        const live = makeController((previewId, cells) =>
+            changes.push({ previewId, cells }),
+        );
+        const card = makeCard("preview:A");
+        live.setLauncherWidgetCellsForCard(card, { width: 3, height: 3 });
+        // Same value again — `sameCells` short-circuits, no callback fires.
+        live.setLauncherWidgetCellsForCard(card, { width: 3, height: 3 });
+        assert.strictEqual(changes.length, 1);
+    });
+
+    it("hydrateLauncherWidgetOverride seeds the map without firing the callback", () => {
+        const changes: ChangeRecord[] = [];
+        const live = makeController((previewId, cells) =>
+            changes.push({ previewId, cells }),
+        );
+        live.hydrateLauncherWidgetOverride("preview:A", {
+            width: 4,
+            height: 3,
+        });
+        // The seeded value surfaces through the read accessor + override
+        // payload, but no `onLauncherWidgetCellsChanged` event fired — boot
+        // hydration must not re-persist what it just loaded.
+        assert.deepStrictEqual(
+            live.launcherWidgetCellsForPreview("preview:A"),
+            { width: 4, height: 3 },
+        );
+        assert.deepStrictEqual(live.overridesForPreview("preview:A"), {
+            launcherWidget: { cells: { width: 4, height: 3 } },
+        });
+        assert.strictEqual(changes.length, 0);
     });
 });
