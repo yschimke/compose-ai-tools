@@ -24,6 +24,8 @@ import { PreviewHoverProvider } from "./previewHoverProvider";
 import { PreviewCodeLensProvider } from "./previewCodeLensProvider";
 import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvider";
 import { ManifestResourceHoverProvider } from "./manifestResourceHoverProvider";
+import { ActivityIconHoverProvider } from "./activityIconHoverProvider";
+import { ActivityIconCodeLensProvider } from "./activityIconCodeLensProvider";
 import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
@@ -1466,11 +1468,25 @@ export async function activate(
     const manifestResourceHoverProvider = new ManifestResourceHoverProvider(
         gradleService,
     );
+    const activityIconHoverProvider = new ActivityIconHoverProvider(
+        gradleService,
+    );
+    const activityIconCodeLensProvider = new ActivityIconCodeLensProvider(
+        gradleService,
+    );
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
+        vscode.languages.registerHoverProvider(
+            kotlinFiles,
+            activityIconHoverProvider,
+        ),
         vscode.languages.registerCodeLensProvider(
             kotlinFiles,
             codeLensProvider,
+        ),
+        vscode.languages.registerCodeLensProvider(
+            kotlinFiles,
+            activityIconCodeLensProvider,
         ),
         vscode.languages.registerCodeLensProvider(
             androidManifestFiles,
@@ -1482,6 +1498,7 @@ export async function activate(
         ),
         codeLensProvider,
         androidManifestCodeLensProvider,
+        activityIconCodeLensProvider,
         gutterDecorations,
         a11yDiagnostics,
         doctorDiagnostics,
