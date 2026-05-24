@@ -8,6 +8,15 @@
     "sha256": "f0fc7c32ac527b44ce22078ae2936da23f5622e8823e2b959478721692859a8d",
     "shape": null
   },
+  "samples/android::drawable/avd_pulse::renders/resources/drawable/avd_pulse_xhdpi_filmstrip.png": {
+    "module": "samples/android",
+    "qualifiers": "xhdpi",
+    "renderBasename": "resources/drawable/avd_pulse_xhdpi_filmstrip.png",
+    "resourceId": "drawable/avd_pulse",
+    "resourceType": "ANIMATED_VECTOR",
+    "sha256": "c4b7bc786bf2621595f48c73e8ba7e6258a74fb5549421dae5bfa9c4b0596bda",
+    "shape": null
+  },
   "samples/android::drawable/bg_button::renders/resources/drawable/bg_button_xhdpi_STRETCH_both.png": {
     "module": "samples/android",
     "qualifiers": "xhdpi",
