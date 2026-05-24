@@ -27,10 +27,13 @@ import ee.schimke.composeai.render.session.NotificationListener
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionBackend
 import ee.schimke.composeai.render.session.RenderSessionConfig
+import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
@@ -68,12 +71,14 @@ class DaemonA11yFetcherTest {
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(outcome.atfAvailable, "expected atfAvailable=true on successful fetches")
     val report =
       Companion.json.decodeFromString(
         AccessibilityReport.serializer(),
         File(projectDir, "build/compose-previews/accessibility.json").readText(),
       )
     assertEquals("sample", report.module)
+    assertNull(report.status, "successful run should not stamp a status")
     assertEquals(listOf("AlphaPreview", "BetaPreview"), report.entries.map { it.previewId })
     assertEquals(1, report.entries[0].findings.size)
     assertEquals("ERROR", report.entries[0].findings.first().level)
@@ -82,7 +87,7 @@ class DaemonA11yFetcherTest {
   }
 
   @Test
-  fun `returns DescriptorMissing when daemon-launch_json is absent`() {
+  fun `returns DescriptorMissing when daemon-launch_json is absent and writes atf-unavailable sidecar`() {
     val projectDir = newTempFolder("module-no-descriptor")
     val fetcher = DaemonA11yFetcher(factory = FakeFactory(emptyMap()))
 
@@ -95,12 +100,106 @@ class DaemonA11yFetcherTest {
       )
 
     assertTrue(outcome is DaemonA11yFetcher.Outcome.DescriptorMissing)
+    // The python PR-comment helper reads accessibility.json directly, so we stamp a sidecar
+    // even when the session can't open — otherwise the workflow can't tell apart "no module
+    // tried" from "the daemon descriptor was missing."
+    val reportFile = File(projectDir, "build/compose-previews/accessibility.json")
+    assertTrue(reportFile.exists(), "expected an atf-unavailable sidecar")
+    val report =
+      Companion.json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+    assertEquals(emptyList(), report.entries.map { it.previewId })
+  }
+
+  @Test
+  fun `stamps atf-unavailable status when every per-preview fetch errors`() {
+    val projectDir = newTempFolder("module-fetches-fail")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    // Null payload simulates a fetch that errored (the fake session below returns null payloads
+    // verbatim; the production fetcher wraps DataProductException / RenderSessionException to
+    // the same `null` here).
+    val fetcher =
+      DaemonA11yFetcher(factory = FakeFactory(mapOf("AlphaPreview" to null, "BetaPreview" to null)))
+
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertFalse(outcome.atfAvailable, "no fetches succeeded → atfAvailable should be false")
+    val report =
+      Companion.json.decodeFromString(
+        AccessibilityReport.serializer(),
+        File(projectDir, "build/compose-previews/accessibility.json").readText(),
+      )
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
+  }
+
+  @Test
+  fun `partial fetch success leaves status null`() {
+    val projectDir = newTempFolder("module-partial")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher =
+      DaemonA11yFetcher(
+        factory =
+          FakeFactory(mapOf("AlphaPreview" to atfPayload(emptyList()), "BetaPreview" to null))
+      )
+
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview", "BetaPreview"),
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(outcome.atfAvailable, "one successful fetch is enough to keep atfAvailable=true")
+    val report =
+      Companion.json.decodeFromString(
+        AccessibilityReport.serializer(),
+        File(projectDir, "build/compose-previews/accessibility.json").readText(),
+      )
+    assertNull(report.status, "partial success should not stamp a status")
+  }
+
+  @Test
+  fun `OpenFailed writes atf-unavailable sidecar`() {
+    val projectDir = newTempFolder("module-open-fails")
+    File(projectDir, "build/compose-previews").mkdirs()
+    File(projectDir, "build/compose-previews/daemon-launch.json").writeText("{}")
+
+    val fetcher = DaemonA11yFetcher(factory = OpenFailFactory())
+
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        modulePath = "",
+        moduleName = "sample",
+        previewIds = listOf("AlphaPreview"),
+      )
+
+    assertTrue(outcome is DaemonA11yFetcher.Outcome.OpenFailed)
+    val reportFile = File(projectDir, "build/compose-previews/accessibility.json")
+    assertTrue(reportFile.exists())
+    val report =
+      Companion.json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
+    assertEquals(A11Y_REPORT_STATUS_ATF_UNAVAILABLE, report.status)
   }
 
   // -------------------------------------------------------------------------
   // Fake factory + session
 
-  private class FakeFactory(private val payloads: Map<String, JsonElement>) : RenderSessionFactory {
+  private class FakeFactory(private val payloads: Map<String, JsonElement?>) :
+    RenderSessionFactory {
     override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
 
     override fun open(config: RenderSessionConfig): RenderSession =
@@ -112,13 +211,23 @@ class DaemonA11yFetcherTest {
   }
 
   /**
+   * Factory that always fails `open()` — drives the [DaemonA11yFetcher.Outcome.OpenFailed] branch.
+   */
+  private class OpenFailFactory : RenderSessionFactory {
+    override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
+
+    override fun open(config: RenderSessionConfig): RenderSession =
+      throw RenderSessionException("simulated daemon open failure")
+  }
+
+  /**
    * Minimal [RenderSession] that returns canned a11y/atf payloads. Every other method throws — the
    * fetcher only calls fetchData and close.
    */
   private class FakeSession(
     override val workspaceRoot: String,
     override val modulePath: String,
-    private val payloads: Map<String, JsonElement>,
+    private val payloads: Map<String, JsonElement?>,
   ) : RenderSession {
     override val initializeResult: InitializeResult =
       InitializeResult(

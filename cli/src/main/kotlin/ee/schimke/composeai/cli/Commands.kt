@@ -850,6 +850,15 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
   ) {}
 
+  /**
+   * Optional subclass hook for "the data product we just tried to produce wasn't actually
+   * available" — e.g. `compose-preview a11y` couldn't get ATF data from the daemon for any module.
+   * Returning a non-null message causes [run] to print it to stderr and exit with code 2 *before*
+   * the JSON / table output, so the consumer never sees a misleading "no findings" report. Default:
+   * null (no override).
+   */
+  protected open fun atfUnavailableExitMessage(): String? = null
+
   override fun run() {
     val renderer =
       extensionRenderers[extensionId]
@@ -868,6 +877,13 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
     val raw = renderModules(silenceStdout = jsonOutput, gradleArguments = gradleArgsWithForce())
     val manifests = readAllManifests(raw.modules)
     produceAdditionalDataProducts(raw.modules, manifests)
+    // After production runs, give the subclass a chance to abort the run when its data product
+    // wasn't actually available — without this, a daemon-crash in `compose-preview a11y` looks
+    // identical to a clean run with zero findings (issue #1453).
+    atfUnavailableExitMessage()?.let { message ->
+      System.err.println(message)
+      exitProcess(2)
+    }
     val results = if (manifests.isEmpty()) emptyList() else buildResults(manifests)
     val outcome =
       RenderModulesOutcome(
@@ -924,6 +940,16 @@ open class ReportCommand(args: List<String>, private val extensionId: String) : 
  * against the same coordinates.
  */
 class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
+  /**
+   * Tracks ATF availability across modules so [run] can fail the CLI when no module successfully
+   * produced any a11y data. Read by [atfUnavailableExitMessage]; set by
+   * [produceAdditionalDataProducts]. The list of [unavailableModules] is used purely for the
+   * user-facing error message.
+   */
+  private var attemptedAnyModule: Boolean = false
+  private var anyModuleAtfOk: Boolean = false
+  private val unavailableModules: MutableList<String> = mutableListOf()
+
   override fun produceAdditionalDataProducts(
     modules: List<PreviewModule>,
     manifests: List<Pair<PreviewModule, PreviewManifest>>,
@@ -939,14 +965,22 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
     if (!daemonStartOk) {
       System.err.println(
         "compose-preview a11y: composePreviewDaemonStart failed; skipping daemon-driven a11y " +
-          "fetch. Findings will be empty."
+          "fetch."
       )
+      // Treat a failed daemon-start as ATF-unavailable for every module that has previews — the
+      // user needs to see the run fail rather than receive a misleading "no findings" report.
+      for ((module, manifest) in manifests) {
+        if (manifest.previews.isEmpty()) continue
+        attemptedAnyModule = true
+        unavailableModules += module.gradlePath
+      }
       return
     }
     val fetcher = DaemonA11yFetcher(onLog = { System.err.println("[daemon a11y] $it") })
     for ((module, manifest) in manifests) {
       val previewIds = manifest.previews.map { it.id }
       if (previewIds.isEmpty()) continue
+      attemptedAnyModule = true
       val outcome =
         fetcher.fetch(
           projectDir = module.projectDir,
@@ -955,25 +989,54 @@ class A11yCommand(args: List<String>) : ReportCommand(args, "a11y") {
           previewIds = previewIds,
         )
       when (outcome) {
-        is DaemonA11yFetcher.Outcome.Ok ->
-          if (verbose) {
+        is DaemonA11yFetcher.Outcome.Ok -> {
+          if (outcome.atfAvailable) {
+            anyModuleAtfOk = true
+            if (verbose) {
+              System.err.println(
+                "compose-preview a11y: ${module.gradlePath} wrote ${outcome.reportFile.path} " +
+                  "(${outcome.entryCount} entr${if (outcome.entryCount == 1) "y" else "ies"})"
+              )
+            }
+          } else {
+            unavailableModules += module.gradlePath
             System.err.println(
-              "compose-preview a11y: ${module.gradlePath} wrote ${outcome.reportFile.path} " +
-                "(${outcome.entryCount} entr${if (outcome.entryCount == 1) "y" else "ies"})"
+              "compose-preview a11y: ${module.gradlePath} ATF data unavailable — every " +
+                "per-preview fetch failed (see daemon log above)."
             )
           }
-        is DaemonA11yFetcher.Outcome.DescriptorMissing ->
+        }
+        is DaemonA11yFetcher.Outcome.DescriptorMissing -> {
+          unavailableModules += module.gradlePath
           System.err.println(
             "compose-preview a11y: ${module.gradlePath} missing daemon-launch.json at " +
               "${outcome.expected.path}"
           )
-        is DaemonA11yFetcher.Outcome.OpenFailed ->
+        }
+        is DaemonA11yFetcher.Outcome.OpenFailed -> {
+          unavailableModules += module.gradlePath
           System.err.println(
             "compose-preview a11y: ${module.gradlePath} failed to open render session " +
               "(${outcome.reason})"
           )
+        }
       }
     }
+  }
+
+  /**
+   * Fail the CLI when ATF was requested for at least one module and no module produced any ATF
+   * data. Without this, a broken daemon (classpath issue, missing descriptor) silently degrades to
+   * a "no findings" report indistinguishable from a healthy clean run — see issue #1453. Returning
+   * `null` falls through to the default exit-code policy.
+   */
+  override fun atfUnavailableExitMessage(): String? {
+    if (!attemptedAnyModule) return null
+    if (anyModuleAtfOk) return null
+    val moduleList =
+      if (unavailableModules.isEmpty()) "all modules" else unavailableModules.joinToString(", ")
+    return "compose-preview a11y: ATF data unavailable for $moduleList — failing run rather " +
+      "than reporting an empty findings list. See daemon log above."
   }
 
   /**

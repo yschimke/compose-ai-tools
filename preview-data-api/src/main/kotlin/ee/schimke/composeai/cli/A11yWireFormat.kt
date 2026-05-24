@@ -44,7 +44,19 @@ data class AccessibilityEntry(
 )
 
 @Serializable
-data class AccessibilityReport(val module: String, val entries: List<AccessibilityEntry>)
+data class AccessibilityReport(
+  val module: String,
+  val entries: List<AccessibilityEntry>,
+  /**
+   * Run-level status for this module's ATF pass. `null` for a normal run — `entries` reflects what
+   * ATF returned, and an entry with empty `findings` means "checks ran, found nothing." Set to
+   * [A11Y_REPORT_STATUS_ATF_UNAVAILABLE] when the daemon could not return ATF data for any preview
+   * attempted (descriptor missing, render-session open failed, every per-preview fetch errored, …)
+   * so downstream consumers can surface that rather than treating the empty findings list as a
+   * clean run.
+   */
+  val status: String? = null,
+)
 
 /**
  * Schema string stamped into `ExtensionPayload.schema` for the `a11y` entry of
@@ -55,3 +67,10 @@ data class AccessibilityReport(val module: String, val entries: List<Accessibili
  * tooling) can pin to it without taking a CLI dependency.
  */
 const val A11Y_PAYLOAD_SCHEMA_V1: String = "compose-preview-data-a11y/v1"
+
+/**
+ * Value emitted in [AccessibilityReport.status] when ATF data could not be produced for any preview
+ * in the module (daemon classpath issue, render-session open failed, every per-preview fetch
+ * errored). The python helper and PR-comment renderer check for this string verbatim.
+ */
+const val A11Y_REPORT_STATUS_ATF_UNAVAILABLE: String = "atf-unavailable"
