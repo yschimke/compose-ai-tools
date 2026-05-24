@@ -47,10 +47,7 @@ import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import {
-    ensureControlsToggleButton,
-    ensureKeyboardBandToggleButton,
     ensureLiveCardControls,
-    ensureTouchOverlayToggleButton,
     removeControlsToggleButton,
     removeKeyboardBandToggleButton,
     removeTouchOverlayToggleButton,
@@ -95,6 +92,14 @@ export interface LiveStateConfig {
     /** Re-run focus-toolbar button-state hooks after a state change. */
     applyInteractiveButtonState(): void;
     applyRecordingButtonState(): void;
+    /**
+     * Re-stamp the focus-bar mirrors for the per-card touch-overlay /
+     * keyboard-band / controls toggles. Wired from `main.ts` to
+     * `FocusController.applyFocusedToggleButtonStates`. Optional so legacy
+     * tests that construct `LiveStateController` without a focus controller
+     * stay green — the per-card overlay path runs unchanged.
+     */
+    applyFocusedToggleButtonStates?(): void;
     /** Re-render the focus inspector for [card] — the inspector reads
      *  `isLive` / `isRecording` to keep its Tools strip in sync. */
     renderInspector(card: HTMLElement | null): void;
@@ -289,6 +294,35 @@ export class LiveStateController {
         return false;
     }
 
+    /** Daemon advertises the touch-overlay extension on any known module. */
+    isTouchOverlayAdvertised(): boolean {
+        return this.anyModuleAdvertisesExtension(TOUCH_OVERLAY_EXTENSION_ID);
+    }
+
+    /** Daemon advertises the soft-keyboard band extension on any known module. */
+    isKeyboardBandAdvertised(): boolean {
+        return this.anyModuleAdvertisesExtension(KEYBOARD_BAND_EXTENSION_ID);
+    }
+
+    /**
+     * Issue #1203 — any module advertises an interactive-only data extension,
+     * which is the gate for the per-preview "Controls" toggle (keyboard input
+     * dispatch).
+     */
+    isControlsAdvertised(): boolean {
+        return this.moduleInteractiveOnlyExtensions.size > 0;
+    }
+
+    /** Current per-preview touch-overlay toggle state. */
+    isTouchOverlayEnabled(previewId: string): boolean {
+        return this.touchOverlayEnabledPreviewIds.has(previewId);
+    }
+
+    /** Current per-preview soft-keyboard band override state. */
+    isKeyboardBandForced(previewId: string): boolean {
+        return this.keyboardBandForcedPreviewIds.has(previewId);
+    }
+
     /**
      * Issue #1203 — entry point for a panel toggle that enables an interactive-only
      * data extension on [card]. Idempotent: if the card is already live, this is a no-op.
@@ -353,56 +387,18 @@ export class LiveStateController {
      * overrides, not input dispatch.
      */
     applyControlsToggleButtons(): void {
-        const advertised = this.moduleInteractiveOnlyExtensions.size > 0;
-        // Per-extension gating — touch-overlay and keyboard-band buttons appear only when the
-        // daemon actually ships the matching planner (descriptor advertised via #1312/#1313).
-        // The previous "any interactive backend" gate was loose: it surfaced buttons on hosts
-        // that would silently ignore the override, leaving dead toggles in the UI.
-        const touchOverlayAdvertised = this.anyModuleAdvertisesExtension(
-            TOUCH_OVERLAY_EXTENSION_ID,
-        );
-        const keyboardBandAdvertised = this.anyModuleAdvertisesExtension(
-            KEYBOARD_BAND_EXTENSION_ID,
-        );
+        // The touch-overlay, soft-keyboard band, and #1203 controls toggles
+        // now live exclusively on the focus-controls bar (see
+        // `FocusController.applyFocusedToggleButtonStates`); they no longer
+        // stamp icons on top of the rendered preview. Strip any leftover
+        // per-card buttons in case an older webview state left them behind.
         const cards = document.querySelectorAll<HTMLElement>(".preview-card");
         for (const card of cards) {
-            const previewId = card.dataset.previewId;
-            if (!previewId) {
-                // No previewId — strip every toggle, can't bind state.
-                removeControlsToggleButton(card);
-                removeTouchOverlayToggleButton(card);
-                removeKeyboardBandToggleButton(card);
-                continue;
-            }
-            // Existing #1203 controls (keyboard input dispatch) — gated on the
-            // daemon advertising an interactive-only extension.
-            if (advertised) {
-                ensureControlsToggleButton(card, {
-                    enabled: this.controlsEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) => this.toggleControlsForCard(c, next),
-                });
-            } else {
-                removeControlsToggleButton(card);
-            }
-            if (touchOverlayAdvertised) {
-                ensureTouchOverlayToggleButton(card, {
-                    enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleTouchOverlayForCard(c, next),
-                });
-            } else {
-                removeTouchOverlayToggleButton(card);
-            }
-            if (keyboardBandAdvertised) {
-                ensureKeyboardBandToggleButton(card, {
-                    enabled: this.keyboardBandForcedPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleKeyboardBandForCard(c, next),
-                });
-            } else {
-                removeKeyboardBandToggleButton(card);
-            }
+            removeControlsToggleButton(card);
+            removeTouchOverlayToggleButton(card);
+            removeKeyboardBandToggleButton(card);
         }
+        this.cfg.applyFocusedToggleButtonStates?.();
     }
 
     /**

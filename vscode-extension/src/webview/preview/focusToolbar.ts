@@ -30,6 +30,9 @@ export interface FocusToolbarElements {
     btnInteractive: HTMLButtonElement;
     btnStopInteractive: HTMLButtonElement;
     btnRecording: HTMLButtonElement;
+    btnTouchOverlay: HTMLButtonElement;
+    btnKeyboardBand: HTMLButtonElement;
+    btnControls: HTMLButtonElement;
     btnExportBundle: HTMLButtonElement;
     btnExitFocus: HTMLButtonElement;
     recordingFormat: HTMLSelectElement;
@@ -89,6 +92,21 @@ export interface A11yOverlayButtonState {
     a11yOverlayId: string | null;
 }
 
+/**
+ * Common shape for the three preview-override / interactive-input toggles that
+ * follow the focused card (touch overlay, soft-keyboard band, #1203 controls).
+ * `advertised` reflects the daemon capability gate — when the daemon doesn't
+ * ship the matching planner / interactive-only extension the button stays hidden.
+ */
+export interface FocusedToggleButtonState {
+    inFocus: boolean;
+    focusedPreviewId: string | null;
+    /** Daemon advertises the backing extension / capability. */
+    advertised: boolean;
+    /** Current per-preview toggle state for the focused card. */
+    enabled: boolean;
+}
+
 export class FocusToolbarController {
     constructor(private readonly el: FocusToolbarElements) {}
 
@@ -112,6 +130,16 @@ export class FocusToolbarController {
             daemonHidden || !s.earlyFeatures || !s.inFocus;
         this.el.recordingFormat.hidden =
             daemonHidden || !s.earlyFeatures || !s.inFocus;
+        // Touch overlay / keyboard band / controls toggles — the per-button
+        // `applyXxxButtonState` hooks below refine visibility based on the
+        // daemon advertising the backing extension and a focused preview being
+        // present, but force them hidden up front in bundle mode until the
+        // bundle daemon is ready.
+        if (daemonHidden || !s.inFocus) {
+            this.el.btnTouchOverlay.hidden = true;
+            this.el.btnKeyboardBand.hidden = true;
+            this.el.btnControls.hidden = true;
+        }
         if (!s.earlyFeatures) {
             this.el.focusInspector.hidden = true;
         }
@@ -216,6 +244,76 @@ export class FocusToolbarController {
             ? "Hide accessibility overlay"
             : "Show accessibility overlay";
         this.el.btnA11yOverlay.classList.toggle("a11y-overlay-on", on);
+    }
+
+    /**
+     * Touch-event visualization toggle for the focused preview. Mirrors the
+     * Replaces the legacy per-card overlay that used to sit on top of the
+     * rendered preview, so the icon stops covering the frame.
+     */
+    applyTouchOverlayButtonState(s: FocusedToggleButtonState): void {
+        const visible =
+            s.inFocus && s.advertised && s.focusedPreviewId !== null;
+        this.el.btnTouchOverlay.hidden = !visible;
+        if (!visible) {
+            this.el.btnTouchOverlay.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnTouchOverlay.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnTouchOverlay.title = s.enabled
+            ? "Turn off touch-event visualization"
+            : "Turn on touch-event visualization (paints rings at dispatched pointers)";
+        this.el.btnTouchOverlay.setAttribute(
+            "aria-label",
+            this.el.btnTouchOverlay.title,
+        );
+    }
+
+    /** Soft-keyboard band override toggle for the focused preview. */
+    applyKeyboardBandButtonState(s: FocusedToggleButtonState): void {
+        const visible =
+            s.inFocus && s.advertised && s.focusedPreviewId !== null;
+        this.el.btnKeyboardBand.hidden = !visible;
+        if (!visible) {
+            this.el.btnKeyboardBand.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnKeyboardBand.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnKeyboardBand.title = s.enabled
+            ? "Hide soft-keyboard band"
+            : "Force soft-keyboard band visible";
+        this.el.btnKeyboardBand.setAttribute(
+            "aria-label",
+            this.el.btnKeyboardBand.title,
+        );
+    }
+
+    /** Issue #1203 — interactive controls (keyboard input) toggle. */
+    applyControlsButtonState(s: FocusedToggleButtonState): void {
+        const visible =
+            s.inFocus && s.advertised && s.focusedPreviewId !== null;
+        this.el.btnControls.hidden = !visible;
+        if (!visible) {
+            this.el.btnControls.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnControls.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnControls.title = s.enabled
+            ? "Turn off interactive controls (keyboard input)"
+            : "Turn on interactive controls (keyboard input). Enters live mode.";
+        this.el.btnControls.setAttribute(
+            "aria-label",
+            this.el.btnControls.title,
+        );
     }
 }
 
