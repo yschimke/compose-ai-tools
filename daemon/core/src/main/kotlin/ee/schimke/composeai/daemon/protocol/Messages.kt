@@ -902,6 +902,45 @@ data class LauncherWidgetOverride(
   val resizeOrder: LauncherResizeOrder? = null,
 )
 
+/**
+ * Captured launcher-widget state for a preview, surfaced via
+ * `data/fetch?kind=compose/launcher-widget`.
+ *
+ * Written by `LauncherWidgetDataProductRegistry` after each render that carried a
+ * `renderNow.overrides.launcherWidget` — clients can read back the resolved (post-clamp) cell count
+ * and the dp footprint the renderer actually applied. Useful for the panel's per-card "size: 4×2
+ * (312×152 dp)" badge and for any client that wants to confirm what shape the daemon settled on.
+ *
+ * Distinct from the request shape ([LauncherWidgetOverride]) on purpose: the override carries the
+ * user's request (which may exceed `maxCells` or include `null`-default knobs); the payload is the
+ * resolved end-state the renderer rendered.
+ */
+@Serializable
+data class LauncherWidgetPayload(
+  /** Resolved (post-clamp) cell count the renderer applied. */
+  val cells: LauncherWidgetSize,
+  /** Resolved per-cell edge length in dp. */
+  val cellSizeDp: Int,
+  /** Resolved inter-cell spacing in dp. */
+  val cellSpacingDp: Int,
+  /**
+   * Computed container footprint in dp — `cellSizeDp * cells.width + cellSpacingDp * (cells.width -
+   * 1)`.
+   */
+  val widthDp: Int,
+  /**
+   * Computed container footprint in dp — `cellSizeDp * cells.height + cellSpacingDp *
+   * (cells.height - 1)`.
+   */
+  val heightDp: Int,
+  /**
+   * Echo of the resize-order hint from the request, plumbed for a future orchestrator. The
+   * single-shot around-composable doesn't consume the field — clients can use it to render a "next
+   * resize would walk: width-first" hint alongside the current size badge.
+   */
+  val resizeOrder: LauncherResizeOrder? = null,
+)
+
 @Serializable
 data class Material3ThemeOverrides(
   /** Material 3 color role -> `#RRGGBB` or `#AARRGGBB`. */

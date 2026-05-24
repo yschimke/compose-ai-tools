@@ -125,6 +125,11 @@ export const BUNDLES: readonly BundleDescriptor[] = [
                 label: "Permissions",
                 defaultOn: false,
             },
+            {
+                kind: "compose/launcher-widget",
+                label: "Launcher widget size",
+                defaultOn: false,
+            },
         ],
     },
     {
