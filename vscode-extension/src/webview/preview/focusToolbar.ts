@@ -248,9 +248,8 @@ export class FocusToolbarController {
 
     /**
      * Touch-event visualization toggle for the focused preview. Mirrors the
-     * `ensureTouchOverlayToggleButton` per-card overlay that used to sit on top
-     * of the preview — moved into the focus bar so the icon stops covering the
-     * rendered frame.
+     * Replaces the legacy per-card overlay that used to sit on top of the
+     * rendered preview, so the icon stops covering the frame.
      */
     applyTouchOverlayButtonState(s: FocusedToggleButtonState): void {
         const visible =

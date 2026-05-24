@@ -190,9 +190,8 @@ export class FocusController {
      * Push the touch-overlay / keyboard-band / controls toggle state for the
      * focused preview onto the focus-toolbar buttons. These were previously
      * stamped as per-card overlay icons on top of the rendered preview
-     * (`ensureTouchOverlayToggleButton` & friends in `liveCardControls.ts`); in
-     * focus mode they now live in the focus bar so they stop covering the
-     * preview content.
+     * (the legacy `card-*-toggle-btn` overlays); they now live exclusively in
+     * the focus-controls bar so they stop covering the preview content.
      */
     applyFocusedToggleButtonStates(): void {
         const inFocus = this.inFocus();

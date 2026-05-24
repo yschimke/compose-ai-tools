@@ -47,10 +47,7 @@ import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import {
-    ensureControlsToggleButton,
-    ensureKeyboardBandToggleButton,
     ensureLiveCardControls,
-    ensureTouchOverlayToggleButton,
     removeControlsToggleButton,
     removeKeyboardBandToggleButton,
     removeTouchOverlayToggleButton,
@@ -390,64 +387,17 @@ export class LiveStateController {
      * overrides, not input dispatch.
      */
     applyControlsToggleButtons(): void {
-        const advertised = this.moduleInteractiveOnlyExtensions.size > 0;
-        // Per-extension gating — touch-overlay and keyboard-band buttons appear only when the
-        // daemon actually ships the matching planner (descriptor advertised via #1312/#1313).
-        // The previous "any interactive backend" gate was loose: it surfaced buttons on hosts
-        // that would silently ignore the override, leaving dead toggles in the UI.
-        const touchOverlayAdvertised = this.anyModuleAdvertisesExtension(
-            TOUCH_OVERLAY_EXTENSION_ID,
-        );
-        const keyboardBandAdvertised = this.anyModuleAdvertisesExtension(
-            KEYBOARD_BAND_EXTENSION_ID,
-        );
-        // In focus mode these toggles live on the focus-controls bar (see
-        // `FocusController.applyFocusedToggleButtonStates`) rather than as
-        // per-card overlay icons painted on top of the rendered preview. Strip
-        // any leftover per-card buttons so a layout flip from grid → focus
-        // doesn't leave the icons covering the focused frame.
-        const inFocus = this.cfg.inFocus();
+        // The touch-overlay, soft-keyboard band, and #1203 controls toggles
+        // now live exclusively on the focus-controls bar (see
+        // `FocusController.applyFocusedToggleButtonStates`); they no longer
+        // stamp icons on top of the rendered preview. Strip any leftover
+        // per-card buttons in case an older webview state left them behind.
         const cards = document.querySelectorAll<HTMLElement>(".preview-card");
         for (const card of cards) {
-            const previewId = card.dataset.previewId;
-            if (!previewId || inFocus) {
-                removeControlsToggleButton(card);
-                removeTouchOverlayToggleButton(card);
-                removeKeyboardBandToggleButton(card);
-                continue;
-            }
-            // Existing #1203 controls (keyboard input dispatch) — gated on the
-            // daemon advertising an interactive-only extension.
-            if (advertised) {
-                ensureControlsToggleButton(card, {
-                    enabled: this.controlsEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) => this.toggleControlsForCard(c, next),
-                });
-            } else {
-                removeControlsToggleButton(card);
-            }
-            if (touchOverlayAdvertised) {
-                ensureTouchOverlayToggleButton(card, {
-                    enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleTouchOverlayForCard(c, next),
-                });
-            } else {
-                removeTouchOverlayToggleButton(card);
-            }
-            if (keyboardBandAdvertised) {
-                ensureKeyboardBandToggleButton(card, {
-                    enabled: this.keyboardBandForcedPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleKeyboardBandForCard(c, next),
-                });
-            } else {
-                removeKeyboardBandToggleButton(card);
-            }
+            removeControlsToggleButton(card);
+            removeTouchOverlayToggleButton(card);
+            removeKeyboardBandToggleButton(card);
         }
-        // Focus-bar mirrors for the three toggles — driven from the same state
-        // as the per-card overlays above. Skipped when no callback was wired
-        // (e.g. legacy tests that don't construct a focus toolbar).
         this.cfg.applyFocusedToggleButtonStates?.();
     }
 
