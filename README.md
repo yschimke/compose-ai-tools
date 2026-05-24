@@ -46,3 +46,73 @@ Rendered from `:<module>:composePreviewRenderAndroidResources`. One row per (res
 | `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/android/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-dark.png" height="96" /> |
 | `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/android/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-light.png" height="96" /> |
 
+### samples/remotecompose
+
+| Resource | Type | Qualifiers | Shape | Image |
+|---|---|---|---|---|
+| `drawable/ic_launcher_background` | VECTOR | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/drawable/ic_launcher_background_xhdpi.png" height="96" /> |
+| `drawable/ic_launcher_foreground` | VECTOR | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/drawable/ic_launcher_foreground_xhdpi.png" height="96" /> |
+| `drawable/ic_launcher_legacy` | VECTOR | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/drawable/ic_launcher_legacy_xhdpi.png" height="96" /> |
+| `drawable/ic_remote` | VECTOR | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/drawable/ic_remote_xhdpi.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_LEGACY.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | — | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/remotecompose/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-light.png" height="96" /> |
+
+### samples/wear
+
+| Resource | Type | Qualifiers | Shape | Image |
+|---|---|---|---|---|
+| `drawable/ic_launcher_background` | VECTOR | `xhdpi` | — | <img src="renders/samples/wear/resources/drawable/ic_launcher_background_xhdpi.png" height="96" /> |
+| `drawable/ic_launcher_foreground` | VECTOR | `xhdpi` | — | <img src="renders/samples/wear/resources/drawable/ic_launcher_foreground_xhdpi.png" height="96" /> |
+| `drawable/ic_launcher_legacy` | VECTOR | `xhdpi` | — | <img src="renders/samples/wear/resources/drawable/ic_launcher_legacy_xhdpi.png" height="96" /> |
+| `drawable/ic_watchface` | VECTOR | `xhdpi` | — | <img src="renders/samples/wear/resources/drawable/ic_watchface_xhdpi.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | — | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_LEGACY.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_rounded_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_square.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | — | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | CIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | ROUNDED_SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_rounded_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUARE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-light.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-dark.png" height="96" /> |
+| `mipmap/ic_launcher_round` | ADAPTIVE_ICON | `xhdpi` | SQUIRCLE | <img src="renders/samples/wear/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_squircle_themed-light.png" height="96" /> |
+
