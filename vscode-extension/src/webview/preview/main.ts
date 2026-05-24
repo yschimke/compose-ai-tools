@@ -1314,9 +1314,20 @@ export class PreviewApp extends LitElement {
                 const focused = focusController?.focusedCard?.();
                 if (!focused) return;
                 const active = bundleController.state().activeBundles;
+                // `theming-consumers` boxes are positioned from
+                // `compose/semantics` bounds — when the user disables that
+                // specific kind inside the Inspection bundle, the cached
+                // semantics tree stops repainting and any stale tint would
+                // sit on bounds the bundle no longer claims. Gate the join
+                // on the kind being enabled too, not just the Inspection
+                // bundle as a whole.
+                const inspectionKinds = bundleController
+                    .state()
+                    .enabledKinds("inspection");
                 if (
                     !active.includes("theming") ||
                     !active.includes("inspection") ||
+                    !inspectionKinds.includes("compose/semantics") ||
                     det.row === null ||
                     det.overlayId === null
                 ) {
