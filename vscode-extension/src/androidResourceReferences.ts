@@ -70,7 +70,9 @@ export function findKotlinResourceReferences(text: string): ResourceRef[] {
  * the resolved name, not the syntactic difference.
  */
 export function findXmlResourceReferences(text: string): ResourceRef[] {
-    const re = /(["'>])@\+?(drawable|mipmap)\/([A-Za-z0-9_]+)(?=["'<\s/])/g;
+    // Allow whitespace before `@` so indented text-node refs match too
+    // (`<item>\n    @drawable/foo\n</item>` — common in style/item XML).
+    const re = /(["'>\s])@\+?(drawable|mipmap)\/([A-Za-z0-9_]+)(?=["'<\s/])/g;
     const out: ResourceRef[] = [];
     let match: RegExpExecArray | null;
     while ((match = re.exec(text)) !== null) {
