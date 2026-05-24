@@ -2018,6 +2018,16 @@ private fun AmbientCapture.toAmbientOverride(): AmbientOverride =
  * connector's `protocol.LauncherWidgetOverride` wire shape. Discovery serialises optional
  * `Int?` fields when the consumer left the annotation at its `-1` sentinel — those round-trip
  * as `null` here and the connector applies its own defaults.
+ *
+ * Each axis of `minCells` / `maxCells` falls back independently: specifying just `minWidth`
+ * (or just `maxHeight`) emits an override that combines the user-supplied bound with the
+ * connector's default for the other axis. The annotation contract is per-axis, so dropping
+ * the whole `LauncherWidgetSize` when one axis is at the sentinel value would silently swallow
+ * a half-set constraint.
+ *
+ * The other-axis defaults must mirror `LauncherWidgetOverride.resolve()`'s
+ * `DEFAULT_MIN_CELLS = 1×1` / `DEFAULT_MAX_CELLS = 5×5`. They're `private` in the connector
+ * module, so we inline the literals with this comment as the cross-reference.
  */
 private fun LauncherWidgetCapture.toLauncherWidgetOverride(): LauncherWidgetOverride =
     LauncherWidgetOverride(
@@ -2025,10 +2035,12 @@ private fun LauncherWidgetCapture.toLauncherWidgetOverride(): LauncherWidgetOver
         cellSizeDp = cellSizeDp,
         cellSpacingDp = cellSpacingDp,
         minCells =
-            if (minWidth != null && minHeight != null) LauncherWidgetSize(minWidth, minHeight)
+            if (minWidth != null || minHeight != null)
+                LauncherWidgetSize(minWidth ?: 1, minHeight ?: 1)
             else null,
         maxCells =
-            if (maxWidth != null && maxHeight != null) LauncherWidgetSize(maxWidth, maxHeight)
+            if (maxWidth != null || maxHeight != null)
+                LauncherWidgetSize(maxWidth ?: 5, maxHeight ?: 5)
             else null,
         resizeOrder =
             when (resizeOrder) {
