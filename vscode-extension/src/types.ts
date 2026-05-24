@@ -665,6 +665,25 @@ export type ExtensionToWebview =
           previewId: string;
           fontRowId: string;
           dataUri: string | null;
+      }
+    /**
+     * Test-only chip-toggle driver. Lets `ComposePreviewTestApi.
+     * triggerWebviewBundleToggle` reach the webview's
+     * `BundleController.toggleBundle` so the e2e bundle-chain suite
+     * exercises the full chip-click code path (chip activates →
+     * `reflectBundleState` paints chip+tab+overlay → `setKindsEnabled`
+     * cascades back through the extension to subscribe the daemon).
+     *
+     * Not driven from production paths — the chip's primary entry
+     * point stays the webview-side `BundleChipBar` click. The host
+     * doesn't gate on `COMPOSE_PREVIEW_TEST_MODE` when posting because
+     * `panel.postMessage` is reachable only from the extension and
+     * the message is harmless in production (it would just toggle a
+     * chip the user could toggle themselves).
+     */
+    | {
+          command: "triggerBundleToggle";
+          bundleId: string;
       };
 
 /**
@@ -780,6 +799,27 @@ export type WebviewToExtension =
           command: "webviewDataProductsState";
           previewId: string;
           kinds: string[];
+      }
+    /**
+     * Webview reports the current bundle UI surface state — chip bar,
+     * tab row, and per-bundle overlay box count. Emitted from
+     * `reflectBundleState` (chip / tab transitions) and from the data-
+     * update paths after `refreshXxxBundle` repaints overlays. Lets the
+     * e2e bundle chain suite assert the full chip ↔ tab ↔ overlay
+     * pipeline at the wire layer without scraping the webview DOM —
+     * counterpart to the unit-level coverage in
+     * `chipTabOverlayChain.test.ts`. `activeBundles` / `activeTab` are
+     * plain bundle id strings (the `BundleId` union lives in the webview-
+     * only `bundleRegistry.ts`); the host doesn't need to validate
+     * against the union because the values come straight from the
+     * controller state.
+     */
+    | {
+          command: "webviewBundleState";
+          activeBundles: string[];
+          activeTab: string | null;
+          tabHandleCount: number;
+          overlayCountByBundle: Record<string, number>;
       }
     | { command: "openFile"; className: string; functionName: string }
     | { command: "selectModule"; value: string }

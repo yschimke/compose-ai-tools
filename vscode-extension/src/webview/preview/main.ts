@@ -2493,6 +2493,37 @@ export class PreviewApp extends LitElement {
             if (focusController) {
                 inspector.render(focusController.focusedCard());
             }
+            postBundleState();
+        };
+        // Snapshot the chip / tab / overlay surface for the e2e
+        // bundle-chain suite. Fired at the tail of every
+        // `reflectBundleState()` (chip + tab transitions) and from the
+        // data-update handlers after each `refreshXxxBundle()` repaints
+        // overlays — so the test sees `tabHandleCount=1, overlayCount=0`
+        // immediately on chip-on and a follow-up snapshot with
+        // `overlayCount>0` once the daemon attachment lands. Counterpart
+        // to `webviewA11yState` for the chip-surface side of the chain.
+        const postBundleState = (): void => {
+            const s = bundleController.state();
+            const tabHandleCount = dataTabs.querySelectorAll(
+                ".data-tab-handle[data-bundle]",
+            ).length;
+            const overlayCountByBundle: Record<string, number> = {};
+            const overlayNodes = document.querySelectorAll<HTMLElement>(
+                "box-overlay[data-bundle]",
+            );
+            for (const el of Array.from(overlayNodes)) {
+                const id = el.dataset.bundle;
+                if (!id) continue;
+                overlayCountByBundle[id] = (overlayCountByBundle[id] ?? 0) + 1;
+            }
+            vscode.postMessage({
+                command: "webviewBundleState",
+                activeBundles: [...s.activeBundles],
+                activeTab: s.activeTab,
+                tabHandleCount,
+                overlayCountByBundle,
+            });
         };
         bundleController.onChange(() => reflectBundleState());
         reflectBundleState();
@@ -3016,6 +3047,11 @@ export class PreviewApp extends LitElement {
                     currentBundleTarget() === previewId
                 ) {
                     refreshA11yBundle();
+                    // Re-emit the bundle-state snapshot so the e2e
+                    // chain test sees the post-paint overlay count.
+                    // The chip activation itself emits with count=0
+                    // (no data yet); the daemon attachment lands here.
+                    postBundleState();
                 }
             },
             updateDataProducts: (previewId, dataProducts) => {
@@ -3133,6 +3169,14 @@ export class PreviewApp extends LitElement {
                 ) {
                     refreshRemoteComposeBundle();
                 }
+                // Re-emit the bundle-state snapshot if any refresh ran
+                // — same rationale as the `applyA11yUpdate` post above.
+                // Cheap to over-emit (the helper just walks a few DOM
+                // queries); the e2e test polls for a specific
+                // overlay-count threshold so noise is harmless.
+                if (matchesTarget && activeBundles.length > 0) {
+                    postBundleState();
+                }
             },
             applyFontPreviewBytes: (previewId, fontRowId, dataUri) => {
                 // Stash the response (null included — represents "host
@@ -3168,6 +3212,8 @@ export class PreviewApp extends LitElement {
             refreshBundleState: () => reflectBundleState(),
             promoteErrorsBundle: () =>
                 bundleController.handleExternalKindToggle("test/failure", true),
+            toggleBundle: (bundleId) =>
+                bundleController.toggleBundle(bundleId as BundleId),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);
