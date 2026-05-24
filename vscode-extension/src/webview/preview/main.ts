@@ -239,6 +239,9 @@ export class PreviewApp extends LitElement {
     private _btnStopInteractive!: HTMLButtonElement;
     @query("#btn-recording") private _btnRecording!: HTMLButtonElement;
     @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
+    @query("#btn-touch-overlay") private _btnTouchOverlay!: HTMLButtonElement;
+    @query("#btn-keyboard-band") private _btnKeyboardBand!: HTMLButtonElement;
+    @query("#btn-controls") private _btnControls!: HTMLButtonElement;
     @query("#btn-export-bundle") private _btnExportBundle!: HTMLButtonElement;
     @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
 
@@ -384,6 +387,39 @@ export class PreviewApp extends LitElement {
                     <option value="apng">APNG</option>
                     <option value="mp4">MP4</option>
                 </select>
+                <button
+                    class="icon-button"
+                    id="btn-touch-overlay"
+                    title="Turn on touch-event visualization (paints rings at dispatched pointers)"
+                    aria-label="Toggle touch-event visualization"
+                    aria-pressed="false"
+                    hidden
+                >
+                    <i class="codicon codicon-target" aria-hidden="true"></i>
+                </button>
+                <button
+                    class="icon-button"
+                    id="btn-keyboard-band"
+                    title="Force soft-keyboard band visible"
+                    aria-label="Toggle soft-keyboard band"
+                    aria-pressed="false"
+                    hidden
+                >
+                    <i
+                        class="codicon codicon-symbol-keyword"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+                <button
+                    class="icon-button"
+                    id="btn-controls"
+                    title="Turn on interactive controls (keyboard input). Enters live mode."
+                    aria-label="Toggle interactive controls"
+                    aria-pressed="false"
+                    hidden
+                >
+                    <i class="codicon codicon-keyboard" aria-hidden="true"></i>
+                </button>
                 <button
                     class="icon-button"
                     id="btn-export-bundle"
@@ -591,6 +627,9 @@ export class PreviewApp extends LitElement {
         const btnStopInteractive = this._btnStopInteractive;
         const btnRecording = this._btnRecording;
         const recordingFormat = this._recordingFormat;
+        const btnTouchOverlay = this._btnTouchOverlay;
+        const btnKeyboardBand = this._btnKeyboardBand;
+        const btnControls = this._btnControls;
         const btnExportBundle = this._btnExportBundle;
         const btnExitFocus = this._btnExitFocus;
         const focusToolbar = new FocusToolbarController({
@@ -601,6 +640,9 @@ export class PreviewApp extends LitElement {
             btnInteractive,
             btnStopInteractive,
             btnRecording,
+            btnTouchOverlay,
+            btnKeyboardBand,
+            btnControls,
             btnExportBundle,
             btnExitFocus,
             recordingFormat,
@@ -2558,6 +2600,8 @@ export class PreviewApp extends LitElement {
                 focusController.applyInteractiveButtonState(),
             applyRecordingButtonState: () =>
                 focusController.applyRecordingButtonState(),
+            applyFocusedToggleButtonStates: () =>
+                focusController.applyFocusedToggleButtonStates(),
             renderInspector: (card) => inspector.render(card),
         });
 
@@ -2736,6 +2780,30 @@ export class PreviewApp extends LitElement {
         btnRecording.addEventListener("click", () =>
             liveState.toggleRecording(),
         );
+        // Focus-bar mirrors for the per-card touch-overlay / keyboard-band /
+        // controls toggles — clicking each forwards to the same per-preview
+        // mutator the per-card overlay used to call, against the currently
+        // focused card.
+        btnTouchOverlay.addEventListener("click", () => {
+            const card = focusController.focusedCard();
+            if (!card) return;
+            const enabled =
+                btnTouchOverlay.getAttribute("aria-pressed") === "true";
+            liveState.toggleTouchOverlayForCard(card, !enabled);
+        });
+        btnKeyboardBand.addEventListener("click", () => {
+            const card = focusController.focusedCard();
+            if (!card) return;
+            const enabled =
+                btnKeyboardBand.getAttribute("aria-pressed") === "true";
+            liveState.toggleKeyboardBandForCard(card, !enabled);
+        });
+        btnControls.addEventListener("click", () => {
+            const card = focusController.focusedCard();
+            if (!card) return;
+            const enabled = btnControls.getAttribute("aria-pressed") === "true";
+            liveState.toggleControlsForCard(card, !enabled);
+        });
         btnExportBundle.addEventListener("click", () =>
             requestExportPreviewBundle(),
         );
