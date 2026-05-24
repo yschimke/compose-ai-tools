@@ -123,8 +123,11 @@ internal fun applyConnectorOverrides(
       is RemoteNamedValue.DpValue -> updater.setUserLocalFloat(name, value.value)
       is RemoteNamedValue.BooleanValue -> updater.setUserLocalInt(name, if (value.value) 1 else 0)
       is RemoteNamedValue.ColorValue -> {
-        val argb = value.argb.removePrefix("#").toLong(16).toInt()
-        updater.setUserLocalColor(name, argb)
+        // Wire model accepts an arbitrary string for argb (a typo in a panel value
+        // would otherwise crash the render path). Skip invalid hex instead of throwing.
+        val hex = value.argb.removePrefix("#")
+        val argb = hex.toLongOrNull(16)?.toInt()
+        if (argb != null) updater.setUserLocalColor(name, argb)
       }
     }
   }

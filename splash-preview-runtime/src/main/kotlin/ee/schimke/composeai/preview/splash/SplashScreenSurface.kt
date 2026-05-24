@@ -142,7 +142,6 @@ private fun BoxScope.SplashBranding(brandingImage: Painter) {
     contentDescription = null,
     modifier =
       Modifier.align(Alignment.BottomCenter)
-        .fillMaxWidth()
         .padding(bottom = 60.dp)
         .sizeIn(maxWidth = 200.dp, maxHeight = 80.dp)
         .semantics {
