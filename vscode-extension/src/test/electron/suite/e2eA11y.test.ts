@@ -203,6 +203,19 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             },
         );
 
+        // Mirror the e2eExternal sequencing: run the activation-time
+        // `composePreviewApplied` marker bootstrap explicitly before warming
+        // the daemon. `:samples:wear` is detected via literal-id text-scan
+        // even without markers, so this isn't strictly required for
+        // `resolveModule`, but post-#1438 `runDaemonBootstrap` bundles
+        // `composePreviewApplied` + `composePreviewDaemonStart` +
+        // `composePreviewDiscover` into one cold-start invocation — fronting
+        // it with an explicit `bootstrapAppliedMarkers` lets the bundle's
+        // coalescing skip the redundant `composePreviewApplied` head, and
+        // keeps the markers fresh before the test interacts with the
+        // daemon scheduler.
+        await api.triggerBootstrapAppliedMarkers();
+
         // The chip toggles below send `data/subscribe` through the daemon
         // scheduler, which requires a live daemon and therefore a
         // `composePreviewDaemonStart`-produced launch descriptor. Activation
@@ -211,12 +224,16 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         // an explicit warm here the first `triggerSetDataExtensionEnabled`
         // throws `[daemon] no launch descriptor for :samples:wear`.
         const warmed = await api.triggerWarmDaemon(wearKotlinFile);
+        // Format the cause on its own line so a multi-line
+        // `formatDaemonSpawnFailure` tail (issue #1326's wrapping — wraps
+        // the daemon stderr tail into the failure reason) is preserved in
+        // the Mocha spec reporter output. Mocha keeps the full message in
+        // `err.message` but renders it after the diff; folding the cause
+        // string into a single-line concatenation hid the stderr tail
+        // behind the `+ expected - actual` block in CI output.
         assert.ok(
             warmed,
-            "wear daemon must warm before chip subscriptions" +
-                (warmed
-                    ? ""
-                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
+            `wear daemon must warm before chip subscriptions\ncause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`,
         );
 
         // One refresh bootstraps every `it`: the wear composePreviewRenderAll
