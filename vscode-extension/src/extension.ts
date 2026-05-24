@@ -26,6 +26,8 @@ import { AndroidManifestCodeLensProvider } from "./androidManifestCodeLensProvid
 import { ManifestResourceHoverProvider } from "./manifestResourceHoverProvider";
 import { ActivityIconHoverProvider } from "./activityIconHoverProvider";
 import { ActivityIconCodeLensProvider } from "./activityIconCodeLensProvider";
+import { ResourceReferenceHoverProvider } from "./resourceReferenceHoverProvider";
+import { ResourceReferenceCodeLensProvider } from "./resourceReferenceCodeLensProvider";
 import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
@@ -1474,11 +1476,32 @@ export async function activate(
     const activityIconCodeLensProvider = new ActivityIconCodeLensProvider(
         gradleService,
     );
+    const resourceReferenceHoverProvider = new ResourceReferenceHoverProvider(
+        gradleService,
+    );
+    const resourceReferenceCodeLensProvider =
+        new ResourceReferenceCodeLensProvider(gradleService);
+    // `@drawable/foo` references in any XML under res/ — layouts, drawable
+    // XML (adaptive icons reference their sublayers this way), menus,
+    // anims, etc. Excludes `AndroidManifest.xml` which has its own
+    // dedicated providers above to avoid double-hover.
+    const resourceXmlFiles: vscode.DocumentSelector = {
+        scheme: "file",
+        pattern: "**/res/**/*.xml",
+    };
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(kotlinFiles, hoverProvider),
         vscode.languages.registerHoverProvider(
             kotlinFiles,
             activityIconHoverProvider,
+        ),
+        vscode.languages.registerHoverProvider(
+            kotlinFiles,
+            resourceReferenceHoverProvider,
+        ),
+        vscode.languages.registerHoverProvider(
+            resourceXmlFiles,
+            resourceReferenceHoverProvider,
         ),
         vscode.languages.registerCodeLensProvider(
             kotlinFiles,
@@ -1487,6 +1510,14 @@ export async function activate(
         vscode.languages.registerCodeLensProvider(
             kotlinFiles,
             activityIconCodeLensProvider,
+        ),
+        vscode.languages.registerCodeLensProvider(
+            kotlinFiles,
+            resourceReferenceCodeLensProvider,
+        ),
+        vscode.languages.registerCodeLensProvider(
+            resourceXmlFiles,
+            resourceReferenceCodeLensProvider,
         ),
         vscode.languages.registerCodeLensProvider(
             androidManifestFiles,
@@ -1499,6 +1530,7 @@ export async function activate(
         codeLensProvider,
         androidManifestCodeLensProvider,
         activityIconCodeLensProvider,
+        resourceReferenceCodeLensProvider,
         gutterDecorations,
         a11yDiagnostics,
         doctorDiagnostics,
