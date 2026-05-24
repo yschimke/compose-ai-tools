@@ -13,5 +13,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!--
+          Weather AppWidget receiver — registered so `AppWidgetManager.installedProviders` returns
+          an entry for `R.layout.widget_weather` at preview-render time. The auto-discovery in
+          `:appwidget-preview-runtime`'s `AppWidgetContent` matches the inflated layout id
+          against this provider's `initialLayout` and surfaces the `<appwidget-provider>` size /
+          resize metadata on the launcher-widget data product's payload.
+        -->
+        <receiver android:name="com.example.sampleandroid.WeatherAppWidgetReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/weather_widget_info" />
+        </receiver>
     </application>
 </manifest>

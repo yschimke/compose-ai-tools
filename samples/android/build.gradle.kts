@@ -103,6 +103,12 @@ dependencies {
   // (`RemoteViewsWeatherWidgetPreview`) doesn't use this — it builds the `RemoteViews` tree by
   // hand from `res/layout/widget_weather.xml`.
   implementation(project(":glance-preview-runtime"))
+  // `AppWidgetContent` composable helper that inflates a `RemoteViews` factory + auto-discovers
+  // `<appwidget-provider>` metadata for the inflated layout id, offering the matched
+  // `min/maxResize` / `targetCell*` / `resizeMode` into `LauncherWidgetMetadataChannel`. The
+  // sample registers `WeatherAppWidgetReceiver` in the manifest so
+  // `AppWidgetManager.installedProviders` has an entry for the layout to match.
+  implementation(project(":appwidget-preview-runtime"))
   // `SplashScreenSurface` composable helper for previewing the Android 12+ SplashScreen window
   // appearance (`SplashScreenGallery.kt`). The runtime module is JVM-friendly and consumed
   // inside a regular `@Preview` — no annotation, no renderer strategy.
