@@ -98,3 +98,23 @@ export function withDataProductCaptures(preview: PreviewInfo): PreviewInfo {
         captures: [...baseCaptures, ...products.map(dataProductToCapture)],
     };
 }
+
+/** Returns the index in [preview]'s displayed captures (post
+ *  [withDataProductCaptures]) of the static representative capture — the one
+ *  with no `scroll` and no `advanceTimeMillis`. Returns `-1` when no such
+ *  slot survives the fold.
+ *
+ *  The daemon's v1 `renderFinished` targets the representative (static)
+ *  capture only; the host posts `updateImage` to this slot rather than
+ *  blindly index 0. When `@ScrollingPreview(LONG/GIF)` replaces the static
+ *  base with a data product, the daemon's PNG has nowhere to go and the
+ *  caller skips the paint — otherwise the daemon's non-scrolling bytes
+ *  would clobber the scroll-long card with the wrong image. */
+export function staticBaseCaptureIndex(preview: PreviewInfo): number {
+    const display = withDataProductCaptures(preview);
+    for (let i = 0; i < display.captures.length; i++) {
+        const c = display.captures[i];
+        if (c.advanceTimeMillis == null && c.scroll == null) return i;
+    }
+    return -1;
+}

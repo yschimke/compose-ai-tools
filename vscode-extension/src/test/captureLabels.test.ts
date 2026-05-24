@@ -2,6 +2,7 @@ import * as assert from "assert";
 import {
     captureLabel,
     isAnimatedPreview,
+    staticBaseCaptureIndex,
     withDataProductCaptures,
 } from "../captureLabels";
 import { PreviewInfo } from "../types";
@@ -213,5 +214,73 @@ describe("withDataProductCaptures", () => {
             isAnimatedPreview(withDataProductCaptures(preview)),
             true,
         );
+    });
+});
+
+describe("staticBaseCaptureIndex", () => {
+    it("returns 0 for a vanilla static preview", () => {
+        assert.strictEqual(staticBaseCaptureIndex(makePreview()), 0);
+    });
+
+    it("returns -1 when LONG/GIF data products dropped the static base", () => {
+        // Regression for the "daemon's static representative paints into the
+        // scroll-long card" bug — when @ScrollingPreview(LONG) is on a
+        // function, withDataProductCaptures drops the static slot and the
+        // scroll-long product takes index 0. The daemon's onPreviewImageReady
+        // must skip rather than overwrite that slot with the non-scrolling
+        // bytes it just rendered.
+        const longScroll = {
+            mode: "LONG",
+            axis: "VERTICAL",
+            maxScrollPx: 0,
+            reduceMotion: false,
+            atEnd: true,
+            reachedPx: null,
+        };
+        const preview = makePreview({
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: longScroll,
+                    output: "data/render-scroll-long/x.png",
+                    cost: 20,
+                },
+            ],
+        });
+        assert.strictEqual(staticBaseCaptureIndex(preview), -1);
+    });
+
+    it("returns the surviving static base index when other captures shift it", () => {
+        const topScroll = {
+            mode: "TOP",
+            axis: "VERTICAL",
+            maxScrollPx: 0,
+            reduceMotion: false,
+            atEnd: false,
+            reachedPx: null,
+        };
+        const preview = makePreview({
+            captures: [
+                {
+                    advanceTimeMillis: 250,
+                    scroll: null,
+                    renderOutput: "renders/animated.png",
+                },
+                {
+                    advanceTimeMillis: null,
+                    scroll: null,
+                    renderOutput: "renders/static.png",
+                },
+                {
+                    advanceTimeMillis: null,
+                    scroll: topScroll,
+                    renderOutput: "renders/top.png",
+                },
+            ],
+        });
+        // No data products → withDataProductCaptures returns captures
+        // verbatim; static base is at index 1.
+        assert.strictEqual(staticBaseCaptureIndex(preview), 1);
     });
 });

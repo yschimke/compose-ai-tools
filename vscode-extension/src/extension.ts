@@ -42,7 +42,11 @@ import {
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
-import { captureLabel, withDataProductCaptures } from "./captureLabels";
+import {
+    captureLabel,
+    staticBaseCaptureIndex,
+    withDataProductCaptures,
+} from "./captureLabels";
 import {
     DaemonGate,
     GradleOnlyDaemonGate,
@@ -854,14 +858,33 @@ export async function activate(
                                   `[interactive] frame ${previewId} bytes=${imageBase64.length}`,
                               );
                           }
-                          // Capture index 0 — the daemon's v1 renderFinished targets the
-                          // representative capture only. Multi-capture (animated) renders
-                          // still come through the Gradle path; the daemon's predictive
-                          // pre-warm focuses on the cheap interactive loop.
+                          // The daemon's v1 renderFinished targets the static
+                          // representative capture only. Route it to the matching
+                          // slot in the displayed captures — for the common no-data-
+                          // product preview that's index 0, but when
+                          // `@ScrollingPreview(LONG/GIF)` replaced the static base
+                          // with a data product, `staticBaseCaptureIndex` returns
+                          // -1 and we skip the paint so the daemon's non-scrolling
+                          // bytes don't clobber the scroll-long/gif card.
+                          // Multi-capture (animated) renders still come through the
+                          // Gradle path; the daemon's predictive pre-warm focuses
+                          // on the cheap interactive loop.
+                          const ownerModule = previewModuleMap.get(previewId);
+                          const previewInfo = ownerModule
+                              ? moduleManifestCache
+                                    .get(ownerModule.modulePath)
+                                    ?.find((p) => p.id === previewId)
+                              : undefined;
+                          const captureIndex = previewInfo
+                              ? staticBaseCaptureIndex(previewInfo)
+                              : 0;
+                          if (captureIndex < 0) {
+                              return;
+                          }
                           panel.postMessage({
                               command: "updateImage",
                               previewId,
-                              captureIndex: 0,
+                              captureIndex,
                               imageData: imageBase64,
                           });
                       },
