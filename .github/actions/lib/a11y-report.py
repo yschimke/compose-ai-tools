@@ -77,12 +77,23 @@ def variant_label(device: str | None) -> str:
 # Manifest loading
 # ---------------------------------------------------------------------------
 
-def load_previews(build_dir: Path) -> tuple[dict, dict]:
-    """Return ``(manifest, a11y_by_id)`` for one module's build output.
+#: Value the CLI stamps into ``accessibility.json``'s ``status`` field when the
+#: daemon was unable to return ATF data for any preview in the module. Mirrors
+#: ``A11Y_REPORT_STATUS_ATF_UNAVAILABLE`` in preview-data-api's A11yWireFormat.kt
+#: — change in lockstep with the Kotlin constant.
+ATF_UNAVAILABLE: str = "atf-unavailable"
+
+
+def load_previews(build_dir: Path) -> tuple[dict, dict, str | None]:
+    """Return ``(manifest, a11y_by_id, status)`` for one module's build output.
 
     ``manifest`` is the raw ``previews.json`` dict. ``a11y_by_id`` maps each
     previewId to its accessibility entry (findings + relative annotatedPath),
     or ``None`` when ``accessibility.json`` is absent (a11y not enabled).
+    ``status`` is the top-level ``status`` field from ``accessibility.json`` —
+    typically ``None`` for a clean run, or ``"atf-unavailable"`` when the
+    daemon couldn't return ATF data and the empty entries list should NOT be
+    interpreted as "ran cleanly, found nothing." See issue #1453.
     """
     manifest_path = build_dir / "previews.json"
     if not manifest_path.exists():
@@ -90,12 +101,14 @@ def load_previews(build_dir: Path) -> tuple[dict, dict]:
     manifest = json.loads(manifest_path.read_text())
 
     a11y_by_id: dict = {}
+    status: str | None = None
     a11y_path = build_dir / "accessibility.json"
     if a11y_path.exists():
         report = json.loads(a11y_path.read_text())
+        status = report.get("status")
         for entry in report.get("entries", []):
             a11y_by_id[entry["previewId"]] = entry
-    return manifest, a11y_by_id
+    return manifest, a11y_by_id, status
 
 
 def is_dynamic_preview(preview: dict) -> bool:
@@ -180,7 +193,7 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
 def cmd_copy_annotated(args: argparse.Namespace) -> int:
     build_dir = Path(args.build_dir)
     out_dir = Path(args.output_dir)
-    manifest, a11y_by_id = load_previews(build_dir)
+    manifest, a11y_by_id, status = load_previews(build_dir)
     rows = select_variants(manifest, a11y_by_id)
 
     module = manifest["module"]
@@ -226,16 +239,31 @@ def cmd_copy_annotated(args: argparse.Namespace) -> int:
         })
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    # ``status`` propagates verbatim from accessibility.json so downstream
+    # consumers (the readme / comment subcommands, future MCP integrations)
+    # can tell "ran cleanly with zero findings" from "didn't run." Omitted
+    # from the JSON entirely on a normal run to keep diffs against the
+    # baseline trivially clean.
+    summary_payload: dict = {"entries": findings_summary}
+    if status:
+        summary_payload["status"] = status
     (out_dir / "findings.json").write_text(
-        json.dumps({"entries": findings_summary}, indent=2, sort_keys=True) + "\n"
+        json.dumps(summary_payload, indent=2, sort_keys=True) + "\n"
     )
 
     total_findings = sum(len(r["findings"]) for r in findings_summary)
-    print(
-        f"Copied {len(findings_summary)} preview(s) with "
-        f"{total_findings} finding(s) to {out_dir}",
-        file=sys.stderr,
-    )
+    if status == ATF_UNAVAILABLE:
+        print(
+            f"ATF data unavailable for {manifest['module']} — "
+            f"emitted {len(findings_summary)} preview(s) with empty findings.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"Copied {len(findings_summary)} preview(s) with "
+            f"{total_findings} finding(s) to {out_dir}",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -316,6 +344,7 @@ def cmd_readme(args: argparse.Namespace) -> int:
     findings_path = Path(args.findings)
     payload = json.loads(findings_path.read_text())
     entries: list[dict] = payload.get("entries", [])
+    status: str | None = payload.get("status")
 
     err, warn, info = _level_counts(entries)
     findings_count = err + warn + info
@@ -335,6 +364,14 @@ def cmd_readme(args: argparse.Namespace) -> int:
         "baseline branch so links keep resolving after merge.",
         "",
     ]
+    if status == ATF_UNAVAILABLE:
+        lines.extend([
+            "> [!WARNING]",
+            "> ATF data unavailable for this run — the daemon did not return "
+            "accessibility findings. The renders below are **not** "
+            "accessibility-checked.",
+            "",
+        ])
     if findings_count == 0:
         lines.append("No accessibility findings.")
         lines.append("")
@@ -358,15 +395,21 @@ def cmd_readme(args: argparse.Namespace) -> int:
 # comment
 # ---------------------------------------------------------------------------
 
-def _findings_fingerprint(entries: list[dict]) -> tuple:
-    """Stable representation of (preview, findings) used for change detection.
+def _findings_fingerprint(entries: list[dict], status: str | None = None) -> tuple:
+    """Stable representation of (status, preview, findings) used for change detection.
 
-    Compares only the data a reviewer would care about — module, previewId,
-    and the findings list itself. Filenames (`cleanBasename`,
-    `annotatedBasename`) are excluded because identical findings can move
-    around between files when the renderer renames variants, and we don't
-    want to wake the PR comment for that. Findings are tuple-ified so the
-    comparison is hash-stable and order-insensitive (sorted below).
+    Compares only the data a reviewer would care about — top-level status,
+    plus per-entry module, previewId, and findings list. Filenames
+    (`cleanBasename`, `annotatedBasename`) are excluded because identical
+    findings can move around between files when the renderer renames variants,
+    and we don't want to wake the PR comment for that. Findings are
+    tuple-ified so the comparison is hash-stable and order-insensitive
+    (sorted below).
+
+    ``status`` is included so the fingerprint diverges when the daemon goes
+    from "ran cleanly" to "atf-unavailable" or vice versa — without this, a
+    daemon crash would match a clean baseline and the workflow would stay
+    silent on the very condition the comment needs to surface.
     """
     def finding_tuple(f: dict) -> tuple:
         return (
@@ -376,7 +419,7 @@ def _findings_fingerprint(entries: list[dict]) -> tuple:
             f.get("viewDescription"),
             f.get("boundsInScreen"),
         )
-    return tuple(
+    return (status,) + tuple(
         (
             e["module"],
             e["previewId"],
@@ -390,12 +433,18 @@ def cmd_comment(args: argparse.Namespace) -> int:
     findings_path = Path(args.findings)
     payload = json.loads(findings_path.read_text())
     entries: list[dict] = payload.get("entries", [])
+    status: str | None = payload.get("status")
 
     # When a baseline (the on-`compose-preview/a11y/main` findings.json) is provided, stay
     # silent if nothing has changed — the workflow runs on every PR and a
     # comment that says "no findings" on PRs that don't touch a11y was
     # noted as distracting in user feedback. Empty stdout signals the
     # action to skip both the push and the upsert.
+    #
+    # `status` participates in the fingerprint so an atf-unavailable run on
+    # this side never matches a clean-run baseline — that flips on the
+    # comment so reviewers see the daemon failure rather than the misleading
+    # "no findings" the bug in #1453 produced.
     if args.baseline:
         baseline_path = Path(args.baseline)
         if baseline_path.exists():
@@ -404,7 +453,11 @@ def cmd_comment(args: argparse.Namespace) -> int:
             except json.JSONDecodeError:
                 baseline_payload = {"entries": []}
             baseline_entries = baseline_payload.get("entries", [])
-            if _findings_fingerprint(entries) == _findings_fingerprint(baseline_entries):
+            baseline_status = baseline_payload.get("status")
+            if (
+                _findings_fingerprint(entries, status)
+                == _findings_fingerprint(baseline_entries, baseline_status)
+            ):
                 return 0  # silent
 
     err, warn, info = _level_counts(entries)
@@ -419,10 +472,26 @@ def cmd_comment(args: argparse.Namespace) -> int:
         marker,
         "## Accessibility Report",
         "",
+    ]
+    if status == ATF_UNAVAILABLE:
+        # Header replaces the usual finding-counts line when ATF didn't run
+        # — the counts would be misleadingly zero. The link to the CI logs
+        # is left abstract on purpose; the workflow's failure step already
+        # surfaces a direct link, and we don't want to embed the job URL
+        # here (the python helper doesn't know it).
+        lines.extend([
+            "> [!WARNING]",
+            "> ATF data unavailable — the preview daemon did not return "
+            "accessibility findings for this run. The renders below are "
+            "**not** accessibility-checked; see the CI logs for the daemon "
+            "failure.",
+            "",
+        ])
+    lines.extend([
         f"{err} error(s) · {warn} warning(s) · {info} info "
         f"across {len(entries)} preview(s).",
         "",
-    ]
+    ])
 
     if findings_count == 0:
         lines.append("No accessibility findings.")

@@ -56,7 +56,10 @@ internal class DaemonA11yFetcher(
     workspaceRoot: File = projectDir,
   ): Outcome {
     val descriptorFile = File(projectDir, "build/compose-previews/daemon-launch.json")
-    if (!descriptorFile.isFile) return Outcome.DescriptorMissing(descriptorFile)
+    if (!descriptorFile.isFile) {
+      writeAtfUnavailableReport(projectDir, moduleName)
+      return Outcome.DescriptorMissing(descriptorFile)
+    }
 
     val config =
       RenderSessionConfig(
@@ -70,6 +73,7 @@ internal class DaemonA11yFetcher(
       try {
         factory.open(config)
       } catch (e: RenderSessionException) {
+        writeAtfUnavailableReport(projectDir, moduleName)
         return Outcome.OpenFailed(reason = e.message ?: e.javaClass.simpleName)
       }
 
@@ -85,6 +89,7 @@ internal class DaemonA11yFetcher(
         onLog("extensions/enable for 'a11y' failed: ${e.message}")
       }
       val entries = mutableListOf<AccessibilityEntry>()
+      var anyFetchOk = false
       for (previewId in previewIds) {
         val payload =
           try {
@@ -103,6 +108,7 @@ internal class DaemonA11yFetcher(
             onLog("a11y fetch for '$previewId' transport error: ${e.message}")
             null
           }
+        if (payload != null) anyFetchOk = true
         val findings = payload?.let(::parseFindings).orEmpty()
         entries.add(
           AccessibilityEntry(
@@ -112,12 +118,44 @@ internal class DaemonA11yFetcher(
           )
         )
       }
-      val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
-      reportFile.parentFile?.mkdirs()
-      val report = AccessibilityReport(module = moduleName, entries = entries)
-      reportFile.writeText(json.encodeToString(AccessibilityReport.serializer(), report))
-      Outcome.Ok(reportFile = reportFile, entryCount = entries.size)
+      // If we attempted at least one preview and none succeeded, the empty-findings entries we
+      // accumulated above are indistinguishable from a clean run. Stamp the report-level status
+      // so downstream consumers (the python PR-comment helper, CLI exit-code policy) can tell
+      // "ATF didn't run" apart from "ATF ran cleanly." When `previewIds` is empty there's nothing
+      // to report on either way, so leave `status` null.
+      val atfAvailable = anyFetchOk || previewIds.isEmpty()
+      val status = if (atfAvailable) null else A11Y_REPORT_STATUS_ATF_UNAVAILABLE
+      val reportFile = writeReport(projectDir, moduleName, entries = entries, status = status)
+      Outcome.Ok(reportFile = reportFile, entryCount = entries.size, atfAvailable = atfAvailable)
     }
+  }
+
+  /**
+   * Write an `accessibility.json` stamped with `status = "atf-unavailable"` and no entries, for
+   * cases where we can't even open a render session (descriptor missing / open failed). Lets the
+   * python PR-comment helper see the same signal it gets on a per-preview-failure run instead of
+   * silently finding nothing on disk.
+   */
+  private fun writeAtfUnavailableReport(projectDir: File, moduleName: String) {
+    writeReport(
+      projectDir,
+      moduleName,
+      entries = emptyList(),
+      status = A11Y_REPORT_STATUS_ATF_UNAVAILABLE,
+    )
+  }
+
+  private fun writeReport(
+    projectDir: File,
+    moduleName: String,
+    entries: List<AccessibilityEntry>,
+    status: String?,
+  ): File {
+    val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
+    reportFile.parentFile?.mkdirs()
+    val report = AccessibilityReport(module = moduleName, entries = entries, status = status)
+    reportFile.writeText(json.encodeToString(AccessibilityReport.serializer(), report))
+    return reportFile
   }
 
   /**
@@ -143,7 +181,14 @@ internal class DaemonA11yFetcher(
   }
 
   sealed interface Outcome {
-    data class Ok(val reportFile: File, val entryCount: Int) : Outcome
+    /**
+     * Render session opened and per-preview fetches completed (possibly with some failures — see
+     * [atfAvailable]). [atfAvailable] is `true` when at least one preview's `a11y/atf` fetch
+     * succeeded, or when the module had no previews to attempt; `false` only when every attempted
+     * fetch failed. The on-disk `accessibility.json` carries the same signal via its `status`
+     * field.
+     */
+    data class Ok(val reportFile: File, val entryCount: Int, val atfAvailable: Boolean) : Outcome
 
     data class DescriptorMissing(val expected: File) : Outcome
 

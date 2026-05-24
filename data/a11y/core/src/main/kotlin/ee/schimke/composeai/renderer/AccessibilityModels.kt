@@ -28,6 +28,14 @@ import kotlinx.serialization.Serializable
 data class AccessibilityReport(
     val module: String,
     val entries: List<AccessibilityEntry>,
+    /**
+     * Run-level status. `null` for a normal run; non-null (e.g. `"atf-unavailable"`) when the
+     * producer couldn't return ATF data for the module and downstream consumers should surface
+     * that rather than treat the empty entries list as a clean run. The CLI mirror in
+     * `:preview-data-api`'s `A11yWireFormat.kt` is the canonical definition for the
+     * `"atf-unavailable"` constant.
+     */
+    val status: String? = null,
 )
 
 @Serializable
