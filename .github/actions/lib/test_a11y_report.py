@@ -246,6 +246,9 @@ class CopyAnnotatedTest(unittest.TestCase):
         self.assertEqual((renders_out / "Good_large.a11y.png").read_bytes(), b"overlay-good")
         findings = json.loads((out / "findings.json").read_text())
         self.assertEqual(len(findings["entries"]), 2)
+        # Normal runs omit `status` entirely — keeps diffs against the baseline
+        # trivially clean for the fingerprint comparison in cmd_comment.
+        self.assertNotIn("status", findings)
         by_fn = {e["functionName"]: e for e in findings["entries"]}
         self.assertEqual(by_fn["Bad"]["cleanBasename"], "Bad_small.png")
         self.assertEqual(by_fn["Bad"]["annotatedBasename"], "Bad_small.a11y.png")
@@ -253,6 +256,25 @@ class CopyAnnotatedTest(unittest.TestCase):
         self.assertEqual(by_fn["Good"]["cleanBasename"], "Good_large.png")
         self.assertEqual(by_fn["Good"]["annotatedBasename"], "Good_large.a11y.png")
         self.assertEqual(by_fn["Good"]["findings"], [])
+
+    def test_propagates_atf_unavailable_status_to_findings(self):
+        # Simulate the daemon-failure shape `DaemonA11yFetcher` writes when no
+        # per-preview ATF fetch succeeds: top-level `status` set, entries
+        # empty. The copy-annotated step must propagate the status into
+        # findings.json so the downstream comment subcommand can surface it.
+        (self.build / "accessibility.json").write_text(json.dumps({
+            "module": "sample-wear",
+            "entries": [],
+            "status": "atf-unavailable",
+        }))
+        out = self.tmp / "out"
+        import argparse
+        ar.cmd_copy_annotated(argparse.Namespace(
+            build_dir=str(self.build),
+            output_dir=str(out),
+        ))
+        findings = json.loads((out / "findings.json").read_text())
+        self.assertEqual(findings["status"], "atf-unavailable")
 
 
 class ReadmeTest(unittest.TestCase):
@@ -334,13 +356,26 @@ class CommentTest(unittest.TestCase):
             "findings": findings or [],
         }
 
-    def _run_comment(self, current_entries, *, baseline_entries=None):
+    def _run_comment(
+        self,
+        current_entries,
+        *,
+        baseline_entries=None,
+        status=None,
+        baseline_status=None,
+    ):
         findings_path = self.tmp / "findings.json"
-        findings_path.write_text(json.dumps({"entries": current_entries}))
+        current_payload: dict = {"entries": current_entries}
+        if status is not None:
+            current_payload["status"] = status
+        findings_path.write_text(json.dumps(current_payload))
         baseline_path = None
         if baseline_entries is not None:
             baseline_path = self.tmp / "baseline.json"
-            baseline_path.write_text(json.dumps({"entries": baseline_entries}))
+            baseline_payload: dict = {"entries": baseline_entries}
+            if baseline_status is not None:
+                baseline_payload["status"] = baseline_status
+            baseline_path.write_text(json.dumps(baseline_payload))
 
         import argparse, io, contextlib
         buf = io.StringIO()
@@ -387,6 +422,45 @@ class CommentTest(unittest.TestCase):
             baseline_entries=[self._entry(findings=[])],
         )
         self.assertEqual(body, "")
+
+    def test_atf_unavailable_surfaces_warning_in_comment(self):
+        # Regression for #1453: when the daemon fails, the report carries
+        # status="atf-unavailable" and the comment must surface that rather
+        # than silently rendering "no findings."
+        body = self._run_comment(
+            [],
+            status="atf-unavailable",
+        )
+        self.assertIn("<!-- a11y-report -->", body)
+        self.assertIn("[!WARNING]", body)
+        self.assertIn("ATF data unavailable", body)
+
+    def test_atf_unavailable_breaks_silence_against_clean_baseline(self):
+        # The bug in #1453 is that an atf-unavailable run fingerprints
+        # identically to a clean run with zero findings — so the comment
+        # subcommand stayed silent. With status in the fingerprint, the
+        # comment must fire so reviewers see the daemon failure.
+        body = self._run_comment(
+            [],
+            baseline_entries=[],
+            status="atf-unavailable",
+            baseline_status=None,
+        )
+        self.assertNotEqual(body, "")
+        self.assertIn("ATF data unavailable", body)
+
+    def test_clean_run_still_silent_against_atf_unavailable_baseline(self):
+        # Inverse direction: an atf-unavailable baseline shouldn't keep the
+        # comment silent when the PR has recovered to a clean run — the
+        # fingerprints differ on status alone, so the comment fires with
+        # the normal "no findings" body.
+        body = self._run_comment(
+            [self._entry(findings=[])],
+            baseline_entries=[],
+            baseline_status="atf-unavailable",
+        )
+        self.assertNotEqual(body, "")
+        self.assertIn("No accessibility findings", body)
 
 
 if __name__ == "__main__":
