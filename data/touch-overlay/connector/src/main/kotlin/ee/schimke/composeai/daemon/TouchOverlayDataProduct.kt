@@ -106,12 +106,24 @@ class TouchOverlayExtension :
               val event = awaitPointerEvent(PointerEventPass.Initial)
               for (change in event.changes) {
                 val id = change.id.value
+                // Stamp pulses with the event's own `uptimeMillis` rather than the
+                // composition-side `nowMs`. The latter only advances when `withFrameNanos`
+                // resumes (i.e., on a rendered frame), so a CLICK dispatched between renders
+                // would stamp its DOWN pulse with a stale (much earlier) `nowMs`. By the time
+                // the next `render()` advances `nowMs` to wall time, the DOWN pulse would
+                // already look expired (age ≥ PULSE_LIFETIME_MS) and get pruned/faded before
+                // the user ever saw it — so clicks rendered as nothing while drags still
+                // showed via their persistent active-pointer ring. `change.uptimeMillis` is
+                // populated from the dispatcher's `sendPointerEvent(timeMillis = …)`, which
+                // is the same monotonic clock that drives `withFrameNanos`, so the pruning
+                // comparison stays consistent.
+                val eventMs = change.uptimeMillis
                 if (change.pressed) {
                   // First press for this id → emit a DOWN pulse so the first frame after the down
                   // shows a bright ring even if no `Move` arrives. Subsequent same-id events just
                   // update the position.
                   if (!activePointers.containsKey(id)) {
-                    pulses.add(Pulse(change.position, nowMs, PulseKind.DOWN))
+                    pulses.add(Pulse(change.position, eventMs, PulseKind.DOWN))
                   }
                   activePointers[id] = change.position
                 } else {
@@ -121,7 +133,7 @@ class TouchOverlayExtension :
                   // release per id, so a non-pressed event for a tracked id is unambiguously the
                   // up.
                   if (activePointers.remove(id) != null) {
-                    pulses.add(Pulse(change.position, nowMs, PulseKind.UP))
+                    pulses.add(Pulse(change.position, eventMs, PulseKind.UP))
                   }
                 }
               }
