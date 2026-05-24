@@ -95,6 +95,7 @@ dependencies {
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.runtime)
   testImplementation(libs.compose.ui)
+  testImplementation(libs.compose.ui.tooling.preview.wrapper)
 
   // Alpha `compose-remote` artifacts. `compileOnly` so they don't surface in the connector AAR's
   // resolved compile classpath for downstream consumers — `:daemon:android` stays at compileSdk

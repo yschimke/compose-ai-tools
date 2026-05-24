@@ -69,6 +69,7 @@ import ee.schimke.composeai.scroll.driveScrollToStart
 import ee.schimke.composeai.scroll.remainingScrollPx
 import ee.schimke.composeai.scroll.stitchSlicesWithFinalFrame
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
+import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionFrameContext
 import java.awt.image.BufferedImage
 import java.io.File
@@ -2042,7 +2043,7 @@ private object RoundScreenOption : RoborazziComposeSetupOption {
 }
 
 internal fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
-    val cls = Class.forName(wrapperFqn)
+    val cls = loadPreviewWrapperClass(wrapperFqn)
     val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
     // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
     // Wrap(Function2, Composer, int). getDeclaredComposableMethod handles the
