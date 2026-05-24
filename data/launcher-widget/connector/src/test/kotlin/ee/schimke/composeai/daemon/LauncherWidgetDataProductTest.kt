@@ -1,15 +1,19 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -220,4 +224,128 @@ class LauncherWidgetDataProductTest {
       )
     assertEquals(forward.reversed(), reverse)
   }
+
+  // -----------------------------------------------------------------------
+  // LauncherWidgetDataProductRegistry — captures the resolved cells + dp
+  // footprint per preview for `data/fetch?kind=compose/launcher-widget`.
+  // -----------------------------------------------------------------------
+
+  @Test
+  fun registry_capabilities_advertise_inline_no_rerender_product() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val cap = registry.capabilities.single()
+    assertEquals("compose/launcher-widget", cap.kind)
+    assertEquals(1, cap.schemaVersion)
+    assertEquals(DataProductTransport.INLINE, cap.transport)
+    assertTrue(cap.attachable)
+    assertTrue(cap.fetchable)
+    assertEquals(false, cap.requiresRerender)
+  }
+
+  @Test
+  fun registry_fetch_before_any_render_returns_not_available() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", params = null, inline = true)
+    assertEquals(DataProductRegistry.Outcome.NotAvailable, outcome)
+  }
+
+  @Test
+  fun registry_on_render_with_override_captures_resolved_size_and_dp_footprint() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val result = stubRenderResult()
+    val overrides =
+      PreviewOverrides(launcherWidget = LauncherWidgetOverride(cells = LauncherWidgetSize(4, 2)))
+
+    registry.onRender("preview-1", result, overrides, previewContext = null)
+
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", params = null, inline = true)
+    assertTrue(outcome is DataProductRegistry.Outcome.Ok)
+    val payload = (outcome as DataProductRegistry.Outcome.Ok).result.payload!!.jsonObject
+    val cells = payload["cells"]!!.jsonObject
+    assertEquals(4, cells["width"]!!.jsonPrimitive.content.toInt())
+    assertEquals(2, cells["height"]!!.jsonPrimitive.content.toInt())
+    // 4*72 + 3*8 = 312, 2*72 + 1*8 = 152 at the connector defaults
+    assertEquals(72, payload["cellSizeDp"]!!.jsonPrimitive.content.toInt())
+    assertEquals(8, payload["cellSpacingDp"]!!.jsonPrimitive.content.toInt())
+    assertEquals(312, payload["widthDp"]!!.jsonPrimitive.content.toInt())
+    assertEquals(152, payload["heightDp"]!!.jsonPrimitive.content.toInt())
+  }
+
+  @Test
+  fun registry_on_render_with_clamping_captures_post_clamp_cells() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val overrides =
+      PreviewOverrides(
+        launcherWidget =
+          LauncherWidgetOverride(
+            cells = LauncherWidgetSize(7, 7),
+            minCells = LauncherWidgetSize(1, 3),
+            maxCells = LauncherWidgetSize(4, 5),
+          )
+      )
+
+    registry.onRender("preview-1", stubRenderResult(), overrides, previewContext = null)
+
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", null, true)
+        as DataProductRegistry.Outcome.Ok
+    val cells = outcome.result.payload!!.jsonObject["cells"]!!.jsonObject
+    assertEquals(4, cells["width"]!!.jsonPrimitive.content.toInt())
+    assertEquals(5, cells["height"]!!.jsonPrimitive.content.toInt())
+  }
+
+  @Test
+  fun registry_on_render_without_override_drops_previous_capture() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val result = stubRenderResult()
+
+    registry.onRender(
+      "preview-1",
+      result,
+      PreviewOverrides(launcherWidget = LauncherWidgetOverride(cells = LauncherWidgetSize(2, 2))),
+      previewContext = null,
+    )
+    assertTrue(
+      registry.fetch("preview-1", "compose/launcher-widget", null, true)
+        is DataProductRegistry.Outcome.Ok
+    )
+
+    registry.onRender("preview-1", result, overrides = null, previewContext = null)
+
+    assertEquals(
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-1", "compose/launcher-widget", null, true),
+    )
+  }
+
+  @Test
+  fun registry_attachments_returned_for_subscribed_kind() {
+    val registry = LauncherWidgetDataProductRegistry()
+    registry.onRender(
+      "preview-1",
+      stubRenderResult(),
+      PreviewOverrides(launcherWidget = LauncherWidgetOverride(cells = LauncherWidgetSize(2, 2))),
+      previewContext = null,
+    )
+
+    val attachments = registry.attachmentsFor("preview-1", setOf("compose/launcher-widget"))
+    assertEquals(1, attachments.size)
+    assertEquals("compose/launcher-widget", attachments.single().kind)
+  }
+
+  private fun stubRenderResult(): RenderResult =
+    RenderResult(
+      id = 1L,
+      classLoaderHashCode = 0,
+      classLoaderName = "test",
+      previewContext =
+        PreviewContext(
+          previewId = "preview-1",
+          backend = "test",
+          renderMode = null,
+          outputBaseName = null,
+        ),
+    )
 }

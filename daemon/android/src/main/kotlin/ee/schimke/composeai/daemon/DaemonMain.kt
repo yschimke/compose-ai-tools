@@ -425,11 +425,14 @@ fun main(args: Array<String>) {
         tryAdd("data/launcher-widget") {
           // Launcher-widget container-size override — same shape as the touch-overlay registration
           // above. The actual planner is wired into `RobolectricHost.previewOverrideExtensions`;
-          // this entry only carries the discoverable descriptor so the panel / MCP can report the
-          // extension via `extensions/list` and `initialize.capabilities.dataExtensions`.
+          // this entry carries the discoverable descriptor for `extensions/list` and the
+          // `LauncherWidgetDataProductRegistry` that captures the applied size for
+          // `data/fetch?kind=compose/launcher-widget`. The registry has no state besides the
+          // captured per-preview payload and is safe to construct lazily here.
           Extension(
             id = "data/launcher-widget",
             displayName = "Launcher widget container size",
+            dataProductRegistry = LauncherWidgetDataProductRegistry(),
             dataExtensionDescriptors =
               listOf(
                 DataExtensionDescriptor(

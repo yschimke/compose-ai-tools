@@ -483,6 +483,80 @@ export interface PreviewOverrides {
      * Android-only; desktop ignores.
      */
     remoteCompose?: RemoteComposeOverride;
+    /**
+     * Launcher-widget container-size override. Drives the connector-side
+     * `LauncherWidgetExtension` (see `:data-launcher-widget-connector`) so a held preview can
+     * be laid out at a specific whole-cell size on the host's launcher grid — `cells = (4, 2)`
+     * at the default `72dp` cell size resolves to a `4*72 + 3*8 = 312.dp` wide by
+     * `2*72 + 1*8 = 152.dp` tall container. Value is clamped into `minCells`..`maxCells`
+     * (defaulting to `1×1`..`5×5`) before reaching the layout pass. A single `renderNow` snaps
+     * to the target. The daemon's `compose/launcher-widget` data product surfaces the
+     * resolved (post-clamp) cells + dp footprint on `data/fetch` for the panel's
+     * "size: 4×2 (312×152 dp)" badge.
+     */
+    launcherWidget?: LauncherWidgetOverride;
+}
+
+/** Whole-cell size on a launcher's grid, expressed as integer cell counts. */
+export interface LauncherWidgetSize {
+    /** Cell count along the width axis. Negative values are rejected; `0` is "below min". */
+    width: number;
+    /** Cell count along the height axis. Negative values are rejected; `0` is "below min". */
+    height: number;
+}
+
+/**
+ * How an orchestrator walks per-axis steps when animating the launcher-widget container between
+ * two whole-cell sizes. Real Android launcher widgets have edge handles, not corner handles —
+ * the user grabs one edge and drags it, so width and height never change simultaneously in a
+ * single gesture. `"widthFirst"` and `"heightFirst"` mirror that two-gesture path; `"diagonal"`
+ * is the relaxed mode that advances both axes in lock-step. The single-shot around-composable
+ * connector ignores this field; a future daemon-side stepping loop reads it.
+ */
+export type LauncherResizeOrder = "diagonal" | "widthFirst" | "heightFirst";
+
+/** Launcher-widget container-size override. See `PreviewOverrides.launcherWidget`. */
+export interface LauncherWidgetOverride {
+    /** Target whole-cell size on the grid. Clamped into `minCells`..`maxCells`. */
+    cells: LauncherWidgetSize;
+    /**
+     * One cell's edge length in dp. `null` falls back to the connector's default (`72`),
+     * matching a Pixel launcher's `5×5` grid on a 411dp screen.
+     */
+    cellSizeDp?: number;
+    /** Gap between adjacent cells in dp. `null` falls back to the connector default (`8`). */
+    cellSpacingDp?: number;
+    /** Inclusive lower bound on the cell count (per axis). `null` falls back to `1×1`. */
+    minCells?: LauncherWidgetSize;
+    /** Inclusive upper bound on the cell count (per axis). `null` falls back to `5×5`. */
+    maxCells?: LauncherWidgetSize;
+    /**
+     * Hint for a future daemon-side resize-loop orchestrator on how to walk intermediate stops
+     * between two sizes. The single-shot around-composable ignores this field — it always snaps
+     * to `cells`.
+     */
+    resizeOrder?: LauncherResizeOrder;
+}
+
+/**
+ * Captured launcher-widget state for a preview, returned by
+ * `data/fetch?kind=compose/launcher-widget`. Carries the resolved (post-clamp) cells + dp
+ * footprint the renderer actually applied — distinct from the request shape
+ * (`LauncherWidgetOverride`) which may exceed `maxCells` or use `null`-default knobs.
+ */
+export interface LauncherWidgetPayload {
+    /** Resolved (post-clamp) cell count the renderer applied. */
+    cells: LauncherWidgetSize;
+    /** Resolved per-cell edge length in dp. */
+    cellSizeDp: number;
+    /** Resolved inter-cell spacing in dp. */
+    cellSpacingDp: number;
+    /** Computed container footprint in dp — `cellSizeDp * cells.width + cellSpacingDp * (cells.width - 1)`. */
+    widthDp: number;
+    /** Computed container footprint in dp — `cellSizeDp * cells.height + cellSpacingDp * (cells.height - 1)`. */
+    heightDp: number;
+    /** Echo of the resize-order hint from the request, plumbed for a future orchestrator. */
+    resizeOrder?: LauncherResizeOrder;
 }
 
 /** Soft-keyboard (IME) override. See `PreviewOverrides.keyboard`. */
