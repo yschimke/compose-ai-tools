@@ -645,7 +645,7 @@ private fun InvokeWrappedComposable(wrapperFqn: String, body: @Composable () -> 
 }
 
 private fun resolveWrapper(wrapperFqn: String): Pair<ComposableMethod, Any> {
-  val cls = Class.forName(wrapperFqn)
+  val cls = ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass(wrapperFqn)
   val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
   // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
   // Wrap(Function2, Composer, int) at the bytecode level.
