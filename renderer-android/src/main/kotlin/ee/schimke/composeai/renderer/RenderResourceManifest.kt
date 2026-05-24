@@ -53,6 +53,12 @@ data class RenderResourceVariant(
   val shape: RenderAdaptiveShape? = null,
   val style: RenderAdaptiveStyle? = null,
   val stretch: RenderNinePatchStretch? = null,
+  /**
+   * `true` for an [RenderResourceType.ANIMATED_VECTOR] keyframe filmstrip capture (horizontal PNG
+   * compositing one cell per fraction in [RenderResourceCapture.filmstripFractions]). `false` for
+   * the per-frame GIF capture and for every non-AVD capture.
+   */
+  val filmstrip: Boolean = false,
 )
 
 @Serializable
@@ -60,6 +66,11 @@ data class RenderResourceCapture(
   val variant: RenderResourceVariant? = null,
   val renderOutput: String = "",
   val cost: Float = 1.0f,
+  /**
+   * Animation keyframe fractions for filmstrip captures (`variant.filmstrip == true`); each value
+   * is a fraction of the resolved animation duration in `[0, 1]`. Empty on every other capture.
+   */
+  val filmstripFractions: List<Float> = emptyList(),
 )
 
 @Serializable

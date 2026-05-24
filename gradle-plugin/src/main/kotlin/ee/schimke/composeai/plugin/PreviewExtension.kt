@@ -307,4 +307,31 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
    */
   val stretches: ListProperty<NinePatchStretch> =
     objects.listProperty(NinePatchStretch::class.java).convention(NinePatchStretch.entries.toList())
+
+  /**
+   * When `true` (default), every [ResourceType.ANIMATED_VECTOR] resource gets a second capture per
+   * qualifier — a horizontal PNG composited from keyframe Bitmaps sampled at [filmstripFractions] ×
+   * the animation's reported `totalDuration`. Lets reviewers diff stills in code review without
+   * scrubbing the sibling GIF.
+   *
+   * Filename ends `_filmstrip.png` (e.g.
+   * `renders/resources/drawable/avd_pulse_xhdpi_filmstrip.png`). Cost is ~`RESOURCE_ANIMATED_COST /
+   * 5` — fewer frames than the GIF and no encode loop.
+   *
+   * Set `false` on modules where the GIF is enough and the extra PNG would be noise.
+   */
+  val filmstrip: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+
+  /**
+   * Keyframe fractions for the filmstrip capture. Each value is a fraction of the resolved
+   * animation duration in `[0, 1]`; the renderer samples one bitmap per fraction via
+   * `AnimatorSet.setCurrentPlayTime` and composites the frames side-by-side. Cell count = list
+   * size; the rendered PNG width is `intrinsicWidth × fractionsCount`.
+   *
+   * Default: `[0.0, 0.25, 0.5, 0.75, 1.0]` (5 cells, equally spaced). Override to e.g. `[0.0, 0.5,
+   * 1.0]` for a 3-cell strip on long animations, or `[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]` for a
+   * finer-grained 6-cell sweep.
+   */
+  val filmstripFractions: ListProperty<Float> =
+    objects.listProperty(Float::class.java).convention(DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS)
 }
