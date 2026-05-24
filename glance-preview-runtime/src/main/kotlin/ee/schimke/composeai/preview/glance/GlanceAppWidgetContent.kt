@@ -116,33 +116,39 @@ fun GlanceAppWidgetContent(
  * connector applies — `widthCells = round((widthDp + spacing) / (cell + spacing))`, clamped to
  * at least 1.
  *
+ * `previewSizeMode` describes how Glance generates **preview** compositions — not whether the
+ * installed widget is actually resizable. Resizability is a property of the launcher widget's
+ * provider metadata XML (`android:resizeMode`, `android:targetCellWidth`, etc.) and is not
+ * recoverable from `SizeMode` alone. So:
+ *
  * Translation table:
- * - [SizeMode.Single] → `supportedCells = [theDefaultSize]`, `resizeAxes = None` (the widget
- *   declared one fixed size and doesn't respond to other layouts).
- * - [SizeMode.Responsive] → `supportedCells = set.toCells()`, `resizeAxes = Both`. Picker
- *   should show only these sizes; Glance won't lay out at others.
- * - [SizeMode.Exact] → `supportedCells = null`, `resizeAxes = Both`. Widget composes at
- *   whatever size it's given; no constraint to surface.
+ * - [SizeMode.Single] → `supportedCells = null`, `resizeAxes = Both`. Glance composes a single
+ *   preview at the default size, but that says nothing about the installed widget; defer the
+ *   constraint fields to provider metadata.
+ * - [SizeMode.Responsive] → `supportedCells = set.toCells()`, `resizeAxes = Both`. The widget
+ *   author explicitly enumerated a size catalogue here, so we surface it; the picker should
+ *   show only these sizes.
+ * - [SizeMode.Exact] (and any future SizeMode the connector doesn't recognise) →
+ *   `supportedCells = null`, `resizeAxes = Both`. Widget composes at whatever size it's given;
+ *   no constraint to surface.
  */
 private fun offerSizeModeMetadata(widget: GlanceAppWidget) {
   if (LauncherWidgetMetadataChannel.currentPreviewId() == null) return
   val mode = widget.previewSizeMode
   val metadata =
     when (mode) {
-      is SizeMode.Single ->
-        LauncherWidgetMetadata(
-          supportedCells = emptyList(),
-          resizeAxes = LauncherResizeAxes.NONE,
-        )
       is SizeMode.Responsive ->
         LauncherWidgetMetadata(
           supportedCells = mode.sizes.map { it.toCells() },
           resizeAxes = LauncherResizeAxes.BOTH,
         )
       else ->
-        // `SizeMode.Exact` (and any future SizeMode the connector doesn't recognise) — leave
-        // supportedCells null so the picker falls back to its default rectangle, but still
-        // signal that resizing is allowed.
+        // `SizeMode.Single`, `SizeMode.Exact`, and any future SizeMode the connector doesn't
+        // recognise — leave supportedCells null so the picker falls back to provider metadata
+        // (or its default rectangle), and signal that resizing is allowed. `SizeMode.Single`
+        // is a preview-generation directive, not a "widget is non-resizable" advertisement —
+        // mapping it to `resizeAxes = NONE` falsely disabled drag handles for widgets whose
+        // provider metadata says they're resizable.
         LauncherWidgetMetadata(supportedCells = null, resizeAxes = LauncherResizeAxes.BOTH)
     }
   LauncherWidgetMetadataChannel.offer(metadata)
