@@ -529,7 +529,7 @@ data class PreviewManifest(
 )
 
 // ---------------------------------------------------------------------------
-// Android XML resource previews — vector, animated-vector, adaptive-icon
+// Android resource previews — vector, animated-vector, adaptive-icon, 9-patch
 // ---------------------------------------------------------------------------
 
 /** Cost catalogue extension for resource previews; same scale as the composable cost figures. */
@@ -539,12 +539,46 @@ const val RESOURCE_ADAPTIVE_COST: Float = 4.0f
 
 const val RESOURCE_ANIMATED_COST: Float = 35.0f
 
-/** Subset of XML drawable / mipmap resources the renderer knows how to handle. */
+/**
+ * Per-capture cost for a 9-patch stretch render. Each capture is one `NinePatchDrawable.draw` into
+ * a target-sized bitmap plus a PNG encode — within a constant factor of [RESOURCE_STATIC_COST].
+ * The 4-stretch fan-out per qualifier means the aggregate cost for one 9-patch is ~6x a vector;
+ * tier alongside other static captures.
+ */
+const val RESOURCE_NINE_PATCH_COST: Float = 1.5f
+
+/**
+ * Drawable / mipmap resources the renderer knows how to handle. [VECTOR], [ANIMATED_VECTOR], and
+ * [ADAPTIVE_ICON] come from XML root tags (classified by [ResourceXmlClassifier] in the plugin
+ * module). [NINE_PATCH] comes from the `.9.png` file-extension convention — AAPT2 strips the
+ * 1-px guide border at build time and stamps an `npTc` chunk into the compiled PNG, and at render
+ * time Android resolves the drawable to a `NinePatchDrawable` whose `draw()` interpolates the
+ * patches against whatever bounds we set.
+ */
 @Serializable
 enum class ResourceType {
   VECTOR,
   ANIMATED_VECTOR,
   ADAPTIVE_ICON,
+  NINE_PATCH,
+}
+
+/**
+ * Which target size to render a 9-patch at. Each value maps to a different `(width, height)`
+ * `setBounds` call against the same `NinePatchDrawable`, so a reviewer can see both the natural
+ * appearance and how the patches stretch into a larger container.
+ *
+ * - [INTRINSIC] — `(intrinsicWidth, intrinsicHeight)`, the natural appearance.
+ * - [HORIZONTAL] — `(intrinsicWidth * 2, intrinsicHeight)`, exercises the horizontal stretch zone.
+ * - [VERTICAL] — `(intrinsicWidth, intrinsicHeight * 2)`, exercises the vertical stretch zone.
+ * - [BOTH] — `(intrinsicWidth * 2, intrinsicHeight * 2)`, exercises both axes.
+ */
+@Serializable
+enum class NinePatchStretch {
+  INTRINSIC,
+  HORIZONTAL,
+  VERTICAL,
+  BOTH,
 }
 
 /**
@@ -596,12 +630,17 @@ enum class AdaptiveStyle {
  * [shape] and [style] are independent axes for adaptive-icon captures. [style] =
  * [AdaptiveStyle.LEGACY] always pairs with `shape = null` (legacy fallback ignores the mask); other
  * styles always carry a shape. Both fields are `null` for non-adaptive resources.
+ *
+ * [stretch] is the 9-patch-only axis. Non-null on [ResourceType.NINE_PATCH] captures, `null`
+ * elsewhere. Carried alongside [shape] / [style] rather than overloading them so the renderer can
+ * switch on the type-specific axis without inspecting the resource type up front.
  */
 @Serializable
 data class ResourceVariant(
   val qualifiers: String? = null,
   val shape: AdaptiveShape? = null,
   val style: AdaptiveStyle? = null,
+  val stretch: NinePatchStretch? = null,
 )
 
 @Serializable

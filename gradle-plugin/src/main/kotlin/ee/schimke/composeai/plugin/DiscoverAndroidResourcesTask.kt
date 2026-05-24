@@ -54,6 +54,8 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
 
   @get:Input abstract val styles: ListProperty<AdaptiveStyle>
 
+  @get:Input abstract val stretches: ListProperty<NinePatchStretch>
+
   /**
    * Project root path used to render module-relative paths in the manifest. Captured at
    * configuration time (via `project.layout.projectDirectory.asFile.absolutePath`) so the task
@@ -74,6 +76,7 @@ abstract class DiscoverAndroidResourcesTask : DefaultTask() {
           densities = densities.get(),
           shapes = shapes.get(),
           styles = styles.get(),
+          stretches = stretches.get(),
           sourceRootRelativePath = { root -> root.toRelativeStringSafe(projectRoot) },
         )
       )
