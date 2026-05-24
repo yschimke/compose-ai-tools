@@ -255,6 +255,29 @@ const remoteComposeOverridesByPreview = new Map<
     string,
     import("./daemon/daemonProtocol").RemoteComposeOverride
 >();
+/**
+ * previewId → latest `compose/remotecompose` payload the daemon attached. Used to seed
+ * [remoteComposeOverridesByPreview] when the user makes the *first* edit for a preview:
+ * `RemoteComposeController.set(...)` applies full-replacement map semantics on each
+ * `renderNow.overrides.remoteCompose`, so a partial bag built from the empty override
+ * map would erase every named value the user code originally bound. Seeding from the
+ * last-seen payload preserves those values on the first edit; subsequent edits merge
+ * into the accumulated bag the normal way.
+ *
+ * Captured from `onDataProductsAttached` for the `compose/remotecompose` kind. Both
+ * `namedValues` and `profile` are mirrored. The map persists for the lifetime of the
+ * extension activation, mirroring [remoteComposeOverridesByPreview]'s scope.
+ */
+const latestRemoteComposeByPreview = new Map<
+    string,
+    {
+        profile?: import("./daemon/daemonProtocol").RemoteComposeOverride["profile"];
+        namedValues?: Record<
+            string,
+            import("./daemon/daemonProtocol").RemoteNamedValueWire
+        >;
+    }
+>();
 /** Tracks files saved at least once since activation. First save on a file
  *  renders immediately; subsequent saves go through the debounce path. */
 const firstSaveSeen = new Set<string>();
@@ -950,6 +973,41 @@ export async function activate(
                                   findings: decoded.findings ?? undefined,
                                   nodes: decoded.nodes ?? undefined,
                               });
+                          }
+                          // Capture the latest `compose/remotecompose` payload so the next
+                          // panel-side edit can seed [remoteComposeOverridesByPreview] with the
+                          // user code's bound named values + profile. Without this seed the
+                          // first edit's `renderNow.overrides.remoteCompose` would carry only
+                          // the edited field, and `RemoteComposeController.set(...)` would
+                          // full-replace away every other value. Runs whether or not the panel
+                          // is wired — the user can open the panel after a render and edit
+                          // immediately, before the next attach refreshes the snapshot.
+                          for (const dp of dataProducts) {
+                              if (dp.kind !== "compose/remotecompose") continue;
+                              const raw =
+                                  dp.payload ??
+                                  (isJsonDataProduct(dp)
+                                      ? readJsonPath(dp.path, outputChannel)
+                                      : undefined);
+                              if (
+                                  raw &&
+                                  typeof raw === "object" &&
+                                  !Array.isArray(raw)
+                              ) {
+                                  const payload = raw as {
+                                      profile?: import("./daemon/daemonProtocol").RemoteComposeOverride["profile"];
+                                      namedValues?: Record<
+                                          string,
+                                          import("./daemon/daemonProtocol").RemoteNamedValueWire
+                                      >;
+                                  };
+                                  latestRemoteComposeByPreview.set(previewId, {
+                                      profile: payload.profile,
+                                      namedValues: payload.namedValues
+                                          ? { ...payload.namedValues }
+                                          : undefined,
+                                  });
+                              }
                           }
                           if (panel) {
                               const payloads = dataProducts
@@ -5059,14 +5117,41 @@ async function handleSetRemoteComposeNamedValue(
     if (!moduleInfo) {
         return;
     }
-    const prior = remoteComposeOverridesByPreview.get(previewId);
-    const next = mergeRemoteComposeChange(prior, change);
+    // On the first edit, `remoteComposeOverridesByPreview` is empty for this preview;
+    // `RemoteComposeController.set(...)` applies full-replacement semantics on the next
+    // `renderNow.overrides.remoteCompose`, so a bag containing only the edited field
+    // would erase every other value the user code bound. Seed from the last-seen
+    // `compose/remotecompose` payload so the merge result is "snapshot + this edit".
+    // After the first edit the override bag is the source of truth — the snapshot seed
+    // would shadow user edits with stale values from the last-attached payload.
+    const priorOverride = remoteComposeOverridesByPreview.get(previewId);
+    let seed:
+        | import("./daemon/daemonProtocol").RemoteComposeOverride
+        | undefined = priorOverride;
+    if (!seed) {
+        const snapshot = latestRemoteComposeByPreview.get(previewId);
+        if (snapshot) {
+            seed = {
+                profile: snapshot.profile,
+                namedValues: snapshot.namedValues
+                    ? { ...snapshot.namedValues }
+                    : undefined,
+            };
+        }
+    }
+    const next = mergeRemoteComposeChange(seed, change);
     remoteComposeOverridesByPreview.set(previewId, next);
 
     // Prefer the live path when a `composestream/1` session is up — sub-frame controller
     // mutation beats a full re-render every time. `activeInteractiveStreams` is the legacy
     // `interactive/start` map (still used by recording); both can carry the live streamId,
     // and either is a valid routing key for `interactive/setRemoteCompose`.
+    //
+    // Even after sending the notification we fall through to the `renderNow` dispatch so
+    // version-skew daemons (and any daemon that doesn't implement the notification, e.g.
+    // a backend without a live `RemoteComposeController` binding) still apply the edit.
+    // The notification is a snappy-paint optimisation; `renderNow` is the canonical
+    // source-of-truth path and an idempotent re-application on healthy daemons.
     const liveStreamId =
         activeStreamFrameStreams.get(previewId) ??
         activeInteractiveStreams.get(previewId);
@@ -5077,13 +5162,12 @@ async function handleSetRemoteComposeNamedValue(
         );
         if (client) {
             logInfo(
-                `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId} via live session ${liveStreamId}`,
+                `[panel] remoteCompose ${change.field === "profile" ? "profile=" + (change.value ?? "<none>") : "namedValue " + change.name + "=" + JSON.stringify(change.value)} for ${previewId} via live session ${liveStreamId} (+ renderNow fallback)`,
             );
             client.interactiveSetRemoteCompose({
                 frameStreamId: liveStreamId,
                 change,
             });
-            return;
         }
     }
 
