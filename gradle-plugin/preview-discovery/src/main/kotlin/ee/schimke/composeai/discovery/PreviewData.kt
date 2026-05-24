@@ -215,6 +215,13 @@ data class LauncherWidgetCapture(
   val maxWidth: Int? = null,
   val maxHeight: Int? = null,
   val resizeOrder: LauncherWidgetCaptureResizeOrder = LauncherWidgetCaptureResizeOrder.WidthFirst,
+  /**
+   * Per-frame delay carried through from `@LauncherWidgetResize.frameDelayMs`. `null` when the
+   * capture didn't originate from a resize walk (single `@LauncherWidgetPreview` doesn't author a
+   * GIF, so the field is absent there). The future GIF-stitch pass reads this off the per-stop
+   * captures; the value is identical across every stop in the same walk by construction.
+   */
+  val frameDelayMs: Int? = null,
 )
 
 /** Mirror of `LauncherResizeOrder` in `:daemon:core`. */
@@ -555,19 +562,19 @@ val DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS: List<Float> = listOf(0.0f, 0.25f, 0.5f
 
 /**
  * Per-capture cost for a 9-patch stretch render. Each capture is one `NinePatchDrawable.draw` into
- * a target-sized bitmap plus a PNG encode — within a constant factor of [RESOURCE_STATIC_COST].
- * The 4-stretch fan-out per qualifier means the aggregate cost for one 9-patch is ~6x a vector;
- * tier alongside other static captures.
+ * a target-sized bitmap plus a PNG encode — within a constant factor of [RESOURCE_STATIC_COST]. The
+ * 4-stretch fan-out per qualifier means the aggregate cost for one 9-patch is ~6x a vector; tier
+ * alongside other static captures.
  */
 const val RESOURCE_NINE_PATCH_COST: Float = 1.5f
 
 /**
  * Drawable / mipmap resources the renderer knows how to handle. [VECTOR], [ANIMATED_VECTOR], and
  * [ADAPTIVE_ICON] come from XML root tags (classified by [ResourceXmlClassifier] in the plugin
- * module). [NINE_PATCH] comes from the `.9.png` file-extension convention — AAPT2 strips the
- * 1-px guide border at build time and stamps an `npTc` chunk into the compiled PNG, and at render
- * time Android resolves the drawable to a `NinePatchDrawable` whose `draw()` interpolates the
- * patches against whatever bounds we set.
+ * module). [NINE_PATCH] comes from the `.9.png` file-extension convention — AAPT2 strips the 1-px
+ * guide border at build time and stamps an `npTc` chunk into the compiled PNG, and at render time
+ * Android resolves the drawable to a `NinePatchDrawable` whose `draw()` interpolates the patches
+ * against whatever bounds we set.
  */
 @Serializable
 enum class ResourceType {

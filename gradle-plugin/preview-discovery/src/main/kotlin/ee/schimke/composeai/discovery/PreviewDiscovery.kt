@@ -899,6 +899,7 @@ object PreviewDiscovery {
               cellSizeDp = effectiveLauncherWidgetResize.cellSizeDp,
               cellSpacingDp = effectiveLauncherWidgetResize.cellSpacingDp,
               resizeOrder = effectiveLauncherWidgetResize.resizeOrder,
+              frameDelayMs = effectiveLauncherWidgetResize.frameDelayMs,
             ),
           ambient = effectiveAmbient,
           renderOutput = "renders/${previewId}_RESIZE_${w}x${h}.png",
