@@ -33,6 +33,7 @@ export interface FocusToolbarElements {
     btnTouchOverlay: HTMLButtonElement;
     btnKeyboardBand: HTMLButtonElement;
     btnControls: HTMLButtonElement;
+    btnLauncherWidget: HTMLButtonElement;
     btnExportBundle: HTMLButtonElement;
     btnExitFocus: HTMLButtonElement;
     recordingFormat: HTMLSelectElement;
@@ -139,6 +140,7 @@ export class FocusToolbarController {
             this.el.btnTouchOverlay.hidden = true;
             this.el.btnKeyboardBand.hidden = true;
             this.el.btnControls.hidden = true;
+            this.el.btnLauncherWidget.hidden = true;
         }
         if (!s.earlyFeatures) {
             this.el.focusInspector.hidden = true;
@@ -291,6 +293,34 @@ export class FocusToolbarController {
         this.el.btnKeyboardBand.setAttribute(
             "aria-label",
             this.el.btnKeyboardBand.title,
+        );
+    }
+
+    /**
+     * Launcher-widget container-size picker toggle. `enabled` means the focused
+     * preview currently carries a `LauncherWidgetOverride` (picker has been
+     * used at least once for this card); the button paints its pressed state
+     * to flag the non-default sizing. Clicking opens / closes the popover —
+     * that wiring (and the `aria-expanded` flip) lives in `main.ts`.
+     */
+    applyLauncherWidgetButtonState(s: FocusedToggleButtonState): void {
+        const visible =
+            s.inFocus && s.advertised && s.focusedPreviewId !== null;
+        this.el.btnLauncherWidget.hidden = !visible;
+        if (!visible) {
+            this.el.btnLauncherWidget.setAttribute("aria-pressed", "false");
+            return;
+        }
+        this.el.btnLauncherWidget.setAttribute(
+            "aria-pressed",
+            s.enabled ? "true" : "false",
+        );
+        this.el.btnLauncherWidget.title = s.enabled
+            ? "Launcher-widget cell size — click to change or reset"
+            : "Pick launcher-widget cell size";
+        this.el.btnLauncherWidget.setAttribute(
+            "aria-label",
+            this.el.btnLauncherWidget.title,
         );
     }
 
