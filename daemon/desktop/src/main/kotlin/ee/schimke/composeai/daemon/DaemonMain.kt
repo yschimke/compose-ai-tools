@@ -141,6 +141,7 @@ fun runDaemon(
   val recompositionRegistry = RecompositionDataProductRegistry()
   val themeRegistry = ThemeDataProductRegistry()
   val wallpaperRegistry = WallpaperDataProductRegistry()
+  val launcherWidgetRegistry = LauncherWidgetDataProductRegistry()
 
   // B2.1 — wire Tier-1 classpath fingerprinting (DESIGN § 8). Cheap-signal file set comes from
   // `composeai.daemon.cheapSignalFiles` (set by the gradle plugin's composePreviewDaemonStart).
@@ -235,6 +236,7 @@ fun runDaemon(
         recompositionRegistry = recompositionRegistry,
         themeRegistry = themeRegistry,
         wallpaperRegistry = wallpaperRegistry,
+        launcherWidgetRegistry = launcherWidgetRegistry,
         historyManager = historyManager,
         dataRoot = dataRoot,
         composeTraceEnabled = composeTraceEnabled,
@@ -491,6 +493,7 @@ internal fun buildDesktopExtensions(
   recompositionRegistry: RecompositionDataProductRegistry,
   themeRegistry: ThemeDataProductRegistry,
   wallpaperRegistry: WallpaperDataProductRegistry,
+  launcherWidgetRegistry: LauncherWidgetDataProductRegistry,
   historyManager: HistoryManager?,
   dataRoot: File?,
   composeTraceEnabled: Boolean,
@@ -633,6 +636,7 @@ internal fun buildDesktopExtensions(
     Extension(
       id = "data/launcher-widget",
       displayName = "Launcher widget container size",
+      dataProductRegistry = launcherWidgetRegistry,
       previewOverrideExtensions = listOf(LauncherWidgetPreviewOverrideExtension()),
       dataExtensionDescriptors =
         listOf(

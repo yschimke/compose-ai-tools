@@ -5,17 +5,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ee.schimke.composeai.daemon.protocol.DataFetchResult
+import ee.schimke.composeai.daemon.protocol.DataProductAttachment
+import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetPayload
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
+import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * `AroundComposable` extension that wraps a preview in a launcher-widget-shaped grid-cell
@@ -177,5 +186,116 @@ private inline fun walkAxis(from: Int, to: Int, emit: (Int) -> Unit) {
   while (v != to) {
     v += step
     emit(v)
+  }
+}
+
+/**
+ * Daemon-side registry adapter for `compose/launcher-widget`.
+ *
+ * Captures the resolved (post-clamp) cell count + dp footprint last applied via
+ * `renderNow.overrides.launcherWidget` per preview. A `data/fetch` after a launcher-widget-aware
+ * render returns the captured payload; before any render or after the override is dropped, it
+ * returns [DataProductRegistry.Outcome.NotAvailable]. There is no re-render mode — clients update
+ * the cells by sending a fresh `renderNow.overrides.launcherWidget`.
+ *
+ * Mirrors the shape of [WallpaperDataProductRegistry] one-for-one.
+ */
+class LauncherWidgetDataProductRegistry : DataProductRegistry {
+  private val latestPayloads = ConcurrentHashMap<String, LauncherWidgetPayload>()
+
+  override val capabilities: List<DataProductCapability> =
+    listOf(
+      DataProductCapability(
+        kind = KIND,
+        schemaVersion = SCHEMA_VERSION,
+        transport = DataProductTransport.INLINE,
+        attachable = true,
+        fetchable = true,
+        requiresRerender = false,
+      )
+    )
+
+  fun capture(previewId: String?, payload: LauncherWidgetPayload) {
+    if (previewId == null) return
+    latestPayloads[previewId] = payload
+  }
+
+  fun clear(previewId: String?) {
+    if (previewId == null) return
+    latestPayloads.remove(previewId)
+  }
+
+  override fun fetch(
+    previewId: String,
+    kind: String,
+    params: JsonElement?,
+    inline: Boolean,
+  ): DataProductRegistry.Outcome {
+    if (kind != KIND) return DataProductRegistry.Outcome.Unknown
+    val payload = latestPayloads[previewId] ?: return DataProductRegistry.Outcome.NotAvailable
+    return DataProductRegistry.Outcome.Ok(
+      DataFetchResult(
+        kind = KIND,
+        schemaVersion = SCHEMA_VERSION,
+        payload = json.encodeToJsonElement(LauncherWidgetPayload.serializer(), payload),
+      )
+    )
+  }
+
+  override fun attachmentsFor(previewId: String, kinds: Set<String>): List<DataProductAttachment> {
+    if (KIND !in kinds) return emptyList()
+    val payload = latestPayloads[previewId] ?: return emptyList()
+    return listOf(
+      DataProductAttachment(
+        kind = KIND,
+        schemaVersion = SCHEMA_VERSION,
+        payload = json.encodeToJsonElement(LauncherWidgetPayload.serializer(), payload),
+      )
+    )
+  }
+
+  override fun onRender(previewId: String, result: RenderResult) {
+    onRender(previewId, result, overrides = null, previewContext = result.previewContext)
+  }
+
+  override fun onRender(
+    previewId: String,
+    result: RenderResult,
+    overrides: PreviewOverrides?,
+    previewContext: PreviewContext?,
+  ) {
+    val applied = overrides?.launcherWidget
+    if (applied == null) {
+      clear(previewId)
+      return
+    }
+    val resolved = applied.resolve()
+    val widthDp =
+      resolved.cellSizeDp * resolved.cells.width +
+        resolved.cellSpacingDp * maxOf(0, resolved.cells.width - 1)
+    val heightDp =
+      resolved.cellSizeDp * resolved.cells.height +
+        resolved.cellSpacingDp * maxOf(0, resolved.cells.height - 1)
+    capture(
+      previewId,
+      LauncherWidgetPayload(
+        cells = resolved.cells,
+        cellSizeDp = resolved.cellSizeDp,
+        cellSpacingDp = resolved.cellSpacingDp,
+        widthDp = widthDp,
+        heightDp = heightDp,
+        resizeOrder = applied.resizeOrder,
+      ),
+    )
+  }
+
+  companion object {
+    const val KIND: String = "compose/launcher-widget"
+    const val SCHEMA_VERSION: Int = 1
+
+    private val json = Json {
+      encodeDefaults = true
+      prettyPrint = false
+    }
   }
 }
