@@ -7,7 +7,7 @@ import {
     ResourceRef,
 } from "./androidResourceReferences";
 import { GradleService } from "./gradleService";
-import { readVariantImages } from "./manifestResourceHoverProvider";
+import { readVariantImages } from "./manifestResourceHoverImages";
 import { buildResourceVariantHoverMarkdown } from "./resourceVariantHover";
 
 /**
