@@ -40,8 +40,10 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
  *
  * - [implClasspath]: the BTA-impl JARs + kotlin-compiler-embeddable + transitive kotlin-/jna-
  *   runtime JARs that the impl classloader needs at its URLs. Supplied by the daemon launch
- *   descriptor's `btaCompilerClasspath` (the gradle plugin populates this when the build opts in
- *   via `composePreview { daemon { compileInProcess = true } }`).
+ *   descriptor's `btaCompile.implClasspath`, populated unconditionally by the gradle plugin's
+ *   `DaemonBootstrapTask` (the daemon only loads these JARs into BTA's classloader once the editor
+ *   actually calls `compileSources` — itself gated by the VS Code workspace setting
+ *   `composePreview.daemon.compileInProcess`).
  * - [icWorkingDir]: per-module persistent IC cache directory. Survives across daemon spawns so a
  *   daemon restart doesn't lose the cumulative IC state — but the daemon is recycled on
  *   classpath-dirty (Tier 1) which invalidates the IC inputs anyway, so survival is bounded.

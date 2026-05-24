@@ -88,11 +88,12 @@ public data class DaemonClasspathDescriptor(
 
 /**
  * Stage-2 in-process compile config — see `docs/daemon/COMPILE-IN-PROCESS.md`. Populated by the
- * gradle plugin's `DaemonBootstrapTask` when both the workspace and the build opt in
- * (`composePreview.daemon.compileInProcess` and `composePreview { daemon { compileInProcess = true
- * } }` respectively). The daemon reads these fields into a `DefaultBtaCompileService` once at
- * startup; they don't change across compile calls (Tier-1 dirty recycles the daemon and produces a
- * fresh descriptor).
+ * gradle plugin's `DaemonBootstrapTask` whenever the variant wiring resolved the required inputs
+ * (BTA-impl classpath, module name, output dir, IC dir). The daemon reads these into a
+ * `DefaultBtaCompileService` once at startup but only loads BTA's classloader lazily — the editor
+ * has to call `compileSources` to trigger that, and the call is itself gated by the VS Code
+ * workspace setting `composePreview.daemon.compileInProcess`. So a `non-null btaCompile` block in
+ * the descriptor costs nothing at the daemon level unless the editor actually opts in.
  */
 @Serializable
 public data class BtaCompileConfig(

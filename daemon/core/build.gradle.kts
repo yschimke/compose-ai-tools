@@ -34,16 +34,22 @@ dependencies {
   // :daemon:desktop modules consume from this module's `api`.
   implementation(libs.classgraph)
 
-  // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). `BtaCompileSession`
-  // links against the Build Tools API but only loads it at runtime when the
-  // daemon's launch descriptor carries a `btaCompilerClasspath` — `compileOnly`
-  // keeps the public artefact's transitive surface unchanged for consumers
-  // who haven't opted in. The corresponding impl JARs are supplied by the
-  // gradle plugin's `DaemonClasspathDescriptor` when
-  // `composePreview { daemon { compileInProcess = true } }`.
-  compileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
-  testCompileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
-  testRuntimeOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
+  // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). `BtaCompileSession` +
+  // `DefaultBtaCompileService.fromSysprops` link against the Build Tools API
+  // unconditionally at daemon startup, so the API jar must be on the daemon JVM's
+  // main classpath even before the editor opts in via the VS Code workspace
+  // setting — `fromSysprops` parses the descriptor's `btaCompile` sysprops and
+  // constructs `CompilerPlugin(...)` eagerly. The API surface is small
+  // (interfaces only). The corresponding *impl* JARs (kotlin-build-tools-impl
+  // + kotlin-compiler-embeddable + compose-plugin) are supplied by the gradle
+  // plugin's `DaemonClasspathDescriptor` and loaded into BTA's isolated
+  // classloader lazily on the first `compileSources` call. That classloader is
+  // rooted at `SharedApiClassesClassLoader()`, which delegates API class lookups
+  // up to *this* parent classpath — so having the API jar on the daemon's main
+  // classpath is also required for the impl side to resolve shared types
+  // correctly.
+  implementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
+  testImplementation("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
 
   testImplementation(libs.junit)
 }

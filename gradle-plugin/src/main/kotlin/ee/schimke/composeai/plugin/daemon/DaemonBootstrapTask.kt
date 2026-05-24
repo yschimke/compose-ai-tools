@@ -123,21 +123,13 @@ abstract class DaemonBootstrapTask : DefaultTask() {
 
   // --- Stage-2 in-process compile (COMPILE-IN-PROCESS.md) -----------------------------------
   //
-  // The descriptor's `btaCompile` field is populated when all three of the following hold:
-  //   - [compileInProcess] is `true` (the per-build opt-in, mirror of
-  //     `DaemonExtension.compileInProcess`),
-  //   - [btaImplClasspath] is non-empty (i.e. the plugin's variant wiring actually resolved
-  //     the BTA implementation JARs), and
-  //   - [btaModuleName], [btaOutputDir], [btaIcWorkingDir] are present.
-  //
-  // Today the variant wiring sites (`ComposePreviewTasks` CMP path, `AndroidPreviewSupport`
-  // Android path) don't yet supply these inputs; this is the load-bearing follow-up. With
-  // [compileInProcess] defaulted false and the input collections defaulted empty, the existing
-  // descriptors stay `btaCompile = null` and the daemon's `compileSources` JSON-RPC handler
-  // returns `result=fallback` — the editor falls back to stage 1 / 0 with no surface change.
-
-  /** Mirror of [DaemonExtension.compileInProcess]. */
-  @get:Input abstract val compileInProcess: Property<Boolean>
+  // The descriptor's `btaCompile` field is populated when [btaImplClasspath] is non-empty
+  // (i.e. the plugin's variant wiring actually resolved the BTA implementation JARs) and
+  // [btaModuleName] / [btaOutputDir] / [btaIcWorkingDir] are present. The daemon JVM lazily
+  // loads BTA only when the editor's save loop calls `compileSources` (gated by the VS Code
+  // workspace setting `composePreview.daemon.compileInProcess`), so populating the descriptor
+  // unconditionally costs only the on-disk classpath resolution at config time — the daemon
+  // pays no resident-memory tax unless the editor actually opts in.
 
   /**
    * BTA implementation classpath: `kotlin-build-tools-impl` + matching
@@ -247,29 +239,15 @@ abstract class DaemonBootstrapTask : DefaultTask() {
 
   /**
    * Returns a populated [BtaCompileConfig] when stage-2 wiring is complete for this variant, `null`
-   * otherwise. The contract is intentionally strict: every required field must be set, else we emit
-   * `null` and the daemon falls back to stage 1 / 0. The plugin's variant wiring sites
-   * (`ComposePreviewTasks` CMP path, `AndroidPreviewSupport` Android path) populate these inputs in
-   * a follow-up; until then `compileInProcess` defaults false and this returns null even when
-   * callers set the flag manually.
+   * otherwise. Every required field must be set, else we emit `null` and the daemon's
+   * `compileSources` handler returns `result=fallback` so the editor falls back to stage 1 / 0.
    */
   private fun assembleBtaCompileConfig(): BtaCompileConfig? {
-    if (!compileInProcess.getOrElse(false)) return null
     val implCp = btaImplClasspathPaths
     val moduleName = btaModuleName.orNull
     val outputDir = btaOutputDir.orNull
     val icDir = btaIcWorkingDir.orNull
-    if (implCp.isEmpty() || moduleName == null || outputDir == null || icDir == null) {
-      // Plugin opt-in is on but the variant wiring hasn't fully populated yet. Log to stderr
-      // so the consumer's build output surfaces the gap; emit `null` so the daemon falls
-      // back cleanly rather than blowing up at startup against half-populated inputs.
-      logger.warn(
-        "composePreview.daemon.compileInProcess=true but BTA wiring is incomplete for " +
-          "${modulePath.getOrElse("?")} (variant=${variant.getOrElse("?")}). " +
-          "Falling back to stage 1. Tracked in docs/daemon/COMPILE-IN-PROCESS.md."
-      )
-      return null
-    }
+    if (implCp.isEmpty() || moduleName == null || outputDir == null || icDir == null) return null
     return BtaCompileConfig(
       implClasspath = implCp,
       compileClasspath = btaCompileClasspathPaths,
