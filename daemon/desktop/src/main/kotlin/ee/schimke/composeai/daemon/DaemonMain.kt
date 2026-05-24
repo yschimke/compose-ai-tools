@@ -290,11 +290,13 @@ fun runDaemon(
 
   // Stage-2 in-process compile service. Reads its config from the
   // `composeai.daemon.bta.*` sysprops the gradle plugin's `DaemonBootstrapTask`
-  // populates when the consumer flips `composePreview { daemon { compileInProcess
-  // = true } }`. Returns null when the sysprops are absent — in that case
+  // populates unconditionally whenever the variant wiring resolved the BTA classpath.
+  // Returns null when the sysprops are absent — in that case
   // `JsonRpcServer.compileSources` returns `result=fallback` for every call and
-  // the editor falls back to stage 1 (`gradle --continuous`) or stage 0. See
-  // docs/daemon/COMPILE-IN-PROCESS.md.
+  // the editor falls back to stage 1 (`gradle --continuous`) or stage 0. The editor
+  // only dispatches `compileSources` when the VS Code workspace setting
+  // `composePreview.daemon.compileInProcess` is on, so a non-null service still costs
+  // nothing until that switch is flipped. See docs/daemon/COMPILE-IN-PROCESS.md.
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(

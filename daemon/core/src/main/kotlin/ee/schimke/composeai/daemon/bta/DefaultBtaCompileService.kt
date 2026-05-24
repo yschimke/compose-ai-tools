@@ -90,11 +90,11 @@ class DefaultBtaCompileService(
 
   companion object {
     /**
-     * System-property keys the gradle plugin's daemon-bootstrap task populates when the consumer
-     * flips `composePreview { daemon { compileInProcess = true } }`. Mirror of `BtaCompileConfig`
-     * in the launch descriptor; see COMPILE-IN-PROCESS.md for the wire format. All path-list
-     * sysprops are `File.pathSeparator`-joined; an unset / empty value means "this part of the
-     * config is missing" and [fromSysprops] returns null.
+     * System-property keys the gradle plugin's daemon-bootstrap task populates unconditionally
+     * whenever the variant wiring resolved the BTA classpath. Mirror of `BtaCompileConfig` in the
+     * launch descriptor; see COMPILE-IN-PROCESS.md for the wire format. All path-list sysprops are
+     * `File.pathSeparator`-joined; an unset / empty value means "this part of the config is
+     * missing" and [fromSysprops] returns null.
      */
     const val SYSPROP_IMPL_CLASSPATH: String = "composeai.daemon.bta.implClasspath"
     const val SYSPROP_COMPILE_CLASSPATH: String = "composeai.daemon.bta.compileClasspath"

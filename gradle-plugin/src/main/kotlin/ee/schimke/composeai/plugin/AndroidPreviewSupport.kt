@@ -1542,7 +1542,6 @@ internal object AndroidPreviewSupport {
       this.maxHeapMb.set(extension.daemon.maxHeapMb)
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
-      this.compileInProcess.set(extension.daemon.compileInProcess)
       // Stage-2 BTA wiring. The AGP unit-test task's `classpath` carries every input
       // `compileDebugKotlin` would see — Compose runtime, kotlin-stdlib, AGP-generated
       // R.jar / BuildConfig outputs, the consumer's transitive dependencies. Feed that

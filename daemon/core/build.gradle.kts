@@ -36,11 +36,10 @@ dependencies {
 
   // Stage-2 in-process compile (COMPILE-IN-PROCESS.md). `BtaCompileSession`
   // links against the Build Tools API but only loads it at runtime when the
-  // daemon's launch descriptor carries a `btaCompilerClasspath` — `compileOnly`
-  // keeps the public artefact's transitive surface unchanged for consumers
-  // who haven't opted in. The corresponding impl JARs are supplied by the
-  // gradle plugin's `DaemonClasspathDescriptor` when
-  // `composePreview { daemon { compileInProcess = true } }`.
+  // daemon's launch descriptor carries a `btaCompile` block — `compileOnly`
+  // keeps the public artefact's transitive surface unchanged. The corresponding
+  // impl JARs are supplied by the gradle plugin's `DaemonClasspathDescriptor`;
+  // BTA is then loaded lazily on the first `compileSources` call.
   compileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
   testCompileOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
   testRuntimeOnly("org.jetbrains.kotlin:kotlin-build-tools-api:${libs.versions.kotlin.get()}")
