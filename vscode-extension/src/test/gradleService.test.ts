@@ -12,7 +12,11 @@ import { JdkImageError } from "../jdkImageErrorDetector";
 
 /** Stub GradleApi that records invocations and allows test control. */
 class StubGradleApi implements GradleApi {
-    public runCalls: Array<{ taskName: string; cancellationKey?: string }> = [];
+    public runCalls: Array<{
+        taskName: string;
+        args?: ReadonlyArray<string>;
+        cancellationKey?: string;
+    }> = [];
     public cancelCalls: Array<{ taskName: string; cancellationKey?: string }> =
         [];
     public nextRunResult: "success" | Error = "success";
@@ -22,6 +26,7 @@ class StubGradleApi implements GradleApi {
     async runTask(opts: {
         projectFolder: string;
         taskName: string;
+        args?: ReadonlyArray<string>;
         cancellationKey?: string;
         onOutput?: (output: {
             getOutputBytes(): Uint8Array;
@@ -30,6 +35,7 @@ class StubGradleApi implements GradleApi {
     }): Promise<void> {
         this.runCalls.push({
             taskName: opts.taskName,
+            args: opts.args,
             cancellationKey: opts.cancellationKey,
         });
         if (this.nextRunOutput && opts.onOutput) {
@@ -1153,6 +1159,181 @@ describe("GradleService", () => {
         );
     });
 
+    describe("coldStartBundle", () => {
+        function writeManifest(dir: string, moduleDir: string): void {
+            const manifestDir = path.join(
+                dir,
+                moduleDir,
+                "build",
+                "compose-previews",
+            );
+            fs.mkdirSync(manifestDir, { recursive: true });
+            fs.copyFileSync(
+                path.join(
+                    __dirname,
+                    "..",
+                    "..",
+                    "src",
+                    "test",
+                    "fixtures",
+                    "previews.json",
+                ),
+                path.join(manifestDir, "previews.json"),
+            );
+        }
+
+        it(
+            "bundles composePreviewApplied + :module:composePreviewDaemonStart + :module:composePreviewDiscover into one Gradle invocation",
+            withTempDir(async (dir, api) => {
+                writeManifest(dir, "mod");
+                const service = new GradleService(dir, api);
+
+                const manifest = await service.coldStartBundle({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                assert.notStrictEqual(
+                    manifest,
+                    null,
+                    "bundle should return the discovered manifest",
+                );
+                assert.strictEqual(
+                    api.runCalls.length,
+                    1,
+                    "the cold-start path must collapse to one Gradle invocation",
+                );
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    "composePreviewApplied",
+                );
+                assert.deepStrictEqual(api.runCalls[0].args, [
+                    ":mod:composePreviewDaemonStart",
+                    ":mod:composePreviewDiscover",
+                ]);
+            }),
+        );
+
+        it(
+            "drops composePreviewApplied from the bundle when the markers are still fresh",
+            withTempDir(async (dir, api) => {
+                writeManifest(dir, "mod");
+                writeManifest(dir, "other");
+                const service = new GradleService(dir, api);
+
+                await service.coldStartBundle({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                assert.strictEqual(api.runCalls.length, 1);
+                // Second module hits its own cold-start while the marker
+                // bootstrap is fresh — applied drops out, so the second
+                // invocation only carries the per-module tasks.
+                await service.coldStartBundle({
+                    projectDir: "other",
+                    modulePath: ":other",
+                });
+                assert.strictEqual(api.runCalls.length, 2);
+                assert.strictEqual(
+                    api.runCalls[1].taskName,
+                    ":other:composePreviewDaemonStart",
+                );
+                assert.deepStrictEqual(api.runCalls[1].args, [
+                    ":other:composePreviewDiscover",
+                ]);
+            }),
+        );
+
+        it(
+            "coalesces a concurrent bootstrapAppliedMarkers into the in-flight bundle",
+            withTempDir(async (dir, api) => {
+                writeManifest(dir, "mod");
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        api.runCalls.push({
+                            taskName: opts.taskName,
+                            args: opts.args,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask() {
+                        /* no-op */
+                    },
+                };
+                const service = new GradleService(dir, heldApi);
+
+                const bundle = service.coldStartBundle({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                // Yield so the bundle's `inFlightColdStart` + `appliedBootstrapPromise`
+                // entries land before the bootstrap call checks for them.
+                await new Promise((resolve) => setImmediate(resolve));
+
+                const applied = service.bootstrapAppliedMarkers();
+                // Bootstrap awaits the bundle — it must NOT have issued its
+                // own runTask.
+                await new Promise((resolve) => setImmediate(resolve));
+                assert.strictEqual(
+                    api.runCalls.length,
+                    1,
+                    "bootstrapAppliedMarkers must coalesce into the bundle, not fire a second runTask",
+                );
+
+                for (const r of resolvers) r();
+                await Promise.all([bundle, applied]);
+            }),
+        );
+
+        it(
+            "dedupes concurrent composePreviewDiscover for the bundled module against the in-flight bundle",
+            withTempDir(async (dir, api) => {
+                writeManifest(dir, "mod");
+                const resolvers: Array<() => void> = [];
+                const heldApi: GradleApi = {
+                    async runTask(opts) {
+                        api.runCalls.push({
+                            taskName: opts.taskName,
+                            args: opts.args,
+                            cancellationKey: opts.cancellationKey,
+                        });
+                        await new Promise<void>((r) => {
+                            resolvers.push(r);
+                        });
+                    },
+                    async cancelRunTask() {
+                        /* no-op */
+                    },
+                };
+                const service = new GradleService(dir, heldApi);
+
+                const bundle = service.coldStartBundle({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                await new Promise((resolve) => setImmediate(resolve));
+                const discover = service.composePreviewDiscover({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                await new Promise((resolve) => setImmediate(resolve));
+
+                assert.strictEqual(
+                    api.runCalls.length,
+                    1,
+                    "post-warm discover for the bundled module must await the bundle instead of starting a second Gradle invocation",
+                );
+
+                for (const r of resolvers) r();
+                await Promise.all([bundle, discover]);
+            }),
+        );
+    });
+
     describe("cancel", () => {
         it(
             "cancels in-flight tasks via API",
@@ -1205,10 +1386,15 @@ describe("GradleService", () => {
                         modulePath: ":mod",
                     })
                     .catch(() => {});
+                // Discover for a DIFFERENT module so it doesn't dedupe with
+                // the bundle's own per-module discover (coldStartBundle's
+                // post-warm reconcile coalesces against the in-flight bundle
+                // via `inFlightColdStart`). We just need a second runTask in
+                // flight so the cancel pool has something to cancel.
                 const render = service
                     .composePreviewDiscover({
-                        projectDir: "mod",
-                        modulePath: ":mod",
+                        projectDir: "other",
+                        modulePath: ":other",
                     })
                     .catch(() => {});
                 // Yield enough turns for both runTask invocations to be
@@ -1224,6 +1410,14 @@ describe("GradleService", () => {
                         t.endsWith(":composePreviewDaemonStart"),
                     ),
                     `bootstrap must not be cancelled, got: ${cancelledTasks.join(", ")}`,
+                );
+                // Bundle head task is `composePreviewApplied` (markers not
+                // fresh in a brand-new GradleService); the cancel pool spares
+                // that name too, so the bundle's actual cancellation key
+                // doesn't show up here either.
+                assert.ok(
+                    !cancelledTasks.some((t) => t === "composePreviewApplied"),
+                    `bundle head must not be cancelled, got: ${cancelledTasks.join(", ")}`,
                 );
                 assert.ok(
                     cancelledTasks.some((t) =>
