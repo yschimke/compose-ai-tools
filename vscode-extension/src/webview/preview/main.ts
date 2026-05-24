@@ -2204,6 +2204,7 @@ export class PreviewApp extends LitElement {
                 "compose/semantics",
                 "layout/inspector",
                 "uia/hierarchy",
+                "compose/permissions",
             ] as const) {
                 if (enabledKindsRaw.has(k)) enabledKinds.add(k);
             }

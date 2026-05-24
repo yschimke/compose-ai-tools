@@ -24,6 +24,11 @@ import {
 import type { OverlayBox } from "./components/BoxOverlay";
 import { parseBounds as parseCardBounds } from "./cardData";
 import { buildSelectorSnippet } from "./uiaSelector";
+import {
+    computePermissionsBundleData,
+    type PermissionsPayload,
+    type PermissionRow,
+} from "./permissionsBundlePresenter";
 
 // ---- compose/semantics --------------------------------------------------
 
@@ -194,7 +199,11 @@ export interface InspectionKindData {
 export interface InspectionBundleData {
     /** Per-kind sections, in the kind order the bundle registry declares. */
     sections: ReadonlyArray<{
-        kind: "compose/semantics" | "layout/inspector" | "uia/hierarchy";
+        kind:
+            | "compose/semantics"
+            | "layout/inspector"
+            | "uia/hierarchy"
+            | "compose/permissions";
         data: InspectionKindData;
     }>;
     /**
@@ -230,7 +239,8 @@ export type InspectionNodeRecord =
 export type InspectionKind =
     | "compose/semantics"
     | "layout/inspector"
-    | "uia/hierarchy";
+    | "uia/hierarchy"
+    | "compose/permissions";
 
 export interface InspectionPayloadLookup {
     (kind: InspectionKind): unknown;
@@ -278,6 +288,13 @@ export function computeInspectionBundleData(
             | undefined;
         const data = computeUiaHierarchyBundleData(payload, nodeById);
         if (data) sections.push({ kind: "uia/hierarchy", data });
+    }
+    if (enabledKinds.has("compose/permissions")) {
+        const payload = getPayload("compose/permissions") as
+            | PermissionsPayload
+            | undefined;
+        const data = computePermissionsInspectionData(payload);
+        if (data) sections.push({ kind: "compose/permissions", data });
     }
 
     const overlay = mergeOverlayBoxes(sections.map((s) => s.data.overlay));
@@ -471,6 +488,96 @@ function computeUiaHierarchyBundleData(
         },
     });
     return { body, summary, overlay };
+}
+
+/**
+ * `compose/permissions` doesn't fit the tree-table abstraction the other three
+ * kinds share (no hierarchy, no overlay bounds), so we render two flat rows
+ * tables — grants and queried — under one `<section>`. The body sits in the
+ * inspection bundle's host alongside the tree-tables; the bundle's merged
+ * overlay stays empty for this kind.
+ */
+function computePermissionsInspectionData(
+    payload: PermissionsPayload | undefined,
+): InspectionKindData | null {
+    if (!payload) return null;
+    const data = computePermissionsBundleData(payload);
+    if (data.grantRows.length === 0 && data.queriedRows.length === 0) {
+        return null;
+    }
+    const summary =
+        data.allPermissions.length +
+        " permission" +
+        (data.allPermissions.length === 1 ? "" : "s");
+    const body = document.createElement("section");
+    body.className = "inspection-permissions-section";
+    const header = document.createElement("header");
+    header.className = "inspection-permissions-header";
+    header.textContent = "Permissions · " + summary;
+    body.appendChild(header);
+    if (data.grantRows.length > 0) {
+        body.appendChild(
+            buildPermissionsTable("Effective grants", data.grantRows, [
+                "Permission",
+                "Grant",
+                "Queried?",
+            ]),
+        );
+    }
+    if (data.queriedRows.length > 0) {
+        body.appendChild(
+            buildPermissionsTable("Queried", data.queriedRows, [
+                "Permission",
+                "Effective grant",
+            ]),
+        );
+    }
+    return { body, summary, overlay: [] };
+}
+
+function buildPermissionsTable(
+    title: string,
+    rows: readonly PermissionRow[],
+    headers: readonly string[],
+): HTMLElement {
+    const wrap = document.createElement("section");
+    wrap.className = "inspection-permissions-table";
+    const heading = document.createElement("h4");
+    heading.textContent = title;
+    wrap.appendChild(heading);
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const h of headers) {
+        const th = document.createElement("th");
+        th.textContent = h;
+        headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+        const tr = document.createElement("tr");
+        tr.dataset.permissionLevel = row.level;
+        const permCell = document.createElement("td");
+        const code = document.createElement("code");
+        code.textContent = row.shortLabel;
+        permCell.appendChild(code);
+        tr.appendChild(permCell);
+        const grantCell = document.createElement("td");
+        grantCell.textContent =
+            row.grant ?? (headers.length === 3 ? "—" : "unknown");
+        tr.appendChild(grantCell);
+        if (headers.length === 3) {
+            const queriedCell = document.createElement("td");
+            queriedCell.textContent = row.queried ? "yes" : "no";
+            tr.appendChild(queriedCell);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
 }
 
 /** Namespace a node id with its kind so cross-kind dedupe stays clean. */
