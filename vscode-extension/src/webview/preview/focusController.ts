@@ -187,6 +187,41 @@ export class FocusController {
     }
 
     /**
+     * Push the touch-overlay / keyboard-band / controls toggle state for the
+     * focused preview onto the focus-toolbar buttons. These were previously
+     * stamped as per-card overlay icons on top of the rendered preview
+     * (the legacy `card-*-toggle-btn` overlays); they now live exclusively in
+     * the focus-controls bar so they stop covering the preview content.
+     */
+    applyFocusedToggleButtonStates(): void {
+        const inFocus = this.inFocus();
+        const card = inFocus
+            ? this.getVisibleCards()[this.config.getFocusIndex()]
+            : null;
+        const previewId = card?.dataset.previewId ?? null;
+        const live = this.config.liveState;
+        this.config.focusToolbar.applyTouchOverlayButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            advertised: live.isTouchOverlayAdvertised(),
+            enabled:
+                previewId !== null && live.isTouchOverlayEnabled(previewId),
+        });
+        this.config.focusToolbar.applyKeyboardBandButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            advertised: live.isKeyboardBandAdvertised(),
+            enabled: previewId !== null && live.isKeyboardBandForced(previewId),
+        });
+        this.config.focusToolbar.applyControlsButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            advertised: live.isControlsAdvertised(),
+            enabled: previewId !== null && live.isControlsEnabled(previewId),
+        });
+    }
+
+    /**
      * D2 — clicking the a11y toggle subscribes/unsubscribes via the
      * extension. When turning OFF, the extension also pushes an empty
      * updateA11y so the cached overlay tears down immediately rather
@@ -294,6 +329,7 @@ export class FocusController {
         this.applyInteractiveButtonState();
         this.applyRecordingButtonState();
         this.applyA11yOverlayButtonState();
+        this.applyFocusedToggleButtonStates();
         this.applyEarlyFeatureVisibility();
         this.config.refreshBundleLegend();
     }

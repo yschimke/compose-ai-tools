@@ -18,10 +18,7 @@
 
 import * as assert from "assert";
 import {
-    ensureControlsToggleButton,
-    ensureKeyboardBandToggleButton,
     ensureLiveCardControls,
-    ensureTouchOverlayToggleButton,
     removeControlsToggleButton,
     removeKeyboardBandToggleButton,
     removeTouchOverlayToggleButton,
@@ -194,7 +191,12 @@ describe("ensureLiveCardControls", () => {
     });
 });
 
-describe("ensureControlsToggleButton (issue #1203)", () => {
+// Legacy per-card overlay toggles (touch-overlay, soft-keyboard band, #1203
+// controls) used to be stamped on top of the rendered preview. They now live
+// on the focus-controls bar — the `removeXxx` helpers below are the cleanup
+// path for webview state restored from an older release. Pin the cleanup is
+// idempotent (no throw on cards that never had the button).
+describe("removeXxxToggleButton cleanup helpers", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
     });
@@ -202,236 +204,31 @@ describe("ensureControlsToggleButton (issue #1203)", () => {
         document.body.innerHTML = "";
     });
 
-    it("stamps a .card-controls-toggle-btn with the right shape + pressed state", () => {
-        const card = buildCard();
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        const btn = card.querySelector(
-            ".card-controls-toggle-btn",
-        ) as HTMLButtonElement | null;
-        assert.ok(btn, "controls toggle should appear in image-container");
-        assert.strictEqual(btn!.type, "button");
-        assert.strictEqual(btn!.classList.contains("icon-button"), true);
-        assert.strictEqual(btn!.getAttribute("aria-pressed"), "false");
-        assert.ok(
-            /Turn on/.test(btn!.title),
-            "off-state title should say 'Turn on'",
-        );
-        assert.ok(btn!.querySelector("i.codicon.codicon-keyboard"));
-    });
+    function buildCardWithLegacyButton(cls: string): HTMLElement {
+        const card = document.createElement("div");
+        card.className = "preview-card";
+        const container = document.createElement("div");
+        container.className = "image-container";
+        const btn = document.createElement("button");
+        btn.className = `icon-button ${cls}`;
+        container.appendChild(btn);
+        card.appendChild(container);
+        document.body.appendChild(card);
+        return card;
+    }
 
-    it("reflects the enabled state via aria-pressed + title", () => {
-        const card = buildCard();
-        ensureControlsToggleButton(card, { enabled: true, onToggle: () => {} });
-        const btn = card.querySelector(
-            ".card-controls-toggle-btn",
-        ) as HTMLButtonElement;
-        assert.strictEqual(btn.getAttribute("aria-pressed"), "true");
-        assert.ok(
-            /Turn off/.test(btn.title),
-            "on-state title should say 'Turn off'",
-        );
-    });
-
-    it("is idempotent — repeat calls don't duplicate the button or restack handlers", () => {
-        const card = buildCard();
-        let calls: boolean[] = [];
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: (_c, next) => calls.push(next),
-        });
-        // A second call with a different onToggle must not stack a new handler.
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: () => calls.push(true),
-        });
-        assert.strictEqual(
-            card.querySelectorAll(".card-controls-toggle-btn").length,
-            1,
-            "duplicate calls must not stamp a second button",
-        );
-        const btn = card.querySelector(
-            ".card-controls-toggle-btn",
-        ) as HTMLButtonElement;
-        btn.click();
-        assert.deepStrictEqual(
-            calls,
-            [true],
-            "the FIRST call's onToggle is bound; second-call onToggle stays disconnected",
-        );
-    });
-
-    it("click toggles between aria-pressed = false → true by invoking onToggle with !current", () => {
-        const card = buildCard();
-        const seen: boolean[] = [];
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: (_c, next) => seen.push(next),
-        });
-        const btn = card.querySelector(
-            ".card-controls-toggle-btn",
-        ) as HTMLButtonElement;
-        btn.click(); // aria-pressed = "false" → onToggle(true)
-        // Simulate the controller updating state.
-        ensureControlsToggleButton(card, { enabled: true, onToggle: () => {} });
-        // Re-bind onToggle to capture the next call (handler stays original — so use
-        // the first onToggle by leaving binding alone). Note this verifies that the
-        // pressed state reflects the latest enabled flag passed to ensure().
-        assert.strictEqual(btn.getAttribute("aria-pressed"), "true");
-        assert.deepStrictEqual(seen, [true]);
-        // Toggle off — handler was bound on the first call, so seen should grow.
-        btn.click(); // aria-pressed = "true" → onToggle(false)
-        assert.deepStrictEqual(seen, [true, false]);
-    });
-
-    it("click suppresses default and stops propagation", () => {
-        const card = buildCard();
-        let bubbled = 0;
-        card.addEventListener("click", () => bubbled++);
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        const btn = card.querySelector(
-            ".card-controls-toggle-btn",
-        ) as HTMLButtonElement;
-        const evt = new Event("click", { bubbles: true, cancelable: true });
-        btn.dispatchEvent(evt);
-        assert.strictEqual(evt.defaultPrevented, true);
-        assert.strictEqual(bubbled, 0);
-    });
-
-    it("is a silent no-op when .image-container is missing", () => {
-        const card = buildBareCard();
-        assert.doesNotThrow(() =>
-            ensureControlsToggleButton(card, {
-                enabled: false,
-                onToggle: () => {},
-            }),
-        );
-        assert.strictEqual(
-            card.querySelector(".card-controls-toggle-btn"),
-            null,
-        );
-        assert.strictEqual(card.children.length, 0);
-    });
-
-    it("removeControlsToggleButton drops the button and is idempotent on a button-less card", () => {
-        const card = buildCard();
-        ensureControlsToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        assert.ok(card.querySelector(".card-controls-toggle-btn"));
+    it("removeControlsToggleButton drops a legacy .card-controls-toggle-btn and is a no-op on a clean card", () => {
+        const card = buildCardWithLegacyButton("card-controls-toggle-btn");
         removeControlsToggleButton(card);
         assert.strictEqual(
             card.querySelector(".card-controls-toggle-btn"),
             null,
         );
-        // Second call is a no-op.
         assert.doesNotThrow(() => removeControlsToggleButton(card));
     });
-});
 
-describe("ensureTouchOverlayToggleButton", () => {
-    beforeEach(() => {
-        document.body.innerHTML = "";
-    });
-    afterEach(() => {
-        document.body.innerHTML = "";
-    });
-
-    it("stamps a .card-touch-overlay-toggle-btn with the codicon-target icon", () => {
-        const card = buildCard();
-        ensureTouchOverlayToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        const btn = card.querySelector(
-            ".card-touch-overlay-toggle-btn",
-        ) as HTMLButtonElement | null;
-        assert.ok(btn, "touch-overlay toggle should appear in image-container");
-        assert.strictEqual(btn!.type, "button");
-        assert.strictEqual(btn!.classList.contains("icon-button"), true);
-        assert.strictEqual(btn!.getAttribute("aria-pressed"), "false");
-        assert.ok(
-            /Turn on/.test(btn!.title),
-            `off-state title should say 'Turn on'; got '${btn!.title}'`,
-        );
-        assert.ok(btn!.querySelector("i.codicon.codicon-target"));
-    });
-
-    it("reflects the enabled state via aria-pressed + title", () => {
-        const card = buildCard();
-        ensureTouchOverlayToggleButton(card, {
-            enabled: true,
-            onToggle: () => {},
-        });
-        const btn = card.querySelector(
-            ".card-touch-overlay-toggle-btn",
-        ) as HTMLButtonElement;
-        assert.strictEqual(btn.getAttribute("aria-pressed"), "true");
-        assert.ok(/Turn off/.test(btn.title));
-    });
-
-    it("re-stamping doesn't duplicate the button or rebind the click handler", () => {
-        const card = buildCard();
-        let clicks = 0;
-        ensureTouchOverlayToggleButton(card, {
-            enabled: false,
-            onToggle: () => {
-                clicks++;
-            },
-        });
-        // Re-stamp twice. Same DOM element must persist; click handler must
-        // still fire exactly once per real click.
-        ensureTouchOverlayToggleButton(card, {
-            enabled: true,
-            onToggle: () => {
-                clicks++;
-            },
-        });
-        ensureTouchOverlayToggleButton(card, {
-            enabled: false,
-            onToggle: () => {
-                clicks++;
-            },
-        });
-        assert.strictEqual(
-            card.querySelectorAll(".card-touch-overlay-toggle-btn").length,
-            1,
-        );
-        const btn = card.querySelector(
-            ".card-touch-overlay-toggle-btn",
-        ) as HTMLButtonElement;
-        btn.click();
-        assert.strictEqual(clicks, 1, "click should fire onToggle once");
-    });
-
-    it("click inverts the current pressed state and calls onToggle with the new value", () => {
-        const card = buildCard();
-        const calls: { id: string; next: boolean }[] = [];
-        ensureTouchOverlayToggleButton(card, {
-            enabled: false,
-            onToggle: (c, next) =>
-                calls.push({ id: c.dataset.previewId!, next }),
-        });
-        const btn = card.querySelector(
-            ".card-touch-overlay-toggle-btn",
-        ) as HTMLButtonElement;
-        btn.click();
-        assert.deepStrictEqual(calls, [{ id: "com.example.A", next: true }]);
-    });
-
-    it("removeTouchOverlayToggleButton drops the button and is idempotent", () => {
-        const card = buildCard();
-        ensureTouchOverlayToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        assert.ok(card.querySelector(".card-touch-overlay-toggle-btn"));
+    it("removeTouchOverlayToggleButton drops a legacy .card-touch-overlay-toggle-btn and is a no-op on a clean card", () => {
+        const card = buildCardWithLegacyButton("card-touch-overlay-toggle-btn");
         removeTouchOverlayToggleButton(card);
         assert.strictEqual(
             card.querySelector(".card-touch-overlay-toggle-btn"),
@@ -439,44 +236,9 @@ describe("ensureTouchOverlayToggleButton", () => {
         );
         assert.doesNotThrow(() => removeTouchOverlayToggleButton(card));
     });
-});
 
-describe("ensureKeyboardBandToggleButton", () => {
-    beforeEach(() => {
-        document.body.innerHTML = "";
-    });
-    afterEach(() => {
-        document.body.innerHTML = "";
-    });
-
-    it("stamps a .card-keyboard-band-toggle-btn with the codicon-symbol-keyword icon", () => {
-        const card = buildCard();
-        ensureKeyboardBandToggleButton(card, {
-            enabled: false,
-            onToggle: () => {},
-        });
-        const btn = card.querySelector(
-            ".card-keyboard-band-toggle-btn",
-        ) as HTMLButtonElement | null;
-        assert.ok(btn);
-        assert.strictEqual(btn!.getAttribute("aria-pressed"), "false");
-        assert.ok(/Force/.test(btn!.title));
-        assert.ok(btn!.querySelector("i.codicon.codicon-symbol-keyword"));
-    });
-
-    it("toggles on click and removes idempotently", () => {
-        const card = buildCard();
-        const calls: boolean[] = [];
-        ensureKeyboardBandToggleButton(card, {
-            enabled: false,
-            onToggle: (_c, next) => calls.push(next),
-        });
-        (
-            card.querySelector(
-                ".card-keyboard-band-toggle-btn",
-            ) as HTMLButtonElement
-        ).click();
-        assert.deepStrictEqual(calls, [true]);
+    it("removeKeyboardBandToggleButton drops a legacy .card-keyboard-band-toggle-btn and is a no-op on a clean card", () => {
+        const card = buildCardWithLegacyButton("card-keyboard-band-toggle-btn");
         removeKeyboardBandToggleButton(card);
         assert.strictEqual(
             card.querySelector(".card-keyboard-band-toggle-btn"),
