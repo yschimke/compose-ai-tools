@@ -864,13 +864,25 @@ object PreviewDiscovery {
     val effectiveLauncherWidget = if (nonComposable) null else launcherWidget
     val effectiveLauncherWidgetResize = if (nonComposable) null else launcherWidgetResize
 
-    // `@LauncherWidgetResize` owns the capture list when present — it walks N whole-cell stops
-    // between source and target sizes and emits one PNG per stop. Coexisting with the standard
-    // scroll / time / focus fan-out doesn't make sense (a resize walk is its own dimensional
-    // axis), so the resize captures fully replace the regular capture grid. focusGif /
-    // animation GIFs still fan out independently — the resize annotation isn't meant to combine
-    // with those either, but if a consumer stacks them the GIFs come out alongside the resize
-    // PNGs with their existing suffixes.
+    // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
+    // function. When one is paired with anything else on the same function — scroll/time
+    // fan-out, or each other, or a `@LauncherWidgetResize` PNG fan-out — they need
+    // disambiguating suffixes so neither silently overwrites the other. Plain filename only
+    // when a single GIF mode owns the function with no scroll/time/resize siblings.
+    val gifSharesFn =
+      effectiveScrolls.isNotEmpty() ||
+        effectiveTimings.isNotEmpty() ||
+        effectiveLauncherWidgetResize != null ||
+        (effectiveAnimation != null && effectiveFocusGif != null)
+
+    // `@LauncherWidgetResize` owns the static capture list when present — it walks N whole-cell
+    // stops between source and target sizes and emits one PNG per stop. Coexisting with the
+    // standard scroll / time / focus fan-out doesn't make sense (a resize walk is its own
+    // dimensional axis), so the resize captures fully replace the regular capture grid.
+    // focusGif / animation GIFs still fan out independently — the resize annotation isn't meant
+    // to combine with those either, but if a consumer stacks them the GIFs come out alongside
+    // the resize PNGs with their existing suffixes (computed below using the shared
+    // `gifSharesFn` flag).
     if (effectiveLauncherWidgetResize != null) {
       val stops =
         launcherWidgetResizeStops(
@@ -893,18 +905,37 @@ object PreviewDiscovery {
           cost = STATIC_COST,
         )
       }
-      return PreviewOutputPlan(captures = resizeCaptures, dataProducts = emptyList())
+      val focusGifCaptures: List<Capture> =
+        if (effectiveFocusGif == null) emptyList()
+        else {
+          val suffix = if (gifSharesFn) "_focus_gif" else ""
+          listOf(
+            Capture(
+              focusGif = effectiveFocusGif,
+              ambient = effectiveAmbient,
+              launcherWidget = effectiveLauncherWidget,
+              renderOutput = "renders/${previewId}${suffix}.gif",
+              cost = FOCUS_GIF_COST,
+            )
+          )
+        }
+      val animationCaptures: List<Capture> =
+        if (effectiveAnimation == null) emptyList()
+        else {
+          val suffix = if (gifSharesFn) "_anim" else ""
+          listOf(
+            Capture(
+              animation = effectiveAnimation,
+              renderOutput = "renders/${previewId}${suffix}.gif",
+              cost = ANIMATION_COST,
+            )
+          )
+        }
+      return PreviewOutputPlan(
+        captures = resizeCaptures + focusGifCaptures + animationCaptures,
+        dataProducts = emptyList(),
+      )
     }
-
-    // @AnimatedPreview and @FocusedPreview(gif = true) both produce a `.gif` output for the
-    // function. When one is paired with anything else on the same function — scroll/time
-    // fan-out, or each other — they need disambiguating suffixes so neither silently
-    // overwrites the other. Plain filename only when a single GIF mode owns the function with
-    // no scroll/time siblings.
-    val gifSharesFn =
-      effectiveScrolls.isNotEmpty() ||
-        effectiveTimings.isNotEmpty() ||
-        (effectiveAnimation != null && effectiveFocusGif != null)
 
     // @FocusedPreview(gif = true): one GIF capture per annotated function, dimension-flat —
     // doesn't cross with scrolls / timings / focus fan-out. Mirrors @AnimatedPreview's
