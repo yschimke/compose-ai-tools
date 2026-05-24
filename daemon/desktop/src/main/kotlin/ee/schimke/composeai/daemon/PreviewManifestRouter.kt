@@ -131,6 +131,14 @@ class PreviewManifestRouter(
             inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
             inbound["inspectionMode"]?.let { append("inspectionMode=").append(it).append(';') }
             inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
+            // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the
+            // gradle plugin's `extractWrapperFqn` reads it off the class-file annotation tables
+            // — the upstream annotation is `AnnotationRetention.BINARY` and invisible to
+            // `Method.annotations` at runtime, so this manifest-side plumbing is the only path
+            // that can recover the wrapper FQN for the render body). See issue #1440.
+            resolved.wrapperClassName
+              ?.takeIf { it.isNotBlank() }
+              ?.let { append("wrapperClassName=").append(it).append(';') }
             append("outputBaseName=").append(resolved.outputBaseName)
           },
       )
@@ -181,6 +189,7 @@ class PreviewManifestRouter(
           showBackground = resolved.showBackground,
           backgroundColor = resolved.backgroundColor,
           device = resolved.device,
+          wrapperClassName = resolved.wrapperClassName,
         )
       }
     }
@@ -236,6 +245,7 @@ data class PreviewManifestEntry(
     val showBackground = showBackground ?: p?.showBackground ?: true
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
+    val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,
@@ -244,6 +254,7 @@ data class PreviewManifestEntry(
       backgroundColor = backgroundColor,
       device = device,
       outputBaseName = outputBaseName ?: id,
+      wrapperClassName = wrapperClassName,
     )
   }
 }
@@ -262,6 +273,14 @@ data class PreviewParamsEntry(
   val density: Float? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
+  /**
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
+   * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
+   * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so
+   * `Method.annotations` is empty for it at runtime — see issue #1440). Threaded into
+   * [RenderSpec.wrapperClassName] for the render body.
+   */
+  val wrapperClassName: String? = null,
 )
 
 /**
@@ -276,4 +295,5 @@ data class ResolvedRenderParams(
   val backgroundColor: Long,
   val device: String?,
   val outputBaseName: String,
+  val wrapperClassName: String? = null,
 )

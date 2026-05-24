@@ -199,17 +199,22 @@ class RenderEngine(
 
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
-    val nonComposable = isTile || isNotification
+    val isGlanceAppWidget = spec.kind.equals(GLANCE_APPWIDGET_KIND, ignoreCase = true)
     val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
     // Tile / notification previews are non-composable top-level functions returning
     // `TilePreviewData` / `android.app.Notification`; routing them through
     // `getDeclaredComposableMethod` would throw `NoSuchMethodException` (the Compose-method
-    // lookup expects `(Composer, Int, …)` trailing params). The non-composable paths skip
-    // composable resolution entirely and paint the inflated View through
-    // [renderer.TilePreviewComposable] / [renderer.NotificationPreviewComposable] in the
-    // setContent body below.
+    // lookup expects `(Composer, Int, …)` trailing params). Glance previews ARE `@Composable`
+    // but need to be hosted inside a `GlanceAppWidget.providePreview(...)` → `composeForPreview(...)`
+    // → `RemoteViews.apply` pipeline (handed off to `:renderer-android`'s
+    // [renderer.GlanceAppWidgetPreviewComposable]); invoking them directly through the regular
+    // Compose path would skip the `RemoteViews` materialisation entirely and render an unwrapped
+    // body that fails the moment a Glance composable touches the GlanceComposition applier. The
+    // dedicated branches skip top-level composable resolution and paint the result through the
+    // matching renderer helper in the setContent body below.
+    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
     val composableMethod: ComposableMethod? =
-      if (nonComposable) null
+      if (nonComposableInvocation) null
       else trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
@@ -347,8 +352,31 @@ class RenderEngine(
                             // `composePreviewRender` Test task).
                             previewId = spec.previewId,
                           )
+                        } else if (isGlanceAppWidget) {
+                          // `@androidx.glance.preview.Preview` — mirrors the standalone
+                          // renderer's `GlanceAppWidgetPreviewStrategy`. The user's @Composable
+                          // is hosted inside a `SyntheticGlanceAppWidget.providePreview(...)`
+                          // and its output is materialised to `RemoteViews` via
+                          // `GlanceAppWidget.composeForPreview(...)`, then inflated into the
+                          // captured `AndroidView`. Without this branch Glance previews would
+                          // fall through to `InvokeWithOptionalWrapper` and execute the
+                          // `@GlanceComposable` body directly against the regular Compose
+                          // applier, producing either a misrender or a hard crash when the
+                          // body touches Glance-only composables.
+                          val widthDp = pxToDp(spec.widthPx, spec.density)
+                          val heightDp = pxToDp(spec.heightPx, spec.density)
+                          ee.schimke.composeai.renderer.GlanceAppWidgetPreviewComposable(
+                            className = spec.className,
+                            functionName = spec.functionName,
+                            widthDp = widthDp,
+                            heightDp = heightDp,
+                            classLoader = classLoader,
+                          )
                         } else {
-                          InvokeWithOptionalWrapper(composableMethod!!)
+                          InvokeWithOptionalWrapper(
+                            composableMethod = composableMethod!!,
+                            wrapperFqnFromSpec = spec.wrapperClassName,
+                          )
                         }
                       }
                     }
@@ -815,6 +843,15 @@ class RenderEngine(
     const val NOTIFICATION_KIND: String = "NOTIFICATION"
 
     /**
+     * `RenderSpec.kind` value flagging an `@androidx.glance.preview.Preview` Glance app-widget
+     * preview. Routes through `:renderer-android`'s `GlanceAppWidgetPreviewComposable`, which
+     * hosts the user's `@GlanceComposable` inside a `GlanceAppWidget.providePreview(...)` and
+     * materialises the tree to `RemoteViews` via `composeForPreview(...)`. Mirrors
+     * `ee.schimke.composeai.discovery.PreviewKind.GLANCE_APPWIDGET`.
+     */
+    const val GLANCE_APPWIDGET_KIND: String = "GLANCE_APPWIDGET"
+
+    /**
      * Virtual time to advance before capture in the paused-`mainClock` path, in milliseconds.
      * Mirrors `RobolectricRenderTest.CAPTURE_ADVANCE_MS` exactly so daemon-rendered PNGs match
      * the standalone JUnit path's settle point.
@@ -854,20 +891,38 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
 
 /**
  * Wraps [InvokeComposable] in the preview's `@PreviewWrapper(SomeProvider::class)` `Wrap { … }` if
- * one is present on the composable method. Without this the daemon would call the preview body
- * directly and bypass the wrapper — e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews
- * would crash with `IllegalStateException: Invalid applier` the moment they emit a
- * `RemoteBox` / `RemoteColumn` / `RemoteRow`, because those composables require the RemoteCompose
- * applier the wrapper installs. `:renderer-android` does the equivalent in
+ * one is present, sourcing the wrapper FQN from [wrapperFqnFromSpec] (the discovery-time
+ * class-file read) with a best-effort runtime-reflection fallback for direct-payload callers that
+ * bypass the manifest. Without this the daemon would call the preview body directly and bypass
+ * the wrapper — e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews would crash with
+ * `IllegalStateException: Invalid applier` the moment they emit a `RemoteBox` / `RemoteColumn` /
+ * `RemoteRow`, because those composables require the RemoteCompose applier the wrapper installs.
+ * `:renderer-android` does the equivalent in
  * [ee.schimke.composeai.renderer.PreviewRenderStrategy]'s ComposePreviewStrategy.
+ *
+ * **Why the FQN comes from the spec rather than `Method.annotations`.** The upstream
+ * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has `AnnotationRetention.BINARY`
+ * (issue #1440): it's emitted into the class file but not retained at runtime, so
+ * `jvmMethod.annotations` will never include it. The gradle plugin's `extractWrapperFqn` reads
+ * the FQN off the class-file annotation tables via ClassGraph and writes it into `previews.json`;
+ * the daemon's [PreviewManifestRouter] threads it into [RenderSpec.wrapperClassName] and we read
+ * it from there. The runtime-reflection fallback is retained for legacy callers and the
+ * compose-bom-compat regression test (`PreviewWrapperResolutionTest`), which uses a same-FQN
+ * stand-in annotation with binary retention to mirror the production retention exactly.
  *
  * Wrapper class resolution flows through [loadPreviewWrapperClass], so connector-provided SPI
  * substitutions (e.g. `:data-remotecompose-connector` swapping `RemotePreviewWrapper` for
  * `RemoteOverridablePreviewWrapper`) apply transparently.
  */
 @Composable
-private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
-  val wrapper = remember(composableMethod) { resolveWrapperOrNull(composableMethod) }
+private fun InvokeWithOptionalWrapper(
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String?,
+) {
+  val wrapper =
+    remember(composableMethod, wrapperFqnFromSpec) {
+      resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
+    }
   if (wrapper == null) {
     InvokeComposable(composableMethod)
   } else {
@@ -878,10 +933,22 @@ private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
 }
 
 /**
- * Reads `@androidx.compose.ui.tooling.preview.PreviewWrapper(SomeProvider::class)` reflectively off
- * the composable's underlying JVM method, then resolves the wrapper's `Wrap(content)` method plus a
- * fresh instance. Returns null when the annotation is absent, the wrapper class can't be loaded, or
- * instantiation fails — callers fall back to invoking the preview body directly.
+ * Resolves the `@PreviewWrapper`'s `PreviewWrapperProvider` into a `Wrap(content)` method plus an
+ * instance.
+ *
+ * Strategy (in order):
+ *  1. Use [wrapperFqnFromSpec] when supplied — production path, sourced from `previews.json`
+ *     (the gradle plugin's `extractWrapperFqn` reads it from the class file at discovery time,
+ *     where the `AnnotationRetention.BINARY` annotation is still visible).
+ *  2. Otherwise, look up `@androidx.compose.ui.tooling.preview.PreviewWrapper` reflectively off
+ *     [composableMethod]'s underlying JVM method. This is a fallback for direct-payload callers
+ *     (a few internal tests and the legacy stub path) and **does not work in production** —
+ *     the upstream annotation is `AnnotationRetention.BINARY`, so the lookup misses every
+ *     real-world preview. Kept for compatibility with the existing
+ *     `PreviewWrapperResolutionTest` regression guard, which now uses a binary-retained stand-in
+ *     and the spec-driven path.
+ *
+ * Returns null when no wrapper is resolvable.
  *
  * Reflective lookup (rather than a compile-time import of `PreviewWrapper`) keeps the daemon
  * runnable on older Compose runtimes that predate the annotation (1.11.0-beta+). The annotation
@@ -889,8 +956,22 @@ private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
  * `gradle-plugin/preview-discovery` reads.
  */
 internal fun resolveWrapperOrNull(
-  composableMethod: ComposableMethod
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String? = null,
 ): Pair<ComposableMethod, Any>? {
+  val wrapperFqn = wrapperFqnFromSpec?.takeIf { it.isNotBlank() }
+    ?: resolveWrapperFqnViaReflection(composableMethod)
+    ?: return null
+  return loadWrapperByFqnOrNull(wrapperFqn)
+}
+
+/**
+ * Fallback path used only when [resolveWrapperOrNull] was called without a spec-supplied FQN.
+ * Production previews come through with [RenderSpec.wrapperClassName] populated by the gradle
+ * plugin's class-file scan; this path is here for legacy direct-payload tests + the binary-
+ * retained regression-test stand-in (which is now also exercised via the spec path).
+ */
+private fun resolveWrapperFqnViaReflection(composableMethod: ComposableMethod): String? {
   val jvmMethod = composableMethod.asMethod()
   val ann =
     jvmMethod.annotations.firstOrNull {
@@ -899,20 +980,22 @@ internal fun resolveWrapperOrNull(
   val wrapperValue =
     runCatching { ann.annotationClass.java.getDeclaredMethod("wrapper").invoke(ann) }.getOrNull()
       ?: return null
-  val wrapperFqn =
-    when (wrapperValue) {
-      is Class<*> -> wrapperValue.name
-      is kotlin.reflect.KClass<*> -> wrapperValue.java.name
-      else -> return null
-    }
-  return runCatching {
+  return when (wrapperValue) {
+    is Class<*> -> wrapperValue.name
+    is kotlin.reflect.KClass<*> -> wrapperValue.java.name
+    else -> null
+  }
+}
+
+private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? =
+  runCatching {
       val resolved = loadPreviewWrapperClass(wrapperFqn)
       val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
       // PreviewWrapperProvider.Wrap(content: @Composable () -> Unit) compiles to
       // Wrap(Function2, Composer, int); getDeclaredComposableMethod handles the synthetic
       // Composer/changed tail, so we look up by the content param's JVM type.
       val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
-      wrapMethod to instance
+      wrapMethod to (instance as Any)
     }
     .onFailure { t ->
       System.err.println(
@@ -921,7 +1004,6 @@ internal fun resolveWrapperOrNull(
       )
     }
     .getOrNull()
-}
 
 @Composable
 private fun CaptureMaterialTheme(
@@ -1049,11 +1131,22 @@ data class RenderSpec(
    */
   val overrides: PreviewOverrides? = null,
   /**
-   * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"`).
-   * Drives renderer selection: `"TILE"` routes through [renderer.TilePreviewComposable] instead of
-   * the Compose-method reflection path. `null` and `"COMPOSE"` both render as a normal @Composable.
+   * Preview flavour, mirroring `ee.schimke.composeai.plugin.PreviewKind` (`"COMPOSE"` / `"TILE"` /
+   * `"NOTIFICATION"` / `"GLANCE_APPWIDGET"`). Drives renderer selection: `"TILE"` routes through
+   * [renderer.TilePreviewComposable], `"NOTIFICATION"` through `NotificationPreviewComposable`,
+   * `"GLANCE_APPWIDGET"` through `GlanceAppWidgetPreviewComposable`. `null` / `"COMPOSE"` render
+   * as a normal `@Composable`.
    */
   val kind: String? = null,
+  /**
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the
+   * source preview is annotated. Sourced from the gradle plugin's discovery JSON (`extractWrapperFqn`
+   * reads it off the class-file annotation tables — the upstream annotation has
+   * `AnnotationRetention.BINARY` and is invisible to `Method.annotations` at runtime). The render
+   * body drives `InvokeWithOptionalWrapper` off this field when set; null falls back to the
+   * (best-effort) runtime-reflection lookup for direct-payload callers that bypass the manifest.
+   */
+  val wrapperClassName: String? = null,
 ) {
 
   enum class SpecUiMode {
@@ -1121,6 +1214,7 @@ data class RenderSpec(
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         overrides = map["overrides"]?.decodePreviewOverrides(),
         kind = map["kind"]?.takeIf { it.isNotBlank() },
+        wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
       )
     }
 

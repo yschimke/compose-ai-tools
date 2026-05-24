@@ -266,7 +266,7 @@ class RenderEngine(
                   // Trampoline through a @Composable so the reflective invocation lands inside the
                   // running composition. Mirrors `:renderer-desktop`'s InvokeComposable. Honours
                   // `@PreviewWrapper(SomeProvider::class)` by routing through the wrapper's `Wrap`.
-                  InvokeWithOptionalWrapper(composableMethod)
+                  InvokeWithOptionalWrapper(composableMethod, spec.wrapperClassName)
                 }
               }
             }
@@ -573,6 +573,16 @@ data class RenderSpec(
    * adding a new override-driven feature is purely a connector concern.
    */
   val overrides: PreviewOverrides? = null,
+  /**
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
+   * preview is annotated. Sourced from the gradle plugin's discovery JSON (`extractWrapperFqn`
+   * reads it off the class-file annotation tables — the upstream annotation has
+   * `AnnotationRetention.BINARY` and is invisible to `Method.annotations` at runtime, see
+   * issue #1440). The render body drives `InvokeWithOptionalWrapper` off this field when set; null
+   * falls back to the (best-effort) runtime-reflection lookup for direct-payload callers that
+   * bypass the manifest.
+   */
+  val wrapperClassName: String? = null,
 ) {
 
   enum class SpecUiMode {
@@ -643,6 +653,7 @@ data class RenderSpec(
           },
         inspectionMode = map["inspectionMode"]?.toBooleanStrictOrNull(),
         overrides = map["overrides"]?.decodePreviewOverrides(),
+        wrapperClassName = map["wrapperClassName"]?.takeIf { it.isNotBlank() },
       )
     }
 
@@ -672,17 +683,34 @@ private fun InvokeComposable(composableMethod: ComposableMethod) {
 
 /**
  * Wraps [InvokeComposable] in the preview's `@PreviewWrapper(SomeProvider::class)` `Wrap { … }` if
- * one is present on the composable method. Without this the daemon would call the preview body
- * directly and bypass the wrapper — e.g. `@PreviewWrapper(RemotePreviewWrapper::class)` previews
- * would crash with `IllegalStateException: Invalid applier` the moment they emit a `RemoteBox` /
- * `RemoteColumn` / `RemoteRow`, because those composables require the RemoteCompose applier the
- * wrapper installs. Mirrors the Android daemon and `:renderer-android`'s `PreviewRenderStrategy`.
+ * one is present, sourcing the wrapper FQN from [wrapperFqnFromSpec] (the discovery-time class-file
+ * read) with a best-effort runtime-reflection fallback. Without this the daemon would call the
+ * preview body directly and bypass the wrapper — e.g.
+ * `@PreviewWrapper(RemotePreviewWrapper::class)` previews would crash with `IllegalStateException:
+ * Invalid applier` the moment they emit a `RemoteBox` / `RemoteColumn` / `RemoteRow`, because those
+ * composables require the RemoteCompose applier the wrapper installs. Mirrors the Android daemon
+ * and `:renderer-android`'s `PreviewRenderStrategy`.
+ *
+ * **Why the FQN comes from the spec rather than `Method.annotations`.** The upstream
+ * `androidx.compose.ui.tooling.preview.PreviewWrapper` annotation has `AnnotationRetention.BINARY`
+ * (issue #1440): it's emitted into the class file but not retained at runtime. The gradle plugin's
+ * `extractWrapperFqn` reads the FQN from the class-file annotation tables (where it IS still
+ * visible) and writes it into `previews.json`; the daemon threads it into
+ * [RenderSpec.wrapperClassName] via [PreviewManifestRouter]. The reflection fallback is retained
+ * for direct-payload callers and remains best-effort.
+ *
  * Wrapper class resolution flows through [loadPreviewWrapperClass], so connector-provided SPI
  * substitutions apply transparently.
  */
 @Composable
-private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
-  val wrapper = remember(composableMethod) { resolveWrapperOrNull(composableMethod) }
+private fun InvokeWithOptionalWrapper(
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String?,
+) {
+  val wrapper =
+    remember(composableMethod, wrapperFqnFromSpec) {
+      resolveWrapperOrNull(composableMethod, wrapperFqnFromSpec)
+    }
   if (wrapper == null) {
     InvokeComposable(composableMethod)
   } else {
@@ -693,15 +721,33 @@ private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
 }
 
 /**
- * Reads `@androidx.compose.ui.tooling.preview.PreviewWrapper(SomeProvider::class)` reflectively off
- * the composable's underlying JVM method, then resolves the wrapper's `Wrap(content)` method plus a
- * fresh instance. Returns null when the annotation is absent, the wrapper class can't be loaded, or
- * instantiation fails — callers fall back to invoking the preview body directly.
+ * Resolves the `@PreviewWrapper`'s `PreviewWrapperProvider` to a `Wrap(content)` method plus an
+ * instance.
+ *
+ * Strategy (in order):
+ * 1. Use [wrapperFqnFromSpec] when supplied — production path, sourced from `previews.json`.
+ * 2. Otherwise, look up `@androidx.compose.ui.tooling.preview.PreviewWrapper` reflectively off the
+ *    composable's underlying JVM method. This is best-effort: the upstream annotation has
+ *    `AnnotationRetention.BINARY`, so `Method.annotations` will not return it for real-world
+ *    previews. Kept for direct-payload callers and back-compat.
+ *
+ * Returns null when no wrapper is resolvable.
  *
  * Reflective lookup (rather than a compile-time import of `PreviewWrapper`) keeps the daemon
  * runnable on older Compose runtimes that predate the annotation (1.11.0-beta+).
  */
-private fun resolveWrapperOrNull(composableMethod: ComposableMethod): Pair<ComposableMethod, Any>? {
+internal fun resolveWrapperOrNull(
+  composableMethod: ComposableMethod,
+  wrapperFqnFromSpec: String? = null,
+): Pair<ComposableMethod, Any>? {
+  val wrapperFqn =
+    wrapperFqnFromSpec?.takeIf { it.isNotBlank() }
+      ?: resolveWrapperFqnViaReflection(composableMethod)
+      ?: return null
+  return loadWrapperByFqnOrNull(wrapperFqn)
+}
+
+private fun resolveWrapperFqnViaReflection(composableMethod: ComposableMethod): String? {
   val jvmMethod = composableMethod.asMethod()
   val ann =
     jvmMethod.annotations.firstOrNull {
@@ -710,17 +756,19 @@ private fun resolveWrapperOrNull(composableMethod: ComposableMethod): Pair<Compo
   val wrapperValue =
     runCatching { ann.annotationClass.java.getDeclaredMethod("wrapper").invoke(ann) }.getOrNull()
       ?: return null
-  val wrapperFqn =
-    when (wrapperValue) {
-      is Class<*> -> wrapperValue.name
-      is kotlin.reflect.KClass<*> -> wrapperValue.java.name
-      else -> return null
-    }
-  return runCatching {
+  return when (wrapperValue) {
+    is Class<*> -> wrapperValue.name
+    is kotlin.reflect.KClass<*> -> wrapperValue.java.name
+    else -> null
+  }
+}
+
+private fun loadWrapperByFqnOrNull(wrapperFqn: String): Pair<ComposableMethod, Any>? =
+  runCatching {
       val resolved = loadPreviewWrapperClass(wrapperFqn)
       val instance = resolved.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
       val wrapMethod = resolved.getDeclaredComposableMethod("Wrap", Function2::class.java)
-      wrapMethod to instance
+      wrapMethod to (instance as Any)
     }
     .onFailure { t ->
       System.err.println(
@@ -729,7 +777,6 @@ private fun resolveWrapperOrNull(composableMethod: ComposableMethod): Pair<Compo
       )
     }
     .getOrNull()
-}
 
 @Composable
 private fun CaptureMaterialTheme(

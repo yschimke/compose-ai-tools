@@ -136,6 +136,16 @@ class PreviewManifestRouter(
       (inbound["kind"] ?: resolved.kind)?.takeIf { it.isNotBlank() }?.let {
         append("kind=").append(it).append(';')
       }
+      // `@PreviewWrapper(SomeProvider::class)` FQN sourced from `previews.json` (the gradle
+      // plugin's `extractWrapperFqn` reads it off the class-file annotation tables — the
+      // upstream annotation is `AnnotationRetention.BINARY` and not visible via
+      // `Method.annotations` at runtime, so this manifest-side plumbing is the only path that
+      // can recover the wrapper FQN for the render body). Forwarded into the `RenderSpec`
+      // payload so [RenderEngine]'s `InvokeWithOptionalWrapper` can route through the
+      // wrapper's `Wrap(content)` without resorting to runtime reflection on the composable.
+      resolved.wrapperClassName?.takeIf { it.isNotBlank() }?.let {
+        append("wrapperClassName=").append(it).append(';')
+      }
       append("outputBaseName=").append(resolved.outputBaseName)
     }
   }
@@ -179,6 +189,7 @@ private fun PreviewManifestEntry.renderSpec(): RenderSpec {
     device = resolved.device,
     outputBaseName = resolved.outputBaseName,
     kind = resolved.kind,
+    wrapperClassName = resolved.wrapperClassName,
   )
 }
 
@@ -239,6 +250,7 @@ data class PreviewManifestEntry(
     val backgroundColor = backgroundColor ?: p?.backgroundColor ?: 0L
     val device = device ?: p?.device
     val kind = kind ?: p?.kind
+    val wrapperClassName = p?.wrapperClassName
     return ResolvedRenderParams(
       widthPx = widthPx,
       heightPx = heightPx,
@@ -248,6 +260,7 @@ data class PreviewManifestEntry(
       device = device,
       outputBaseName = outputBaseName ?: id,
       kind = kind,
+      wrapperClassName = wrapperClassName,
     )
   }
 }
@@ -268,12 +281,23 @@ data class PreviewParamsEntry(
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
   /**
-   * `"COMPOSE"` / `"TILE"` — mirrors `ee.schimke.composeai.plugin.PreviewKind`. Forwarded through
-   * the router so the daemon's render path can dispatch tile previews to
-   * `renderer.TilePreviewComposable` instead of the Compose-method reflection path (which
-   * throws `NoSuchMethodException` on a non-composable tile entrypoint).
+   * `"COMPOSE"` / `"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"` — mirrors
+   * `ee.schimke.composeai.discovery.PreviewKind`. Forwarded through the router so the daemon's
+   * render path can dispatch tile / notification / Glance previews to their dedicated renderer
+   * helpers instead of the Compose-method reflection path (which throws `NoSuchMethodException`
+   * on non-composable entrypoints, and produces an unwrapped misrender for Glance entrypoints).
    */
   val kind: String? = null,
+  /**
+   * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the
+   * source preview is annotated. Read at discovery time by `extractWrapperFqn` against the
+   * class-file annotation tables — the upstream annotation has `AnnotationRetention.BINARY`, so
+   * `Method.annotations` is empty for it at runtime. The daemon's render path consumes this
+   * field to drive `InvokeWithOptionalWrapper`; without the manifest plumbing the daemon would
+   * see no wrapper present and render the preview body directly (the original "Invalid applier"
+   * crash that motivated `@PreviewWrapper` in the first place).
+   */
+  val wrapperClassName: String? = null,
 )
 
 /** Output of [PreviewManifestEntry.resolved] — flat, fully-defaulted, ready to format into a
@@ -287,4 +311,5 @@ data class ResolvedRenderParams(
   val device: String?,
   val outputBaseName: String,
   val kind: String? = null,
+  val wrapperClassName: String? = null,
 )
