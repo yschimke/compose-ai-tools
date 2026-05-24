@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.LauncherResizeAxes
 import ee.schimke.composeai.daemon.protocol.LauncherResizeOrder
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
@@ -12,6 +13,7 @@ import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
 import ee.schimke.composeai.data.render.extensions.compose.hasAroundComposableHook
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
@@ -348,4 +350,73 @@ class LauncherWidgetDataProductTest {
           outputBaseName = null,
         ),
     )
+
+  // -----------------------------------------------------------------------
+  // LauncherWidgetMetadataChannel — per-render carrier for widget-source
+  // metadata (Glance previewSizeMode reflection, future XML auto-discovery).
+  // Verified via the registry's onRender path since the channel's consume is
+  // internal and the registry is the only intended reader.
+  // -----------------------------------------------------------------------
+
+  @Test
+  fun channel_offer_no_op_when_current_preview_id_unset() {
+    val registry = LauncherWidgetDataProductRegistry()
+    LauncherWidgetMetadataChannel.setCurrentPreviewId(null)
+    // Should silently no-op — no id to key on.
+    LauncherWidgetMetadataChannel.offer(
+      LauncherWidgetMetadata(resizeAxes = LauncherResizeAxes.NONE)
+    )
+    registry.onRender("preview-x", stubRenderResult(), overrides = null, previewContext = null)
+    assertEquals(
+      DataProductRegistry.Outcome.NotAvailable,
+      registry.fetch("preview-x", "compose/launcher-widget", null, true),
+    )
+  }
+
+  @Test
+  fun registry_on_render_picks_up_channel_metadata_for_glance_responsive() {
+    val registry = LauncherWidgetDataProductRegistry()
+    val responsive =
+      LauncherWidgetMetadata(
+        supportedCells = listOf(LauncherWidgetSize(2, 1), LauncherWidgetSize(4, 2)),
+        resizeAxes = LauncherResizeAxes.BOTH,
+      )
+    LauncherWidgetMetadataChannel.setCurrentPreviewId("preview-1")
+    try {
+      LauncherWidgetMetadataChannel.offer(responsive)
+    } finally {
+      LauncherWidgetMetadataChannel.setCurrentPreviewId(null)
+    }
+    // No override — the registry should still surface a payload from the channel alone.
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = null)
+
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", null, true)
+        as DataProductRegistry.Outcome.Ok
+    val payload = outcome.result.payload!!.jsonObject
+    val supported = payload["supportedCells"]!!.jsonArray
+    assertEquals(2, supported.size)
+    assertEquals("both", payload["resizeAxes"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun registry_on_render_glance_single_signals_no_resize() {
+    val registry = LauncherWidgetDataProductRegistry()
+    LauncherWidgetMetadataChannel.setCurrentPreviewId("preview-1")
+    try {
+      LauncherWidgetMetadataChannel.offer(
+        LauncherWidgetMetadata(supportedCells = emptyList(), resizeAxes = LauncherResizeAxes.NONE)
+      )
+    } finally {
+      LauncherWidgetMetadataChannel.setCurrentPreviewId(null)
+    }
+    registry.onRender("preview-1", stubRenderResult(), overrides = null, previewContext = null)
+
+    val outcome =
+      registry.fetch("preview-1", "compose/launcher-widget", null, true)
+        as DataProductRegistry.Outcome.Ok
+    val payload = outcome.result.payload!!.jsonObject
+    assertEquals(0, payload["supportedCells"]!!.jsonArray.size)
+    assertEquals("none", payload["resizeAxes"]!!.jsonPrimitive.content)
+  }
 }

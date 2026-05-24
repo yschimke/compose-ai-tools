@@ -13,7 +13,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.composeForPreview
+import ee.schimke.composeai.daemon.LauncherWidgetMetadata
+import ee.schimke.composeai.daemon.LauncherWidgetMetadataChannel
+import ee.schimke.composeai.daemon.protocol.LauncherResizeAxes
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetSize
+import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -82,6 +89,11 @@ fun GlanceAppWidgetContent(
             minHeight = with(density) { it.height.toPx() }.toInt()
           }
         }
+      // Offer the widget's declared size mode into the per-render metadata channel BEFORE the
+      // compose call so `LauncherWidgetDataProductRegistry.onRender` (which runs after the
+      // render completes) picks up the supported-cells + resize-axes constraints. No-op when
+      // running outside a daemon render (the channel's ThreadLocal previewId is unset).
+      offerSizeModeMetadata(widget)
       val remoteViews =
         runBlocking { widget.composeForPreview(context, widgetCategory, info) }
       val view = remoteViews.apply(context, parent)
@@ -95,4 +107,63 @@ fun GlanceAppWidgetContent(
       parent
     },
   )
+}
+
+/**
+ * Reads the [GlanceAppWidget.previewSizeMode] and translates it into a [LauncherWidgetMetadata]
+ * snapshot the channel transports to the connector's registry post-render. Cell counts derive
+ * from each declared [DpSize] using the same `72dp` cell / `8dp` spacing arithmetic the
+ * connector applies — `widthCells = round((widthDp + spacing) / (cell + spacing))`, clamped to
+ * at least 1.
+ *
+ * Translation table:
+ * - [SizeMode.Single] → `supportedCells = [theDefaultSize]`, `resizeAxes = None` (the widget
+ *   declared one fixed size and doesn't respond to other layouts).
+ * - [SizeMode.Responsive] → `supportedCells = set.toCells()`, `resizeAxes = Both`. Picker
+ *   should show only these sizes; Glance won't lay out at others.
+ * - [SizeMode.Exact] → `supportedCells = null`, `resizeAxes = Both`. Widget composes at
+ *   whatever size it's given; no constraint to surface.
+ */
+private fun offerSizeModeMetadata(widget: GlanceAppWidget) {
+  if (LauncherWidgetMetadataChannel.currentPreviewId() == null) return
+  val mode = widget.previewSizeMode
+  val metadata =
+    when (mode) {
+      is SizeMode.Single ->
+        LauncherWidgetMetadata(
+          supportedCells = emptyList(),
+          resizeAxes = LauncherResizeAxes.NONE,
+        )
+      is SizeMode.Responsive ->
+        LauncherWidgetMetadata(
+          supportedCells = mode.sizes.map { it.toCells() },
+          resizeAxes = LauncherResizeAxes.BOTH,
+        )
+      else ->
+        // `SizeMode.Exact` (and any future SizeMode the connector doesn't recognise) — leave
+        // supportedCells null so the picker falls back to its default rectangle, but still
+        // signal that resizing is allowed.
+        LauncherWidgetMetadata(supportedCells = null, resizeAxes = LauncherResizeAxes.BOTH)
+    }
+  LauncherWidgetMetadataChannel.offer(metadata)
+}
+
+private const val DEFAULT_CELL_SIZE_DP: Int = 72
+private const val DEFAULT_CELL_SPACING_DP: Int = 8
+
+private fun DpSize.toCells(): LauncherWidgetSize =
+  LauncherWidgetSize(
+    width = dpToCells(width.value),
+    height = dpToCells(height.value),
+  )
+
+/**
+ * Inverse of the connector's `widthDp = cellSize * cells + spacing * (cells - 1)` arithmetic:
+ * `cells = round((dp + spacing) / (cell + spacing))`, floored at 1. Matches what a launcher's
+ * cell-snap logic does when laying out a Glance widget at a Responsive `DpSize`.
+ */
+private fun dpToCells(dp: Float): Int {
+  val divisor = (DEFAULT_CELL_SIZE_DP + DEFAULT_CELL_SPACING_DP).toFloat()
+  val raw = ((dp + DEFAULT_CELL_SPACING_DP) / divisor).roundToInt()
+  return max(1, raw)
 }

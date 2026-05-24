@@ -997,7 +997,42 @@ data class LauncherWidgetPayload(
    * resize would walk: width-first" hint alongside the current size badge.
    */
   val resizeOrder: LauncherResizeOrder? = null,
+  /**
+   * Set of cell sizes the underlying widget declared support for, surfaced so a picker UI can gate
+   * user-selectable sizes to what the widget actually supports.
+   *
+   * Sources, in order of preference (later overrides earlier):
+   * 1. The `@LauncherWidgetPreview(minCells, maxCells)` rectangle, if present (current default).
+   * 2. A `GlanceAppWidget.previewSizeMode = SizeMode.Responsive(setOf(DpSize, …))` — the sparse set
+   *    of dp sizes the widget composes correctly at, converted to cells.
+   * 3. `<appwidget-provider android:targetCellWidth/Height android:resizeMode="…" />` in `res/xml/`
+   *    — auto-discovered by matching the rendered layout id / receiver class.
+   *
+   * `null` means "no constraint surfaced"; the picker falls back to a default rectangle. An empty
+   * list means "no resizing allowed" (Glance `SizeMode.Single` or `resizeMode="none"`).
+   */
+  val supportedCells: List<LauncherWidgetSize>? = null,
+  /**
+   * Which resize axes the underlying widget declared support for. Mirrors the
+   * `AppWidgetProviderInfo.resizeMode` bitmask (`none | horizontal | vertical | both`). Glance
+   * `SizeMode.Single` maps to `None`; `SizeMode.Responsive` and `SizeMode.Exact` to `Both`. The
+   * picker uses this to grey out axis-locked drag handles.
+   */
+  val resizeAxes: LauncherResizeAxes = LauncherResizeAxes.BOTH,
 )
+
+/**
+ * Which axes the launcher-widget container can be resized along, mirroring
+ * `AppWidgetProviderInfo.resizeMode`. Surfaced on [LauncherWidgetPayload.resizeAxes] so a picker UI
+ * can lock the axes the widget doesn't support.
+ */
+@Serializable
+enum class LauncherResizeAxes {
+  @SerialName("none") NONE,
+  @SerialName("horizontal") HORIZONTAL,
+  @SerialName("vertical") VERTICAL,
+  @SerialName("both") BOTH,
+}
 
 @Serializable
 data class Material3ThemeOverrides(
