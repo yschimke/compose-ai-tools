@@ -3364,3 +3364,70 @@ preview-app[data-bundle-mode="true"] bundle-chip-bar {
     color: var(--vscode-descriptionForeground);
     font-variant-numeric: tabular-nums;
 }
+
+/* Launcher-widget cell-size picker — popover anchored to its toggle button.
+   The picker contents are stamped by `./launcherWidgetPicker.ts` into the
+   `<table class="launcher-widget-picker">` it returns; the parent
+   `.launcher-widget-picker-popover` is the host container that handles
+   positioning + the dialog chrome. */
+.launcher-widget-picker-popover {
+    position: absolute;
+    z-index: 20;
+    margin-top: 4px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--vscode-editorWidget-background, var(--card-bg));
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.launcher-widget-picker-popover[hidden] {
+    display: none;
+}
+.launcher-widget-picker {
+    border-collapse: separate;
+    border-spacing: 2px;
+}
+.launcher-widget-picker-cell {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--card-border);
+    border-radius: 2px;
+    cursor: pointer;
+    color: inherit;
+}
+.launcher-widget-picker-cell:hover:not(.disabled) {
+    background: var(
+        --vscode-button-secondaryHoverBackground,
+        color-mix(in srgb, var(--vscode-button-background) 60%, transparent)
+    );
+}
+.launcher-widget-picker-cell.in-current {
+    background: var(--vscode-button-background);
+    border-color: var(--vscode-button-background);
+}
+.launcher-widget-picker-cell.disabled {
+    background: var(--vscode-editor-background);
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.launcher-widget-picker-reset {
+    align-self: stretch;
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid var(--card-border);
+    border-radius: 2px;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+.launcher-widget-picker-reset:hover {
+    background: var(
+        --vscode-button-secondaryHoverBackground,
+        color-mix(in srgb, var(--vscode-button-background) 60%, transparent)
+    );
+}
