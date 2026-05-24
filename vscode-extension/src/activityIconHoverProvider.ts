@@ -7,7 +7,7 @@ import {
     isActivityLikeDeclaration,
     KotlinClassDeclaration,
 } from "./kotlinClassFqn";
-import { readVariantImages } from "./manifestResourceHoverProvider";
+import { readVariantImages } from "./manifestResourceHoverImages";
 import { buildResourceVariantHoverMarkdown } from "./resourceVariantHover";
 import { ResourcePreview } from "./types";
 import * as path from "node:path";
