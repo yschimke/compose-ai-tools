@@ -87,6 +87,11 @@ dependencies {
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.runtime)
   compileOnly(libs.compose.ui)
+  // `PreviewWrapperProvider` (the type `RemoteOverridablePreviewWrapper` implements) ships in
+  // `ui-tooling-preview:1.11.0-rc01` — the first published version of the preview-wrapper API.
+  // `compileOnly` because the consumer brings the same prerelease artifact directly when it
+  // applies the `@PreviewWrapper` annotation.
+  compileOnly(libs.compose.ui.tooling.preview.wrapper)
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.runtime)
   testImplementation(libs.compose.ui)

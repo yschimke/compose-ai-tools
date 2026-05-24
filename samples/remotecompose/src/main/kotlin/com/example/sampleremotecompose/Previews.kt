@@ -7,7 +7,7 @@ import androidx.compose.remote.tooling.preview.RemotePreview
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewWrapper
-import ee.schimke.composeai.daemon.RemoteOverridablePreview
+import ee.schimke.composeai.daemon.RemoteOverridablePreviewWrapper
 
 /**
  * Two ways to preview a Remote Compose component — same output, different
@@ -44,22 +44,6 @@ fun RemoteButtonWithShapePreview() {
     }
 }
 
-/**
- * Companion preview for [RemoteButtonWithNamedLabel]. Wrapped with
- * [RemoteOverridablePreview] instead of plain `RemotePreview` so the
- * connector-side named-value overrides reach the running player. Default
- * render shows `"Tap me"`; the panel-side Remote Compose editor (or any
- * caller passing `renderNow.overrides.remoteCompose.namedValues = {"label":
- * ...}`) swaps that for a live label without rebuilding the document.
- */
-@Preview(showBackground = true, widthDp = 200, heightDp = 200)
-@Composable
-fun RemoteButtonWithNamedLabelPreview() {
-    RemoteOverridablePreview(profile = RcPlatformProfiles.ANDROIDX) {
-        Container { RemoteButtonWithNamedLabel() }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Approach 2 — `@PreviewWrapper(RemotePreviewWrapper::class)` applied to a
 // `@Preview`-annotated composable that only emits remote content.
@@ -76,4 +60,22 @@ fun RemoteButtonWithNamedLabelPreview() {
 @Composable
 fun RemoteButtonWithBorderPreview() {
     Container { RemoteButtonWithBorder() }
+}
+
+/**
+ * Companion preview for [RemoteButtonWithNamedLabel]. Uses the connector-shipped
+ * [RemoteOverridablePreviewWrapper] so the body stays the same shape as
+ * [RemoteButtonWithBorderPreview] above — just `Container { … }`, no
+ * `RemoteOverridablePreview(...)` call wrapping the body. Default render shows
+ * `"Tap me"`; the panel-side Remote Compose editor (or any caller passing
+ * `renderNow.overrides.remoteCompose.namedValues = {"label": ...}`) swaps that
+ * for a live label without rebuilding the document, because the wrapper's
+ * `Wrap` installs a player `init` callback that pushes those overrides through
+ * `StateUpdater.setUserLocal*`.
+ */
+@Preview(showBackground = true, widthDp = 200, heightDp = 200)
+@PreviewWrapper(RemoteOverridablePreviewWrapper::class)
+@Composable
+fun RemoteButtonWithNamedLabelPreview() {
+    Container { RemoteButtonWithNamedLabel() }
 }
