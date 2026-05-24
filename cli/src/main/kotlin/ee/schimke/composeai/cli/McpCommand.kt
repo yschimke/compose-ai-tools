@@ -125,19 +125,18 @@ internal class McpCommand(args: List<String>) {
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
-    val connection =
-      GradleConnection(
+    val driver =
+      GradlePreviewDriver(
         projectDir,
-        verbose = "--verbose" in args || "-v" in args,
-        extraArguments = injectArgs,
+        DriverOptions(verbose = "--verbose" in args || "-v" in args, extraArguments = injectArgs),
       )
     warnIfPluginNotPreApplied(
       args,
       projectRoot = projectDir,
       autoInjectActive = injectArgs.isNotEmpty(),
     )
-    connection.use { gc ->
-      val allModules = gc.findPreviewModules()
+    driver.use {
+      val allModules = driver.discoverModules()
       val modules =
         if (moduleFilter.isEmpty()) allModules
         else allModules.filter { it.gradlePath in moduleFilter }
@@ -152,9 +151,6 @@ internal class McpCommand(args: List<String>) {
 
       // Two batched runs: bootstrap every descriptor, then re-run discovery so previews.json sits
       // alongside. Single Gradle invocation per phase keeps configuration cache hits warm.
-      val daemonTasks = modules.map { ":${it.gradlePath}:composePreviewDaemonStart" }
-      val discoverTasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }
-
       System.err.println(
         "==> bootstrapping daemon descriptors for ${modules.size} module(s): " +
           modules.joinToString(", ") { ":${it.gradlePath}" }
@@ -162,7 +158,15 @@ internal class McpCommand(args: List<String>) {
       // No `-P` propagation here: DaemonExtension's `enabled` property is intentionally not wired
       // to a Gradle property (see DaemonExtension.kt KDoc). We populate the descriptor by running
       // the task and then patch the JSON ourselves below — same as the smoke script does.
-      val daemonOk = gc.runTasks(*daemonTasks.toTypedArray())
+      val daemonOk =
+        driver
+          .render(
+            RenderRequest(
+              modules = modules,
+              taskFor = { ":${it.gradlePath}:composePreviewDaemonStart" },
+            )
+          )
+          .buildOk
       if (!daemonOk) {
         System.err.println("composePreviewDaemonStart failed; aborting.")
         exitProcess(1)
@@ -187,7 +191,15 @@ internal class McpCommand(args: List<String>) {
       }
 
       System.err.println("==> running composePreviewDiscover so previews.json is up to date")
-      val discoverOk = gc.runTasks(*discoverTasks.toTypedArray())
+      val discoverOk =
+        driver
+          .render(
+            RenderRequest(
+              modules = modules,
+              taskFor = { ":${it.gradlePath}:composePreviewDiscover" },
+            )
+          )
+          .buildOk
       if (!discoverOk) {
         System.err.println("composePreviewDiscover failed; descriptors are still in place.")
         exitProcess(1)
@@ -354,14 +366,15 @@ internal class McpCommand(args: List<String>) {
     val moduleFilter = args.flagValuesAll("--module").map { it.removePrefix(":") }.toSet()
 
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
-    val connection = GradleConnection(projectDir, verbose = false, extraArguments = injectArgs)
+    val driver =
+      GradlePreviewDriver(projectDir, DriverOptions(verbose = false, extraArguments = injectArgs))
     warnIfPluginNotPreApplied(
       args,
       projectRoot = projectDir,
       autoInjectActive = injectArgs.isNotEmpty(),
     )
-    connection.use { gc ->
-      val allModules = gc.findPreviewModules()
+    driver.use {
+      val allModules = driver.discoverModules()
       val modules =
         if (moduleFilter.isEmpty()) allModules
         else allModules.filter { it.gradlePath in moduleFilter }
