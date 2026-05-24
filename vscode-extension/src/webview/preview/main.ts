@@ -156,6 +156,7 @@ import {
     isFocusedModuleReady,
 } from "./focusToolbar";
 import { FrameCarouselController } from "./frameCarousel";
+import { renderLauncherWidgetPicker } from "./launcherWidgetPicker";
 import { LiveStateController } from "./liveState";
 import { LoadingOverlay } from "./loadingOverlay";
 import {
@@ -242,6 +243,10 @@ export class PreviewApp extends LitElement {
     @query("#btn-touch-overlay") private _btnTouchOverlay!: HTMLButtonElement;
     @query("#btn-keyboard-band") private _btnKeyboardBand!: HTMLButtonElement;
     @query("#btn-controls") private _btnControls!: HTMLButtonElement;
+    @query("#btn-launcher-widget")
+    private _btnLauncherWidget!: HTMLButtonElement;
+    @query("#launcher-widget-picker-popover")
+    private _launcherWidgetPickerPopover!: HTMLElement;
     @query("#btn-export-bundle") private _btnExportBundle!: HTMLButtonElement;
     @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
 
@@ -420,6 +425,29 @@ export class PreviewApp extends LitElement {
                 >
                     <i class="codicon codicon-keyboard" aria-hidden="true"></i>
                 </button>
+                <button
+                    class="icon-button"
+                    id="btn-launcher-widget"
+                    title="Pick launcher-widget cell size"
+                    aria-label="Pick launcher-widget cell size"
+                    aria-pressed="false"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    aria-controls="launcher-widget-picker-popover"
+                    hidden
+                >
+                    <i
+                        class="codicon codicon-multiple-windows"
+                        aria-hidden="true"
+                    ></i>
+                </button>
+                <div
+                    id="launcher-widget-picker-popover"
+                    class="launcher-widget-picker-popover"
+                    role="dialog"
+                    aria-label="Launcher-widget cell size picker"
+                    hidden
+                ></div>
                 <button
                     class="icon-button"
                     id="btn-export-bundle"
@@ -630,6 +658,8 @@ export class PreviewApp extends LitElement {
         const btnTouchOverlay = this._btnTouchOverlay;
         const btnKeyboardBand = this._btnKeyboardBand;
         const btnControls = this._btnControls;
+        const btnLauncherWidget = this._btnLauncherWidget;
+        const launcherWidgetPickerPopover = this._launcherWidgetPickerPopover;
         const btnExportBundle = this._btnExportBundle;
         const btnExitFocus = this._btnExitFocus;
         const focusToolbar = new FocusToolbarController({
@@ -643,6 +673,7 @@ export class PreviewApp extends LitElement {
             btnTouchOverlay,
             btnKeyboardBand,
             btnControls,
+            btnLauncherWidget,
             btnExportBundle,
             btnExitFocus,
             recordingFormat,
@@ -2871,6 +2902,68 @@ export class PreviewApp extends LitElement {
             const enabled = btnControls.getAttribute("aria-pressed") === "true";
             liveState.toggleControlsForCard(card, !enabled);
         });
+
+        // Launcher-widget container-size picker. Click opens a popover with a
+        // 5×5-style cell grid (rendered by `./launcherWidgetPicker.ts`); a
+        // cell click writes the override via `liveState` and closes the
+        // popover. The popover is dismissed on outside click or Escape; the
+        // payload (`supportedCells` / `resizeAxes` constraints from
+        // `compose/launcher-widget`) isn't plumbed in yet, so the picker
+        // falls back to its default 5×5 unconstrained grid — sufficient to
+        // exercise the override pipeline; constraint-aware rendering lands
+        // when `LauncherWidgetPayload` is wired into the panel state.
+        const closeLauncherWidgetPicker = (): void => {
+            launcherWidgetPickerPopover.hidden = true;
+            launcherWidgetPickerPopover.replaceChildren();
+            btnLauncherWidget.setAttribute("aria-expanded", "false");
+        };
+        const openLauncherWidgetPicker = (): void => {
+            const card = focusController.focusedCard();
+            const previewId = card?.dataset.previewId ?? null;
+            if (!card || !previewId) return;
+            const current = liveState.launcherWidgetCellsForPreview(
+                previewId,
+            ) ?? { width: 5, height: 5 };
+            const table = renderLauncherWidgetPicker(null, current, (cells) => {
+                liveState.setLauncherWidgetCellsForCard(card, cells);
+                closeLauncherWidgetPicker();
+            });
+            const resetBtn = document.createElement("button");
+            resetBtn.type = "button";
+            resetBtn.className = "launcher-widget-picker-reset";
+            resetBtn.textContent = "Reset";
+            resetBtn.title = "Clear launcher-widget size override";
+            resetBtn.addEventListener("click", () => {
+                liveState.setLauncherWidgetCellsForCard(card, null);
+                closeLauncherWidgetPicker();
+            });
+            launcherWidgetPickerPopover.replaceChildren(table, resetBtn);
+            launcherWidgetPickerPopover.hidden = false;
+            btnLauncherWidget.setAttribute("aria-expanded", "true");
+        };
+        btnLauncherWidget.addEventListener("click", (evt) => {
+            evt.stopPropagation();
+            if (launcherWidgetPickerPopover.hidden) {
+                openLauncherWidgetPicker();
+            } else {
+                closeLauncherWidgetPicker();
+            }
+        });
+        launcherWidgetPickerPopover.addEventListener("click", (evt) =>
+            evt.stopPropagation(),
+        );
+        document.addEventListener("click", () => {
+            if (!launcherWidgetPickerPopover.hidden) {
+                closeLauncherWidgetPicker();
+            }
+        });
+        document.addEventListener("keydown", (evt) => {
+            if (evt.key === "Escape" && !launcherWidgetPickerPopover.hidden) {
+                closeLauncherWidgetPicker();
+                btnLauncherWidget.focus();
+            }
+        });
+
         btnExportBundle.addEventListener("click", () =>
             requestExportPreviewBundle(),
         );

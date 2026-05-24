@@ -40,7 +40,10 @@
 // triggered after the extension or daemon has already torn the streams down,
 // and re-posting would race the flush.
 
-import type { PreviewOverrides } from "../../daemon/daemonProtocol";
+import type {
+    LauncherWidgetSize,
+    PreviewOverrides,
+} from "../../daemon/daemonProtocol";
 import { liveToggleCommand } from "../../daemon/liveCommand";
 import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
@@ -74,6 +77,15 @@ const TOUCH_OVERLAY_EXTENSION_ID = "touch-overlay";
  * [TOUCH_OVERLAY_EXTENSION_ID].
  */
 const KEYBOARD_BAND_EXTENSION_ID = "compose/keyboard";
+
+/**
+ * `DataExtensionDescriptor.id` of the launcher-widget container-size extension
+ * (`LauncherWidgetExtension.ID` on the Kotlin side — see
+ * `:data-launcher-widget-connector`). Pinned here so the value stays in lockstep
+ * with the daemon constant; a value drift would silently hide the picker
+ * button forever. Same gating story as [TOUCH_OVERLAY_EXTENSION_ID].
+ */
+const LAUNCHER_WIDGET_EXTENSION_ID = "compose/launcher-widget";
 
 export interface LiveStateConfig {
     vscode: VsCodeApi<unknown>;
@@ -132,6 +144,15 @@ export class LiveStateController {
     // stops live, and starts again gets the same overlay back.
     private touchOverlayEnabledPreviewIds: Set<string> = new Set<string>();
     private keyboardBandForcedPreviewIds: Set<string> = new Set<string>();
+    // Per-preview launcher-widget cell-size override. Read by `overridesForPreview`
+    // when building the `requestStreamStart` payload so the daemon's session
+    // installs a `LauncherWidgetExtension` planning to the chosen cells. The
+    // picker popover writes via `setLauncherWidgetCellsForCard`; clearing the
+    // entry (null) drops the override on the next live restart. Sticky across
+    // live mode tear-down — same shape as the touch-overlay / keyboard-band
+    // toggles above.
+    private launcherWidgetCellsByPreviewId: Map<string, LauncherWidgetSize> =
+        new Map<string, LauncherWidgetSize>();
 
     // Per-module availability — written from `setInteractiveAvailability`
     // via `setAvailability`, read by the focus toolbar predicates through
@@ -457,6 +478,46 @@ export class LiveStateController {
         this.applyControlsToggleButtons();
     }
 
+    /** Daemon advertises the launcher-widget container-size extension on any known module. */
+    isLauncherWidgetAdvertised(): boolean {
+        return this.anyModuleAdvertisesExtension(LAUNCHER_WIDGET_EXTENSION_ID);
+    }
+
+    /**
+     * Current per-preview launcher-widget cell-size override, or `null` when
+     * no override is set. Read by the focus toolbar's button-state hook to
+     * decide whether the picker button shows its "modified" pressed state,
+     * and by the picker popover to highlight the active rectangle.
+     */
+    launcherWidgetCellsForPreview(
+        previewId: string,
+    ): LauncherWidgetSize | null {
+        return this.launcherWidgetCellsByPreviewId.get(previewId) ?? null;
+    }
+
+    /**
+     * Picker-popover entry point — store the chosen [cells] (or clear, when
+     * passed `null`) and restart the live stream so the daemon picks up
+     * `overrides.launcherWidget = { cells }` for the new session. Sticky when
+     * not live: the choice is remembered for the next `requestStreamStart`.
+     */
+    setLauncherWidgetCellsForCard(
+        card: HTMLElement,
+        cells: LauncherWidgetSize | null,
+    ): void {
+        const previewId = card.dataset.previewId;
+        if (!previewId) return;
+        const was = this.launcherWidgetCellsByPreviewId.get(previewId) ?? null;
+        if (sameCells(was, cells)) return;
+        if (cells === null) {
+            this.launcherWidgetCellsByPreviewId.delete(previewId);
+        } else {
+            this.launcherWidgetCellsByPreviewId.set(previewId, cells);
+        }
+        this.restartLiveIfActive(previewId);
+        this.applyControlsToggleButtons();
+    }
+
     /** Symmetric to {@link toggleTouchOverlayForCard} for the soft-keyboard band. */
     toggleKeyboardBandForCard(card: HTMLElement, enabled: boolean): void {
         const previewId = card.dataset.previewId;
@@ -477,10 +538,13 @@ export class LiveStateController {
     overridesForPreview(previewId: string): PreviewOverrides | undefined {
         const touch = this.touchOverlayEnabledPreviewIds.has(previewId);
         const keyboardOn = this.keyboardBandForcedPreviewIds.has(previewId);
-        if (!touch && !keyboardOn) return undefined;
+        const launcherCells =
+            this.launcherWidgetCellsByPreviewId.get(previewId);
+        if (!touch && !keyboardOn && !launcherCells) return undefined;
         const overrides: PreviewOverrides = {};
         if (touch) overrides.touchOverlay = true;
         if (keyboardOn) overrides.keyboard = { visible: true };
+        if (launcherCells) overrides.launcherWidget = { cells: launcherCells };
         return overrides;
     }
 
@@ -815,4 +879,14 @@ export class LiveStateController {
         ensureLiveCardControls(card, (c) => this.stopInteractiveForCard(c));
         attachInteractiveInputHandlers(card, this.cfg.interactiveInputConfig);
     }
+}
+
+/** Structural equality for the LauncherWidgetSize compare in setLauncherWidgetCellsForCard. */
+function sameCells(
+    a: LauncherWidgetSize | null,
+    b: LauncherWidgetSize | null,
+): boolean {
+    if (a === b) return true;
+    if (a === null || b === null) return false;
+    return a.width === b.width && a.height === b.height;
 }

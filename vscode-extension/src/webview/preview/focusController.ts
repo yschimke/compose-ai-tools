@@ -226,6 +226,14 @@ export class FocusController {
             advertised: live.isControlsAdvertised(),
             enabled: previewId !== null && live.isControlsEnabled(previewId),
         });
+        this.config.focusToolbar.applyLauncherWidgetButtonState({
+            inFocus,
+            focusedPreviewId: previewId,
+            advertised: live.isLauncherWidgetAdvertised(),
+            enabled:
+                previewId !== null &&
+                live.launcherWidgetCellsForPreview(previewId) !== null,
+        });
     }
 
     /**
