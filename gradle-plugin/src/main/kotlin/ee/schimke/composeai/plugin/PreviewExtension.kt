@@ -307,4 +307,20 @@ abstract class ResourcePreviewsExtension @Inject constructor(objects: ObjectFact
    */
   val stretches: ListProperty<NinePatchStretch> =
     objects.listProperty(NinePatchStretch::class.java).convention(NinePatchStretch.entries.toList())
+
+  /**
+   * When `true` (default), every [ResourceType.VECTOR] resource gets an extra horizontal
+   * contact-sheet capture per source qualifier — one cell per entry in [densities], each labelled
+   * with its bucket name — so reviewers can eyeball density-fan-out divergence at a glance. The
+   * contact sheet is *additional*: per-density captures (the [densities] fan-out) stay as-is.
+   *
+   * Skipped silently when [densities] has fewer than two entries (a single-cell contact sheet is
+   * silly). Filename ends `_contact-sheet.png` (e.g.
+   * `renders/resources/drawable/ic_compose_logo_contact-sheet.png`). Cost is ~`RESOURCE_STATIC_COST
+   * × densities.size`.
+   *
+   * Set `false` on modules where the per-density captures are sufficient and the extra composite
+   * would be noise.
+   */
+  val contactSheet: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 }

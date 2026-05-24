@@ -29,6 +29,15 @@ object ResourceDiscovery {
     val shapes: List<AdaptiveShape>,
     val styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     val stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
+    /**
+     * When `true`, every [ResourceType.VECTOR] resource gets an extra horizontal contact-sheet
+     * capture per source qualifier — one cell per entry in [densities], each labelled with its
+     * bucket name — so reviewers can eyeball density-fan-out divergence at a glance. The contact
+     * sheet is *additional*: per-density captures stay as-is. Skipped silently when [densities] has
+     * fewer than two entries (a single-cell contact sheet is silly). Mirror of
+     * `composePreview.resourcePreviews.contactSheet`.
+     */
+    val contactSheet: Boolean = true,
     /** Module-relative path to use as the [ManifestReference.source] root, e.g. `src/main`. */
     val sourceRootRelativePath: (File) -> String = { it.path },
   )
@@ -97,6 +106,7 @@ object ResourceDiscovery {
     resourceId: String,
     styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
     stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
+    contactSheet: Boolean = true,
   ): List<ResourceCapture> {
     val out = linkedSetOf<ResourceCapture>()
     val baseQualifierSets =
@@ -204,6 +214,29 @@ object ResourceDiscovery {
           }
         }
       }
+      // Density-bucketed contact sheet — one extra capture per source qualifier showing every
+      // configured density side-by-side. VECTOR only: animated vectors already get one GIF per
+      // density; adaptive icons fan out across shape × style; 9-patches fan out across stretch
+      // axes. Skipped when densities has fewer than two entries — a single-cell contact sheet
+      // is silly.
+      if (type == ResourceType.VECTOR && contactSheet && densities.size >= 2) {
+        val combined = combineQualifiers(cleaned, null)
+        out +=
+          ResourceCapture(
+            variant = ResourceVariant(qualifiers = combined, contactSheet = true),
+            renderOutput =
+              renderOutputPath(
+                resourceId = resourceId,
+                qualifier = combined,
+                shape = null,
+                style = null,
+                extension = "png",
+                contactSheet = true,
+              ),
+            cost = RESOURCE_CONTACT_SHEET_COST_PER_CELL * densities.size,
+            contactSheetDensities = densities,
+          )
+      }
     }
     return out.toList()
   }
@@ -241,6 +274,7 @@ object ResourceDiscovery {
     style: AdaptiveStyle?,
     extension: String,
     stretch: NinePatchStretch? = null,
+    contactSheet: Boolean = false,
   ): String {
     val (base, name) = resourceId.split('/', limit = 2).let { it[0] to it[1] }
     val safeName = sanitiseFilename(name)
@@ -257,6 +291,7 @@ object ResourceDiscovery {
         AdaptiveStyle.LEGACY -> add("LEGACY")
       }
       if (stretch != null) add("STRETCH_${stretch.name.lowercase()}")
+      if (contactSheet) add("contact-sheet")
     }
     return "renders/resources/$base/${parts.joinToString("_")}.$extension"
   }
@@ -286,6 +321,7 @@ object ResourceDiscovery {
           resourceId = id,
           styles = config.styles,
           stretches = config.stretches,
+          contactSheet = config.contactSheet,
         )
       return ResourcePreview(
         id = id,

@@ -53,6 +53,13 @@ data class RenderResourceVariant(
   val shape: RenderAdaptiveShape? = null,
   val style: RenderAdaptiveStyle? = null,
   val stretch: RenderNinePatchStretch? = null,
+  /**
+   * `true` for an [RenderResourceType.VECTOR] density-bucketed contact-sheet capture — horizontal
+   * PNG compositing one cell per density qualifier in [RenderResourceCapture.contactSheetDensities],
+   * each cell labelled below with its bucket name. `false` for every per-density vector capture
+   * and for every non-vector capture.
+   */
+  val contactSheet: Boolean = false,
 )
 
 @Serializable
@@ -60,6 +67,14 @@ data class RenderResourceCapture(
   val variant: RenderResourceVariant? = null,
   val renderOutput: String = "",
   val cost: Float = 1.0f,
+  /**
+   * Density qualifier buckets for contact-sheet captures (`variant.contactSheet == true`). Empty
+   * on every other capture. The renderer walks each entry through
+   * `RuntimeEnvironment.setQualifiers`, renders the drawable, normalises cell widths, and
+   * composites the cells side-by-side with a caption strip showing the bucket name under each
+   * cell.
+   */
+  val contactSheetDensities: List<String> = emptyList(),
 )
 
 @Serializable

@@ -14,8 +14,13 @@ import android.graphics.drawable.NinePatchDrawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import ee.schimke.composeai.scroll.ScrollGifEncoder
+import java.awt.Color
+import java.awt.Font
+import java.awt.Graphics2D
+import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
+import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -90,13 +95,33 @@ class ResourcePreviewRenderTest {
 
         when (preview.type) {
           RenderResourceType.VECTOR -> {
-            val bitmap = renderStaticDrawable(drawable)
-            try {
-              outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            } finally {
-              bitmap.recycle()
+            if (capture.variant?.contactSheet == true) {
+              val buckets = capture.contactSheetDensities
+              if (buckets.size < 2) {
+                System.err.println(
+                  "compose-preview: ${preview.id} contact-sheet capture has fewer than 2 " +
+                    "densities (${buckets.size}); skipping"
+                )
+                missing++
+                continue
+              }
+              renderVectorContactSheet(
+                resId = resId,
+                preview = preview,
+                baseQualifiers = qualifiers,
+                buckets = buckets,
+                outFile = outFile,
+              )
+              rendered++
+            } else {
+              val bitmap = renderStaticDrawable(drawable)
+              try {
+                outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+              } finally {
+                bitmap.recycle()
+              }
+              rendered++
             }
-            rendered++
           }
           RenderResourceType.ADAPTIVE_ICON -> {
             val shape = capture.variant?.shape
@@ -202,6 +227,94 @@ class ResourcePreviewRenderTest {
     drawable.setBounds(0, 0, width, height)
     drawable.draw(canvas)
     return bitmap
+  }
+
+  /**
+   * Renders one density-bucketed contact sheet for a `VECTOR` resource: walks [buckets] in order,
+   * sets Robolectric's qualifiers to `<baseQualifiers>-<bucket>` (or `<bucket>` when
+   * [baseQualifiers] is null/empty), resolves the drawable, renders it to a bitmap at its intrinsic
+   * size for that density, then composites every cell side-by-side. Each cell is normalised to the
+   * widest cell's pixel width so larger buckets keep their physical scale and smaller ones sit
+   * centred in a same-width slot — that's the visual story reviewers want (mdpi small, xxxhdpi big,
+   * all aligned baseline-to-baseline). A caption strip below each cell labels the bucket.
+   *
+   * Uses AWT `BufferedImage` + `Graphics2D` for compositing (same path the AVD curve / filmstrip
+   * paths use) so we get drawable scaling, anti-aliasing, and PNG encode through one toolkit
+   * without writing intermediate bitmaps. Side effect: leaves Robolectric's qualifiers set to the
+   * last bucket — the caller's next capture overrides them via `setQualifiers` at the top of its
+   * loop iteration.
+   */
+  private fun renderVectorContactSheet(
+    resId: Int,
+    preview: RenderResourcePreview,
+    baseQualifiers: String?,
+    buckets: List<String>,
+    outFile: File,
+  ) {
+    val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+    val cells = ArrayList<BufferedImage>(buckets.size)
+    for (bucket in buckets) {
+      val combined =
+        when {
+          baseQualifiers.isNullOrEmpty() -> bucket
+          else -> "$baseQualifiers-$bucket"
+        }
+      RuntimeEnvironment.setQualifiers(combined)
+      val perDensityDrawable = ContextCompat.getDrawable(context, resId)
+      if (perDensityDrawable == null) {
+        System.err.println(
+          "compose-preview: ${preview.id} contact-sheet cell at qualifiers=$combined " +
+            "resolved to null drawable; using empty placeholder"
+        )
+        cells += BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        continue
+      }
+      val bitmap = renderStaticDrawable(perDensityDrawable)
+      try {
+        cells += bitmap.toBufferedImage()
+      } finally {
+        bitmap.recycle()
+      }
+    }
+
+    val cellWidth = cells.maxOf { it.width }.coerceAtLeast(1)
+    val cellHeight = cells.maxOf { it.height }.coerceAtLeast(1)
+    val captionHeight = CONTACT_SHEET_CAPTION_HEIGHT
+    val sheetWidth = cellWidth * cells.size
+    val sheetHeight = cellHeight + captionHeight
+    val composite = BufferedImage(sheetWidth, sheetHeight, BufferedImage.TYPE_INT_ARGB)
+    val g: Graphics2D = composite.createGraphics()
+    try {
+      g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+      g.setRenderingHint(
+        RenderingHints.KEY_TEXT_ANTIALIASING,
+        RenderingHints.VALUE_TEXT_ANTIALIAS_ON,
+      )
+      // Flat background. ARGB image starts fully transparent; a solid backing keeps the captions
+      // legible against any viewer chrome.
+      g.color = Color.WHITE
+      g.fillRect(0, 0, sheetWidth, sheetHeight)
+
+      for ((index, cell) in cells.withIndex()) {
+        val x = index * cellWidth
+        val xCentered = x + (cellWidth - cell.width) / 2
+        val yCentered = (cellHeight - cell.height) / 2
+        g.drawImage(cell, xCentered, yCentered, null)
+        // Caption strip below the cell. Light separator + bucket name centred horizontally.
+        g.color = CONTACT_SHEET_CAPTION_BG
+        g.fillRect(x, cellHeight, cellWidth, captionHeight)
+        g.color = CONTACT_SHEET_CAPTION_FG
+        g.font = CONTACT_SHEET_CAPTION_FONT
+        val label = buckets[index]
+        val metrics = g.fontMetrics
+        val textX = x + (cellWidth - metrics.stringWidth(label)) / 2
+        val textY = cellHeight + (captionHeight + metrics.ascent - metrics.descent) / 2
+        g.drawString(label, textX, textY)
+      }
+    } finally {
+      g.dispose()
+    }
+    ImageIO.write(composite, "PNG", outFile)
   }
 
   /**
@@ -574,5 +687,12 @@ class ResourcePreviewRenderTest {
     const val ANIMATED_DURATION_MS: Long = 1500L
 
     const val ANIMATED_FRAME_INTERVAL_MS: Long = 50L
+
+    /** Caption strip height for the vector contact-sheet PNG, in pixels. */
+    const val CONTACT_SHEET_CAPTION_HEIGHT: Int = 24
+
+    val CONTACT_SHEET_CAPTION_BG: Color = Color(0xEEEEEE)
+    val CONTACT_SHEET_CAPTION_FG: Color = Color(0x424242)
+    val CONTACT_SHEET_CAPTION_FONT: Font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
   }
 }

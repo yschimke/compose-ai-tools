@@ -17,7 +17,11 @@ composePreview {
 
   // resourcePreviews { ... } is on by default — the sample exercises the
   // Android XML resource preview pipeline (vector / animated-vector /
-  // adaptive-icon) without any extra config.
+  // adaptive-icon). Sweep three density buckets so the
+  // `contactSheet = true` default emits a three-cell density-bucket
+  // comparison PNG for every <vector> drawable; per-density captures
+  // stay as-is alongside.
+  resourcePreviews { densities.set(listOf("mdpi", "xhdpi", "xxxhdpi")) }
 
   // `ScrollPreviewPixelTest` reads PNGs under
   // `build/compose-previews/renders/`; opt the unit-test tasks into a

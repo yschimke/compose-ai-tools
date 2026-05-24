@@ -548,6 +548,14 @@ const val RESOURCE_ANIMATED_COST: Float = 35.0f
 const val RESOURCE_NINE_PATCH_COST: Float = 1.5f
 
 /**
+ * Per-cell cost contribution for a vector contact-sheet capture. The contact sheet renders the
+ * drawable once per density bucket plus a small AWT composition step, so its cost scales linearly
+ * with the configured density count; the discovery task multiplies this constant by
+ * `densities.size` when stamping the capture's [ResourceCapture.cost].
+ */
+const val RESOURCE_CONTACT_SHEET_COST_PER_CELL: Float = RESOURCE_STATIC_COST
+
+/**
  * Drawable / mipmap resources the renderer knows how to handle. [VECTOR], [ANIMATED_VECTOR], and
  * [ADAPTIVE_ICON] come from XML root tags (classified by [ResourceXmlClassifier] in the plugin
  * module). [NINE_PATCH] comes from the `.9.png` file-extension convention — AAPT2 strips the
@@ -634,6 +642,13 @@ enum class AdaptiveStyle {
  * [stretch] is the 9-patch-only axis. Non-null on [ResourceType.NINE_PATCH] captures, `null`
  * elsewhere. Carried alongside [shape] / [style] rather than overloading them so the renderer can
  * switch on the type-specific axis without inspecting the resource type up front.
+ *
+ * [contactSheet] is the [ResourceType.VECTOR]-only axis. `true` means the capture is the
+ * density-bucketed contact-sheet PNG — a horizontal strip with one cell per entry in
+ * [ResourceCapture.contactSheetDensities], each cell rendered through the corresponding density
+ * qualifier and labelled below with its bucket name. Sibling to (not a replacement for) the
+ * per-density captures; emitted once per source qualifier when
+ * [ResourcePreviewsExtension.contactSheet] is enabled and `densities.size >= 2`.
  */
 @Serializable
 data class ResourceVariant(
@@ -641,6 +656,7 @@ data class ResourceVariant(
   val shape: AdaptiveShape? = null,
   val style: AdaptiveStyle? = null,
   val stretch: NinePatchStretch? = null,
+  val contactSheet: Boolean = false,
 )
 
 @Serializable
@@ -648,6 +664,14 @@ data class ResourceCapture(
   val variant: ResourceVariant? = null,
   val renderOutput: String = "",
   val cost: Float = RESOURCE_STATIC_COST,
+  /**
+   * Density qualifier buckets (e.g. `mdpi`, `xhdpi`, `xxxhdpi`) for contact-sheet captures
+   * (`variant.contactSheet == true`). Empty on every other capture. The renderer walks each entry
+   * through `RuntimeEnvironment.setQualifiers`, renders the drawable, normalises cell widths, and
+   * composites the cells side-by-side with a caption strip showing the bucket name under each
+   * cell. Order matches the rendered cell order.
+   */
+  val contactSheetDensities: List<String> = emptyList(),
 )
 
 /**

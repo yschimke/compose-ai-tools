@@ -38,6 +38,7 @@ class ResourceDiscoveryTest {
     shapes: List<AdaptiveShape> = listOf(AdaptiveShape.CIRCLE, AdaptiveShape.SQUARE),
     styles: List<AdaptiveStyle> = listOf(AdaptiveStyle.FULL_COLOR),
     stretches: List<NinePatchStretch> = NinePatchStretch.entries.toList(),
+    contactSheet: Boolean = false,
   ): List<ResourcePreview> =
     ResourceDiscovery.discover(
       ResourceDiscovery.Config(
@@ -46,6 +47,7 @@ class ResourceDiscoveryTest {
         shapes = shapes,
         styles = styles,
         stretches = stretches,
+        contactSheet = contactSheet,
         sourceRootRelativePath = { "res" },
       )
     )
@@ -274,8 +276,73 @@ class ResourceDiscoveryTest {
         densities = listOf("xhdpi"),
         shapes = emptyList(),
         resourceId = "drawable/x",
+        contactSheet = false,
       )
     assertThat(out).hasSize(1)
     assertThat(out.single().variant?.qualifiers).isEqualTo("xhdpi")
+  }
+
+  @Test
+  fun `vector contactSheet emits one extra capture per source qualifier`() {
+    writeXml("drawable", "ic_foo.xml", "<vector />")
+    writeXml("drawable-night", "ic_foo.xml", "<vector />")
+    val preview =
+      discover(densities = listOf("mdpi", "xhdpi", "xxxhdpi"), contactSheet = true).single()
+    // 2 source qualifiers × 3 densities = 6 per-density captures + 2 contact-sheet captures.
+    assertThat(preview.captures).hasSize(8)
+    val contactSheets = preview.captures.filter { it.variant?.contactSheet == true }
+    assertThat(contactSheets).hasSize(2)
+    assertThat(contactSheets.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/drawable/ic_foo_contact-sheet.png",
+        "renders/resources/drawable/ic_foo_night_contact-sheet.png",
+      )
+      .inOrder()
+    assertThat(contactSheets.map { it.contactSheetDensities })
+      .containsExactly(listOf("mdpi", "xhdpi", "xxxhdpi"), listOf("mdpi", "xhdpi", "xxxhdpi"))
+    // Cost scales linearly with the density count — three cells per sheet.
+    assertThat(contactSheets.map { it.cost })
+      .containsExactly(
+        RESOURCE_CONTACT_SHEET_COST_PER_CELL * 3,
+        RESOURCE_CONTACT_SHEET_COST_PER_CELL * 3,
+      )
+  }
+
+  @Test
+  fun `vector contactSheet=false suppresses the extra capture`() {
+    writeXml("drawable", "ic_foo.xml", "<vector />")
+    val preview =
+      discover(densities = listOf("mdpi", "xhdpi", "xxxhdpi"), contactSheet = false).single()
+    // No contact-sheet capture — only the three per-density vectors.
+    assertThat(preview.captures).hasSize(3)
+    assertThat(preview.captures.map { it.variant?.contactSheet })
+      .containsExactly(false, false, false)
+  }
+
+  @Test
+  fun `vector contactSheet skipped when fewer than 2 densities`() {
+    writeXml("drawable", "ic_foo.xml", "<vector />")
+    val preview = discover(densities = listOf("xhdpi"), contactSheet = true).single()
+    // Single density → contact sheet would be one cell, which is silly. Skipped.
+    assertThat(preview.captures).hasSize(1)
+    assertThat(preview.captures.single().variant?.contactSheet).isFalse()
+  }
+
+  @Test
+  fun `contactSheet only fires for VECTOR resources`() {
+    writeXml("drawable", "ic_foo.xml", "<vector />")
+    writeXml("drawable", "avd_pulse.xml", "<animated-vector />")
+    writeBinary("drawable", "bg_button.9.png")
+    writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
+    val previews =
+      discover(densities = listOf("mdpi", "xhdpi"), contactSheet = true).associateBy { it.id }
+    assertThat(previews["drawable/ic_foo"]!!.captures.count { it.variant?.contactSheet == true })
+      .isEqualTo(1)
+    assertThat(previews["drawable/avd_pulse"]!!.captures.count { it.variant?.contactSheet == true })
+      .isEqualTo(0)
+    assertThat(previews["drawable/bg_button"]!!.captures.count { it.variant?.contactSheet == true })
+      .isEqualTo(0)
+    assertThat(previews["mipmap/ic_launcher"]!!.captures.count { it.variant?.contactSheet == true })
+      .isEqualTo(0)
   }
 }
