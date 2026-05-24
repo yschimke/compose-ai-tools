@@ -326,6 +326,14 @@ export class GradleService {
         Promise<PreviewManifest | null>
     >();
     /**
+     * Whether the in-flight `coldStartBundle` for each module is running with
+     * discover folded in. Lets a caller that requested discover (warmModule /
+     * refresh) decide whether to coalesce onto an in-flight daemon-only
+     * bootstrap (no — they need the manifest) or wait for it (yes — discover
+     * is on the way). Cleared in lockstep with [inFlightColdStart].
+     */
+    private inFlightColdStartIncludesDiscover = new Map<string, boolean>();
+    /**
      * In-flight standalone `composePreviewApplied` invocation, when one is
      * running. Cross-checked by [coldStartBundle] so the bundle can drop
      * `composePreviewApplied` from its task list (and just await this) instead
@@ -377,14 +385,26 @@ export class GradleService {
         if (inFlight) {
             return inFlight;
         }
-        // The cold-start bundle includes `:<module>:composePreviewDiscover` and
-        // writes the manifest into [manifestCache] on completion. Awaiting an
+        // The cold-start bundle may include `:<module>:composePreviewDiscover` and
+        // write the manifest into [manifestCache] on completion. Awaiting an
         // in-flight bundle here keeps the post-warm `reconcilePreviewManifestAfterDaemonReady`
         // call from starting a second Gradle invocation while the bundle's
         // own discover is still on the daemon's queue.
+        //
+        // A daemon-only bootstrap bundle (no discover, see [runDaemonBootstrap])
+        // doesn't produce a manifest, so we don't coalesce onto it — we wait
+        // for it to finish (so we don't race the daemon-start invocation on
+        // the serialised Gradle queue) and then start a fresh discover.
         const inFlightBundle = this.inFlightColdStart.get(key);
         if (inFlightBundle) {
-            return inFlightBundle;
+            if (this.inFlightColdStartIncludesDiscover.get(key)) {
+                return inFlightBundle;
+            }
+            try {
+                await inFlightBundle;
+            } catch {
+                /* surfaced by the bootstrap originator; we'll try discover anyway */
+            }
         }
         const cached = this.manifestCache.get(key);
         if (cached && Date.now() - cached.timestamp < MANIFEST_CACHE_TTL_MS) {
@@ -1133,45 +1153,71 @@ export class GradleService {
      * descriptor (`build/compose-previews/daemon-launch.json`) is up to date.
      * Cheap and cacheable — emits a small JSON. The caller (DaemonGate) handles errors.
      *
-     * Delegates to [coldStartBundle] so the daemon-start invocation also
-     * folds in `composePreviewApplied` (when not already fresh) and the
-     * per-module `composePreviewDiscover`. All three tasks share a single
-     * Gradle invocation, which means one configuration-cache entry to warm
-     * on first launch instead of three.
+     * Delegates to [coldStartBundle] with `includeDiscover = false` so the
+     * daemon-start invocation also folds in `composePreviewApplied` (when not
+     * already fresh) into a single Gradle invocation — one configuration-cache
+     * entry to warm on first launch instead of two. Discovery is **not**
+     * bundled here: `warmModule` treats any bootstrap error as a daemon-start
+     * failure, so a transient Kotlin compile error in `composePreviewDiscover`
+     * would surface as a hard "daemon failed to start". Discovery runs
+     * post-warm via [reconcilePreviewManifestAfterDaemonReady], where its
+     * errors flow through the refresh / compile-error UX instead.
      */
     async runDaemonBootstrap(module: ModuleInfo): Promise<void> {
-        await this.coldStartBundle(module);
+        await this.coldStartBundle(module, undefined, {
+            includeDiscover: false,
+        });
     }
 
     /**
      * Cold-start path for a single module: bundles `composePreviewApplied`
      * (when markers aren't fresh), `:<module>:composePreviewDaemonStart`, and
-     * `:<module>:composePreviewDiscover` into a single Gradle invocation. The
-     * payoff is the configuration-cache entry: one cold task-graph calculation
-     * instead of one per task family, cutting ~2 min × 2 off first-launch
-     * latency on this workspace.
+     * (optionally) `:<module>:composePreviewDiscover` into a single Gradle
+     * invocation. The payoff is the configuration-cache entry: one cold
+     * task-graph calculation instead of one per task family, cutting ~2 min × 2
+     * off first-launch latency on this workspace.
+     *
+     * Set `bundleOpts.includeDiscover = false` to omit discovery so a
+     * transient discover failure can't take down a daemon-start that would
+     * otherwise have succeeded. The `runDaemonBootstrap` path uses this; the
+     * `warmModule` / refresh callers leave it at the default (`true`) so they
+     * still get the bundle perf win for the common case.
      *
      * Side effects:
      *   - Populates [manifestCache] from the resulting `previews.json` so the
      *     post-warm `reconcilePreviewManifestAfterDaemonReady` hits the cache
-     *     instead of starting another Gradle round-trip.
+     *     instead of starting another Gradle round-trip. Skipped when
+     *     `bundleOpts.includeDiscover = false` since the manifest isn't
+     *     written by this invocation.
      *   - Bumps [appliedMarkersFreshUntilMs] when the bundle included
      *     `composePreviewApplied`, so a concurrent [bootstrapAppliedMarkers]
      *     skips its own redundant run.
      *
      * Returns the discovered manifest, or null when discover produced no
      * `previews.json` (rare — usually means the module hasn't compiled
-     * cleanly). Errors propagate so the daemon scheduler can surface
-     * bootstrap failures the same way it did under the previous
-     * single-task path.
+     * cleanly) or when discovery was skipped. Errors propagate so the daemon
+     * scheduler can surface bootstrap failures the same way it did under the
+     * previous single-task path.
      */
     async coldStartBundle(
         module: ModuleInfo,
         opts?: TaskOptions,
+        bundleOpts?: { includeDiscover?: boolean },
     ): Promise<PreviewManifest | null> {
+        const includeDiscover = bundleOpts?.includeDiscover ?? true;
         const key = module.modulePath;
         const inFlight = this.inFlightColdStart.get(key);
-        if (inFlight) {
+        // An in-flight bundle that *includes* discover is always at least as
+        // useful as one that doesn't, so coalesce onto it regardless. The
+        // reverse direction is dodgier: a daemon-only bundle landing on top of
+        // a pending discover-bundle caller would deny the caller its manifest.
+        // We only coalesce when this caller doesn't need discover or the
+        // in-flight bundle already covers it.
+        if (
+            inFlight &&
+            (!includeDiscover ||
+                this.inFlightColdStartIncludesDiscover.get(key))
+        ) {
             return inFlight;
         }
         const includeApplied =
@@ -1188,9 +1234,9 @@ export class GradleService {
         const headTask = includeApplied
             ? "composePreviewApplied"
             : daemonStartTask;
-        const tailTasks = includeApplied
-            ? [daemonStartTask, discoverTask]
-            : [discoverTask];
+        const tailTasks: string[] = [];
+        if (includeApplied) tailTasks.push(daemonStartTask);
+        if (includeDiscover) tailTasks.push(discoverTask);
         const inner = (async (): Promise<PreviewManifest | null> => {
             // If a standalone `composePreviewApplied` is already running,
             // wait for it to finish before we add a per-module Gradle
@@ -1211,6 +1257,11 @@ export class GradleService {
                 this.appliedMarkersFreshUntilMs =
                     Date.now() + APPLIED_MARKERS_FRESHNESS_TTL_MS;
             }
+            if (!includeDiscover) {
+                // No manifest was written by this invocation — defer to a
+                // post-warm `composePreviewDiscover` to populate the cache.
+                return null;
+            }
             const manifest = this.readManifest(module);
             if (manifest) {
                 this.manifestCache.set(key, {
@@ -1223,9 +1274,11 @@ export class GradleService {
         const promise = inner.finally(() => {
             if (this.inFlightColdStart.get(key) === promise) {
                 this.inFlightColdStart.delete(key);
+                this.inFlightColdStartIncludesDiscover.delete(key);
             }
         });
         this.inFlightColdStart.set(key, promise);
+        this.inFlightColdStartIncludesDiscover.set(key, includeDiscover);
         // Publish the bundle's lifetime as an `appliedBootstrapPromise` when it
         // includes `composePreviewApplied`. A concurrent `bootstrapAppliedMarkers`
         // call then awaits this bundle instead of kicking off its own redundant

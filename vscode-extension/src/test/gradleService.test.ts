@@ -1332,6 +1332,63 @@ describe("GradleService", () => {
                 await Promise.all([bundle, discover]);
             }),
         );
+
+        it(
+            "omits :module:composePreviewDiscover when the caller is runDaemonBootstrap so a transient discover failure can't kill daemon-start",
+            withTempDir(async (dir, api) => {
+                const service = new GradleService(dir, api);
+
+                await service.runDaemonBootstrap({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                assert.strictEqual(
+                    api.runCalls.length,
+                    1,
+                    "the bootstrap path must still collapse to one Gradle invocation",
+                );
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    "composePreviewApplied",
+                );
+                assert.deepStrictEqual(
+                    api.runCalls[0].args,
+                    [":mod:composePreviewDaemonStart"],
+                    "runDaemonBootstrap must not bundle composePreviewDiscover — daemon-start should come up even when discovery is failing",
+                );
+            }),
+        );
+
+        it(
+            "runs a fresh composePreviewDiscover after a daemon-only bootstrap so the manifest still arrives",
+            withTempDir(async (dir, api) => {
+                writeManifest(dir, "mod");
+                const service = new GradleService(dir, api);
+
+                await service.runDaemonBootstrap({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                assert.strictEqual(api.runCalls.length, 1);
+
+                const manifest = await service.composePreviewDiscover({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                assert.notStrictEqual(manifest, null);
+                assert.strictEqual(
+                    api.runCalls.length,
+                    2,
+                    "post-bootstrap discover should run on its own because the bootstrap bundle did not include it",
+                );
+                assert.strictEqual(
+                    api.runCalls[1].taskName,
+                    ":mod:composePreviewDiscover",
+                );
+            }),
+        );
     });
 
     describe("cancel", () => {
