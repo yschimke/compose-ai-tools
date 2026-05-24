@@ -14,7 +14,7 @@ name: Preview Comment
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
