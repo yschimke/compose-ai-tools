@@ -18,6 +18,10 @@
 // the `compose-preview-mcp-*.tar.gz` GitHub Release artifact (see release.yml) — the Maven
 // jar is the library face of the same code.
 
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.tasks.TaskAction
+
 plugins {
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
@@ -80,3 +84,35 @@ composeAiMavenPublishing {
   )
   inceptionYear.set("2025")
 }
+
+// Boundary check: `:mcp` must NOT pull `gradle-tooling-api` (directly or transitively). Cold-shell
+// gradle invocation for the MCP install / doctor flow lives in `:cli`'s `McpCommand` and routes
+// through `:gradle-preview-driver`; the daemon-driven path in `:mcp` itself never talks to Gradle.
+// Without this guard, a future change adding `:gradle-preview-driver` to `:mcp` would silently
+// drag tooling-api onto the MCP server's runtime — exactly the duplication issue #1394 closed.
+abstract class CheckMcpToolingApiBoundary : DefaultTask() {
+  @get:org.gradle.api.tasks.Classpath abstract val runtimeClasspath: ConfigurableFileCollection
+
+  @TaskAction
+  fun check() {
+    val forbidden =
+      runtimeClasspath.files
+        .map { it.name }
+        .filter { it.startsWith("gradle-tooling-api") && it.endsWith(".jar") }
+        .sorted()
+    check(forbidden.isEmpty()) {
+      ":mcp must not depend on gradle-tooling-api; route cold-shell gradle work through " +
+        ":gradle-preview-driver from :cli instead. Found on runtimeClasspath: " +
+        forbidden.joinToString(", ")
+    }
+  }
+}
+
+val checkMcpToolingApiBoundary =
+  tasks.register<CheckMcpToolingApiBoundary>("checkMcpToolingApiBoundary") {
+    description = "Fails if gradle-tooling-api leaks onto :mcp's runtime classpath."
+    group = "verification"
+    runtimeClasspath.from(configurations.named("runtimeClasspath"))
+  }
+
+tasks.named("check") { dependsOn(checkMcpToolingApiBoundary) }
