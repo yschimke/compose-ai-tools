@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.NinePatchDrawable
 import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
 import ee.schimke.composeai.scroll.ScrollGifEncoder
@@ -23,12 +24,12 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * Android XML resource renderer. Reads the `resources.json` written by `composePreviewDiscoverAndroidResources`
+ * Android resource renderer. Reads the `resources.json` written by `composePreviewDiscoverAndroidResources`
  * (path via `composeai.resources.manifest`), iterates every [RenderResourceCapture], and writes a
  * PNG / GIF to the directory pointed at by `composeai.resources.outputDir`.
  *
  * Supported types: `VECTOR` (PNG), `ADAPTIVE_ICON` (PNG with shape mask + LEGACY fallback),
- * `ANIMATED_VECTOR` (GIF).
+ * `ANIMATED_VECTOR` (GIF), `NINE_PATCH` (PNG per stretch variant).
  *
  * Robolectric setup mirrors [RobolectricRenderTest]'s pin: SDK 35, NATIVE graphics, paused looper,
  * hardware pixel-copy. The Gradle task wiring (`composePreviewRenderAndroidResources`) sets the same system
@@ -142,10 +143,54 @@ class ResourcePreviewRenderTest {
             renderAnimatedVector(drawable, animatable, outFile)
             rendered++
           }
+          RenderResourceType.NINE_PATCH -> {
+            val ninePatch = drawable as? NinePatchDrawable
+            if (ninePatch == null) {
+              System.err.println(
+                "compose-preview: ${preview.id} resolved as ${drawable.javaClass.simpleName}, " +
+                  "not NinePatchDrawable; skipping nine-patch capture"
+              )
+              missing++
+              continue
+            }
+            val stretch = capture.variant?.stretch ?: RenderNinePatchStretch.INTRINSIC
+            val bitmap = renderNinePatch(ninePatch, stretch)
+            try {
+              outFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            } finally {
+              bitmap.recycle()
+            }
+            rendered++
+          }
         }
       }
     }
     println("compose-preview resource render: $rendered file(s), $missing capture(s) missing")
+  }
+
+  /**
+   * Renders [drawable] at the target dimensions implied by [stretch]. `NinePatchDrawable.draw`
+   * interpolates the patches itself based on `setBounds`, so the renderer just picks the target
+   * `(width, height)` and lets the platform do the stretching.
+   */
+  private fun renderNinePatch(
+    drawable: NinePatchDrawable,
+    stretch: RenderNinePatchStretch,
+  ): Bitmap {
+    val baseW = drawable.intrinsicWidth.coerceAtLeast(1)
+    val baseH = drawable.intrinsicHeight.coerceAtLeast(1)
+    val (width, height) =
+      when (stretch) {
+        RenderNinePatchStretch.INTRINSIC -> baseW to baseH
+        RenderNinePatchStretch.HORIZONTAL -> (baseW * 2) to baseH
+        RenderNinePatchStretch.VERTICAL -> baseW to (baseH * 2)
+        RenderNinePatchStretch.BOTH -> (baseW * 2) to (baseH * 2)
+      }
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    drawable.setBounds(0, 0, width, height)
+    drawable.draw(canvas)
+    return bitmap
   }
 
   /** Plain drawable → bitmap canvas at intrinsic size. Used for vectors. */

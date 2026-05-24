@@ -201,6 +201,7 @@ internal object AndroidPreviewSupport {
       densities.set(extension.resourcePreviews.densities)
       shapes.set(extension.resourcePreviews.shapes)
       styles.set(extension.resourcePreviews.styles)
+      stretches.set(extension.resourcePreviews.stretches)
       projectDirectory.set(projectRoot)
       outputFile.set(previewOutputDir.map { it.file("resources.json") })
     }

@@ -16,20 +16,29 @@ object ResourceDiscovery {
 
   private val RESOURCE_BASES = setOf("drawable", "mipmap")
 
+  private const val NINE_PATCH_SUFFIX = ".9.png"
+
+  /** Default fan-out for [ResourceType.NINE_PATCH] captures. */
+  private val DEFAULT_NINE_PATCH_STRETCHES: List<NinePatchStretch> =
+    NinePatchStretch.entries.toList()
+
   /** Inputs to the discovery pass. */
   data class Config(
     val resSourceRoots: List<File>,
     val densities: List<String>,
     val shapes: List<AdaptiveShape>,
     val styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
+    val stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
     /** Module-relative path to use as the [ManifestReference.source] root, e.g. `src/main`. */
     val sourceRootRelativePath: (File) -> String = { it.path },
   )
 
   /**
    * Walks [resSourceRoots] and returns one [ResourcePreview] per `(base, name)` pair, with captures
-   * fanned out across the configured [densities] (and [shapes] for adaptive icons). Source files
-   * that classify as something we don't render (`<shape>`, `<selector>`, …) are dropped.
+   * fanned out across the configured [densities] (and [shapes] for adaptive icons, [stretches] for
+   * 9-patches). XML files whose root tag we don't render (`<shape>`, `<selector>`, …) are dropped;
+   * raster `.png` files that aren't `.9.png` 9-patches are also dropped (out of scope — we render
+   * vector / animated-vector / adaptive-icon XML, 9-patch raster, and nothing else).
    */
   fun discover(config: Config): List<ResourcePreview> {
     val collected = linkedMapOf<String, Builder>()
@@ -44,12 +53,21 @@ object ResourceDiscovery {
         if (!child.isDirectory) continue
         val parsed = ResourceQualifierParser.parse(child.name)
         if (parsed.base !in RESOURCE_BASES) continue
-        val xmlFiles =
-          child.listFiles { f -> f.isFile && f.name.endsWith(".xml") }?.sortedBy { it.name }
-            ?: continue
-        for (xml in xmlFiles) {
-          val type = ResourceXmlClassifier.classify(xml) ?: continue
-          val resourceName = xml.nameWithoutExtension
+        val candidates =
+          child
+            .listFiles { f ->
+              f.isFile && (f.name.endsWith(".xml") || f.name.endsWith(NINE_PATCH_SUFFIX))
+            }
+            ?.sortedBy { it.name } ?: continue
+        for (file in candidates) {
+          val (type, resourceName) =
+            when {
+              file.name.endsWith(NINE_PATCH_SUFFIX) ->
+                ResourceType.NINE_PATCH to file.name.removeSuffix(NINE_PATCH_SUFFIX)
+              file.name.endsWith(".xml") ->
+                (ResourceXmlClassifier.classify(file) ?: continue) to file.nameWithoutExtension
+              else -> continue
+            }
           val id = "${parsed.base}/$resourceName"
           val builder = collected.getOrPut(id) { Builder(id = id, type = type) }
           if (builder.type != type) {
@@ -59,7 +77,7 @@ object ResourceDiscovery {
             // that's what the consumer's default-qualifier file said.
           }
           val relativeSourcePath =
-            "$rootRelative/${child.name}/${xml.name}".replace(File.separatorChar, '/')
+            "$rootRelative/${child.name}/${file.name}".replace(File.separatorChar, '/')
           builder.sourceFiles[parsed.qualifierSuffix.orEmpty()] = relativeSourcePath
         }
       }
@@ -78,6 +96,7 @@ object ResourceDiscovery {
     shapes: List<AdaptiveShape>,
     resourceId: String,
     styles: List<AdaptiveStyle> = AdaptiveStyle.entries.toList(),
+    stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
   ): List<ResourceCapture> {
     val out = linkedSetOf<ResourceCapture>()
     val baseQualifierSets =
@@ -161,6 +180,28 @@ object ResourceDiscovery {
                 cost = RESOURCE_STATIC_COST,
               )
           }
+          ResourceType.NINE_PATCH -> {
+            // Fan out across stretch variants — same drawable, different `setBounds` targets.
+            // Empty `stretches` would mean "no captures", which is almost certainly a config
+            // mistake; default to all four to keep the previewer well-defined.
+            val effectiveStretches = stretches.ifEmpty { DEFAULT_NINE_PATCH_STRETCHES }
+            for (stretch in effectiveStretches) {
+              out +=
+                ResourceCapture(
+                  variant = ResourceVariant(qualifiers = combined, stretch = stretch),
+                  renderOutput =
+                    renderOutputPath(
+                      resourceId = resourceId,
+                      qualifier = combined,
+                      shape = null,
+                      style = null,
+                      stretch = stretch,
+                      extension = "png",
+                    ),
+                  cost = RESOURCE_NINE_PATCH_COST,
+                )
+            }
+          }
         }
       }
     }
@@ -199,6 +240,7 @@ object ResourceDiscovery {
     shape: AdaptiveShape?,
     style: AdaptiveStyle?,
     extension: String,
+    stretch: NinePatchStretch? = null,
   ): String {
     val (base, name) = resourceId.split('/', limit = 2).let { it[0] to it[1] }
     val safeName = sanitiseFilename(name)
@@ -214,6 +256,7 @@ object ResourceDiscovery {
         AdaptiveStyle.THEMED_DARK -> add("themed-dark")
         AdaptiveStyle.LEGACY -> add("LEGACY")
       }
+      if (stretch != null) add("STRETCH_${stretch.name.lowercase()}")
     }
     return "renders/resources/$base/${parts.joinToString("_")}.$extension"
   }
@@ -242,6 +285,7 @@ object ResourceDiscovery {
           shapes = config.shapes,
           resourceId = id,
           styles = config.styles,
+          stretches = config.stretches,
         )
       return ResourcePreview(
         id = id,

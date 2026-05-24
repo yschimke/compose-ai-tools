@@ -16,6 +16,7 @@ enum class RenderResourceType {
   VECTOR,
   ANIMATED_VECTOR,
   ADAPTIVE_ICON,
+  NINE_PATCH,
 }
 
 @Serializable
@@ -34,11 +35,24 @@ enum class RenderAdaptiveStyle {
   LEGACY,
 }
 
+/**
+ * Renderer-side mirror of `NinePatchStretch`. Non-null on [RenderResourceType.NINE_PATCH] captures
+ * — drives the target `(width, height)` the renderer passes to `NinePatchDrawable.setBounds`.
+ */
+@Serializable
+enum class RenderNinePatchStretch {
+  INTRINSIC,
+  HORIZONTAL,
+  VERTICAL,
+  BOTH,
+}
+
 @Serializable
 data class RenderResourceVariant(
   val qualifiers: String? = null,
   val shape: RenderAdaptiveShape? = null,
   val style: RenderAdaptiveStyle? = null,
+  val stretch: RenderNinePatchStretch? = null,
 )
 
 @Serializable
