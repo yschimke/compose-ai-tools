@@ -87,9 +87,15 @@ dependencies {
   compileOnly(platform(libs.compose.bom.compat))
   compileOnly(libs.compose.runtime)
   compileOnly(libs.compose.ui)
+  // `PreviewWrapperProvider` (the type `RemoteOverridablePreviewWrapper` implements) ships in
+  // `ui-tooling-preview:1.11.0-rc01` — the first published version of the preview-wrapper API.
+  // `compileOnly` because the consumer brings the same prerelease artifact directly when it
+  // applies the `@PreviewWrapper` annotation.
+  compileOnly(libs.compose.ui.tooling.preview.wrapper)
   testImplementation(platform(libs.compose.bom.compat))
   testImplementation(libs.compose.runtime)
   testImplementation(libs.compose.ui)
+  testImplementation(libs.compose.ui.tooling.preview.wrapper)
 
   // Alpha `compose-remote` artifacts. `compileOnly` so they don't surface in the connector AAR's
   // resolved compile classpath for downstream consumers — `:daemon:android` stays at compileSdk
@@ -106,6 +112,14 @@ dependencies {
   compileOnly(libs.compose.remote.creation)
   compileOnly(libs.compose.remote.creation.compose)
   compileOnly(libs.compose.remote.tooling.preview)
+  // Player-side APIs used by `RemoteOverridablePreview` to wire daemon-supplied named-value
+  // overrides into the running `RemoteComposePlayer` via its `StateUpdater`. Same `compileOnly`
+  // pattern as the creation deps above — only consumers that actually pull `compose-remote`
+  // light up the override path; everyone else gets a no-op classloader guard.
+  compileOnly(libs.compose.remote.player.compose)
+  compileOnly(libs.compose.remote.player.core)
+  compileOnly(libs.compose.remote.player.view)
+  testImplementation(libs.compose.remote.player.core)
 
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
