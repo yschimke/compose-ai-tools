@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  `<appwidget-provider>` metadata for `WeatherAppWidgetReceiver`. The
+  `:appwidget-preview-runtime` auto-discovery path looks this XML up via
+  `AppWidgetManager.installedProviders`, matches `initialLayout` against the inflated
+  `RemoteViews.layoutId`, and stamps the `min/maxResizeWidth/Height` + `targetCellWidth/Height`
+  + `resizeMode` onto the launcher-widget data product's payload.
+
+  Sizes mirror the existing `RemoteViewsWeatherWidgetPreview` defaults:
+   * `minWidth/Height` = `180dp × 80dp` (`2×1` cells at the 72dp grid)
+   * `minResizeWidth/Height` = `90dp × 80dp` (`1×1` cells — smallest the user can drag to)
+   * `maxResizeWidth/Height` = `360dp × 240dp` (`5×3` cells — Pixel launcher's 5×5 grid)
+   * `targetCellWidth/Height` = `4 × 2` (initial preferred size when added)
+   * `resizeMode = "horizontal|vertical"` (full resize, both axes)
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_weather"
+    android:minWidth="180dp"
+    android:minHeight="80dp"
+    android:minResizeWidth="90dp"
+    android:minResizeHeight="80dp"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="240dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:previewLayout="@layout/widget_weather"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />
