@@ -121,6 +121,88 @@ abstract class DaemonBootstrapTask : DefaultTask() {
   /** Absolute path to `previews.json`. */
   @get:Input abstract val manifestPath: Property<String>
 
+  // --- Stage-2 in-process compile (COMPILE-IN-PROCESS.md) -----------------------------------
+  //
+  // The descriptor's `btaCompile` field is populated when all three of the following hold:
+  //   - [compileInProcess] is `true` (the per-build opt-in, mirror of
+  //     `DaemonExtension.compileInProcess`),
+  //   - [btaImplClasspath] is non-empty (i.e. the plugin's variant wiring actually resolved
+  //     the BTA implementation JARs), and
+  //   - [btaModuleName], [btaOutputDir], [btaIcWorkingDir] are present.
+  //
+  // Today the variant wiring sites (`ComposePreviewTasks` CMP path, `AndroidPreviewSupport`
+  // Android path) don't yet supply these inputs; this is the load-bearing follow-up. With
+  // [compileInProcess] defaulted false and the input collections defaulted empty, the existing
+  // descriptors stay `btaCompile = null` and the daemon's `compileSources` JSON-RPC handler
+  // returns `result=fallback` — the editor falls back to stage 1 / 0 with no surface change.
+
+  /** Mirror of [DaemonExtension.compileInProcess]. */
+  @get:Input abstract val compileInProcess: Property<Boolean>
+
+  /**
+   * BTA implementation classpath: `kotlin-build-tools-impl` + matching
+   * `kotlin-compiler-embeddable` + transitive runtime JARs. Resolved by the gradle plugin from
+   * `org.jetbrains.kotlin:kotlin-build-tools-impl:${kotlinVersion}` where `kotlinVersion` is
+   * sniffed from the consumer's applied Kotlin plugin. Empty when no variant wiring populated it
+   * (the common case until stage 3b lands the resolution).
+   */
+  @get:Internal abstract val btaImplClasspath: ConfigurableFileCollection
+
+  @get:Input
+  val btaImplClasspathPaths: List<String>
+    get() = btaImplClasspath.files.map { it.absolutePath }
+
+  /**
+   * Consumer's compile classpath for this module — same JAR list `compileKotlin` would see. Empty
+   * when no variant wiring populated it.
+   */
+  @get:Internal abstract val btaCompileClasspath: ConfigurableFileCollection
+
+  @get:Input
+  val btaCompileClasspathPaths: List<String>
+    get() = btaCompileClasspath.files.map { it.absolutePath }
+
+  /**
+   * Compiler plugin JARs (e.g. `kotlin-compose-compiler-plugin-embeddable`). Empty when the
+   * consumer doesn't apply Compose, or when stage-2 wiring hasn't populated it yet.
+   */
+  @get:Internal abstract val btaCompilerPluginClasspath: ConfigurableFileCollection
+
+  @get:Input
+  val btaCompilerPluginClasspathPaths: List<String>
+    get() = btaCompilerPluginClasspath.files.map { it.absolutePath }
+
+  /**
+   * Kotlin `MODULE_NAME` for BTA's emitted classes. Matches the consumer's Gradle module name so
+   * `kotlin.Metadata.d2[]` agrees with what Gradle's own `compileKotlin` produces — load-bearing
+   * for the daemon's child classloader hot-swap (see BTA-SPIKE.md § 4).
+   */
+  @get:Input @get:Optional abstract val btaModuleName: Property<String>
+
+  /**
+   * Where BTA writes `.class` files. Same directory the daemon's child classloader watches —
+   * typically `build/intermediates/built_in_kotlinc/<variant>/classes/` (Android) or
+   * `build/classes/kotlin/<variant>/main/` (JVM/CMP).
+   */
+  @get:Input @get:Optional abstract val btaOutputDir: Property<String>
+
+  /**
+   * Per-module persistent IC cache directory. Conventionally
+   * `<module>/build/compose-previews/daemon-state/bta-ic/`.
+   */
+  @get:Input @get:Optional abstract val btaIcWorkingDir: Property<String>
+
+  /**
+   * Daemon-warm-time KSP/KAPT/annotationProcessor detection: when this property is set, the
+   * descriptor's `btaCompile.ineligibilityReason` carries the value verbatim and the daemon returns
+   * `result=fallback` for every `compileSources` call. The other BTA inputs are still populated
+   * honestly (the daemon validates them at startup even when ineligible) — a future flag flip can
+   * then unblock the path without a re-bootstrap.
+   */
+  @get:Input @get:Optional abstract val btaIneligibilityReason: Property<String>
+
+  // -------------------------------------------------------------------------------------------
+
   /** `<module>/build/compose-previews/daemon-launch.json`. */
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
@@ -155,11 +237,48 @@ abstract class DaemonBootstrapTask : DefaultTask() {
         systemProperties = LinkedHashMap(systemProperties.get()),
         workingDirectory = workingDirectory.get(),
         manifestPath = manifestPath.get(),
+        btaCompile = assembleBtaCompileConfig(),
       )
 
     val out = outputFile.get().asFile
     out.parentFile?.mkdirs()
     out.writeText(JSON.encodeToString(descriptor))
+  }
+
+  /**
+   * Returns a populated [BtaCompileConfig] when stage-2 wiring is complete for this variant, `null`
+   * otherwise. The contract is intentionally strict: every required field must be set, else we emit
+   * `null` and the daemon falls back to stage 1 / 0. The plugin's variant wiring sites
+   * (`ComposePreviewTasks` CMP path, `AndroidPreviewSupport` Android path) populate these inputs in
+   * a follow-up; until then `compileInProcess` defaults false and this returns null even when
+   * callers set the flag manually.
+   */
+  private fun assembleBtaCompileConfig(): BtaCompileConfig? {
+    if (!compileInProcess.getOrElse(false)) return null
+    val implCp = btaImplClasspathPaths
+    val moduleName = btaModuleName.orNull
+    val outputDir = btaOutputDir.orNull
+    val icDir = btaIcWorkingDir.orNull
+    if (implCp.isEmpty() || moduleName == null || outputDir == null || icDir == null) {
+      // Plugin opt-in is on but the variant wiring hasn't fully populated yet. Log to stderr
+      // so the consumer's build output surfaces the gap; emit `null` so the daemon falls
+      // back cleanly rather than blowing up at startup against half-populated inputs.
+      logger.warn(
+        "composePreview.daemon.compileInProcess=true but BTA wiring is incomplete for " +
+          "${modulePath.getOrElse("?")} (variant=${variant.getOrElse("?")}). " +
+          "Falling back to stage 1. Tracked in docs/daemon/COMPILE-IN-PROCESS.md."
+      )
+      return null
+    }
+    return BtaCompileConfig(
+      implClasspath = implCp,
+      compileClasspath = btaCompileClasspathPaths,
+      compilerPlugins = btaCompilerPluginClasspathPaths,
+      outputDir = outputDir,
+      moduleName = moduleName,
+      icWorkingDir = icDir,
+      ineligibilityReason = btaIneligibilityReason.orNull,
+    )
   }
 
   internal companion object {

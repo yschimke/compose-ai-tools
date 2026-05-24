@@ -32,8 +32,8 @@ import kotlin.system.exitProcess
  * `docs/NON_GRADLE_INTEGRATION.md`.
  *
  * `--classpath` accepts a `File.pathSeparator`-separated list and can be repeated; entries are
- * concatenated in order. `--jvm-arg` and `--system-property` are repeatable single-value flags
- * (one arg / key=value per occurrence).
+ * concatenated in order. `--jvm-arg` and `--system-property` are repeatable single-value flags (one
+ * arg / key=value per occurrence).
  *
  * Exit codes: `0` on success, `2` on argument parsing failure.
  */
@@ -142,8 +142,7 @@ public object DaemonLaunchBuilderCli {
       classpath = classpath,
       jvmArgs = jvmArgs,
       systemProperties = systemProperties,
-      workingDirectory =
-        workingDirectory ?: throw ArgError("--working-directory is required"),
+      workingDirectory = workingDirectory ?: throw ArgError("--working-directory is required"),
       manifestPath = manifestPath ?: throw ArgError("--manifest-path is required"),
       enabled = enabled,
       javaLauncher = javaLauncher,

@@ -180,6 +180,11 @@
                     "default": false,
                     "markdownDescription": "**Experimental.** Replace the per-save Gradle compile round-trip with a long-running `gradle --continuous :<module>:composePreviewCompile` worker per daemon-warmed module. On a 1-line edit this shaves the ~500 ms Gradle configuration + tooling-API overhead off every save; the cost is one extra Gradle daemon's worth of memory held resident per module. Off by default; see [docs/daemon/CONTINUOUS-COMPILE.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/CONTINUOUS-COMPILE.md) for the spike. Requires a window reload to take effect."
                 },
+                "composePreview.daemon.compileInProcess": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "**Experimental.** Dispatch save-triggered Kotlin compiles through the daemon's in-process Build Tools API host instead of Gradle, eliminating the Gradle subprocess + tooling-API round-trip entirely on eligible modules. Requires the consumer's build to also opt in via `composePreview { daemon { compileInProcess = true } }` (descriptor populates the BTA classpath at bootstrap; without it the daemon returns `result=fallback` and this setting becomes a no-op). KSP/KAPT modules fall back automatically. Off by default; see [docs/daemon/COMPILE-IN-PROCESS.md](https://github.com/yschimke/compose-ai-tools/blob/main/docs/daemon/COMPILE-IN-PROCESS.md). Layered on top of `continuousCompile`; either can be on independently."
+                },
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,

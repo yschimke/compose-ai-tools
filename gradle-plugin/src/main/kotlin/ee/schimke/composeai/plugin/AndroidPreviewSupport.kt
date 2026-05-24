@@ -136,6 +136,14 @@ internal object AndroidPreviewSupport {
       }
     }
 
+    // Stage-2 BTA configurations + afterEvaluate dep wiring must happen at apply / config
+    // time, BEFORE the `tasks.register {…}` block in `registerAndroidTasks` runs (which
+    // executes at task-realization time, by which point Gradle's MutationGuard rejects
+    // `Project.afterEvaluate(...)` calls — same constraint the desktop path hit).
+    // Idempotent: `maybeCreate` no-ops if the configurations already exist from a
+    // sibling CMP applyToDesktop call.
+    ComposePreviewTasks.setupBtaConfigurationsFor(project, extension)
+
     // Register render tasks once, for the variant the user picked. onVariants
     // fires after AGP has created variant-specific configurations like
     // `${variant}UnitTestRuntimeClasspath`, so everything we need is there.
@@ -1534,6 +1542,33 @@ internal object AndroidPreviewSupport {
       this.maxHeapMb.set(extension.daemon.maxHeapMb)
       this.maxRendersPerSandbox.set(extension.daemon.maxRendersPerSandbox)
       this.warmSpare.set(extension.daemon.warmSpare)
+      this.compileInProcess.set(extension.daemon.compileInProcess)
+      // Stage-2 BTA wiring. The AGP unit-test task's `classpath` carries every input
+      // `compileDebugKotlin` would see — Compose runtime, kotlin-stdlib, AGP-generated
+      // R.jar / BuildConfig outputs, the consumer's transitive dependencies. Feed that
+      // straight into BTA's compileClasspath; the daemon's child classloader watches the
+      // matching output dir under `build/intermediates/built_in_kotlinc/<variant>/classes`
+      // (see CLASSLOADER.md), so a successful BTA compile drops .class files in the same
+      // place Gradle's `compileVariantKotlin` would have. MODULE_NAME mirrors KGP's
+      // default for AGP variants — the variant-specific kotlinc compile uses
+      // `project.name` (no variant suffix), confirmed against `samples-android`'s
+      // kotlin.Metadata.d2[] entries.
+      val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+      ComposePreviewTasks.wireBtaInputs(
+        project = project,
+        task = this,
+        userCompileClasspath = agpTestClasspath,
+        moduleName = project.name,
+        outputDirProvider =
+          project.layout.buildDirectory
+            .dir("intermediates/built_in_kotlinc/$variantName/classes")
+            .map { it.asFile.absolutePath },
+        icWorkingDirProvider =
+          project.layout.buildDirectory.dir("compose-previews/daemon-state/bta-ic").map {
+            it.asFile.absolutePath
+          },
+        ineligibilityReason = ComposePreviewTasks.detectStageTwoIneligibilityFor(project),
+      )
       // Conventional entry-point name — `daemon/android` / Stream B
       // (task B1.1) will provide the implementation. Surfacing it as a
       // Property leaves room for future variants (foreground / debug) without

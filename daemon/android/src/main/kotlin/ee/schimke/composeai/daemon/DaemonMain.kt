@@ -581,6 +581,20 @@ fun main(args: Array<String>) {
       }
     )
 
+  // Stage-2 in-process compile service — same read path as :daemon:desktop's DaemonMain.
+  // Reads the `composeai.daemon.bta.*` sysprops the gradle plugin populates when the
+  // consumer opts into `composePreview { daemon { compileInProcess = true } }`. Returns
+  // null when the sysprops are absent or the module is KSP/KAPT-tainted (Android's
+  // ineligibilityReason flows verbatim through `BtaCompileService.Outcome.Fallback`).
+  // See docs/daemon/COMPILE-IN-PROCESS.md.
+  val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
+  if (btaCompileService != null) {
+    System.err.println(
+      "compose-ai-tools daemon-android: BtaCompileService active — `compileSources` JSON-RPC " +
+        "will dispatch through the in-process Kotlin Build Tools compiler"
+    )
+  }
+
   val server =
     JsonRpcServer(
       input = System.`in`,
@@ -592,6 +606,7 @@ fun main(args: Array<String>) {
       incrementalDiscovery = incrementalDiscovery,
       historyManager = historyManager,
       extensions = extensions,
+      btaCompileService = btaCompileService,
     )
   server.run()
 }
