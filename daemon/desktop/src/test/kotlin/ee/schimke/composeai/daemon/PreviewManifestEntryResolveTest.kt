@@ -100,4 +100,19 @@ class PreviewManifestEntryResolveTest {
     assertEquals("id:wearos_small_round", resolved.device)
     assertEquals(384, resolved.widthPx) // 192 * 2.0 default density
   }
+
+  @Test
+  fun `nested params wrapperClassName propagates into ResolvedRenderParams`() {
+    // Issue #1440 — the gradle plugin emits `params.wrapperClassName` from
+    // `@PreviewWrapper(SomeProvider::class)` via class-file annotation scanning (the upstream
+    // annotation is `AnnotationRetention.BINARY` and unavailable to runtime reflection). The
+    // resolver must surface it so the router can thread it into the `RenderSpec` payload.
+    val raw =
+      """{"id":"wrapped","className":"X","functionName":"R",""" +
+        """"params":{"widthDp":100,"heightDp":100,""" +
+        """"wrapperClassName":"com.example.RemotePreviewWrapper"}}"""
+    val entry = json.decodeFromString(PreviewManifestEntry.serializer(), raw)
+    val resolved = entry.resolved()
+    assertEquals("com.example.RemotePreviewWrapper", resolved.wrapperClassName)
+  }
 }
