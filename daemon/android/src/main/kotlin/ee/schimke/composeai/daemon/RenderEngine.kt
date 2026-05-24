@@ -888,7 +888,9 @@ private fun InvokeWithOptionalWrapper(composableMethod: ComposableMethod) {
  * parameter name (`wrapper`) matches what the ClassGraph-based discovery in
  * `gradle-plugin/preview-discovery` reads.
  */
-private fun resolveWrapperOrNull(composableMethod: ComposableMethod): Pair<ComposableMethod, Any>? {
+internal fun resolveWrapperOrNull(
+  composableMethod: ComposableMethod
+): Pair<ComposableMethod, Any>? {
   val jvmMethod = composableMethod.asMethod()
   val ann =
     jvmMethod.annotations.firstOrNull {
