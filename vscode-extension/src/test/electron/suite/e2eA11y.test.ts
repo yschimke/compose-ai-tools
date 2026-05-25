@@ -114,6 +114,15 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     let wearKotlinFile: string;
     let priorEarlyFeatures: boolean | undefined;
     let wearPreviews: PreviewSummary[];
+    // PreviewIds the suite has subscribed a11y data products on. `afterEach`
+    // walks this and unsubscribes both kinds so each `it()` starts with a
+    // clean daemon-side subscription state. Required because
+    // `LiveDaemonScheduler.setDataProductSubscription` is idempotent
+    // (daemonScheduler.ts:499 skips when `enabled === already`): re-issuing
+    // a subscribe for an already-subscribed pair produces no fresh
+    // `updateA11y` and therefore no `webviewA11yState` ack, so a test that
+    // assumes "subscribe → ack" would hang against the per-test 60s cap.
+    const touchedPreviewIds = new Set<string>();
 
     before(async function () {
         // Cold first-render bootstrap; each `it` reuses `wearPreviews`
@@ -253,6 +262,24 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         );
     });
 
+    afterEach(async () => {
+        // Drop every a11y subscription this test created so the next
+        // `it()` re-issuing a subscribe sees a fresh transition (and
+        // therefore a fresh `webviewA11yState` ack). Unsubscribing a
+        // never-subscribed pair is a no-op in
+        // `setDataProductSubscription`, so passing both kinds for every
+        // touched preview is safe and avoids per-test bookkeeping.
+        if (!api) return;
+        for (const previewId of touchedPreviewIds) {
+            await api.triggerSetDataExtensionEnabled(
+                previewId,
+                ["a11y/hierarchy", "a11y/atf"],
+                false,
+            );
+        }
+        touchedPreviewIds.clear();
+    });
+
     after(async () => {
         const config = vscode.workspace.getConfiguration("composePreview");
         await config.update(
@@ -325,6 +352,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         console.log(
             `[e2e-a11y] subscribing a11y/hierarchy for ${target.functionName} (${target.params?.device})`,
         );
+        touchedPreviewIds.add(target.id);
         api.resetMessages();
 
         await api.triggerSetDataExtensionEnabled(
@@ -364,6 +392,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         console.log(
             `[e2e-a11y] subscribing a11y/atf for ${target.functionName} (${target.params?.device})`,
         );
+        touchedPreviewIds.add(target.id);
         api.resetMessages();
 
         await api.triggerSetDataExtensionEnabled(target.id, ["a11y/atf"], true);
@@ -404,6 +433,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             "ActivityListPreview",
             "Large Round",
         );
+        touchedPreviewIds.add(target.id);
         api.resetMessages();
 
         await api.triggerSetDataExtensionEnabled(
