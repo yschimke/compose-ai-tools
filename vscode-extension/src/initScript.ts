@@ -86,6 +86,7 @@ val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewSettingsHasExclusiveContent: Boolean = false
+var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -203,6 +204,53 @@ fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File):
     return false
 }
 
+// Returns project directories that declare their own \`buildscript { repositories { ... } }\`
+// block. Used in the exclusiveContent branch to decide where our classpath dep can possibly
+// resolve — modules without their own buildscript repos can't resolve it and would crash
+// the whole Tooling API query at configuration time.
+fun scanForProjectsWithBuildscriptRepos(
+    projectDirs: List<java.io.File>,
+): Set<java.io.File> {
+    val declared = LinkedHashSet<java.io.File>()
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            var i = 0
+            var found = false
+            while (i < text.length && !found) {
+                val match = Regex("\\\\bbuildscript\\\\b").find(text, i) ?: break
+                var j = match.range.last + 1
+                while (j < text.length && text[j].isWhitespace()) j++
+                if (j >= text.length || text[j] != '{') {
+                    i = match.range.last + 1
+                    continue
+                }
+                var depth = 1
+                var k = j + 1
+                while (k < text.length && depth > 0) {
+                    when (text[k]) {
+                        '{' -> depth++
+                        '}' -> depth--
+                    }
+                    k++
+                }
+                val blockEnd = if (depth == 0) k - 1 else text.length
+                val block = text.substring(j + 1, blockEnd)
+                if (Regex("\\\\brepositories\\\\b").containsMatchIn(block)) {
+                    declared.add(dir)
+                    found = true
+                }
+                i = blockEnd + 1
+            }
+            if (found) break
+        }
+    }
+    return declared
+}
+
 // Skip composite-included builds entirely — both the settings scan and the \`allprojects\`
 // injection. The init script is evaluated once per build in a composite (root + each
 // \`includeBuild(...)\`), so without this guard \`allprojects { buildscript { repositories { ... } } }\`
@@ -228,6 +276,18 @@ gradle.settingsEvaluated {
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
     composeAiPreviewSettingsHasExclusiveContent =
         composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)
+    if (composeAiPreviewSettingsHasExclusiveContent) {
+        composeAiPreviewProjectsWithOwnBuildscriptRepos =
+            scanForProjectsWithBuildscriptRepos(projectDirs)
+        gradle.rootProject {
+            logger.lifecycle(
+                "[compose-preview] settings.gradle.kts declares exclusiveContent in " +
+                    "pluginManagement.repositories; auto-inject is limited to modules that " +
+                    "pre-apply the plugin or declare their own buildscript { repositories { ... } }. " +
+                    "Other modules: apply id(\\"ee.schimke.composeai.preview\\") via plugins { } to opt in."
+            )
+        }
+    }
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -254,12 +314,20 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    if (projectDir !in composeAiPreviewPreAppliedDirs) {
+    // In the exclusiveContent shape, modules without their own buildscript repos have no way
+    // to resolve our classpath dep — adding it would crash configuration. Skip both the
+    // injection and the apply hooks for those modules.
+    val composeAiPreviewSkipExclusiveContentClasspathDep =
+        composeAiPreviewSettingsHasExclusiveContent &&
+            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
+
+    if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
+        projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             // When the settings file declares exclusiveContent in pluginManagement.repositories,
-            // Gradle 9.3+ rejects *adding* to buildscript.repositories (issue #1482). Skip the
-            // repos add but keep the classpath dep — if the consumer's existing buildscript
-            // repositories can resolve the plugin coordinate, auto-inject still works.
+            // Gradle 9.3+ rejects *adding* to buildscript.repositories (issue #1482). The
+            // outer guard above means we only reach here for modules whose own buildscript
+            // already declares repositories, so resolution can succeed via those.
             if (!composeAiPreviewSettingsHasExclusiveContent) {
                 repositories {
                     gradlePluginPortal()
@@ -276,6 +344,9 @@ allprojects {
             }
         }
     }
+
+    if (composeAiPreviewSkipExclusiveContentClasspathDep &&
+        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return

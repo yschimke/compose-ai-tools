@@ -4,8 +4,11 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
 
 /**
  * End-to-end reproducer for the Confetti shape (https://github.com/joreilly/Confetti `main`):
@@ -15,15 +18,18 @@ import org.gradle.testkit.runner.GradleRunner
  * 'buildscript.repositories'.`
  *
  * Asserts that the rendered init script's `allprojects { buildscript { repositories { ... } } }`
- * sub-block is suppressed when the settings file matches this shape, so the build configures
- * cleanly. The classpath dependency and apply hooks are intentionally kept — if the consumer's
- * existing buildscript repositories can resolve the plugin coordinate, auto-inject still works.
+ * sub-block is suppressed when the settings file matches this shape AND that the classpath
+ * dependency injection is also skipped for modules without their own `buildscript { repositories {
+ * ... } }` — adding the dep there would crash configuration with `Cannot resolve external
+ * dependency ... because no repositories are defined`, short-circuiting the entire Tooling API
+ * query (the 0.11.8 regression; the bug filed against the v0.11.8 follow-up to PRs #1483/#1490).
  *
- * PR #1483 tried to dodge this with an `initscript { classpath ... }` load, but that broke
- * plugins-that-reference-AGP at runtime (`NoClassDefFoundError:
+ * PR #1483 tried to dodge the validation with an `initscript { classpath ... }` load, but that
+ * broke plugins-that-reference-AGP at runtime (`NoClassDefFoundError:
  * com/android/build/api/variant/AndroidComponentsExtension` — init-script-loaded plugins sit on a
  * sibling classloader of AGP). The current fix keeps the plugin on the project's buildscript
- * classloader and detects the settings shape via text scan in [renderInitScript].
+ * classloader and forks per-project: modules with their own buildscript repos get the classpath dep
+ * injected (resolution can succeed via those); modules without are skipped entirely.
  *
  * Uses TestKit's default Gradle (the wrapper version) so the test fires the same validation that
  * production users hit; older Gradle wouldn't see the validation at all.
@@ -44,10 +50,10 @@ class InitScriptExclusiveContentReproducerTest {
    * Sets up a minimal project that mirrors Confetti's settings shape: `exclusiveContent` declared
    * inside `pluginManagement { listOf(repositories, dependencyResolutionManagement.repositories)
    * .forEach { ... } }`. The `:app` subproject applies a `plugins { }` block — required to make
-   * Gradle actually evaluate the buildscript dependency injection (an empty build script
-   * short-circuits before the validation can fire, so the regression doesn't reproduce on the
-   * empty-app fixture). A plain Kotlin JVM plugin is fine; the regression is repo-side, not
-   * plugin-side.
+   * Gradle actually evaluate the buildscript classpath, which is where our injection fires.
+   * Crucially `:app/build.gradle.kts` does NOT declare its own `buildscript { repositories { ... }
+   * }` — that matches the realistic Confetti shape where modules route everything through
+   * pluginManagement / dependencyResolutionManagement.
    */
   private fun createConfettiShapedProject(): File {
     val root = tempDir()
@@ -73,58 +79,57 @@ class InitScriptExclusiveContentReproducerTest {
       )
     File(root, "build.gradle.kts").writeText("// root build script — intentionally empty\n")
     val app = File(root, "app").apply { mkdirs() }
-    // The plugins {} block forces Gradle to evaluate buildscript classpath — that's where our
-    // init script's `allprojects { buildscript { repositories { ... } } }` injection tries to
-    // add gradlePluginPortal()/mavenCentral()/google() and (without the exclusiveContent skip)
-    // trips Gradle 9.3+'s validation. An empty :app build file would short-circuit before any
-    // of that runs and the regression wouldn't reproduce.
     File(app, "build.gradle.kts").writeText("""plugins { kotlin("jvm") version "2.2.21" }""")
     return root
   }
 
   @Test
-  fun `rendered init script does not trip exclusiveContent validation against the Confetti shape`() {
-    // Pre-fix: without the repositories skip, this build fails with
+  fun `init script configures cleanly against a Confetti-shaped project with no module buildscript repos`() {
+    // Original 0.11.7 regression: `allprojects { buildscript { repositories { ... } } }`
+    // tripped Gradle 9.3+'s
     //   "When using exclusive repository content in 'settings.pluginManagement.repositories',
     //    you cannot add repositories to 'buildscript.repositories'."
-    // Post-fix: our buildscript injection skips the repositories add. The classpath dep is
-    // still added and resolution is still attempted — if the consumer has their own
-    // `buildscript { repositories { ... } }` declaring a repo that hosts the plugin, the
-    // plugin resolves and auto-inject works. In this test fixture the consumer has no
-    // buildscript repos, so Gradle fails with a clear "Cannot resolve external dependency
-    // ... because no repositories are defined" — that's the intended escape hatch, and
-    // crucially it is NOT the exclusiveContent validation. The user's documented fallback
-    // is to apply the plugin manually via `plugins { id("ee.schimke.composeai.preview")
-    // version "X" }`.
+    // 0.11.8 fix sidestepped that validation but still injected the classpath dep, which then
+    // failed with "Cannot resolve external dependency ... because no repositories are defined"
+    // for any module without its own buildscript { repositories { ... } } — that crashed the
+    // whole Tooling API query (the 0.11.8 follow-up regression). The current fix skips both
+    // the repos add and the classpath dep injection on modules that have no buildscript repos
+    // of their own, so configuration completes cleanly. Modules silently miss the plugin in
+    // this branch; the lifecycle log tells the user to apply via `plugins { }` DSL.
     val project = createConfettiShapedProject()
-    val initScript = materializeInitScript(tempDir(), "0.11.7")
+    val initScript = materializeInitScript(tempDir(), "0.11.9")
 
-    // `:app:help` forces configuration of the :app subproject (its `plugins { kotlin("jvm") }`
-    // block triggers buildscript evaluation, which is what surfaces the exclusiveContent
-    // validation against our init script's allprojects-level buildscript injection). A bare
-    // `:help` on root wouldn't configure :app and the regression would silently not reproduce.
-    val output =
-      try {
-        GradleRunner.create()
-          .withProjectDir(project)
-          .withArguments(":app:help", "--init-script", initScript.absolutePath, "--stacktrace")
-          .forwardOutput()
-          .build()
-          .output
-      } catch (e: org.gradle.testkit.runner.UnexpectedBuildFailure) {
-        e.buildResult.output
-      }
+    val result =
+      GradleRunner.create()
+        .withProjectDir(project)
+        .withArguments(":app:help", "--init-script", initScript.absolutePath, "--stacktrace")
+        .forwardOutput()
+        .build()
 
     assertFalse(
-      output.contains("exclusive repository content"),
+      result.output.contains("exclusive repository content"),
       "init script tripped the exclusiveContent validation — the repositories sub-block of " +
-        "the buildscript injection isn't being suppressed for the Confetti shape; full " +
-        "output:\n$output",
+        "the buildscript injection isn't being suppressed; full output:\n${result.output}",
+    )
+    assertFalse(
+      result.output.contains("Cannot resolve external dependency"),
+      "init script tried to inject the classpath dep on a module without buildscript " +
+        "repositories — would crash the whole Tooling API query; full output:\n${result.output}",
+    )
+    assertEquals(
+      TaskOutcome.SUCCESS,
+      result.task(":app:help")?.outcome,
+      "expected :app:help to succeed against a Confetti-shaped project; got:\n${result.output}",
+    )
+    assertTrue(
+      result.output.contains("settings.gradle.kts declares exclusiveContent"),
+      "expected the lifecycle log nudging the user toward manual plugins { } DSL apply; got:\n" +
+        result.output,
     )
   }
 
   @Test
-  fun `rendered init script applies the buildscript classpath injection when settings has no exclusiveContent`() {
+  fun `init script still injects buildscript classpath when settings has no exclusiveContent`() {
     // Sanity check that the guard is narrow — a settings file WITHOUT exclusiveContent must still
     // see the buildscript injection (the auto-inject happy path the CLI is built around; issue
     // #305 and friends). We can't easily verify successful plugin resolution end-to-end here
@@ -145,7 +150,7 @@ class InitScriptExclusiveContentReproducerTest {
       )
     File(root, "build.gradle.kts").writeText("// intentionally empty\n")
 
-    val initScript = materializeInitScript(tempDir(), "0.11.7")
+    val initScript = materializeInitScript(tempDir(), "0.11.9")
 
     val runner =
       GradleRunner.create()
@@ -153,14 +158,10 @@ class InitScriptExclusiveContentReproducerTest {
         .withArguments("help", "--init-script", initScript.absolutePath)
         .forwardOutput()
 
-    // Either path is acceptable for *this* assertion; we only care that the failure (if any) is
-    // not the exclusiveContent validation. `build()` / `buildAndFail()` both return a
-    // `BuildResult` we can read `.output` from.
     val output =
       try {
         runner.build().output
       } catch (e: Exception) {
-        // BuildResult-bearing runtime exceptions surface stdout/stderr in their message.
         e.message.orEmpty()
       }
     assertFalse(
