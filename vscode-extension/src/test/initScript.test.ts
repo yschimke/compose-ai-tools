@@ -151,19 +151,17 @@ describe("renderInitScript", () => {
         );
     });
 
-    it("skips auto-inject when settings declares exclusiveContent in pluginManagement", () => {
-        // Companion to the composite-included-build guard. The Confetti follow-up (#1482):
-        // root-level `pluginManagement { repositories { exclusiveContent { ... } } }`,
-        // either directly or via the `listOf(repositories, dependencyResolutionManagement
-        // .repositories).forEach` Confetti pattern, trips Gradle 9.3+'s
-        // `When using exclusive repository content in 'settings.pluginManagement
-        // .repositories', you cannot add repositories to 'buildscript.repositories'.`
-        // validation as soon as our init script's `allprojects { buildscript { repositories
-        // { ... } } }` injection runs. PR #1483 tried to dodge this via an `initscript {
-        // classpath ... }` load but broke AGP classloader visibility at runtime. The current
-        // fix detects exclusiveContent in pluginManagement and degrades auto-inject to a
-        // no-op for that build; the CLI's "plugin not applied" warning nudges the user to
-        // apply the plugin manually.
+    it("skips only the buildscript repositories add when settings declares exclusiveContent", () => {
+        // Confetti follow-up (#1482): root-level `pluginManagement { repositories {
+        // exclusiveContent { ... } } }` (directly or via the `listOf(repositories,
+        // dependencyResolutionManagement.repositories).forEach` Confetti pattern) trips
+        // Gradle 9.3+'s "you cannot add repositories to 'buildscript.repositories'"
+        // validation. We gate just the repositories sub-block of our buildscript injection
+        // — the classpath dependency and the withPlugin apply hooks still run, so if the
+        // consumer's existing buildscript repositories can resolve the plugin coordinate,
+        // auto-inject still works. PR #1483 tried to dodge the validation by loading the
+        // plugin via initscript classpath but that broke AGP classloader visibility at
+        // runtime.
         const script = renderInitScript();
         assert.ok(
             script.includes(
@@ -185,9 +183,17 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
+                "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {",
+            ),
+            "expected the buildscript repositories add to be the only thing guarded — " +
+                "the classpath dep and apply hooks must stay reachable",
+        );
+        assert.ok(
+            !script.includes(
                 "if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects",
             ),
-            "expected the allprojects block to short-circuit when exclusiveContent is declared",
+            "the early-return for exclusiveContent is too aggressive; only the repositories add " +
+                "must be skipped",
         );
     });
 

@@ -80,26 +80,28 @@ internal fun renderInitScript(pluginVersion: String): String =
 // user adds `id("ee.schimke.composeai.preview")` to that module's plugins {}
 // block themselves — we just no longer apply it implicitly.
 //
-// Auto-inject is *also* suppressed when the consumer's settings file declares
-// `exclusiveContent { ... }` inside `pluginManagement { repositories { ... } }`
-// (or shares its repos with `dependencyResolutionManagement` so the same
-// declaration applies — the Confetti shape). Gradle 9.3+ rejects adding to
-// `buildscript.repositories` once exclusiveContent is in
-// `settings.pluginManagement.repositories`, so the `allprojects { buildscript {
-// repositories { ... } } }` injection below would fail every project's
-// configuration with `When using exclusive repository content in
-// 'settings.pluginManagement.repositories', you cannot add repositories to
-// 'buildscript.repositories'.` (issues #1470, #1482). PR #1483 tried switching
-// the plugin load to init-script classpath to dodge this, but that breaks
-// AGP-touching plugin code at runtime — our plugin references
-// `AndroidComponentsExtension` etc. directly, and an init-script-loaded plugin
-// sits on a *sibling* classloader of AGP, so the JVM throws
-// `NoClassDefFoundError` the moment any AGP-aware code path runs. The current
-// fix instead detects the exclusiveContent shape and degrades the auto-inject
-// for that build to a no-op — the warning emitted by the CLI / extension
-// (`plugin not applied; running via auto-inject`) keeps directing users to
-// the manual `plugins { id("ee.schimke.composeai.preview") version "X" }`
-// workaround.
+// When the consumer's settings file declares `exclusiveContent { ... }`
+// inside `pluginManagement { repositories { ... } }` (or shares its repos
+// with `dependencyResolutionManagement` so the same declaration applies
+// — the Confetti shape), Gradle 9.3+ rejects *adding* to
+// `buildscript.repositories` from any project (issues #1470, #1482). We
+// detect that shape and skip our own `buildscript.repositories` add — but
+// keep adding the classpath dependency and registering the apply hooks.
+// If the consumer's existing buildscript repositories can resolve the
+// plugin coordinate (cached, or declared in their own
+// `buildscript { repositories { ... } }`), auto-inject still works.
+// Otherwise Gradle fails naturally with a clear "Could not resolve"
+// message and the user's escape hatch is the documented manual
+// `plugins { id("ee.schimke.composeai.preview") version "X" }` apply.
+//
+// PR #1483 tried to dodge the validation by loading the plugin via init-
+// script classpath. That works for the validation but breaks every AGP-
+// touching code path at runtime — our plugin references
+// `AndroidComponentsExtension` etc. directly, and an init-script-loaded
+// plugin sits on a *sibling* classloader of AGP, so the JVM throws
+// `NoClassDefFoundError` the moment any AGP-aware path runs. The current
+// approach keeps the plugin on the project's buildscript classloader so
+// AGP visibility stays intact.
 
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
@@ -359,15 +361,6 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
-    // repositories { ... } }`, Gradle 9.3+ rejects any attempt to add to
-    // `buildscript.repositories` from any project — so we have to skip the entire injection
-    // and the apply hooks that depend on it. The CLI's "plugin not applied" warning still
-    // fires, directing the user to apply the plugin manually via
-    // `plugins { id("ee.schimke.composeai.preview") version "X" }`. This is the documented
-    // fallback for the Confetti shape (issues #1470, #1482); auto-inject can't help there
-    // without breaking AGP classloader visibility (the failed approach from PR #1483).
-    if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects
     // Skip BOTH the buildscript classpath injection AND the apply hooks for KMP-Android
     // modules. Doing only one half leaves the other half active: skipping the classpath
     // injection alone still fires the withPlugin hooks (which then fail to find the plugin
@@ -378,11 +371,23 @@ allprojects {
 
     if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
-            repositories {
-                gradlePluginPortal()
-                mavenCentral()
-                google()
-                if (useMavenLocal) mavenLocal()
+            // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
+            // repositories { ... } }`, Gradle 9.3+ rejects any attempt to *add* repositories to
+            // `buildscript.repositories` from any project (issues #1470, #1482). We still add
+            // the classpath dependency though — if the consumer has their own
+            // `buildscript { repositories { ... } }` block declaring a repo that hosts the
+            // plugin coordinate (gradlePluginPortal / mavenCentral / google), or has a cached
+            // copy locally, resolution can still succeed and auto-inject continues to work.
+            // When it can't resolve, Gradle fails the build naturally with a clear
+            // "Could not resolve" error; the user's escape hatch is to apply the plugin
+            // manually via `plugins { id("ee.schimke.composeai.preview") version "X" }`.
+            if (!composeAiPreviewSettingsHasExclusiveContent) {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                    google()
+                    if (useMavenLocal) mavenLocal()
+                }
             }
             dependencies {
                 add(

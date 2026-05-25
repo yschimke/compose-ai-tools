@@ -725,17 +725,20 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `init script skips auto-inject when settings declares exclusiveContent in pluginManagement`() {
-    // Successor to PR #1483 (reverted): when `pluginManagement.repositories` in the *root*
-    // build's settings file declares `exclusiveContent { ... }`, Gradle 9.3+ rejects
-    // `allprojects { buildscript { repositories { ... } } }` injection. The included-build
-    // guard from #1470 covers only the composite-included case; the root-build case (Confetti
-    // `main`) still tripped the validation. We can't dodge it by loading the plugin via
-    // initscript classpath either (the failed approach from #1483 — the plugin lives on a
-    // sibling classloader of AGP and immediately `NoClassDefFoundError`s on AGP types). The
-    // current fix detects exclusiveContent in `pluginManagement` and short-circuits the entire
-    // `allprojects` block, degrading auto-inject to a no-op for that build. The CLI's existing
-    // "plugin not applied" warning then nudges the user toward applying the plugin manually.
+  fun `init script skips only the buildscript repositories add when settings declares exclusiveContent`() {
+    // Successor to PR #1483 (reverted): when `pluginManagement.repositories` in the settings
+    // file declares `exclusiveContent { ... }` (the Confetti shape, issues #1470/#1482), Gradle
+    // 9.3+ rejects *adding* to `buildscript.repositories` — but adding to
+    // `buildscript.dependencies.classpath` is still fine. So we gate just the repositories
+    // sub-block and keep the classpath dependency + apply hooks: if the consumer's existing
+    // buildscript repositories can resolve the plugin coordinate (cached locally, or declared
+    // in their own `buildscript { repositories { ... } }`), auto-inject still works. Otherwise
+    // Gradle fails naturally with a clear "Could not resolve" message.
+    //
+    // We *cannot* dodge the validation by loading the plugin via initscript classpath (the
+    // failed approach from #1483 — the plugin lives on a sibling classloader of AGP and
+    // immediately `NoClassDefFoundError`s on AGP types). Keeping the plugin on the project's
+    // buildscript classloader preserves AGP visibility.
     val script = renderInitScript("0.11.8")
     assertTrue(
       script.contains("var composeAiPreviewSettingsHasExclusiveContent: Boolean = false"),
@@ -754,8 +757,17 @@ class AutoInjectTest {
       "expected settingsEvaluated to populate the flag from the scanner",
     )
     assertTrue(
+      script.contains(
+        "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {"
+      ),
+      "expected the buildscript repositories add to be guarded — must keep the dependency add " +
+        "and the apply hooks reachable when exclusiveContent is present",
+    )
+    assertFalse(
       script.contains("if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects"),
-      "expected the allprojects block to short-circuit when exclusiveContent is declared",
+      "the early-return for exclusiveContent is too aggressive — it throws away the classpath " +
+        "dep and apply hooks, but those can still work via the consumer's existing buildscript " +
+        "repositories. Only the repositories add must be skipped.",
     )
   }
 

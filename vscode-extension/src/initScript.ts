@@ -254,16 +254,19 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // Skip when settings declare exclusiveContent inside pluginManagement.repositories — see
-    // composeAiPreviewSettingsDeclaresExclusiveContent above for the rationale (issue #1482).
-    if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects
     if (projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
-            repositories {
-                gradlePluginPortal()
-                mavenCentral()
-                google()
-                if (useMavenLocal) mavenLocal()
+            // When the settings file declares exclusiveContent in pluginManagement.repositories,
+            // Gradle 9.3+ rejects *adding* to buildscript.repositories (issue #1482). Skip the
+            // repos add but keep the classpath dep — if the consumer's existing buildscript
+            // repositories can resolve the plugin coordinate, auto-inject still works.
+            if (!composeAiPreviewSettingsHasExclusiveContent) {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                    google()
+                    if (useMavenLocal) mavenLocal()
+                }
             }
             dependencies {
                 add(
