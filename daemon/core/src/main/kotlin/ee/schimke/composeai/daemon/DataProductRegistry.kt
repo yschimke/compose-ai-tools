@@ -117,6 +117,18 @@ interface DataProductRegistry {
   fun onUnsubscribe(previewId: String, kind: String) {}
 
   /**
+   * Renderer-mode tag the dispatcher should stamp into a render when [kind] has at least one sticky
+   * subscription for the target preview. Returning a non-null value asks the renderer to run in
+   * that mode (e.g. `"a11y"` enables ATF + hierarchy capture). Returning `null` — the default —
+   * means "no special mode required, render with the standard pipeline."
+   *
+   * The dispatcher calls this with kinds the producer advertises in [capabilities]; producers can
+   * return `null` for kinds whose data is harvested opportunistically without a mode switch. See
+   * [JsonRpcServer.subscriptionDrivenRenderMode] for the resolution rule.
+   */
+  fun renderModeFor(kind: String): String? = null
+
+  /**
    * Tagged outcome of a [fetch]. The dispatcher maps each case to its wire-error counterpart in
    * `JsonRpcServer.handleDataFetch`.
    */

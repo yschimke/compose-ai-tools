@@ -229,6 +229,15 @@ class AccessibilityDataProductRegistry(private val rootDir: File) :
   override fun missingOutcome(previewId: String, kind: String): DataProductRegistry.Outcome =
     DataProductRegistry.Outcome.RequiresRerender("a11y")
 
+  /**
+   * Every advertised kind here is gated on the renderer's a11y mode (`writeArtifacts` only fires
+   * when `effectiveRunAccessibility` is true) — so a sticky subscription for any of them implies
+   * the next render must run with mode=a11y. Returning the mode from the producer puts the
+   * mapping next to the artefacts it produces; [JsonRpcServer.subscriptionDrivenRenderMode]
+   * routes through the registry instead of pattern-matching on the kind string.
+   */
+  override fun renderModeFor(kind: String): String? = if (isKnown(kind)) "a11y" else null
+
   /** The overlay kind is a PNG — never parse it as JSON, even on `inline = true`. */
   override fun allowInlineUpgrade(kind: String): Boolean =
     kind != AccessibilityDataProducer.KIND_OVERLAY

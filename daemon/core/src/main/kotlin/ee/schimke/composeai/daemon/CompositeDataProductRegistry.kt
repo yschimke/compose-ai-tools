@@ -63,4 +63,7 @@ class CompositeDataProductRegistry(private val registries: List<DataProductRegis
   override fun onUnsubscribe(previewId: String, kind: String) {
     registries.firstOrNull { it.isKnown(kind) }?.onUnsubscribe(previewId, kind)
   }
+
+  override fun renderModeFor(kind: String): String? =
+    registries.firstOrNull { it.isKnown(kind) }?.renderModeFor(kind)
 }

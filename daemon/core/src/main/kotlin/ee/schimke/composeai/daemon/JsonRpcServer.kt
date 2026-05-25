@@ -1034,17 +1034,18 @@ class JsonRpcServer(
 
   /**
    * D2.2 — pick the renderer-mode tag implied by [previewId]'s active subscriptions, or `null` if
-   * no subscription demands a mode. Today only the `a11y/...` kind family maps to a mode
-   * (`"a11y"`); future producers that need sticky subscription-driven render modes can extend by
-   * introducing their own kind prefix → mode mapping. Stays in [JsonRpcServer] (rather than each
-   * producer registry) so the dispatcher owns "what mode does the renderer need next" the same way
-   * it owns "which kinds are advertised."
+   * no subscription demands a mode. The dispatcher asks each subscribed kind's owning registry via
+   * [DataProductRegistry.renderModeFor] — producers declare which kinds need a mode switch next to
+   * the artefacts they produce, so adding a new mode-driving family (e.g. layout inspector) means
+   * an override on the contributing producer, not a new branch here. Returns the first non-null
+   * mode encountered; multi-mode reconciliation isn't a real scenario yet (a11y is the only mode in
+   * flight) so first-wins keeps the contract simple.
    */
   private fun subscriptionDrivenRenderMode(previewId: String): String? {
     val kinds = subscriptions.kindsFor(previewId)
     if (kinds.isEmpty()) return null
-    if (kinds.any { it.startsWith("a11y/") }) return "a11y"
-    return null
+    val products = extensions.publicDataProducts()
+    return kinds.firstNotNullOfOrNull { kind -> products.renderModeFor(kind) }
   }
 
   private val renderResultsQueue = LinkedBlockingQueue<Any>()
