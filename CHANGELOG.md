@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.7](https://github.com/yschimke/compose-ai-tools/compare/v0.11.6...v0.11.7) (2026-05-25)
+
+
+### Features
+
+* add skip-render mode for non-Gradle build systems ([#1476](https://github.com/yschimke/compose-ai-tools/issues/1476)) ([631e269](https://github.com/yschimke/compose-ai-tools/commit/631e26944264ea1c52fb6a16f40ac8eea964c16c))
+
+
+### Bug Fixes
+
+* guard AmbientPreviewOverrideExtension and AmbientInputDispatchOb… ([#1482](https://github.com/yschimke/compose-ai-tools/issues/1482)) ([73fc992](https://github.com/yschimke/compose-ai-tools/commit/73fc99293d29d935c8222e9b4cad3de269424e25))
+* handle missing ambient connector in wear sandbox bootstrap ([#1479](https://github.com/yschimke/compose-ai-tools/issues/1479)) ([8efff66](https://github.com/yschimke/compose-ai-tools/commit/8efff663898f8d458ffadfba5b0e14e994dac70b))
+* improve kotlin file detection during extension activation ([#1481](https://github.com/yschimke/compose-ai-tools/issues/1481)) ([40d9aff](https://github.com/yschimke/compose-ai-tools/commit/40d9affa79564d7c0e52232f9b59278896551794))
+* load compose-preview plugin via initscript classpath instead of buildscript injection ([#1483](https://github.com/yschimke/compose-ai-tools/issues/1483)) ([8f091ba](https://github.com/yschimke/compose-ai-tools/commit/8f091bac1d391d343a12ad4da19dc0cfc6bf3afe))
+* preserve gradle args in compose preview test mode ([#1478](https://github.com/yschimke/compose-ai-tools/issues/1478)) ([14168b6](https://github.com/yschimke/compose-ai-tools/commit/14168b69bc4d07e0bffb2f2819194284ac8e16b3))
+
 ## [0.11.6](https://github.com/yschimke/compose-ai-tools/compare/v0.11.5...v0.11.6) (2026-05-25)
 
 
