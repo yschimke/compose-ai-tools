@@ -254,9 +254,24 @@ describeE2E("Compose Preview cached preload on module switch", function () {
         // `showTextDocument` rather than `triggerRefresh` because the
         // production preload path hangs off `onDidChangeActiveTextEditor`,
         // which only fires for actual editor focus changes.
-        await vscode.window.showTextDocument(vscode.Uri.file(cmpKotlinFile), {
-            preview: false,
-        });
+        //
+        // Force the document's `languageId` to "kotlin" before showing
+        // it. The production handler at extension.ts:1788 bails out
+        // unless `editor.document.languageId === "kotlin"`. The test
+        // electron host only loads `compose-preview` + the
+        // `fake-vscode-gradle` stub — neither contributes a Kotlin
+        // language — so `.kt` files resolve to a non-`"kotlin"` id and
+        // the preload path is never entered. Setting the languageId
+        // *before* `showTextDocument` matters: the editor-change event
+        // reads the document's languageId at fire time, so a
+        // post-show `setTextDocumentLanguage` would lose the race.
+        const cmpDoc = await vscode.workspace.openTextDocument(
+            vscode.Uri.file(cmpKotlinFile),
+        );
+        if (cmpDoc.languageId !== "kotlin") {
+            await vscode.languages.setTextDocumentLanguage(cmpDoc, "kotlin");
+        }
+        await vscode.window.showTextDocument(cmpDoc, { preview: false });
         // Let the cmp activation settle (preload + refresh kickoff) so
         // its in-flight refresh isn't dangling when we switch. 1s is
         // generous — the preload itself is <100ms; the refresh
@@ -266,9 +281,13 @@ describeE2E("Compose Preview cached preload on module switch", function () {
 
         api.resetMessages();
         const switchedAt = Date.now();
-        await vscode.window.showTextDocument(vscode.Uri.file(wearKotlinFile), {
-            preview: false,
-        });
+        const wearDoc = await vscode.workspace.openTextDocument(
+            vscode.Uri.file(wearKotlinFile),
+        );
+        if (wearDoc.languageId !== "kotlin") {
+            await vscode.languages.setTextDocumentLanguage(wearDoc, "kotlin");
+        }
+        await vscode.window.showTextDocument(wearDoc, { preview: false });
 
         // Window the preload (+ updateImage + webview ack) must land
         // inside after the editor switch. 5s was the original target

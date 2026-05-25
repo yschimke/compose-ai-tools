@@ -233,6 +233,15 @@ export class LiveDaemonScheduler implements DaemonScheduler {
      *  Stops the per-render ENOENT spam when the daemon (B1.5) emits
      *  synthetic `daemon-stub-N.png` paths that don't exist on disk. */
     private warnedStubModules = new Set<string>();
+    /**
+     * In-flight `warmModule` promises per module. Concurrent callers
+     * coalesce onto the same promise so a second refresh that arrives
+     * mid-bootstrap doesn't start a second `composePreviewDaemonStart`
+     * (which the first invocation would then cancel). Cleared on settle so
+     * a later call — for instance, the retry after a cancellation — starts
+     * a fresh warm rather than getting a stale rejected promise.
+     */
+    private readonly warmsInFlight = new Map<string, Promise<boolean>>();
 
     constructor(
         private readonly gate: DaemonGate,
@@ -274,6 +283,32 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         module: ModuleInfo,
         progress?: WarmProgress,
     ): Promise<boolean> {
+        const key = module.modulePath;
+        const existing = this.warmsInFlight.get(key);
+        if (existing) {
+            if (this.gate.isDaemonReady(key)) {
+                progress?.("ready");
+            }
+            return existing;
+        }
+        const promise = this.warmModuleInner(
+            gradleService,
+            module,
+            progress,
+        ).finally(() => {
+            if (this.warmsInFlight.get(key) === promise) {
+                this.warmsInFlight.delete(key);
+            }
+        });
+        this.warmsInFlight.set(key, promise);
+        return promise;
+    }
+
+    private async warmModuleInner(
+        gradleService: GradleService,
+        module: ModuleInfo,
+        progress?: WarmProgress,
+    ): Promise<boolean> {
         if (this.gate.isDaemonReady(module.modulePath)) {
             progress?.("ready");
             return true;
@@ -291,14 +326,33 @@ export class LiveDaemonScheduler implements DaemonScheduler {
                     "running composePreviewDaemonStart",
             );
         }
-        try {
-            progress?.("bootstrapping");
-            await gradleService.runDaemonBootstrap(module);
-        } catch (err) {
-            this.logger.appendLine(
-                `[daemon] bootstrap task failed for ${module.modulePath}: ${(err as Error).message}`,
-            );
-            throw err;
+        // Bootstrap may race with sibling refreshes that fire
+        // `gradleService.cancel(...)`. The cancel pool spares
+        // `composePreviewDaemonStart`, but extension shutdown / file-watcher
+        // churn / Tooling-API timeouts can still cancel mid-flight. When that
+        // happens the bootstrap throws "was cancelled" and the caller would
+        // otherwise be stuck without a descriptor until the user manually
+        // re-triggered warm. Retry once on cancellation so a transient kill
+        // doesn't strand the daemon for the rest of the session.
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                progress?.("bootstrapping");
+                await gradleService.runDaemonBootstrap(module);
+                break;
+            } catch (err) {
+                const message = (err as Error).message ?? String(err);
+                const isCancellation = /cancel/i.test(message);
+                if (isCancellation && attempt === 0) {
+                    this.logger.appendLine(
+                        `[daemon] bootstrap cancelled for ${module.modulePath}: ${message}; retrying`,
+                    );
+                    continue;
+                }
+                this.logger.appendLine(
+                    `[daemon] bootstrap task failed for ${module.modulePath}: ${message}`,
+                );
+                throw err;
+            }
         }
         progress?.("spawning");
         let ok = false;
