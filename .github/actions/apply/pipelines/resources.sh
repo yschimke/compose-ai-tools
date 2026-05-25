@@ -72,6 +72,11 @@ if [ "$MODE" = "baseline" ]; then
 else
   # comment mode — fetch resource baselines tree
   mkdir -p _resource_baselines
+  # `_baselines/` is shared with the compose pipeline (it holds
+  # `resource-baselines.json` alongside `baselines.json`). Create it up
+  # front so the `git show` redirect below doesn't fail when compose is
+  # skipped (e.g. `only: resources`).
+  mkdir -p _baselines
   if git ls-remote --exit-code origin "$RESOURCE_BRANCH" >/dev/null 2>&1; then
     git fetch origin "$RESOURCE_BRANCH"
     git show "origin/${RESOURCE_BRANCH}:resource-baselines.json" \
@@ -86,11 +91,6 @@ else
     "refs/heads/${RESOURCE_BRANCH}" | awk '{print $1}')
   [ -z "$RESOURCE_BASE_SHA" ] && RESOURCE_BASE_SHA="$RESOURCE_BRANCH"
   echo "$RESOURCE_BASE_SHA" > _resource_base_sha
-
-  # `_baselines/` dir is shared with the compose pipeline for the
-  # resource-baselines.json fallback path. If compose didn't run we still
-  # need the dir present.
-  mkdir -p _baselines
 
   python3 "$ACTION_PATH/../lib/compare-previews.py" copy-changed-resources \
     _resources.json \

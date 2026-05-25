@@ -158,12 +158,14 @@ runs:
         catalog-key: ${{ inputs.catalog-key }}
 
     - name: Install perceptual-diff dependencies
-      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1'
+      if: steps.resolve.outputs.mode == 'comment' && (steps.resolve.outputs.compose == '1' || steps.resolve.outputs.resources == '1')
       shell: bash
       run: |
         # pixelmatch collapses sub-pixel rounded-corner noise that Compose's
-        # stitched-LONG renderer can emit between runs (issue #190). Install
-        # failure falls back to the strict sha-only comparison.
+        # stitched-LONG renderer can emit between runs (issue #190); the
+        # resource pipeline uses the same fallback for adaptive-icon
+        # composite jitter. Install failure falls back to the strict
+        # sha-only comparison.
         python3 -m pip install --quiet 'pixelmatch==0.4.0' 'Pillow>=10' \
           || echo "pixelmatch install failed; falling back to strict-bytes diff" >&2
 
@@ -377,21 +379,39 @@ runs:
           --head-ref "$HEAD_REF" \
           > _comment_body.md
 
-        # Resources sibling comment.
-        if [ -f _resources.json ]; then
-          RESOURCE_BASE_REF=$(cat _resource_base_sha 2>/dev/null || echo "")
-          [ -z "$RESOURCE_BASE_REF" ] && RESOURCE_BASE_REF="$BASE_REF"
-          RESOURCE_HEAD_REF=$(cat _resource_head_sha 2>/dev/null || echo "")
-          [ -z "$RESOURCE_HEAD_REF" ] && RESOURCE_HEAD_REF="$RESOURCE_HEAD_BRANCH"
-          python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
-            _resources.json \
-            --baselines _baselines/resource-baselines.json \
-            --baseline-renders _resource_baselines/renders \
-            --repo "$REPO" \
-            --base-ref "$RESOURCE_BASE_REF" \
-            --head-ref "$RESOURCE_HEAD_REF" \
-            > _comment_body_resources.md
+    # Sibling step for the resources comment — separately gated on
+    # `resources == '1'` so `only: resources` runs still produce the
+    # resource sticky comment when compose is skipped.
+    - name: Generate resource PR comment body
+      if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.resources == '1'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        BASELINE_BRANCH: 'compose-preview/main'
+        RESOURCE_HEAD_BRANCH: 'compose-preview/resources/pr'
+      run: |
+        set -euo pipefail
+        if [ ! -f _resources.json ]; then
+          echo "resource comment: no _resources.json, skipping."
+          exit 0
         fi
+        # Fall back to BASELINE_BRANCH for the Before ref when the compose
+        # pipeline didn't populate _base_sha (resources-only runs).
+        BASE_REF=$(cat _base_sha 2>/dev/null || echo "")
+        [ -z "$BASE_REF" ] && BASE_REF="$BASELINE_BRANCH"
+        RESOURCE_BASE_REF=$(cat _resource_base_sha 2>/dev/null || echo "")
+        [ -z "$RESOURCE_BASE_REF" ] && RESOURCE_BASE_REF="$BASE_REF"
+        RESOURCE_HEAD_REF=$(cat _resource_head_sha 2>/dev/null || echo "")
+        [ -z "$RESOURCE_HEAD_REF" ] && RESOURCE_HEAD_REF="$RESOURCE_HEAD_BRANCH"
+        python3 "$ACTION_PATH/../lib/compare-previews.py" compare-resources \
+          _resources.json \
+          --baselines _baselines/resource-baselines.json \
+          --baseline-renders _resource_baselines/renders \
+          --repo "$REPO" \
+          --base-ref "$RESOURCE_BASE_REF" \
+          --head-ref "$RESOURCE_HEAD_REF" \
+          > _comment_body_resources.md
 
     - name: Post or update compose PR comment
       if: steps.resolve.outputs.mode == 'comment' && steps.resolve.outputs.compose == '1' && hashFiles('_comment_body.md') != ''
