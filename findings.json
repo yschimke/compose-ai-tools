@@ -2,6 +2,996 @@
   "entries": [
     {
       "annotatedBasename": "",
+      "cleanBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
+      "findings": [],
+      "functionName": "FocusOverlayPreview",
+      "module": "android-alpha",
+      "previewId": "com.example.samplealpha.FocusRingPreviewsKt.FocusOverlayPreview_Focus Overlay",
+      "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.png",
+      "findings": [],
+      "functionName": "FocusTraversalPreview",
+      "module": "android-alpha",
+      "previewId": "com.example.samplealpha.FocusRingPreviewsKt.FocusTraversalPreview_Focus Traversal",
+      "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_0.png",
+      "findings": [],
+      "functionName": "InsetFocusRingFanOutPreview",
+      "module": "android-alpha",
+      "previewId": "com.example.samplealpha.FocusRingPreviewsKt.InsetFocusRingFanOutPreview_Inset Focus Ring \u2014 fan-out",
+      "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "OpacityFocusPreview_Opacity_Focus.png",
+      "findings": [],
+      "functionName": "OpacityFocusPreview",
+      "module": "android-alpha",
+      "previewId": "com.example.samplealpha.FocusRingPreviewsKt.OpacityFocusPreview_Opacity Focus",
+      "sourceFile": "src/main/kotlin/com/example/samplealpha/FocusRingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
+      "findings": [],
+      "functionName": "BlueLabelPreview",
+      "module": "android-daemon-bench",
+      "previewId": "com.example.daemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
+      "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "GreenButtonPreview_GreenButton.png",
+      "findings": [],
+      "functionName": "GreenButtonPreview",
+      "module": "android-daemon-bench",
+      "previewId": "com.example.daemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
+      "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RedSquarePreview_RedSquare.png",
+      "findings": [],
+      "functionName": "RedSquarePreview",
+      "module": "android-daemon-bench",
+      "previewId": "com.example.daemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
+      "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RowPreview_Row.png",
+      "findings": [],
+      "functionName": "RowPreview",
+      "module": "android-daemon-bench",
+      "previewId": "com.example.daemonbench.BenchPreviewsKt.RowPreview_Row",
+      "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "StackPreview_Stack.png",
+      "findings": [],
+      "functionName": "StackPreview",
+      "module": "android-daemon-bench",
+      "previewId": "com.example.daemonbench.BenchPreviewsKt.StackPreview_Stack",
+      "sourceFile": "src/main/kotlin/com/example/daemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "LibraryBoxPreview_Library_Box.png",
+      "findings": [],
+      "functionName": "LibraryBoxPreview",
+      "module": "android-library",
+      "previewId": "com.example.samplelibrary.LibraryPreviewsKt.LibraryBoxPreview_Library Box",
+      "sourceFile": "src/main/kotlin/com/example/samplelibrary/LibraryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "LibraryGreetingPreview_Library_Greeting.png",
+      "findings": [],
+      "functionName": "LibraryGreetingPreview",
+      "module": "android-library",
+      "previewId": "com.example.samplelibrary.LibraryPreviewsKt.LibraryGreetingPreview_Library Greeting",
+      "sourceFile": "src/main/kotlin/com/example/samplelibrary/LibraryPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square.png",
+      "findings": [],
+      "functionName": "MainSquarePreview",
+      "module": "android-screenshot-test",
+      "previewId": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroidscreenshot/MainPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.ActionsPreview_Actions.png",
+      "findings": [],
+      "functionName": "ActionsPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ActionsPreview_Actions",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.BadButtonPreview_Bad_Button.png",
+      "findings": [],
+      "functionName": "BadButtonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png",
+      "findings": [],
+      "functionName": "BigPictureStylePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.BigPictureStylePreview_Big picture",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
+      "findings": [],
+      "functionName": "BigTextVariantsPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationVariantPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.BlueBoxPreview_Blue_Box.png",
+      "findings": [],
+      "functionName": "BlueBoxPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.BlueBoxPreview_Blue Box",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "BodyTextPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.BodyTextPreview_Body Text",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera_permission_denied.png",
+      "findings": [],
+      "functionName": "CameraPermissionDeniedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera permission \u2014 denied",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera_permission_granted.png",
+      "findings": [],
+      "functionName": "CameraPermissionGrantedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera permission \u2014 granted",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PermissionGatedPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle_Button_Transparent.png",
+      "findings": [],
+      "functionName": "CircleButtonTransparentPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle Button Transparent",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TransparentBackgroundPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface_collapsed.png",
+      "findings": [],
+      "functionName": "CollapsedSurfacePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface \u2014 collapsed",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.ConfigProbePreview_Default.png",
+      "findings": [],
+      "functionName": "ConfigProbePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.ConfigProbePreview_Default",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png",
+      "findings": [],
+      "functionName": "DecoratedCustomViewPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated custom view",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
+      "findings": [],
+      "functionName": "DeviceFontFamilyShowcasePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.DeviceFontFamilyShowcasePreview_Device Font Family Showcase",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface_expanded.png",
+      "findings": [],
+      "functionName": "ExpandedSurfacePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface \u2014 expanded",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
+      "findings": [],
+      "functionName": "FallbackCoverageSpecimenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback coverage specimen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TruncationPreviewsKt.FitsInBoundsPreview.png",
+      "findings": [],
+      "functionName": "FitsInBoundsPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.FitsInBoundsPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily_specimen.png",
+      "findings": [],
+      "functionName": "FontFamilySpecimenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily specimen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
+      "findings": [],
+      "functionName": "GlanceWeatherWidgetPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance widget \u2014 4\u00d72",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
+      "findings": [],
+      "functionName": "GoogleFontsShowcasePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.GoogleFontsShowcasePreview_Google Fonts Showcase",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.GreenBoxPreview_Green_Box.png",
+      "findings": [],
+      "functionName": "GreenBoxPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.GreenBoxPreview_Green Box",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.GreetingPreview_Default.png",
+      "findings": [],
+      "functionName": "GreetingPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.GreetingPreview_Default",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.GroupedSummaryPreview_Edge_grouped_summary.png",
+      "findings": [],
+      "functionName": "GroupedSummaryPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.GroupedSummaryPreview_Edge \u2014 grouped summary",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface_heads-up.png",
+      "findings": [],
+      "functionName": "HeadsUpSurfacePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface \u2014 heads-up",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware_list_keyboard_hidden.png",
+      "findings": [],
+      "functionName": "ImeAwareListHiddenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware list \u2014 keyboard hidden",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware_list_keyboard_up.png",
+      "findings": [],
+      "functionName": "ImeAwareListShownPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware list \u2014 keyboard up",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardImeInsetsPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
+      "findings": [],
+      "functionName": "InboxStylePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.InboxStylePreview_Inbox style",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+      "findings": [],
+      "functionName": "KeyboardDemoPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/KeyboardDemoPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher_widget_1_1.png",
+      "findings": [],
+      "functionName": "LauncherWidget1x1Preview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher widget \u2014 1\u00d71",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher_widget_4_2.png",
+      "findings": [],
+      "functionName": "LauncherWidget4x2Preview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher widget \u2014 4\u00d72",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
+      "findings": [],
+      "functionName": "LauncherWidgetClampedPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher widget \u2014 clamped to 4\u00d75",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
+      "findings": [],
+      "functionName": "LauncherWidgetResize1x1To4x2Preview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher widget \u2014 resize 1\u00d71 \u2192 4\u00d72",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.LoadingPreview_Loading_Spinner.png",
+      "findings": [],
+      "functionName": "LoadingPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.LoadingPreview_Loading Spinner",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.LongTitlePreview_Edge_long_title.png",
+      "findings": [],
+      "functionName": "LongTitlePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.LongTitlePreview_Edge \u2014 long title",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.ManyActionsPreview_Edge_many_actions.png",
+      "findings": [],
+      "functionName": "ManyActionsPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ManyActionsPreview_Edge \u2014 many actions",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.MediaStylePreview_Media_style.png",
+      "findings": [],
+      "functionName": "MediaStylePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MediaStylePreview_Media style",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png",
+      "findings": [],
+      "functionName": "MessagingStylePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png",
+      "findings": [],
+      "functionName": "NavHostHomePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NavHostPreviewKt.NavHostHomePreview_NavHost \u2014 Home",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NavHostPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.NoLargeIconPreview_Edge_no_large_icon.png",
+      "findings": [],
+      "functionName": "NoLargeIconPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoLargeIconPreview_Edge \u2014 no large icon",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NotificationStyleGalleryKt.NoTextPreview_Edge_no_text.png",
+      "findings": [],
+      "functionName": "NoTextPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoTextPreview_Edge \u2014 no text",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/NotificationStyleGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.PhoneGreetingPreview_Phone.png",
+      "findings": [],
+      "functionName": "PhoneGreetingPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.PhoneGreetingPreview_Phone",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": "spec:width=411dp,height=891dp"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.Pixel8SystemUiPreview_Pixel_8.png",
+      "findings": [],
+      "functionName": "Pixel8SystemUiPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.Pixel8SystemUiPreview_Pixel 8",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": "pixel_8"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleAccent_accent.png",
+      "findings": [],
+      "functionName": "PseudoSampleAccent",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleAccent_accent",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleBidi_bidi.png",
+      "findings": [],
+      "functionName": "PseudoSampleBidi",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleBidi_bidi",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleDefault_default.png",
+      "findings": [],
+      "functionName": "PseudoSampleDefault",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PseudolocalePreviewsKt.PseudoSampleDefault_default",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.RedBoxPreview_Red_Box.png",
+      "findings": [],
+      "functionName": "RedBoxPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.RedBoxPreview_Red Box",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.png",
+      "findings": [],
+      "functionName": "RedToBlueScrollGifPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/ScrollPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
+      "findings": [],
+      "functionName": "RemoteViewsWeatherWidgetPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews widget \u2014 4\u00d72",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/AppWidgetPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview.png",
+      "findings": [],
+      "functionName": "SemanticsClickableButtonPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview.png",
+      "findings": [],
+      "functionName": "SemanticsContentDescriptionPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview.png",
+      "findings": [],
+      "functionName": "SemanticsMergeDescendantsPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview.png",
+      "findings": [],
+      "functionName": "SemanticsTestTagPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SemanticsCoreFieldsPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.png",
+      "findings": [],
+      "functionName": "SettingsListScrollGifPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SettingsListScrollGifPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
+      "findings": [],
+      "functionName": "SoftKeyboardIdlePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft Keyboard \u2014 idle",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SoftKeyboardAnimatedPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
+      "findings": [],
+      "functionName": "SpinnerTimelinePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewsKt.SpinnerTimelinePreview_Spinner Timeline",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SplashScreenGalleryKt.SplashDarkThemePreview_Splash_dark_theme.png",
+      "findings": [],
+      "functionName": "SplashDarkThemePreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashDarkThemePreview_Splash \u2014 dark theme",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SplashScreenGalleryKt.SplashIconOnlyPreview_Splash_icon_only.png",
+      "findings": [],
+      "functionName": "SplashIconOnlyPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconOnlyPreview_Splash \u2014 icon only",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
+      "findings": [],
+      "functionName": "SplashIconWithBackgroundPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash \u2014 icon with background ring",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SplashScreenGalleryKt.SplashWithBrandingPreview_Splash_icon_with_branding.png",
+      "findings": [],
+      "functionName": "SplashWithBrandingPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.SplashScreenGalleryKt.SplashWithBrandingPreview_Splash \u2014 icon with branding",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/SplashScreenGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TruncationPreviewsKt.TruncatedHeightClipPreview.png",
+      "findings": [],
+      "functionName": "TruncatedHeightClipPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedHeightClipPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview.png",
+      "findings": [],
+      "functionName": "TruncatedMaxLinesEllipsisPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TruncationPreviewsKt.TruncatedWidthNoWrapPreview.png",
+      "findings": [],
+      "functionName": "TruncatedWidthNoWrapPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TruncationPreviewsKt.TruncatedWidthNoWrapPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TruncationPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "TypographyGalleryKt.TypographySpecimenPreview_Typography_specimen.png",
+      "findings": [],
+      "functionName": "TypographySpecimenPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.TypographyGalleryKt.TypographySpecimenPreview_Typography specimen",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "UserCardPreview",
+      "module": "android",
+      "previewId": "com.example.sampleandroid.PreviewParameterPreviewsKt.UserCardPreview_User Card",
+      "sourceFile": "src/main/kotlin/com/example/sampleandroid/PreviewParameterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SharedBlueBoxPreview_Blue.png",
+      "findings": [],
+      "functionName": "SharedBlueBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue",
+      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "SharedRedBoxPreview.png",
+      "findings": [],
+      "functionName": "SharedRedBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview",
+      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.AppPreview.png",
+      "findings": [],
+      "functionName": "AppPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.AppPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.BlueBoxPreview_Blue_Box.png",
+      "findings": [],
+      "functionName": "BlueBoxPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PseudolocalePreviewsKt.CmpPseudoBidi_bidi.png",
+      "findings": [],
+      "functionName": "CmpPseudoBidi",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoBidi_bidi",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PseudolocalePreviewsKt.CmpPseudoDefault_default.png",
+      "findings": [],
+      "functionName": "CmpPseudoDefault",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+      "findings": [],
+      "functionName": "KeyboardDemoPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch_Drawing.png",
+      "findings": [],
+      "functionName": "MultiTouchDrawingPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch Drawing",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch_Drawing_seeded.png",
+      "findings": [],
+      "functionName": "MultiTouchDrawingSeededPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch Drawing \u2014 seeded",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PinchToZoomPreviewKt.PinchToZoomPreview_Pinch_To_Zoom.png",
+      "findings": [],
+      "functionName": "PinchToZoomPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.RedBoxPreview_Red_Box.png",
+      "findings": [],
+      "functionName": "RedBoxPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List.png",
+      "findings": [],
+      "functionName": "ScrollingListPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "SwatchPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PreviewsKt.WallpaperDemoPreview_Wallpaper_Demo.png",
+      "findings": [],
+      "functionName": "WallpaperDemoPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
+      "findings": [],
+      "functionName": "BlueLabelPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "GreenButtonPreview_GreenButton.png",
+      "findings": [],
+      "functionName": "GreenButtonPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RedSquarePreview_RedSquare.png",
+      "findings": [],
+      "functionName": "RedSquarePreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RowPreview_Row.png",
+      "findings": [],
+      "functionName": "RowPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RowPreview_Row",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "StackPreview_Stack.png",
+      "findings": [],
+      "functionName": "StackPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.StackPreview_Stack",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RemoteButtonEnabledPreview.png",
+      "findings": [],
+      "functionName": "RemoteButtonEnabledPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RemoteButtonWithBorderPreview.png",
+      "findings": [],
+      "functionName": "RemoteButtonWithBorderPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RemoteButtonWithNamedLabelPreview.png",
+      "findings": [],
+      "functionName": "RemoteButtonWithNamedLabelPreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RemoteButtonWithShapePreview.png",
+      "findings": [],
+      "functionName": "RemoteButtonWithShapePreview",
+      "module": "remotecompose",
+      "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview",
+      "sourceFile": "src/main/kotlin/com/example/sampleremotecompose/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview.png",
+      "findings": [],
+      "functionName": "SdkMatrixPreview",
+      "module": "sdk-matrix",
+      "previewId": "com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview",
+      "sourceFile": "src/main/kotlin/com/example/sdkmatrix/MatrixPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
@@ -11,7 +1001,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListGifPreview",
@@ -21,7 +1011,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListLongPreview",
@@ -31,7 +1021,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
@@ -41,7 +1031,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
       "cleanBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
       "findings": [],
       "functionName": "AmbientStatusAmbientPreview",
@@ -51,7 +1041,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
       "cleanBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
       "findings": [],
       "functionName": "AmbientStatusInteractivePreview",
@@ -61,9 +1051,17 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.a11y.png",
       "cleanBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "144,144,240,240",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.widget.Button"
+        }
+      ],
       "functionName": "BadWearButtonPreview",
       "module": "wear",
       "previewId": "com.example.samplewear.PreviewsKt.BadWearButtonPreview_Devices - Small Round",
@@ -71,7 +1069,7 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.a11y.png",
       "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
       "findings": [],
       "functionName": "ButtonPreview",
@@ -89,6 +1087,16 @@
       "previewId": "com.example.samplewear.PreviewsKt.CircularProgressIndicatorPreview_Devices - Large Round",
       "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt",
       "variant": "wearos_large_round"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "com.example.sample.PreviewsKt.StaticPreview.png",
+      "findings": [],
+      "functionName": "StaticPreview",
+      "module": "sample-module",
+      "previewId": "com.example.sample.PreviewsKt.StaticPreview",
+      "sourceFile": "com/example/sample/Previews.kt",
+      "variant": ""
     }
   ]
 }
