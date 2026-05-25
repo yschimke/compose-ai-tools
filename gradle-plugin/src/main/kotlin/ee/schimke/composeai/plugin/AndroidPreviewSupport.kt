@@ -314,6 +314,16 @@ internal object AndroidPreviewSupport {
     // `${variant}ScreenshotTestRuntimeClasspath` configuration we need.
     val screenshotTestEnabled = project.pluginManager.hasPlugin("com.android.compose.screenshot")
 
+    // `kotlin("multiplatform") + com.android.library` (issue #1492 / Confetti `:shared` shape):
+    // KGP creates per-target compile tasks like `compileDebugKotlinAndroid` instead of the plain
+    // `compileDebugKotlin` an android-library-only module exposes, and routes class output to
+    // `build/classes/kotlin/<targetName>/<variantName>/` rather than `build/tmp/kotlin-classes/…`.
+    // Both names / paths are added as candidates — whichever exists in the consumer's actual
+    // shape is picked up by `tasks.matching` / DiscoverPreviewsTask's silent skip-missing-dirs
+    // behaviour. The default `androidTarget()` name is "android"; consumers who renamed it
+    // (`androidTarget("foo")`) still need the workaround flagged in the issue.
+    val isKmp = project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+
     val sourceClassDirs =
       project.files(
         project.layout.buildDirectory.dir("tmp/kotlin-classes/$variantName"),
@@ -322,6 +332,9 @@ internal object AndroidPreviewSupport {
           "intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
         ),
       )
+    if (isKmp) {
+      sourceClassDirs.from(project.layout.buildDirectory.dir("classes/kotlin/android/$variantName"))
+    }
     if (screenshotTestEnabled) {
       sourceClassDirs.from(
         project.layout.buildDirectory.dir(
@@ -339,8 +352,16 @@ internal object AndroidPreviewSupport {
         project.configurations.findByName("${variantName}ScreenshotTestRuntimeClasspath")
       } else null
 
-    val mainCompileTaskName = "compile${capVariant}Kotlin"
-    val screenshotCompileTaskName = "compile${capVariant}ScreenshotTestKotlin"
+    val mainCompileTaskNames =
+      if (isKmp) listOf("compile${capVariant}Kotlin", "compile${capVariant}KotlinAndroid")
+      else listOf("compile${capVariant}Kotlin")
+    val screenshotCompileTaskNames =
+      if (isKmp)
+        listOf(
+          "compile${capVariant}ScreenshotTestKotlin",
+          "compile${capVariant}ScreenshotTestKotlinAndroid",
+        )
+      else listOf("compile${capVariant}ScreenshotTestKotlin")
     val discoverTask =
       ComposePreviewTasks.registerDiscoverTask(
         project,
@@ -349,10 +370,13 @@ internal object AndroidPreviewSupport {
         previewOutputDir,
         extension,
       ) {
-        dependsOn(mainCompileTaskName)
+        // Lazy `tasks.matching` rather than strict `dependsOn(taskName)` so KMP-Android modules
+        // (where `compileDebugKotlin` doesn't exist — only `compileDebugKotlinAndroid` does)
+        // don't crash whole-project listings at task-graph-build time. See issue #1492.
+        dependsOn(project.tasks.matching { it.name in mainCompileTaskNames })
         // No opt-in-extension wiring on `composePreviewDiscover` — a11y is daemon-only.
         if (screenshotTestEnabled) {
-          dependsOn(screenshotCompileTaskName)
+          dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->
             dependencyJars.from(
               stConfig.incoming.artifactView { attributes.attribute(artifactType, "jar") }.files
@@ -375,7 +399,7 @@ internal object AndroidPreviewSupport {
     ComposePreviewTasks.registerCompileOnlyTask(
       project,
       extension,
-      compileTaskNames = listOf(mainCompileTaskName),
+      compileTaskNames = mainCompileTaskNames,
     )
 
     // Writes the plugin-side compat findings (CompatRules) to
