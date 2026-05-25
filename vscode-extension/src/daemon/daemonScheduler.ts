@@ -96,6 +96,21 @@ export interface SchedulerEvents {
 const HEAVY_TIER_DEFAULT: RenderTier = "fast";
 
 /**
+ * Outcome of {@link DaemonScheduler.setDataProductSubscription}. The transition
+ * field reports whether the module crossed an a11y first-on / last-off
+ * boundary in this call; the panel uses it to gate a follow-up refresh that
+ * repaints with the freshly-arrived (or now-absent) data products.
+ */
+export interface DataProductSubscriptionResult {
+    a11yTransition: "enabled" | "disabled" | "unchanged";
+}
+
+/** Predicate: does this kind contribute to the module's a11y aggregate? */
+function isA11yKind(kind: string): boolean {
+    return kind.startsWith("a11y/");
+}
+
+/**
  * D2 — kinds the focus-mode "Show a11y overlay" button toggles. Pinned to the a11y producer
  * so the local finding + hierarchy overlays light up together; a future panel that wants to
  * subscribe to other kinds (`compose/recomposition`, `layout/inspector`) will export its own list.
@@ -154,12 +169,20 @@ export interface DaemonScheduler {
         visible: string[],
         predicted?: string[],
     ): Promise<void>;
+    /**
+     * Update one or more `(previewId, kind)` subscriptions for `module`.
+     * Returns whether the module's overall a11y enablement crossed a
+     * first-on / last-off boundary — callers (the panel) use that to
+     * decide whether to kick a follow-up refresh so the next render's
+     * data-product set is repainted. Non-a11y kinds never trip the
+     * transition; a no-op subscribe / unsubscribe returns `"unchanged"`.
+     */
     setDataProductSubscription(
         module: ModuleInfo,
         previewId: string,
         kinds: readonly string[],
         enabled: boolean,
-    ): Promise<void>;
+    ): Promise<DataProductSubscriptionResult>;
     /**
      * Resolves once every in-flight `data/subscribe` for [moduleId] has been
      * acknowledged by the daemon (or has settled — failures count as drained).
@@ -538,13 +561,14 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         previewId: string,
         kinds: readonly string[],
         enabled: boolean,
-    ): Promise<void> {
+    ): Promise<DataProductSubscriptionResult> {
+        const wasA11yActive = this.moduleHasA11ySubscription(module.modulePath);
         const client = await this.gate.getOrSpawn(
             module,
             this.daemonEvents(module.modulePath),
         );
         if (!client) {
-            return;
+            return { a11yTransition: "unchanged" };
         }
         let subscribedAny = false;
         for (const kind of kinds) {
@@ -604,6 +628,33 @@ export class LiveDaemonScheduler implements DaemonScheduler {
                     );
                 });
         }
+        const isA11yActive = this.moduleHasA11ySubscription(module.modulePath);
+        return {
+            a11yTransition:
+                wasA11yActive === isA11yActive
+                    ? "unchanged"
+                    : isA11yActive
+                      ? "enabled"
+                      : "disabled",
+        };
+    }
+
+    /**
+     * True when any `(previewId, a11y/*)` pair under [modulePath] is currently
+     * subscribed. Derived from {@link subscribedPairs} on every call so there's
+     * no separate aggregate to keep in sync.
+     */
+    private moduleHasA11ySubscription(modulePath: string): boolean {
+        const prefix = `${modulePath}::`;
+        for (const key of this.subscribedPairs) {
+            if (!key.startsWith(prefix)) continue;
+            const rest = key.slice(prefix.length);
+            const kindSep = rest.indexOf("::");
+            if (kindSep < 0) continue;
+            const kind = rest.slice(kindSep + 2);
+            if (isA11yKind(kind)) return true;
+        }
+        return false;
     }
 
     /**
@@ -892,8 +943,9 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         _previewId: string,
         _kinds: readonly string[],
         _enabled: boolean,
-    ): Promise<void> {
+    ): Promise<DataProductSubscriptionResult> {
         /* no-op: data extensions are disabled in minimal mode */
+        return { a11yTransition: "unchanged" };
     }
 
     async awaitPendingSubscribes(_moduleId: string): Promise<void> {

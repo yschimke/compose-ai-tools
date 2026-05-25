@@ -235,13 +235,6 @@ const registry = new PreviewRegistry();
 /** previewId → module, updated on every refresh. Used to look up the
  *  owning module when the webview posts a per-preview action. */
 const previewModuleMap = new Map<string, ModuleInfo>();
-/** modulePath → set of previewIds with at least one `a11y/*` data-extension
- *  subscription active. The webview chip toggle keeps this state so the
- *  daemon scheduler can attach (or stop attaching) the post-capture a11y
- *  walk on each preview's next render. The standalone Gradle render task
- *  no longer participates in a11y at all — production is daemon-only —
- *  so this map drives daemon subscriptions only, never gradle args. */
-const moduleA11ySubscriptions = new Map<string, Set<string>>();
 /**
  * previewId → latest Remote Compose override the panel pushed. The panel's
  * editable tab body posts `setRemoteComposeNamedValue` per cell change; we
@@ -5028,40 +5021,6 @@ async function handleLoadFontPreview(
 }
 
 /**
- * Updates `moduleA11ySubscriptions` for a chip toggle and reports whether
- * the module's overall a11y-enabled state changed. Non-a11y kinds always
- * return `"unchanged"`. The transition value tells the caller whether to
- * kick a panel refresh after the daemon-side subscription change — when
- * a11y first turns on / off for the module, the data-product set on the
- * next render is different, so the panel needs a fresh `refresh()` to
- * pull the new state. (a11y itself is enabled / disabled inside the
- * daemon; the gradle render task does not participate.)
- */
-function updateModuleA11ySubscription(
-    modulePath: string,
-    previewId: string,
-    kind: string,
-    enabled: boolean,
-): "enabled" | "disabled" | "unchanged" {
-    if (!kind.startsWith("a11y/")) return "unchanged";
-    let subs = moduleA11ySubscriptions.get(modulePath);
-    const wasActive = !!subs && subs.size > 0;
-    if (enabled) {
-        if (!subs) {
-            subs = new Set();
-            moduleA11ySubscriptions.set(modulePath, subs);
-        }
-        subs.add(previewId);
-    } else if (subs) {
-        subs.delete(previewId);
-        if (subs.size === 0) moduleA11ySubscriptions.delete(modulePath);
-    }
-    const isActive = (moduleA11ySubscriptions.get(modulePath)?.size ?? 0) > 0;
-    if (wasActive === isActive) return "unchanged";
-    return isActive ? "enabled" : "disabled";
-}
-
-/**
  * Bundle / focus-inspector data-extension toggle. Routes one or more
  * `(previewId, kind)` subscriptions through the daemon scheduler in a
  * single call so `data/subscribe` per kind is followed by exactly one
@@ -5128,22 +5087,6 @@ async function handleSetDataExtensionEnabled(
     if (filteredKinds.length === 0) {
         return;
     }
-    // Update the module's a11y tracker per-kind, but the
-    // first-on / last-off transition is what gates the follow-up
-    // refresh — collapse the per-kind verdicts into one. A bundle
-    // activation enables every a11y kind at once, so only the first
-    // kind in the batch can trip the transition; the rest stay
-    // "unchanged" and must not override that.
-    let a11yTransition: "enabled" | "disabled" | "unchanged" = "unchanged";
-    for (const kind of filteredKinds) {
-        const t = updateModuleA11ySubscription(
-            moduleId.modulePath,
-            previewId,
-            kind,
-            enabled,
-        );
-        if (t !== "unchanged") a11yTransition = t;
-    }
     // Start the progress indicator BEFORE awaiting the subscribe call so
     // the user sees feedback the instant they click. The tracker resolves
     // on `onDataProductsAttached`, on disable, or on its own safety timeout.
@@ -5160,8 +5103,11 @@ async function handleSetDataExtensionEnabled(
     // kind followed by exactly one `renderNow`. Per-kind dispatch
     // would interleave with the daemon's mode-lock-on-first-
     // subscribe and the second kind's data product (e.g. `a11y/atf`)
-    // would silently miss the in-flight render.
-    await daemonScheduler.setDataProductSubscription(
+    // would silently miss the in-flight render. The scheduler owns the
+    // module's a11y subscription aggregate (derived from its
+    // `subscribedPairs`) and reports the first-on / last-off transition
+    // here so the panel can decide whether to repaint.
+    const { a11yTransition } = await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
         filteredKinds,
