@@ -186,4 +186,81 @@ class RenderFunctionalTest {
     assertThat(result.output).contains("render produced no output file")
     assertThat(result.output).contains(preview.id)
   }
+
+  @Test
+  fun `composePreviewRenderAll missing-renders=warn does not fail the build`() {
+    val projectDir = createTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewRenderAll",
+          "-x",
+          "composePreviewRender",
+          "-PcomposePreview.missingRenders=warn",
+          "--stacktrace",
+        )
+        .withPluginClasspath()
+        .build()
+
+    // The warn line carries the same diagnostic the throw used to ship —
+    // so consumers grepping CI logs still see the missing-output signal,
+    // they just don't get gated on it.
+    assertThat(result.output).contains("missing-renders policy=warn")
+    assertThat(result.output).contains("render produced no output file")
+    // Validation marker is still written under warn so downstream tasks
+    // that wire off the marker (pixel-test gates, baselines) keep running.
+    assertThat(File(projectDir, "build/compose-previews/composePreviewRenderAll.validated"))
+      .exists()
+  }
+
+  @Test
+  fun `composePreviewRenderAll missing-renders=ignore stays silent`() {
+    val projectDir = createTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewRenderAll",
+          "-x",
+          "composePreviewRender",
+          "-PcomposePreview.missingRenders=ignore",
+          "--stacktrace",
+        )
+        .withPluginClasspath()
+        .build()
+
+    // Ignore should not surface the "render produced no output file"
+    // string anywhere in the log — the whole point of the policy is to
+    // suppress the diagnostic for projects that accept some missing
+    // previews as the steady state.
+    assertThat(result.output).doesNotContain("render produced no output file")
+    assertThat(File(projectDir, "build/compose-previews/composePreviewRenderAll.validated"))
+      .exists()
+  }
+
+  @Test
+  fun `composePreviewRenderAll missing-renders=garbage falls back to fail`() {
+    val projectDir = createTestProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewRenderAll",
+          "-x",
+          "composePreviewRender",
+          "-PcomposePreview.missingRenders=bogus",
+          "--stacktrace",
+        )
+        .withPluginClasspath()
+        .buildAndFail()
+
+    // Typos must not silently widen the policy — anything we don't
+    // recognise resolves to `fail` so the historical hard error still
+    // catches whole-module classpath misconfig.
+    assertThat(result.output).contains("render produced no output file")
+  }
 }

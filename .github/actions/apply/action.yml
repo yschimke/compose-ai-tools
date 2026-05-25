@@ -72,6 +72,18 @@ inputs:
       pipeline. Applied after disk discovery, so modules listed here are
       built but their PNGs are dropped from the combined report.
     default: ''
+  missing-renders:
+    description: >
+      Policy when `composePreviewRenderAll` finds previews in the manifest
+      that produced no output PNG: `fail` (default — historical hard
+      error), `warn` (log + keep going), or `ignore` (silent). Useful for
+      multi-module runs where one module has a handful of stubborn
+      previews you don't want to gate CI on. The action passes the value
+      through as the `composePreview.missingRenders` Gradle property, so
+      consumers don't need to wire it into their build files. Applies
+      globally to every module the action invokes Gradle for (notifications
+      pipeline + the compose / a11y pipelines via the CLI).
+    default: 'fail'
   pr-number:
     description: 'Override for PR number when context is ambiguous.'
     default: ''
@@ -255,6 +267,7 @@ runs:
         A11Y_SKIP_MODULES: ${{ inputs.a11y-skip-modules }}
         NOTIFY_MODULES: ${{ inputs.notifications-module }}
         NOTIFY_SKIP_MODULES: ${{ inputs.notifications-skip-modules }}
+        MISSING_RENDERS: ${{ inputs.missing-renders }}
         BASELINE_BRANCH: 'compose-preview/main'
         RESOURCE_BRANCH: 'compose-preview/resources/main'
         PR_HEAD_BRANCH: 'compose-preview/pr'

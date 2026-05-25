@@ -38,7 +38,14 @@ if [ "${SKIP_RENDER:-false}" = "true" ]; then
   echo "0" > "$GITHUB_WORKSPACE/_compose_render_rc"
 else
   # Render. Don't fail on non-zero — partial envelope still drives the rest.
-  compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+  show_args=(show --json --timeout "$RENDER_TIMEOUT")
+  # Forwards as `-PcomposePreview.missingRenders=<value>` to the Gradle
+  # `composePreviewRenderAll` task the CLI spawns; default `fail` is a
+  # no-op vs the plugin's own default so always-pass is safe.
+  if [ -n "${MISSING_RENDERS:-}" ]; then
+    show_args+=(--missing-renders "${MISSING_RENDERS}")
+  fi
+  compose-preview "${show_args[@]}" > _previews.json
   RENDER_RC=$?
   echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_compose_render_rc"
 fi

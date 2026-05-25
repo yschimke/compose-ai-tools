@@ -30,7 +30,11 @@ if [ "${SKIP_RENDER:-false}" = "true" ]; then
   echo "resources pipeline: skip-render=true; reusing pre-staged _resources.json."
   echo "0" > "$GITHUB_WORKSPACE/_resources_render_rc"
 else
-  compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+  res_args=(show-resources --json --timeout "$RENDER_TIMEOUT")
+  if [ -n "${MISSING_RENDERS:-}" ]; then
+    res_args+=(--missing-renders "${MISSING_RENDERS}")
+  fi
+  compose-preview "${res_args[@]}" > _resources.json
   RENDER_RC=$?
   echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_resources_render_rc"
 fi
