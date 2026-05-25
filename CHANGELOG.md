@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.9](https://github.com/yschimke/compose-ai-tools/compare/v0.11.8...v0.11.9) (2026-05-25)
+
+
+### Bug Fixes
+
+* skip classpath dep injection for modules without buildscript repos in exclusiveContent shape ([#1491](https://github.com/yschimke/compose-ai-tools/issues/1491)) ([f352cf1](https://github.com/yschimke/compose-ai-tools/commit/f352cf128398618ce65aa4506f76cb5338edf467))
+
 ## [0.11.8](https://github.com/yschimke/compose-ai-tools/compare/v0.11.7...v0.11.8) (2026-05-25)
 
 
