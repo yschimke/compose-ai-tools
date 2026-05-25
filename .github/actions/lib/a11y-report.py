@@ -191,77 +191,109 @@ def select_variants(manifest: dict, a11y_by_id: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def cmd_copy_annotated(args: argparse.Namespace) -> int:
-    build_dir = Path(args.build_dir)
+    # ``--build-dir`` is repeatable so a single `copy-annotated` invocation
+    # can fold every module the a11y CLI ran across into one ``findings.json``
+    # + ``renders/<module>/`` tree. argparse hands us a list; tests still pass
+    # a bare string, so normalize.
+    raw = args.build_dir
+    build_dirs = [raw] if isinstance(raw, (str, Path)) else list(raw)
     out_dir = Path(args.output_dir)
-    manifest, a11y_by_id, status = load_previews(build_dir)
-    rows = select_variants(manifest, a11y_by_id)
-
-    module = manifest["module"]
-    renders_out = out_dir / "renders" / module
-    if renders_out.exists():
-        shutil.rmtree(renders_out)
-    renders_out.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     findings_summary: list[dict] = []
-    for row in rows:
-        # Copy the clean render (always — the README links it for previews
-        # without findings so the gallery still shows what was checked).
-        clean_basename = ""
-        if row["renderOutput"]:
-            src = build_dir / row["renderOutput"]
-            if src.exists():
-                clean_basename = src.name
-                shutil.copy2(src, renders_out / clean_basename)
-        # Copy the annotated PNG when present. The daemon writes every
-        # overlay to `data/<previewId>/a11y-overlay.png`, so the source
-        # basename collides across previews — rename to `<clean>.a11y.png`
-        # (or `<previewId>.a11y.png` when the clean render is missing) so
-        # each preview's overlay survives in the flat per-module dir.
-        annotated_basename = ""
-        if row["annotatedPath"]:
-            src = build_dir / row["annotatedPath"]
-            if src.exists():
-                stem = (
-                    Path(clean_basename).stem if clean_basename
-                    else row["previewId"]
-                )
-                annotated_basename = f"{stem}.a11y.png"
-                shutil.copy2(src, renders_out / annotated_basename)
-        findings_summary.append({
-            "module": row["module"],
-            "functionName": row["functionName"],
-            "sourceFile": row["sourceFile"],
-            "previewId": row["previewId"],
-            "variant": row["variant"],
-            "cleanBasename": clean_basename,
-            "annotatedBasename": annotated_basename,
-            "findings": row["findings"],
-        })
+    # Status is "the worst across modules": if any module's run came back
+    # ``atf-unavailable``, the combined report carries it so the comment
+    # subcommand can still flag the warning even when other modules ran
+    # cleanly.
+    combined_status: str | None = None
+    per_module_counts: list[tuple[str, int, int, bool]] = []
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    for raw_build_dir in build_dirs:
+        build_dir = Path(raw_build_dir)
+        manifest, a11y_by_id, status = load_previews(build_dir)
+        rows = select_variants(manifest, a11y_by_id)
+
+        module = manifest["module"]
+        renders_out = out_dir / "renders" / module
+        if renders_out.exists():
+            shutil.rmtree(renders_out)
+        renders_out.mkdir(parents=True, exist_ok=True)
+
+        module_findings = 0
+        for row in rows:
+            # Copy the clean render (always — the README links it for previews
+            # without findings so the gallery still shows what was checked).
+            clean_basename = ""
+            if row["renderOutput"]:
+                src = build_dir / row["renderOutput"]
+                if src.exists():
+                    clean_basename = src.name
+                    shutil.copy2(src, renders_out / clean_basename)
+            # Copy the annotated PNG when present. The daemon writes every
+            # overlay to `data/<previewId>/a11y-overlay.png`, so the source
+            # basename collides across previews — rename to `<clean>.a11y.png`
+            # (or `<previewId>.a11y.png` when the clean render is missing) so
+            # each preview's overlay survives in the flat per-module dir.
+            annotated_basename = ""
+            if row["annotatedPath"]:
+                src = build_dir / row["annotatedPath"]
+                if src.exists():
+                    stem = (
+                        Path(clean_basename).stem if clean_basename
+                        else row["previewId"]
+                    )
+                    annotated_basename = f"{stem}.a11y.png"
+                    shutil.copy2(src, renders_out / annotated_basename)
+            findings_summary.append({
+                "module": row["module"],
+                "functionName": row["functionName"],
+                "sourceFile": row["sourceFile"],
+                "previewId": row["previewId"],
+                "variant": row["variant"],
+                "cleanBasename": clean_basename,
+                "annotatedBasename": annotated_basename,
+                "findings": row["findings"],
+            })
+            module_findings += len(row["findings"])
+
+        per_module_counts.append(
+            (module, len(rows), module_findings, status == ATF_UNAVAILABLE)
+        )
+        # ATF-unavailable wins: once any module flagged it, the combined
+        # report keeps the flag regardless of how clean later modules are.
+        if status == ATF_UNAVAILABLE:
+            combined_status = ATF_UNAVAILABLE
+        elif status and combined_status is None:
+            combined_status = status
+
     # ``status`` propagates verbatim from accessibility.json so downstream
     # consumers (the readme / comment subcommands, future MCP integrations)
     # can tell "ran cleanly with zero findings" from "didn't run." Omitted
     # from the JSON entirely on a normal run to keep diffs against the
     # baseline trivially clean.
     summary_payload: dict = {"entries": findings_summary}
-    if status:
-        summary_payload["status"] = status
+    if combined_status:
+        summary_payload["status"] = combined_status
     (out_dir / "findings.json").write_text(
         json.dumps(summary_payload, indent=2, sort_keys=True) + "\n"
     )
 
-    total_findings = sum(len(r["findings"]) for r in findings_summary)
-    if status == ATF_UNAVAILABLE:
+    total_findings = sum(c[2] for c in per_module_counts)
+    total_previews = sum(c[1] for c in per_module_counts)
+    unavailable_modules = [c[0] for c in per_module_counts if c[3]]
+    if unavailable_modules:
         print(
-            f"ATF data unavailable for {manifest['module']} — "
-            f"emitted {len(findings_summary)} preview(s) with empty findings.",
+            "ATF data unavailable for "
+            f"{', '.join(unavailable_modules)} — "
+            f"emitted {total_previews} preview(s) across "
+            f"{len(per_module_counts)} module(s).",
             file=sys.stderr,
         )
     else:
         print(
-            f"Copied {len(findings_summary)} preview(s) with "
-            f"{total_findings} finding(s) to {out_dir}",
+            f"Copied {total_previews} preview(s) with "
+            f"{total_findings} finding(s) across "
+            f"{len(per_module_counts)} module(s) to {out_dir}",
             file=sys.stderr,
         )
     return 0
@@ -541,8 +573,10 @@ def main() -> int:
         help="Copy chosen-variant PNGs and emit findings.json",
     )
     cp.add_argument(
-        "--build-dir", required=True,
-        help="Path to the module's build/compose-previews directory",
+        "--build-dir", required=True, action="append",
+        help="Path to a module's build/compose-previews directory. "
+             "Repeatable: pass `--build-dir` once per module to fold every "
+             "module the a11y CLI rendered into one findings.json.",
     )
     cp.add_argument("--output-dir", required=True)
 

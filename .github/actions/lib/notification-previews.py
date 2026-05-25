@@ -84,29 +84,13 @@ def _sanitize_preview_id(preview_id: str) -> str:
 
 
 def cmd_stage(args: argparse.Namespace) -> int:
-    build_dir = Path(args.build_dir)
+    # ``--build-dir`` is repeatable so one `stage` invocation can fold every
+    # module that registers ``composePreviewRenderAll`` into a single flat
+    # ``_notification_renders/renders/`` tree. argparse hands a list; older
+    # callers that pass a bare string still work via the normalize.
+    raw = args.build_dir
+    build_dirs = [raw] if isinstance(raw, (str, Path)) else list(raw)
     out_dir = Path(args.output_dir)
-    renders_dir = build_dir / "renders"
-    sidecar_dir = build_dir / "data" / "notifications"
-
-    if not renders_dir.is_dir():
-        print(
-            f"::error::renders dir not found at {renders_dir}",
-            file=sys.stderr,
-        )
-        return 1
-
-    pngs = sorted(renders_dir.glob(_PNG_GLOB))
-    if not pngs:
-        # Empty result is a hard failure — if nothing matched, either the
-        # sample lost its notification previews or the discovery path
-        # silently dropped them, and a green CI run would happily ship
-        # nothing. Mirrors the inline shell guard the workflow used to do.
-        print(
-            f"::error::No notification preview PNGs were rendered under {renders_dir}",
-            file=sys.stderr,
-        )
-        return 1
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -116,30 +100,99 @@ def cmd_stage(args: argparse.Namespace) -> int:
     sidecars_out = out_dir / "data" / "notifications"
 
     entries: list[dict] = []
-    for png in pngs:
-        preview_id = _preview_id_from_png(png)
-        png_basename = png.name
-        shutil.copy2(png, renders_out / png_basename)
-        sidecar_basename = ""
-        if sidecar_dir.is_dir():
-            candidate = sidecar_dir / f"{_sanitize_preview_id(preview_id)}.notification.json"
-            if candidate.is_file():
-                sidecars_out.mkdir(parents=True, exist_ok=True)
-                sidecar_basename = candidate.name
-                shutil.copy2(candidate, sidecars_out / sidecar_basename)
-        entries.append({
-            "previewId": preview_id,
-            "pngBasename": png_basename,
-            "sidecarBasename": sidecar_basename,
-            "sha256": _sha256(png),
-        })
+    seen_basenames: dict[str, str] = {}
+    total_pngs = 0
+    modules_seen: list[str] = []
 
-    entries.sort(key=lambda e: e["previewId"])
+    for raw_build_dir in build_dirs:
+        build_dir = Path(raw_build_dir)
+        renders_dir = build_dir / "renders"
+        sidecar_dir = build_dir / "data" / "notifications"
+        if not renders_dir.is_dir():
+            print(
+                f"::error::renders dir not found at {renders_dir}",
+                file=sys.stderr,
+            )
+            return 1
+
+        pngs = sorted(renders_dir.glob(_PNG_GLOB))
+        if not pngs:
+            # No-match in a single build dir is informational, not fatal:
+            # when ``compose-preview a11y`` and the notifications Gradle task
+            # both run across every module, plenty of modules will have
+            # ``build/compose-previews/renders/`` directories with no
+            # ``*Notification*.png`` inside. We only fail when *every* module
+            # produced nothing (checked after the loop).
+            print(
+                f"notifications stage: no PNGs matched {_PNG_GLOB} under {renders_dir}",
+                file=sys.stderr,
+            )
+            continue
+        # Module label is best-effort — pulled from previews.json when present
+        # so the per-entry ``module`` is provenance the comment renderer can
+        # use later. Falls back to the build dir's grandparent path otherwise.
+        module_label = ""
+        previews_json = build_dir / "previews.json"
+        if previews_json.exists():
+            try:
+                module_label = json.loads(previews_json.read_text()).get("module", "")
+            except json.JSONDecodeError:
+                module_label = ""
+        if not module_label:
+            module_label = build_dir.parent.parent.name if build_dir.parent.parent else ""
+        modules_seen.append(module_label or str(build_dir))
+
+        for png in pngs:
+            preview_id = _preview_id_from_png(png)
+            png_basename = png.name
+            # Collisions across modules would silently clobber the flat
+            # `renders/` dir. Fail loud — the renderer ships FQN-derived
+            # previewIds so this should never trip; if it does, the modules
+            # are genuinely shipping the same notification under the same id
+            # and that needs fixing upstream rather than papering over.
+            if png_basename in seen_basenames and seen_basenames[png_basename] != module_label:
+                print(
+                    f"::error::Notification preview basename collision: "
+                    f"'{png_basename}' produced by both "
+                    f"{seen_basenames[png_basename]!r} and {module_label!r}.",
+                    file=sys.stderr,
+                )
+                return 1
+            seen_basenames[png_basename] = module_label
+            shutil.copy2(png, renders_out / png_basename)
+            sidecar_basename = ""
+            if sidecar_dir.is_dir():
+                candidate = sidecar_dir / f"{_sanitize_preview_id(preview_id)}.notification.json"
+                if candidate.is_file():
+                    sidecars_out.mkdir(parents=True, exist_ok=True)
+                    sidecar_basename = candidate.name
+                    shutil.copy2(candidate, sidecars_out / sidecar_basename)
+            entries.append({
+                "module": module_label,
+                "previewId": preview_id,
+                "pngBasename": png_basename,
+                "sidecarBasename": sidecar_basename,
+                "sha256": _sha256(png),
+            })
+            total_pngs += 1
+
+    if not entries:
+        # Every module produced nothing — keep the historical hard-fail so a
+        # green CI run can't quietly ship an empty baseline.
+        print(
+            f"::error::No notification preview PNGs were rendered under any of: "
+            f"{', '.join(str(p) for p in build_dirs)}",
+            file=sys.stderr,
+        )
+        return 1
+
+    entries.sort(key=lambda e: (e["module"], e["previewId"]))
     (out_dir / "findings.json").write_text(
         json.dumps({"entries": entries}, indent=2, sort_keys=True) + "\n"
     )
     print(
-        f"Staged {len(entries)} notification preview(s) to {out_dir}",
+        f"Staged {total_pngs} notification preview(s) across "
+        f"{len(modules_seen)} module(s) to {out_dir}",
         file=sys.stderr,
     )
     return 0
@@ -333,8 +386,10 @@ def main() -> int:
         help="Collect PNGs + sidecars into a staging dir and emit findings.json",
     )
     st.add_argument(
-        "--build-dir", required=True,
-        help="Path to samples/android/build/compose-previews",
+        "--build-dir", required=True, action="append",
+        help="Path to a module's build/compose-previews directory. "
+             "Repeatable: pass `--build-dir` once per module to fold every "
+             "module's notifications into one findings.json.",
     )
     st.add_argument("--output-dir", required=True)
 
