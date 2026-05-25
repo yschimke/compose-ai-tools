@@ -99,12 +99,40 @@ tasks.register("functionalTestWithAndroid") {
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
 
+// Mirrors `androidFunctionalTestPublishTargets` for the desktop renderer path. After #1472 the
+// plugin auto-adds `composePreviewRenderer("ee.schimke.composeai:renderer-desktop:<v>")` for
+// out-of-tree consumers (no more stub fallback), so the synthetic Compose Desktop project the
+// bundle-render e2e drives needs the artifact + its publishable transitive project-deps in
+// `~/.m2` to resolve. The list is the closure of `:renderer-desktop`'s `implementation`/`api`
+// project deps:
+//   :renderer-desktop
+//     implementation :data-scroll-core
+//       api :data-render-core
+//       api :data-render-compose
+//     implementation :data-pseudolocale-core
+//     implementation :data-displayfilter-connector
+//       api :data-displayfilter-core
+//       api :daemon:core
+val bundleRenderFunctionalTestPublishTargets =
+  listOf(
+    ":renderer-desktop",
+    ":data-render-core",
+    ":data-render-compose",
+    ":data-scroll-core",
+    ":data-pseudolocale-core",
+    ":data-displayfilter-connector",
+    ":data-displayfilter-core",
+    ":daemon:core",
+  )
+
 tasks.register("functionalTestWithBundleRender") {
   group = "verification"
   description =
-    "Publishes the gradle plugin to mavenLocal and builds the compose-preview CLI binary " +
-      "(`:cli:installDist`), then runs gradle-plugin's functionalTest with the opt-in " +
-      "`bundle.render.e2e=true` flag set so `BundleRenderEndToEndFunctionalTest` actually fires."
+    "Publishes renderer-desktop (+ transitive internal modules) and the gradle plugin itself " +
+      "to mavenLocal, builds the compose-preview CLI binary via `:cli:installDist`, then runs " +
+      "gradle-plugin's functionalTest with the opt-in `bundle.render.e2e=true` flag set so " +
+      "`BundleRenderEndToEndFunctionalTest` actually fires."
+  bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   // Synthetic Compose Desktop project resolves the plugin from mavenLocal via the same
   // `id(...) version "<v>"` block the a11y e2e uses; pre-publish or `BUILD FAILED`.
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
