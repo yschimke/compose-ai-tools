@@ -79,12 +79,34 @@ internal fun renderInitScript(pluginVersion: String): String =
 // (samples/cmp-shared, with a `jvm("desktop")` target) still works when the
 // user adds `id("ee.schimke.composeai.preview")` to that module's plugins {}
 // block themselves — we just no longer apply it implicitly.
+//
+// Auto-inject is *also* suppressed when the consumer's settings file declares
+// `exclusiveContent { ... }` inside `pluginManagement { repositories { ... } }`
+// (or shares its repos with `dependencyResolutionManagement` so the same
+// declaration applies — the Confetti shape). Gradle 9.3+ rejects adding to
+// `buildscript.repositories` once exclusiveContent is in
+// `settings.pluginManagement.repositories`, so the `allprojects { buildscript {
+// repositories { ... } } }` injection below would fail every project's
+// configuration with `When using exclusive repository content in
+// 'settings.pluginManagement.repositories', you cannot add repositories to
+// 'buildscript.repositories'.` (issues #1470, #1482). PR #1483 tried switching
+// the plugin load to init-script classpath to dodge this, but that breaks
+// AGP-touching plugin code at runtime — our plugin references
+// `AndroidComponentsExtension` etc. directly, and an init-script-loaded plugin
+// sits on a *sibling* classloader of AGP, so the JVM throws
+// `NoClassDefFoundError` the moment any AGP-aware code path runs. The current
+// fix instead detects the exclusiveContent shape and degrades the auto-inject
+// for that build to a no-op — the warning emitted by the CLI / extension
+// (`plugin not applied; running via auto-inject`) keeps directing users to
+// the manual `plugins { id("ee.schimke.composeai.preview") version "X" }`
+// workaround.
 
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()
+var composeAiPreviewSettingsHasExclusiveContent: Boolean = false
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -219,6 +241,70 @@ fun scanForKmpAndroidDeclaration(
     return declared
 }
 
+// Detects whether the build's settings file declares `exclusiveContent { ... }` inside
+// `pluginManagement { repositories { ... } }`, either directly or by sharing repository handlers
+// (e.g. Confetti's `listOf(repositories, dependencyResolutionManagement.repositories).forEach`
+// pattern). Gradle 9.3+ rejects adding to `buildscript.repositories` from any project once that's
+// in place, so we use this signal to skip our buildscript classpath injection wholesale.
+//
+// Detection is text-based — scanning a settings script for `exclusiveContent` references plus
+// either a `pluginManagement` block or the listOf-with-pluginManagement-shared-repos pattern.
+// We can't introspect the live RepositoryHandler reliably (Gradle's internal
+// ExclusiveContentRepository wrapper isn't a stable API), but the text scan is robust enough:
+// false positives just degrade auto-inject to a no-op in builds that didn't actually need it
+// disabled, and the CLI's "plugin not applied" warning still tells the user to apply the
+// plugin manually.
+fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {
+    val candidates = listOf(
+        java.io.File(settingsDir, "settings.gradle.kts"),
+        java.io.File(settingsDir, "settings.gradle"),
+    )
+    for (file in candidates) {
+        if (!file.isFile) continue
+        val raw = runCatching { file.readText() }.getOrNull() ?: continue
+        val text = composeAiPreviewStripComments(raw)
+        // Cheap early exit: no `exclusiveContent` anywhere → no risk.
+        if (!Regex("\\bexclusiveContent\\b").containsMatchIn(text)) continue
+        // The validation only fires for exclusiveContent in `pluginManagement.repositories`. The
+        // common shapes:
+        //   1. Direct: `pluginManagement { repositories { ... exclusiveContent { ... } ... } }`
+        //   2. Shared: `pluginManagement { listOf(repositories,
+        //      dependencyResolutionManagement.repositories).forEach { ... exclusiveContent ... } }`
+        //   3. Indirect via a helper function called from `pluginManagement {}`
+        // Walk the file looking for a `pluginManagement` block; if `exclusiveContent` appears
+        // anywhere inside that block's braces, the conflict is live. We balance braces by simple
+        // depth counting — string literals and other Kotlin-DSL niceties are out of scope, which
+        // matches what we already do for the comment-stripper.
+        var i = 0
+        while (i < text.length) {
+            val match =
+                Regex("\\bpluginManagement\\b").find(text, i) ?: break
+            // Skip to the opening brace, ignoring whitespace.
+            var j = match.range.last + 1
+            while (j < text.length && text[j].isWhitespace()) j++
+            if (j >= text.length || text[j] != '{') {
+                i = match.range.last + 1
+                continue
+            }
+            // Brace-balance to find the matching close.
+            var depth = 1
+            var k = j + 1
+            while (k < text.length && depth > 0) {
+                when (text[k]) {
+                    '{' -> depth++
+                    '}' -> depth--
+                }
+                k++
+            }
+            val blockEnd = if (depth == 0) k - 1 else text.length
+            val block = text.substring(j + 1, blockEnd)
+            if (Regex("\\bexclusiveContent\\b").containsMatchIn(block)) return true
+            i = blockEnd + 1
+        }
+    }
+    return false
+}
+
 // Skip composite-included builds entirely — both the settings scan and the `allprojects`
 // injection. The init script is evaluated once per build in a composite (root + each
 // `includeBuild(...)`), so without this guard `allprojects { buildscript { repositories { ... } } }`
@@ -244,6 +330,8 @@ gradle.settingsEvaluated {
     collect(rootProject)
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
     composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)
+    composeAiPreviewSettingsHasExclusiveContent =
+        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -271,6 +359,15 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
+    // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
+    // repositories { ... } }`, Gradle 9.3+ rejects any attempt to add to
+    // `buildscript.repositories` from any project — so we have to skip the entire injection
+    // and the apply hooks that depend on it. The CLI's "plugin not applied" warning still
+    // fires, directing the user to apply the plugin manually via
+    // `plugins { id("ee.schimke.composeai.preview") version "X" }`. This is the documented
+    // fallback for the Confetti shape (issues #1470, #1482); auto-inject can't help there
+    // without breaking AGP classloader visibility (the failed approach from PR #1483).
+    if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects
     // Skip BOTH the buildscript classpath injection AND the apply hooks for KMP-Android
     // modules. Doing only one half leaves the other half active: skipping the classpath
     // injection alone still fires the withPlugin hooks (which then fail to find the plugin
@@ -394,6 +491,54 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
     listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
   val pattern = Regex("""includeBuild\s*\(\s*["']gradle-plugin["']\s*\)""")
   return candidates.any { it.isFile && pattern.containsMatchIn(it.readText()) }
+}
+
+/**
+ * Mirrors the rendered init script's `composeAiPreviewSettingsDeclaresExclusiveContent`. Returns
+ * `true` when [projectRoot]'s `settings.gradle[.kts]` declares `exclusiveContent { ... }` inside a
+ * `pluginManagement { repositories { ... } }` block — directly, via shared repository handlers (the
+ * Confetti pattern `listOf(repositories, dependencyResolutionManagement.repositories).forEach`), or
+ * via a helper called from `pluginManagement {}`. Used as the off-side reproducer for the Gradle
+ * 9.3+ "When using exclusive repository content in 'settings.pluginManagement .repositories', you
+ * cannot add repositories to 'buildscript.repositories'" validation (issues #1470, #1482) — the
+ * init script's `allprojects { buildscript { ... } }` injection would fail every project
+ * configuration once that validation fires, so we skip injection wholesale.
+ *
+ * Visible for tests. Kept in lockstep with the embedded Kotlin function inside [renderInitScript].
+ */
+internal fun settingsDeclaresExclusiveContentInPluginManagement(projectRoot: File): Boolean {
+  val candidates =
+    listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
+  for (file in candidates) {
+    if (!file.isFile) continue
+    val raw = runCatching { file.readText() }.getOrNull() ?: continue
+    val text = stripGradleComments(raw)
+    if (!Regex("""\bexclusiveContent\b""").containsMatchIn(text)) continue
+    var i = 0
+    while (i < text.length) {
+      val match = Regex("""\bpluginManagement\b""").find(text, i) ?: break
+      var j = match.range.last + 1
+      while (j < text.length && text[j].isWhitespace()) j++
+      if (j >= text.length || text[j] != '{') {
+        i = match.range.last + 1
+        continue
+      }
+      var depth = 1
+      var k = j + 1
+      while (k < text.length && depth > 0) {
+        when (text[k]) {
+          '{' -> depth++
+          '}' -> depth--
+        }
+        k++
+      }
+      val blockEnd = if (depth == 0) k - 1 else text.length
+      val block = text.substring(j + 1, blockEnd)
+      if (Regex("""\bexclusiveContent\b""").containsMatchIn(block)) return true
+      i = blockEnd + 1
+    }
+  }
+  return false
 }
 
 /**

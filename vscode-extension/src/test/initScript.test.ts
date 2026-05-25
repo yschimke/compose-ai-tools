@@ -151,6 +151,46 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("skips auto-inject when settings declares exclusiveContent in pluginManagement", () => {
+        // Companion to the composite-included-build guard. The Confetti follow-up (#1482):
+        // root-level `pluginManagement { repositories { exclusiveContent { ... } } }`,
+        // either directly or via the `listOf(repositories, dependencyResolutionManagement
+        // .repositories).forEach` Confetti pattern, trips Gradle 9.3+'s
+        // `When using exclusive repository content in 'settings.pluginManagement
+        // .repositories', you cannot add repositories to 'buildscript.repositories'.`
+        // validation as soon as our init script's `allprojects { buildscript { repositories
+        // { ... } } }` injection runs. PR #1483 tried to dodge this via an `initscript {
+        // classpath ... }` load but broke AGP classloader visibility at runtime. The current
+        // fix detects exclusiveContent in pluginManagement and degrades auto-inject to a
+        // no-op for that build; the CLI's "plugin not applied" warning nudges the user to
+        // apply the plugin manually.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "var composeAiPreviewSettingsHasExclusiveContent: Boolean = false",
+            ),
+            "expected the exclusiveContent flag declaration",
+        );
+        assert.ok(
+            script.includes(
+                "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {",
+            ),
+            "expected the scanner function in the rendered script",
+        );
+        assert.ok(
+            script.includes(
+                "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)",
+            ),
+            "expected settingsEvaluated to populate the flag from the scanner",
+        );
+        assert.ok(
+            script.includes(
+                "if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects",
+            ),
+            "expected the allprojects block to short-circuit when exclusiveContent is declared",
+        );
+    });
+
     it("limits the scan to included project descriptors, not the filesystem", () => {
         // Codex P1 review on PR #1183: an unrelated nested build (e.g., a tooling
         // build or sample app checked into the workspace but not part of this

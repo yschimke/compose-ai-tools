@@ -725,6 +725,41 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script skips auto-inject when settings declares exclusiveContent in pluginManagement`() {
+    // Successor to PR #1483 (reverted): when `pluginManagement.repositories` in the *root*
+    // build's settings file declares `exclusiveContent { ... }`, Gradle 9.3+ rejects
+    // `allprojects { buildscript { repositories { ... } } }` injection. The included-build
+    // guard from #1470 covers only the composite-included case; the root-build case (Confetti
+    // `main`) still tripped the validation. We can't dodge it by loading the plugin via
+    // initscript classpath either (the failed approach from #1483 — the plugin lives on a
+    // sibling classloader of AGP and immediately `NoClassDefFoundError`s on AGP types). The
+    // current fix detects exclusiveContent in `pluginManagement` and short-circuits the entire
+    // `allprojects` block, degrading auto-inject to a no-op for that build. The CLI's existing
+    // "plugin not applied" warning then nudges the user toward applying the plugin manually.
+    val script = renderInitScript("0.11.8")
+    assertTrue(
+      script.contains("var composeAiPreviewSettingsHasExclusiveContent: Boolean = false"),
+      "expected the exclusiveContent flag declaration",
+    )
+    assertTrue(
+      script.contains(
+        "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {"
+      ),
+      "expected the scanner function in the rendered script",
+    )
+    assertTrue(
+      script.contains(
+        "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)"
+      ),
+      "expected settingsEvaluated to populate the flag from the scanner",
+    )
+    assertTrue(
+      script.contains("if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects"),
+      "expected the allprojects block to short-circuit when exclusiveContent is declared",
+    )
+  }
+
+  @Test
   fun `init script's KMP-Android scan recognises catalog aliases`() {
     // Mirrors the compose-preview catalog-accessor path so a project that declares the
     // KMP-Android plugin in `gradle/libs.versions.toml` (e.g.
@@ -915,6 +950,131 @@ class AutoInjectTest {
       stderr = { warnings += it },
     )
     assertEquals(1, warnings.size, "second call should not re-emit; got $warnings")
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement matches the Confetti shape (listOf with shared repos)`() {
+    // Reproducer for the Confetti `main` settings file (https://github.com/joreilly/Confetti). The
+    // `pluginManagement { listOf(repositories, dependencyResolutionManagement.repositories)
+    // .forEach { ... exclusiveContent ... } }` pattern declares exclusiveContent in
+    // pluginManagement.repositories transitively — Gradle 9.3+ rejects buildscript.repositories
+    // mutations as a result, so our scanner must report `true` here so the init script skips
+    // injection (issue #1482).
+    val root = tempDir()
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            listOf(repositories, dependencyResolutionManagement.repositories).forEach {
+                it.apply {
+                    google { content { } }
+                    mavenCentral()
+                    maven("https://maven.pkg.jetbrains.space/kotlin/p/wasm/experimental")
+                    exclusiveContent {
+                        forRepository { it.maven("https://storage.googleapis.com/apollo-snapshots/m2") }
+                        filter { includeVersionByRegex("com.apollographql.execution", ".*", ".*SNAPSHOT.*") }
+                    }
+                }
+            }
+        }
+        rootProject.name = "confetti"
+        include(":app")
+        """
+          .trimIndent()
+      )
+    assertTrue(
+      settingsDeclaresExclusiveContentInPluginManagement(root),
+      "expected the Confetti listOf-shared-repos shape to be detected",
+    )
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement matches a direct declaration`() {
+    val root = tempDir()
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            repositories {
+                gradlePluginPortal()
+                exclusiveContent {
+                    forRepository { maven("https://example.com/m2") }
+                    filter { includeGroup("com.example") }
+                }
+            }
+        }
+        rootProject.name = "demo"
+        """
+          .trimIndent()
+      )
+    assertTrue(settingsDeclaresExclusiveContentInPluginManagement(root))
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement ignores exclusiveContent outside pluginManagement`() {
+    // exclusiveContent inside `dependencyResolutionManagement.repositories` ONLY (not
+    // pluginManagement) is fine — the validation only fires for the pluginManagement variant.
+    // A bare-buildscript exclusiveContent (no pluginManagement block at all) is also fine.
+    val root = tempDir()
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        dependencyResolutionManagement {
+            repositories {
+                google()
+                mavenCentral()
+                exclusiveContent {
+                    forRepository { maven("https://example.com/m2") }
+                    filter { includeGroup("com.example") }
+                }
+            }
+        }
+        rootProject.name = "demo"
+        """
+          .trimIndent()
+      )
+    assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement ignores commented-out declarations`() {
+    val root = tempDir()
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            // exclusiveContent {
+            //     forRepository { maven("https://example.com/m2") }
+            // }
+            repositories { gradlePluginPortal() }
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement returns false for a settings file without exclusiveContent`() {
+    val root = tempDir()
+    File(root, "settings.gradle.kts")
+      .writeText(
+        """
+        pluginManagement {
+            repositories { gradlePluginPortal(); google(); mavenCentral() }
+        }
+        rootProject.name = "demo"
+        include(":app")
+        """
+          .trimIndent()
+      )
+    assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
+  }
+
+  @Test
+  fun `settingsDeclaresExclusiveContentInPluginManagement returns false when settings file is missing`() {
+    val root = tempDir()
+    assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
   }
 
   @Test

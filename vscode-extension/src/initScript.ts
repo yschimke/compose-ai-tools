@@ -72,10 +72,20 @@ export function renderInitScript(
 // launch VS Code with the flag set). Off by default so cached snapshots
 // don't widen the search surface for normal users.
 
+// Auto-inject is suppressed when the consumer's settings file declares
+// \`exclusiveContent { ... }\` inside \`pluginManagement { repositories { ... } }\`
+// (or shares its repos via \`listOf(repositories, dependencyResolutionManagement
+// .repositories).forEach\` — the Confetti shape). Gradle 9.3+ rejects adding to
+// \`buildscript.repositories\` once exclusiveContent is in
+// \`settings.pluginManagement.repositories\`, so the \`allprojects { buildscript {
+// ... } }\` injection below would fail every project's configuration. The CLI's
+// "plugin not applied" warning still directs users to apply the plugin manually.
+
 val pluginVersion = "${pluginVersion}"
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
+var composeAiPreviewSettingsHasExclusiveContent: Boolean = false
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -152,6 +162,47 @@ fun scanForComposeAiPreviewDeclaration(
     return declared
 }
 
+// Text-based detector for \`exclusiveContent\` inside a \`pluginManagement { repositories { ... } }\`
+// block (directly or via the Confetti-style \`listOf(repositories, dependencyResolutionManagement
+// .repositories).forEach\` pattern). Used to skip the buildscript injection altogether when
+// Gradle 9.3+'s exclusiveContent-vs-buildscript-repos validation would otherwise fire.
+fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {
+    val candidates = listOf(
+        java.io.File(settingsDir, "settings.gradle.kts"),
+        java.io.File(settingsDir, "settings.gradle"),
+    )
+    for (file in candidates) {
+        if (!file.isFile) continue
+        val raw = runCatching { file.readText() }.getOrNull() ?: continue
+        val text = composeAiPreviewStripComments(raw)
+        if (!Regex("\\\\bexclusiveContent\\\\b").containsMatchIn(text)) continue
+        var i = 0
+        while (i < text.length) {
+            val match = Regex("\\\\bpluginManagement\\\\b").find(text, i) ?: break
+            var j = match.range.last + 1
+            while (j < text.length && text[j].isWhitespace()) j++
+            if (j >= text.length || text[j] != '{') {
+                i = match.range.last + 1
+                continue
+            }
+            var depth = 1
+            var k = j + 1
+            while (k < text.length && depth > 0) {
+                when (text[k]) {
+                    '{' -> depth++
+                    '}' -> depth--
+                }
+                k++
+            }
+            val blockEnd = if (depth == 0) k - 1 else text.length
+            val block = text.substring(j + 1, blockEnd)
+            if (Regex("\\\\bexclusiveContent\\\\b").containsMatchIn(block)) return true
+            i = blockEnd + 1
+        }
+    }
+    return false
+}
+
 // Skip composite-included builds entirely — both the settings scan and the \`allprojects\`
 // injection. The init script is evaluated once per build in a composite (root + each
 // \`includeBuild(...)\`), so without this guard \`allprojects { buildscript { repositories { ... } } }\`
@@ -175,6 +226,8 @@ gradle.settingsEvaluated {
     }
     collect(rootProject)
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
+    composeAiPreviewSettingsHasExclusiveContent =
+        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -201,6 +254,9 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
+    // Skip when settings declare exclusiveContent inside pluginManagement.repositories — see
+    // composeAiPreviewSettingsDeclaresExclusiveContent above for the rationale (issue #1482).
+    if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects
     if (projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             repositories {
