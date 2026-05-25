@@ -100,60 +100,73 @@ internal object ComposePreviewTasks {
     rendererConfig.isCanBeResolved = true
     rendererConfig.isCanBeConsumed = false
 
-    val hasDesktopRenderer =
-      try {
+    // Mirror of `AndroidPreviewSupport`'s renderer-resolution shape (the in-repo build uses the
+    // sibling project so live renderer edits land without a publish step; out-of-tree consumers
+    // fall through to the published `ee.schimke.composeai:renderer-desktop:<plugin-version>` JAR
+    // from Maven Central). The plugin's own version is baked into the jar at build time so the
+    // matching renderer artifact is selected automatically — see [PluginVersion]. The default
+    // add is skipped when the consumer has already populated `composePreviewRenderer` themselves,
+    // so `dependencies { "composePreviewRenderer"(files(...)) }` still works as an override.
+    val rendererProjectDir = project.rootDir.resolve("renderer-desktop")
+    val useLocalRenderer =
+      rendererProjectDir.resolve("build.gradle.kts").exists() ||
+        rendererProjectDir.resolve("build.gradle").exists()
+    project.afterEvaluate {
+      if (rendererConfig.dependencies.isNotEmpty()) return@afterEvaluate
+      if (useLocalRenderer) {
+        try {
+          project.dependencies.add(
+            rendererConfigName,
+            project.dependencies.project(mapOf("path" to ":renderer-desktop")),
+          )
+        } catch (e: org.gradle.api.UnknownProjectException) {
+          project.logger.debug(
+            "compose-ai-tools: :renderer-desktop project not found, falling back to Maven",
+            e,
+          )
+          project.dependencies.add(
+            rendererConfigName,
+            "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
+          )
+        }
+      } else {
         project.dependencies.add(
           rendererConfigName,
-          project.dependencies.project(mapOf("path" to ":renderer-desktop")),
+          "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
         )
-        true
-      } catch (e: org.gradle.api.UnknownProjectException) {
-        project.logger.debug("compose-ai-tools: :renderer-desktop project not found, skipping", e)
-        false
       }
-
-    if (hasDesktopRenderer) {
-      val renderClasspathGuard =
-        registerDesktopClasspathGuard(
-          project = project,
-          taskName = "validateComposePreviewDesktopRenderClasspath",
-          dependencyConfigName = resolveDependencyConfigName,
-          toolClasspath = rendererConfig,
-        )
-      val renderTask =
-        project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
-          onlyIf { extension.enabled.get() }
-          previewsJson.set(previewOutputDir.map { it.file("previews.json") })
-          outputDir.set(previewOutputDir.map { it.dir("renders") })
-          // `@ScrollingPreview(modes = [LONG, GIF])` outputs land here (sibling of `renders/`).
-          // Declared as a tracked task output so Gradle's caching + up-to-date checks cover the
-          // long-PNG and GIF artifacts; older Android Test wiring uses the same `data/` subdir.
-          dataProductsDir.set(previewOutputDir.map { it.dir("data") })
-          renderBackend.set("desktop")
-          useComposeRenderer.set(true)
-          tier.set(tierProperty(project))
-          displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
-          renderClasspath.from(sourceClassDirs)
-          project.configurations.findByName(resolveDependencyConfigName())?.let {
-            renderClasspath.from(it)
-          }
-          renderClasspath.from(rendererConfig)
-          group = "compose preview"
-          description = "Render all previews to PNG"
-          dependsOn(discoverTask)
-          dependsOn(renderClasspathGuard)
-        }
-      registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
-    } else {
-      registerStubRenderTask(
-        project,
-        previewOutputDir,
-        sourceClassDirs,
-        resolveDependencyConfigName,
-        discoverTask,
-        extension,
-      )
     }
+
+    val renderClasspathGuard =
+      registerDesktopClasspathGuard(
+        project = project,
+        taskName = "validateComposePreviewDesktopRenderClasspath",
+        dependencyConfigName = resolveDependencyConfigName,
+        toolClasspath = rendererConfig,
+      )
+    val renderTask =
+      project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
+        onlyIf { extension.enabled.get() }
+        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+        outputDir.set(previewOutputDir.map { it.dir("renders") })
+        // `@ScrollingPreview(modes = [LONG, GIF])` outputs land here (sibling of `renders/`).
+        // Declared as a tracked task output so Gradle's caching + up-to-date checks cover the
+        // long-PNG and GIF artifacts; older Android Test wiring uses the same `data/` subdir.
+        dataProductsDir.set(previewOutputDir.map { it.dir("data") })
+        renderBackend.set("desktop")
+        tier.set(tierProperty(project))
+        displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
+        renderClasspath.from(sourceClassDirs)
+        project.configurations.findByName(resolveDependencyConfigName())?.let {
+          renderClasspath.from(it)
+        }
+        renderClasspath.from(rendererConfig)
+        group = "compose preview"
+        description = "Render all previews to PNG"
+        dependsOn(discoverTask)
+        dependsOn(renderClasspathGuard)
+      }
+    registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
     registerBundleTask(
       project = project,
@@ -819,34 +832,6 @@ internal object ComposePreviewTasks {
       onlyIf { extension.enabled.get() }
       dependsOn(project.tasks.matching { it.name in compileTaskNames })
     }
-  }
-
-  fun registerStubRenderTask(
-    project: Project,
-    previewOutputDir: Provider<Directory>,
-    sourceClassDirs: FileCollection,
-    dependencyConfigName: () -> String,
-    discoverTask: TaskProvider<DiscoverPreviewsTask>,
-    extension: PreviewExtension,
-  ) {
-    val renderTask =
-      project.tasks.register("composePreviewRender", RenderPreviewsTask::class.java) {
-        onlyIf { extension.enabled.get() }
-        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
-        outputDir.set(previewOutputDir.map { it.dir("renders") })
-        renderBackend.set("stub")
-        useComposeRenderer.set(false)
-        tier.set(tierProperty(project))
-        // Stub backend doesn't run any renderer, so display filters are a no-op here — but the
-        // input is required by the task type, so wire the same resolver for consistency.
-        displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
-        renderClasspath.from(sourceClassDirs)
-        project.configurations.findByName(dependencyConfigName())?.let { renderClasspath.from(it) }
-        group = "compose preview"
-        description = "Render all previews to PNG (stub)"
-        dependsOn(discoverTask)
-      }
-    registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
   }
 
   /** Registers `composePreviewRenderAll` as the user-facing entry point. */

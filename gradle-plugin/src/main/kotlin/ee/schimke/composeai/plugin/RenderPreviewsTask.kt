@@ -17,7 +17,6 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
-import org.gradle.workers.WorkerExecutor
 
 @CacheableTask
 abstract class RenderPreviewsTask : DefaultTask() {
@@ -28,12 +27,10 @@ abstract class RenderPreviewsTask : DefaultTask() {
 
   @get:Input abstract val renderBackend: Property<String>
 
-  @get:Input abstract val useComposeRenderer: Property<Boolean>
-
   /**
-   * Render-tier filter. When `"fast"` the desktop / stub path skips any preview whose
-   * representative capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF
-   * / animated fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
+   * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
+   * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
+   * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
    */
   @get:Input abstract val tier: Property<String>
 
@@ -53,17 +50,14 @@ abstract class RenderPreviewsTask : DefaultTask() {
    * Data-products output. Sibling of [outputDir] in the standard layout
    * (`build/compose-previews/data/...`). `@ScrollingPreview(modes = [LONG, GIF])` and other
    * heavyweight annotations route their per-capture artifacts here rather than `renders/` so the
-   * primary preview carousel stays small. Optional so existing wiring (stub backend, older test
-   * scaffolds) keeps working without changes; when absent the task falls back to a
-   * sibling-of-[outputDir] directory at execution.
+   * primary preview carousel stays small. Optional so older test scaffolds keep working without
+   * changes; when absent the task falls back to a sibling-of-[outputDir] directory at execution.
    */
   @get:org.gradle.api.tasks.Optional
   @get:OutputDirectory
   abstract val dataProductsDir: DirectoryProperty
 
   @get:Inject abstract val execOperations: ExecOperations
-
-  @get:Inject abstract val workerExecutor: WorkerExecutor
 
   init {
     // Caching is intentionally gated on `tier=full`: a `tier=fast` run
@@ -84,13 +78,13 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val rawManifest = json.decodeFromString<PreviewManifest>(previewsJson.get().asFile.readText())
 
     // Tier filter — drop previews whose representative capture is heavy
-    // when running in `fast` mode. The desktop / stub path renders just
-    // the first capture per preview, so the decision is per-preview
-    // rather than per-capture (unlike the Robolectric path which can
-    // pick and choose among an entry's captures). Skipped previews keep
-    // their previous PNG on disk (referenced by the manifest, untouched
-    // by `cleanStaleRenders`) so VS Code can still display the stale
-    // image with its badge.
+    // when running in `fast` mode. The desktop path renders just the
+    // first capture per preview, so the decision is per-preview rather
+    // than per-capture (unlike the Robolectric path which can pick and
+    // choose among an entry's captures). Skipped previews keep their
+    // previous PNG on disk (referenced by the manifest, untouched by
+    // `cleanStaleRenders`) so VS Code can still display the stale image
+    // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
     val previews =
       if (!isFastTier) rawManifest.previews
@@ -109,11 +103,7 @@ abstract class RenderPreviewsTask : DefaultTask() {
     val outDir = outputDir.get().asFile
     outDir.mkdirs()
 
-    if (useComposeRenderer.get()) {
-      renderWithCompose(manifest, outDir)
-    } else {
-      renderWithStub(manifest, outDir)
-    }
+    renderWithCompose(manifest, outDir)
 
     val tierTag =
       if (isFastTier)
@@ -254,38 +244,6 @@ abstract class RenderPreviewsTask : DefaultTask() {
           (scroll?.maxScrollPx ?: 0).toString(),
           (scroll?.frameIntervalMs ?: 0).toString(),
         )
-    }
-  }
-
-  private fun renderWithStub(manifest: PreviewManifest, outDir: java.io.File) {
-    val workQueue = workerExecutor.noIsolation()
-
-    for (preview in manifest.previews) {
-      val spec =
-        DeviceDimensions.resolveForRender(
-          device = preview.params.device,
-          widthDp = preview.params.widthDp,
-          heightDp = preview.params.heightDp,
-          showSystemUi = preview.params.showSystemUi,
-        )
-      val relRender =
-        preview.captures
-          .firstOrNull()
-          ?.renderOutput
-          ?.substringAfter("renders/", missingDelimiterValue = "")
-          ?.takeIf { it.isNotEmpty() } ?: "${preview.id}.png"
-      workQueue.submit(PreviewRenderWorkAction::class.java) {
-        className.set(preview.className)
-        functionName.set(preview.functionName)
-        widthDp.set(spec.widthDp)
-        heightDp.set(spec.heightDp)
-        density.set(preview.params.density ?: spec.density)
-        fontScale.set(preview.params.fontScale)
-        showBackground.set(preview.params.showBackground)
-        backgroundColor.set(preview.params.backgroundColor)
-        outputFile.set(outDir.resolve(relRender))
-        backend.set(renderBackend.get())
-      }
     }
   }
 }

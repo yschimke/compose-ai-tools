@@ -2,7 +2,7 @@
 @file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
 
 plugins {
-  id("composeai.jvm-conventions")
+  id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
@@ -40,4 +40,16 @@ dependencies {
   implementation(project(":data-displayfilter-connector"))
 
   testImplementation(libs.junit)
+}
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "renderer-desktop",
+    displayName = "Compose Preview — Desktop Renderer",
+    description =
+      "Compose Multiplatform Desktop renderer for `@Preview` functions, used by the " +
+        "compose-preview Gradle plugin to produce PNGs via `ImageComposeScene` outside " +
+        "Android Studio.",
+  )
+  inceptionYear.set("2025")
 }
