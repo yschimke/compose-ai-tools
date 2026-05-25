@@ -1,10 +1,10 @@
 name: VS Code Preview Baselines
 
-# Mirrors `preview-baselines.yml` but for the VS Code panel's
-# `preview-harness` (every fixture × dark/light theme). Pushes the
-# rendered PNGs + baselines.json to `vscode-preview/main` so the
-# branch is browsable on GitHub and serves as the "before" state for
-# `vscode-preview-comment.yml` on PRs.
+# Mirrors the baseline path of `compose-preview.yml` but for the VS
+# Code panel's `preview-harness` (every fixture × dark/light theme).
+# Pushes the rendered PNGs + baselines.json to `vscode-preview/main`
+# so the branch is browsable on GitHub and serves as the "before"
+# state for `vscode-preview-comment.yml` on PRs.
 
 on:
   push:

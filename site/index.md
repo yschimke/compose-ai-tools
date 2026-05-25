@@ -80,9 +80,7 @@ Point any agent that can fetch a URL at
 Composite actions for CI pipelines:
 
 - [`install`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/install) — pin the CLI on `$PATH`.
-- [`preview-baselines`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/preview-baselines) — push baselines to a branch.
-- [`preview-comment`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/preview-comment) — before / after PR comments.
-- [`a11y-report`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/a11y-report) — accessibility findings on PRs.
+- [`apply`](https://github.com/yschimke/compose-ai-tools/tree/main/.github/actions/apply) — unified pipeline: baselines on push, before/after PR comments, a11y + notification surfaces.
 
 ---
 

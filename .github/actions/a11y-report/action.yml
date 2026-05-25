@@ -1,263 +1,38 @@
-name: 'Compose A11y Report'
+name: 'Compose A11y Report (deprecated shim)'
 description: >
-  Render @Preview functions with ATF accessibility checks enabled, generate
-  an annotated screenshot + finding table per preview, and publish to a
-  shared branch (`compose-preview/a11y/main` for `push`,
-  `compose-preview/a11y/pr` for `pull_request`). For PRs, also upserts a
-  comment with finding counts and SHA-pinned image links. Mirrors the
-  push-and-retry / comment-upsert pattern used by preview-comment, but is
-  a separate action so a11y churn doesn't block the pixel-diff hot path.
+  DEPRECATED. Thin forwarder to `./.github/actions/apply` with
+  `only: a11y` and the supplied mode. New consumers should call `apply`
+  directly so they can run the a11y pipeline alongside the
+  compose / resources / notifications pipelines from a single workflow.
 
 inputs:
   mode:
-    description: "'baseline' (push to `compose-preview/a11y/main`) or 'comment' (push to `compose-preview/a11y/pr` + upsert PR comment)"
+    description: "'baseline' or 'comment' — forwarded to apply.mode."
     required: true
   module:
-    description: 'Gradle module path to render (e.g. `samples:wear`)'
+    description: 'Forwarded to apply.a11y-module.'
     default: 'samples:wear'
   baseline-branch:
-    description: 'Long-lived branch holding the baseline a11y report'
+    description: 'Ignored — apply hardcodes compose-preview/a11y/main.'
     default: 'compose-preview/a11y/main'
   pr-branch:
-    description: 'Shared branch that accumulates per-PR a11y renders'
+    description: 'Ignored — apply hardcodes compose-preview/a11y/pr.'
     default: 'compose-preview/a11y/pr'
   pr-number:
-    description: 'Pull request number (auto-detected from context if omitted)'
     default: ''
 
 runs:
   using: 'composite'
   steps:
-    - name: Build the CLI
+    - name: Deprecation notice
       shell: bash
       run: |
-        set -euo pipefail
-        # The daemon-driven a11y path lives in `compose-preview a11y`; install the locally-built
-        # CLI so the action runs the same code that ships in the release tarball. Mirrors the
-        # `:cli:installDist` step the consumer install script does.
-        ./gradlew :cli:installDist --no-daemon
+        echo "::warning::a11y-report is deprecated; call ./.github/actions/apply with only=a11y + a11y-module=<module> instead. See apply/action.yml for the input mapping."
 
-    - name: Render previews and produce a11y findings
-      shell: bash
-      env:
-        MODULE: ${{ inputs.module }}
-      run: |
-        set -euo pipefail
-        # ATF findings + the annotated overlay PNG are daemon-only now (see #1127). The CLI's
-        # `compose-preview a11y` command opens a short-lived render session per module, fetches
-        # `a11y/atf` for every preview, and writes `accessibility.json` next to the renders
-        # tree — exactly the file the python helper below reads. The legacy
-        # `-PcomposePreview.previewExtensions.a11y.enableAllChecks=true` Gradle property
-        # is gone; the CLI is the only on-ramp.
-        cli/build/install/compose-preview/bin/compose-preview a11y \
-          --module ":${MODULE}"
-
-    - name: Copy annotated PNGs and emit findings.json
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        MODULE: ${{ inputs.module }}
-      run: |
-        set -euo pipefail
-        # Translate the Gradle module path (`samples:wear`) into its on-disk
-        # project directory (`samples/wear`) so the python helper can find the
-        # rendered artefacts under `<projectDir>/build/compose-previews`.
-        MODULE_DIR="${MODULE//://}"
-        python3 "$ACTION_PATH/../lib/a11y-report.py" copy-annotated \
-          --build-dir "${MODULE_DIR}/build/compose-previews" \
-          --output-dir _a11y_renders
-
-    - name: Fetch baseline findings
-      if: inputs.mode == 'comment'
-      shell: bash
-      env:
-        BASELINE_BRANCH: ${{ inputs.baseline-branch }}
-      run: |
-        set -euo pipefail
-        # Pull `findings.json` from compose-preview/a11y/main so the comment subcommand can
-        # compare and stay silent when nothing changed. Default to an empty
-        # entries list when the branch hasn't been seeded yet — the python
-        # treats a missing baseline the same as an empty one.
-        if git ls-remote --exit-code origin "$BASELINE_BRANCH" >/dev/null 2>&1; then
-          git fetch origin "$BASELINE_BRANCH"
-          git show "origin/${BASELINE_BRANCH}:findings.json" \
-            > _baseline_findings.json 2>/dev/null \
-            || echo '{"entries":[]}' > _baseline_findings.json
-        else
-          echo '{"entries":[]}' > _baseline_findings.json
-        fi
-
-    - name: Generate PR comment body (and detect change vs baseline)
-      id: comment
-      if: inputs.mode == 'comment'
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
-        PR_BRANCH: ${{ inputs.pr-branch }}
-      run: |
-        set -euo pipefail
-        # The python writes nothing when findings match the baseline, so an
-        # empty file is the signal to skip both the push and the upsert.
-        # `--head-ref` here is provisional (the SHA we'll push isn't known
-        # yet); if we DO end up pushing, the next step rewrites it.
-        python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
-          _a11y_renders/findings.json \
-          --repo "$REPO" \
-          --head-ref "$PR_BRANCH" \
-          --baseline _baseline_findings.json \
-          > _a11y_comment.md
-        if [ -s _a11y_comment.md ]; then
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "changed=false" >> "$GITHUB_OUTPUT"
-          echo "No a11y changes vs ${PR_BRANCH}; skipping push + comment."
-        fi
-
-    - name: Generate README for target branch
-      if: inputs.mode == 'baseline' || steps.comment.outputs.changed == 'true'
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
-        TARGET_BRANCH: ${{ inputs.mode == 'baseline' && inputs.baseline-branch || inputs.pr-branch }}
-      run: |
-        set -euo pipefail
-        # Image URLs reference the branch name rather than a SHA — same
-        # contract preview-baselines uses for the on-branch README. The PR
-        # comment (regenerated below with the just-pushed SHA) is what pins
-        # the URLs that need to survive the PR merge.
-        python3 "$ACTION_PATH/../lib/a11y-report.py" readme \
-          _a11y_renders/findings.json \
-          --repo "$REPO" \
-          --branch "$TARGET_BRANCH" \
-          --output _a11y_renders/README.md
-
-    - name: Push a11y renders branch
-      id: push
-      if: inputs.mode == 'baseline' || steps.comment.outputs.changed == 'true'
-      shell: bash
-      env:
-        # Route every templated value through env so a malicious branch /
-        # PR-number input can't expand inside the shell body. (zizmor:
-        # template-injection)
-        MODE: ${{ inputs.mode }}
-        BASELINE_BRANCH: ${{ inputs.baseline-branch }}
-        PR_BRANCH: ${{ inputs.pr-branch }}
-        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
-        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        if [ "$MODE" = "baseline" ]; then
-          TARGET_BRANCH="$BASELINE_BRANCH"
-        else
-          TARGET_BRANCH="$PR_BRANCH"
-        fi
-
-        cd _a11y_renders
-        git init -q
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git remote add origin \
-          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-
-        git add -A
-        TREE=$(git write-tree)
-
-        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
-        if [ "$MODE" = "baseline" ]; then
-          MSG="Update accessibility baseline from ${GITHUB_SHA::8}"
-        else
-          MSG="A11y report for PR #${PR_NUMBER} (${GITHUB_SHA::8})"
-        fi
-
-        # Append commit on top of existing tip so older PR comments pinned
-        # to past SHAs stay reachable. Retry loop handles the push race
-        # when two PRs finish concurrently against the shared
-        # `compose-preview/a11y/pr` branch — same recipe as
-        # preview-comment/action.yml.
-        attempt=1
-        while :; do
-          PARENT=""
-          if git fetch --depth=1 --quiet origin "$TARGET_BRANCH" 2>/dev/null; then
-            PARENT=$(git rev-parse FETCH_HEAD)
-            PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
-            if [ "$MODE" = "baseline" ] && [ "$TREE" = "$PARENT_TREE" ]; then
-              # Nothing changed vs the current baseline — skip the no-op
-              # commit so the branch history doesn't grow on every CI run.
-              echo "A11y baseline unchanged; skipping push."
-              echo "head_sha=" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-
-          if [ -n "$PARENT" ]; then
-            COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
-          else
-            COMMIT=$(git commit-tree "$TREE" -m "$MSG")
-          fi
-
-          if git push --quiet origin "${COMMIT}:refs/heads/${TARGET_BRANCH}" 2>&1; then
-            echo "head_sha=${COMMIT}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$attempt" -ge 5 ]; then
-            echo "Push to ${TARGET_BRANCH} failed after ${attempt} attempts." >&2
-            exit 1
-          fi
-          delay=$((attempt * 2 + RANDOM % 3))
-          echo "Push to ${TARGET_BRANCH} lost the race; retry ${attempt}/5 in ${delay}s…" >&2
-          attempt=$((attempt + 1))
-          sleep "$delay"
-        done
-
-    - name: Re-render PR comment body with pushed SHA
-      if: inputs.mode == 'comment' && steps.comment.outputs.changed == 'true'
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
-        PR_BRANCH: ${{ inputs.pr-branch }}
-        HEAD_SHA: ${{ steps.push.outputs.head_sha }}
-      run: |
-        set -euo pipefail
-        # The earlier comment-generation step used the branch name as a
-        # provisional ref because the SHA wasn't known yet. Now that push
-        # has run, swap in the actual SHA so the comment's image URLs stay
-        # resolvable after compose-preview/a11y/pr advances or the PR merges.
-        HEAD_REF="${HEAD_SHA:-$PR_BRANCH}"
-        python3 "$ACTION_PATH/../lib/a11y-report.py" comment \
-          _a11y_renders/findings.json \
-          --repo "$REPO" \
-          --head-ref "$HEAD_REF" \
-          > _a11y_comment.md
-
-    - name: Upsert PR comment
-      if: inputs.mode == 'comment' && steps.comment.outputs.changed == 'true'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        PR_INPUT_NUMBER: ${{ inputs.pr-number }}
-        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-        REPO: ${{ github.repository }}
-      run: |
-        set -euo pipefail
-        PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
-        BODY=$(cat _a11y_comment.md)
-        MARKER="<!-- a11y-report -->"
-
-        COMMENT_ID=$(gh api \
-          "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-          --paginate \
-          --jq ".[] | select(.body | startswith(\"${MARKER}\")) | .id" \
-          | head -1)
-
-        if [ -n "$COMMENT_ID" ]; then
-          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-            -X PATCH -f body="$BODY"
-        else
-          gh pr comment "$PR_NUMBER" --body "$BODY"
-        fi
+    # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.11.5 # x-release-please-version
+      with:
+        mode: ${{ inputs.mode }}
+        only: 'a11y'
+        a11y-module: ${{ inputs.module }}
+        pr-number: ${{ inputs.pr-number }}

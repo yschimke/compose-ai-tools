@@ -31,7 +31,7 @@ on:
     paths-ignore:
       - ".github/workflows/ci.yml"
       - ".github/workflows/integration.yml"
-      - ".github/workflows/preview-comment.yml"
+      - ".github/workflows/compose-preview.yml"
   workflow_dispatch:
   schedule:
     # Daily — catches drift when consumer repos bump AGP/Kotlin without us.

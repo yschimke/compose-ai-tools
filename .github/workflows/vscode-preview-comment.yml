@@ -1,7 +1,7 @@
 name: VS Code Preview Comment
 
-# Mirrors `preview-comment.yml` (the active per-PR diff flow) but for
-# the VS Code panel's `preview-harness`. Runs only when the PR touches
+# Mirrors the comment path of `compose-preview.yml` (the active per-PR
+# diff flow) but for the VS Code panel's `preview-harness`. Runs only when the PR touches
 # files that can change the panel's rendered look (extension source,
 # webview bundle, harness fixtures). Posts a sticky before/after
 # comment using `vscode-preview/main` as the baseline branch and
