@@ -2025,11 +2025,20 @@ export async function activate(
     if (isTestMode) {
         const testApi: ComposePreviewTestApi = {
             injectGradleApi(api: GradleApi): void {
+                // Preserve the activation-time argsProvider — without
+                // `--init-script <path>` Gradle never sees the
+                // `pluginManagement.repositories.mavenLocal()` add the script
+                // performs under `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1`, so
+                // the e2e-external test's Confetti workspace can't resolve
+                // the local SNAPSHOT and `composePreviewApplied` fails with
+                // "Plugin not found in any of the following sources". The
+                // `--console=plain` arg matters less for the test path but
+                // costs nothing to keep.
                 gradleService = new GradleService(
                     workspaceRoot,
                     api,
                     outputChannel,
-                    () => [],
+                    () => [...baseGradleArgs, ...initScriptArgs],
                     logFilter,
                 );
             },
