@@ -204,6 +204,10 @@ jobs:
         run: python3 .github/actions/lib/test_compare_previews.py -v
       - name: Run vscode-preview-diff tests
         run: python3 .github/actions/lib/test_vscode_preview_diff.py -v
+      - name: Run a11y-report tests
+        run: python3 .github/actions/lib/test_a11y_report.py -v
+      - name: Run notification-previews tests
+        run: python3 .github/actions/lib/test_notification_previews.py -v
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a
