@@ -116,6 +116,11 @@ dependencies {
   add("composePreviewDaemonDesktop", project(":daemon:desktop"))
 
   testImplementation(kotlin("test"))
+  // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
+  // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
+  // `exclusiveContent`-vs-`buildscript.repositories` validation when the consumer's
+  // pluginManagement repositories declare it (the Confetti `main` shape; issues #1470, #1482).
+  testImplementation(gradleTestKit())
 }
 
 // Multiple JetBrains Compose Multiplatform `components-*-desktop` artifacts ship as

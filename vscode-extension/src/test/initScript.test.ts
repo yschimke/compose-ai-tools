@@ -27,39 +27,24 @@ function withTempDir(
 }
 
 describe("renderInitScript", () => {
-    it("bakes the pinned plugin version into the initscript classpath coordinate", () => {
+    it("bakes the pinned plugin version into the script", () => {
         const script = renderInitScript("9.9.9-test");
-        assert.ok(
-            script.includes(
-                'classpath("ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:9.9.9-test")',
-            ),
-            "expected the pinned coordinate baked into the initscript dependency",
+        assert.match(
+            script,
+            /val pluginVersion = "9\.9\.9-test"/,
+            "expected the plugin version to be interpolated",
+        );
+        assert.match(
+            script,
+            /ee\.schimke\.composeai\.preview:ee\.schimke\.composeai\.preview\.gradle\.plugin:\$pluginVersion/,
+            "expected the buildscript classpath coordinate to reference the version variable",
         );
     });
 
     it("falls back to BUNDLED_PLUGIN_VERSION when no argument is given", () => {
         const script = renderInitScript();
         assert.ok(
-            script.includes(
-                `classpath("ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${BUNDLED_PLUGIN_VERSION}")`,
-            ),
-        );
-    });
-
-    it("loads the plugin via initscript classpath instead of buildscript injection", () => {
-        // Regression for the Confetti follow-up (#1482): Gradle 9.3+ rejects mutating
-        // `buildscript.repositories` in *any* build whose `pluginManagement.repositories`
-        // declares `exclusiveContent { ... }`. The previous fix only guarded composite-
-        // included builds; the same shape at the root build still tripped the validation.
-        // Switching to initscript-level classpath load sidesteps the validation entirely.
-        const script = renderInitScript();
-        assert.ok(
-            script.includes("initscript {"),
-            "expected an initscript { ... } block that loads the plugin into the init classloader",
-        );
-        assert.ok(
-            !script.includes("buildscript {"),
-            "init script must not declare per-project buildscript { ... } injection",
+            script.includes(`val pluginVersion = "${BUNDLED_PLUGIN_VERSION}"`),
         );
     });
 
@@ -91,12 +76,16 @@ describe("renderInitScript", () => {
         );
     });
 
-    it("gates the apply hooks on per-project pre-applied detection", () => {
-        // Successor to the #305 coverage: the per-project pre-applied scan used to gate the
-        // buildscript classpath injection; that injection is gone (replaced by initscript
-        // classpath, #1482) so the scan now gates the apply hooks instead. Skipping the
-        // hooks for a project that already declares the plugin avoids class-identity
-        // confusion across the init-script vs project-scoped classloaders.
+    it("gates the buildscript classpath injection on per-project pre-applied detection", () => {
+        // Regression for #305 (homeassistant-remotecompose): the original gate was a single
+        // global boolean, so a mixed-shape project where some modules declare the plugin via
+        // `alias(libs.plugins.compose.preview)` and others don't would skip buildscript
+        // injection *everywhere*. Then `pluginManager.apply` from the withPlugin hooks would
+        // fail in the modules without the catalog alias ("Plugin with id
+        // 'ee.schimke.composeai.preview' not found."). The gate is now a per-project set of
+        // project directories that declare the plugin themselves; modules without their own
+        // declaration still get the buildscript classpath injection so withPlugin's
+        // pluginManager.apply can resolve the plugin class.
         const script = renderInitScript();
         assert.ok(
             script.includes(
@@ -112,9 +101,9 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
-                "if (projectDir in composeAiPreviewPreAppliedDirs) return@allprojects",
+                "if (projectDir !in composeAiPreviewPreAppliedDirs) {",
             ),
-            "expected the apply hooks to short-circuit per-project on the directory set",
+            "expected the buildscript block to be guarded per-project on the directory set",
         );
         // Catalog alias resolution: the scanner must look at gradle/libs.versions.toml
         // so that `alias(libs.plugins.<x>)` references are detected.
@@ -159,6 +148,52 @@ describe("renderInitScript", () => {
                 "if (composeAiPreviewIsIncludedBuild) return@allprojects",
             ),
             "expected allprojects to short-circuit for composite-included builds",
+        );
+    });
+
+    it("skips only the buildscript repositories add when settings declares exclusiveContent", () => {
+        // Confetti follow-up (#1482): root-level `pluginManagement { repositories {
+        // exclusiveContent { ... } } }` (directly or via the `listOf(repositories,
+        // dependencyResolutionManagement.repositories).forEach` Confetti pattern) trips
+        // Gradle 9.3+'s "you cannot add repositories to 'buildscript.repositories'"
+        // validation. We gate just the repositories sub-block of our buildscript injection
+        // — the classpath dependency and the withPlugin apply hooks still run, so if the
+        // consumer's existing buildscript repositories can resolve the plugin coordinate,
+        // auto-inject still works. PR #1483 tried to dodge the validation by loading the
+        // plugin via initscript classpath but that broke AGP classloader visibility at
+        // runtime.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "var composeAiPreviewSettingsHasExclusiveContent: Boolean = false",
+            ),
+            "expected the exclusiveContent flag declaration",
+        );
+        assert.ok(
+            script.includes(
+                "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {",
+            ),
+            "expected the scanner function in the rendered script",
+        );
+        assert.ok(
+            script.includes(
+                "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)",
+            ),
+            "expected settingsEvaluated to populate the flag from the scanner",
+        );
+        assert.ok(
+            script.includes(
+                "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {",
+            ),
+            "expected the buildscript repositories add to be the only thing guarded — " +
+                "the classpath dep and apply hooks must stay reachable",
+        );
+        assert.ok(
+            !script.includes(
+                "if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects",
+            ),
+            "the early-return for exclusiveContent is too aggressive; only the repositories add " +
+                "must be skipped",
         );
     });
 
@@ -220,7 +255,7 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes("if (useMavenLocal) mavenLocal()"),
-            "expected mavenLocal() to be guarded by useMavenLocal in initscript repos",
+            "expected mavenLocal() to be guarded by useMavenLocal in buildscript repos",
         );
         assert.ok(
             script.includes("pluginManagement.repositories.mavenLocal()"),
@@ -305,16 +340,8 @@ describe("materializeInitScript", () => {
             materializeInitScript(dir, "1.0.0");
             const target = materializeInitScript(dir, "2.0.0");
             const onDisk = fs.readFileSync(target, "utf-8");
-            assert.ok(
-                onDisk.includes(
-                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:2.0.0",
-                ),
-            );
-            assert.ok(
-                !onDisk.includes(
-                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:1.0.0",
-                ),
-            );
+            assert.match(onDisk, /val pluginVersion = "2\.0\.0"/);
+            assert.ok(!onDisk.includes('val pluginVersion = "1.0.0"'));
         }),
     );
 });
