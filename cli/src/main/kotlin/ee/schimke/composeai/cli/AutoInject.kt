@@ -35,11 +35,22 @@ internal fun renderInitScript(pluginVersion: String): String =
   """// Compose Preview auto-inject init script.
 //
 // Materialised by the compose-preview CLI and passed via --init-script on
-// every Gradle invocation the CLI makes. Applies ee.schimke.composeai.preview
-// (version pinned to $pluginVersion) to every project that already applies
-// com.android.application, com.android.library, or org.jetbrains.compose —
-// so consumers don't have to edit their build files. Disable per-run with
-// --no-auto-inject or COMPOSE_PREVIEW_NO_AUTO_INJECT=1.
+// every Gradle invocation the CLI makes. Loads
+// ee.schimke.composeai.preview (version pinned to $pluginVersion) into
+// the init-script classloader so every project that already applies
+// com.android.application, com.android.library, or org.jetbrains.compose
+// can have it applied via `pluginManager.apply(...)` without us ever
+// mutating that project's `buildscript.repositories` — Gradle 9.3+
+// rejects adding to `buildscript.repositories` once any settings file in
+// the composite declares `exclusiveContent { ... }` inside
+// `pluginManagement.repositories`, so the previous
+// `allprojects { buildscript { repositories { ... } } }` injection was
+// load-bearing for the conflict (issues #1470, #1482). The init-script
+// classpath sits on a parent classloader of every project's plugin
+// classloader, so `pluginManager.apply` resolves the plugin via its
+// META-INF/gradle-plugins descriptor without touching any project repo
+// list at all. Disable per-run with --no-auto-inject or
+// COMPOSE_PREVIEW_NO_AUTO_INJECT=1.
 //
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so AGP
 // finalizeDsl / onVariants callbacks register before the DSL lock.
@@ -47,28 +58,23 @@ internal fun renderInitScript(pluginVersion: String): String =
 // Pre-applied detection is *per project*: for each subproject whose build
 // file declares the plugin with a version — either literal
 // `id("...") version "..."` or via `alias(libs.plugins.<x>)` where the
-// version catalog maps <x> to this plugin id — we skip the buildscript
-// classpath injection for that project. Gradle's plugins {} DSL rejects
-// `id(...) version "..."` when the same plugin is also on the buildscript
-// classpath ("the plugin is already on the classpath with an unknown
-// version, so compatibility cannot be checked"), and the user's own
-// declaration provides resolution via plugin marker repos. Projects that
-// don't declare the plugin themselves still get the buildscript classpath
-// injection so the withPlugin / pluginManager.apply path can find the
-// plugin class — this is what mixed-shape multi-module projects need
-// (e.g. an `:app` module that applies the plugin via catalog alias, plus
-// a sibling `:rc-components` android-library module that doesn't; the init
-// script's withPlugin("com.android.library") hook fires in rc-components
-// too and the plugin must be resolvable from its buildscript classpath).
-// The withPlugin hooks in projects that already apply the plugin no-op via
-// the plugins.hasPlugin(...) guard.
+// version catalog maps <x> to this plugin id — we skip the withPlugin
+// apply hooks entirely. The user's own `plugins { }` block resolves and
+// applies the plugin from a project-scoped classloader (a child of the
+// init-script one); double-applying via our hook would risk a duplicate-
+// application error or class-identity confusion across classloaders, and
+// the user's declaration already does the right thing. The
+// `plugins.hasPlugin(...)` guard inside applyComposeAiPreview() is the
+// defence-in-depth backstop for projects the scanner missed (e.g.
+// non-versioned `id("ee.schimke.composeai.preview")` apply blocks).
 //
-// `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the buildscript repos into
-// `mavenLocal()` — exercised by the gradle-plugin functional tests, which
-// resolve the plugin from `~/.m2` (where `:publishToMavenLocal` puts it)
-// rather than Maven Central. Plain users have no reason to flip this on:
-// it widens the search surface to whatever snapshots happen to be cached
-// locally and is therefore opt-in, not the default.
+// `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the init-script's plugin-
+// resolution repos into `mavenLocal()` — exercised by the gradle-plugin
+// functional tests, which resolve the plugin from `~/.m2` (where
+// `:publishToMavenLocal` puts it) rather than Maven Central. Plain users
+// have no reason to flip this on: it widens the search surface to
+// whatever snapshots happen to be cached locally and is therefore opt-in,
+// not the default.
 //
 // Auto-inject is suppressed for modules that apply
 // `com.android.kotlin.multiplatform.library` — the AGP-KMP plugin's single
@@ -80,7 +86,19 @@ internal fun renderInitScript(pluginVersion: String): String =
 // user adds `id("ee.schimke.composeai.preview")` to that module's plugins {}
 // block themselves — we just no longer apply it implicitly.
 
-val pluginVersion = "$pluginVersion"
+initscript {
+    val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        google()
+        if (useMavenLocal) mavenLocal()
+    }
+    dependencies {
+        classpath("ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:$pluginVersion")
+    }
+}
+
 val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
@@ -220,18 +238,16 @@ fun scanForKmpAndroidDeclaration(
 }
 
 // Skip composite-included builds entirely — both the settings scan and the `allprojects`
-// injection. The init script is evaluated once per build in a composite (root + each
-// `includeBuild(...)`), so without this guard `allprojects { buildscript { repositories { ... } } }`
-// fires for the included build's projects too. That breaks any included build whose
-// `pluginManagement.repositories` declares `exclusiveContent { ... }`: Gradle 9.3+ rejects
-// adding to `buildscript.repositories` once exclusiveContent is in
-// `settings.pluginManagement.repositories` (e.g. Confetti's `:build-logic`, which excludes
-// `com.apollographql.execution` SNAPSHOTs to an Apollo bucket). Included builds in this pattern
-// are conventionally plugin builds (`build-logic`, `gradle-conventions`) that don't host
-// `@Preview` composables, so injecting the plugin classpath there is unnecessary — and the
-// existing pre-applied / KMP-Android scans only walk the *root* build's project hierarchy
-// anyway, so included-build projects were never tracked. An included build's `Gradle` instance
-// has a non-null `parent`; the root build's is `null`.
+// hooks. The init script is evaluated once per build in a composite (root + each
+// `includeBuild(...)`), so an unguarded `allprojects { ... }` fires for the included build's
+// projects too. Included builds in the conventional pattern (`build-logic`,
+// `gradle-conventions`) don't host `@Preview` composables, so applying the plugin there is
+// wasteful, and the pre-applied / KMP-Android scans only walk the *root* build's project
+// hierarchy anyway. With the init-script classpath approach this is no longer load-bearing
+// for Gradle 9.3+'s `exclusiveContent` validation (issue #1482) — we never touch
+// `buildscript.repositories` anywhere — but the guard stays as defence-in-depth and to skip
+// pointless work in plugin-only builds. An included build's `Gradle` instance has a non-null
+// `parent`; the root build's is `null`.
 val composeAiPreviewIsIncludedBuild = gradle.parent != null
 
 gradle.settingsEvaluated {
@@ -245,18 +261,20 @@ gradle.settingsEvaluated {
     composeAiPreviewPreAppliedDirs = scanForComposeAiPreviewDeclaration(rootDir, projectDirs)
     composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)
 
-    // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
-    // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
-    // plugin classpath. Consumers with `RepositoriesMode.FAIL_ON_PROJECT_REPOS` (e.g. wear-os-
-    // samples WearTilesKotlin) refuse per-project repos, so settings-level seeding is the only
-    // path that survives. pluginManagement.repositories.mavenLocal() covers the catalog-alias /
-    // literal-`id(...) version "..."` case where resolution goes through the plugins DSL instead
-    // of our buildscript classpath injection.
+    // When opting into mavenLocal, seed it at the settings level so the renderer-android AAR
+    // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 at task-
+    // execution time. The plugin class itself comes from the init-script classloader, so
+    // this only matters for the runtime artifacts — but consumers with
+    // `RepositoriesMode.FAIL_ON_PROJECT_REPOS` (e.g. wear-os-samples WearTilesKotlin) refuse
+    // per-project repos, so settings-level seeding is the only path that survives.
+    // pluginManagement.repositories.mavenLocal() covers the catalog-alias /
+    // literal-`id(...) version "..."` case where the user resolves the plugin via the
+    // plugins DSL instead of relying on our init-script classpath.
     //
     // Gradle only auto-adds the default Plugin Portal when `pluginManagement.repositories` is
     // empty after settings evaluation — once we explicitly add `mavenLocal()` the list is
-    // non-empty and the default is suppressed, so restore the defaults explicitly when the build
-    // didn't declare any plugin repos of its own.
+    // non-empty and the default is suppressed, so restore the defaults explicitly when the
+    // build didn't declare any plugin repos of its own.
     if (useMavenLocal) {
         val seedPluginDefaults = pluginManagement.repositories.isEmpty()
         pluginManagement.repositories.mavenLocal()
@@ -271,32 +289,16 @@ gradle.settingsEvaluated {
 
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
-    // Skip BOTH the buildscript classpath injection AND the apply hooks for KMP-Android
-    // modules. Doing only one half leaves the other half active: skipping the classpath
-    // injection alone still fires the withPlugin hooks (which then fail to find the plugin
-    // class), and skipping only the hooks still drags an unused plugin marker onto the
-    // buildscript classpath. Both halves gated together is the safe shape — see
-    // scanForKmpAndroidDeclaration() above for the rationale.
-    val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs
-
-    if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {
-        buildscript {
-            repositories {
-                gradlePluginPortal()
-                mavenCentral()
-                google()
-                if (useMavenLocal) mavenLocal()
-            }
-            dependencies {
-                add(
-                    "classpath",
-                    "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:${'$'}pluginVersion",
-                )
-            }
-        }
-    }
-
-    if (composeAiPreviewSkipKmpAndroid) return@allprojects
+    // Skip the apply hooks for projects that already declare the plugin themselves. The
+    // user's `plugins { id("...") version "..." }` resolves the plugin from a project-scoped
+    // classloader; double-applying via our hook would risk class-identity confusion across
+    // classloaders. The hasPlugin() guard inside applyComposeAiPreview() is the defence in
+    // depth backstop for non-versioned apply forms the scanner doesn't catch.
+    if (projectDir in composeAiPreviewPreAppliedDirs) return@allprojects
+    // Skip KMP-Android modules — applying compose-preview there trips an AGP-KMP variant-
+    // ambiguity error on `androidRuntimeClasspath` once the renderer's artifact view kicks
+    // in. See scanForKmpAndroidDeclaration() above for the rationale.
+    if (projectDir in composeAiPreviewKmpAndroidDirs) return@allprojects
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
