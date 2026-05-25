@@ -11,7 +11,10 @@ inputs:
   cli-version:
     description: >
       compose-preview CLI version. Literal (e.g. "0.8.1"), "latest", "catalog",
-      or "source" (build from the current checkout — internal CI only).
+      "source" (build from the current checkout — internal CI only), or
+      "none" (skip CLI install entirely; pair with `skip-render: true` and
+      `only: compose,resources` for non-Gradle build systems that pre-stage
+      `_previews.json` / `_resources.json`).
     default: 'latest'
   catalog-path:
     description: 'Path to the Gradle version catalog (when cli-version=catalog).'
@@ -61,6 +64,17 @@ inputs:
       Override the event-based mode selector: `auto` (default), `baseline`,
       `comment`, or `skip`.
     default: 'auto'
+  skip-render:
+    description: >
+      When `true`, the compose and resources pipelines reuse pre-staged
+      `_previews.json` / `_resources.json` at $GITHUB_WORKSPACE instead of
+      invoking `compose-preview show` / `show-resources`. Lets non-Gradle
+      build systems (Buck2, Bazel, Amper) drive the comment / baseline /
+      push half of this action with envelopes produced by the Phase A
+      CLIs (`preview-discovery`, `daemon-launch-builder`, `render-cli`).
+      Pair with `cli-version: 'none'` if the CLI isn't needed at all;
+      a11y / notifications pipelines still require it.
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -148,8 +162,12 @@ runs:
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.5 # x-release-please-version
 
+    # `cli-version: 'none'` is the third install state — install is skipped
+    # entirely. Compose / resources pipelines must then run with
+    # `skip-render: true` and pre-staged JSON; a11y / notifications fail
+    # cleanly with "command not found" when selected without a CLI.
     - name: Install CLI from release
-      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source'
+      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'source' && inputs.cli-version != 'none'
       # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
       uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
       with:
@@ -204,6 +222,7 @@ runs:
         WANT_RESOURCES: ${{ steps.resolve.outputs.resources }}
         WANT_A11Y: ${{ steps.resolve.outputs.a11y }}
         WANT_NOTIFICATIONS: ${{ steps.resolve.outputs.notifications }}
+        SKIP_RENDER: ${{ inputs.skip-render }}
       run: |
         set +e
         export PR_NUMBER="${PR_INPUT_NUMBER:-$EVENT_PR_NUMBER}"
