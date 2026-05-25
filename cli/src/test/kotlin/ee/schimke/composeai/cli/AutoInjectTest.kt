@@ -21,17 +21,49 @@ class AutoInjectTest {
     Files.createTempDirectory(prefix).toFile().also { tempDirs += it }
 
   @Test
-  fun `init script bakes the plugin version into the source`() {
+  fun `init script bakes the plugin version into the initscript classpath coordinate`() {
     val script = renderInitScript("9.9.9-test")
     assertTrue(
-      script.contains("val pluginVersion = \"9.9.9-test\""),
-      "expected the plugin version to be interpolated into the script",
+      script.contains(
+        "classpath(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:9.9.9-test\")"
+      ),
+      "expected the pinned coordinate baked into the initscript classpath dependency",
+    )
+  }
+
+  @Test
+  fun `init script loads the plugin via initscript classpath instead of buildscript injection`() {
+    // Regression for the Confetti follow-up (#1482): Gradle 9.3+ rejects mutating
+    // `buildscript.repositories` in *any* build whose `pluginManagement.repositories` declares
+    // `exclusiveContent { ... }`. The previous fix (#1470) only guarded composite-included
+    // builds; the same shape at the root build still tripped the validation. Switching to an
+    // initscript-level classpath load means we never touch `buildscript.repositories` on any
+    // consumer project at any level, sidestepping the validation entirely.
+    val script = renderInitScript("0.11.7")
+    assertTrue(
+      script.contains("initscript {"),
+      "expected an initscript { ... } block that loads the plugin into the init classloader",
     )
     assertTrue(
       script.contains(
-        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:\$pluginVersion"
+        "classpath(\"ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:0.11.7\")"
       ),
-      "expected the buildscript classpath coordinate to reference the pinned coordinate",
+      "expected the initscript dependencies block to declare the plugin classpath",
+    )
+    // The previous shape was `allprojects { ... buildscript { repositories { ... } } }`. The
+    // explanatory header comment legitimately mentions buildscript by name, so check for the
+    // injection-call wire shape rather than the word — the literal `add("classpath", ...)`
+    // form the old code used, and the surrounding indentation that marks it as inside
+    // allprojects.
+    assertFalse(
+      script.contains("add(\n                    \"classpath\","),
+      "init script must not add buildscript classpath dependencies in allprojects { ... } — " +
+        "that's the shape Gradle 9.3+ rejects when exclusiveContent is present in " +
+        "pluginManagement.repositories at any level",
+    )
+    assertFalse(
+      script.contains("        buildscript {\n            repositories {"),
+      "init script must not declare per-project buildscript { repositories { ... } } injection",
     )
   }
 
@@ -108,8 +140,16 @@ class AutoInjectTest {
     materializeInitScript(dir, "1.0.0")
     val target = materializeInitScript(dir, "2.0.0")
     val onDisk = target.readText()
-    assertTrue(onDisk.contains("val pluginVersion = \"2.0.0\""))
-    assertFalse(onDisk.contains("val pluginVersion = \"1.0.0\""))
+    assertTrue(
+      onDisk.contains(
+        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:2.0.0"
+      )
+    )
+    assertFalse(
+      onDisk.contains(
+        "ee.schimke.composeai.preview:ee.schimke.composeai.preview.gradle.plugin:1.0.0"
+      )
+    )
   }
 
   @Test
@@ -509,14 +549,14 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `init script gates the buildscript classpath injection on per-project pre-applied detection`() {
-    // Regression for #305 (homeassistant-remotecompose): the original gate was a single global
-    // boolean, so a mixed-shape project where some modules declare the plugin via
-    // `alias(libs.plugins.compose.preview)` and others don't would skip buildscript injection
-    // *everywhere* and then `pluginManager.apply` from the withPlugin hooks would fail in the
-    // modules without the catalog alias ("Plugin with id 'ee.schimke.composeai.preview' not
-    // found."). The gate is now a per-project set of project directories that declare the
-    // plugin themselves.
+  fun `init script gates the apply hooks on per-project pre-applied detection`() {
+    // Successor to the #305 regression coverage: the per-project pre-applied scan used to gate
+    // the buildscript classpath injection; that injection is gone (replaced by initscript
+    // classpath, #1482) so the scan now gates the apply hooks instead. Skipping the hooks for
+    // a project that already declares the plugin via `plugins { id(...) version "..." }`
+    // avoids class-identity confusion: the user's plugins-DSL resolution loads the plugin
+    // into a project-scoped classloader, while pluginManager.apply from the hook would
+    // resolve via the init-script classloader.
     val script = renderInitScript("0.10.15")
     assertTrue(
       script.contains("var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()"),
@@ -529,8 +569,8 @@ class AutoInjectTest {
       "expected the set to be populated during settingsEvaluated",
     )
     assertTrue(
-      script.contains("projectDir !in composeAiPreviewPreAppliedDirs"),
-      "expected the buildscript block to be guarded per-project on the directory set",
+      script.contains("if (projectDir in composeAiPreviewPreAppliedDirs) return@allprojects"),
+      "expected the apply hooks to short-circuit per-project on the directory set",
     )
     assertTrue(
       script.contains("gradle/libs.versions.toml"),
@@ -585,11 +625,16 @@ class AutoInjectTest {
     // restrictive `RepositoriesMode`s and lets integration CI resolve our SNAPSHOT runtime deps
     // from `~/.m2`. `pluginManagement.repositories.mavenLocal()` covers the plugins-DSL resolution
     // path for the catalog-alias / literal-`id(...) version "..."` case where we skip our own
-    // buildscript classpath injection.
+    // apply hooks. The initscript block also seeds `mavenLocal()` so the plugin itself can
+    // resolve from ~/.m2 when functional tests publish to local-maven.
     val script = renderInitScript("0.1.0-SNAPSHOT")
     assertTrue(
+      script.contains("if (useMavenLocal) mavenLocal()"),
+      "expected the initscript repositories block to gate mavenLocal on the env flag",
+    )
+    assertTrue(
       script.contains("if (useMavenLocal) {"),
-      "expected the mavenLocal seeding to be gated on the COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL flag",
+      "expected the settingsEvaluated mavenLocal seeding to be gated on the env flag too",
     )
     assertTrue(
       script.contains("pluginManagement.repositories.mavenLocal()"),
@@ -644,9 +689,9 @@ class AutoInjectTest {
     // that uses `com.android.kotlin.multiplatform.library` trips an AGP-KMP variant-ambiguity
     // error on `androidRuntimeClasspath` once the renderer's artifact view kicks in, which
     // breaks `compose-preview show` for any project where the plugin landed via auto-inject.
-    // Auto-inject must scan for the KMP-Android plugin id, mark those modules, and skip both
-    // the buildscript classpath injection AND the apply hooks for them — partial skipping
-    // leaves the other half active and still fails. Pins the wire shape of both halves.
+    // Auto-inject must scan for the KMP-Android plugin id, mark those modules, and skip the
+    // apply hooks for them. (The buildscript-classpath injection that used to be gated
+    // alongside this is gone — replaced by initscript classpath in #1482.)
     val script = renderInitScript("0.11.4")
     assertTrue(
       script.contains("var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()"),
@@ -659,19 +704,7 @@ class AutoInjectTest {
       "expected settingsEvaluated to populate the KMP-Android skip set",
     )
     assertTrue(
-      script.contains(
-        "val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs"
-      ),
-      "expected the per-project skip flag",
-    )
-    assertTrue(
-      script.contains(
-        "if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {"
-      ),
-      "expected the buildscript classpath injection to be gated on the KMP-Android skip flag too",
-    )
-    assertTrue(
-      script.contains("if (composeAiPreviewSkipKmpAndroid) return@allprojects"),
+      script.contains("if (projectDir in composeAiPreviewKmpAndroidDirs) return@allprojects"),
       "expected the withPlugin apply hooks to short-circuit for KMP-Android modules",
     )
   }
@@ -699,14 +732,14 @@ class AutoInjectTest {
 
   @Test
   fun `init script skips composite-included builds in settingsEvaluated and allprojects`() {
-    // Regression for the Confetti report: with `includeBuild("build-logic")` whose
-    // settings.gradle.kts declares `exclusiveContent { ... }` in `pluginManagement.repositories`,
-    // Gradle 9.3+ rejects any project that adds to `buildscript.repositories`. The init script
-    // is evaluated once per build in a composite, so the unguarded `allprojects { buildscript
-    // { repositories { ... } } }` previously fired against the included build and tripped the
-    // validation. Pins the early-return shape so it doesn't regress. An included build's
-    // `gradle.parent` is non-null; the root build's is null, so the guard is a one-liner that
-    // costs the root build nothing.
+    // Originally the Confetti regression (#1470): we touched `buildscript.repositories` in
+    // every project of every build in a composite, and Gradle 9.3+ rejects that once
+    // exclusiveContent is on settings.pluginManagement.repositories. The fix moved plugin
+    // resolution to initscript classpath (#1482), so this guard is no longer load-bearing for
+    // that validation — but the early return stays so we don't waste time scanning and
+    // applying the plugin in plugin-only included builds (`build-logic`,
+    // `gradle-conventions`) that never host @Preview composables. An included build's
+    // `gradle.parent` is non-null; the root build's is null.
     val script = renderInitScript("0.11.6")
     assertTrue(
       script.contains("val composeAiPreviewIsIncludedBuild = gradle.parent != null"),
@@ -718,9 +751,7 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains("if (composeAiPreviewIsIncludedBuild) return@allprojects"),
-      "expected allprojects to short-circuit for composite-included builds so " +
-        "buildscript.repositories isn't touched in included builds (would conflict with " +
-        "exclusiveContent in settings.pluginManagement.repositories)",
+      "expected allprojects to short-circuit for composite-included builds",
     )
   }
 
