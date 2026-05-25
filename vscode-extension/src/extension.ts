@@ -1812,7 +1812,13 @@ export async function activate(
                 // second discover pass and pre-render the shown previews so
                 // the first edit doesn't have to pay JVM/sandbox startup.
                 void (async () => {
-                    await refresh(false, filePath);
+                    // Paint on-disk cache for the new file before
+                    // composePreviewDiscover runs so the panel isn't
+                    // blank while Gradle warms up.
+                    const preloaded = await preloadCachedPreviews(filePath);
+                    await refresh(false, filePath, "full", {
+                        showLoadingOverlay: !preloaded,
+                    });
                     await warmDaemonForFile(filePath, {
                         refreshAfterReady: true,
                     });
@@ -3989,16 +3995,17 @@ async function refresh(
         }
     }
 
-    // Cancel any in-flight refresh (different / stronger args — superseded)
-    pendingRefresh?.abort();
-    const abort = new AbortController();
-    pendingRefresh = abort;
-    // Cleared until we reach the start-log gate; early-return paths
-    // (no-module, gated) leave it null so a later refresh with the same args
-    // still runs.
-    pendingRefreshKey = null;
-
     if (!activeFile || !module) {
+        // When the preview panel steals keyboard focus, activeTextEditor
+        // becomes undefined and scopeSource is "none". Don't abort a
+        // valid in-flight discover just because the user glanced at the
+        // panel — it will paint the cards when it finishes.
+        if (scopeSource === "none" && pendingRefreshKey) {
+            return "no-module";
+        }
+        // Cancel any in-flight refresh before clearing state.
+        pendingRefresh?.abort();
+        pendingRefreshKey = null;
         logLine(
             `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource})`,
         );
@@ -4017,6 +4024,13 @@ async function refresh(
         }
         return "no-module";
     }
+    // Cancel any in-flight refresh — we have a valid replacement.
+    pendingRefresh?.abort();
+    const abort = new AbortController();
+    pendingRefresh = abort;
+    // Cleared until we reach the start-log gate; gated early-return paths
+    // leave it null so a later refresh with the same args still runs.
+    pendingRefreshKey = null;
     if (currentScopeFile && currentScopeFile !== activeFile) {
         clearHeavyRefreshOptIns();
     }
@@ -4621,7 +4635,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 if (inMinimalMode()) {
                     void preloadCachedPreviews(currentScopeFile);
                 } else {
-                    void refresh(false, currentScopeFile);
+                    // Mirror the runActivationRefresh sequence: paint the
+                    // on-disk cache first so the grid is never blank while
+                    // composePreviewDiscover re-runs.
+                    const scopeFile = currentScopeFile;
+                    void (async () => {
+                        const preloaded =
+                            await preloadCachedPreviews(scopeFile);
+                        void refresh(false, scopeFile, "full", {
+                            showLoadingOverlay: !preloaded,
+                        });
+                    })();
                 }
             }
             break;
