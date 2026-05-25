@@ -180,6 +180,22 @@ abstract class Command(protected val args: List<String>) {
     return listOf("-PcomposePreview.activeExtensions=${all.joinToString(",")}")
   }
 
+  /**
+   * `--missing-renders <fail|warn|ignore>` passes through as
+   * `-PcomposePreview.missingRenders=<value>` so the Gradle-plugin-side validation in
+   * `composePreviewRenderAll` knows whether to escalate, warn, or stay silent when a preview listed
+   * in the manifest produced no PNG. The CLI doesn't validate the value — invalid values fall
+   * through to the plugin's "fail" default. Empty / absent means "don't pass the flag at all",
+   * which keeps the historical behaviour intact.
+   */
+  protected val missingRendersPolicy: String? =
+    args.flagValue("--missing-renders")?.trim()?.takeIf { it.isNotEmpty() }
+
+  protected fun missingRendersGradleArgs(): List<String> {
+    val v = missingRendersPolicy ?: return emptyList()
+    return listOf("-PcomposePreview.missingRenders=$v")
+  }
+
   private val forceNoticePrinted = AtomicBoolean(false)
 
   /**
@@ -194,7 +210,8 @@ abstract class Command(protected val args: List<String>) {
    */
   protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
     val extensionArgs = extensionGradleArgs()
-    val withExtras = extra + extensionArgs
+    val missingRendersArgs = missingRendersGradleArgs()
+    val withExtras = extra + extensionArgs + missingRendersArgs
     val reason = forceReason ?: return withExtras
     if (forceNoticePrinted.compareAndSet(false, true)) {
       System.err.println(

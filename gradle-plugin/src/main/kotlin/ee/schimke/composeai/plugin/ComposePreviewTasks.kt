@@ -753,6 +753,29 @@ internal object ComposePreviewTasks {
       .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
       .orElse("full")
 
+  /**
+   * `Provider<String>` for the `composePreview.missingRenders` Gradle property. Controls how
+   * `composePreviewRenderAll` reacts when a preview is listed in the manifest but produced no
+   * on-disk output: `"fail"` (default — throws), `"warn"` (logs a `WARN` line + writes the
+   * validation marker), `"ignore"` (silent + writes the marker). Set via
+   * `-PcomposePreview.missingRenders=warn` or the corresponding env var
+   * (`ORG_GRADLE_PROJECT_composePreview.missingRenders=warn`) — the `apply` GitHub action exposes
+   * the same knob as the `missing-renders` input so consumers don't have to wire it into their
+   * build files. Unknown values fall through to `"fail"` so a typo can't silently widen the policy.
+   */
+  internal fun missingRendersProperty(project: Project): Provider<String> =
+    project.providers
+      .gradleProperty("composePreview.missingRenders")
+      .map { raw ->
+        when (raw.trim().lowercase()) {
+          "warn",
+          "ignore",
+          "fail" -> raw.trim().lowercase()
+          else -> "fail"
+        }
+      }
+      .orElse("fail")
+
   fun registerDiscoverTask(
     project: Project,
     sourceClassDirs: FileCollection,
@@ -862,6 +885,7 @@ internal object ComposePreviewTasks {
         .gradleProperty("composePreview.tier")
         .map { v -> if (v.equals("fast", ignoreCase = true)) "fast" else "full" }
         .orElse("full")
+    val missingRendersProvider = missingRendersProperty(project)
     project.tasks.register("composePreviewRenderAll", DefaultTask::class.java) {
       group = "compose preview"
       dependsOn(renderTask)
@@ -870,9 +894,11 @@ internal object ComposePreviewTasks {
         .withPathSensitivity(PathSensitivity.NONE)
         .withPropertyName("manifest")
       inputs.property("tier", tierProvider)
+      inputs.property("missingRenders", missingRendersProvider)
       outputs.file(validationMarker).withPropertyName("validationMarker")
       doLast {
         val isFastTier = tierProvider.get() == "fast"
+        val missingPolicy = missingRendersProvider.get()
         val manifestOnDisk = manifestFile.get().asFile
         if (!manifestOnDisk.exists()) return@doLast
         val manifest =
@@ -911,7 +937,17 @@ internal object ComposePreviewTasks {
         val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
         if (missing.isNotEmpty()) {
           val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
-          throw GradleException(formatMissingPreviewsMessage(manifest, missing, sidecars))
+          val message = formatMissingPreviewsMessage(manifest, missing, sidecars)
+          // `composePreview.missingRenders` controls escalation: `fail` (default) preserves
+          // the historical hard error that catches whole-module classpath misconfig; `warn`
+          // and `ignore` let multi-module CI runs ride out a handful of stubborn previews
+          // without losing the rest of the report. Marker is still written so downstream
+          // tasks that wire off the validation outcome see the run as "validated".
+          when (missingPolicy) {
+            "warn" -> logger.warn("composePreviewRenderAll: missing-renders policy=warn — $message")
+            "ignore" -> Unit
+            else -> throw GradleException(message)
+          }
         }
         val marker = validationMarker.get().asFile
         marker.parentFile?.mkdirs()
