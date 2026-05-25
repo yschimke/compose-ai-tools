@@ -42,12 +42,13 @@ permissions:
   contents: read
 
 concurrency:
-  # Manual dispatches get their own slot via run_id; scheduled runs
-  # collapse onto a single in-flight per cron tick. Push-on-main runs
-  # serialise on the commit SHA so a quick succession of merges queues
-  # instead of fanning out (each run costs multi-tens of minutes).
-  group: vscode-extension-e2e-external-${{ github.event_name }}-${{ github.sha }}-${{ github.run_id }}
-  cancel-in-progress: false
+  # Push-to-main runs collapse onto a single in-flight slot keyed on the
+  # branch — a newer commit cancels the in-flight run so only the latest
+  # SHA is exercised. Manual dispatches and scheduled runs get their own
+  # slot via run_id so they don't fight with each other or with the
+  # push-driven flow.
+  group: vscode-extension-e2e-external-${{ github.event_name }}-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   e2e-external:
