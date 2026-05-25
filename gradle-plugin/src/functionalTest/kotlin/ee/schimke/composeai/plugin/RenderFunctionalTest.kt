@@ -2,18 +2,23 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.discovery.*
-import java.awt.image.BufferedImage
 import java.io.File
-import javax.imageio.ImageIO
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.testkit.runner.GradleRunner
-import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
+/**
+ * Functional coverage for `composePreviewRender` / `composePreviewRenderAll` wiring against a
+ * synthetic Compose Desktop project. Real end-to-end rendering (the actual PNG produced by
+ * `DesktopRendererMain`) is covered by the in-repo samples — `:samples:cmp:composePreviewRenderAll`
+ * is the source-of-truth render smoke test — so these tests stay focused on the parts that don't
+ * require resolving the published `ee.schimke.composeai:renderer-desktop` AAR through Maven Central
+ * (which the synthetic-tempdir project can't see at functional-test time).
+ */
 class RenderFunctionalTest {
 
   @get:Rule val tempDir = TemporaryFolder()
@@ -102,54 +107,6 @@ class RenderFunctionalTest {
   }
 
   @Test
-  fun `composePreviewRenderAll produces PNG files`() {
-    val projectDir = createTestProject()
-
-    val result =
-      GradleRunner.create()
-        .withProjectDir(projectDir)
-        .withArguments("composePreviewRenderAll", "--stacktrace")
-        .withPluginClasspath()
-        .build()
-
-    assertThat(result.task(":composePreviewRender")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
-
-    val rendersDir = File(projectDir, "build/compose-previews/renders")
-    assertThat(rendersDir.exists()).isTrue()
-
-    val pngFiles = rendersDir.listFiles { f -> f.extension == "png" } ?: emptyArray()
-    assertThat(pngFiles).isNotEmpty()
-  }
-
-  @Test
-  fun `rendered PNG has correct dimensions`() {
-    val projectDir = createTestProject()
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments("composePreviewRenderAll")
-      .withPluginClasspath()
-      .build()
-
-    val rendersDir = File(projectDir, "build/compose-previews/renders")
-    val pngFile = rendersDir.listFiles { f -> f.extension == "png" }?.firstOrNull()
-    assertThat(pngFile).isNotNull()
-
-    val img: BufferedImage = ImageIO.read(pngFile!!)
-    // Synthetic functional-test projects don't have `:renderer-desktop` on
-    // their classpath, so the plugin falls back to the stub renderer
-    // (PreviewRenderWorkAction) — which writes a blank PNG of the
-    // task-computed sandbox size without running a real composition.
-    // Under AS-parity sizing, a bare `@Preview` gets the wrap-content
-    // sandbox (400×800 dp) at DEFAULT_DENSITY (2.625x) = 1050×2100 px.
-    // The real wrap-to-intrinsic crop is exercised end-to-end through the
-    // samples/cmp / samples/android render tasks, which pull in the actual
-    // renderer modules.
-    assertThat(img.width).isEqualTo(1050)
-    assertThat(img.height).isEqualTo(2100)
-  }
-
-  @Test
   fun `composePreviewRenderAll fails loudly when render produces no PNGs for a non-empty manifest`() {
     val projectDir = createTestProject()
 
@@ -228,25 +185,5 @@ class RenderFunctionalTest {
 
     assertThat(result.output).contains("render produced no output file")
     assertThat(result.output).contains(preview.id)
-  }
-
-  @Test
-  fun `composePreviewRender is UP-TO-DATE on second run`() {
-    val projectDir = createTestProject()
-
-    GradleRunner.create()
-      .withProjectDir(projectDir)
-      .withArguments("composePreviewRenderAll")
-      .withPluginClasspath()
-      .build()
-
-    val result =
-      GradleRunner.create()
-        .withProjectDir(projectDir)
-        .withArguments("composePreviewRenderAll")
-        .withPluginClasspath()
-        .build()
-
-    assertThat(result.task(":composePreviewRender")?.outcome).isEqualTo(TaskOutcome.UP_TO_DATE)
   }
 }
