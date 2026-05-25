@@ -17,12 +17,7 @@
 //     stray button stamped onto the card root).
 
 import * as assert from "assert";
-import {
-    ensureLiveCardControls,
-    removeControlsToggleButton,
-    removeKeyboardBandToggleButton,
-    removeTouchOverlayToggleButton,
-} from "../webview/preview/liveCardControls";
+import { ensureLiveCardControls } from "../webview/preview/liveCardControls";
 
 /** Build a `<div class="preview-card">` with an `.image-container`
  *  child (the place the per-card stop button gets appended to) and
@@ -188,62 +183,5 @@ describe("ensureLiveCardControls", () => {
         assert.strictEqual(card.children.length, 0);
         // The callback isn't invoked just by ensureing controls.
         assert.strictEqual(invoked, 0);
-    });
-});
-
-// Legacy per-card overlay toggles (touch-overlay, soft-keyboard band, #1203
-// controls) used to be stamped on top of the rendered preview. They now live
-// on the focus-controls bar — the `removeXxx` helpers below are the cleanup
-// path for webview state restored from an older release. Pin the cleanup is
-// idempotent (no throw on cards that never had the button).
-describe("removeXxxToggleButton cleanup helpers", () => {
-    beforeEach(() => {
-        document.body.innerHTML = "";
-    });
-    afterEach(() => {
-        document.body.innerHTML = "";
-    });
-
-    function buildCardWithLegacyButton(cls: string): HTMLElement {
-        const card = document.createElement("div");
-        card.className = "preview-card";
-        const container = document.createElement("div");
-        container.className = "image-container";
-        const btn = document.createElement("button");
-        btn.className = `icon-button ${cls}`;
-        container.appendChild(btn);
-        card.appendChild(container);
-        document.body.appendChild(card);
-        return card;
-    }
-
-    it("removeControlsToggleButton drops a legacy .card-controls-toggle-btn and is a no-op on a clean card", () => {
-        const card = buildCardWithLegacyButton("card-controls-toggle-btn");
-        removeControlsToggleButton(card);
-        assert.strictEqual(
-            card.querySelector(".card-controls-toggle-btn"),
-            null,
-        );
-        assert.doesNotThrow(() => removeControlsToggleButton(card));
-    });
-
-    it("removeTouchOverlayToggleButton drops a legacy .card-touch-overlay-toggle-btn and is a no-op on a clean card", () => {
-        const card = buildCardWithLegacyButton("card-touch-overlay-toggle-btn");
-        removeTouchOverlayToggleButton(card);
-        assert.strictEqual(
-            card.querySelector(".card-touch-overlay-toggle-btn"),
-            null,
-        );
-        assert.doesNotThrow(() => removeTouchOverlayToggleButton(card));
-    });
-
-    it("removeKeyboardBandToggleButton drops a legacy .card-keyboard-band-toggle-btn and is a no-op on a clean card", () => {
-        const card = buildCardWithLegacyButton("card-keyboard-band-toggle-btn");
-        removeKeyboardBandToggleButton(card);
-        assert.strictEqual(
-            card.querySelector(".card-keyboard-band-toggle-btn"),
-            null,
-        );
-        assert.doesNotThrow(() => removeKeyboardBandToggleButton(card));
     });
 });

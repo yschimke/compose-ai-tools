@@ -108,7 +108,7 @@ export interface InteractiveInputConfig {
     supportsControl?(kind: string): boolean;
     /**
      * Issue #1203 — predicate keyed on `data-preview-id`. Returns true when the user has
-     * flipped the per-card "Controls" toggle on for this preview. Called on every keyboard
+     * flipped the focus-bar "Controls" toggle on for this preview. Called on every keyboard
      * event so toggling controls off mid-session immediately stops forwarding; the listener
      * itself stays attached (cheaper than rebinding on every toggle).
      *

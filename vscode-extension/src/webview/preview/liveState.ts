@@ -49,15 +49,7 @@ import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
-import {
-    ensureControlsToggleButton,
-    ensureKeyboardBandToggleButton,
-    ensureLiveCardControls,
-    ensureTouchOverlayToggleButton,
-    removeControlsToggleButton,
-    removeKeyboardBandToggleButton,
-    removeTouchOverlayToggleButton,
-} from "./liveCardControls";
+import { ensureLiveCardControls } from "./liveCardControls";
 import { planLiveToggle, planRecordingToggle } from "./liveTransitions";
 import { throttleLiveOnViewportLeave } from "./liveViewportThrottle";
 import type { VsCodeApi } from "../shared/vscode";
@@ -108,11 +100,11 @@ export interface LiveStateConfig {
     applyInteractiveButtonState(): void;
     applyRecordingButtonState(): void;
     /**
-     * Re-stamp the focus-bar mirrors for the per-card touch-overlay /
-     * keyboard-band / controls toggles. Wired from `main.ts` to
-     * `FocusController.applyFocusedToggleButtonStates`. Optional so legacy
-     * tests that construct `LiveStateController` without a focus controller
-     * stay green — the per-card overlay path runs unchanged.
+     * Re-stamp the focus-bar touch-overlay / keyboard-band / controls toggle
+     * buttons against the focused preview's current state. Wired from
+     * `main.ts` to `FocusController.applyFocusedToggleButtonStates`. Optional
+     * so legacy tests that construct `LiveStateController` without a focus
+     * controller stay green — the dispatch becomes a silent no-op.
      */
     applyFocusedToggleButtonStates?(): void;
     /** Re-render the focus inspector for [card] — the inspector reads
@@ -194,9 +186,9 @@ export class LiveStateController {
     >();
     // Full set of data-extension ids the daemon advertises per module — every
     // `DataExtensionDescriptor` in `dataExtensions`, not just the `requiresInteractive=true`
-    // subset. Drives [applyControlsToggleButtons]'s gating for the touch-overlay /
-    // keyboard-band per-card buttons (added in #1308 — those toggles are PreviewOverride-driven,
-    // not interactive-only, so they need a separate capability check than the #1203 controls
+    // subset. Drives the focus-bar gating for the touch-overlay / keyboard-band toggle
+    // buttons (added in #1308 — those toggles are PreviewOverride-driven, not
+    // interactive-only, so they need a separate capability check than the #1203 controls
     // button). Written from `setDaemonCapabilities`; queried via
     // `anyModuleAdvertisesExtension(id)`.
     private readonly moduleAdvertisedExtensions = new Map<
@@ -298,7 +290,7 @@ export class LiveStateController {
     /**
      * Record the full set of data-extension ids the daemon advertises for [moduleId] —
      * unfiltered, the union of every `DataExtensionDescriptor` in `dataExtensions`. Drives the
-     * per-card touch-overlay / keyboard-band toggle visibility via
+     * focus-bar touch-overlay / keyboard-band toggle visibility via
      * [anyModuleAdvertisesExtension]. Forwarded from `setDaemonCapabilities`; empty / undefined
      * clears the entry.
      */
@@ -318,11 +310,11 @@ export class LiveStateController {
 
     /**
      * True when any module's daemon advertises [extensionId] in its `dataExtensions` capability
-     * snapshot. Used by [applyControlsToggleButtons] to gate the touch-overlay
-     * (`touch-overlay`) and keyboard-band (`compose/keyboard`) per-card buttons — buttons
-     * appear only on backends that actually ship the matching planner, so a daemon without the
-     * extension doesn't grow dead UI. Pre-#1312 daemons (no descriptors at all) leave both
-     * buttons hidden until the user upgrades.
+     * snapshot. Used by the focus-bar gating for the touch-overlay (`touch-overlay`) and
+     * keyboard-band (`compose/keyboard`) toggle buttons — buttons appear only on backends
+     * that actually ship the matching planner, so a daemon without the extension doesn't
+     * grow dead UI. Pre-#1312 daemons (no descriptors at all) leave both buttons hidden
+     * until the user upgrades.
      */
     anyModuleAdvertisesExtension(extensionId: string): boolean {
         for (const ids of this.moduleAdvertisedExtensions.values()) {
@@ -412,65 +404,13 @@ export class LiveStateController {
     }
 
     /**
-     * Issue #1203 — re-stamp the per-card "Controls" button across the grid based on
-     * the current daemon capability snapshot. Called after `setDaemonCapabilities` and
-     * after each per-card toggle so the button appears / disappears in lock-step with
-     * the daemon's `requiresInteractive` extension set.
-     *
-     * Also re-stamps the per-card touch-overlay + keyboard-band toggle buttons (the
-     * `PreviewOverrides`-driven extensions, distinct from the #1203 input gate). Those
-     * appear whenever the focused module advertises interactive support — they don't
-     * require the input-only `requiresInteractive` gate because they're rendering
-     * overrides, not input dispatch.
+     * Re-stamp the focus-bar mirrors for the touch-overlay / keyboard-band /
+     * #1203 controls toggles after a daemon-capability or per-card state
+     * change. The focus-controls bar is the only home for these toggles — in
+     * grid / flow / column layouts they're intentionally not surfaced (no
+     * focused preview, nothing to act on).
      */
     applyControlsToggleButtons(): void {
-        // The focus-controls bar is the home for these toggles when the user
-        // is in focus mode — the per-card overlay versions stay stripped there
-        // so they don't double up with (and cover the preview alongside) the
-        // bar mirrors. In grid / flow / column layouts the focus bar is hidden
-        // (`FocusController.applyLayout`), so we re-stamp the per-card
-        // overlays as the only UI path to touch / keyboard / controls
-        // toggles outside focus mode.
-        const inFocus = this.cfg.inFocus();
-        const controlsAdvertised = this.isControlsAdvertised();
-        const touchOverlayAdvertised = this.isTouchOverlayAdvertised();
-        const keyboardBandAdvertised = this.isKeyboardBandAdvertised();
-        const cards = document.querySelectorAll<HTMLElement>(".preview-card");
-        for (const card of cards) {
-            const previewId = card.dataset.previewId;
-            if (inFocus || !previewId) {
-                removeControlsToggleButton(card);
-                removeTouchOverlayToggleButton(card);
-                removeKeyboardBandToggleButton(card);
-                continue;
-            }
-            if (controlsAdvertised) {
-                ensureControlsToggleButton(card, {
-                    enabled: this.controlsEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) => this.toggleControlsForCard(c, next),
-                });
-            } else {
-                removeControlsToggleButton(card);
-            }
-            if (touchOverlayAdvertised) {
-                ensureTouchOverlayToggleButton(card, {
-                    enabled: this.touchOverlayEnabledPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleTouchOverlayForCard(c, next),
-                });
-            } else {
-                removeTouchOverlayToggleButton(card);
-            }
-            if (keyboardBandAdvertised) {
-                ensureKeyboardBandToggleButton(card, {
-                    enabled: this.keyboardBandForcedPreviewIds.has(previewId),
-                    onToggle: (c, next) =>
-                        this.toggleKeyboardBandForCard(c, next),
-                });
-            } else {
-                removeKeyboardBandToggleButton(card);
-            }
-        }
         this.cfg.applyFocusedToggleButtonStates?.();
     }
 
@@ -836,7 +776,7 @@ export class LiveStateController {
         // disappears; the listener wouldn't reach a daemon anyway.
         this.controlsEnabledPreviewIds.clear();
         // Daemon-advertised capability state is now stale — clear so the
-        // per-card touch-overlay / keyboard-band / #1203 controls toggles
+        // focus-bar touch-overlay / keyboard-band / #1203 controls toggles
         // (gated on these maps via [applyControlsToggleButtons]) hide
         // immediately instead of pointing at a dead backend until the next
         // `setDaemonCapabilities` lands. Mirrors the `interactivePreviewIds`
