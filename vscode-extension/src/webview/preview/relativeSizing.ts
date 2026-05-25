@@ -36,9 +36,11 @@ export function applyRelativeSizing(previews: readonly PreviewInfo[]): void {
         if (w && h && maxW > 0) {
             card.style.setProperty("--size-ratio", (w / maxW).toFixed(4));
             card.style.setProperty("--aspect-ratio", w + " / " + h);
+            card.style.setProperty("--width-dp", String(w));
         } else {
             card.style.removeProperty("--size-ratio");
             card.style.removeProperty("--aspect-ratio");
+            card.style.removeProperty("--width-dp");
         }
     }
 }
