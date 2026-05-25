@@ -43,13 +43,34 @@ inputs:
     default: ''
   a11y-module:
     description: >
-      Gradle module path for the a11y pipeline (e.g. `samples:wear`). Empty
-      skips the pipeline silently.
+      Comma-separated Gradle module allowlist for the a11y pipeline
+      (e.g. `samples:wear,samples:phone`). Empty (default) lets
+      `compose-preview a11y` auto-detect every module the plugin knows
+      about. A single value (`samples:wear`) still works for back-compat.
+      Use `a11y-skip-modules` to exclude specific modules from the
+      auto-detected set.
+    default: ''
+  a11y-skip-modules:
+    description: >
+      Comma-separated Gradle module denylist for the a11y pipeline.
+      Applied after auto-discovery / the allowlist, so modules listed here
+      are still rendered by the CLI but their findings are dropped from the
+      combined report. Useful when one module's previews aren't
+      a11y-ready yet.
     default: ''
   notifications-module:
     description: >
-      Gradle module path for the notifications pipeline (e.g. `samples:android`).
-      Empty skips the pipeline silently.
+      Comma-separated Gradle module allowlist for the notifications
+      pipeline (e.g. `samples:android,samples:wear`). Empty (default) runs
+      the unscoped `composePreviewRenderAll` task, letting Gradle expand
+      to every module that registers it. A single value still works for
+      back-compat.
+    default: ''
+  notifications-skip-modules:
+    description: >
+      Comma-separated Gradle module denylist for the notifications
+      pipeline. Applied after disk discovery, so modules listed here are
+      built but their PNGs are dropped from the combined report.
     default: ''
   pr-number:
     description: 'Override for PR number when context is ambiguous.'
@@ -208,8 +229,10 @@ runs:
         RENDER_TIMEOUT: ${{ inputs.timeout }}
         PR_INPUT_NUMBER: ${{ inputs.pr-number }}
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-        A11Y_MODULE: ${{ inputs.a11y-module }}
-        NOTIFY_MODULE: ${{ inputs.notifications-module }}
+        A11Y_MODULES: ${{ inputs.a11y-module }}
+        A11Y_SKIP_MODULES: ${{ inputs.a11y-skip-modules }}
+        NOTIFY_MODULES: ${{ inputs.notifications-module }}
+        NOTIFY_SKIP_MODULES: ${{ inputs.notifications-skip-modules }}
         BASELINE_BRANCH: 'compose-preview/main'
         RESOURCE_BRANCH: 'compose-preview/resources/main'
         PR_HEAD_BRANCH: 'compose-preview/pr'
@@ -507,7 +530,7 @@ runs:
 
     - name: Push a11y baseline / PR renders
       id: push-a11y
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1' && inputs.a11y-module != ''
+      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.a11y == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}
@@ -567,7 +590,7 @@ runs:
 
     - name: Push notifications baseline / PR renders
       id: push-notifications
-      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1' && inputs.notifications-module != ''
+      if: steps.resolve.outputs.mode != 'skip' && steps.resolve.outputs.notifications == '1'
       shell: bash
       env:
         REPO: ${{ github.repository }}

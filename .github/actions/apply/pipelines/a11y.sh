@@ -1,37 +1,127 @@
 #!/usr/bin/env bash
-# A11y pipeline. Runs `compose-preview a11y` on $A11Y_MODULE, copies the
-# annotated PNGs / findings.json out, and either generates an a11y baseline
-# (baseline mode) or compares against the baseline and stages a per-PR
-# branch push + sticky comment (comment mode).
+# A11y pipeline. Runs `compose-preview a11y` across one or more modules,
+# copies every module's annotated PNGs / findings.json into a single
+# `_a11y_renders/` tree, and either generates an a11y baseline (baseline
+# mode) or compares against the baseline and stages a per-PR branch push +
+# sticky comment (comment mode).
 #
-# Self-skips silently when $A11Y_MODULE is empty.
+# Module selection
+# ----------------
+# * ``A11Y_MODULES`` — comma-separated allowlist of Gradle module paths
+#   (e.g. ``samples:wear,samples:phone``). Empty = auto-detect every module
+#   the plugin / CLI knows about (CLI default when ``--module`` is
+#   omitted).
+# * ``A11Y_SKIP_MODULES`` — comma-separated denylist. Applied to the set of
+#   modules discovered on disk after the CLI runs, so the allowlist is the
+#   "what gets built" knob and skip is the "what gets reported" knob.
+#
+# Self-skips silently when an allowlist resolves to an empty set, or when
+# auto-detect found zero modules with a11y output. The pipeline never
+# fails just because a single module had nothing to report.
 #
 # Required env (set by action.yml):
 #   MODE                  — baseline | comment
 #   ACTION_PATH           — path to apply action
 #   REPO                  — github.repository
-#   A11Y_MODULE           — Gradle module path (e.g. samples:wear); empty = skip
+#   A11Y_MODULES          — comma-separated allowlist (empty = all)
+#   A11Y_SKIP_MODULES     — comma-separated denylist (applied post-build)
 #   A11Y_BASELINE_BRANCH  — long-lived a11y baseline branch
 #   A11Y_PR_BRANCH        — per-PR a11y branch (comment mode)
 #   PR_NUMBER             — PR number (comment mode)
 set -e
 
-if [ -z "${A11Y_MODULE:-}" ]; then
-  echo "a11y pipeline: A11Y_MODULE empty, skipping."
-  echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
-  exit 0
+# Comma-split + trim helper. Empty input → empty array.
+split_csv() {
+  local raw="${1:-}"
+  if [ -z "$raw" ]; then
+    return 0
+  fi
+  IFS=',' read -r -a _items <<< "$raw"
+  for item in "${_items[@]}"; do
+    local trimmed
+    trimmed="$(echo "$item" | xargs)"
+    [ -n "$trimmed" ] && echo "$trimmed"
+  done
+}
+
+mapfile -t ALLOW_MODULES < <(split_csv "${A11Y_MODULES:-}")
+mapfile -t SKIP_MODULES < <(split_csv "${A11Y_SKIP_MODULES:-}")
+
+cli_args=(a11y)
+if [ "${#ALLOW_MODULES[@]}" -gt 0 ]; then
+  for m in "${ALLOW_MODULES[@]}"; do
+    cli_args+=(--module ":${m}")
+  done
 fi
 
 # Use the same CLI that the install step put on $PATH (release tarball or
 # source build); the legacy `:cli:installDist` rebuild was a leftover from
 # before the unified install step.
-compose-preview a11y --module ":${A11Y_MODULE}"
+#
+# In auto-detect mode a missing-plugin / no-candidate-modules failure is
+# treated as "project doesn't ship a11y" rather than a hard error —
+# consumers shouldn't have to remember to `skip: a11y`. With an explicit
+# allowlist we let the CLI fail loud since the user named a specific
+# module that must exist.
+if [ "${#ALLOW_MODULES[@]}" -eq 0 ]; then
+  if ! compose-preview "${cli_args[@]}"; then
+    echo "a11y pipeline: compose-preview ${cli_args[*]} failed (likely no module applies the plugin); skipping."
+    echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+    exit 0
+  fi
+else
+  compose-preview "${cli_args[@]}"
+fi
 
-# Translate Gradle module path to on-disk project dir.
-MODULE_DIR="${A11Y_MODULE//://}"
-python3 "$ACTION_PATH/../lib/a11y-report.py" copy-annotated \
-  --build-dir "${MODULE_DIR}/build/compose-previews" \
-  --output-dir _a11y_renders
+# Discover every module that produced a previews.json under
+# */build/compose-previews. Translates the on-disk path to a Gradle module
+# path (`foo/bar/build/compose-previews/previews.json` → `foo:bar`) so the
+# skip list can be matched against canonical Gradle paths.
+discovered=()
+while IFS= read -r path; do
+  rel="${path#./}"
+  module_dir="${rel%/build/compose-previews/previews.json}"
+  module_path="${module_dir//\//:}"
+  discovered+=("$module_path|$module_dir")
+done < <(find . -type f -name previews.json -path '*/build/compose-previews/*' 2>/dev/null | sort)
+
+if [ "${#discovered[@]}" -eq 0 ]; then
+  echo "a11y pipeline: no modules produced previews.json; skipping."
+  echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+  exit 0
+fi
+
+is_skipped() {
+  local mod="$1"
+  for s in "${SKIP_MODULES[@]}"; do
+    [ "$s" = "$mod" ] && return 0
+  done
+  return 1
+}
+
+# Filter discovered modules through the skip list and only feed surviving
+# build dirs to `copy-annotated`. The CLI already ran across the full
+# allowlist, so skip just controls what shows up in the report.
+copy_args=(copy-annotated --output-dir _a11y_renders)
+kept=0
+for entry in "${discovered[@]}"; do
+  module_path="${entry%%|*}"
+  module_dir="${entry##*|}"
+  if is_skipped "$module_path"; then
+    echo "a11y pipeline: skipping module ${module_path} (skip list)."
+    continue
+  fi
+  copy_args+=(--build-dir "${module_dir}/build/compose-previews")
+  kept=$((kept + 1))
+done
+
+if [ "$kept" -eq 0 ]; then
+  echo "a11y pipeline: all discovered modules were skip-listed; nothing to report."
+  echo "0" > "$GITHUB_WORKSPACE/_a11y_rc"
+  exit 0
+fi
+
+python3 "$ACTION_PATH/../lib/a11y-report.py" "${copy_args[@]}"
 
 if [ "$MODE" = "baseline" ]; then
   python3 "$ACTION_PATH/../lib/a11y-report.py" readme \

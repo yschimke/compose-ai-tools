@@ -257,6 +257,78 @@ class CopyAnnotatedTest(unittest.TestCase):
         self.assertEqual(by_fn["Good"]["annotatedBasename"], "Good_large.a11y.png")
         self.assertEqual(by_fn["Good"]["findings"], [])
 
+    def test_merges_multiple_build_dirs_into_one_findings(self):
+        # Second module fixture (sample-phone) under a sibling build dir.
+        # copy-annotated should fold both modules into a single findings.json
+        # and keep each module's renders namespaced under `renders/<module>/`.
+        other = self.tmp / "build-phone"
+        other.mkdir()
+        (other / "renders").mkdir()
+        (other / "renders" / "Phone.png").write_bytes(b"clean-phone")
+        (other / "data" / "p.Phone_default").mkdir(parents=True)
+        (other / "data" / "p.Phone_default" / "a11y-overlay.png").write_bytes(b"overlay-phone")
+        (other / "previews.json").write_text(json.dumps({
+            "module": "sample-phone",
+            "variant": "debug",
+            "previews": [
+                _preview(id="p.Phone_default", function="Phone",
+                         render="renders/Phone.png"),
+            ],
+            "dataExtensionReports": {"a11y": "accessibility.json"},
+        }))
+        (other / "accessibility.json").write_text(json.dumps({
+            "module": "sample-phone",
+            "entries": [
+                {
+                    "previewId": "p.Phone_default",
+                    "findings": [_finding(level="ERROR")],
+                    "annotatedPath": "data/p.Phone_default/a11y-overlay.png",
+                },
+            ],
+        }))
+
+        out = self.tmp / "out"
+        import argparse
+        ar.cmd_copy_annotated(argparse.Namespace(
+            build_dir=[str(self.build), str(other)],
+            output_dir=str(out),
+        ))
+        self.assertTrue((out / "renders" / "sample-wear" / "Bad_small.png").exists())
+        self.assertTrue((out / "renders" / "sample-phone" / "Phone.png").exists())
+        findings = json.loads((out / "findings.json").read_text())
+        modules = sorted({e["module"] for e in findings["entries"]})
+        self.assertEqual(modules, ["sample-phone", "sample-wear"])
+        # Three entries: Bad + Good from wear, Phone from phone.
+        self.assertEqual(len(findings["entries"]), 3)
+
+    def test_combined_status_propagates_atf_unavailable_from_any_module(self):
+        # One module ran clean, the other came back atf-unavailable. The
+        # combined report should still carry the unavailable flag so the PR
+        # comment surfaces the warning.
+        other = self.tmp / "build-phone"
+        other.mkdir()
+        (other / "renders").mkdir()
+        (other / "previews.json").write_text(json.dumps({
+            "module": "sample-phone",
+            "variant": "debug",
+            "previews": [],
+            "dataExtensionReports": {"a11y": "accessibility.json"},
+        }))
+        (other / "accessibility.json").write_text(json.dumps({
+            "module": "sample-phone",
+            "entries": [],
+            "status": "atf-unavailable",
+        }))
+
+        out = self.tmp / "out"
+        import argparse
+        ar.cmd_copy_annotated(argparse.Namespace(
+            build_dir=[str(self.build), str(other)],
+            output_dir=str(out),
+        ))
+        findings = json.loads((out / "findings.json").read_text())
+        self.assertEqual(findings["status"], "atf-unavailable")
+
     def test_propagates_atf_unavailable_status_to_findings(self):
         # Simulate the daemon-failure shape `DaemonA11yFetcher` writes when no
         # per-preview ATF fetch succeeds: top-level `status` set, entries
