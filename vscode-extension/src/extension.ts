@@ -107,6 +107,7 @@ import {
     writeRenderFreshnessStamp,
 } from "./renderFreshness";
 import { RefreshQueue, defaultRefreshQueueEffects } from "./refreshQueue";
+import { EditorScope, PreviewModuleIndex } from "./editorScope";
 import {
     BUNDLED_PLUGIN_VERSION,
     hasIncludedPluginBuild,
@@ -214,27 +215,22 @@ let pendingRefresh: AbortController | null = null;
 let pendingRefreshKey: string | null = null;
 let hasPreviewsLoaded = false;
 let lastLoadedModules: string[] = [];
-/**
- * The file path the panel is currently scoped to. Updated whenever a refresh
- * successfully resolves a module. Webview-initiated refreshes reuse this
- * rather than falling back to `activeTextEditor`, which can drift when the
- * webview has focus (undefined) or resolve to an unrelated editor.
- */
-let currentScopeFile: string | null = null;
-let currentScopeModule: ModuleInfo | null = null;
+/** Active editor scope (file + owning module) the preview panel is pinned to.
+ *  See {@link EditorScope}. */
+const editorScope = new EditorScope();
 /**
  * True when the panel currently shows a compile-error banner the
  * extension posted (either from the LSP gate or from a kotlinc parse
  * failure). The onDidChangeDiagnostics listener uses this to decide
- * whether a "diagnostics now empty" event for `currentScopeFile`
+ * whether a "diagnostics now empty" event for the active scope file
  * should auto-retry the refresh — pointless when no banner is up.
  * Cleared whenever the gate clears the banner or a refresh completes.
  */
 let compileGateActive = false;
 const registry = new PreviewRegistry();
-/** previewId → module, updated on every refresh. Used to look up the
- *  owning module when the webview posts a per-preview action. */
-const previewModuleMap = new Map<string, ModuleInfo>();
+/** previewId → owning module, updated on every refresh. See
+ *  {@link PreviewModuleIndex}. */
+const previewModuleIndex = new PreviewModuleIndex();
 /**
  * previewId → latest Remote Compose override the panel pushed. The panel's
  * editable tab body posts `setRemoteComposeNamedValue` per cell change; we
@@ -1167,7 +1163,7 @@ export async function activate(
                           const stale: string[] = [];
                           for (const previewId of activeInteractiveStreams.keys()) {
                               if (
-                                  previewModuleMap.get(previewId)
+                                  previewModuleIndex.get(previewId)
                                       ?.modulePath === moduleId
                               ) {
                                   stale.push(previewId);
@@ -1183,7 +1179,7 @@ export async function activate(
                               ...activeStreamFrameStreams.keys(),
                           ]) {
                               if (
-                                  previewModuleMap.get(previewId)
+                                  previewModuleIndex.get(previewId)
                                       ?.modulePath !== moduleId
                               ) {
                                   continue;
@@ -1201,7 +1197,7 @@ export async function activate(
                               ...activeRecordingSessions.keys(),
                           ]) {
                               if (
-                                  previewModuleMap.get(previewId)
+                                  previewModuleIndex.get(previewId)
                                       ?.modulePath === moduleId
                               ) {
                                   activeRecordingSessions.delete(previewId);
@@ -1435,15 +1431,15 @@ export async function activate(
         : null;
     context.subscriptions.push(
         vscode.commands.registerCommand("composePreview.refresh", () =>
-            refresh(true, currentScopeFile ?? undefined),
+            refresh(true, editorScope.file ?? undefined),
         ),
         vscode.commands.registerCommand("composePreview.renderAll", () =>
-            refresh(true, currentScopeFile ?? undefined),
+            refresh(true, editorScope.file ?? undefined),
         ),
         vscode.commands.registerCommand(
             "composePreview.runForFile",
             (filePath?: string) => {
-                const target = filePath ?? currentScopeFile ?? undefined;
+                const target = filePath ?? editorScope.file ?? undefined;
                 if (target) {
                     refresh(true, target);
                 }
@@ -1467,7 +1463,7 @@ export async function activate(
                 );
                 // If the caller passed a file, scope the panel to it before
                 // filtering — otherwise the currently-scoped module is reused.
-                if (filePath && filePath !== currentScopeFile) {
+                if (filePath && filePath !== editorScope.file) {
                     await refresh(false, filePath);
                 }
                 panel.postMessage({
@@ -1790,7 +1786,7 @@ export async function activate(
                 // event with the same Kotlin file. Re-running refresh there
                 // just cancels any in-flight render, flashes spinners, and
                 // burns a Gradle invocation — all for a no-op.
-                if (filePath === currentScopeFile) {
+                if (filePath === editorScope.file) {
                     return;
                 }
                 // INTERACTIVE.md § 3 — drop active interactive streams when
@@ -1837,11 +1833,11 @@ export async function activate(
             // sticky got covered/closed and we need to re-resolve (which may
             // blank the panel) — issue #145.
             if (
-                currentScopeFile &&
-                !isFileVisibleInEditor(currentScopeFile) &&
+                editorScope.file &&
+                !isFileVisibleInEditor(editorScope.file) &&
                 !(
                     isAntigravityHost() &&
-                    isFileOpenInTextDocument(currentScopeFile)
+                    isFileOpenInTextDocument(editorScope.file)
                 )
             ) {
                 // The sticky scope file is no longer on screen — same UX flush as the
@@ -1865,11 +1861,11 @@ export async function activate(
     context.subscriptions.push(
         vscode.window.onDidChangeVisibleTextEditors(() => {
             if (
-                currentScopeFile &&
-                !isFileVisibleInEditor(currentScopeFile) &&
+                editorScope.file &&
+                !isFileVisibleInEditor(editorScope.file) &&
                 !(
                     isAntigravityHost() &&
-                    isFileOpenInTextDocument(currentScopeFile)
+                    isFileOpenInTextDocument(editorScope.file)
                 )
             ) {
                 clearHeavyRefreshOptIns();
@@ -1987,7 +1983,7 @@ export async function activate(
     // Guard rails:
     //   1. compileGateActive — no point retrying when the panel isn't
     //      currently showing an error banner.
-    //   2. event affects currentScopeFile — diagnostic changes for
+    //   2. event affects editorScope.file — diagnostic changes for
     //      unrelated files mustn't pull a render of the active one.
     //   3. buffer is saved (!isDirty) — Gradle reads the on-disk file,
     //      so retrying against an unsaved fix would still render against
@@ -2150,7 +2146,7 @@ async function flushInteractiveStreams(): Promise<void> {
     await Promise.all([
         ...interactiveEntries.map(async ([previewId, streamId]) => {
             try {
-                const module = previewModuleMap.get(previewId);
+                const module = previewModuleIndex.get(previewId);
                 if (!module) return;
                 const client = await daemonGate?.getOrSpawn(
                     module,
@@ -2163,7 +2159,7 @@ async function flushInteractiveStreams(): Promise<void> {
         }),
         ...streamEntries.map(async ([previewId, streamId]) => {
             try {
-                const module = previewModuleMap.get(previewId);
+                const module = previewModuleIndex.get(previewId);
                 if (!module) return;
                 const client = await daemonGate?.getOrSpawn(
                     module,
@@ -2194,7 +2190,7 @@ async function flushRecordingSessions(options: {
     await Promise.all(
         entries.map(async ([previewId, recordingId]) => {
             try {
-                const module = previewModuleMap.get(previewId);
+                const module = previewModuleIndex.get(previewId);
                 if (!module) {
                     return;
                 }
@@ -2286,12 +2282,12 @@ function resolveScopeFile(forFilePath?: string): {
     }
 
     if (
-        currentScopeFile &&
-        isPreviewSourceFile(currentScopeFile) &&
-        (isFileVisibleInEditor(currentScopeFile) ||
-            (isAntigravityHost() && isFileOpenInTextDocument(currentScopeFile)))
+        editorScope.file &&
+        isPreviewSourceFile(editorScope.file) &&
+        (isFileVisibleInEditor(editorScope.file) ||
+            (isAntigravityHost() && isFileOpenInTextDocument(editorScope.file)))
     ) {
-        return { file: currentScopeFile, source: "sticky" };
+        return { file: editorScope.file, source: "sticky" };
     }
 
     for (const editor of vscode.window.visibleTextEditors) {
@@ -2404,9 +2400,9 @@ async function applyDiscoveryDiff(
     // repaint the panel when its current scope still belongs to this module;
     // daemon save/discovery events can also arrive for background files.
     const repaintFile =
-        currentScopeFile &&
-        gradleService.resolveModule(currentScopeFile)?.modulePath === moduleId
-            ? currentScopeFile
+        editorScope.file &&
+        gradleService.resolveModule(editorScope.file)?.modulePath === moduleId
+            ? editorScope.file
             : undefined;
     await reconcilePreviewManifest(module, repaintFile);
 }
@@ -2483,10 +2479,10 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
             `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
         );
         const repaintFile =
-            currentScopeFile &&
-            gradleService.resolveModule(currentScopeFile)?.modulePath ===
+            editorScope.file &&
+            gradleService.resolveModule(editorScope.file)?.modulePath ===
                 moduleKey
-                ? currentScopeFile
+                ? editorScope.file
                 : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
         filePreviews = fresh
@@ -2616,7 +2612,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
         for (const capture of p.captures) {
             capture.label = captureLabel(capture);
         }
-        previewModuleMap.set(p.id, module);
+        previewModuleIndex.set(p.id, module);
     }
 
     const displayPreviews = visiblePreviews.map(withDataProductCaptures);
@@ -2943,19 +2939,20 @@ function startDaemonStartupProgress(
 }
 
 function isDaemonStartupScopeActive(module: ModuleInfo): boolean {
-    return currentScopeModule?.modulePath === module.modulePath;
+    return editorScope.ownsModule(module);
 }
 
 function setCurrentScopeFile(
     filePath: string | null,
     module?: ModuleInfo | null,
 ): void {
-    currentScopeFile = filePath;
-    currentScopeModule =
+    const resolved =
         module ??
         (filePath && gradleService
             ? gradleService.resolveModule(filePath)
-            : null);
+            : null) ??
+        null;
+    editorScope.set(filePath, resolved);
 }
 
 function stopDaemonStartupProgress(module: ModuleInfo): void {
@@ -3047,17 +3044,15 @@ async function reconcilePreviewManifest(
 
     const fresh = manifest.previews;
     const moduleKey = module.modulePath;
-    for (const [id, owner] of [...previewModuleMap.entries()]) {
-        if (owner.modulePath === moduleKey) {
-            previewModuleMap.delete(id);
-        }
-    }
     for (const p of fresh) {
         for (const capture of p.captures) {
             capture.label = captureLabel(capture);
         }
-        previewModuleMap.set(p.id, module);
     }
+    previewModuleIndex.replaceModule(
+        module,
+        fresh.map((p) => p.id),
+    );
     moduleManifestCache.set(moduleKey, fresh);
     registry.replaceModule(moduleKey, fresh);
 
@@ -3089,7 +3084,7 @@ async function refreshAfterDaemonReady(
     if (!module || !daemonGate.isDaemonReady(module.modulePath)) {
         return;
     }
-    if (currentScopeFile && currentScopeFile !== filePath) {
+    if (editorScope.file && editorScope.file !== filePath) {
         return;
     }
     if (pendingRefresh || refreshQueue.isInFlight()) {
@@ -3138,24 +3133,21 @@ async function reconcilePreviewManifestAfterDaemonReady(
             panel.postMessage({ command: "clearProgress" });
             return false;
         }
-        if (currentScopeFile && currentScopeFile !== filePath) {
+        if (editorScope.file && editorScope.file !== filePath) {
             panel.postMessage({ command: "clearProgress" });
             return false;
         }
 
         const fresh = manifest.previews;
-        const freshIds = new Set(fresh.map((p) => p.id));
-        for (const [id, owner] of [...previewModuleMap.entries()]) {
-            if (owner.modulePath === moduleKey && !freshIds.has(id)) {
-                previewModuleMap.delete(id);
-            }
-        }
         for (const p of fresh) {
             for (const capture of p.captures) {
                 capture.label = captureLabel(capture);
             }
-            previewModuleMap.set(p.id, module);
         }
+        previewModuleIndex.replaceModule(
+            module,
+            fresh.map((p) => p.id),
+        );
         moduleManifestCache.set(moduleKey, fresh);
         registry.replaceModule(moduleKey, fresh);
 
@@ -3545,7 +3537,7 @@ function readCompileErrors(filePath: string): CompileError[] {
  * we don't care.
  */
 function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
-    if (!compileGateActive || !currentScopeFile) {
+    if (!compileGateActive || !editorScope.file) {
         return;
     }
     // Minimal mode: every render is manual. Clearing the compile gate
@@ -3555,7 +3547,7 @@ function onDiagnosticsChanged(e: vscode.DiagnosticChangeEvent): void {
     if (inMinimalMode()) {
         return;
     }
-    const scopeFile = currentScopeFile;
+    const scopeFile = editorScope.file;
     if (!e.uris.some((u) => u.fsPath === scopeFile)) {
         return;
     }
@@ -3609,7 +3601,7 @@ function writeCalibration(module: ModuleInfo, latest: PhaseDurations): void {
  *  else falls back to the longer `DEBOUNCE_MS` that absorbs burst saves
  *  across multiple files. */
 function refreshDebounceMsFor(target: string): number {
-    return target === currentScopeFile ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
+    return target === editorScope.file ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
 }
 
 /** Resolve a watcher event's file path to the refresh target. Watcher events
@@ -4064,7 +4056,7 @@ async function refresh(
     // Cleared until we reach the start-log gate; gated early-return paths
     // leave it null so a later refresh with the same args still runs.
     pendingRefreshKey = null;
-    if (currentScopeFile && currentScopeFile !== activeFile) {
+    if (editorScope.file && editorScope.file !== activeFile) {
         clearHeavyRefreshOptIns();
     }
     pendingRefreshKey = `${forceRender}|${tier}|${activeFile}|${module.modulePath}`;
@@ -4078,7 +4070,7 @@ async function refresh(
     // Cards from the previous successful render stay visible (just dimmed)
     // so the user keeps a reference while they fix the error.
     //
-    // Gate fires before currentScopeFile assignment so a later refresh from
+    // Gate fires before editorScope.file assignment so a later refresh from
     // a different file can still drop the banner via clearCompileErrors.
     //
     // Save-edge debounce. The Kotlin LSP can take 50–200 ms to republish
@@ -4224,7 +4216,7 @@ async function refresh(
 
     try {
         const allPreviews: PreviewInfo[] = [];
-        previewModuleMap.clear();
+        previewModuleIndex.clear();
 
         for (const mod of modules) {
             if (abort.signal.aborted) {
@@ -4296,7 +4288,7 @@ async function refresh(
                         capture.label = captureLabel(capture);
                     }
                     allPreviews.push(p);
-                    previewModuleMap.set(p.id, mod);
+                    previewModuleIndex.set(p.id, mod);
                     perModule.push(p);
                 }
             }
@@ -4438,7 +4430,7 @@ async function refresh(
                     continue;
                 }
 
-                const ownerModule = previewModuleMap.get(preview.id);
+                const ownerModule = previewModuleIndex.get(preview.id);
                 const mod = ownerModule
                     ? (modulesByPath.get(ownerModule.modulePath) ?? ownerModule)
                     : undefined;
@@ -4664,9 +4656,9 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // cache only — if there's nothing cached the panel stays empty
             // until the user clicks Refresh.
             sendModuleList();
-            if (currentScopeFile) {
+            if (editorScope.file) {
                 if (inMinimalMode()) {
-                    void preloadCachedPreviews(currentScopeFile);
+                    void preloadCachedPreviews(editorScope.file);
                 } else {
                     // Mirror the runActivationRefresh sequence: paint the
                     // on-disk cache first so the grid is never blank while
@@ -4677,7 +4669,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                     // before refresh() fires the abort itself.
                     pendingRefresh?.abort();
                     pendingRefreshKey = null;
-                    const scopeFile = currentScopeFile;
+                    const scopeFile = editorScope.file;
                     void (async () => {
                         const preloaded =
                             await preloadCachedPreviews(scopeFile);
@@ -4757,7 +4749,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // failed/cancelled refresh would otherwise leave the hint
             // stuck on a state the user just acted on.
             panel?.postMessage({ command: "minimalSavePendingClear" });
-            void refresh(true, currentScopeFile ?? undefined);
+            void refresh(true, editorScope.file ?? undefined);
             break;
         case "openModuleBuildFile":
             // Minimal-mode "Apply plugin" link in the in-view banner.
@@ -4767,14 +4759,14 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             // setup notification uses so the two surfaces stay aligned.
             void vscode.commands.executeCommand(
                 "composePreview.openModuleBuildFile",
-                currentScopeFile ?? undefined,
+                editorScope.file ?? undefined,
             );
             break;
         case "refreshHeavy": {
             // Click on a faded heavy card opts it into full-tier renders for
             // this editor focus scope. Future saves keep that preview fresh;
             // changing focus clears the opt-in set.
-            const mod = previewModuleMap.get(msg.previewId);
+            const mod = previewModuleIndex.get(msg.previewId);
             if (mod) {
                 optInHeavyRefresh(mod.modulePath, msg.previewId);
                 if (daemonGate && daemonScheduler) {
@@ -4785,7 +4777,7 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                         "heavy-opt-in",
                     );
                 } else {
-                    void refresh(true, currentScopeFile ?? undefined, "full");
+                    void refresh(true, editorScope.file ?? undefined, "full");
                 }
             }
             break;
@@ -5055,7 +5047,7 @@ async function handleSetDataExtensionEnabled(
     if (kinds.length === 0) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
+    const moduleId = previewModuleIndex.get(previewId);
     if (!moduleId) {
         return;
     }
@@ -5174,7 +5166,7 @@ async function handleSetRemoteComposeNamedValue(
     if (!daemonScheduler) {
         return;
     }
-    const moduleInfo = previewModuleMap.get(previewId);
+    const moduleInfo = previewModuleIndex.get(previewId);
     if (!moduleInfo) {
         return;
     }
@@ -5258,7 +5250,7 @@ async function handleSetA11yOverlay(
     if (!daemonScheduler) {
         return;
     }
-    const moduleId = previewModuleMap.get(previewId);
+    const moduleId = previewModuleIndex.get(previewId);
     if (!moduleId) {
         return;
     }
@@ -5412,7 +5404,7 @@ async function runLivePreviewDiff(
     if (!panel || !historySource) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     const manifest = module
         ? moduleManifestCache.get(module.modulePath)
         : undefined;
@@ -5703,7 +5695,7 @@ async function resolveLaunchPreview(
     );
 
     if (focusedPreviewId) {
-        const owner = previewModuleMap.get(focusedPreviewId);
+        const owner = previewModuleIndex.get(focusedPreviewId);
         const candidate = owner
             ? candidateByModule.get(owner.modulePath)
             : undefined;
@@ -5788,13 +5780,13 @@ async function diffAllVsMain(): Promise<void> {
         );
         return;
     }
-    if (!currentScopeFile) {
+    if (!editorScope.file) {
         vscode.window.showInformationMessage(
             "Open a Kotlin file with @Preview functions before running Diff All vs Main.",
         );
         return;
     }
-    const module = gradleService.resolveModule(currentScopeFile);
+    const module = gradleService.resolveModule(editorScope.file);
     if (!module) {
         vscode.window.showInformationMessage(
             "Active file is not part of a Compose Preview module.",
@@ -6011,7 +6003,7 @@ async function exportPreviewBundle(previewId: string): Promise<void> {
         );
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         vscode.window.showWarningMessage(
             "Compose Preview: could not resolve module for the focused preview.",
@@ -6123,7 +6115,7 @@ function getExtensionUri(): vscode.Uri {
 }
 
 function lookupPreviewLabel(previewId: string): string | undefined {
-    const mod = previewModuleMap.get(previewId);
+    const mod = previewModuleIndex.get(previewId);
     if (!mod) {
         return undefined;
     }
@@ -6156,7 +6148,7 @@ async function handleSetInteractive(
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         logLine(
             `[interactive] no module for ${previewId}; ignoring setInteractive`,
@@ -6253,7 +6245,7 @@ async function handleRequestStreamStart(
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         logLine(
             `[stream] no module for ${previewId}; ignoring requestStreamStart`,
@@ -6325,7 +6317,7 @@ async function handleRequestStreamStop(previewId: string): Promise<void> {
     activeStreamFrameStreams.delete(previewId);
     streamFrameIdToPreviewId.delete(sid);
     updateInteractiveStatus();
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!daemonGate || !daemonScheduler || !module) {
         return;
     }
@@ -6347,7 +6339,7 @@ async function handleRequestStreamVisibility(
     if (!sid) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!daemonGate || !daemonScheduler || !module) {
         return;
     }
@@ -6453,7 +6445,7 @@ function updateInteractiveStatus(): void {
         ...activeInteractiveStreams.keys(),
         ...activeStreamFrameStreams.keys(),
     ]) {
-        const module = previewModuleMap.get(previewId);
+        const module = previewModuleIndex.get(previewId);
         if (!module) {
             continue;
         }
@@ -6487,7 +6479,7 @@ async function handleSetRecording(
     if (!daemonGate || !daemonScheduler) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         logLine(
             `[recording] no module for ${previewId}; ignoring setRecording`,
@@ -6586,7 +6578,7 @@ async function forwardInteractiveInput(
     if (!streamId) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         return;
     }
@@ -6618,7 +6610,7 @@ async function forwardRecordingInput(
     if (!recordingId) {
         return;
     }
-    const module = previewModuleMap.get(previewId);
+    const module = previewModuleIndex.get(previewId);
     if (!module) {
         return;
     }
@@ -6695,7 +6687,7 @@ async function notifyDaemonViewport(
     const predictedByModule = new Map<string, string[]>();
     const moduleByPath = new Map<string, ModuleInfo>();
     for (const id of visible) {
-        const mod = previewModuleMap.get(id);
+        const mod = previewModuleIndex.get(id);
         if (!mod) {
             continue;
         }
@@ -6706,7 +6698,7 @@ async function notifyDaemonViewport(
         visibleByModule.get(mod.modulePath)!.push(id);
     }
     for (const id of predicted) {
-        const mod = previewModuleMap.get(id);
+        const mod = previewModuleIndex.get(id);
         if (!mod) {
             continue;
         }
@@ -6851,7 +6843,7 @@ async function openModuleBuildFile(
 ): Promise<void> {
     const target =
         filePath ??
-        currentScopeFile ??
+        editorScope.file ??
         vscode.window.activeTextEditor?.document.uri.fsPath ??
         workspaceRoot;
 
