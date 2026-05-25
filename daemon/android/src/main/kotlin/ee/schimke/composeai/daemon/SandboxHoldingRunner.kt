@@ -107,9 +107,18 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
    */
   override fun getExtraShadows(method: FrameworkMethod): Array<Class<*>> {
     val shadows = mutableListOf<Class<*>>()
-    // Wear ambient shadow — only when the wear AAR is on the classpath (issue #1244).
+    // Wear ambient shadow — only when the wear AAR is on the classpath (issue #1244) AND
+    // the daemon's connector module is also available. The connector (ShadowAmbientLifecycleObserver
+    // and friends) is bundled inside the extension artifact; when the artifact predates the
+    // connector being added, the wear AAR check passes but the connector class is absent,
+    // causing NoClassDefFoundError mid-sandbox-bootstrap. Catching here lets the daemon
+    // limp along without ambient support rather than crashing all sandbox workers.
     if (isWearAmbientAvailable(javaClass.classLoader)) {
-      shadows += ShadowAmbientLifecycleObserver::class.java
+      try {
+        shadows += ShadowAmbientLifecycleObserver::class.java
+      } catch (_: NoClassDefFoundError) {
+        // connector not on classpath — skip ambient shadow
+      }
     }
     // Runtime-permissions tracker shadow. Always registered — `android.content.ContextWrapper`
     // is core Android, present on every consumer classpath, so the symbolic links the shadow
