@@ -51,6 +51,17 @@ export class RealGradleApi implements GradleApi {
             `[realGradleApi] ${gradlewPath} ${gradleArgs.join(" ")} (cwd=${opts.projectFolder})`,
         );
 
+        // Under e2e-external the underlying gradleService routes Gradle output
+        // to the extension's `outputChannel` (via `logger.append`), which
+        // doesn't surface in CI stdout. That makes a silent `composePreviewApplied`
+        // failure or a missing-marker fan-out invisible — the test fails with
+        // "resolveModule returned null" and no Gradle context. Forward stderr
+        // verbatim and stdout selectively (build status + task names + errors)
+        // to console.log so the CI log has enough to triage. Cheap: this is a
+        // test-only realGradleApi, not the production GradleApi path.
+        const diagE2e = process.env.COMPOSE_PREVIEW_E2E_EXTERNAL === "1";
+        const stdoutDiagRe =
+            /BUILD\s+(SUCCESSFUL|FAILED)|composePreviewApplied|FAILURE|^Configuring |Could not resolve|Exception/m;
         return new Promise((resolve, reject) => {
             const child = spawn(gradlewPath, gradleArgs, {
                 cwd: opts.projectFolder,
@@ -58,6 +69,13 @@ export class RealGradleApi implements GradleApi {
                 stdio: ["ignore", "pipe", "pipe"],
             });
             child.stdout.on("data", (chunk: Buffer) => {
+                if (diagE2e) {
+                    const text = chunk.toString("utf-8");
+                    for (const line of text.split("\n")) {
+                        if (stdoutDiagRe.test(line))
+                            console.log(`[gradle stdout] ${line}`);
+                    }
+                }
                 opts.onOutput?.({
                     getOutputBytes: () => new Uint8Array(chunk),
                     // 0 = stdout, matches the bytes-shaped contract the
@@ -66,6 +84,9 @@ export class RealGradleApi implements GradleApi {
                 });
             });
             child.stderr.on("data", (chunk: Buffer) => {
+                if (diagE2e) {
+                    process.stderr.write(`[gradle stderr] ${chunk}`);
+                }
                 opts.onOutput?.({
                     getOutputBytes: () => new Uint8Array(chunk),
                     getOutputType: () => 1,
@@ -73,6 +94,11 @@ export class RealGradleApi implements GradleApi {
             });
             child.once("error", reject);
             child.once("close", (code) => {
+                if (diagE2e) {
+                    console.log(
+                        `[gradle exit] code=${code} args=${gradleArgs.join(" ")}`,
+                    );
+                }
                 if (code === 0) {
                     resolve();
                 } else {
