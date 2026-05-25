@@ -402,6 +402,38 @@ internal object AndroidPreviewSupport {
       compileTaskNames = mainCompileTaskNames,
     )
 
+    // `composePreviewCheckDebugPreviews` — only meaningful when the Google
+    // screenshot plugin is on the project, so we register conditionally
+    // rather than as a permanent no-op task. See [CheckDebugPreviewsTask]
+    // for the motivation; tl;dr `src/debug/` previews compiled against the
+    // `screenshotTest` dependency closure routinely fail in confusing ways
+    // (compile-time NoSuchSymbol or render-time `.error.json` with no PNG),
+    // and the fix is to move them to `src/screenshotTest/{java,kotlin}/`.
+    if (screenshotTestEnabled) {
+      val debugSrcTree =
+        project.fileTree(project.projectDir.resolve("src/debug")) {
+          include("**/*.kt", "**/*.java")
+        }
+      val checkDebugTask =
+        project.tasks.register(
+          "composePreviewCheckDebugPreviews",
+          CheckDebugPreviewsTask::class.java,
+        ) {
+          group = "compose preview"
+          description =
+            "Warn when @Preview functions live in src/debug/ on a module with the " +
+              "com.android.compose.screenshot plugin (move them to src/screenshotTest/)"
+          debugSourceFiles.from(debugSrcTree)
+          projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
+        }
+      // `finalizedBy` rather than `dependsOn` so discovery itself never
+      // waits on this check, and a check failure (shouldn't happen — the
+      // task only warns) doesn't block downstream render tasks. Runs once
+      // per discover invocation, skipped when no debug sources exist
+      // (`@SkipWhenEmpty` on `debugSourceFiles`).
+      discoverTask.configure { finalizedBy(checkDebugTask) }
+    }
+
     // Writes the plugin-side compat findings (CompatRules) to
     // `build/compose-previews/doctor.json`. The CLI doesn't need this
     // file (it reads the same data via the ComposePreviewModel Tooling

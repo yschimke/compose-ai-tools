@@ -910,16 +910,8 @@ internal object ComposePreviewTasks {
         // part of `Foo`'s fan-out.
         val missing = missingPreviewOutputIds(manifest, outDir, isFastTier)
         if (missing.isNotEmpty()) {
-          val preview = missing.take(3).joinToString(", ")
-          val andMore = if (missing.size > 3) " (+${missing.size - 3} more)" else ""
-          throw GradleException(
-            "composePreviewRenderAll: render produced no output file for ${missing.size} of " +
-              "${manifest.previews.size} preview(s): $preview$andMore. This means " +
-              "`composePreviewRender` was skipped or silently did nothing — on Android " +
-              "that usually means it reported NO-SOURCE because " +
-              "RobolectricRenderTest.class wasn't discoverable on its " +
-              "testClassesDirs. Run with --info to see the task outcome."
-          )
+          val sidecars = readErrorSidecarsFor(manifest, missing, outDir)
+          throw GradleException(formatMissingPreviewsMessage(manifest, missing, sidecars))
         }
         val marker = validationMarker.get().asFile
         marker.parentFile?.mkdirs()
@@ -956,6 +948,131 @@ internal object ComposePreviewTasks {
   }
 
   private val PIXEL_TEST_UNIT_TEST_TASKS = setOf("testDebugUnitTest", "testReleaseUnitTest")
+
+  /**
+   * Per-preview error-sidecar payload as the gradle plugin reads it. We mirror only the fields used
+   * by [formatMissingPreviewsMessage]; the sidecar schema itself lives next to the renderer that
+   * writes it (`renderer-android/.../RenderErrorSidecar.kt` and the desktop equivalent).
+   * `ignoreUnknownKeys` keeps us compatible with future sidecar fields without a coordinated bump.
+   */
+  @kotlinx.serialization.Serializable
+  internal data class ErrorSidecar(
+    val exception: String = "",
+    val message: String = "",
+    val topAppFrame: TopAppFrame? = null,
+  ) {
+    @kotlinx.serialization.Serializable
+    internal data class TopAppFrame(
+      val file: String = "",
+      val line: Int = 0,
+      val function: String = "",
+    )
+  }
+
+  /**
+   * For each missing preview, look for the `<png>.error.json` sidecar the renderer writes on a
+   * per-preview throw. The renderer catches `Throwable` around each preview's `setContent` so one
+   * broken preview doesn't fail the whole `Test` task — it writes a sidecar instead, and leaves no
+   * PNG. Without this lookup, the renderAll wrapper sees "missing PNG" and emits a generic "render
+   * was skipped" message that masks the actual exception.
+   *
+   * Returns one entry per preview that had AT LEAST one capture-or-product sidecar; preview ids
+   * without any sidecar (true silent skip / NO-SOURCE) are absent from the map.
+   */
+  internal fun readErrorSidecarsFor(
+    manifest: PreviewManifest,
+    missingIds: List<String>,
+    outDir: java.io.File,
+  ): Map<String, ErrorSidecar> {
+    val json = Json { ignoreUnknownKeys = true }
+    val byId = manifest.previews.associateBy { it.id }
+    val result = mutableMapOf<String, ErrorSidecar>()
+    for (id in missingIds) {
+      val preview = byId[id] ?: continue
+      val candidatePaths =
+        preview.captures.map { it.renderOutput.ifEmpty { "renders/$id.png" } } +
+          preview.dataProducts.map { it.output }
+      val sidecar =
+        candidatePaths
+          .asSequence()
+          .mapNotNull { rel ->
+            val sidecarFile = java.io.File(outDir, "$rel.error.json")
+            if (!sidecarFile.isFile) null
+            else
+              runCatching {
+                  json.decodeFromString(ErrorSidecar.serializer(), sidecarFile.readText())
+                }
+                .getOrNull()
+          }
+          .firstOrNull()
+      if (sidecar != null) result[id] = sidecar
+    }
+    return result
+  }
+
+  internal fun formatMissingPreviewsMessage(
+    manifest: PreviewManifest,
+    missingIds: List<String>,
+    sidecars: Map<String, ErrorSidecar>,
+  ): String {
+    val total = manifest.previews.size
+    val n = missingIds.size
+    return if (sidecars.isEmpty()) {
+      // No sidecars anywhere — the render task really was skipped or
+      // silently NO-SOURCE'd. Keep the original guidance so the
+      // testClassesDirs / RobolectricRenderTest.class diagnosis stays in
+      // place for the case it was written for.
+      val sample = missingIds.take(3).joinToString(", ")
+      val andMore = if (n > 3) " (+${n - 3} more)" else ""
+      "composePreviewRenderAll: render produced no output file for $n of " +
+        "$total preview(s): $sample$andMore. This means " +
+        "`composePreviewRender` was skipped or silently did nothing — on Android " +
+        "that usually means it reported NO-SOURCE because " +
+        "RobolectricRenderTest.class wasn't discoverable on its " +
+        "testClassesDirs. Run with --info to see the task outcome."
+    } else {
+      // At least one sidecar exists: the render task DID run, but the
+      // preview threw. Surface the actual exception(s) so the user sees
+      // a `Class.forName` / `NoSuchMethodError` / consumer-code failure
+      // instead of a misleading "NO-SOURCE" boilerplate.
+      val withSidecar = missingIds.filter { it in sidecars }
+      val withoutSidecar = missingIds.filterNot { it in sidecars }
+      val sb = StringBuilder()
+      sb
+        .append("composePreviewRenderAll: render produced no output file for ")
+        .append(n)
+        .append(" of ")
+        .append(total)
+        .append(" preview(s).")
+      if (withSidecar.isNotEmpty()) {
+        sb.append("\n\nPer-preview render errors (from .error.json sidecars):")
+        for (id in withSidecar.take(5)) {
+          val s = sidecars.getValue(id)
+          sb.append("\n  - ").append(id).append(": ").append(s.exception.substringAfterLast('.'))
+          if (s.message.isNotBlank()) sb.append(": ").append(s.message)
+          s.topAppFrame?.let { f ->
+            if (f.file.isNotBlank()) {
+              sb.append(" (at ").append(f.file)
+              if (f.line > 0) sb.append(':').append(f.line)
+              sb.append(')')
+            }
+          }
+        }
+        if (withSidecar.size > 5) {
+          sb.append("\n  (+").append(withSidecar.size - 5).append(" more with sidecars)")
+        }
+      }
+      if (withoutSidecar.isNotEmpty()) {
+        sb
+          .append("\n\nNo sidecar (render was skipped or silently produced nothing) for: ")
+          .append(withoutSidecar.take(5).joinToString(", "))
+        if (withoutSidecar.size > 5) {
+          sb.append(" (+").append(withoutSidecar.size - 5).append(" more)")
+        }
+      }
+      sb.toString()
+    }
+  }
 
   internal fun missingPreviewOutputIds(
     manifest: PreviewManifest,
