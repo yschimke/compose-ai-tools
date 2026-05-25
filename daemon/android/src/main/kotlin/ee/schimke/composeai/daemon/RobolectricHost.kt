@@ -1065,7 +1065,11 @@ open class RobolectricHost(
       // in `AmbientLifecycleObserver` types not present on plain-Android consumers).
       dispatchObservers =
         if (isWearAmbientAvailable(javaClass.classLoader)) {
-          listOf(AmbientInputDispatchObserver())
+          try {
+            listOf(AmbientInputDispatchObserver())
+          } catch (_: NoClassDefFoundError) {
+            emptyList()
+          }
         } else {
           emptyList()
         },
@@ -1335,7 +1339,11 @@ open class RobolectricHost(
       // loadable so plain-Android consumers can still drive renders.
       val ambientOverrides =
         if (isWearAmbientAvailable(javaClass.classLoader)) {
-          listOf(AmbientPreviewOverrideExtension())
+          try {
+            listOf(AmbientPreviewOverrideExtension())
+          } catch (_: NoClassDefFoundError) {
+            emptyList()
+          }
         } else {
           emptyList()
         }
