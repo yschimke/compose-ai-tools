@@ -2015,9 +2015,19 @@ export async function activate(
             if (active?.document.languageId === "kotlin") {
                 void runActivationRefresh(active.document.uri.fsPath);
             } else {
-                // No Kotlin file in focus — let refresh() emit the empty-state
-                // message without trying to load anything.
-                refresh(false);
+                // No Kotlin file active — look for one in a visible editor (the
+                // preview panel itself is often focused at startup, pushing the
+                // Kotlin file to "visible" rather than "active"). If one is found,
+                // run the full activation sequence so cached images are preloaded
+                // before the discover round-trip returns.
+                const { file: scopeFile } = resolveScopeFile();
+                if (scopeFile) {
+                    void runActivationRefresh(scopeFile);
+                } else {
+                    // No Kotlin preview file visible anywhere — emit the
+                    // empty-state message without trying to load anything.
+                    refresh(false);
+                }
             }
         }, INIT_DELAY_MS);
     }
