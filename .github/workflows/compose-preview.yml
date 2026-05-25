@@ -1,0 +1,46 @@
+name: Compose Preview
+
+# Single entry point for the compose-preview CI surface: baselines on
+# push-to-main, sticky diff comments on PRs, manual reruns via dispatch.
+# Replaces preview-baselines.yml, preview-comment.yml, a11y-report.yml,
+# and notification-previews.yml — the `apply` composite picks baseline-vs-
+# comment from the triggering event and runs the four pipelines (compose /
+# resources / a11y / notifications) concurrently.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Per-PR group so concurrent PRs don't cancel each other; push + dispatch
+  # share one slot per ref.
+  group: compose-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Apply compose-preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # `apply` pushes via an explicit token in the remote URL, so the
+          # default git credentials aren't needed here. (zizmor: artipacked)
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/apply
+        with:
+          # In-repo CI uses the CLI built from the current checkout so PRs
+          # that change the previews.json schema don't render against a
+          # stale released CLI. External consumers omit this input.
+          cli-version: source
+          a11y-module: 'samples:wear'
+          notifications-module: 'samples:android'

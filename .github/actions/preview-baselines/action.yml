@@ -1,357 +1,48 @@
-name: 'Compose Preview Baselines'
+name: 'Compose Preview Baselines (deprecated shim)'
 description: >
-  Render all @Preview functions via the compose-preview CLI and push
-  PNGs + baselines.json as a new commit on the compose-preview/main
-  branch. The branch is browsable on GitHub (README with inline images)
-  and serves as the "before" state for PR diff comments — old commit
-  SHAs stay reachable so PR comments pinned to a past baseline keep
-  resolving forever.
+  DEPRECATED. Thin forwarder to `./.github/actions/apply` with
+  `only: compose,resources` + `mode: baseline`. New consumers should call
+  `apply` directly so they can opt into the a11y / notifications pipelines
+  too.
 
 inputs:
   cli-version:
-    description: >
-      compose-preview CLI version. Literal (e.g. "0.8.1"), "latest"
-      (resolved via the GitHub releases API), or "catalog" (read from
-      a Gradle version catalog — see catalog-path / catalog-key).
+    description: 'Forwarded to apply.cli-version.'
     default: 'latest'
   catalog-path:
-    description: 'Path to the Gradle version catalog (when cli-version=catalog).'
     default: 'gradle/libs.versions.toml'
   catalog-key:
-    description: '[versions] key to read (when cli-version=catalog).'
     default: 'composePreviewCli'
   timeout:
-    description: 'CLI render timeout in seconds.'
     default: '600'
   branch:
-    description: 'Branch name for composable @Preview baselines.'
+    description: >
+      Ignored — the unified `apply` action hardcodes
+      `compose-preview/main` as the composable baseline branch. Override
+      via `apply.development-branch` if you need a different trigger
+      branch.
     default: 'compose-preview/main'
   resource-branch:
     description: >
-      Branch name for Android XML resource baselines (vector / animated-vector /
-      adaptive-icon). Kept separate from `branch` because resource and composable
-      previews are disjoint workflows — independent push cadence, independent
-      bisect history, independent diff comments. Set to '' to skip the resource
-      push entirely.
+      Ignored — `apply` always pushes resource baselines to
+      `compose-preview/resources/main` when the resources pipeline has
+      anything to push. Set `skip: resources` on `apply` to opt out.
     default: 'compose-preview/resources/main'
 
 runs:
   using: 'composite'
   steps:
-    # Source-build path is internal to this repo's CI: when a PR changes
-    # the CLI/plugin schema, the released CLI is one tag behind HEAD and
-    # would 'version-skew' against the new previews.json shape. External
-    # consumers never need this; their CLI/plugin pair always matches a
-    # released tag.
-    #
-    # Both nested `uses:` references resolve as full `org/repo/path@ref`
-    # forms rather than `./.github/actions/...`. Inside a composite action,
-    # relative `./` paths resolve against the *consumer's* $GITHUB_WORKSPACE
-    # (not this action's own checkout), so external consumers of
-    # preview-baselines@vX.Y.Z would otherwise hit "Can't find action.yml
-    # under .github/actions/install". The pinned tag is bumped on every
-    # release by release-please (see release-please-config.json).
-    - name: Install CLI from source
-      if: inputs.cli-version == 'source'
-      # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install-cli@v0.11.5 # x-release-please-version
+    - name: Deprecation notice
+      shell: bash
+      run: |
+        echo "::warning::preview-baselines is deprecated; call ./.github/actions/apply with mode=baseline + only=compose,resources instead. See apply/action.yml for the input mapping."
 
-    - name: Install CLI from release
-      if: inputs.cli-version != 'source'
-      # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-      uses: yschimke/compose-ai-tools/.github/actions/install@v0.11.5 # x-release-please-version
+    # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.11.5 # x-release-please-version
       with:
-        version: ${{ inputs.cli-version }}
+        mode: baseline
+        only: 'compose,resources'
+        cli-version: ${{ inputs.cli-version }}
         catalog-path: ${{ inputs.catalog-path }}
         catalog-key: ${{ inputs.catalog-key }}
-
-    - name: Render previews
-      id: render
-      shell: bash
-      env:
-        RENDER_TIMEOUT: ${{ inputs.timeout }}
-      # Don't fail the step on a non-zero CLI exit: the JSON envelope still
-      # carries the rows that did render (and flags the ones that didn't via
-      # empty `sha256`), so the downstream generate/push can push the partial
-      # update + a "Render Failures" section in the README. The trailing
-      # `Surface render failures` step sets the overall workflow status once
-      # the push has landed, so reviewers always see the partial state on
-      # `compose-preview/main` even when this run is flagged red.
-      run: |
-        set +e
-        compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
-        rc=$?
-        echo "rc=$rc" >> "$GITHUB_OUTPUT"
-        if [ "$rc" -ne 0 ]; then
-          echo "compose-preview show exited $rc — continuing so the partial " \
-               "JSON envelope still drives a baseline update." >&2
-        fi
-        exit 0
-
-    # When `composePreviewRender` fails the actual stack traces only live in
-    # samples/*/build/reports/tests/composePreviewRender/ and test-results/.
-    # Upload them so the failure is debuggable from the run page. Fires on
-    # any non-zero CLI exit (full build failure or partial per-preview
-    # failure) so the reports are always one click away from the diff.
-    - name: Upload composePreviewRender reports
-      if: steps.render.outputs.rc != '0'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: composePreviewRender-reports
-        path: |
-          **/build/reports/tests/composePreviewRender/
-          **/build/test-results/composePreviewRender/
-          _previews.json
-        if-no-files-found: ignore
-        retention-days: 14
-
-    # Fetch the existing baseline tree before generate runs so the prior
-    # entry + PNG for any preview that failed in this run can carry forward.
-    # Without this, a single flaky render would drop the entry from
-    # compose-preview/main until the next clean run lands. `git archive`
-    # writes to stdout so the working tree stays clean; absent branch (first
-    # run on a fresh repo) falls back to "no prior, treat every failure as
-    # dropped" — same shape as the existing first-run path.
-    - name: Fetch prior baselines for carry-over
-      shell: bash
-      env:
-        BASELINE_BRANCH: ${{ inputs.branch }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        mkdir -p _prior_baselines
-        if git ls-remote --exit-code \
-              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
-              "refs/heads/${BASELINE_BRANCH}" >/dev/null 2>&1; then
-          git fetch --depth=1 --quiet \
-              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
-              "${BASELINE_BRANCH}"
-          git show "FETCH_HEAD:baselines.json" > _prior_baselines/baselines.json \
-              2>/dev/null || true
-          git archive FETCH_HEAD renders 2>/dev/null \
-              | tar -x -C _prior_baselines/ 2>/dev/null || true
-        fi
-
-    - name: Generate baselines
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        REPO: ${{ github.repository }}
-        BASELINE_BRANCH: ${{ inputs.branch }}
-      run: |
-        python3 "$ACTION_PATH/../lib/compare-previews.py" generate _previews.json \
-          --output-dir _baselines \
-          --repo "$REPO" \
-          --branch "$BASELINE_BRANCH" \
-          --prior-baselines _prior_baselines/baselines.json \
-          --prior-renders _prior_baselines/renders
-
-    - name: Push to baselines branch
-      shell: bash
-      # All templated values go through env first so a malicious input
-      # (e.g. a branch name containing "$(rm -rf /)") can't expand inside
-      # the shell script. (zizmor: template-injection)
-      env:
-        BASELINE_BRANCH: ${{ inputs.branch }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        cd _baselines
-
-        git init -q
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git remote add origin \
-          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-
-        # Hash our generated tree. `git add -A` on a fresh index picks up
-        # everything under the current directory.
-        git add -A
-        TREE=$(git write-tree)
-
-        # Fetch the existing tip (if any) so the new commit lands on top of
-        # history rather than force-pushing a fresh orphan commit each run.
-        # Keeping history means a PR comment pinned to any past
-        # compose-preview/main SHA stays resolvable: the blob is reachable
-        # via the branch chain.
-        PARENT=""
-        if git fetch --depth=1 --quiet origin "$BASELINE_BRANCH" 2>/dev/null; then
-          PARENT=$(git rev-parse FETCH_HEAD)
-          PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
-          if [ "$TREE" = "$PARENT_TREE" ]; then
-            echo "Baselines unchanged vs ${BASELINE_BRANCH}; skipping push."
-            exit 0
-          fi
-        fi
-
-        MSG="Update preview baselines from ${GITHUB_SHA::8}"
-        if [ -n "$PARENT" ]; then
-          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
-        else
-          COMMIT=$(git commit-tree "$TREE" -m "$MSG")
-        fi
-
-        # Fast-forward push (no --force). The baseline workflow serialises on
-        # its concurrency group so no race is expected; a non-FF rejection
-        # here means something external moved the ref and warrants an alert.
-        git push --quiet origin "${COMMIT}:refs/heads/${BASELINE_BRANCH}"
-
-    # ─── Android XML resource previews ────────────────────────────────────
-    # Sibling pipeline pushing to its own branch (default `compose-preview/resources/main`).
-    # Workflows are disjoint from composable @Preview, so we keep the histories
-    # separate — independent bisect, independent diff comments, independent
-    # push cadence. See the `resource-branch` input docstring above.
-
-    - name: Render resource previews
-      if: inputs.resource-branch != ''
-      id: render-resources
-      shell: bash
-      env:
-        RENDER_TIMEOUT: ${{ inputs.timeout }}
-      # `compose-preview show-resources` self-no-ops on workspaces without
-      # any `resources.json` (exit 0 with "No Android resource previews
-      # found.") — the subsequent generate / push steps then short-circuit.
-      #
-      # Mirrors the composable render step: capture the exit code so partial
-      # failures don't abort the workflow before the prior baseline can be
-      # carried forward + the failure surfaced in the README. The trailing
-      # `Surface render failures` step at the end of the action raises the
-      # overall workflow status after the push lands.
-      run: |
-        set +e
-        compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
-        rc=$?
-        echo "rc=$rc" >> "$GITHUB_OUTPUT"
-        if [ "$rc" -ne 0 ]; then
-          echo "compose-preview show-resources exited $rc — continuing so the " \
-               "partial JSON envelope still drives a resource baseline update." >&2
-        fi
-        exit 0
-
-    - name: Upload composePreviewRenderAndroidResources reports
-      if: steps.render-resources.outputs.rc != '0'
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: composePreviewRenderAndroidResources-reports
-        path: |
-          **/build/reports/tests/composePreviewRenderAndroidResources/
-          **/build/test-results/composePreviewRenderAndroidResources/
-          _resources.json
-        if-no-files-found: ignore
-        retention-days: 14
-
-    # Same carry-over flow as the composable side — fetch the prior resource
-    # baseline tree so per-capture flakes don't drop resources from
-    # compose-preview/resources/main. Absent branch is fine; we treat every
-    # failure as dropped in that case.
-    - name: Fetch prior resource baselines for carry-over
-      if: inputs.resource-branch != ''
-      shell: bash
-      env:
-        RESOURCE_BRANCH: ${{ inputs.resource-branch }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        mkdir -p _prior_resource_baselines
-        if git ls-remote --exit-code \
-              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
-              "refs/heads/${RESOURCE_BRANCH}" >/dev/null 2>&1; then
-          git fetch --depth=1 --quiet \
-              "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git" \
-              "${RESOURCE_BRANCH}"
-          git show "FETCH_HEAD:resource-baselines.json" \
-              > _prior_resource_baselines/resource-baselines.json 2>/dev/null || true
-          git archive FETCH_HEAD renders 2>/dev/null \
-              | tar -x -C _prior_resource_baselines/ 2>/dev/null || true
-        fi
-
-    - name: Generate resource baselines
-      if: inputs.resource-branch != ''
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      # `generate-resources` consumes the same `_resources.json` envelope the
-      # `show-resources` step just wrote — absolute pngPath / sha256 / variant
-      # come straight from the CLI, no second filesystem walk. Output dir is
-      # the staging tree the next step pushes.
-      run: |
-        python3 "$ACTION_PATH/../lib/compare-previews.py" generate-resources \
-          _resources.json \
-          --output-dir _resource_baselines \
-          --prior-baselines _prior_resource_baselines/resource-baselines.json \
-          --prior-renders _prior_resource_baselines/renders
-
-    - name: Push to resource baselines branch
-      if: inputs.resource-branch != ''
-      shell: bash
-      env:
-        RESOURCE_BRANCH: ${{ inputs.resource-branch }}
-        REPO: ${{ github.repository }}
-        GITHUB_TOKEN_INLINE: ${{ github.token }}
-      run: |
-        set -euo pipefail
-        # Workspace had no resource manifests / no rendered PNGs — generate
-        # didn't create the staging dir. Skip the push silently rather than
-        # creating an empty branch.
-        if [ ! -d _resource_baselines ] || [ ! -f _resource_baselines/resource-baselines.json ]; then
-          echo "No resource baselines staged; skipping push to ${RESOURCE_BRANCH}."
-          exit 0
-        fi
-
-        cd _resource_baselines
-        git init -q
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git remote add origin \
-          "https://x-access-token:${GITHUB_TOKEN_INLINE}@github.com/${REPO}.git"
-
-        git add -A
-        TREE=$(git write-tree)
-
-        PARENT=""
-        if git fetch --depth=1 --quiet origin "$RESOURCE_BRANCH" 2>/dev/null; then
-          PARENT=$(git rev-parse FETCH_HEAD)
-          PARENT_TREE=$(git rev-parse "${PARENT}^{tree}")
-          if [ "$TREE" = "$PARENT_TREE" ]; then
-            echo "Resource baselines unchanged vs ${RESOURCE_BRANCH}; skipping push."
-            exit 0
-          fi
-        fi
-
-        MSG="Update resource baselines from ${GITHUB_SHA::8}"
-        if [ -n "$PARENT" ]; then
-          COMMIT=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
-        else
-          COMMIT=$(git commit-tree "$TREE" -m "$MSG")
-        fi
-        git push --quiet origin "${COMMIT}:refs/heads/${RESOURCE_BRANCH}"
-
-    # Surface render failures as a step failure now that the partial baseline
-    # has been pushed. We deferred the non-zero exit so the prior-baseline
-    # carry-over + README "Render Failures" section land on the branch even
-    # when the CLI flagged some previews as missing PNGs. The artifact upload
-    # steps above already attached the per-task reports for triage. Final
-    # exit code is the worst of the two CLI invocations.
-    - name: Surface render failures
-      shell: bash
-      env:
-        RENDER_RC: ${{ steps.render.outputs.rc }}
-        RESOURCE_RC: ${{ steps.render-resources.outputs.rc }}
-      run: |
-        rc_show="${RENDER_RC:-0}"
-        rc_res="${RESOURCE_RC:-0}"
-        if [ "$rc_show" -ne 0 ] || [ "$rc_res" -ne 0 ]; then
-          echo "::error::compose-preview render exited non-zero (show=$rc_show, " \
-               "show-resources=$rc_res). The partial baseline has been pushed; " \
-               "see the README on the baseline branch and the uploaded reports " \
-               "artifact for the failing previews." >&2
-          # Prefer the show exit code when both fired, fall back to the
-          # resource exit code, default to 1.
-          if [ "$rc_show" -ne 0 ]; then
-            exit "$rc_show"
-          fi
-          exit "$rc_res"
-        fi
+        timeout: ${{ inputs.timeout }}
