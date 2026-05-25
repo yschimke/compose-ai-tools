@@ -17,12 +17,31 @@
 #   PR_HEAD_BRANCH       — per-PR composable branch (only used in comment mode)
 #   PR_NUMBER            — PR number (comment mode)
 #   COMMENT_ON_EMPTY_DIFF — passthrough
+#   SKIP_RENDER          — when "true", reuse pre-staged _previews.json
+#                          instead of invoking `compose-preview show`. Lets
+#                          non-Gradle build systems drive the baseline /
+#                          comment half of this pipeline with envelopes
+#                          produced by the Phase A CLIs.
 set +e
 
-# Render. Don't fail on non-zero — partial envelope still drives the rest.
-compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
-RENDER_RC=$?
-echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_compose_render_rc"
+if [ "${SKIP_RENDER:-false}" = "true" ]; then
+  # Pre-staged path: the caller has already written _previews.json to
+  # $GITHUB_WORKSPACE. Validate it's non-empty + parseable; treat missing
+  # as a clean skip (matches the no-compose-modules branch below).
+  if [ ! -s _previews.json ]; then
+    echo "compose pipeline: skip-render=true and no _previews.json staged; skipping."
+    echo "0" > "$GITHUB_WORKSPACE/_compose_render_rc"
+    echo "0" > "$GITHUB_WORKSPACE/_compose_rc"
+    exit 0
+  fi
+  echo "compose pipeline: skip-render=true; reusing pre-staged _previews.json."
+  echo "0" > "$GITHUB_WORKSPACE/_compose_render_rc"
+else
+  # Render. Don't fail on non-zero — partial envelope still drives the rest.
+  compose-preview show --json --timeout "$RENDER_TIMEOUT" > _previews.json
+  RENDER_RC=$?
+  echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_compose_render_rc"
+fi
 
 if [ ! -s _previews.json ]; then
   echo "compose pipeline: no _previews.json — workspace has no compose modules, skipping."

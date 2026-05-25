@@ -14,11 +14,26 @@
 #   RESOURCE_BRANCH       — resource baselines branch
 #   RESOURCE_HEAD_BRANCH  — per-PR resource branch (comment mode)
 #   PR_NUMBER             — PR number (comment mode)
+#   SKIP_RENDER           — when "true", reuse pre-staged _resources.json
+#                           instead of invoking `compose-preview show-resources`.
+#                           Mirrors the compose pipeline's skip-render path
+#                           for non-Gradle build systems.
 set +e
 
-compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
-RENDER_RC=$?
-echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_resources_render_rc"
+if [ "${SKIP_RENDER:-false}" = "true" ]; then
+  if [ ! -s _resources.json ]; then
+    echo "resources pipeline: skip-render=true and no _resources.json staged; skipping."
+    echo "0" > "$GITHUB_WORKSPACE/_resources_render_rc"
+    echo "0" > "$GITHUB_WORKSPACE/_resources_rc"
+    exit 0
+  fi
+  echo "resources pipeline: skip-render=true; reusing pre-staged _resources.json."
+  echo "0" > "$GITHUB_WORKSPACE/_resources_render_rc"
+else
+  compose-preview show-resources --json --timeout "$RENDER_TIMEOUT" > _resources.json
+  RENDER_RC=$?
+  echo "$RENDER_RC" > "$GITHUB_WORKSPACE/_resources_render_rc"
+fi
 
 if [ ! -s _resources.json ]; then
   echo "resources pipeline: no _resources.json — workspace has no Android resource manifests, skipping."
