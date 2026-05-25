@@ -491,7 +491,7 @@ export interface PreviewOverrides {
      * `TouchOverlayExtension` `AroundComposable` so the captured / streamed frames carry
      * cyan rings at every pressed pointer plus short-lived expanding pulses on down/up —
      * Android's "Show touches" developer-mode toggle, but agent-pixel-true. The panel's
-     * per-card touch-overlay button (`.card-touch-overlay-toggle-btn`) flips this. Defaults
+     * focus-bar touch-overlay button (`#btn-touch-overlay`) flips this. Defaults
      * to `null` (off) so existing pixel-exact tests stay byte-identical.
      */
     touchOverlay?: boolean;
@@ -500,8 +500,8 @@ export interface PreviewOverrides {
      * extension's Gboard-shaped band onto the capture regardless of what the app's
      * `LocalSoftwareKeyboardController` / focus state would naturally do; `pressedKey`
      * highlights a specific key cap (lower-case letter or `"space"` / `"enter"` /
-     * `"shift"` / `"backspace"` / `"sym"`). Driven by the panel's per-card keyboard-band
-     * toggle button (`.card-keyboard-band-toggle-btn`). Sending the field with all nullable
+     * `"shift"` / `"backspace"` / `"sym"`). Driven by the panel's focus-bar keyboard-band
+     * toggle button (`#btn-keyboard-band`). Sending the field with all nullable
      * sub-fields null is a no-op — the connector's always-active planner still observes the
      * app's natural IME signals.
      */
@@ -1176,8 +1176,8 @@ export interface StreamStartParams {
     inspectionMode?: boolean;
     /**
      * Per-session preview overrides. Mirrors `RecordingStartParams.overrides` — currently
-     * carries the per-card `touchOverlay` and `keyboard` toggles the panel surfaces via
-     * `.card-touch-overlay-toggle-btn` and `.card-keyboard-band-toggle-btn`.
+     * carries the per-preview `touchOverlay` and `keyboard` toggles the panel surfaces via
+     * the focus-bar `#btn-touch-overlay` and `#btn-keyboard-band` buttons.
      */
     overrides?: PreviewOverrides;
 }
