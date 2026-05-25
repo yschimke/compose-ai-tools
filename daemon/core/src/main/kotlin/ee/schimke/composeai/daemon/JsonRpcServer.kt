@@ -328,12 +328,13 @@ class JsonRpcServer(
       ?: DEFAULT_RENDER_TIMEOUT_MS
 
   /**
-   * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. The map is keyed
-   * by previewId so [setVisible] can drop entries for previews that are no longer on screen — see
-   * [pruneSubscriptionsToVisible]. Inner sets are wrapped via [ConcurrentHashMap.newKeySet] so
-   * subscribe / unsubscribe / attachment-build can race without locking.
+   * D1 — sticky `(previewId, kind)` subscriptions installed by `data/subscribe`. All read / write /
+   * prune access goes through [SubscriptionStore]; the three teardown paths (sticky- while-visible
+   * prune from `setVisible`, explicit `data/unsubscribe`, extension-disable kind sweep) hand back
+   * the dropped pairs so this file routes the producer `onUnsubscribe` notifications with the right
+   * registry surface.
    */
-  private val subscriptions = ConcurrentHashMap<String, MutableSet<String>>()
+  private val subscriptions = SubscriptionStore()
 
   /**
    * D3 — per-render `data/fetch` waiters. When `data/fetch` triggers a re-render via
@@ -1040,7 +1041,8 @@ class JsonRpcServer(
    * it owns "which kinds are advertised."
    */
   private fun subscriptionDrivenRenderMode(previewId: String): String? {
-    val kinds = subscriptions[previewId] ?: return null
+    val kinds = subscriptions.kindsFor(previewId)
+    if (kinds.isEmpty()) return null
     if (kinds.any { it.startsWith("a11y/") }) return "a11y"
     return null
   }
@@ -1648,14 +1650,13 @@ class JsonRpcServer(
     // anything for this render (e.g. an a11y producer on a render whose mode skipped a11y), so
     // a missing attachment never blocks the renderFinished. We omit the field entirely when the
     // resulting list is empty so pre-D1 fixtures keep round-tripping.
-    val requestedKinds: Set<String> =
-      (subscriptions[previewId]?.toSet() ?: emptySet()) + globalAttachKinds
+    val requestedKinds: Set<String> = subscriptions.kindsFor(previewId) + globalAttachKinds
     val attachments: List<DataProductAttachment> =
       if (requestedKinds.isEmpty()) emptyList()
       else extensions.publicDataProducts().attachmentsFor(previewId, requestedKinds)
     System.err.println(
       "compose-ai-daemon: [renderFinished] previewId=$previewId " +
-        "subscribedKinds=${subscriptions[previewId]?.sorted() ?: emptyList<String>()} " +
+        "subscribedKinds=${subscriptions.kindsFor(previewId).sorted()} " +
         "globalAttachKinds=${globalAttachKinds.sorted()} " +
         "attachments=${attachments.map { it.kind }}"
     )
@@ -1920,22 +1921,16 @@ class JsonRpcServer(
         )
         return
       }
-      subscriptions
-        .computeIfAbsent(params.previewId) { ConcurrentHashMap.newKeySet() }
-        .add(params.kind)
+      subscriptions.subscribe(params.previewId, params.kind)
       // Notify producers AFTER bookkeeping so a producer that throws during onSubscribe still
       // leaves the dispatcher state consistent with the client's view (a subsequent unsubscribe
       // will clear it). Re-subscribes pass the latest `params` through verbatim — producers that
       // care about reset-on-re-subscribe handle that themselves.
       extensions.publicDataProducts().onSubscribe(params.previewId, params.kind, params.params)
     } else {
-      val existed = subscriptions[params.previewId]?.remove(params.kind) == true
-      // Drop the inner set when its last subscription cleared so the bookkeeping doesn't
-      // accumulate empty entries for previews the user has cycled through.
-      subscriptions.computeIfPresent(params.previewId) { _, v -> if (v.isEmpty()) null else v }
-      // Notify the producer — but only if there was actually a live subscription. Calling
-      // onUnsubscribe for a never-subscribed pair would invite producers to log spurious
-      // "no such subscription" warnings.
+      // Only dispatch onUnsubscribe when there was actually a live subscription — spurious
+      // tear-down notifications invite producers to log "no such subscription" warnings.
+      val existed = subscriptions.unsubscribe(params.previewId, params.kind)
       if (existed) extensions.publicDataProducts().onUnsubscribe(params.previewId, params.kind)
     }
     sendResponse(req.id, encode(DataSubscribeResult.serializer(), DataSubscribeResult.OK))
@@ -1952,10 +1947,8 @@ class JsonRpcServer(
    * down even when the client doesn't send an explicit `data/unsubscribe`.
    */
   private fun pruneSubscriptionsToVisible(visible: Set<String>) {
-    val toDrop = subscriptions.keys - visible
-    for (id in toDrop) {
-      val droppedKinds = subscriptions.remove(id) ?: continue
-      for (kind in droppedKinds) extensions.publicDataProducts().onUnsubscribe(id, kind)
+    for ((id, kind) in subscriptions.retainVisible(visible)) {
+      extensions.publicDataProducts().onUnsubscribe(id, kind)
     }
   }
 
@@ -2033,19 +2026,11 @@ class JsonRpcServer(
     val outcome = extensions.disable(params.ids)
     val nowPublic = extensions.publicDataProductCapabilities().map { it.kind }.toSet()
     val droppedKinds = priorPublic - nowPublic
-    if (droppedKinds.isNotEmpty()) {
-      for ((previewId, kinds) in subscriptions) {
-        val toRemove = kinds.intersect(droppedKinds)
-        if (toRemove.isEmpty()) continue
-        kinds.removeAll(toRemove)
-        // We can't dispatch onUnsubscribe through `publicDataProducts()` here because the kind is
-        // no longer public. Reach through the active set instead so the producer still tears down
-        // its per-subscription state.
-        for (kind in toRemove) {
-          extensions.activeDataProducts().onUnsubscribe(previewId, kind)
-        }
-      }
-      subscriptions.values.removeIf { it.isEmpty() }
+    // We can't dispatch onUnsubscribe through `publicDataProducts()` here because the kind is no
+    // longer public. Reach through the active set instead so the producer still tears down its
+    // per-subscription state.
+    for ((previewId, kind) in subscriptions.removeKinds(droppedKinds)) {
+      extensions.activeDataProducts().onUnsubscribe(previewId, kind)
     }
     val result =
       ExtensionsDisableResult(
