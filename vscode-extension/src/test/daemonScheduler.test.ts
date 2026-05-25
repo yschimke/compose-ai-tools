@@ -140,8 +140,19 @@ class FakeGate {
 class FakeGradleService {
     public bootstrapCalls: string[] = [];
     public bootstrapShouldThrow: Error | null = null;
+    /**
+     * When non-empty, each `runDaemonBootstrap` call shifts one Error off the
+     * front and throws it; once the queue is empty the call succeeds. Lets
+     * tests model "first attempt cancelled, retry succeeds" without touching
+     * `bootstrapShouldThrow` (which throws on every call).
+     */
+    public bootstrapThrowQueue: Error[] = [];
     async runDaemonBootstrap(module: ModuleLike): Promise<void> {
         this.bootstrapCalls.push(module.modulePath);
+        const queued = this.bootstrapThrowQueue.shift();
+        if (queued) {
+            throw queued;
+        }
         if (this.bootstrapShouldThrow) {
             throw this.bootstrapShouldThrow;
         }
@@ -702,6 +713,142 @@ describe("DaemonScheduler", () => {
                 /Gradle config-cache rejected/,
             );
             assert.deepStrictEqual(states, ["spawning", "bootstrapping"]);
+        });
+
+        it("retries once when the bootstrap task is cancelled mid-flight", async () => {
+            // A sibling refresh's `gradleService.cancel(...)` (or Tooling-API
+            // timeout, or extension shutdown signal) can kill the bootstrap
+            // task even though the cancel pool spares it. Without retry, the
+            // daemon stays cold for the rest of the session and every
+            // subsequent interactive event falls back to the Gradle path.
+            const { gate, scheduler, log } = build();
+            gate.getOrSpawnErrors.push(
+                new Error("[daemon] no launch descriptor for mod"),
+            );
+            const gradle = new FakeGradleService();
+            gradle.bootstrapThrowQueue.push(
+                new Error(
+                    "Gradle task :mod:composePreviewDaemonStart was cancelled.",
+                ),
+            );
+            const states: string[] = [];
+            const ok = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                mod("mod"),
+                (s) => states.push(s),
+            );
+            assert.strictEqual(ok, true);
+            assert.deepStrictEqual(
+                gradle.bootstrapCalls,
+                [":mod", ":mod"],
+                "cancellation should trigger one bootstrap retry",
+            );
+            assert.ok(
+                log.some((l) => l.includes("bootstrap cancelled")),
+                `expected retry log, got: ${log.join(" / ")}`,
+            );
+            assert.deepStrictEqual(states, [
+                "spawning",
+                "bootstrapping",
+                "bootstrapping",
+                "spawning",
+                "ready",
+            ]);
+        });
+
+        it("does not retry forever — gives up after the second bootstrap cancellation", async () => {
+            const { gate, scheduler } = build();
+            gate.getOrSpawnErrors.push(
+                new Error("[daemon] no launch descriptor for mod"),
+            );
+            const gradle = new FakeGradleService();
+            gradle.bootstrapThrowQueue.push(
+                new Error("Gradle task was cancelled."),
+                new Error("Gradle task was cancelled."),
+            );
+            await assert.rejects(
+                scheduler.warmModule(
+                    gradle as unknown as Parameters<
+                        typeof scheduler.warmModule
+                    >[0],
+                    mod("mod"),
+                ),
+                /cancelled/,
+            );
+            assert.deepStrictEqual(gradle.bootstrapCalls, [":mod", ":mod"]);
+        });
+
+        it("coalesces concurrent warm calls onto a single bootstrap", async () => {
+            // Without dedup, a second refresh arriving mid-warm would kick off
+            // a second `composePreviewDaemonStart` — and the cancel pool spare
+            // doesn't help when the second invocation cancels the first
+            // through the Gradle daemon's own scheduling.
+            const { gate, scheduler } = build();
+            gate.getOrSpawnErrors.push(
+                new Error("[daemon] no launch descriptor for mod"),
+            );
+            const gradle = new FakeGradleService();
+            const [a, b, c] = await Promise.all([
+                scheduler.warmModule(
+                    gradle as unknown as Parameters<
+                        typeof scheduler.warmModule
+                    >[0],
+                    mod("mod"),
+                ),
+                scheduler.warmModule(
+                    gradle as unknown as Parameters<
+                        typeof scheduler.warmModule
+                    >[0],
+                    mod("mod"),
+                ),
+                scheduler.warmModule(
+                    gradle as unknown as Parameters<
+                        typeof scheduler.warmModule
+                    >[0],
+                    mod("mod"),
+                ),
+            ]);
+            assert.strictEqual(a, true);
+            assert.strictEqual(b, true);
+            assert.strictEqual(c, true);
+            assert.deepStrictEqual(
+                gradle.bootstrapCalls,
+                [":mod"],
+                "three concurrent warms should issue exactly one bootstrap",
+            );
+            assert.deepStrictEqual(
+                gate.getOrSpawnCalls,
+                [":mod", ":mod"],
+                "three concurrent warms should only spawn once",
+            );
+        });
+
+        it("starts a fresh warm after the previous one settled", async () => {
+            // The in-flight memo must clear on settle so a follow-up warm
+            // (e.g. after a manual restart that clears the descriptor)
+            // actually re-bootstraps instead of returning the prior promise.
+            const { gate, scheduler } = build();
+            gate.getOrSpawnErrors.push(
+                new Error("[daemon] no launch descriptor for mod"),
+            );
+            const gradle = new FakeGradleService();
+            const okFirst = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                mod("mod"),
+            );
+            assert.strictEqual(okFirst, true);
+            // Simulate the descriptor going missing again (daemon JVM died,
+            // user ran `restartDaemon`, etc.) — the next warm has to bootstrap
+            // a second time, not return the cached prior resolution.
+            gate.getOrSpawnErrors.push(
+                new Error("[daemon] no launch descriptor for mod"),
+            );
+            const okSecond = await scheduler.warmModule(
+                gradle as unknown as Parameters<typeof scheduler.warmModule>[0],
+                mod("mod"),
+            );
+            assert.strictEqual(okSecond, true);
+            assert.deepStrictEqual(gradle.bootstrapCalls, [":mod", ":mod"]);
         });
 
         it("reports fallback only when the daemon is explicitly unavailable after bootstrap", async () => {
