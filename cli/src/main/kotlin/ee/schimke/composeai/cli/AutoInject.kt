@@ -81,18 +81,20 @@ internal fun renderInitScript(pluginVersion: String): String =
 // block themselves — we just no longer apply it implicitly.
 //
 // When the consumer's settings file declares `exclusiveContent { ... }`
-// inside `pluginManagement { repositories { ... } }` (or shares its repos
-// with `dependencyResolutionManagement` so the same declaration applies
-// — the Confetti shape), Gradle 9.3+ rejects *adding* to
-// `buildscript.repositories` from any project (issues #1470, #1482). We
-// detect that shape and skip our own `buildscript.repositories` add — but
-// keep adding the classpath dependency and registering the apply hooks.
-// If the consumer's existing buildscript repositories can resolve the
-// plugin coordinate (cached, or declared in their own
-// `buildscript { repositories { ... } }`), auto-inject still works.
-// Otherwise Gradle fails naturally with a clear "Could not resolve"
-// message and the user's escape hatch is the documented manual
-// `plugins { id("ee.schimke.composeai.preview") version "X" }` apply.
+// inside `pluginManagement { repositories { ... } }` (the Confetti shape;
+// issues #1470, #1482), Gradle 9.3+ rejects *adding* to
+// `buildscript.repositories` from any project. We detect that shape and
+// fork the behaviour per-project: modules that have their own
+// `buildscript { repositories { ... } }` declared get the classpath dep
+// injected (resolution can succeed via the consumer's repos); modules
+// that don't are skipped entirely (the classpath dep would be unresolvable
+// and would `Cannot resolve external dependency ... because no
+// repositories are defined`, crashing the whole Tooling API query — the
+// 0.11.8 regression). Skipped modules silently miss the plugin; the user's
+// escape hatch is the documented manual `plugins { id("ee.schimke.composeai
+// .preview") version "X" }` apply, surfaced via a one-time lifecycle log
+// emitted at settingsEvaluated time when the exclusiveContent shape is
+// detected.
 //
 // PR #1483 tried to dodge the validation by loading the plugin via init-
 // script classpath. That works for the validation but breaks every AGP-
@@ -109,6 +111,15 @@ val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewSettingsHasExclusiveContent: Boolean = false
+// Projects that declare their own `buildscript { repositories { ... } }` block — populated
+// at settingsEvaluated time. Only consulted when composeAiPreviewSettingsHasExclusiveContent
+// is true: in that case we can't add repos to buildscript.repositories ourselves (Gradle
+// 9.3+ validation), so the only projects where our classpath dep can possibly resolve are
+// the ones that already have their own buildscript repos. For all other projects we skip
+// the injection entirely to avoid `Cannot resolve external dependency ... because no
+// repositories are defined` failures that crash the whole Tooling API query (issue from
+// 0.11.8 follow-up).
+var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()
 
 fun composeAiPreviewCatalogAccessors(rootDir: java.io.File): List<Regex> {
     val catalog = java.io.File(rootDir, "gradle/libs.versions.toml")
@@ -307,6 +318,53 @@ fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File):
     return false
 }
 
+// Returns project directories that declare their own `buildscript { repositories { ... } }`
+// block. Brace-balance walks the build script: find `buildscript`, find its `{...}` body,
+// then check whether that body contains a `repositories` declaration. Used exclusively in
+// the exclusiveContent branch to decide where our classpath dep can possibly resolve.
+fun scanForProjectsWithBuildscriptRepos(
+    projectDirs: List<java.io.File>,
+): Set<java.io.File> {
+    val declared = LinkedHashSet<java.io.File>()
+    for (dir in projectDirs) {
+        for (name in listOf("build.gradle.kts", "build.gradle")) {
+            val buildFile = java.io.File(dir, name)
+            if (!buildFile.isFile) continue
+            val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+            val text = composeAiPreviewStripComments(raw)
+            var i = 0
+            var found = false
+            while (i < text.length && !found) {
+                val match = Regex("\\bbuildscript\\b").find(text, i) ?: break
+                var j = match.range.last + 1
+                while (j < text.length && text[j].isWhitespace()) j++
+                if (j >= text.length || text[j] != '{') {
+                    i = match.range.last + 1
+                    continue
+                }
+                var depth = 1
+                var k = j + 1
+                while (k < text.length && depth > 0) {
+                    when (text[k]) {
+                        '{' -> depth++
+                        '}' -> depth--
+                    }
+                    k++
+                }
+                val blockEnd = if (depth == 0) k - 1 else text.length
+                val block = text.substring(j + 1, blockEnd)
+                if (Regex("\\brepositories\\b").containsMatchIn(block)) {
+                    declared.add(dir)
+                    found = true
+                }
+                i = blockEnd + 1
+            }
+            if (found) break
+        }
+    }
+    return declared
+}
+
 // Skip composite-included builds entirely — both the settings scan and the `allprojects`
 // injection. The init script is evaluated once per build in a composite (root + each
 // `includeBuild(...)`), so without this guard `allprojects { buildscript { repositories { ... } } }`
@@ -334,6 +392,24 @@ gradle.settingsEvaluated {
     composeAiPreviewKmpAndroidDirs = scanForKmpAndroidDeclaration(rootDir, projectDirs)
     composeAiPreviewSettingsHasExclusiveContent =
         composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)
+    // Only walk the buildscript-repos scan when it matters — in the non-exclusiveContent
+    // path we add repos ourselves, so we don't care whether the project already has any.
+    if (composeAiPreviewSettingsHasExclusiveContent) {
+        composeAiPreviewProjectsWithOwnBuildscriptRepos =
+            scanForProjectsWithBuildscriptRepos(projectDirs)
+        // One-time lifecycle log so users hitting the Confetti shape know why auto-inject
+        // looks degraded — without this, modules silently miss the plugin and the only sign
+        // is a "no previews" result with no diagnostic.
+        gradle.rootProject {
+            logger.lifecycle(
+                "[compose-preview] settings.gradle.kts declares exclusiveContent in " +
+                    "pluginManagement.repositories; auto-inject is limited to modules that " +
+                    "pre-apply the plugin (via plugins { id(\"ee.schimke.composeai.preview\") " +
+                    "version \"...\") }) or declare their own buildscript { repositories { ... } }. " +
+                    "Modules in neither bucket: add the plugin via plugins { } to opt in."
+            )
+        }
+    }
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR
     // and any other ee.schimke.composeai:* runtime artifacts resolve from ~/.m2 alongside the
@@ -369,18 +445,29 @@ allprojects {
     // scanForKmpAndroidDeclaration() above for the rationale.
     val composeAiPreviewSkipKmpAndroid = projectDir in composeAiPreviewKmpAndroidDirs
 
-    if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {
+    // In the exclusiveContent shape we can't add repositories to buildscript.repositories
+    // (Gradle 9.3+ rejects it; issues #1470, #1482), so projects that don't already have
+    // their own buildscript repos have no way to resolve our classpath dep — adding it
+    // there would only produce `Cannot resolve external dependency ... because no
+    // repositories are defined` at configuration time, which short-circuits the entire
+    // Tooling API query (the 0.11.8 regression). Skip the injection wholesale for those
+    // projects; they silently miss the plugin, the same as projects that we explicitly
+    // skip for KMP-Android, and the user's recourse is the same plugins { } DSL apply.
+    val composeAiPreviewSkipExclusiveContentClasspathDep =
+        composeAiPreviewSettingsHasExclusiveContent &&
+            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
+
+    if (!composeAiPreviewSkipKmpAndroid &&
+        !composeAiPreviewSkipExclusiveContentClasspathDep &&
+        projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
             // repositories { ... } }`, Gradle 9.3+ rejects any attempt to *add* repositories to
             // `buildscript.repositories` from any project (issues #1470, #1482). We still add
-            // the classpath dependency though — if the consumer has their own
-            // `buildscript { repositories { ... } }` block declaring a repo that hosts the
-            // plugin coordinate (gradlePluginPortal / mavenCentral / google), or has a cached
-            // copy locally, resolution can still succeed and auto-inject continues to work.
-            // When it can't resolve, Gradle fails the build naturally with a clear
-            // "Could not resolve" error; the user's escape hatch is to apply the plugin
-            // manually via `plugins { id("ee.schimke.composeai.preview") version "X" }`.
+            // the classpath dependency though — at this point we've confirmed the project has
+            // its own buildscript { repositories { ... } } declared (via the scan above), so
+            // resolution can succeed via those repos. Outside the exclusiveContent branch we
+            // both add our repos and add the dep, the original auto-inject happy path.
             if (!composeAiPreviewSettingsHasExclusiveContent) {
                 repositories {
                     gradlePluginPortal()
@@ -399,6 +486,12 @@ allprojects {
     }
 
     if (composeAiPreviewSkipKmpAndroid) return@allprojects
+    // No buildscript classpath dep was injected and the project doesn't pre-apply, so
+    // `pluginManager.apply(...)` from the withPlugin hooks would fail with "Plugin with id
+    // ... not found." Skipping the hooks keeps the failure mode quiet — non-preview
+    // projects (e.g. Confetti's :backend) configure cleanly with no diagnostic noise.
+    if (composeAiPreviewSkipExclusiveContentClasspathDep &&
+        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
@@ -540,6 +633,49 @@ internal fun settingsDeclaresExclusiveContentInPluginManagement(projectRoot: Fil
       val blockEnd = if (depth == 0) k - 1 else text.length
       val block = text.substring(j + 1, blockEnd)
       if (Regex("""\bexclusiveContent\b""").containsMatchIn(block)) return true
+      i = blockEnd + 1
+    }
+  }
+  return false
+}
+
+/**
+ * Mirrors the rendered init script's `scanForProjectsWithBuildscriptRepos`. Returns true when
+ * [projectDir]'s `build.gradle[.kts]` declares its own `buildscript { repositories { ... } }` block
+ * — the only shape where our classpath dep can possibly resolve in the
+ * `exclusiveContent`-in-`pluginManagement.repositories` branch. Brace-balances the script body to
+ * scope the `repositories` check to the buildscript block (so an unrelated top-level `repositories
+ * { ... }` block doesn't falsely flag the project).
+ *
+ * Visible for tests.
+ */
+internal fun projectHasBuildscriptRepositories(projectDir: File): Boolean {
+  for (name in listOf("build.gradle.kts", "build.gradle")) {
+    val buildFile = File(projectDir, name)
+    if (!buildFile.isFile) continue
+    val raw = runCatching { buildFile.readText() }.getOrNull() ?: continue
+    val text = stripGradleComments(raw)
+    var i = 0
+    while (i < text.length) {
+      val match = Regex("""\bbuildscript\b""").find(text, i) ?: break
+      var j = match.range.last + 1
+      while (j < text.length && text[j].isWhitespace()) j++
+      if (j >= text.length || text[j] != '{') {
+        i = match.range.last + 1
+        continue
+      }
+      var depth = 1
+      var k = j + 1
+      while (k < text.length && depth > 0) {
+        when (text[k]) {
+          '{' -> depth++
+          '}' -> depth--
+        }
+        k++
+      }
+      val blockEnd = if (depth == 0) k - 1 else text.length
+      val block = text.substring(j + 1, blockEnd)
+      if (Regex("""\brepositories\b""").containsMatchIn(block)) return true
       i = blockEnd + 1
     }
   }
