@@ -106,6 +106,7 @@ import {
     hasFreshRenderStamp,
     writeRenderFreshnessStamp,
 } from "./renderFreshness";
+import { RefreshQueue, defaultRefreshQueueEffects } from "./refreshQueue";
 import {
     BUNDLED_PLUGIN_VERSION,
     hasIncludedPluginBuild,
@@ -203,7 +204,6 @@ const moduleManifestCache = new Map<string, PreviewInfo[]>();
  */
 const heavyRefreshOptIns = new Map<string, Set<string>>();
 let panel: PreviewPanel | null = null;
-let debounceTimer: NodeJS.Timeout | null = null;
 let selectedModule: string | null = null;
 let pendingRefresh: AbortController | null = null;
 // Args of the most recent `[refresh] start` line we emitted. Used to suppress
@@ -278,18 +278,21 @@ const latestRemoteComposeByPreview = new Map<
         >;
     }
 >();
-/** Tracks files saved at least once since activation. First save on a file
- *  renders immediately; subsequent saves go through the debounce path. */
-const firstSaveSeen = new Set<string>();
 /** Last edited preview function name per Kotlin file, captured from in-memory edits and
  * consumed on save to prioritize that preview's refresh. */
 const lastEditedPreviewFunctionByFile = new Map<string, string>();
-/** Save-driven refresh coalescing state. See {@link enqueueSaveRefresh}. */
-let pendingSavePath: string | null = null;
-let debounceElapsed = true;
-let refreshInFlight = false;
+/** Save-driven refresh coalescing as an explicit FSM — replaces the prior
+ *  `firstSaveSeen` / `pendingSavePath` / `debounceElapsed` / `refreshInFlight`
+ *  quintet. See [RefreshQueue]. Constructed in activate() so it captures the
+ *  live `runRefreshExclusiveImpl` / `invalidateModuleCache` references. */
+let refreshQueue: RefreshQueue = new RefreshQueue(
+    defaultRefreshQueueEffects(
+        (target) => runRefreshExclusiveImpl(target),
+        (target) => invalidateModuleCache(target),
+    ),
+);
 /** Edit→preview-update journey timers, keyed by moduleId. Started when a
- *  save kicks off `runRefreshExclusive`, ended when either the gradle
+ *  save kicks off `runRefreshExclusiveImpl` via the queue, ended when either the gradle
  *  refresh finishes posting images or the daemon emits the first
  *  `onPreviewImageReady` for that module. Latest save overwrites any
  *  in-flight entry so the metric tracks the most recent edit. */
@@ -1293,7 +1296,7 @@ export async function activate(
             // than ours and are already calibrated against module history.
             // The status-bar item still reflects the data-extension activity
             // so the signal isn't lost.
-            if (refreshInFlight) return;
+            if (refreshQueue.isInFlight()) return;
             panel?.postMessage({
                 command: "setProgress",
                 phase: "dataExtension",
@@ -1303,7 +1306,7 @@ export async function activate(
             });
         },
         onClear: () => {
-            if (refreshInFlight) return;
+            if (refreshQueue.isInFlight()) return;
             panel?.postMessage({ command: "clearProgress" });
         },
         onStatus: (summary) => applyDataExtensionStatus(summary),
@@ -1927,7 +1930,7 @@ export async function activate(
             // replace the existing render with a placeholder; the panel
             // should keep the last-good image until the user clicks Refresh.
             if (inMinimalMode()) {
-                firstSaveSeen.add(doc.uri.fsPath);
+                refreshQueue.markSeen(doc.uri.fsPath);
                 panel?.postMessage({ command: "minimalSavePending" });
                 return;
             }
@@ -1943,18 +1946,11 @@ export async function activate(
             // — either path runs, never both. See `pickRefreshMode` for the
             // health gate. When the daemon flag is off (default) the gate
             // always returns 'gradle' so behaviour is byte-identical to today.
-            if (
-                !firstSaveSeen.has(doc.uri.fsPath) &&
-                !refreshInFlight &&
-                pendingSavePath === null
-            ) {
-                firstSaveSeen.add(doc.uri.fsPath);
-                invalidateModuleCache(doc.uri.fsPath);
-                void runRefreshExclusive(doc.uri.fsPath);
-            } else {
-                firstSaveSeen.add(doc.uri.fsPath);
-                enqueueSaveRefresh(doc.uri.fsPath);
-            }
+            const target = doc.uri.fsPath;
+            refreshQueue.dispatchSave(target, {
+                allowImmediate: true,
+                debounceMs: refreshDebounceMsFor(target),
+            });
         }),
     );
     context.subscriptions.push(
@@ -1973,9 +1969,14 @@ export async function activate(
         if (inMinimalMode()) {
             return;
         }
-        if (isSourceFile(uri.fsPath)) {
-            enqueueSaveRefresh(uri.fsPath);
+        if (!isSourceFile(uri.fsPath)) {
+            return;
         }
+        const target = resolveWatcherTarget(uri.fsPath);
+        refreshQueue.dispatchSave(target, {
+            allowImmediate: false,
+            debounceMs: refreshDebounceMsFor(target),
+        });
     };
     for (const glob of ["**/*.kt", "**/res/**/*.xml"]) {
         const watcher = vscode.workspace.createFileSystemWatcher(glob);
@@ -2103,9 +2104,7 @@ export async function activate(
 }
 
 export function deactivate() {
-    if (debounceTimer) {
-        clearTimeout(debounceTimer);
-    }
+    refreshQueue.dispose();
     stopAllDaemonStartupProgress();
     pendingRefresh?.abort();
     // Tell the daemon to release every interactive stream this session opened
@@ -3100,7 +3099,7 @@ async function refreshAfterDaemonReady(
     if (currentScopeFile && currentScopeFile !== filePath) {
         return;
     }
-    if (pendingRefresh || refreshInFlight) {
+    if (pendingRefresh || refreshQueue.isInFlight()) {
         logLine(
             `daemon: skip post-warm refresh for ${module.modulePath}; refresh already active`,
         );
@@ -3376,7 +3375,7 @@ function emitDataExtensionTimeoutDiagnostics(
     );
     const moduleReady = daemonGate?.isDaemonReady(diag.moduleId) ?? false;
     lines.push(
-        `    daemonReady=${moduleReady} refreshInFlight=${refreshInFlight}`,
+        `    daemonReady=${moduleReady} refreshInFlight=${refreshQueue.isInFlight()}`,
     );
     const snap = daemonGate?.getCapabilitiesSnapshot(diag.moduleId);
     if (!snap) {
@@ -3612,122 +3611,93 @@ function writeCalibration(module: ModuleInfo, latest: PhaseDurations): void {
     void extensionContext.workspaceState.update(PROGRESS_CALIBRATION_KEY, all);
 }
 
+/** Active-editor-aware debounce: edits to the currently-scoped preview file
+ *  use the short `SCOPE_DEBOUNCE_MS` so the panel feels responsive; everything
+ *  else falls back to the longer `DEBOUNCE_MS` that absorbs burst saves
+ *  across multiple files. */
+function refreshDebounceMsFor(target: string): number {
+    return target === currentScopeFile ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
+}
+
+/** Resolve a watcher event's file path to the refresh target. Watcher events
+ *  can fire on non-Kotlin files (e.g. resource XML); prefer the active Kotlin
+ *  editor in that case so the refresh runs against the file the user is
+ *  looking at, not the resource that changed underneath. */
+function resolveWatcherTarget(filePath: string): string {
+    if (filePath.endsWith(".kt")) return filePath;
+    const active = vscode.window.activeTextEditor;
+    if (active?.document.languageId === "kotlin") {
+        return active.document.uri.fsPath;
+    }
+    return filePath;
+}
+
 /**
- * Coalesce save-driven refreshes. The next refresh fires when BOTH:
- *   1. `DEBOUNCE_MS` has elapsed since the last save (absorbs bursts), and
- *   2. any in-flight refresh has finished (never stacks builds).
- * Whichever takes longer wins — effectively `max(1.5s, in-flight completion)`.
- * Rapid saves collapse into a single final refresh scoped to the latest file.
+ * Performs one save-driven refresh. Wrapped by {@link RefreshQueue}, which
+ * owns the "never stack builds" + "coalesce bursts" gating; this function
+ * just does the work.
+ *
+ * Picks daemon-vs-Gradle deliberately — never runs both for the same save.
+ * Saves use the daemon path; if the daemon is unavailable we surface an
+ * error instead of rendering via Gradle. The build can still opt out
+ * per-module via `composePreview { daemon { enabled = false } }`, in which
+ * case the Gradle render path runs.
+ *
+ * **Recompile-before-notify invariant.** In the daemon path the compile
+ * step runs *first*, then the daemon is notified. The daemon's
+ * `fileChanged({kind:source})` swaps its `URLClassLoader` and `renderNow`
+ * reads `.class` files from `build/intermediates/.../classes/` — so those
+ * files must be fresh when the swap happens.
+ *
+ * Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
+ * keep their previous PNG/GIF on disk and surface as stale in the panel —
+ * the user re-renders them on demand via the refresh command, which uses
+ * `tier='full'`.
  */
-function enqueueSaveRefresh(filePath: string): void {
-    // Prefer the saved file path, but fall back to the active editor when the
-    // saved file isn't a Kotlin source (e.g. a resource XML changed).
-    const target = filePath.endsWith(".kt")
-        ? filePath
-        : vscode.window.activeTextEditor?.document.languageId === "kotlin"
-          ? vscode.window.activeTextEditor.document.uri.fsPath
-          : filePath;
-    pendingSavePath = target;
-    invalidateModuleCache(target);
-
-    const delay = target === currentScopeFile ? SCOPE_DEBOUNCE_MS : DEBOUNCE_MS;
-    if (debounceTimer) {
-        clearTimeout(debounceTimer);
-    }
-    debounceElapsed = false;
-    debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        debounceElapsed = true;
-        maybeFirePendingRefresh();
-    }, delay);
-}
-
-/** Fires the pending refresh only when the debounce window has elapsed AND
- *  no other refresh is running. Called from the debounce timer and from the
- *  tail of {@link runRefreshExclusive}. */
-function maybeFirePendingRefresh(): void {
-    if (refreshInFlight || !debounceElapsed || pendingSavePath === null) {
-        return;
-    }
-    const target = pendingSavePath;
-    pendingSavePath = null;
-    void runRefreshExclusive(target);
-}
-
-/** Runs {@link refresh} with the `refreshInFlight` gate so the debounce queue
- *  can tell whether to defer. On completion picks up anything that arrived
- *  during the run, re-applying the debounce-elapsed check.
- *
- *  Picks daemon-vs-Gradle deliberately — never runs both for the same save.
- *  Saves use the daemon path; if the daemon is unavailable we surface an error instead of
- *  rendering via Gradle. The build can still opt out per-module via
- *  `composePreview { daemon { enabled = false } }`, in which case the Gradle render path runs.
- *
- *  **Recompile-before-notify invariant.** In the daemon path the compile
- *  step runs *first*, then the daemon is notified. The daemon's
- *  `fileChanged({kind:source})` swaps its `URLClassLoader` and `renderNow`
- *  reads `.class` files from `build/intermediates/.../classes/` — so those
- *  files must be fresh when the swap happens. We invoke
- *  `composePreviewCompile` (the same `compileKotlin*` upstream that
- *  `composePreviewDiscover` depends on, minus the ClassGraph scan over every
- *  dependency JAR) — the heavy classpath walk is now the daemon's job via
- *  `IncrementalDiscovery`, surfaced through `discoveryUpdated` only when
- *  the preview set actually drifted.
- *
- *  Save-driven: always `tier='fast'`. Heavy captures (LONG / GIF / animated)
- *  keep their previous PNG/GIF on disk and surface as stale in the panel —
- *  the user re-renders them on demand via the refresh command, which uses
- *  `tier='full'`. Keeps every save in the cheap interactive loop. */
-async function runRefreshExclusive(filePath: string): Promise<void> {
-    refreshInFlight = true;
+async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
     // The journey timer is started by the `onDidSaveTextDocument` handler
     // (not here) so it captures the debounce wait too. Manual refreshes
     // that bypass save have no timer running, in which case
     // `endEditJourney` no-ops below.
     const journeyModuleKey =
         gradleService?.resolveModule(filePath)?.modulePath ?? null;
-    try {
-        const mode = pickRefreshMode(filePath);
-        if (mode === "daemon") {
-            const compileOk = await runDaemonCompileOnly(filePath);
-            if (!compileOk) {
-                if (journeyModuleKey) {
-                    editJourneyByModule.delete(journeyModuleKey);
-                }
-                vscode.window.showErrorMessage(
-                    "Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.",
-                );
-                return;
-            }
-            const result = await notifyDaemonOfSave(filePath);
-            if (result === "accepted") {
-                // End-of-journey log fires from `onPreviewImageReady` when the
-                // first rendered image arrives. Until then the timer stays in
-                // `editJourneyByModule`.
-                return;
-            }
-            if (result === "disabled") {
-                await refresh(true, filePath, "fast");
-                if (journeyModuleKey) {
-                    endEditJourney(journeyModuleKey);
-                }
-                return;
-            }
+    const mode = pickRefreshMode(filePath);
+    if (mode === "daemon") {
+        const compileOk = await runDaemonCompileOnly(filePath);
+        if (!compileOk) {
             if (journeyModuleKey) {
                 editJourneyByModule.delete(journeyModuleKey);
             }
             vscode.window.showErrorMessage(
-                "Compose Preview daemon is unavailable. Restart the preview daemon after fixing the daemon issue.",
+                "Compose Preview daemon refresh failed because compile failed. Fix the compile error and save again.",
             );
             return;
         }
-        await refresh(true, filePath, "fast");
-        if (journeyModuleKey) {
-            endEditJourney(journeyModuleKey);
+        const result = await notifyDaemonOfSave(filePath);
+        if (result === "accepted") {
+            // End-of-journey log fires from `onPreviewImageReady` when the
+            // first rendered image arrives. Until then the timer stays in
+            // `editJourneyByModule`.
+            return;
         }
-    } finally {
-        refreshInFlight = false;
-        maybeFirePendingRefresh();
+        if (result === "disabled") {
+            await refresh(true, filePath, "fast");
+            if (journeyModuleKey) {
+                endEditJourney(journeyModuleKey);
+            }
+            return;
+        }
+        if (journeyModuleKey) {
+            editJourneyByModule.delete(journeyModuleKey);
+        }
+        vscode.window.showErrorMessage(
+            "Compose Preview daemon is unavailable. Restart the preview daemon after fixing the daemon issue.",
+        );
+        return;
+    }
+    await refresh(true, filePath, "fast");
+    if (journeyModuleKey) {
+        endEditJourney(journeyModuleKey);
     }
 }
 
