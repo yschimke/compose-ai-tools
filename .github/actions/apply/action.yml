@@ -196,6 +196,28 @@ runs:
         catalog-path: ${{ inputs.catalog-path }}
         catalog-key: ${{ inputs.catalog-key }}
 
+    # Surface `compose-preview doctor`'s environment + project checks at
+    # the top of the run, before any pipeline starts paying Gradle cost.
+    # Mismatches the pipelines would otherwise hit deep in a render task
+    # (missing JDK version for Robolectric on SDK 36+, plugin not applied
+    # to any module, hamcrest-skew, etc.) show up here as a single
+    # readable block. Doctor's exit code is intentionally not propagated:
+    # the pipelines below will fail on their own with task-specific
+    # stack traces, and double-failing on the same cause buries the
+    # actionable error. A non-zero doctor surfaces as a `::warning::`
+    # annotation so it's still visible in the run summary.
+    - name: Run compose-preview doctor
+      if: steps.resolve.outputs.mode != 'skip' && inputs.cli-version != 'none'
+      shell: bash
+      run: |
+        echo "::group::compose-preview doctor"
+        rc=0
+        compose-preview doctor || rc=$?
+        echo "::endgroup::"
+        if [ "$rc" -ne 0 ]; then
+          echo "::warning::compose-preview doctor exited $rc — pipelines will still run, but expect them to fail with the same underlying cause. See the doctor block above for remediations."
+        fi
+
     - name: Install perceptual-diff dependencies
       if: steps.resolve.outputs.mode == 'comment' && (steps.resolve.outputs.compose == '1' || steps.resolve.outputs.resources == '1')
       shell: bash
