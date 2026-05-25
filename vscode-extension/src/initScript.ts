@@ -41,15 +41,14 @@ export function renderInitScript(
 // ee.schimke.composeai.preview (version pinned to ${pluginVersion}) into
 // the init-script classloader so every project that already applies
 // com.android.application, com.android.library, or org.jetbrains.compose
-// can have it applied via \`pluginManager.apply(...)\` without us ever
-// mutating that project's \`buildscript.repositories\` — Gradle 9.3+
-// rejects adding to \`buildscript.repositories\` once any settings file in
-// the composite declares \`exclusiveContent { ... }\` inside
-// \`pluginManagement.repositories\` (issues #1470, #1482). The init-script
-// classpath sits on a parent classloader of every project's plugin
-// classloader, so \`pluginManager.apply\` resolves the plugin via its
-// META-INF/gradle-plugins descriptor without touching any project repo
-// list at all.
+// can have the plugin applied via \`pluginManager.apply(Class<...>)\`
+// without us ever mutating that project's \`buildscript.repositories\` —
+// Gradle 9.3+ rejects adding to \`buildscript.repositories\` once any
+// settings file in the composite declares \`exclusiveContent { ... }\`
+// inside \`pluginManagement.repositories\` (issues #1470, #1482). We
+// apply by Class reference (not id) because the init-script classloader
+// is a *sibling* of the project's plugin classloader, not an ancestor —
+// id-based \`apply(id)\` would miss the META-INF descriptor.
 //
 // Application uses pluginManager.withPlugin(...) (not afterEvaluate) so
 // AGP finalizeDsl / onVariants callbacks register before the DSL lock.
@@ -213,6 +212,16 @@ gradle.settingsEvaluated {
     }
 }
 
+// Resolve the plugin Class once from the init-script classloader (where the \`initscript {
+// classpath ... }\` block loaded it). \`pluginManager.apply(id)\` does NOT find a plugin via
+// the init-script classpath — the init-script classloader is a sibling of the project's
+// plugin classloader, not an ancestor, so the id-based META-INF lookup misses it ("Plugin
+// with id '...' not found.", PR #1483 follow-up). Applying by Class reference works
+// because we hand Gradle the loaded class directly.
+val composeAiPreviewPluginClass: Class<out org.gradle.api.Plugin<*>> =
+    Class.forName("ee.schimke.composeai.plugin.ComposePreviewPlugin")
+        .asSubclass(org.gradle.api.Plugin::class.java)
+
 allprojects {
     if (composeAiPreviewIsIncludedBuild) return@allprojects
     // Skip the apply hooks for projects that already declare the plugin themselves. The
@@ -224,7 +233,7 @@ allprojects {
 
     fun applyComposeAiPreview() {
         if (plugins.hasPlugin("ee.schimke.composeai.preview")) return
-        pluginManager.apply("ee.schimke.composeai.preview")
+        pluginManager.apply(composeAiPreviewPluginClass)
     }
 
     pluginManager.withPlugin("com.android.application") { applyComposeAiPreview() }

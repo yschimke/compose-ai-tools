@@ -32,6 +32,31 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script applies the plugin by Class reference, not by id`() {
+    // The init-script classloader is a sibling of the project's plugin classloader, not an
+    // ancestor — `pluginManager.apply(id)` would miss the META-INF/gradle-plugins descriptor
+    // and fail with "Plugin with id 'ee.schimke.composeai.preview' not found." (the
+    // regression that surfaced after the first cut of PR #1483 against ComposeStarter).
+    // Applying by Class reference works because Gradle is handed the loaded class directly;
+    // it then records the plugin under its id from the META-INF file on the class's defining
+    // classloader (the init-script's), so subsequent hasPlugin(id) lookups still resolve.
+    val script = renderInitScript("0.11.7")
+    assertTrue(
+      script.contains("Class.forName(\"ee.schimke.composeai.plugin.ComposePreviewPlugin\")"),
+      "expected the plugin class to be resolved by reflection from the init-script classloader",
+    )
+    assertTrue(
+      script.contains("pluginManager.apply(composeAiPreviewPluginClass)"),
+      "expected the apply hook to apply by Class reference",
+    )
+    assertFalse(
+      script.contains("pluginManager.apply(\"ee.schimke.composeai.preview\")"),
+      "expected NOT to apply by id — the init-script classpath is not visible to id-based " +
+        "resolution from a project's plugin classloader",
+    )
+  }
+
+  @Test
   fun `init script loads the plugin via initscript classpath instead of buildscript injection`() {
     // Regression for the Confetti follow-up (#1482): Gradle 9.3+ rejects mutating
     // `buildscript.repositories` in *any* build whose `pluginManagement.repositories` declares

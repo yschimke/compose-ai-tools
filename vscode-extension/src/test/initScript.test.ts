@@ -46,6 +46,31 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("applies the plugin by Class reference, not by id", () => {
+        // The init-script classloader is a sibling of the project's plugin classloader, not
+        // an ancestor — `pluginManager.apply(id)` would miss the META-INF descriptor and
+        // fail with "Plugin with id '...' not found." (regression after the first cut of
+        // PR #1483 against ComposeStarter).
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                'Class.forName("ee.schimke.composeai.plugin.ComposePreviewPlugin")',
+            ),
+            "expected the plugin class to be resolved by reflection from the init-script classloader",
+        );
+        assert.ok(
+            script.includes("pluginManager.apply(composeAiPreviewPluginClass)"),
+            "expected the apply hook to apply by Class reference",
+        );
+        assert.ok(
+            !script.includes(
+                'pluginManager.apply("ee.schimke.composeai.preview")',
+            ),
+            "expected NOT to apply by id — the init-script classpath is not visible to " +
+                "id-based resolution from a project's plugin classloader",
+        );
+    });
+
     it("loads the plugin via initscript classpath instead of buildscript injection", () => {
         // Regression for the Confetti follow-up (#1482): Gradle 9.3+ rejects mutating
         // `buildscript.repositories` in *any* build whose `pluginManagement.repositories`
