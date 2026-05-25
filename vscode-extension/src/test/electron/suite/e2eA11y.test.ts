@@ -216,6 +216,22 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
         // daemon scheduler.
         await api.triggerBootstrapAppliedMarkers();
 
+        // Render first, warm second. The daemon JVM is launched with
+        // `-Dcomposeai.harness.previewsManifest=…/previews.json` baked into
+        // its `daemon-launch.json`; `PreviewManifestRouter.loadManifest`
+        // throws at startup when the file isn't on disk, taking the JVM
+        // down with exit code 1 before the channel handshake even begins.
+        // `composePreviewDaemonStart` (what `runDaemonBootstrap` invokes)
+        // writes the launch descriptor but NOT the manifest, so it has to
+        // run after the renderAll that writes `previews.json`. This matches
+        // production `runActivationRefresh` ordering: refresh → warm.
+        //
+        // One refresh bootstraps every `it`: the wear composePreviewRenderAll
+        // cold path is the slowest piece of the suite, so paying for it
+        // once and reusing the `setPreviews` payload keeps the total
+        // wall-clock close to a single render plus three chip toggles.
+        wearPreviews = await refreshAndGetPreviews(15 * 60_000);
+
         // The chip toggles below send `data/subscribe` through the daemon
         // scheduler, which requires a live daemon and therefore a
         // `composePreviewDaemonStart`-produced launch descriptor. Activation
@@ -235,12 +251,6 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             warmed,
             `wear daemon must warm before chip subscriptions\ncause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`,
         );
-
-        // One refresh bootstraps every `it`: the wear composePreviewRenderAll
-        // cold path is the slowest piece of the suite, so paying for it
-        // once and reusing the `setPreviews` payload keeps the total
-        // wall-clock close to a single render plus three chip toggles.
-        wearPreviews = await refreshAndGetPreviews(15 * 60_000);
     });
 
     after(async () => {
@@ -300,6 +310,13 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     }
 
     it("paints hierarchy overlay when the chip toggles ON for ActivityListPreview", async function () {
+        // Per-test cap. The wear daemon is already warm by `before()`; chip
+        // toggles are sub-second on a warm runner (observed 2-3s including
+        // daemon-side a11y render). 60s leaves 20× headroom while letting
+        // a stuck waitFor surface in a minute instead of inheriting the
+        // suite-level 15 min ceiling (which previously hid a hang in the
+        // post-#1461 run for the whole 60-min workflow budget).
+        this.timeout(60_000);
         const target = pickPreview(
             wearPreviews,
             "ActivityListPreview",
@@ -342,6 +359,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     });
 
     it("paints findings legend when the chip toggles ON for BadWearButtonPreview", async function () {
+        this.timeout(60_000);
         const target = pickPreview(wearPreviews, "BadWearButtonPreview");
         console.log(
             `[e2e-a11y] subscribing a11y/atf for ${target.functionName} (${target.params?.device})`,
@@ -380,6 +398,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     });
 
     it("tears down the hierarchy overlay when the chip toggles OFF", async function () {
+        this.timeout(60_000);
         const target = pickPreview(
             wearPreviews,
             "ActivityListPreview",

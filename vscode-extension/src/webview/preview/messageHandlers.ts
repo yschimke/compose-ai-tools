@@ -290,7 +290,7 @@ export function handleExtensionMessage(
                     .filter((e) => e.requiresInteractive === true)
                     .map((e) => e.id),
             );
-            // Forward the full id list so the per-card touch-overlay + keyboard-band toggles
+            // Forward the full id list so the focus-bar touch-overlay + keyboard-band toggles
             // can gate on the matching descriptor being advertised (PR #1312/#1313). Without
             // this the buttons would silently appear on backends that don't ship the planner
             // and the override would no-op — dead UI.
@@ -298,8 +298,8 @@ export function handleExtensionMessage(
                 msg.moduleId,
                 (msg.dataExtensions ?? []).map((e) => e.id),
             );
-            // Restamp the per-card "Controls" buttons so they appear /
-            // disappear in lock-step with the daemon-advertised set.
+            // Refresh the focus-bar toggles so they appear / disappear in
+            // lock-step with the daemon-advertised set.
             ctx.liveState.applyControlsToggleButtons();
             return;
         case "streamStarted": {
@@ -391,9 +391,8 @@ function handleSetPreviews(
     const newIds = new Set(msg.previews.map((p) => p.id));
     ctx.liveState.pruneLive((id) => newIds.has(id));
     ctx.liveState.applyLiveBadge();
-    // Restamp the per-card "Controls" buttons (#1203). Cards that just landed
-    // in the grid need the button injected when the daemon advertises an
-    // interactive-only extension; cards that were dropped won't be visited.
+    // Refresh the focus-bar toggles in case the new manifest changed the
+    // focused card or its advertised-extension gating.
     ctx.liveState.applyControlsToggleButtons();
     ctx.applyInteractiveButtonState();
     // Tell the extension the cards reached the grid. Powers the e2e test's

@@ -166,19 +166,16 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
             },
         );
 
-        // The chip toggle's outbound `setDataExtensionEnabled` lands
-        // in `handleSetDataExtensionEnabled`, which needs a live daemon
-        // to subscribe against. `COMPOSE_PREVIEW_TEST_MODE=1` skips the
-        // activation auto-refresh, so the warm has to be explicit.
-        const warmed = await api.triggerWarmDaemon(wearKotlinFile);
-        assert.ok(
-            warmed,
-            "wear daemon must warm before chip toggles" +
-                (warmed
-                    ? ""
-                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
-        );
-
+        // Render first, warm second. The daemon JVM is launched with
+        // `-Dcomposeai.harness.previewsManifest=…/previews.json` baked into
+        // its `daemon-launch.json`; `PreviewManifestRouter.loadManifest`
+        // throws at startup when the file isn't on disk, taking the JVM
+        // down with exit code 1 before the channel handshake even begins.
+        // `composePreviewDaemonStart` (what `runDaemonBootstrap` invokes)
+        // writes the launch descriptor but NOT the manifest, so it has to
+        // run after the renderAll that writes `previews.json`. This matches
+        // production `runActivationRefresh` ordering: refresh → warm.
+        //
         // One full-tier render to populate the grid + scope a current
         // bundle target. `currentBundleTarget()` in the webview returns
         // the first visible card, which is the previewId the chip's
@@ -220,6 +217,19 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
                 );
             },
         );
+
+        // The chip toggle's outbound `setDataExtensionEnabled` lands
+        // in `handleSetDataExtensionEnabled`, which needs a live daemon
+        // to subscribe against. `COMPOSE_PREVIEW_TEST_MODE=1` skips the
+        // activation auto-refresh, so the warm has to be explicit.
+        const warmed = await api.triggerWarmDaemon(wearKotlinFile);
+        assert.ok(
+            warmed,
+            "wear daemon must warm before chip toggles" +
+                (warmed
+                    ? ""
+                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
+        );
     });
 
     after(async () => {
@@ -250,6 +260,13 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
     }
 
     it("activate → chip on, tab opens, overlays paint after daemon attachment", async function () {
+        // Per-test cap. The wear daemon is already warm by `before()`; chip
+        // toggles + tab/overlay paint round-trip in seconds on a warm
+        // runner. 60s leaves comfortable headroom while letting a stuck
+        // waitFor surface in a minute instead of inheriting the suite-level
+        // 15 min ceiling (which previously hid hangs for the whole 60 min
+        // workflow budget).
+        this.timeout(60_000);
         // Sanity baseline: at suite entry no bundle is active (the wear
         // suite hasn't toggled anything yet, and the initial
         // `reflectBundleState()` runs with `active=[]`).
@@ -325,6 +342,7 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
     });
 
     it("toggle off → chip off, tab closed, overlays cleared", async function () {
+        this.timeout(60_000);
         // Prereq: chip on with overlays painted. The previous `it`
         // toggled the chip on and left it that way; if Mocha re-orders
         // (e.g. a future `--retries` setting) the assertion below
