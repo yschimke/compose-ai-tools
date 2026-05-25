@@ -166,19 +166,16 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
             },
         );
 
-        // The chip toggle's outbound `setDataExtensionEnabled` lands
-        // in `handleSetDataExtensionEnabled`, which needs a live daemon
-        // to subscribe against. `COMPOSE_PREVIEW_TEST_MODE=1` skips the
-        // activation auto-refresh, so the warm has to be explicit.
-        const warmed = await api.triggerWarmDaemon(wearKotlinFile);
-        assert.ok(
-            warmed,
-            "wear daemon must warm before chip toggles" +
-                (warmed
-                    ? ""
-                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
-        );
-
+        // Render first, warm second. The daemon JVM is launched with
+        // `-Dcomposeai.harness.previewsManifest=…/previews.json` baked into
+        // its `daemon-launch.json`; `PreviewManifestRouter.loadManifest`
+        // throws at startup when the file isn't on disk, taking the JVM
+        // down with exit code 1 before the channel handshake even begins.
+        // `composePreviewDaemonStart` (what `runDaemonBootstrap` invokes)
+        // writes the launch descriptor but NOT the manifest, so it has to
+        // run after the renderAll that writes `previews.json`. This matches
+        // production `runActivationRefresh` ordering: refresh → warm.
+        //
         // One full-tier render to populate the grid + scope a current
         // bundle target. `currentBundleTarget()` in the webview returns
         // the first visible card, which is the previewId the chip's
@@ -219,6 +216,19 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
                         "webviewPreviewsRendered",
                 );
             },
+        );
+
+        // The chip toggle's outbound `setDataExtensionEnabled` lands
+        // in `handleSetDataExtensionEnabled`, which needs a live daemon
+        // to subscribe against. `COMPOSE_PREVIEW_TEST_MODE=1` skips the
+        // activation auto-refresh, so the warm has to be explicit.
+        const warmed = await api.triggerWarmDaemon(wearKotlinFile);
+        assert.ok(
+            warmed,
+            "wear daemon must warm before chip toggles" +
+                (warmed
+                    ? ""
+                    : `; cause: ${api.getLastWarmDaemonError() ?? "<unknown>"}`),
         );
     });
 
