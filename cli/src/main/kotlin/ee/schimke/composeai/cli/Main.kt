@@ -34,6 +34,7 @@ fun main(args: Array<String>) {
       "--message",
       "--with-extension",
       "--with",
+      "--missing-renders",
     )
   var commandIndex = -1
   var i = 0
@@ -155,6 +156,13 @@ private fun printUsage() {
                            --rerun-tasks to Gradle so every input task re-executes. Does NOT
                            run :clean and does NOT touch build/classes/. Each use is logged
                            with a pointer to issue #924 — please report the freshness gap.
+      --missing-renders <fail|warn|ignore>
+                           Forwarded as `-PcomposePreview.missingRenders=<value>`. Controls
+                           how `composePreviewRenderAll` reacts when a preview is listed in
+                           the manifest but produced no PNG: `fail` (Gradle plugin default —
+                           throws), `warn` (logs + keeps going), `ignore` (silent). Useful
+                           for multi-module CI where a handful of stubborn previews would
+                           otherwise gate the whole run.
       --daemon             doctor: also spawn each module's preview daemon and confirm the
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`

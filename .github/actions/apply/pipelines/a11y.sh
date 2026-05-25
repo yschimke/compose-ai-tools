@@ -53,6 +53,9 @@ if [ "${#ALLOW_MODULES[@]}" -gt 0 ]; then
     cli_args+=(--module ":${m}")
   done
 fi
+if [ -n "${MISSING_RENDERS:-}" ]; then
+  cli_args+=(--missing-renders "${MISSING_RENDERS}")
+fi
 
 # Use the same CLI that the install step put on $PATH (release tarball or
 # source build); the legacy `:cli:installDist` rebuild was a leftover from

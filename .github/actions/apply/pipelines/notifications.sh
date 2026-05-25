@@ -58,6 +58,13 @@ else
   gradle_args+=("composePreviewRenderAll")
 fi
 
+# Passed through to the Gradle plugin's `composePreviewRenderAll`
+# validation. Default `fail` is a no-op — matches the plugin's own default
+# — so always forwarding is safe.
+if [ -n "${MISSING_RENDERS:-}" ]; then
+  gradle_args+=("-PcomposePreview.missingRenders=${MISSING_RENDERS}")
+fi
+
 # In auto-detect mode an absent task is a "project doesn't ship notification
 # previews" signal rather than an error — drop into soft-skip so consumers
 # don't have to remember to `skip: notifications`. With an explicit

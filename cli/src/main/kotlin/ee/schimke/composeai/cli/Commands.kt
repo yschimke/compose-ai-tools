@@ -180,6 +180,37 @@ abstract class Command(protected val args: List<String>) {
     return listOf("-PcomposePreview.activeExtensions=${all.joinToString(",")}")
   }
 
+  /**
+   * `--missing-renders <fail|warn|ignore>` passes through as
+   * `-PcomposePreview.missingRenders=<value>` so the Gradle-plugin-side validation in
+   * `composePreviewRenderAll` knows whether to escalate, warn, or stay silent when a preview listed
+   * in the manifest produced no PNG. The CLI doesn't validate the value — invalid values fall
+   * through to the plugin's "fail" default. Empty / absent means "don't pass the flag at all",
+   * which keeps the historical behaviour intact.
+   */
+  protected val missingRendersPolicy: String? =
+    args.flagValue("--missing-renders")?.trim()?.takeIf { it.isNotEmpty() }
+
+  protected fun missingRendersGradleArgs(): List<String> {
+    val v = missingRendersPolicy ?: return emptyList()
+    return listOf("-PcomposePreview.missingRenders=$v")
+  }
+
+  /**
+   * Whether the CLI's own "Render task completed but produced no PNG for N of M" post-check should
+   * escalate to a non-zero exit. The Gradle-plugin-side validation in `composePreviewRenderAll`
+   * already honours `composePreview.missingRenders` for the throw vs warn vs silent decision; this
+   * mirrors the policy on the CLI side so a `warn` or `ignore` run actually surfaces as exit 0 to
+   * the apply action / shell caller. Unknown values fall through to "fail" — same hard-fail
+   * fallback the plugin uses.
+   */
+  protected fun shouldFailOnMissingRenders(): Boolean =
+    when (missingRendersPolicy?.lowercase()) {
+      "warn",
+      "ignore" -> false
+      else -> true
+    }
+
   private val forceNoticePrinted = AtomicBoolean(false)
 
   /**
@@ -194,7 +225,8 @@ abstract class Command(protected val args: List<String>) {
    */
   protected fun gradleArgsWithForce(extra: List<String> = emptyList()): List<String> {
     val extensionArgs = extensionGradleArgs()
-    val withExtras = extra + extensionArgs
+    val missingRendersArgs = missingRendersGradleArgs()
+    val withExtras = extra + extensionArgs + missingRendersArgs
     val reason = forceReason ?: return withExtras
     if (forceNoticePrinted.compareAndSet(false, true)) {
       System.err.println(
@@ -705,8 +737,14 @@ class ShowCommand(args: List<String>) : Command(args) {
     // "Missing" = at least one capture failed to produce a PNG.
     val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
     if (missing.isNotEmpty()) {
+      // Diagnostic stays under warn/ignore so CI logs remain grep-able — only the exit code
+      // changes. `--missing-renders warn|ignore` is the explicit opt-down; everything else
+      // (including unset) keeps the historical hard fail.
+      val policy = missingRendersPolicy?.lowercase()
+      val prefix =
+        if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
       System.err.println(
-        "Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
+        "${prefix}Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
       )
       System.err.println(
         "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
@@ -714,7 +752,7 @@ class ShowCommand(args: List<String>) : Command(args) {
           "testClassesDirs."
       )
       System.out.flush()
-      exitProcess(2)
+      if (shouldFailOnMissingRenders()) exitProcess(2)
     }
     System.out.flush()
   }
@@ -806,11 +844,14 @@ class RenderCommand(args: List<String>) : Command(args) {
         val changedCount = filtered.count { it.anyChanged() }
         if (changedCount > 0) println("  $changedCount changed since last run")
         if (missing.isNotEmpty()) {
+          val policy = missingRendersPolicy?.lowercase()
+          val prefix =
+            if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
           System.err.println(
-            "Render task completed but produced no PNG for ${missing.size} preview(s):"
+            "${prefix}Render task completed but produced no PNG for ${missing.size} preview(s):"
           )
           for (r in missing) System.err.println("  ${r.id}")
-          exitProcess(2)
+          if (shouldFailOnMissingRenders()) exitProcess(2)
         }
       }
     }
