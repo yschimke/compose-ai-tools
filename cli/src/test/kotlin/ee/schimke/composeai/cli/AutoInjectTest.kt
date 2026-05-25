@@ -665,10 +665,10 @@ class AutoInjectTest {
       "expected the per-project skip flag",
     )
     assertTrue(
-      script.contains(
-        "if (!composeAiPreviewSkipKmpAndroid && projectDir !in composeAiPreviewPreAppliedDirs) {"
-      ),
-      "expected the buildscript classpath injection to be gated on the KMP-Android skip flag too",
+      script.contains("!composeAiPreviewSkipKmpAndroid &&") &&
+        script.contains("projectDir !in composeAiPreviewPreAppliedDirs"),
+      "expected the buildscript classpath injection to be gated on the KMP-Android skip flag " +
+        "and the pre-applied dir set",
     )
     assertTrue(
       script.contains("if (composeAiPreviewSkipKmpAndroid) return@allprojects"),
@@ -1087,6 +1087,129 @@ class AutoInjectTest {
   fun `settingsDeclaresExclusiveContentInPluginManagement returns false when settings file is missing`() {
     val root = tempDir()
     assertFalse(settingsDeclaresExclusiveContentInPluginManagement(root))
+  }
+
+  @Test
+  fun `projectHasBuildscriptRepositories detects an explicit buildscript repositories block`() {
+    // Used in the exclusiveContent branch — modules that don't already have their own
+    // `buildscript { repositories { ... } }` would crash configuration if we still injected
+    // the classpath dep (Confetti's :backend shape; 0.11.8 regression).
+    val dir = tempDir()
+    File(dir, "build.gradle.kts")
+      .writeText(
+        """
+        buildscript {
+            repositories { mavenCentral() }
+            dependencies { classpath("com.example:some-plugin:1.0") }
+        }
+        plugins { kotlin("jvm") }
+        """
+          .trimIndent()
+      )
+    assertTrue(projectHasBuildscriptRepositories(dir))
+  }
+
+  @Test
+  fun `projectHasBuildscriptRepositories returns false for a modern plugins-DSL-only build script`() {
+    // Confetti's :backend and friends — modern projects route everything through settings'
+    // pluginManagement / dependencyResolutionManagement. With no per-project buildscript
+    // repos, our classpath dep can't resolve in the exclusiveContent branch.
+    val dir = tempDir()
+    File(dir, "build.gradle.kts")
+      .writeText(
+        """
+        plugins {
+            kotlin("jvm") version "2.2.21"
+        }
+        """
+          .trimIndent()
+      )
+    assertFalse(projectHasBuildscriptRepositories(dir))
+  }
+
+  @Test
+  fun `projectHasBuildscriptRepositories ignores a top-level repositories block outside buildscript`() {
+    // A `repositories { ... }` at the project level (for runtime deps) is different from
+    // `buildscript { repositories { ... } }` (for plugin classpath). The scanner must scope
+    // the check to inside the buildscript block.
+    val dir = tempDir()
+    File(dir, "build.gradle.kts")
+      .writeText(
+        """
+        plugins { kotlin("jvm") }
+        repositories { mavenCentral() }
+        """
+          .trimIndent()
+      )
+    assertFalse(projectHasBuildscriptRepositories(dir))
+  }
+
+  @Test
+  fun `projectHasBuildscriptRepositories ignores commented-out blocks`() {
+    val dir = tempDir()
+    File(dir, "build.gradle.kts")
+      .writeText(
+        """
+        // buildscript {
+        //     repositories { mavenCentral() }
+        // }
+        plugins { kotlin("jvm") }
+        """
+          .trimIndent()
+      )
+    assertFalse(projectHasBuildscriptRepositories(dir))
+  }
+
+  @Test
+  fun `projectHasBuildscriptRepositories returns false when no build script exists`() {
+    // Confetti's :backend has no build.gradle.kts at all — it's a parent project with
+    // `include(":backend")` and `include(":backend:foo")` declared in settings, but no build
+    // script of its own.
+    val dir = tempDir()
+    assertFalse(projectHasBuildscriptRepositories(dir))
+  }
+
+  @Test
+  fun `init script gates buildscript classpath dep injection on per-project buildscript repos in exclusiveContent branch`() {
+    // Successor to the 0.11.8 follow-up regression: in the exclusiveContent branch, the
+    // classpath dep is unresolvable on modules without their own buildscript repos. Pins the
+    // wire shape so that the scanner and the per-project skip both survive future refactors.
+    val script = renderInitScript("0.11.9")
+    assertTrue(
+      script.contains(
+        "var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()"
+      ),
+      "expected the per-project buildscript-repos set declaration",
+    )
+    assertTrue(
+      script.contains(
+        "fun scanForProjectsWithBuildscriptRepos(\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {"
+      ),
+      "expected the scanner function in the rendered script",
+    )
+    assertTrue(
+      script.contains(
+        "composeAiPreviewProjectsWithOwnBuildscriptRepos =\n            scanForProjectsWithBuildscriptRepos(projectDirs)"
+      ),
+      "expected the set to be populated inside the exclusiveContent branch at settingsEvaluated time",
+    )
+    assertTrue(
+      script.contains(
+        "val composeAiPreviewSkipExclusiveContentClasspathDep =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos"
+      ),
+      "expected the per-project skip flag in allprojects",
+    )
+    assertTrue(
+      script.contains(
+        "if (composeAiPreviewSkipExclusiveContentClasspathDep &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
+      ),
+      "expected the apply hooks to short-circuit for skipped modules (otherwise " +
+        "pluginManager.apply would fail with 'Plugin with id ... not found')",
+    )
+    assertTrue(
+      script.contains("[compose-preview] settings.gradle.kts declares exclusiveContent in"),
+      "expected the one-time lifecycle log so users know why auto-inject looks degraded",
+    )
   }
 
   @Test

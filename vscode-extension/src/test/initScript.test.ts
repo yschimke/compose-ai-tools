@@ -100,9 +100,7 @@ describe("renderInitScript", () => {
             "expected the set to be populated during settingsEvaluated",
         );
         assert.ok(
-            script.includes(
-                "if (projectDir !in composeAiPreviewPreAppliedDirs) {",
-            ),
+            script.includes("projectDir !in composeAiPreviewPreAppliedDirs"),
             "expected the buildscript block to be guarded per-project on the directory set",
         );
         // Catalog alias resolution: the scanner must look at gradle/libs.versions.toml
@@ -151,17 +149,13 @@ describe("renderInitScript", () => {
         );
     });
 
-    it("skips only the buildscript repositories add when settings declares exclusiveContent", () => {
-        // Confetti follow-up (#1482): root-level `pluginManagement { repositories {
-        // exclusiveContent { ... } } }` (directly or via the `listOf(repositories,
-        // dependencyResolutionManagement.repositories).forEach` Confetti pattern) trips
-        // Gradle 9.3+'s "you cannot add repositories to 'buildscript.repositories'"
-        // validation. We gate just the repositories sub-block of our buildscript injection
-        // — the classpath dependency and the withPlugin apply hooks still run, so if the
-        // consumer's existing buildscript repositories can resolve the plugin coordinate,
-        // auto-inject still works. PR #1483 tried to dodge the validation by loading the
-        // plugin via initscript classpath but that broke AGP classloader visibility at
-        // runtime.
+    it("gates buildscript classpath injection on per-project buildscript repos in the exclusiveContent branch", () => {
+        // Successor to the 0.11.8 follow-up regression: simply skipping the repositories add
+        // (the 0.11.8 fix) wasn't enough — modules without their own buildscript repos still
+        // got the classpath dep injected and crashed with "Cannot resolve external dependency
+        // ... because no repositories are defined", short-circuiting the entire Tooling API
+        // query. The fix forks per-project: modules with their own buildscript repos get the
+        // dep injected (resolution can succeed); modules without are skipped entirely.
         const script = renderInitScript();
         assert.ok(
             script.includes(
@@ -171,29 +165,39 @@ describe("renderInitScript", () => {
         );
         assert.ok(
             script.includes(
-                "fun composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir: java.io.File): Boolean {",
+                "var composeAiPreviewProjectsWithOwnBuildscriptRepos: Set<java.io.File> = emptySet()",
+            ),
+            "expected the per-project buildscript-repos set declaration",
+        );
+        assert.ok(
+            script.includes(
+                "fun scanForProjectsWithBuildscriptRepos(\n    projectDirs: List<java.io.File>,\n): Set<java.io.File> {",
             ),
             "expected the scanner function in the rendered script",
         );
         assert.ok(
             script.includes(
-                "composeAiPreviewSettingsHasExclusiveContent =\n        composeAiPreviewSettingsDeclaresExclusiveContent(settingsDir)",
+                "composeAiPreviewProjectsWithOwnBuildscriptRepos =\n            scanForProjectsWithBuildscriptRepos(projectDirs)",
             ),
-            "expected settingsEvaluated to populate the flag from the scanner",
+            "expected the set to be populated inside the exclusiveContent branch",
         );
         assert.ok(
             script.includes(
                 "if (!composeAiPreviewSettingsHasExclusiveContent) {\n                repositories {",
             ),
-            "expected the buildscript repositories add to be the only thing guarded — " +
-                "the classpath dep and apply hooks must stay reachable",
+            "expected the buildscript repositories add to be guarded by the exclusiveContent flag",
+        );
+        assert.ok(
+            script.includes(
+                "val composeAiPreviewSkipExclusiveContentClasspathDep =\n        composeAiPreviewSettingsHasExclusiveContent &&\n            projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos",
+            ),
+            "expected the per-project skip flag derived from settings flag + buildscript repos scan",
         );
         assert.ok(
             !script.includes(
                 "if (composeAiPreviewSettingsHasExclusiveContent) return@allprojects",
             ),
-            "the early-return for exclusiveContent is too aggressive; only the repositories add " +
-                "must be skipped",
+            "the global early-return for exclusiveContent is wrong — must fork per-project",
         );
     });
 
