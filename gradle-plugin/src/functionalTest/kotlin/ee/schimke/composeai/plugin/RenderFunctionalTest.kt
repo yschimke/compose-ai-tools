@@ -191,6 +191,15 @@ class RenderFunctionalTest {
   fun `composePreviewRenderAll missing-renders=warn does not fail the build`() {
     val projectDir = createTestProject()
 
+    // Discover first so `previews.json` exists as `composePreviewRenderAll`'s
+    // `inputs.file(...)` — same warmup the loud-failure tests above use. Without
+    // it the task fails validation before the missing-renders policy is read.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
     val result =
       GradleRunner.create()
         .withProjectDir(projectDir)
@@ -211,13 +220,21 @@ class RenderFunctionalTest {
     assertThat(result.output).contains("render produced no output file")
     // Validation marker is still written under warn so downstream tasks
     // that wire off the marker (pixel-test gates, baselines) keep running.
-    assertThat(File(projectDir, "build/compose-previews/composePreviewRenderAll.validated"))
-      .exists()
+    assertThat(
+        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists()
+      )
+      .isTrue()
   }
 
   @Test
   fun `composePreviewRenderAll missing-renders=ignore stays silent`() {
     val projectDir = createTestProject()
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
 
     val result =
       GradleRunner.create()
@@ -237,13 +254,21 @@ class RenderFunctionalTest {
     // suppress the diagnostic for projects that accept some missing
     // previews as the steady state.
     assertThat(result.output).doesNotContain("render produced no output file")
-    assertThat(File(projectDir, "build/compose-previews/composePreviewRenderAll.validated"))
-      .exists()
+    assertThat(
+        File(projectDir, "build/compose-previews/composePreviewRenderAll.validated").exists()
+      )
+      .isTrue()
   }
 
   @Test
   fun `composePreviewRenderAll missing-renders=garbage falls back to fail`() {
     val projectDir = createTestProject()
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
 
     val result =
       GradleRunner.create()

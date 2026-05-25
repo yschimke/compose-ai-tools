@@ -1318,5 +1318,115 @@ describe("DaemonScheduler", () => {
                 `warm-up renderNow at ${warmRenderIdx} must come after dataSubscribe at ${subIdx}; wire was ${wire.join(", ")}`,
             );
         });
+
+        describe("a11y transition", () => {
+            it("reports 'enabled' on the first a11y subscribe for a module", async () => {
+                const { scheduler } = build();
+                const result = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["a11y/atf", "a11y/hierarchy"],
+                    true,
+                );
+                assert.strictEqual(result.a11yTransition, "enabled");
+            });
+
+            it("reports 'unchanged' on a second a11y subscribe for the same module", async () => {
+                const { scheduler } = build();
+                await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["a11y/atf"],
+                    true,
+                );
+                // Second preview's first a11y subscribe — module already has
+                // at least one a11y pair, so no first-on/last-off boundary.
+                const result = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "b",
+                    ["a11y/atf"],
+                    true,
+                );
+                assert.strictEqual(result.a11yTransition, "unchanged");
+            });
+
+            it("reports 'disabled' only when the LAST a11y pair for the module goes away", async () => {
+                const { scheduler } = build();
+                await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["a11y/atf"],
+                    true,
+                );
+                await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "b",
+                    ["a11y/atf"],
+                    true,
+                );
+                // Dropping one of two pairs is not a transition.
+                const stillActive = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["a11y/atf"],
+                    false,
+                );
+                assert.strictEqual(stillActive.a11yTransition, "unchanged");
+                // Dropping the last pair is.
+                const lastOff = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "b",
+                    ["a11y/atf"],
+                    false,
+                );
+                assert.strictEqual(lastOff.a11yTransition, "disabled");
+            });
+
+            it("ignores non-a11y kinds — pure-non-a11y toggles never transition", async () => {
+                const { scheduler } = build();
+                const result = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["compose/recomposition"],
+                    true,
+                );
+                assert.strictEqual(result.a11yTransition, "unchanged");
+            });
+
+            it("isolates the transition per module", async () => {
+                const { scheduler } = build();
+                await scheduler.setDataProductSubscription(
+                    mod("mod-a"),
+                    "a",
+                    ["a11y/atf"],
+                    true,
+                );
+                // Subscribing under a different module is a 'first on' for
+                // THAT module, not 'unchanged' — module aggregates must not
+                // leak across modulePath boundaries.
+                const result = await scheduler.setDataProductSubscription(
+                    mod("mod-b"),
+                    "a",
+                    ["a11y/atf"],
+                    true,
+                );
+                assert.strictEqual(result.a11yTransition, "enabled");
+            });
+
+            it("reports 'unchanged' when the daemon gate has no client", async () => {
+                // GradleOnly scheduler stand-in: gate.getOrSpawn returns
+                // null, so no subscribe lands. The transition must stay
+                // 'unchanged' so the panel doesn't kick a spurious refresh.
+                const { gate, scheduler } = build();
+                gate.client = null;
+                const result = await scheduler.setDataProductSubscription(
+                    mod("mod"),
+                    "a",
+                    ["a11y/atf"],
+                    true,
+                );
+                assert.strictEqual(result.a11yTransition, "unchanged");
+            });
+        });
     });
 });
