@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.11.6](https://github.com/yschimke/compose-ai-tools/compare/v0.11.5...v0.11.6) (2026-05-25)
+
+
+### Features
+
+* publish renderer-desktop and resolve via Maven coord by default ([#1472](https://github.com/yschimke/compose-ai-tools/issues/1472)) ([ed18fb6](https://github.com/yschimke/compose-ai-tools/commit/ed18fb612eebbff90e851ded91d569af8c4be840))
+* unify compose-preview CI into single apply action ([#1465](https://github.com/yschimke/compose-ai-tools/issues/1465)) ([6d7b1c0](https://github.com/yschimke/compose-ai-tools/commit/6d7b1c008c414a81bbe9bb99172ed0e2bd21c144))
+
+
+### Bug Fixes
+
+* abort pending refresh before preloading previews ([#1471](https://github.com/yschimke/compose-ai-tools/issues/1471)) ([5525f51](https://github.com/yschimke/compose-ai-tools/commit/5525f5110447af09e94c23cfaf164609980cefb0))
+* prevent preview panel from blanking during gradle warmup ([#1467](https://github.com/yschimke/compose-ai-tools/issues/1467)) ([49ff61d](https://github.com/yschimke/compose-ai-tools/commit/49ff61d973cad75539b90ad3ca62566b6d358abe))
+* skip composite-included builds in init script ([#1470](https://github.com/yschimke/compose-ai-tools/issues/1470)) ([fc2d12d](https://github.com/yschimke/compose-ai-tools/commit/fc2d12de5f3c6dc03eed7110a0bc2d9e61045c27))
+
 ## [0.11.5](https://github.com/yschimke/compose-ai-tools/compare/v0.11.4...v0.11.5) (2026-05-24)
 
 
