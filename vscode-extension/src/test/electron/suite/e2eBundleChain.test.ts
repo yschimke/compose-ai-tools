@@ -260,6 +260,13 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
     }
 
     it("activate → chip on, tab opens, overlays paint after daemon attachment", async function () {
+        // Per-test cap. The wear daemon is already warm by `before()`; chip
+        // toggles + tab/overlay paint round-trip in seconds on a warm
+        // runner. 60s leaves comfortable headroom while letting a stuck
+        // waitFor surface in a minute instead of inheriting the suite-level
+        // 15 min ceiling (which previously hid hangs for the whole 60 min
+        // workflow budget).
+        this.timeout(60_000);
         // Sanity baseline: at suite entry no bundle is active (the wear
         // suite hasn't toggled anything yet, and the initial
         // `reflectBundleState()` runs with `active=[]`).
@@ -335,6 +342,7 @@ describeE2E("Compose Preview bundle chip↔tab↔overlay e2e (wear)", function (
     });
 
     it("toggle off → chip off, tab closed, overlays cleared", async function () {
+        this.timeout(60_000);
         // Prereq: chip on with overlays painted. The previous `it`
         // toggled the chip on and left it that way; if Mocha re-orders
         // (e.g. a future `--retries` setting) the assertion below
