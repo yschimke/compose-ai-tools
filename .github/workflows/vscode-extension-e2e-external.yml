@@ -12,12 +12,16 @@ name: VS Code Extension E2E (external consumer)
 #
 # Cost: a cold run is multi-tens of minutes (Confetti's Apollo codegen and
 # KMP target setup alone take 2-5 min before any compose-preview task
-# runs). Not on PRs. Not on every push to main. Manual + weekly.
+# runs). Not on PRs.
 #
 # Triggers:
 #   workflow_dispatch — manual one-off runs (any branch). Bump the
 #                       Confetti SHA or the plugin version here when
 #                       investigating a regression.
+#   push (main)       — runs on every merge to main so regressions in the
+#                       published-plugin path surface against the commit
+#                       that introduced them, not at the next cron tick.
+#                       Mirrors how `vscode-extension-e2e.yml` is wired.
 #   schedule          — weekly, Sundays 06:00 UTC. Picks up drift in
 #                       Confetti's transitive deps + our own renderer
 #                       compat with the latest published consumer code.
@@ -29,6 +33,8 @@ on:
         description: "Confetti git SHA / branch / tag (defaults to the pin in setup-external-e2e.sh)"
         required: false
         type: string
+  push:
+    branches: [main]
   schedule:
     - cron: "0 6 * * 0"
 
@@ -37,8 +43,10 @@ permissions:
 
 concurrency:
   # Manual dispatches get their own slot via run_id; scheduled runs
-  # collapse onto a single in-flight per cron tick.
-  group: vscode-extension-e2e-external-${{ github.run_id }}
+  # collapse onto a single in-flight per cron tick. Push-on-main runs
+  # serialise on the commit SHA so a quick succession of merges queues
+  # instead of fanning out (each run costs multi-tens of minutes).
+  group: vscode-extension-e2e-external-${{ github.event_name }}-${{ github.sha }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
