@@ -698,6 +698,33 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script skips composite-included builds in settingsEvaluated and allprojects`() {
+    // Regression for the Confetti report: with `includeBuild("build-logic")` whose
+    // settings.gradle.kts declares `exclusiveContent { ... }` in `pluginManagement.repositories`,
+    // Gradle 9.3+ rejects any project that adds to `buildscript.repositories`. The init script
+    // is evaluated once per build in a composite, so the unguarded `allprojects { buildscript
+    // { repositories { ... } } }` previously fired against the included build and tripped the
+    // validation. Pins the early-return shape so it doesn't regress. An included build's
+    // `gradle.parent` is non-null; the root build's is null, so the guard is a one-liner that
+    // costs the root build nothing.
+    val script = renderInitScript("0.11.6")
+    assertTrue(
+      script.contains("val composeAiPreviewIsIncludedBuild = gradle.parent != null"),
+      "expected the included-build flag derived from gradle.parent",
+    )
+    assertTrue(
+      script.contains("if (composeAiPreviewIsIncludedBuild) return@settingsEvaluated"),
+      "expected settingsEvaluated to short-circuit for composite-included builds",
+    )
+    assertTrue(
+      script.contains("if (composeAiPreviewIsIncludedBuild) return@allprojects"),
+      "expected allprojects to short-circuit for composite-included builds so " +
+        "buildscript.repositories isn't touched in included builds (would conflict with " +
+        "exclusiveContent in settings.pluginManagement.repositories)",
+    )
+  }
+
+  @Test
   fun `init script's KMP-Android scan recognises catalog aliases`() {
     // Mirrors the compose-preview catalog-accessor path so a project that declares the
     // KMP-Android plugin in `gradle/libs.versions.toml` (e.g.

@@ -152,7 +152,22 @@ fun scanForComposeAiPreviewDeclaration(
     return declared
 }
 
+// Skip composite-included builds entirely — both the settings scan and the \`allprojects\`
+// injection. The init script is evaluated once per build in a composite (root + each
+// \`includeBuild(...)\`), so without this guard \`allprojects { buildscript { repositories { ... } } }\`
+// fires for the included build's projects too. That breaks any included build whose
+// \`pluginManagement.repositories\` declares \`exclusiveContent { ... }\`: Gradle 9.3+ rejects
+// adding to \`buildscript.repositories\` once exclusiveContent is in
+// \`settings.pluginManagement.repositories\` (e.g. Confetti's \`:build-logic\`). Included builds in
+// this pattern are conventionally plugin builds (\`build-logic\`, \`gradle-conventions\`) that don't
+// host \`@Preview\` composables, so injecting the plugin classpath there is unnecessary — and the
+// existing pre-applied scan only walks the *root* build's project hierarchy anyway, so
+// included-build projects were never tracked. An included build's \`Gradle\` instance has a
+// non-null \`parent\`; the root build's is \`null\`.
+val composeAiPreviewIsIncludedBuild = gradle.parent != null
+
 gradle.settingsEvaluated {
+    if (composeAiPreviewIsIncludedBuild) return@settingsEvaluated
     val projectDirs = mutableListOf<java.io.File>()
     fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
         projectDirs.add(descriptor.projectDir)
@@ -170,9 +185,8 @@ gradle.settingsEvaluated {
     //
     // Gradle only auto-adds the default Plugin Portal when \`pluginManagement.repositories\` is empty
     // after settings evaluation — once we explicitly add \`mavenLocal()\` the list is non-empty and
-    // the default is suppressed, so a \`build-logic\` module that relies on the implicit default for
-    // \`kotlin-dsl\` (resolved via plugin marker from the Gradle Plugin Portal) fails. Restore those
-    // defaults explicitly when the build didn't declare any plugin repos of its own.
+    // the default is suppressed, so restore the defaults explicitly when the build didn't declare
+    // any plugin repos of its own.
     if (useMavenLocal) {
         val seedPluginDefaults = pluginManagement.repositories.isEmpty()
         pluginManagement.repositories.mavenLocal()
@@ -186,6 +200,7 @@ gradle.settingsEvaluated {
 }
 
 allprojects {
+    if (composeAiPreviewIsIncludedBuild) return@allprojects
     if (projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             repositories {

@@ -121,6 +121,36 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("skips composite-included builds in settingsEvaluated and allprojects", () => {
+        // Regression for the Confetti report: with `includeBuild("build-logic")` whose
+        // settings.gradle.kts declares `exclusiveContent { ... }` in
+        // `pluginManagement.repositories`, Gradle 9.3+ rejects any project that adds to
+        // `buildscript.repositories`. The init script is evaluated once per build in a
+        // composite, so the unguarded `allprojects { buildscript { repositories { ... } } }`
+        // previously fired against the included build and tripped the validation. Pins the
+        // early-return shape so it doesn't regress. An included build's `gradle.parent` is
+        // non-null; the root build's is null.
+        const script = renderInitScript();
+        assert.ok(
+            script.includes(
+                "val composeAiPreviewIsIncludedBuild = gradle.parent != null",
+            ),
+            "expected the included-build flag derived from gradle.parent",
+        );
+        assert.ok(
+            script.includes(
+                "if (composeAiPreviewIsIncludedBuild) return@settingsEvaluated",
+            ),
+            "expected settingsEvaluated to short-circuit for composite-included builds",
+        );
+        assert.ok(
+            script.includes(
+                "if (composeAiPreviewIsIncludedBuild) return@allprojects",
+            ),
+            "expected allprojects to short-circuit for composite-included builds",
+        );
+    });
+
     it("limits the scan to included project descriptors, not the filesystem", () => {
         // Codex P1 review on PR #1183: an unrelated nested build (e.g., a tooling
         // build or sample app checked into the workspace but not part of this
