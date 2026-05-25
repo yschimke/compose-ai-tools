@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("applyRelativeSizing", () => {
-    it("sets --size-ratio and --aspect-ratio per card from widthDp/heightDp", () => {
+    it("sets --size-ratio, --aspect-ratio and --width-dp per card from widthDp/heightDp", () => {
         const previews = [
             preview("com.example.A", { widthDp: 100, heightDp: 200 }),
             preview("com.example.B", { widthDp: 200, heightDp: 400 }),
@@ -73,6 +73,7 @@ describe("applyRelativeSizing", () => {
             a.style.getPropertyValue("--aspect-ratio"),
             "100 / 200",
         );
+        assert.strictEqual(a.style.getPropertyValue("--width-dp"), "100");
 
         const b = cards.get("com.example.B")!;
         // 200 / 200 = 1
@@ -81,6 +82,7 @@ describe("applyRelativeSizing", () => {
             b.style.getPropertyValue("--aspect-ratio"),
             "200 / 400",
         );
+        assert.strictEqual(b.style.getPropertyValue("--width-dp"), "200");
     });
 
     it("fixes --size-ratio to 4 decimal places", () => {
@@ -95,7 +97,7 @@ describe("applyRelativeSizing", () => {
         assert.strictEqual(c.style.getPropertyValue("--size-ratio"), "0.1429");
     });
 
-    it("removes both CSS vars when widthDp / heightDp are missing", () => {
+    it("removes all CSS vars when widthDp / heightDp are missing", () => {
         const previews = [
             preview("com.example.E"), // no width/height
         ];
@@ -105,10 +107,12 @@ describe("applyRelativeSizing", () => {
         cards
             .get("com.example.E")!
             .style.setProperty("--aspect-ratio", "100 / 200");
+        cards.get("com.example.E")!.style.setProperty("--width-dp", "100");
         applyRelativeSizing(previews);
         const e = cards.get("com.example.E")!;
         assert.strictEqual(e.style.getPropertyValue("--size-ratio"), "");
         assert.strictEqual(e.style.getPropertyValue("--aspect-ratio"), "");
+        assert.strictEqual(e.style.getPropertyValue("--width-dp"), "");
     });
 
     it("removes vars from a card whose width is set but height isn't (and vice versa)", () => {

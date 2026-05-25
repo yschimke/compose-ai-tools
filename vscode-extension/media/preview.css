@@ -16,6 +16,14 @@
         var(--toolbar-hover)
     );
     --control-height: 22px;
+    /* Max magnification for previews with a known widthDp. Caps how many
+       times their natural pixel size the image-container is allowed to
+       stretch to — without this a 40dp Switch grows to fill a 200px grid
+       cell (5×) or the whole focus viewport (~20×) and dominates the
+       layout. The focus cap is higher because Focus is the inspector
+       view: the user wants room to see detail without it sprawling. */
+    --preview-max-zoom: 3;
+    --preview-max-zoom-focus: 6;
 }
 
 body {
@@ -1356,6 +1364,22 @@ preview-app {
 .preview-card[style*="--aspect-ratio"] .image-container img {
     height: 100%;
     object-fit: contain;
+}
+
+/* Magnification cap — cards with known widthDp don't stretch beyond
+   `--preview-max-zoom × natural` (the layout-focus override below bumps
+   that to `--preview-max-zoom-focus`). Centred via `margin-inline: auto`
+   so a capped image sits in the middle of an oversized card/cell rather
+   than pinning to the left edge. Treating widthDp as 1 px matches the
+   theming presenter's 1 dp ≈ 1 px convention. */
+.preview-card[style*="--width-dp"] .image-container {
+    max-width: calc(var(--width-dp) * var(--preview-max-zoom) * 1px);
+    margin-inline: auto;
+}
+.preview-grid.layout-focus
+    .preview-card[style*="--width-dp"].focused
+    .image-container {
+    max-width: calc(var(--width-dp) * var(--preview-max-zoom-focus) * 1px);
 }
 
 .image-container img.fade-in {
