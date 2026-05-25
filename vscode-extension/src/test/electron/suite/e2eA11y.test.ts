@@ -310,6 +310,13 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     }
 
     it("paints hierarchy overlay when the chip toggles ON for ActivityListPreview", async function () {
+        // Per-test cap. The wear daemon is already warm by `before()`; chip
+        // toggles are sub-second on a warm runner (observed 2-3s including
+        // daemon-side a11y render). 60s leaves 20× headroom while letting
+        // a stuck waitFor surface in a minute instead of inheriting the
+        // suite-level 15 min ceiling (which previously hid a hang in the
+        // post-#1461 run for the whole 60-min workflow budget).
+        this.timeout(60_000);
         const target = pickPreview(
             wearPreviews,
             "ActivityListPreview",
@@ -352,6 +359,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     });
 
     it("paints findings legend when the chip toggles ON for BadWearButtonPreview", async function () {
+        this.timeout(60_000);
         const target = pickPreview(wearPreviews, "BadWearButtonPreview");
         console.log(
             `[e2e-a11y] subscribing a11y/atf for ${target.functionName} (${target.params?.device})`,
@@ -390,6 +398,7 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
     });
 
     it("tears down the hierarchy overlay when the chip toggles OFF", async function () {
+        this.timeout(60_000);
         const target = pickPreview(
             wearPreviews,
             "ActivityListPreview",
