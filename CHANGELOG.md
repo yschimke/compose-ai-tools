@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.10](https://github.com/yschimke/compose-ai-tools/compare/v0.11.9...v0.11.10) (2026-05-25)
+
+
+### Features
+
+* add missing-renders policy to apply action ([#1500](https://github.com/yschimke/compose-ai-tools/issues/1500)) ([d7ef04c](https://github.com/yschimke/compose-ai-tools/commit/d7ef04c248c8e1336b8b8abfa127e0760185a246))
+* support multi-module a11y + notification pipelines in apply action ([#1495](https://github.com/yschimke/compose-ai-tools/issues/1495)) ([fdc69d8](https://github.com/yschimke/compose-ai-tools/commit/fdc69d8bbfe94dc1c4f68ef12fd7cc4114274a36))
+* surface preview render errors from .error.json sidecars ([#1501](https://github.com/yschimke/compose-ai-tools/issues/1501)) ([2007020](https://github.com/yschimke/compose-ai-tools/commit/20070203246991d7690c004d5cf49c73fe138e4c))
+
+
+### Bug Fixes
+
+* retry daemon bootstrap on cancellation and coalesce concurrent warms ([#1497](https://github.com/yschimke/compose-ai-tools/issues/1497)) ([cccf80d](https://github.com/yschimke/compose-ai-tools/commit/cccf80dda8e2a8fcfa2c7e2d75d51cd314decd30))
+
 ## [0.11.9](https://github.com/yschimke/compose-ai-tools/compare/v0.11.8...v0.11.9) (2026-05-25)
 
 
