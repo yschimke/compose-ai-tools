@@ -1811,6 +1811,16 @@ export async function activate(
                 // this file's module. Once daemon startup finishes we run a
                 // second discover pass and pre-render the shown previews so
                 // the first edit doesn't have to pay JVM/sandbox startup.
+                //
+                // Abort any in-flight refresh for the previous file NOW,
+                // before preloadCachedPreviews. Without this early abort,
+                // the old refresh's post-discover continuation can resume
+                // while preload awaits disk reads and overwrite the preloaded
+                // state (clearAll, hasPreviewsLoaded=false, setPreviews for
+                // the wrong module) before refresh() for the new file ever
+                // fires the abort signal itself.
+                pendingRefresh?.abort();
+                pendingRefreshKey = null;
                 void (async () => {
                     // Paint on-disk cache for the new file before
                     // composePreviewDiscover runs so the panel isn't
@@ -4637,7 +4647,13 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 } else {
                     // Mirror the runActivationRefresh sequence: paint the
                     // on-disk cache first so the grid is never blank while
-                    // composePreviewDiscover re-runs.
+                    // composePreviewDiscover re-runs. Abort any in-flight
+                    // refresh before preload for the same reason as the
+                    // onDidChangeActiveTextEditor path: a concurrent
+                    // discover completion can overwrite preloaded state
+                    // before refresh() fires the abort itself.
+                    pendingRefresh?.abort();
+                    pendingRefreshKey = null;
                     const scopeFile = currentScopeFile;
                     void (async () => {
                         const preloaded =
