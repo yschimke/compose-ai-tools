@@ -92,6 +92,14 @@ export class LiveDaemonGate implements DaemonGate {
     private readonly spawns = new Map<string, Promise<DaemonClient>>();
     private disposed = false;
     private readonly warnedBuildDisabled = new Set<string>();
+    /**
+     * Modules where we've already logged the "no launch descriptor"
+     * message. Interactive paths (`setVisible`, `setFocus`, rotary scroll)
+     * each call `getOrSpawn`; without dedup a single scroll session emits
+     * the same line dozens of times. Cleared once a descriptor appears so
+     * the next missing-descriptor episode logs again.
+     */
+    private readonly warnedMissingDescriptor = new Set<string>();
 
     constructor(
         private readonly workspaceRoot: string,
@@ -136,9 +144,13 @@ export class LiveDaemonGate implements DaemonGate {
             const message =
                 `[daemon] no launch descriptor for ${module.modulePath}; ` +
                 `run ${module.modulePath}:composePreviewDaemonStart first`;
-            this.logger.appendLine(message);
+            if (!this.warnedMissingDescriptor.has(key)) {
+                this.warnedMissingDescriptor.add(key);
+                this.logger.appendLine(message);
+            }
             throw new Error(message);
         }
+        this.warnedMissingDescriptor.delete(key);
         if (!descriptor.enabled) {
             if (!this.warnedBuildDisabled.has(key)) {
                 this.warnedBuildDisabled.add(key);
