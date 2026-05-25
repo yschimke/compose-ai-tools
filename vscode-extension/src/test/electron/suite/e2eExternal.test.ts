@@ -228,6 +228,89 @@ describeExternal(
             // stderr tail is already in the channel log thanks to
             // issue #1326's wrapping (`formatDaemonSpawnFailure`).
             const warmed = await api.triggerWarmDaemon(kotlinFile);
+            if (!warmed) {
+                // Post-mortem: surface every applied.json the workspace has on
+                // disk so the CI log shows whether `composePreviewApplied` fanned
+                // out to any module at all, and which `modulePath`s it wrote. A
+                // null `resolveModule` with zero markers means the plugin wasn't
+                // applied anywhere; a marker for `:shared` but not `:androidApp`
+                // means the alias detection slipped on the test target. Limited
+                // to depth 4 + skipping `.git`/`build` non-marker dirs so a KMP
+                // project's `build/intermediates` tree doesn't drown the log.
+                const markers: string[] = [];
+                const skipTopLevel = new Set([
+                    ".git",
+                    "node_modules",
+                    ".gradle",
+                ]);
+                const walk = (rel: string, depth: number): void => {
+                    if (depth > 4) return;
+                    let entries: fs.Dirent[];
+                    try {
+                        entries = fs.readdirSync(
+                            path.join(workspaceRoot, rel),
+                            { withFileTypes: true },
+                        );
+                    } catch {
+                        return;
+                    }
+                    for (const entry of entries) {
+                        if (depth === 0 && skipTopLevel.has(entry.name))
+                            continue;
+                        const child = rel ? `${rel}/${entry.name}` : entry.name;
+                        if (entry.isFile() && entry.name === "applied.json") {
+                            markers.push(child);
+                            continue;
+                        }
+                        if (entry.isDirectory()) walk(child, depth + 1);
+                    }
+                };
+                walk("", 0);
+                console.log(
+                    `[e2e-external-diag] warm aborted; ` +
+                        `${markers.length} applied.json marker(s) on disk after composePreviewApplied:`,
+                );
+                for (const m of markers) {
+                    try {
+                        const body = fs.readFileSync(
+                            path.join(workspaceRoot, m),
+                            "utf-8",
+                        );
+                        console.log(
+                            `[e2e-external-diag]   ${m}: ${body.trim()}`,
+                        );
+                    } catch (err) {
+                        console.log(
+                            `[e2e-external-diag]   ${m}: <read failed: ${
+                                (err as Error).message
+                            }>`,
+                        );
+                    }
+                }
+                // Also surface what the consumer's `:androidApp/build.gradle.kts`
+                // looks like so we can tell apart "alias detection failed" from
+                // "the upstream pin moved the plugin off this module entirely".
+                const appBuild = path.join(
+                    workspaceRoot,
+                    "androidApp",
+                    "build.gradle.kts",
+                );
+                if (fs.existsSync(appBuild)) {
+                    const head = fs
+                        .readFileSync(appBuild, "utf-8")
+                        .split("\n")
+                        .slice(0, 30)
+                        .join("\n");
+                    console.log(
+                        `[e2e-external-diag] :androidApp/build.gradle.kts head:\n${head}`,
+                    );
+                } else {
+                    console.log(
+                        `[e2e-external-diag] :androidApp/build.gradle.kts missing — ` +
+                            "upstream layout drifted",
+                    );
+                }
+            }
             assert.ok(
                 warmed,
                 "warm aborted — see daemon channel log for the spawn-failure " +
