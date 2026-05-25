@@ -2742,9 +2742,46 @@ async function warmDaemonForFile(
         lastWarmDaemonError = `warm aborted: resolveModule returned null for ${filePath} (no applied.json marker and no plugin id in build.gradle.kts)`;
         return false;
     }
+    return warmDaemonForModuleImpl(module, { filePath, ...opts });
+}
+
+/**
+ * Module-level warm entry. Use when the caller has a `ModuleInfo` but no
+ * specific file path — interactive entry (`handleSetInteractive`,
+ * `handleRequestStreamStart`) reaches this after a prior warm was
+ * cancelled, so a rotary scroll session doesn't go through the Gradle
+ * fallback for the rest of the session. The `daemonScheduler.warmModule`
+ * call coalesces concurrent warms via its own in-flight map, so a burst
+ * of interactive events triggers at most one bootstrap. Silent on failure
+ * (no modal) because the caller is mid-interaction and already updates
+ * the chip / live-mode UI on failure.
+ */
+async function warmDaemonForModule(module: ModuleInfo): Promise<boolean> {
+    if (!daemonGate || !daemonScheduler || !gradleService) {
+        return false;
+    }
+    return warmDaemonForModuleImpl(module, { silentOnFailure: true });
+}
+
+async function warmDaemonForModuleImpl(
+    module: ModuleInfo,
+    opts: {
+        filePath?: string;
+        refreshAfterReady?: boolean;
+        silentOnFailure?: boolean;
+    },
+): Promise<boolean> {
+    if (!daemonGate || !daemonScheduler || !gradleService) {
+        return false;
+    }
+    const filePath = opts.filePath;
     const moduleKey = module.modulePath;
     if (daemonBootstrappedModules.has(moduleKey)) {
-        if (daemonGate.isDaemonReady(moduleKey) && opts.refreshAfterReady) {
+        if (
+            daemonGate.isDaemonReady(moduleKey) &&
+            opts.refreshAfterReady &&
+            filePath
+        ) {
             await refreshAfterDaemonReady(filePath, "view-open");
         }
         const ready = daemonGate.isDaemonReady(moduleKey);
@@ -2774,8 +2811,10 @@ async function warmDaemonForFile(
             lastWarmDaemonError = null;
             continuousCompileManager?.ensureWorker(module);
         }
-        finishDaemonStartupProgress(module, filePath, warmed);
-        if (warmed && opts.refreshAfterReady) {
+        if (filePath) {
+            finishDaemonStartupProgress(module, filePath, warmed);
+        }
+        if (warmed && opts.refreshAfterReady && filePath) {
             await refreshAfterDaemonReady(filePath, "view-open");
         }
         return warmed;
@@ -2786,9 +2825,11 @@ async function warmDaemonForFile(
         const reason = String((err as Error).message ?? err);
         lastWarmDaemonError = `warm threw for ${moduleKey}: ${reason}`;
         logLine(`daemon: warm failed for ${moduleKey}: ${reason}`);
-        vscode.window.showErrorMessage(
-            "Compose Preview daemon failed to start. Preview saves will not render until the daemon is fixed.",
-        );
+        if (!opts.silentOnFailure) {
+            vscode.window.showErrorMessage(
+                "Compose Preview daemon failed to start. Preview saves will not render until the daemon is fixed.",
+            );
+        }
         return false;
     }
 }
@@ -6220,6 +6261,14 @@ async function handleSetInteractive(
         logLine(`[interactive] live mode off for ${previewId}`);
         return;
     }
+    // A prior `warmDaemonForFile` may have been cancelled (refresh
+    // superseded mid-bootstrap). Without this, the next getOrSpawn throws
+    // "no launch descriptor" and the rest of the interactive session falls
+    // through to the Gradle render path. warmModule coalesces concurrent
+    // callers, so this is cheap when warm is already in flight or done.
+    if (!daemonGate.isDaemonReady(module.modulePath)) {
+        await warmDaemonForModule(module);
+    }
     const client = await daemonGate?.getOrSpawn(
         module,
         daemonScheduler.daemonEvents(module.modulePath),
@@ -6294,6 +6343,11 @@ async function handleRequestStreamStart(
             `[stream] no module for ${previewId}; ignoring requestStreamStart`,
         );
         return;
+    }
+    // Same recovery as `handleSetInteractive`: a cancelled prior warm
+    // would otherwise leave stream start stuck on the Gradle fallback.
+    if (!daemonGate.isDaemonReady(module.modulePath)) {
+        await warmDaemonForModule(module);
     }
     const client = await daemonGate?.getOrSpawn(
         module,
