@@ -40,10 +40,8 @@ Modules without any matching resources self-no-op, so this comes along for free 
   click *Install*. Source in [`vscode-extension/`](vscode-extension/).
 - **GitHub Actions** — composite actions for CI:
   [`install`](.github/actions/install/) (CLI on `$PATH`),
-  [`preview-baselines`](.github/actions/preview-baselines/) (push baselines),
-  [`preview-comment`](.github/actions/preview-comment/) (before/after PR
-  comments), [`a11y-report`](.github/actions/a11y-report/) (accessibility
-  findings).
+  [`apply`](.github/actions/apply/) (unified pipeline — baselines on push,
+  before/after PR comments, a11y + notification surfaces).
 
 ## Setup
 
@@ -139,7 +137,7 @@ Use `.github/workflows/codex-pr-review-reusable.yml` to run AI PR review **only 
 ### Minimal caller setup
 This repository wires the reusable workflow in `.github/workflows/codex-pr-review.yml` using a `preview` job plus a thin `uses:` call to the reusable workflow.
 
-To avoid duplicate PR review comments in this repository, `.github/workflows/preview-comment.yml` is kept manual (`workflow_dispatch`). Consumer repos can still choose either workflow (or both) based on their needs.
+In this repository the unified `.github/workflows/compose-preview.yml` runs on every push to `main`, every PR, and `workflow_dispatch`. Consumer repos can split that into separate workflows (or keep one workflow per surface) based on their needs.
 
 
 ```yaml
