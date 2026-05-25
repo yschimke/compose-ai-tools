@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.8](https://github.com/yschimke/compose-ai-tools/compare/v0.11.7...v0.11.8) (2026-05-25)
+
+
+### Features
+
+* cap preview image magnification with --preview-max-zoom ([#1486](https://github.com/yschimke/compose-ai-tools/issues/1486)) ([4f696e4](https://github.com/yschimke/compose-ai-tools/commit/4f696e4bf52fc85a585894976024e3a3bfb58536))
+
+
+### Bug Fixes
+
+* detect exclusiveContent in settings to suppress buildscript injection ([#1490](https://github.com/yschimke/compose-ai-tools/issues/1490)) ([0abdde9](https://github.com/yschimke/compose-ai-tools/commit/0abdde99c7dd7c6c1eb75d0cf34577064740e242))
+* tolerate KMP-Android per-target Kotlin compile task names ([#1488](https://github.com/yschimke/compose-ai-tools/issues/1488)) ([dd44219](https://github.com/yschimke/compose-ai-tools/commit/dd44219fb51081ff50e35c7d8b4bbdd166ca5465))
+
 ## [0.11.7](https://github.com/yschimke/compose-ai-tools/compare/v0.11.6...v0.11.7) (2026-05-25)
 
 
