@@ -18,6 +18,7 @@ agp = "9.2.1"
 ktfmt = "0.26.0"
 tapmoc = "0.4.2"
 robolectric = "4.16.1"
+roborazzi = "1.63.0"
 classgraph = "4.8.184"
 # Stable BOM line — what samples use and what `composePreviewRender` /
 # `Compare previews` is exercised against. Renovate updates this freely;
@@ -181,11 +182,11 @@ mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", 
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
-roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.61.0" }
-roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.61.0" }
-roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version = "1.61.0" }
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+roborazzi-accessibility-check = { module = "io.github.takahirom.roborazzi:roborazzi-accessibility-check", version.ref = "roborazzi" }
 checker-qual = { module = "org.checkerframework:checker-qual", version.ref = "checker-qual" }
-roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version = "1.61.0" }
+roborazzi-annotations = { module = "io.github.takahirom.roborazzi:roborazzi-annotations", version.ref = "roborazzi" }
 junit = { module = "junit:junit", version.ref = "junit" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # ASM — used by `:daemon:harness`'s `S3_5RecompileSaveLoopRealModeTest` to mint two
