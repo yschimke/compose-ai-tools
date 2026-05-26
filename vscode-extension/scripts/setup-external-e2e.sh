@@ -91,7 +91,14 @@ else
     current="$(git rev-parse HEAD)"
     if [[ "$current" != "$repo_ref"* ]]; then
       git fetch --depth 1 origin "$repo_ref"
-      git checkout -q FETCH_HEAD
+      # `--force` discards uncommitted edits in the existing checkout
+      # before moving HEAD. Required because the catalog rewrite below
+      # is regenerated on every run and stays uncommitted: a plain
+      # `checkout` would refuse with "your local changes would be
+      # overwritten" the moment upstream advances `libs.versions.toml`
+      # itself. The rewrite is re-applied right below, so dropping it
+      # here is safe.
+      git checkout -fq FETCH_HEAD
     fi
   )
 fi
