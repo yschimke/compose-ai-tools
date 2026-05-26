@@ -20,7 +20,10 @@ set -euo pipefail
 : "${BODY_FILE:?BODY_FILE required}"
 : "${GH_TOKEN:?GH_TOKEN required}"
 
-BODY=$(cat "$BODY_FILE")
+# Pass the body via file rather than argv — preview/a11y diffs can exceed
+# ARG_MAX (~128KB on Linux), which fails with "Argument list too long".
+# `gh pr comment --body-file` and `gh api -f key=@file` both stream from
+# the file instead of expanding it into the command line.
 
 COMMENT_ID=$(gh api \
   "repos/${REPO}/issues/${PR_NUMBER}/comments" \
@@ -30,7 +33,7 @@ COMMENT_ID=$(gh api \
 
 if [ -n "$COMMENT_ID" ]; then
   gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-    -X PATCH -f body="$BODY"
+    -X PATCH -f "body=@${BODY_FILE}"
 else
-  gh pr comment "$PR_NUMBER" --body "$BODY"
+  gh pr comment "$PR_NUMBER" --body-file "$BODY_FILE"
 fi
