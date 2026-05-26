@@ -69,6 +69,67 @@ async function waitFor<T>(
     );
 }
 
+/**
+ * Dumps the daemon output channel tail + the latest host-side message
+ * traffic to the workflow log when a `waitFor` for a webview ack times
+ * out. The wear a11y suite has historically failed silently (60s mocha
+ * cap with no actionable detail) because the scheduler swallows
+ * `dataSubscribe` / post-subscribe `renderNow` rejections — only the
+ * `Compose Preview` output channel records the reason, and that channel
+ * isn't persisted by `@vscode/test-electron`'s log uploads. Reading the
+ * tail via the test API surfaces it on stdout where the workflow log
+ * captures it.
+ *
+ * `tailLines` is a rough bound on signal-to-noise: ~120 lines covers
+ * the latest renderAll + warm + subscribe sequence comfortably without
+ * burying the recent failure under cmp suite history.
+ */
+function dumpA11yFailureDiagnostics(
+    api: ComposePreviewTestApi,
+    label: string,
+    previewId: string,
+    tailLines = 120,
+): void {
+    const tail = api.getOutputChannelTail(tailLines);
+    const posted = api.getPostedMessages();
+    const received = api.getReceivedMessages();
+    console.log(
+        `[e2e-a11y-diag] ${label} previewId=${previewId} ` +
+            `posted=${posted.length} received=${received.length} ` +
+            `outputChannelTail=${tail.length}line(s)`,
+    );
+    for (const line of tail) {
+        console.log(`[e2e-a11y-diag/channel] ${line}`);
+    }
+    const stableSummary = (raw: unknown): string => {
+        const m = raw as { command?: string; previewId?: string };
+        const cmd = m?.command ?? "<no-command>";
+        const id = m?.previewId ? ` previewId=${m.previewId}` : "";
+        return `${cmd}${id}`;
+    };
+    for (const raw of posted.slice(-30)) {
+        console.log(`[e2e-a11y-diag/posted] ${stableSummary(raw)}`);
+    }
+    for (const raw of received.slice(-30)) {
+        console.log(`[e2e-a11y-diag/received] ${stableSummary(raw)}`);
+    }
+}
+
+async function waitForA11yAck<T>(
+    api: ComposePreviewTestApi,
+    label: string,
+    previewId: string,
+    timeoutMs: number,
+    probe: () => T | undefined,
+): Promise<T> {
+    try {
+        return await waitFor(label, timeoutMs, 500, probe);
+    } catch (err) {
+        dumpA11yFailureDiagnostics(api, label, previewId);
+        throw err;
+    }
+}
+
 interface PreviewSummary {
     id: string;
     functionName: string;
@@ -361,10 +422,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             true,
         );
 
-        const ack = await waitFor(
+        const ack = await waitForA11yAck(
+            api,
             `webviewA11yState with nodes for ${target.id}`,
+            target.id,
             this.timeout(),
-            500,
             () =>
                 findA11yAck(
                     target.id,
@@ -397,10 +459,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
 
         await api.triggerSetDataExtensionEnabled(target.id, ["a11y/atf"], true);
 
-        const ack = await waitFor(
+        const ack = await waitForA11yAck(
+            api,
             `webviewA11yState with findings for ${target.id}`,
+            target.id,
             this.timeout(),
-            500,
             () =>
                 findA11yAck(
                     target.id,
@@ -441,10 +504,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             ["a11y/hierarchy"],
             true,
         );
-        await waitFor(
+        await waitForA11yAck(
+            api,
             `nodes-painted ack for ${target.id}`,
+            target.id,
             this.timeout(),
-            500,
             () =>
                 findA11yAck(
                     target.id,
@@ -460,10 +524,11 @@ describeE2E("Compose Preview a11y subscription e2e (wear)", function () {
             ["a11y/hierarchy"],
             false,
         );
-        const teardown = await waitFor(
+        const teardown = await waitForA11yAck(
+            api,
             `webviewA11yState teardown for ${target.id}`,
+            target.id,
             this.timeout(),
-            500,
             () => findA11yAck(target.id, (a) => a.nodesCount === 0),
         );
         assert.strictEqual(teardown.nodesCount, 0);

@@ -82,6 +82,7 @@ jobs:
           name: e2e-renders
           path: |
             samples/cmp/build/compose-previews/
+            samples/wear/build/compose-previews/
             vscode-extension/.vscode-test/user-data/logs/
           if-no-files-found: ignore
           retention-days: 7

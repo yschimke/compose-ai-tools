@@ -81,11 +81,28 @@ jobs:
 
       # Publish the plugin + every supporting module to mavenLocal so
       # the consumer's catalog resolves to *this* commit, not the
-      # already-released coordinate Maven Central serves. `publishToMavenLocal`
-      # without a project filter fans out to every module the
-      # `composeai.maven-publishing` convention plugin applies to.
+      # already-released coordinate Maven Central serves.
+      #
+      # The root `./gradlew publishToMavenLocal` fans out across every
+      # *outer-build* module the `composeai.maven-publishing` convention
+      # plugin applies to (preview-annotations, preview-data-api,
+      # renderer-desktop, the data-* runtimes, etc.) — but `:gradle-plugin`
+      # itself is wired into the outer build via `includeBuild("gradle-plugin")`,
+      # and task-name fan-out does NOT cross composite-build boundaries.
+      # So a plain `publishToMavenLocal` from the root leaves Maven Central
+      # to serve the *released* plugin coordinate, against which the
+      # consumer-resolved catalog rewrite — pointing at the about-to-publish
+      # SNAPSHOT — can't resolve. The Confetti `composePreviewApplied`
+      # warmup then fails with:
+      #   Plugin [id: 'ee.schimke.composeai.preview', version: '<X>-SNAPSHOT']
+      #     was not found in any of the following sources
+      # Drive the included build's own `publishToMavenLocal` task explicitly
+      # via `-p gradle-plugin` so its build script's fan-out
+      # (`:preview-discovery` + `:daemon-launch-builder`) runs too.
       - name: Publish plugin to mavenLocal
-        run: ./gradlew publishToMavenLocal --no-daemon
+        run: |
+          ./gradlew publishToMavenLocal --no-daemon
+          ./gradlew -p gradle-plugin publishToMavenLocal --no-daemon
 
       - name: Install extension dependencies
         working-directory: vscode-extension
