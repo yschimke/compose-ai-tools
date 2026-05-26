@@ -30,6 +30,31 @@ renders them to PNG, and the extension loads those PNGs into a webview.
   `@Preview` annotation has `SOURCE` retention and is otherwise invisible to
   the discovery step.
 
+### Kotlin language server (optional)
+
+A Kotlin LSP is **not required** to render previews — the Gradle plugin
+discovers `@Preview` annotations by scanning compiled `.class` files, so
+rendering, the preview panel, and the refresh / render-all commands all work
+without one. The extension contributes the `kotlin` languageId for `.kt` /
+`.kts` files itself (metadata only — no grammar), so scope resolution still
+finds your preview file in bare hosts (e.g. Antigravity IDE) where no Kotlin
+extension is installed. Install a Kotlin extension when you want syntax
+highlighting and the language-server extras below — VS Code merges language
+contributions, so they layer on top.
+
+A language server (e.g. `fwcd.kotlin`, `kotlin-language-server`, or any LSP
+that registers a document-symbol provider for `kotlin`) enables editor-side
+extras:
+
+- **CodeLens** "Focus in Preview panel" above each `@Preview` function.
+- **Hover** metadata on `@Preview` functions.
+- **Gutter decorations** next to preview functions.
+- **Compile-error gate** — saves a 5–30 s Gradle round-trip when the active
+  file has Error-severity diagnostics, by surfacing them instead of starting
+  a build. With no LSP attached, every save goes straight to Gradle.
+
+All four degrade silently when no LSP is present.
+
 ## Apply the Gradle plugin
 
 The extension auto-applies the Compose Preview plugin to any module that

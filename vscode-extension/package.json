@@ -43,6 +43,18 @@
     ],
     "main": "./out/extension.js",
     "contributes": {
+        "languages": [
+            {
+                "id": "kotlin",
+                "extensions": [
+                    ".kt",
+                    ".kts"
+                ],
+                "aliases": [
+                    "Kotlin"
+                ]
+            }
+        ],
         "viewsContainers": {
             "activitybar": [
                 {
