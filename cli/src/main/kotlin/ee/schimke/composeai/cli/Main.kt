@@ -187,11 +187,6 @@ private fun printUsage() {
                            already wired manually and you don't want the bundled
                            classpath dependency added. `COMPOSE_PREVIEW_NO_AUTO_INJECT=1`
                            is an equivalent environment-variable escape hatch.
-      --no-plugin-warning  Suppress the one-line stderr warning emitted when the plugin is
-                           supplied entirely via auto-inject (i.e. no build.gradle(.kts)
-                           applies `id("ee.schimke.composeai.preview")`).
-                           `COMPOSE_PREVIEW_NO_PLUGIN_WARNING=1` is an equivalent
-                           environment-variable escape hatch.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.

@@ -81,8 +81,7 @@ export function renderInitScript(
 // .repositories).forEach\` — the Confetti shape). Gradle 9.3+ rejects adding to
 // \`buildscript.repositories\` once exclusiveContent is in
 // \`settings.pluginManagement.repositories\`, so the \`allprojects { buildscript {
-// ... } }\` injection below would fail every project's configuration. The CLI's
-// "plugin not applied" warning still directs users to apply the plugin manually.
+// ... } }\` injection below would fail every project's configuration.
 
 val pluginVersion = "${pluginVersion}"
 val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
@@ -283,14 +282,6 @@ gradle.settingsEvaluated {
     if (composeAiPreviewSettingsHasExclusiveContent) {
         composeAiPreviewProjectsWithOwnBuildscriptRepos =
             scanForProjectsWithBuildscriptRepos(projectDirs)
-        gradle.rootProject {
-            logger.lifecycle(
-                "[compose-preview] settings.gradle.kts declares exclusiveContent in " +
-                    "pluginManagement.repositories; auto-inject is limited to modules that " +
-                    "pre-apply the plugin or declare their own buildscript { repositories { ... } }. " +
-                    "Other modules: apply id(\\"ee.schimke.composeai.preview\\") via plugins { } to opt in."
-            )
-        }
     }
 
     // When opting into mavenLocal, also seed it at the settings level so the renderer-android AAR

@@ -130,11 +130,6 @@ internal class McpCommand(args: List<String>) {
         projectDir,
         DriverOptions(verbose = "--verbose" in args || "-v" in args, extraArguments = injectArgs),
       )
-    warnIfPluginNotPreApplied(
-      args,
-      projectRoot = projectDir,
-      autoInjectActive = injectArgs.isNotEmpty(),
-    )
     driver.use {
       val allModules = driver.discoverModules()
       val modules =
@@ -368,11 +363,6 @@ internal class McpCommand(args: List<String>) {
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val driver =
       GradlePreviewDriver(projectDir, DriverOptions(verbose = false, extraArguments = injectArgs))
-    warnIfPluginNotPreApplied(
-      args,
-      projectRoot = projectDir,
-      autoInjectActive = injectArgs.isNotEmpty(),
-    )
     driver.use {
       val allModules = driver.discoverModules()
       val modules =

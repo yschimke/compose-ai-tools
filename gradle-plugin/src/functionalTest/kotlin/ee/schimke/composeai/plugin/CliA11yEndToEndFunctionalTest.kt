@@ -111,11 +111,6 @@ class CliA11yEndToEndFunctionalTest {
     val exitCode = process.waitFor()
     assertWithMessage("compose-preview a11y output:\n$output").that(exitCode).isEqualTo(0)
 
-    // CLI must surface the "plugin not applied" nudge whenever it falls back to auto-inject.
-    assertWithMessage("expected the plugin-not-applied warning in stderr:\n$output")
-      .that(output)
-      .contains("plugin not applied")
-
     // accessibility.json should exist and contain the BadButtonPreview finding.
     val accessibilityJson = File(projectDir, "app/build/compose-previews/accessibility.json")
     assertWithMessage("accessibility.json should exist after `compose-preview a11y`")

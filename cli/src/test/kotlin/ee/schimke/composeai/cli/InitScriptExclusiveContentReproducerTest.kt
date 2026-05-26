@@ -6,7 +6,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
 
@@ -95,7 +94,7 @@ class InitScriptExclusiveContentReproducerTest {
     // whole Tooling API query (the 0.11.8 follow-up regression). The current fix skips both
     // the repos add and the classpath dep injection on modules that have no buildscript repos
     // of their own, so configuration completes cleanly. Modules silently miss the plugin in
-    // this branch; the lifecycle log tells the user to apply via `plugins { }` DSL.
+    // this branch — auto-inject is meant to be invisible.
     val project = createConfettiShapedProject()
     val initScript = materializeInitScript(tempDir(), "0.11.9")
 
@@ -121,9 +120,9 @@ class InitScriptExclusiveContentReproducerTest {
       result.task(":app:help")?.outcome,
       "expected :app:help to succeed against a Confetti-shaped project; got:\n${result.output}",
     )
-    assertTrue(
+    assertFalse(
       result.output.contains("settings.gradle.kts declares exclusiveContent"),
-      "expected the lifecycle log nudging the user toward manual plugins { } DSL apply; got:\n" +
+      "init script should not emit lifecycle logs nudging the user to apply the plugin; got:\n" +
         result.output,
     )
   }

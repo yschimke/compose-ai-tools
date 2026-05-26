@@ -248,7 +248,6 @@ abstract class Command(protected val args: List<String>) {
           exitProcess(1)
         }
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = root)
-    warnIfPluginNotPreApplied(args, projectRoot = root, autoInjectActive = injectArgs.isNotEmpty())
     val connection =
       withGradleStdout(silenceStdout) {
         GradleConnection(root, verbose, progress, extraArguments = injectArgs)
@@ -304,8 +303,7 @@ abstract class Command(protected val args: List<String>) {
         )
         exitProcess(1)
       }
-      System.err.println("No modules with compose-ai-tools plugin found.")
-      System.err.println("Apply the plugin: id(\"ee.schimke.composeai.preview\")")
+      System.err.println("No preview modules discovered in this project.")
       exitProcess(1)
     }
     if (verbose || modules.size > 1) {
