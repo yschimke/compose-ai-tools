@@ -108,6 +108,7 @@ import {
 } from "./renderFreshness";
 import { RefreshQueue, defaultRefreshQueueEffects } from "./refreshQueue";
 import { EditorScope, PreviewModuleIndex } from "./editorScope";
+import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
     BUNDLED_PLUGIN_VERSION,
     hasIncludedPluginBuild,
@@ -2587,81 +2588,24 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
     if (!gradleService || !panel) {
         return false;
     }
-    if (!isPreviewSourceFile(filePath)) {
-        return false;
-    }
-    const module = gradleService.resolveModule(filePath);
-    if (!module) {
-        return false;
-    }
-    const manifest = gradleService.readManifest(module);
-    if (!manifest || manifest.previews.length === 0) {
-        return false;
-    }
-
-    const visiblePreviews = previewsForFile(
-        manifest.previews,
-        module,
-        filePath,
-    );
-    if (visiblePreviews.length === 0) {
-        return false;
-    }
-
-    for (const p of visiblePreviews) {
-        for (const capture of p.captures) {
-            capture.label = captureLabel(capture);
-        }
-        previewModuleIndex.set(p.id, module);
-    }
-
-    const displayPreviews = visiblePreviews.map(withDataProductCaptures);
-
-    panel.postMessage({
-        command: "setPreviews",
-        previews: displayPreviews,
-        moduleDir: module.projectDir,
-        heavyStaleIds: [],
+    const localPanel = panel;
+    const outcome = await loadCachedPreviews(filePath, {
+        gradleService,
+        postMessage: (msg) => localPanel.postMessage(msg),
+        setImage: (id, imageData) => registry.setImage(id, imageData),
+        setPreviewModule: (id, mod) => previewModuleIndex.set(id, mod),
+        isPreviewSourceFile,
     });
-
-    const imageJobs: Promise<void>[] = [];
-    for (const preview of displayPreviews) {
-        for (let idx = 0; idx < preview.captures.length; idx++) {
-            const capture = preview.captures[idx];
-            if (!capture.renderOutput) {
-                continue;
-            }
-            const captureIndex = idx;
-            imageJobs.push(
-                (async () => {
-                    const imageData = await gradleService!.readPreviewImage(
-                        module,
-                        capture.renderOutput,
-                    );
-                    if (!imageData || !panel) {
-                        return;
-                    }
-                    if (captureIndex === 0) {
-                        registry.setImage(preview.id, imageData);
-                    }
-                    panel.postMessage({
-                        command: "updateImage",
-                        previewId: preview.id,
-                        captureIndex,
-                        imageData,
-                    });
-                })(),
-            );
-        }
+    logLine(describePreloadOutcome(filePath, outcome));
+    if (outcome.kind !== "painted") {
+        return false;
     }
-    await Promise.all(imageJobs);
-
     // Sync the extension-side state the upcoming refresh() reads so it
     // takes the stealth-refresh path (no clearAll) rather
     // than tearing down what we just painted.
     hasPreviewsLoaded = true;
-    lastLoadedModules = [module.modulePath];
-    moduleManifestCache.set(module.modulePath, visiblePreviews);
+    lastLoadedModules = [outcome.module.modulePath];
+    moduleManifestCache.set(outcome.module.modulePath, outcome.previews);
     setCurrentScopeFile(filePath);
     return true;
 }
@@ -4182,7 +4126,10 @@ async function refresh(
     // `GradleService.composePreviewDiscover`, the subsequent `composePreviewDiscover`
     // call this refresh issues awaits the same Gradle run instead of
     // starting a duplicate.
-    gradleService.cancel({ keepDiscoverFor: module.modulePath });
+    gradleService.cancel({
+        keepDiscoverFor: module.modulePath,
+        reason: `refresh(${path.basename(activeFile ?? "?")})`,
+    });
 
     // Forward progress-bar updates to the webview. Single tracker per refresh
     // — single instance feeds the Gradle phase signals (compile/discover/

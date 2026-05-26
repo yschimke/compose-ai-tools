@@ -888,7 +888,17 @@ export class GradleService {
         }
     }
 
-    async cancel(opts?: { keepDiscoverFor?: string }): Promise<void> {
+    async cancel(opts?: {
+        keepDiscoverFor?: string;
+        /**
+         * Human-readable origin for the cancel — surfaced in the log so a
+         * triage capture can tell which call site (refresh-on-save,
+         * focus-change, dispose, …) cancelled an in-flight task. Optional so
+         * existing callers don't have to update at once; the log line drops
+         * the suffix when missing.
+         */
+        reason?: string;
+    }): Promise<void> {
         // Three task families are intentionally excluded from the cancel pool.
         // The spare matches on the head task of the Gradle invocation, so
         // bundles started by [coldStartBundle] — whose head is either
@@ -941,6 +951,17 @@ export class GradleService {
             }
         }
         this.activeKeys = toKeep;
+        if (toCancel.length > 0) {
+            const reasonSuffix = opts?.reason ? ` reason=${opts.reason}` : "";
+            const keepSuffix = opts?.keepDiscoverFor
+                ? ` keepDiscoverFor=${opts.keepDiscoverFor}`
+                : "";
+            this.logger.appendLine(
+                `[gradle] cancel: tasks=[${toCancel
+                    .map((k) => taskFromKey(k))
+                    .join(", ")}]${keepSuffix}${reasonSuffix}`,
+            );
+        }
         for (const key of toCancel) {
             try {
                 await this.gradleApi.cancelRunTask({
