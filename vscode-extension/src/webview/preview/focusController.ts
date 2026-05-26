@@ -244,7 +244,10 @@ export class FocusController {
      * preview, first turn the previous one off so the wire stays clean.
      */
     toggleA11yOverlay(): void {
-        if (!this.config.earlyFeatures()) return;
+        // a11y is the graduated bundle — no early-features gate (the chip bar
+        // and the focus-toolbar button are both visible in basic mode, the
+        // host's `setA11yOverlay` handler also drops its gate). Other entry
+        // points (`launch-on-device`, `record`, `export-bundle`) keep theirs.
         if (!this.inFocus()) return;
         const card = this.getVisibleCards()[this.config.getFocusIndex()];
         const previewId = card ? card.dataset.previewId : null;
