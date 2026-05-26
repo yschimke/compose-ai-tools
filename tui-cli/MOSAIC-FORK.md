@@ -87,20 +87,34 @@ file is what we bump to consume it.
 
 ## Sandbox vs. real-machine differences
 
-The compose-ai-tools build sandbox blocks several hosts that Mosaic's build expects to
-reach during publish:
+Mosaic's `publishToMavenLocal` reaches three hosts during build setup:
 
-| Blocked host | Used for | Workaround |
-| --- | --- | --- |
-| `download.jetbrains.com` | Kotlin/Native LLVM toolchain (cklib plugin) | Skip native targets — JVM-only publish doesn't need bitcode. |
-| `ziglang.org` | Zig compiler for mosaic-tty JNI builds | Skip the JNI compilation step — published jar lacks `.so` resources. |
-| `download.java.net` | OpenJDK jextract for FFM bindings | Skip the jextract `jdk22` multi-release compilation. |
+| Host | Used for |
+| --- | --- |
+| `download.jetbrains.com` | Kotlin/Native LLVM toolchain (cklib plugin, applied by `mosaic-tty`) |
+| `ziglang.org` | Zig compiler for mosaic-tty's JNI native libs |
+| `download.java.net` | OpenJDK jextract for the `jdk22` FFM multi-release compilation |
 
-These are sandbox-only constraints — a real dev machine with full network completes
-`publishToMavenLocal` end-to-end without patching. The local patches we applied to
-`../mosaic/addAllTargets.gradle` and `../mosaic/mosaic-tty/build.gradle` are *not* part of
-the PR yschimke/mosaic#1 and should be reverted before pushing any further work upstream.
-`git diff` against `trunk` in the mosaic checkout will show them.
+The compose-ai-tools Code-on-the-web environment's startup config now includes these
+three hosts in its allowlist, so **fresh sessions in this env (and any normal dev
+machine) complete the publish end-to-end without patching the Mosaic checkout.** The
+network policy is fixed at session-create time though, so any session created before the
+allowlist update still sees 403s on those URLs — `curl -I` against any of the three is
+a quick way to tell which kind of session you're in.
+
+For sessions that *are* stuck on the old policy, the workaround is patching the Mosaic
+clone:
+
+- `../mosaic/addAllTargets.gradle` — comment out the native targets so cklib's LLVM
+  fetch never fires.
+- `../mosaic/mosaic-tty/build.gradle` — comment out `apply plugin: 'co.touchlab.cklib'`,
+  the `cklib { }` config block, the `${target.name}JniZigBuild` task wiring, the
+  `apply plugin: 'de.infolektuell.jextract'` apply + its `jextract.libraries.register`
+  block, and the `jdk22Compilation` create / `from(jdk22Compilation.output)` jar block.
+
+Both patches are sandbox-only and **must be reverted before pushing any further work
+upstream** — they're not part of yschimke/mosaic#1. `git diff` against the fork's
+`compose-ai-tools` branch will show them.
 
 ## Runtime caveat
 
