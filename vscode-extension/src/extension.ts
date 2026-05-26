@@ -42,7 +42,11 @@ import {
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
-import { findMissingImageDataProducts } from "./scrollDataProductRender";
+import {
+    findMissingImageDataProducts,
+    MissingImageDataProduct,
+} from "./scrollDataProductRender";
+import { modulesNeedingViewportBackfill } from "./viewportScrollBackfill";
 import { RefreshOrchestrator } from "./refreshOrchestrator";
 import {
     captureLabel,
@@ -220,6 +224,16 @@ const moduleManifestCache = new Map<string, PreviewInfo[]>();
  * "Render Previews" command remains the manual escape hatch.
  */
 const scrollBackfillRequested = new Set<string>();
+/**
+ * Missing image data products from the most recent refresh, grouped by owning
+ * module. Computed once at the tail end of `refresh()` (when we know the displayed
+ * preview set) and consumed by `notifyDaemonViewport` to decide whether the latest
+ * viewport push has brought a `@ScrollingPreview` card into view that still needs a
+ * Gradle backfill. Empty when the active scope has no missing image data products,
+ * which makes the viewport-side check a no-op for the overwhelmingly common case of
+ * a project without scroll/animation previews.
+ */
+let pendingScrollBackfill: Map<string, MissingImageDataProduct[]> = new Map();
 /**
  * Heavy previews the user explicitly asked to keep fresh for the current
  * editor focus scope. Cleared when focus leaves the backing Kotlin file.
@@ -4229,6 +4243,10 @@ async function refresh(
         });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
+        // Scope is gone — any previously-stashed scroll backfill targets the file
+        // we just transitioned away from. Drop them so a stray viewport report
+        // doesn't fire a Gradle render against a module the panel is no longer on.
+        pendingScrollBackfill = new Map();
         setCurrentScopeFile(null);
         clearHeavyRefreshOptIns();
         historyScopeRef.current = null;
@@ -4726,39 +4744,32 @@ async function refresh(
             writeCalibration(module, tracker.phaseDurations);
         }
 
-        // Backfill `@ScrollingPreview(LONG/GIF)` image data products that no producer
-        // has filled in. Scroll outputs are renderer-side only (the daemon's renderNow
-        // produces just the static base capture, which the panel correctly drops for
-        // scroll previews) so daemon-only flows leave these cards permanently empty.
-        // Skip when we're already in the forceRender path — that pass just produced
-        // everything Gradle could produce. Skip in minimal mode — the user opted out
-        // of auto-renders and would expect to drive `composePreviewRender` themselves.
-        // Per-module session dedup via `scrollBackfillRequested` keeps a project that
-        // genuinely can't produce the scroll PNG (broken @ScrollingPreview wiring,
-        // renderer crash) from looping a Gradle invocation on every focus change.
+        // Compute `@ScrollingPreview(LONG/GIF)` image data products that no producer
+        // has filled in yet, and stash them for the viewport-driven trigger. Scroll
+        // outputs are renderer-side only (the daemon's renderNow produces just the
+        // static base capture, which the panel correctly drops for scroll previews)
+        // so daemon-only flows leave these cards permanently empty. Skip in the
+        // forceRender path — that pass just produced everything Gradle could produce.
+        // Skip in minimal mode — the user opted out of auto-renders and would expect
+        // to drive `composePreviewRender` themselves.
+        //
+        // The actual `composePreviewRender('full')` trigger fires from
+        // `notifyDaemonViewport` once a missing-PNG preview enters the viewport's
+        // visible-or-predicted set. Replaces the prior pattern of always firing a
+        // module-wide Gradle render at activation time — a project with 50 scroll
+        // previews where the user only sees the top few no longer pays the full
+        // module's cost up-front. Per-module session dedup via
+        // `scrollBackfillRequested` still keeps the trigger one-shot.
         if (!abort.signal.aborted && !forceRender && !inMinimalMode()) {
-            const missingByModule = findMissingImageDataProducts(
+            pendingScrollBackfill = findMissingImageDataProducts(
                 displayPreviews,
                 (id) => previewModuleIndex.get(id),
                 gradleService.workspaceRoot,
             );
-            for (const [modulePath, missing] of missingByModule) {
-                if (scrollBackfillRequested.has(modulePath)) continue;
-                scrollBackfillRequested.add(modulePath);
-                const owningModule = previewModuleIndex.get(
-                    missing[0].previewId,
-                );
-                if (!owningModule) continue;
-                logLine(
-                    `scroll backfill: ${modulePath} has ${missing.length} missing image data product(s); kicking composePreviewRender('full')`,
-                );
-                // Fire-and-forget so this doesn't block the in-flight refresh. The follow-up
-                // re-reads the newly-produced PNGs and posts `updateImage` for each — the
-                // existing image-load path keys on `captureIndex` in the displayed (post-
-                // `withDataProductCaptures`) captures, so `missing[].captureIndex` lines up
-                // with the slot the card carousel paints.
-                void backfillScrollDataProducts(owningModule, missing);
-            }
+        } else if (forceRender) {
+            // forceRender ran composePreviewRender directly — no backfill follow-up
+            // needed, and any prior stash is now stale.
+            pendingScrollBackfill = new Map();
         }
 
         // Source-newer-than-renders auto-refresh. Replaces the old "Showing
@@ -6963,6 +6974,38 @@ async function notifyDaemonViewport(
             visibleByModule.get(modulePath) ?? [],
             predictedByModule.get(modulePath) ?? [],
         );
+    }
+    // Demand-driven `@ScrollingPreview` backfill. Cheap when `pendingScrollBackfill`
+    // is empty (the common case for projects without scroll/animation previews);
+    // the intersection check only matters when refresh() stashed missing entries
+    // AND a visible-or-predicted preview is one of them.
+    triggerViewportScrollBackfill(visible, predicted);
+}
+
+function triggerViewportScrollBackfill(
+    visible: readonly string[],
+    predicted: readonly string[],
+): void {
+    if (inMinimalMode()) return;
+    const candidates = modulesNeedingViewportBackfill(
+        pendingScrollBackfill,
+        visible,
+        predicted,
+        scrollBackfillRequested,
+    );
+    for (const candidate of candidates) {
+        scrollBackfillRequested.add(candidate.modulePath);
+        const owningModule = previewModuleIndex.get(
+            candidate.missing[0].previewId,
+        );
+        if (!owningModule) continue;
+        logLine(
+            `scroll backfill: ${candidate.modulePath} has ${candidate.missing.length} missing image data product(s) in viewport; kicking composePreviewRender('full')`,
+        );
+        // Fire-and-forget. After Gradle resolves, the helper re-reads the produced
+        // PNGs and posts `updateImage` for each captureIndex; the panel paints the
+        // previously-placeholdered scroll cards in place.
+        void backfillScrollDataProducts(owningModule, candidate.missing);
     }
 }
 
