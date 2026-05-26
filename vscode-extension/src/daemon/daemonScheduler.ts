@@ -564,6 +564,20 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             const subKey = `${module.modulePath}::${previewId}::${kind}`;
             const already = this.subscribedPairs.has(subKey);
             if (enabled === already) {
+                // No-op short-circuit. The log line surfaces the silent path that
+                // bites a11y toggling when host bookkeeping drifts away from the
+                // daemon's actual subscription state: a stale `subscribedPairs`
+                // entry from a previous toggle makes `subscribedAny` stay false,
+                // which suppresses the follow-up renderNow at the bottom of this
+                // method, which leaves the daemon without a `mode=a11y` render —
+                // the chip stays checked but data products never attach and the
+                // dataExtensionTracker hits its 30 s safety timeout. Emitting
+                // this line means a triage capture can tell "subscribed and the
+                // daemon dropped it" from "host thought it was already done."
+                this.logger.appendLine(
+                    `[daemon] data${enabled ? "Subscribe" : "Unsubscribe"}` +
+                        `(${previewId}, ${kind}) skipped (already ${enabled ? "subscribed" : "unsubscribed"} per host bookkeeping)`,
+                );
                 continue;
             }
             if (enabled) {

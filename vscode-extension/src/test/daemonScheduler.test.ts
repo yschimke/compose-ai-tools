@@ -1029,6 +1029,67 @@ describe("DaemonScheduler", () => {
             assert.strictEqual(subs.length, 1);
         });
 
+        it("logs each skipped subscribe so a triage capture can tell when host bookkeeping was the no-op cause", async () => {
+            // Regression context: when host's `subscribedPairs` already has the
+            // entry, the dedup at the top of the loop silently `continue`s. That
+            // suppresses the follow-up `client.renderNow`, which leaves the
+            // daemon without a `mode=a11y` render, which leaves the panel's
+            // dataExtensionTracker waiting 30 s for `onDataProductsAttached` to
+            // arrive — it never does. The log line is the only diagnostic the
+            // user can paste back into a triage report to distinguish this
+            // host-side skip from a daemon-side dropped subscribe.
+            const { scheduler, log } = build();
+            await scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf", "a11y/hierarchy"],
+                true,
+            );
+            log.length = 0;
+            await scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf", "a11y/hierarchy"],
+                true,
+            );
+            assert.ok(
+                log.some(
+                    (line) =>
+                        line.includes("dataSubscribe(a, a11y/atf)") &&
+                        line.includes("skipped"),
+                ),
+                `expected a skipped-subscribe log line for a11y/atf, got: ${log.join(" | ")}`,
+            );
+            assert.ok(
+                log.some(
+                    (line) =>
+                        line.includes("dataSubscribe(a, a11y/hierarchy)") &&
+                        line.includes("skipped"),
+                ),
+                `expected a skipped-subscribe log line for a11y/hierarchy, got: ${log.join(" | ")}`,
+            );
+        });
+
+        it("logs each skipped unsubscribe (mirror of the subscribe skip path)", async () => {
+            const { scheduler, log } = build();
+            // No prior subscribe — turning OFF a never-on kind should also
+            // surface the no-op so the user can see why nothing changed.
+            await scheduler.setDataProductSubscription(
+                mod("mod"),
+                "a",
+                ["a11y/atf"],
+                false,
+            );
+            assert.ok(
+                log.some(
+                    (line) =>
+                        line.includes("dataUnsubscribe(a, a11y/atf)") &&
+                        line.includes("skipped"),
+                ),
+                `expected a skipped-unsubscribe log line, got: ${log.join(" | ")}`,
+            );
+        });
+
         it("setDataProductSubscription(false) issues data/unsubscribe and forgets the pair", async () => {
             const { gate, scheduler } = build();
             await scheduler.setDataProductSubscription(
