@@ -248,6 +248,8 @@ export function handleExtensionMessage(
             return;
         case "setLoading":
             return handleSetLoading(msg, ctx);
+        case "clearLoading":
+            return handleClearLoading(msg, ctx);
         case "setError":
         case "setImageError":
             return handleErrorMessage(msg, ctx);
@@ -444,6 +446,18 @@ function handleSetLoading(
     overlay.className = "loading-overlay";
     overlay.innerHTML = '<div class="spinner" aria-label="Rendering"></div>';
     container.appendChild(overlay);
+}
+
+function handleClearLoading(
+    msg: Extract<ExtensionToWebview, { command: "clearLoading" }>,
+    ctx: PreviewMessageContext,
+): void {
+    void ctx;
+    const card = document.getElementById(
+        "preview-" + sanitizeId(msg.previewId),
+    );
+    if (!card) return;
+    card.querySelector(".image-container .loading-overlay")?.remove();
 }
 
 function handleErrorMessage(
