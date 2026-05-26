@@ -43,6 +43,7 @@ import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
 import { findMissingImageDataProducts } from "./scrollDataProductRender";
+import { transitionToFile as transitionToFileImpl } from "./fileTransition";
 import {
     captureLabel,
     staticBaseCaptureIndex,
@@ -1927,31 +1928,11 @@ export async function activate(
                 panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
                 // Reconcile the panel first, then pre-warm the daemon for
-                // this file's module. Once daemon startup finishes we run a
-                // second discover pass and pre-render the shown previews so
-                // the first edit doesn't have to pay JVM/sandbox startup.
-                //
-                // Abort any in-flight refresh for the previous file NOW,
-                // before preloadCachedPreviews. Without this early abort,
-                // the old refresh's post-discover continuation can resume
-                // while preload awaits disk reads and overwrite the preloaded
-                // state (clearAll, hasPreviewsLoaded=false, setPreviews for
-                // the wrong module) before refresh() for the new file ever
-                // fires the abort signal itself.
-                pendingRefresh?.abort();
-                pendingRefreshKey = null;
-                void (async () => {
-                    // Paint on-disk cache for the new file before
-                    // composePreviewDiscover runs so the panel isn't
-                    // blank while Gradle warms up.
-                    const preloaded = await preloadCachedPreviews(filePath);
-                    await refresh(false, filePath, "full", {
-                        showLoadingOverlay: !preloaded,
-                    });
-                    await warmDaemonForFile(filePath, {
-                        refreshAfterReady: true,
-                    });
-                })();
+                // this file's module. transitionToFile aborts the previous
+                // file's in-flight refresh up-front so its post-discover
+                // continuation can't race the new file's preload and overwrite
+                // the freshly-painted cards with the wrong module's state.
+                void transitionToFile(filePath);
                 return;
             }
             // New active isn't a Kotlin editor (webview focus, Agent plan,
@@ -1976,7 +1957,21 @@ export async function activate(
                 panel?.postMessage({ command: "clearInteractive" });
                 panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
-                refresh(false);
+                // Route through the same preload-first sequence as the
+                // happy path so this fallback can no longer skip preload —
+                // resolving an active editor lets us paint that file's
+                // cached previews instead of flashing through refresh()'s
+                // no-module clear branch when the active editor isn't a
+                // preview source. No active editor at all falls back to
+                // refresh(false), whose no-module guard already does the
+                // right thing (hold prior cards or clear to empty state).
+                const fallbackPath =
+                    vscode.window.activeTextEditor?.document.uri.fsPath;
+                if (fallbackPath) {
+                    void transitionToFile(fallbackPath);
+                } else {
+                    void refresh(false);
+                }
             }
         }),
     );
@@ -1996,7 +1991,18 @@ export async function activate(
                 )
             ) {
                 clearHeavyRefreshOptIns();
-                refresh(false);
+                // Same fallback pattern as the focus-change handler above:
+                // route the active editor through transitionToFile so the
+                // new module's preload lands before refresh, instead of
+                // dropping into refresh()'s no-module clear branch and
+                // flashing the user back through placeholders.
+                const fallbackPath =
+                    vscode.window.activeTextEditor?.document.uri.fsPath;
+                if (fallbackPath) {
+                    void transitionToFile(fallbackPath);
+                } else {
+                    void refresh(false);
+                }
             }
         }),
     );
@@ -2828,9 +2834,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  * pipeline through `runRefreshExclusive`.
  */
 async function runActivationRefresh(filePath: string): Promise<void> {
-    await preloadCachedPreviews(filePath);
-    await refresh(false, filePath, "full", { showLoadingOverlay: false });
-    await warmDaemonForFile(filePath, { refreshAfterReady: true });
+    await transitionToFile(filePath);
     if (!gradleService || !daemonGate) {
         return;
     }
@@ -2843,6 +2847,25 @@ async function runActivationRefresh(filePath: string): Promise<void> {
     // renderNow + the panel updates via the existing onPreviewImageReady
     // wiring. No need for a separate code path.
     await notifyDaemonOfSave(filePath);
+}
+
+/**
+ * Module-level shim that binds the host-side mutable state (`pendingRefresh`,
+ * `pendingRefreshKey`) into the {@link transitionToFileImpl} helper's deps. The
+ * underlying function is pure so it stays unit-testable with stubbed deps; this
+ * wrapper is what extension entry points (activation, focus-change, visible-editor
+ * change) call. See `fileTransition.ts` for the ordering invariants and rationale.
+ */
+async function transitionToFile(filePath: string): Promise<void> {
+    return transitionToFileImpl(filePath, {
+        abortPendingRefresh: () => {
+            pendingRefresh?.abort();
+            pendingRefreshKey = null;
+        },
+        preloadCachedPreviews,
+        refresh,
+        warmDaemonForFile,
+    });
 }
 
 /**
