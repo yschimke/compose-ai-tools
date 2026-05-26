@@ -43,7 +43,7 @@ import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
 import { findMissingImageDataProducts } from "./scrollDataProductRender";
-import { transitionToFile as transitionToFileImpl } from "./fileTransition";
+import { RefreshOrchestrator } from "./refreshOrchestrator";
 import {
     captureLabel,
     staticBaseCaptureIndex,
@@ -2850,22 +2850,30 @@ async function runActivationRefresh(filePath: string): Promise<void> {
 }
 
 /**
- * Module-level shim that binds the host-side mutable state (`pendingRefresh`,
- * `pendingRefreshKey`) into the {@link transitionToFileImpl} helper's deps. The
- * underlying function is pure so it stays unit-testable with stubbed deps; this
- * wrapper is what extension entry points (activation, focus-change, visible-editor
- * change) call. See `fileTransition.ts` for the ordering invariants and rationale.
+ * Single host-scoped {@link RefreshOrchestrator}. Owns the public phase state for the
+ * in-flight file transition and exposes a re-entrant `transitionToFile` entry point.
+ * Module-level so panel-restore, focus-change, activation, and visible-editor-change
+ * all share one phase machine; per-call instantiation would lose the transition-id
+ * supersession guarantee that lets a stale refresh's late phase callback be ignored.
  */
-async function transitionToFile(filePath: string): Promise<void> {
-    return transitionToFileImpl(filePath, {
-        abortPendingRefresh: () => {
-            pendingRefresh?.abort();
-            pendingRefreshKey = null;
-        },
-        preloadCachedPreviews,
-        refresh,
-        warmDaemonForFile,
-    });
+const refreshOrchestrator = new RefreshOrchestrator({
+    abortPendingRefresh: () => {
+        pendingRefresh?.abort();
+        pendingRefreshKey = null;
+    },
+    preloadCachedPreviews,
+    refresh,
+    warmDaemonForFile,
+});
+
+/**
+ * Thin shim — every host entry point that moves the panel to a new active file
+ * goes through this. See `refreshOrchestrator.ts` for the phase contract and the
+ * cancellation model (each call aborts the previous in-flight refresh and
+ * supersedes any late phase callbacks from the prior transition).
+ */
+function transitionToFile(filePath: string): Promise<void> {
+    return refreshOrchestrator.transitionToFile(filePath);
 }
 
 /**
@@ -4125,7 +4133,15 @@ async function refresh(
     forceRender: boolean,
     forFilePath?: string,
     tier: "fast" | "full" = "full",
-    opts: { showLoadingOverlay?: boolean } = {},
+    opts: {
+        showLoadingOverlay?: boolean;
+        // Sub-phase observability for RefreshOrchestrator — fires at the three
+        // natural boundaries inside this function (after composePreviewDiscover/Render
+        // resolves, after the setPreviews post, after Promise.all(imageJobs)). The
+        // orchestrator threads its phase tracker through this so the 5-phase
+        // contract stays accurate without decomposing refresh() itself.
+        onPhase?: (phase: "discover" | "reconcile" | "render") => void;
+    } = {},
 ): Promise<RefreshOutcome> {
     if (!gradleService || !panel) {
         return "no-module";
@@ -4393,6 +4409,12 @@ async function refresh(
         const allPreviews: PreviewInfo[] = [];
         previewModuleIndex.clear();
 
+        // RefreshOrchestrator sub-phase: about to run Gradle's
+        // composePreviewDiscover/Render for each module. Fires once per refresh,
+        // before the per-module loop; orchestrator listeners use this to flip
+        // from preload → discover in their public phase state.
+        opts.onPhase?.("discover");
+
         for (const mod of modules) {
             if (abort.signal.aborted) {
                 return "cancelled";
@@ -4544,6 +4566,10 @@ async function refresh(
             moduleDir: modules.map((m) => m.projectDir).join(","),
             heavyStaleIds,
         });
+        // RefreshOrchestrator sub-phase: panel now has the displayed manifest;
+        // image bytes are about to stream in via the imageJobs pass. discover →
+        // reconcile complete.
+        opts.onPhase?.("reconcile");
         hasPreviewsLoaded = true;
         logLine(
             `rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`,
@@ -4686,6 +4712,11 @@ async function refresh(
             }
             await Promise.all(imageJobs);
         }
+        // RefreshOrchestrator sub-phase: image bytes have streamed to the panel
+        // (or were skipped because the source was newer than the on-disk PNGs).
+        // After this point only auto-render scheduling + scroll backfill run,
+        // both of which fire-and-forget further refreshes.
+        opts.onPhase?.("render");
         if (!abort.signal.aborted) {
             // Drive the bar to 100% and stop the tick. The webview holds
             // the completed state for ~600ms then fades the strip away.
