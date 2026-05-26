@@ -20,7 +20,7 @@ class TransparentBackgroundPreviewPixelTest {
 
     private val rendersDir = File("build/compose-previews/renders")
     private val pngName =
-        "TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle_Button_Transparent.png"
+        "CircleButtonTransparentPreview_Circle_Button_Transparent.png"
 
     @Test
     fun `circle button preview keeps alpha=0 in the corners outside the circle`() {

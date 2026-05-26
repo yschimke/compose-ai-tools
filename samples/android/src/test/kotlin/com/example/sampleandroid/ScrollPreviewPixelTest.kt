@@ -20,7 +20,7 @@ import org.junit.Test
 class ScrollPreviewPixelTest {
 
     private val rendersDir = File("build/compose-previews/renders")
-    private val baseName = "ScrollPreviewsKt.RedToBlueScrollPreview_Scroll"
+    private val baseName = "RedToBlueScrollPreview_Scroll"
 
     private data class Avg(val r: Double, val g: Double, val b: Double) {
         fun dominant(): Char = when {
@@ -81,7 +81,7 @@ class ScrollPreviewPixelTest {
      */
     @Test
     fun `GIF capture animates red to blue`() {
-        val gifName = "ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.gif"
+        val gifName = "RedToBlueScrollGifPreview_ScrollGif.gif"
         val file = File(rendersDir, gifName)
         assertThat(file.exists()).isTrue()
 
@@ -112,7 +112,7 @@ class ScrollPreviewPixelTest {
      */
     @Test
     fun `GIF capture following END resets scroll and still animates`() {
-        val base = "ScrollPreviewsKt.RedToBlueEndThenGifPreview_EndThenGif"
+        val base = "RedToBlueEndThenGifPreview_EndThenGif"
         val endPng = File(rendersDir, "${base}_SCROLL_end.png")
         val gif = File(rendersDir, "${base}_SCROLL_gif.gif")
         assertThat(endPng.exists()).isTrue()

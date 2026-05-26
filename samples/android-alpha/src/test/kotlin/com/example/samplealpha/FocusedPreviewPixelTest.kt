@@ -31,7 +31,7 @@ class FocusedPreviewPixelTest {
     // `RenderFilenames` strips the package + class qualifier and converts spaces to underscores
     // for on-disk paths — see docs/RENDER_FILENAMES.md. Kept as plain literals here so the test
     // breaks loudly if filename normalisation changes shape.
-    private val fanOutBase = "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out"
+    private val fanOutBase = "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out"
     private val traversalBase = "FocusTraversalPreview_Focus_Traversal"
     private val overlayBase = "FocusOverlayPreview_Focus_Overlay"
     private val movingBase = "InsetFocusRingMovingPreview_Inset_Focus_Ring_moving"
