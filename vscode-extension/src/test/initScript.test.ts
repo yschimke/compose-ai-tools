@@ -250,12 +250,14 @@ describe("renderInitScript", () => {
         // Mirrors the CLI's AutoInject.kt — the env var is read inside the
         // rendered Kotlin (at Gradle invocation time), so users can flip
         // mavenLocal on per-invocation without re-rendering the script.
+        // SNAPSHOT versions auto-enable the seed; non-SNAPSHOT runs still
+        // honor the env-var escape hatch.
         const script = renderInitScript();
         assert.ok(
             script.includes(
-                'val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"',
+                'val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||\n    System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"',
             ),
-            "expected useMavenLocal to be read from env inside the rendered Kotlin",
+            "expected useMavenLocal to be SNAPSHOT-aware with an env-var escape hatch",
         );
         assert.ok(
             script.includes("if (useMavenLocal) mavenLocal()"),
