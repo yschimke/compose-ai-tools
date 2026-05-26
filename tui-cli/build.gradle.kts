@@ -40,6 +40,25 @@ dependencies {
   implementation(libs.kotlinx.serialization.json)
 
   testImplementation(kotlin("test"))
+  // JUnit 5 — used directly for `@TempDir`, `Assumptions.assumeTrue`, `@DisplayName`
+  // in the kitty e2e harness. `kotlin("test")` on its own resolves to the JUnit 4
+  // engine here; this dep pulls in the Jupiter API + engine + parameter resolvers we
+  // need for the harness assertions.
+  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 
-tasks.withType<Test>().configureEach { useJUnitPlatform() }
+// The kitty-under-Xvfb e2e test invokes the assembled launcher in a real subprocess (kitty has
+// to attach to a PTY, which means we can't drive the TUI in-process). Depend on `installDist`
+// so the launcher script and its dependency tree are on disk by the time the test starts, and
+// forward the install dir as a system property the test reads via `System.getProperty`.
+val installLauncherForTests = tasks.named("installDist")
+val installDirProvider: Provider<File> = installLauncherForTests.map { (it as Sync).destinationDir }
+
+tasks.withType<Test>().configureEach {
+  useJUnitPlatform()
+  dependsOn(installLauncherForTests)
+  systemProperty("tui-cli.install-dir", installDirProvider.get().absolutePath)
+  // The e2e test is gated on `Xvfb`/`kitty`/`xdotool`/`import` being on PATH (it self-skips
+  // when any of them is missing). On a CI runner without those binaries the test is a fast
+  // no-op; locally with `apt install kitty xdotool imagemagick xvfb` it runs end-to-end.
+}

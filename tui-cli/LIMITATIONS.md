@@ -205,7 +205,42 @@ not reinventing.
 
 ---
 
-## 6. Structured data inline-payload pull (less a Mosaic issue, more a render-session note)
+## 6. Stale-row clearing across recomposition
+
+### Need
+
+When a composition shrinks in either dimension across recompositions — e.g. a `Row`'s second
+child becomes a no-op or a status bar reduces from a wrapped two-line layout to a single
+line — the cells previously occupied by the discarded content should be cleared. Reviewers
+of the e2e captures see this as a "doubled status bar" in `wide/06-data-pane-focused.png`:
+the long live-mode error text from the wide-mode session (which wrapped to a second row) is
+still visible underneath the post-filter status bar, because the second row never got
+overwritten.
+
+### Today
+
+Mosaic 0.18 emits absolute-position SGR sequences during repaint but doesn't blank the
+delta between the prior frame's footprint and the new one. Anywhere the composition shrinks
+between frames, the residue stays on-screen until something else writes into those cells.
+The TUI's `Column { StatusBar(); body }` layout exposes this every time the live-mode error
+message comes and goes (long string → wraps → next frame fits on one line → previous line
+still drawn).
+
+### Fork shape
+
+In `MosaicNodeLayer` / the renderer's flush path, track per-frame max bounds and emit
+spaces over the dropped delta before painting the new frame. The frame buffer Mosaic
+already keeps for diffing has enough information; the patch is on the write-out side, not
+the layout side.
+
+A consumer-side workaround is to right-pad every variable-width `Text` to a known column
+budget, which is what the TUI's [StatusBar.kt](src/main/kotlin/ee/schimke/composeai/tui/ui/StatusBar.kt)
+should probably move toward, but it's brittle (you need the budget to match the actual
+column count, and the column count itself is reactive). The fork-side fix is cleaner.
+
+---
+
+## 7. Structured data inline-payload pull (less a Mosaic issue, more a render-session note)
 
 ### Need
 

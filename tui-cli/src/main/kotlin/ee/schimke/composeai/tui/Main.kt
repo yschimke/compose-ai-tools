@@ -19,8 +19,39 @@ fun main(argv: Array<String>) {
         exitProcess(2)
       }
 
-  // Resolve modules up front (cold path). The TUI then drives the live session against the
-  // user's selection without going back through the Tooling API — this is just discovery.
+  val modules: List<PreviewModule> =
+    if (args.noDiscovery) {
+      val gradlePath =
+        args.module
+          ?: run {
+            System.err.println("error: --no-discovery requires --module <gradle path>")
+            exitProcess(2)
+          }
+      listOf(syntheticModule(projectRoot, gradlePath))
+    } else {
+      resolveModulesViaGradle(projectRoot, args)
+    }
+
+  // Mosaic owns stdin/stdout from this point. Any `println` inside the composition will land on
+  // the live screen. `runMosaicMain` is the synchronous entry — it blocks the main thread until
+  // the composition ends (we exitProcess from inside the App composable's q-handler).
+  runMosaicMain { App(modules = modules, args = args) }
+}
+
+/**
+ * Convert a Gradle path (`:foo:bar`) plus a project root into a `PreviewModule` whose `projectDir`
+ * points at the corresponding subdirectory. Used by `--no-discovery` for tests and by sandbox runs
+ * against pre-rendered fixtures.
+ *
+ * The leading colon is stripped and every remaining colon turns into a path separator —
+ * `:samples:android` → `<root>/samples/android`. A bare `:sample` becomes `<root>/sample`.
+ */
+private fun syntheticModule(projectRoot: File, gradlePath: String): PreviewModule {
+  val relative = gradlePath.trimStart(':').replace(':', '/').ifEmpty { "." }
+  return PreviewModule(gradlePath = gradlePath, projectDir = File(projectRoot, relative))
+}
+
+private fun resolveModulesViaGradle(projectRoot: File, args: TuiArgs): List<PreviewModule> {
   val driver =
     GradlePreviewDriver(
       projectRoot = projectRoot,
@@ -31,41 +62,30 @@ fun main(argv: Array<String>) {
           timeoutSeconds = args.timeoutSeconds,
         ),
     )
-
-  val modules: List<PreviewModule> =
-    try {
-      val selectedPath = args.module
-      if (selectedPath != null) {
-        val one = driver.discoverModule(selectedPath)
-        if (one == null) {
-          System.err.println("error: module '$selectedPath' not found in $projectRoot")
-          exitProcess(3)
-        }
-        listOf(one)
-      } else {
-        val all = driver.discoverModules()
-        if (all.isEmpty()) {
-          System.err.println("error: no preview-capable modules discovered in $projectRoot")
-          exitProcess(3)
-        }
-        all
+  return try {
+    val selectedPath = args.module
+    if (selectedPath != null) {
+      val one = driver.discoverModule(selectedPath)
+      if (one == null) {
+        System.err.println("error: module '$selectedPath' not found in $projectRoot")
+        exitProcess(3)
       }
-    } catch (t: Throwable) {
-      System.err.println("error: discovery failed: ${t.message}")
-      if (args.verbose) t.printStackTrace(System.err)
-      exitProcess(1)
-    } finally {
-      // The TUI doesn't need the Tooling API connection alive while it runs; the live session
-      // talks to the daemon directly via `:render-session-subprocess`. Closing here keeps the
-      // Tooling API daemon free for other invocations the user might fire from a sibling
-      // terminal.
-      driver.close()
+      listOf(one)
+    } else {
+      val all = driver.discoverModules()
+      if (all.isEmpty()) {
+        System.err.println("error: no preview-capable modules discovered in $projectRoot")
+        exitProcess(3)
+      }
+      all
     }
-
-  // Mosaic owns stdin/stdout from this point. Any `println` inside the composition will land
-  // on the live screen. `runMosaicMain` is the synchronous entry — it blocks the main thread
-  // until the composition ends (we exitProcess from inside the App composable's q-handler).
-  runMosaicMain { App(modules = modules, args = args) }
+  } catch (t: Throwable) {
+    System.err.println("error: discovery failed: ${t.message}")
+    if (args.verbose) t.printStackTrace(System.err)
+    exitProcess(1)
+  } finally {
+    driver.close()
+  }
 }
 
 private fun findProjectRoot(): File? {

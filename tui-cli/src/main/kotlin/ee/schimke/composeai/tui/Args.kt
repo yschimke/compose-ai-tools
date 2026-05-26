@@ -23,6 +23,14 @@ data class TuiArgs(
   val projectRoot: File? = null,
   val verbose: Boolean = false,
   val timeoutSeconds: Long = 300,
+  /**
+   * Test escape hatch: skip the Gradle Tooling-API discovery pass and synthesise a single
+   * `PreviewModule` directly from [module] + [projectRoot]. Required by the kitty-under-Xvfb e2e
+   * harness — driving a real Tooling-API discovery from a synthetic fixture would push the test
+   * into the 60s+ range and we want every state capture to land in seconds. Not surfaced in
+   * `--help`; the consumer-facing flow always goes through discovery.
+   */
+  val noDiscovery: Boolean = false,
 ) {
   companion object {
     fun parse(argv: Array<String>): TuiArgs {
@@ -34,6 +42,7 @@ data class TuiArgs(
       var verbose = false
       var projectRoot: File? = null
       var timeoutSeconds = 300L
+      var noDiscovery = false
 
       val valuedFlags =
         setOf("--module", "--filter", "--id", "--timeout", "--project-root", "--with-extension")
@@ -59,6 +68,7 @@ data class TuiArgs(
           "--timeout" -> timeoutSeconds = nextValue()?.toLongOrNull() ?: timeoutSeconds
           "--project-root" -> projectRoot = nextValue()?.let(::File)
           "--live" -> live = true
+          "--no-discovery" -> noDiscovery = true
           "--verbose",
           "-v" -> verbose = true
           "--help",
@@ -83,6 +93,7 @@ data class TuiArgs(
         projectRoot = projectRoot,
         verbose = verbose,
         timeoutSeconds = timeoutSeconds,
+        noDiscovery = noDiscovery,
       )
     }
 
