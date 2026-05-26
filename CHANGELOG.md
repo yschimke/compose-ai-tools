@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.11](https://github.com/yschimke/compose-ai-tools/compare/v0.11.10...v0.11.11) (2026-05-26)
+
+
+### Features
+
+* add inline image rendering for terminal preview display ([#1515](https://github.com/yschimke/compose-ai-tools/issues/1515)) ([18e56b5](https://github.com/yschimke/compose-ai-tools/commit/18e56b51da8ce9ce85a4b7b22d939dd7aea71a6c))
+* **vscode-extension:** add 'Compose Preview: Verify' consistency-check command ([#1509](https://github.com/yschimke/compose-ai-tools/issues/1509)) ([d89929e](https://github.com/yschimke/compose-ai-tools/commit/d89929ec9decfe0392b35fdf7dc01f05fb8430f6))
+* **vscode-extension:** trace preload skips + gradle cancel source ([#1508](https://github.com/yschimke/compose-ai-tools/issues/1508)) ([0923d74](https://github.com/yschimke/compose-ai-tools/commit/0923d743cb6fbe3bca3d5c22c882c5c9ca786a77))
+
+
+### Bug Fixes
+
+* **cli:** auto-enable mavenLocal for SNAPSHOT plugin versions ([#1512](https://github.com/yschimke/compose-ai-tools/issues/1512)) ([ccf235d](https://github.com/yschimke/compose-ai-tools/commit/ccf235d26c57b838fea11699dd37ca63ff67c19f))
+* stream large PR comment bodies via file to avoid ARG_MAX ([#1511](https://github.com/yschimke/compose-ai-tools/issues/1511)) ([6fe6e0f](https://github.com/yschimke/compose-ai-tools/commit/6fe6e0fbe0b622a573cb7925c956e90c15dc61d8))
+* **vscode-extension:** PreviewRegistry preserves image bytes across refresh ([#1513](https://github.com/yschimke/compose-ai-tools/issues/1513)) ([8f04638](https://github.com/yschimke/compose-ai-tools/commit/8f04638ce338c0c7869b561f42a64f13564b7f65))
+
 ## [0.11.10](https://github.com/yschimke/compose-ai-tools/compare/v0.11.9...v0.11.10) (2026-05-25)
 
 
