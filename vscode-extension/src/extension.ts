@@ -42,6 +42,7 @@ import {
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
+import { findMissingImageDataProducts } from "./scrollDataProductRender";
 import {
     captureLabel,
     staticBaseCaptureIndex,
@@ -205,6 +206,19 @@ async function isSourceNewerThanRenders(
 }
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
+/**
+ * Per-session dedup for the scroll/animation data-product backfill: modules where we've
+ * already kicked off `composePreviewRender('full')` to populate missing image data
+ * products (today: `@ScrollingPreview(LONG/GIF)` outputs). The daemon's renderNow
+ * produces only the static base capture and scroll producers are renderer-side only
+ * (`docs/daemon/DATA-PRODUCTS.md` § "data/scroll is renderer-side only"), so daemon-only
+ * flows leave scroll cards permanently placeholdered without this fallback. One Gradle
+ * render per module per session is the upper bound — re-arms on `restart`/extension
+ * activation, not on file focus changes, so a fresh save doesn't loop. Failure (no
+ * scroll PNG produced even after Gradle) intentionally doesn't re-arm; the user's
+ * "Render Previews" command remains the manual escape hatch.
+ */
+const scrollBackfillRequested = new Set<string>();
 /**
  * Heavy previews the user explicitly asked to keep fresh for the current
  * editor focus scope. Cleared when focus leaves the backing Kotlin file.
@@ -713,6 +727,52 @@ function readJsonPath(
             `[daemon] could not read data-product JSON at ${p}: ${(err as Error).message}`,
         );
         return undefined;
+    }
+}
+
+/**
+ * Backfill one module's missing image data products (scroll/long PNG, scroll/gif GIF)
+ * via `composePreviewRender('full')`, then read the newly-produced files and post one
+ * `updateImage` per backfilled capture so the panel's placeholder cards repaint with
+ * the actual content. Fire-and-forget — failure is logged but doesn't surface to the
+ * user, on the theory that the manual "Render Previews" command is the right escape
+ * hatch when the renderer truly can't produce the artifact.
+ */
+async function backfillScrollDataProducts(
+    module: ModuleInfo,
+    missing: readonly {
+        previewId: string;
+        captureIndex: number;
+        renderOutput: string;
+    }[],
+): Promise<void> {
+    if (!gradleService) return;
+    try {
+        await gradleService.composePreviewRender(module, "full");
+    } catch (err) {
+        logLine(
+            `scroll backfill: composePreviewRender failed for ${module.modulePath}: ${(err as Error).message}`,
+        );
+        return;
+    }
+    if (!panel) return;
+    for (const entry of missing) {
+        const imageData = await gradleService.readPreviewImage(
+            module,
+            entry.renderOutput,
+        );
+        if (!imageData) {
+            logLine(
+                `scroll backfill: render finished but ${entry.renderOutput} still missing for ${entry.previewId}`,
+            );
+            continue;
+        }
+        panel.postMessage({
+            command: "updateImage",
+            previewId: entry.previewId,
+            captureIndex: entry.captureIndex,
+            imageData,
+        });
     }
 }
 
@@ -4610,6 +4670,41 @@ async function refresh(
             // called finish().
             tracker.finish();
             writeCalibration(module, tracker.phaseDurations);
+        }
+
+        // Backfill `@ScrollingPreview(LONG/GIF)` image data products that no producer
+        // has filled in. Scroll outputs are renderer-side only (the daemon's renderNow
+        // produces just the static base capture, which the panel correctly drops for
+        // scroll previews) so daemon-only flows leave these cards permanently empty.
+        // Skip when we're already in the forceRender path — that pass just produced
+        // everything Gradle could produce. Skip in minimal mode — the user opted out
+        // of auto-renders and would expect to drive `composePreviewRender` themselves.
+        // Per-module session dedup via `scrollBackfillRequested` keeps a project that
+        // genuinely can't produce the scroll PNG (broken @ScrollingPreview wiring,
+        // renderer crash) from looping a Gradle invocation on every focus change.
+        if (!abort.signal.aborted && !forceRender && !inMinimalMode()) {
+            const missingByModule = findMissingImageDataProducts(
+                displayPreviews,
+                (id) => previewModuleIndex.get(id),
+                gradleService.workspaceRoot,
+            );
+            for (const [modulePath, missing] of missingByModule) {
+                if (scrollBackfillRequested.has(modulePath)) continue;
+                scrollBackfillRequested.add(modulePath);
+                const owningModule = previewModuleIndex.get(
+                    missing[0].previewId,
+                );
+                if (!owningModule) continue;
+                logLine(
+                    `scroll backfill: ${modulePath} has ${missing.length} missing image data product(s); kicking composePreviewRender('full')`,
+                );
+                // Fire-and-forget so this doesn't block the in-flight refresh. The follow-up
+                // re-reads the newly-produced PNGs and posts `updateImage` for each — the
+                // existing image-load path keys on `captureIndex` in the displayed (post-
+                // `withDataProductCaptures`) captures, so `missing[].captureIndex` lines up
+                // with the slot the card carousel paints.
+                void backfillScrollDataProducts(owningModule, missing);
+            }
         }
 
         // Source-newer-than-renders auto-refresh. Replaces the old "Showing

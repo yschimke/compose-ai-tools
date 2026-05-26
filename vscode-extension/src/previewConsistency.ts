@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { withDataProductCaptures } from "./captureLabels";
 import { GradleService, ModuleInfo } from "./gradleService";
 import { PreviewInfo } from "./types";
 
@@ -56,16 +57,23 @@ export interface VerifyResult {
 }
 
 /**
- * Resolves the on-disk path for a preview's first capture, the one the panel uses as its
- * primary image. Mirrors `GradleService.readPreviewImage`'s lookup so the verify check reads
- * from the exact same directory the host loads images from.
+ * Resolves the on-disk path for the preview's primary displayed capture — the one the panel
+ * actually paints into the card. Mirrors `GradleService.readPreviewImage`'s lookup so the
+ * verify check reads from the exact same directory the host loads images from.
+ *
+ * Uses `withDataProductCaptures` so `@ScrollingPreview(LONG/GIF)` previews resolve to their
+ * `data/render-scroll-*` data-product output (which is what the card displays) rather than
+ * the manifest's static base capture (which the panel drops). Without this fold the verify
+ * would call a missing scroll PNG a "stale placeholder with PNG on disk" — the daemon's
+ * static base PNG that the panel correctly ignores.
  */
 export function pngPathFor(
     workspaceRoot: string,
     module: ModuleInfo,
     preview: PreviewInfo,
 ): string | null {
-    const capture = preview.captures.find((c) => !!c.renderOutput);
+    const display = withDataProductCaptures(preview);
+    const capture = display.captures.find((c) => !!c.renderOutput);
     if (!capture || !capture.renderOutput) {
         return null;
     }
