@@ -44,6 +44,16 @@ includeBuild("gradle-plugin")
 
 include(":cli")
 
+// Alternative interactive CLI built on Jake Wharton's Mosaic. Renders a navigable preview
+// browser (list + image + a11y panel) to the terminal, with sticky live-mode that re-renders
+// on external file edits (vim in another terminal, VS Code, etc.). Separate module so the
+// classic `:cli` stays a thin batch driver and consumers who don't want a TUI dependency
+// don't pull Mosaic / Compose runtime onto their classpath. See `tui-cli/LIMITATIONS.md` for
+// the Mosaic API gaps we work around today.
+include(":tui-cli")
+
+project(":tui-cli").projectDir = file("tui-cli")
+
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,
 // third-party tooling) can pull just the data shapes without dragging in `:cli`'s Gradle Tooling

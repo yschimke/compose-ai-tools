@@ -1,0 +1,130 @@
+package ee.schimke.composeai.tui
+
+import java.io.File
+
+/**
+ * Argument parser for `compose-preview-tui`. Mirrors the subset of flags `:cli`'s [Command] base
+ * understands so the same `--module` / `--filter` / `--id` invocation works against both binaries —
+ * switching a workflow from `compose-preview list --module :samples:android --filter Foo` to
+ * `compose-preview-tui --module :samples:android --filter Foo` should be muscle-memory.
+ *
+ * Unknown flags are silently ignored (printed back as a warning to stderr) rather than failing the
+ * parse — the TUI is interactive and the user can recover from a typo without a restart.
+ */
+data class TuiArgs(
+  val module: String? = null,
+  val filter: String? = null,
+  val exactId: String? = null,
+  /** Extensions to enable on the live session (always enabled regardless of live-mode toggle). */
+  val extensions: Set<String> = setOf("a11y"),
+  /** Initial live-mode state. Sticky once toggled; flag just sets the starting value. */
+  val liveOnStart: Boolean = false,
+  /** Project root override. Defaults to walking up from cwd looking for `gradlew`. */
+  val projectRoot: File? = null,
+  val verbose: Boolean = false,
+  val timeoutSeconds: Long = 300,
+) {
+  companion object {
+    fun parse(argv: Array<String>): TuiArgs {
+      var module: String? = null
+      var filter: String? = null
+      var exactId: String? = null
+      val extensions = mutableSetOf("a11y")
+      var live = false
+      var verbose = false
+      var projectRoot: File? = null
+      var timeoutSeconds = 300L
+
+      val valuedFlags =
+        setOf("--module", "--filter", "--id", "--timeout", "--project-root", "--with-extension")
+      var i = 0
+      while (i < argv.size) {
+        val arg = argv[i]
+        val (name, inlineValue) =
+          if (arg.startsWith("--") && arg.contains('=')) {
+            val (n, v) = arg.split('=', limit = 2)
+            n to v
+          } else {
+            arg to null
+          }
+        fun nextValue(): String? = inlineValue ?: argv.getOrNull(i + 1)?.also { i += 1 }
+        when (name) {
+          "--module" -> module = nextValue()
+          "--filter" -> filter = nextValue()
+          "--id" -> exactId = nextValue()
+          "--with-extension" -> {
+            val v = nextValue() ?: continue
+            extensions += v.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+          }
+          "--timeout" -> timeoutSeconds = nextValue()?.toLongOrNull() ?: timeoutSeconds
+          "--project-root" -> projectRoot = nextValue()?.let(::File)
+          "--live" -> live = true
+          "--verbose",
+          "-v" -> verbose = true
+          "--help",
+          "-h" -> {
+            printUsage()
+            kotlin.system.exitProcess(0)
+          }
+          else ->
+            if (name.startsWith("-")) {
+              System.err.println("warning: ignoring unknown flag '$name'")
+            }
+        }
+        i += 1
+      }
+
+      return TuiArgs(
+        module = module,
+        filter = filter,
+        exactId = exactId,
+        extensions = extensions,
+        liveOnStart = live,
+        projectRoot = projectRoot,
+        verbose = verbose,
+        timeoutSeconds = timeoutSeconds,
+      )
+    }
+
+    fun printUsage() {
+      println(
+        """
+        compose-preview-tui — interactive Mosaic-based Compose Preview browser
+
+        Usage: compose-preview-tui [options]
+
+        Options:
+          --module <path>        Gradle path (e.g. :samples:android). Default: prompt
+                                 / pick first discovered.
+          --filter <pattern>     Case-insensitive substring filter on preview id.
+          --id <exact>           Pin to a single preview by exact id.
+          --with-extension <id>  Enable a data extension on the live session.
+                                 Repeatable / comma-separated. Default: a11y.
+          --live                 Start in live mode (sticky across navigation).
+          --project-root <dir>   Project root (default: walk up from cwd for gradlew).
+          --timeout <seconds>    Gradle build timeout (default 300).
+          --verbose, -v          Stream Gradle output to stderr.
+          --help, -h             Show this help.
+
+        Key bindings (interactive):
+          ↑ / ↓ or k / j        Move selection in the preview list.
+          → / l                  Focus the right pane (data) in narrow mode.
+          ← / h                  Focus the list pane.
+          Tab                    Cycle tabs (narrow mode) / focus pane (wide).
+          /                      Start typing a filter; Enter applies, Esc cancels.
+          L                      Toggle sticky live mode.
+          r                      Force re-render of the selected preview.
+          q                      Quit.
+
+        Live mode subscribes the underlying render-session daemon to the selected
+        module. Edits made outside of this terminal (vim in another pane, VS Code,
+        etc.) are detected via a filesystem watcher rooted at the module's project
+        directory and forwarded to the daemon as `fileChanged` notifications — the
+        daemon re-renders and pushes a notification back, and the TUI reloads the
+        PNG + accessibility findings without manual intervention.
+        """
+          .trimIndent()
+      )
+    }
+  }
+}
