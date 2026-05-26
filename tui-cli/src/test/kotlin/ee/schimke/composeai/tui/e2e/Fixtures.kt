@@ -15,9 +15,9 @@ import javax.imageio.ImageIO
  * * `<root>/sample/build/compose-previews/previews.json` — synthetic manifest with three previews
  *   so the list pane has something to scroll through.
  * * `<root>/sample/build/compose-previews/<id>.png` — three small PNGs the preview pane decodes
- *   through `AnsiImage.renderAscii`. Filling them with distinct gradients makes the ASCII output
- *   visibly different per preview, which is the easiest way to confirm at capture-review time that
- *   selection changes are actually re-reading the right file.
+ *   into a Mosaic `Bitmap` and hands to the fork's `Image` composable. Filling them with distinct
+ *   gradients makes the rendered output visibly different per preview, which is the easiest way to
+ *   confirm at capture-review time that selection changes are actually re-reading the right file.
  * * `<root>/sample/build/compose-previews/accessibility.json` — one preview has a synthetic `ERROR`
  *   finding so the data pane shows non-empty content for one capture state.
  *

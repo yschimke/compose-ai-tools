@@ -222,11 +222,12 @@ constructor is already declared with `kotlin.jvm.internal.DefaultConstructorMark
 overloads so adding a defaulted field is binary-compatible.
 
 The half-block fallback is identical in spirit (one `▀` per cell, truecolor fg/bg) to
-`:tui-cli`'s current `AnsiImage.render` — so once Mosaic ships this, `:tui-cli` can
-delete its hand-rolled renderer entirely and route through `Image` with
-`fallback = ImageFallback.HalfBlocks`. That's the acceptance test from this consumer's
-side: the day `Image` lands, our `LIMITATIONS.md` items 2 and 3 collapse into "use the
-upstream API."
+the hand-rolled `AnsiImage.render` this consumer used to ship — and the consumer side
+already routes through the fork's `Image` (Kitty → half-block → ASCII auto-fallback),
+so `AnsiImage.kt` has been deleted from the tree. The acceptance test fired the day the
+fork's `Image` landed: `LIMITATIONS.md` items 2 and 3 collapsed into "use the upstream
+API." Filing this RFC upstream is what closes the loop for downstream consumers that
+don't want to pin against a fork.
 
 ## Sketched implementation order
 

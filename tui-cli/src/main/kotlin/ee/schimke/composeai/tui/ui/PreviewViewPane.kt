@@ -6,26 +6,25 @@ import com.jakewharton.mosaic.layout.height
 import com.jakewharton.mosaic.layout.width
 import com.jakewharton.mosaic.modifier.Modifier
 import com.jakewharton.mosaic.ui.Column
+import com.jakewharton.mosaic.ui.Image
 import com.jakewharton.mosaic.ui.Text
 import com.jakewharton.mosaic.ui.TextStyle
 import ee.schimke.composeai.tui.PreviewIndex
-import ee.schimke.composeai.tui.image.AnsiImage
+import ee.schimke.composeai.tui.image.Bitmaps
 import java.io.File
 
 /**
- * Centre pane: ASCII-rendered preview image. The image is read from disk every recomposition (cheap
- * — Mosaic only recomposes on actual state changes), so a daemon notification that arrives while
- * the user has the preview pinned re-renders without any glue.
+ * Centre pane: rendered preview image. The PNG is decoded into a [com.jakewharton.mosaic.ui.Bitmap]
+ * and handed to the fork's [Image] composable, which picks the best rendering tier for the host
+ * terminal — Kitty Graphics Protocol (kitty / ghostty / WezTerm), truecolor half-block (most modern
+ * terminals + tmux), or brightness-ramp ASCII (dumb terminals, snapshot harnesses).
  *
- * Uses [AnsiImage.renderAscii] rather than the truecolor `render` because embedding raw SGR escapes
- * in `Text` would break Mosaic's width tracking. See `tui-cli/LIMITATIONS.md` for the fork-shaped
- * escape hatch (a `RawText` composable that bypasses width measurement, or a
- * `Modifier.background(rgbColor)` per cell on a 2-pixel-high grid).
+ * The bitmap is re-decoded whenever the file's mtime changes, so a daemon notification or a vim
+ * write that arrives while the user has this preview pinned recomposes the pane automatically.
  *
  * When the PNG is missing — for example because live mode is OFF and `composePreviewRenderAll` has
- * never been run for this module — the pane shows a one-line "no render yet" hint instead of a
- * blank rectangle. This is also the path you hit if the user is on a module whose `previews.json`
- * lists a preview that's been removed from source since the last render.
+ * never been run for this module — the pane shows a one-line "no render yet" hint. Same path when
+ * `previews.json` lists an id whose source has since been removed.
  */
 @Composable
 fun PreviewViewPane(index: PreviewIndex, focused: Boolean, width: Int, rows: Int, tick: Long) {
@@ -40,6 +39,7 @@ fun PreviewViewPane(index: PreviewIndex, focused: Boolean, width: Int, rows: Int
       return@Column
     }
     Text(current.id.padEnd(width).take(width), textStyle = TextStyle.Italic)
+    val imageRows = (rows - 2).coerceAtLeast(1)
     val png: File? = remember(current.id, tick) { current.resolvePng() }
     if (png == null) {
       Text(
@@ -48,14 +48,11 @@ fun PreviewViewPane(index: PreviewIndex, focused: Boolean, width: Int, rows: Int
       )
       return@Column
     }
-    val art =
-      remember(png.path, png.lastModified(), width, rows) {
-        AnsiImage.renderAscii(png, maxCols = width, maxRows = rows - 2)
-      }
-    if (art.isEmpty()) {
+    val bitmap = remember(png.path, png.lastModified()) { Bitmaps.readPng(png) }
+    if (bitmap == null) {
       Text("(failed to decode ${png.name})".take(width), textStyle = TextStyle.Dim)
     } else {
-      for (line in art) Text(line.padEnd(width).take(width))
+      Image(bitmap = bitmap, cellWidth = width, cellHeight = imageRows)
     }
   }
 }

@@ -102,6 +102,30 @@ network policy is fixed at session-create time though, so any session created be
 allowlist update still sees 403s on those URLs — `curl -I` against any of the three is
 a quick way to tell which kind of session you're in.
 
+### Fork-side patches still needed (Gradle 9.5 / jextract 22)
+
+On top of the network allowlist, two small patches to the Mosaic fork's
+`mosaic-tty/build.gradle` are required for the `jdk22` FFM compile to succeed:
+
+1. **`generateSourceFiles = true`** on the `jextract.libraries.register('mosaic')`
+   block. The plugin defaults to emitting `.class` files; the build script's
+   `defaultSourceSet.kotlin.srcDir(mosaicJextractGenerateBindings)` wiring needs Java
+   sources, not bytecode, on the Kotlin compile classpath.
+2. **Pin jextract to JDK 22**:
+   `jextract.installation.javaLanguageVersion = JavaLanguageVersion.of(22)` (plugin
+   v1.2.0 API). The Tty.kt bindings call the simplified `MosaicIoResult.error(seg)` /
+   `count(seg)` accessors that jextract started emitting in JDK 22; pinning to JDK 21
+   emits the older `error$get` / `count$get` forms that won't link.
+
+Plugin v1.0.0 (originally pinned in `libs.versions.toml`) has a constructor-injection
+bug on Gradle 9.5 that breaks the `download {}` / `local {}` configuration blocks. Bump
+to v1.2.0 — it exposes `jextract.installation` directly and works around the issue.
+Newer versions (v1.4.0) apply the `java` plugin which conflicts with KMP, so don't go
+higher than v1.2.0 until upstream fixes the KMP interop.
+
+These patches belong upstream in the fork; until then they live as uncommitted local
+edits in `../mosaic`. `git diff` against `compose-ai-tools` shows them clearly.
+
 For sessions that *are* stuck on the old policy, the workaround is patching the Mosaic
 clone:
 
