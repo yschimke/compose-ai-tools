@@ -22,7 +22,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan-out_FOCUS_0.png",
+      "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out_FOCUS_0.png",
       "findings": [],
       "functionName": "InsetFocusRingFanOutPreview",
       "module": "android-alpha",
@@ -112,7 +112,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "com.example.sampleandroidscreenshot.MainPreviewsKt.MainSquarePreview_main-square.png",
+      "cleanBasename": "MainSquarePreview_main_square.png",
       "findings": [],
       "functionName": "MainSquarePreview",
       "module": "android-screenshot-test",
@@ -122,7 +122,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.ActionsPreview_Actions.png",
+      "cleanBasename": "ActionsPreview_Actions.png",
       "findings": [],
       "functionName": "ActionsPreview",
       "module": "android",
@@ -132,7 +132,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.BadButtonPreview_Bad_Button.png",
+      "cleanBasename": "BadButtonPreview_Bad_Button.png",
       "findings": [],
       "functionName": "BadButtonPreview",
       "module": "android",
@@ -142,7 +142,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png",
+      "cleanBasename": "BigPictureStylePreview_Big_picture.png",
       "findings": [],
       "functionName": "BigPictureStylePreview",
       "module": "android",
@@ -152,7 +152,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
+      "cleanBasename": "BigTextVariantsPreview_Arabic.png",
       "findings": [],
       "functionName": "BigTextVariantsPreview",
       "module": "android",
@@ -162,7 +162,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.BlueBoxPreview_Blue_Box.png",
+      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
       "findings": [],
       "functionName": "BlueBoxPreview",
       "module": "android",
@@ -182,7 +182,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PermissionGatedPreviewKt.CameraPermissionDeniedPreview_Camera_permission_denied.png",
+      "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.png",
       "findings": [],
       "functionName": "CameraPermissionDeniedPreview",
       "module": "android",
@@ -192,7 +192,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PermissionGatedPreviewKt.CameraPermissionGrantedPreview_Camera_permission_granted.png",
+      "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.png",
       "findings": [],
       "functionName": "CameraPermissionGrantedPreview",
       "module": "android",
@@ -202,7 +202,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TransparentBackgroundPreviewsKt.CircleButtonTransparentPreview_Circle_Button_Transparent.png",
+      "cleanBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.png",
       "findings": [],
       "functionName": "CircleButtonTransparentPreview",
       "module": "android",
@@ -212,7 +212,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface_collapsed.png",
+      "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed.png",
       "findings": [],
       "functionName": "CollapsedSurfacePreview",
       "module": "android",
@@ -222,7 +222,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.ConfigProbePreview_Default.png",
+      "cleanBasename": "ConfigProbePreview_Default.png",
       "findings": [],
       "functionName": "ConfigProbePreview",
       "module": "android",
@@ -232,7 +232,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png",
+      "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view.png",
       "findings": [],
       "functionName": "DecoratedCustomViewPreview",
       "module": "android",
@@ -242,7 +242,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
+      "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
       "findings": [],
       "functionName": "DeviceFontFamilyShowcasePreview",
       "module": "android",
@@ -252,7 +252,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface_expanded.png",
+      "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
       "findings": [],
       "functionName": "ExpandedSurfacePreview",
       "module": "android",
@@ -262,7 +262,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TypographyGalleryKt.FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
+      "cleanBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
       "findings": [],
       "functionName": "FallbackCoverageSpecimenPreview",
       "module": "android",
@@ -272,7 +272,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TruncationPreviewsKt.FitsInBoundsPreview.png",
+      "cleanBasename": "FitsInBoundsPreview.png",
       "findings": [],
       "functionName": "FitsInBoundsPreview",
       "module": "android",
@@ -282,7 +282,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily_specimen.png",
+      "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
       "findings": [],
       "functionName": "FontFamilySpecimenPreview",
       "module": "android",
@@ -292,7 +292,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
+      "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
       "findings": [],
       "functionName": "GlanceWeatherWidgetPreview",
       "module": "android",
@@ -302,7 +302,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
+      "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
       "findings": [],
       "functionName": "GoogleFontsShowcasePreview",
       "module": "android",
@@ -312,7 +312,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.GreenBoxPreview_Green_Box.png",
+      "cleanBasename": "GreenBoxPreview_Green_Box.png",
       "findings": [],
       "functionName": "GreenBoxPreview",
       "module": "android",
@@ -322,7 +322,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.GreetingPreview_Default.png",
+      "cleanBasename": "GreetingPreview_Default.png",
       "findings": [],
       "functionName": "GreetingPreview",
       "module": "android",
@@ -332,7 +332,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.GroupedSummaryPreview_Edge_grouped_summary.png",
+      "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary.png",
       "findings": [],
       "functionName": "GroupedSummaryPreview",
       "module": "android",
@@ -342,7 +342,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface_heads-up.png",
+      "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up.png",
       "findings": [],
       "functionName": "HeadsUpSurfacePreview",
       "module": "android",
@@ -352,7 +352,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SoftKeyboardImeInsetsPreviewKt.ImeAwareListHiddenPreview_IME-aware_list_keyboard_hidden.png",
+      "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.png",
       "findings": [],
       "functionName": "ImeAwareListHiddenPreview",
       "module": "android",
@@ -362,7 +362,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SoftKeyboardImeInsetsPreviewKt.ImeAwareListShownPreview_IME-aware_list_keyboard_up.png",
+      "cleanBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.png",
       "findings": [],
       "functionName": "ImeAwareListShownPreview",
       "module": "android",
@@ -372,7 +372,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
+      "cleanBasename": "InboxStylePreview_Inbox_style.png",
       "findings": [],
       "functionName": "InboxStylePreview",
       "module": "android",
@@ -382,7 +382,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
       "findings": [],
       "functionName": "KeyboardDemoPreview",
       "module": "android",
@@ -392,7 +392,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidget1x1Preview_Launcher_widget_1_1.png",
+      "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
       "findings": [],
       "functionName": "LauncherWidget1x1Preview",
       "module": "android",
@@ -402,7 +402,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidget4x2Preview_Launcher_widget_4_2.png",
+      "cleanBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.png",
       "findings": [],
       "functionName": "LauncherWidget4x2Preview",
       "module": "android",
@@ -412,7 +412,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
+      "cleanBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
       "findings": [],
       "functionName": "LauncherWidgetClampedPreview",
       "module": "android",
@@ -422,7 +422,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
+      "cleanBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
       "findings": [],
       "functionName": "LauncherWidgetResize1x1To4x2Preview",
       "module": "android",
@@ -432,7 +432,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.LoadingPreview_Loading_Spinner.png",
+      "cleanBasename": "LoadingPreview_Loading_Spinner.png",
       "findings": [],
       "functionName": "LoadingPreview",
       "module": "android",
@@ -442,7 +442,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.LongTitlePreview_Edge_long_title.png",
+      "cleanBasename": "LongTitlePreview_Edge_long_title.png",
       "findings": [],
       "functionName": "LongTitlePreview",
       "module": "android",
@@ -452,7 +452,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.ManyActionsPreview_Edge_many_actions.png",
+      "cleanBasename": "ManyActionsPreview_Edge_many_actions.png",
       "findings": [],
       "functionName": "ManyActionsPreview",
       "module": "android",
@@ -462,7 +462,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.MediaStylePreview_Media_style.png",
+      "cleanBasename": "MediaStylePreview_Media_style.png",
       "findings": [],
       "functionName": "MediaStylePreview",
       "module": "android",
@@ -472,7 +472,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png",
+      "cleanBasename": "MessagingStylePreview_Messaging_style.png",
       "findings": [],
       "functionName": "MessagingStylePreview",
       "module": "android",
@@ -482,7 +482,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NavHostPreviewKt.NavHostHomePreview_NavHost_Home.png",
+      "cleanBasename": "NavHostHomePreview_NavHost_Home.png",
       "findings": [],
       "functionName": "NavHostHomePreview",
       "module": "android",
@@ -492,7 +492,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.NoLargeIconPreview_Edge_no_large_icon.png",
+      "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon.png",
       "findings": [],
       "functionName": "NoLargeIconPreview",
       "module": "android",
@@ -502,7 +502,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "NotificationStyleGalleryKt.NoTextPreview_Edge_no_text.png",
+      "cleanBasename": "NoTextPreview_Edge_no_text.png",
       "findings": [],
       "functionName": "NoTextPreview",
       "module": "android",
@@ -512,7 +512,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.PhoneGreetingPreview_Phone.png",
+      "cleanBasename": "PhoneGreetingPreview_Phone.png",
       "findings": [],
       "functionName": "PhoneGreetingPreview",
       "module": "android",
@@ -522,7 +522,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.Pixel8SystemUiPreview_Pixel_8.png",
+      "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
       "findings": [],
       "functionName": "Pixel8SystemUiPreview",
       "module": "android",
@@ -532,7 +532,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleAccent_accent.png",
+      "cleanBasename": "PseudoSampleAccent_accent.png",
       "findings": [],
       "functionName": "PseudoSampleAccent",
       "module": "android",
@@ -542,7 +542,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleBidi_bidi.png",
+      "cleanBasename": "PseudoSampleBidi_bidi.png",
       "findings": [],
       "functionName": "PseudoSampleBidi",
       "module": "android",
@@ -552,7 +552,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PseudolocalePreviewsKt.PseudoSampleDefault_default.png",
+      "cleanBasename": "PseudoSampleDefault_default.png",
       "findings": [],
       "functionName": "PseudoSampleDefault",
       "module": "android",
@@ -562,7 +562,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.RedBoxPreview_Red_Box.png",
+      "cleanBasename": "RedBoxPreview_Red_Box.png",
       "findings": [],
       "functionName": "RedBoxPreview",
       "module": "android",
@@ -582,7 +582,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "AppWidgetPreviewsKt.RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
+      "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
       "findings": [],
       "functionName": "RemoteViewsWeatherWidgetPreview",
       "module": "android",
@@ -592,7 +592,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsClickableButtonPreview.png",
+      "cleanBasename": "SemanticsClickableButtonPreview.png",
       "findings": [],
       "functionName": "SemanticsClickableButtonPreview",
       "module": "android",
@@ -602,7 +602,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsContentDescriptionPreview.png",
+      "cleanBasename": "SemanticsContentDescriptionPreview.png",
       "findings": [],
       "functionName": "SemanticsContentDescriptionPreview",
       "module": "android",
@@ -612,7 +612,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsMergeDescendantsPreview.png",
+      "cleanBasename": "SemanticsMergeDescendantsPreview.png",
       "findings": [],
       "functionName": "SemanticsMergeDescendantsPreview",
       "module": "android",
@@ -622,7 +622,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SemanticsCoreFieldsPreviewsKt.SemanticsTestTagPreview.png",
+      "cleanBasename": "SemanticsTestTagPreview.png",
       "findings": [],
       "functionName": "SemanticsTestTagPreview",
       "module": "android",
@@ -642,7 +642,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SoftKeyboardAnimatedPreviewKt.SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
+      "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
       "findings": [],
       "functionName": "SoftKeyboardIdlePreview",
       "module": "android",
@@ -652,7 +652,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
+      "cleanBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
       "findings": [],
       "functionName": "SpinnerTimelinePreview",
       "module": "android",
@@ -662,7 +662,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SplashScreenGalleryKt.SplashDarkThemePreview_Splash_dark_theme.png",
+      "cleanBasename": "SplashDarkThemePreview_Splash_dark_theme.png",
       "findings": [],
       "functionName": "SplashDarkThemePreview",
       "module": "android",
@@ -672,7 +672,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SplashScreenGalleryKt.SplashIconOnlyPreview_Splash_icon_only.png",
+      "cleanBasename": "SplashIconOnlyPreview_Splash_icon_only.png",
       "findings": [],
       "functionName": "SplashIconOnlyPreview",
       "module": "android",
@@ -682,7 +682,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SplashScreenGalleryKt.SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
+      "cleanBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
       "findings": [],
       "functionName": "SplashIconWithBackgroundPreview",
       "module": "android",
@@ -692,7 +692,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SplashScreenGalleryKt.SplashWithBrandingPreview_Splash_icon_with_branding.png",
+      "cleanBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.png",
       "findings": [],
       "functionName": "SplashWithBrandingPreview",
       "module": "android",
@@ -702,7 +702,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TruncationPreviewsKt.TruncatedHeightClipPreview.png",
+      "cleanBasename": "TruncatedHeightClipPreview.png",
       "findings": [],
       "functionName": "TruncatedHeightClipPreview",
       "module": "android",
@@ -712,7 +712,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TruncationPreviewsKt.TruncatedMaxLinesEllipsisPreview.png",
+      "cleanBasename": "TruncatedMaxLinesEllipsisPreview.png",
       "findings": [],
       "functionName": "TruncatedMaxLinesEllipsisPreview",
       "module": "android",
@@ -722,7 +722,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TruncationPreviewsKt.TruncatedWidthNoWrapPreview.png",
+      "cleanBasename": "TruncatedWidthNoWrapPreview.png",
       "findings": [],
       "functionName": "TruncatedWidthNoWrapPreview",
       "module": "android",
@@ -732,7 +732,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "TypographyGalleryKt.TypographySpecimenPreview_Typography_specimen.png",
+      "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
       "findings": [],
       "functionName": "TypographySpecimenPreview",
       "module": "android",
@@ -772,7 +772,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.AppPreview.png",
+      "cleanBasename": "AppPreview.png",
       "findings": [],
       "functionName": "AppPreview",
       "module": "cmp",
@@ -782,7 +782,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.BlueBoxPreview_Blue_Box.png",
+      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
       "findings": [],
       "functionName": "BlueBoxPreview",
       "module": "cmp",
@@ -792,7 +792,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PseudolocalePreviewsKt.CmpPseudoBidi_bidi.png",
+      "cleanBasename": "CmpPseudoBidi_bidi.png",
       "findings": [],
       "functionName": "CmpPseudoBidi",
       "module": "cmp",
@@ -802,7 +802,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PseudolocalePreviewsKt.CmpPseudoDefault_default.png",
+      "cleanBasename": "CmpPseudoDefault_default.png",
       "findings": [],
       "functionName": "CmpPseudoDefault",
       "module": "cmp",
@@ -812,7 +812,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard_Demo.png",
+      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
       "findings": [],
       "functionName": "KeyboardDemoPreview",
       "module": "cmp",
@@ -822,7 +822,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch_Drawing.png",
+      "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing.png",
       "findings": [],
       "functionName": "MultiTouchDrawingPreview",
       "module": "cmp",
@@ -832,7 +832,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch_Drawing_seeded.png",
+      "cleanBasename": "MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png",
       "findings": [],
       "functionName": "MultiTouchDrawingSeededPreview",
       "module": "cmp",
@@ -842,7 +842,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PinchToZoomPreviewKt.PinchToZoomPreview_Pinch_To_Zoom.png",
+      "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
       "findings": [],
       "functionName": "PinchToZoomPreview",
       "module": "cmp",
@@ -852,7 +852,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.RedBoxPreview_Red_Box.png",
+      "cleanBasename": "RedBoxPreview_Red_Box.png",
       "findings": [],
       "functionName": "RedBoxPreview",
       "module": "cmp",
@@ -882,7 +882,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.WallpaperDemoPreview_Wallpaper_Demo.png",
+      "cleanBasename": "WallpaperDemoPreview_Wallpaper_Demo.png",
       "findings": [],
       "functionName": "WallpaperDemoPreview",
       "module": "cmp",
@@ -982,7 +982,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "com.example.sdkmatrix.MatrixPreviewKt.SdkMatrixPreview_SdkMatrixPreview.png",
+      "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
       "module": "sdk-matrix",
@@ -991,8 +991,8 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.a11y.png",
-      "cleanBasename": "PreviewsKt.ActivityListFontScalesPreview_Fonts_-_Large.png",
+      "annotatedBasename": "ActivityListFontScalesPreview_Fonts_Large.a11y.png",
+      "cleanBasename": "ActivityListFontScalesPreview_Fonts_Large.png",
       "findings": [],
       "functionName": "ActivityListFontScalesPreview",
       "module": "wear",
@@ -1021,8 +1021,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.a11y.png",
-      "cleanBasename": "PreviewsKt.ActivityListPreview_Devices_-_Large_Round.png",
+      "annotatedBasename": "ActivityListPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ActivityListPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "ActivityListPreview",
       "module": "wear",
@@ -1031,8 +1031,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
-      "cleanBasename": "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png",
+      "annotatedBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient.a11y.png",
+      "cleanBasename": "AmbientStatusAmbientPreview_Ambient_body_ambient.png",
       "findings": [],
       "functionName": "AmbientStatusAmbientPreview",
       "module": "wear",
@@ -1041,8 +1041,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
-      "cleanBasename": "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png",
+      "annotatedBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive.a11y.png",
+      "cleanBasename": "AmbientStatusInteractivePreview_Ambient_body_interactive.png",
       "findings": [],
       "functionName": "AmbientStatusInteractivePreview",
       "module": "wear",
@@ -1051,8 +1051,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.a11y.png",
-      "cleanBasename": "PreviewsKt.BadWearButtonPreview_Devices_-_Small_Round.png",
+      "annotatedBasename": "BadWearButtonPreview_Devices_Small_Round.a11y.png",
+      "cleanBasename": "BadWearButtonPreview_Devices_Small_Round.png",
       "findings": [
         {
           "boundsInScreen": "144,144,240,240",
@@ -1069,8 +1069,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.a11y.png",
-      "cleanBasename": "PreviewsKt.ButtonPreview_Devices_-_Large_Round.png",
+      "annotatedBasename": "ButtonPreview_Devices_Large_Round.a11y.png",
+      "cleanBasename": "ButtonPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "ButtonPreview",
       "module": "wear",
@@ -1080,7 +1080,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "PreviewsKt.CircularProgressIndicatorPreview_Devices_-_Large_Round.png",
+      "cleanBasename": "CircularProgressIndicatorPreview_Devices_Large_Round.png",
       "findings": [],
       "functionName": "CircularProgressIndicatorPreview",
       "module": "wear",
