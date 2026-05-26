@@ -2,156 +2,16 @@
   "entries": [
     {
       "module": "android",
-      "pngBasename": "NotificationPreviewsKt.bigTextNotificationPreview.png",
-      "previewId": "NotificationPreviewsKt.bigTextNotificationPreview",
+      "pngBasename": "bigTextNotificationPreview.png",
+      "previewId": "bigTextNotificationPreview",
       "sha256": "97fface431033f04735fc3c77c309fedd3a341f45945af8d99b9041f78ac97e1",
       "sidecarBasename": ""
     },
     {
       "module": "android",
-      "pngBasename": "NotificationPreviewsKt.simpleNotificationPreview.png",
-      "previewId": "NotificationPreviewsKt.simpleNotificationPreview",
+      "pngBasename": "simpleNotificationPreview.png",
+      "previewId": "simpleNotificationPreview",
       "sha256": "7f9c3deb972c4f9471003b5448a011dd09042171f5210b72c2d43b77868e2108",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.ActionsPreview_Actions.png",
-      "previewId": "NotificationStyleGalleryKt.ActionsPreview_Actions",
-      "sha256": "2bdddace6c90bbb00926378864bbf2f18cb9b5b1ff694ba61baf3de404d7506d",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture.png",
-      "previewId": "NotificationStyleGalleryKt.BigPictureStylePreview_Big_picture",
-      "sha256": "49de22e7b0f2305389fa16d5eb019118075870fec335e0bb6d44b603eb11c4dd",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface_collapsed.png",
-      "previewId": "NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface_collapsed",
-      "sha256": "d1659cd5556965371a3f9861e0070b68f79852befef67fa2eed9ef86563f8fc6",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view.png",
-      "previewId": "NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated_custom_view",
-      "sha256": "2133dac01e95057a1784a1bd5ed13c60395c28d1201c56bb1fd2a393ed1df8c3",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface_expanded.png",
-      "previewId": "NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface_expanded",
-      "sha256": "66b87a2fa5c2dd86cebcda1ad28255267f5a4ce7ec84f71fd34f898ae80e600f",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.GroupedSummaryPreview_Edge_grouped_summary.png",
-      "previewId": "NotificationStyleGalleryKt.GroupedSummaryPreview_Edge_grouped_summary",
-      "sha256": "7da0692520f2f291a7491638d8614de6655e5b4fde4f194dce03c63b4aa25479",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface_heads-up.png",
-      "previewId": "NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface_heads-up",
-      "sha256": "d1659cd5556965371a3f9861e0070b68f79852befef67fa2eed9ef86563f8fc6",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style.png",
-      "previewId": "NotificationStyleGalleryKt.InboxStylePreview_Inbox_style",
-      "sha256": "cb49fcb4b532c85f11cc813a758d3ce4804232c8b9b01869b3456fa3cdc48386",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.LongTitlePreview_Edge_long_title.png",
-      "previewId": "NotificationStyleGalleryKt.LongTitlePreview_Edge_long_title",
-      "sha256": "090bc30c72d0e2c153b3f893c8c5a53596d724ab80e1395f6ee8b2f45f9900cd",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.ManyActionsPreview_Edge_many_actions.png",
-      "previewId": "NotificationStyleGalleryKt.ManyActionsPreview_Edge_many_actions",
-      "sha256": "29a9907549ebc26d3ec959606d4a31bbc54aa11825d962b65253125b33461dfb",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.MediaStylePreview_Media_style.png",
-      "previewId": "NotificationStyleGalleryKt.MediaStylePreview_Media_style",
-      "sha256": "2b34d82299dfc2a17c08159a40901509a07c588751e5062e2d8319bb5bf1200c",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style.png",
-      "previewId": "NotificationStyleGalleryKt.MessagingStylePreview_Messaging_style",
-      "sha256": "dfff0048dbc2251d11a6a47f4f1ce61830ad34d26947f29293dad86a7b5d4ce6",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.NoLargeIconPreview_Edge_no_large_icon.png",
-      "previewId": "NotificationStyleGalleryKt.NoLargeIconPreview_Edge_no_large_icon",
-      "sha256": "d3f855123386b535418e65d054f03fbbe2e6716d7fffee3a5754ec73c3e096e5",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationStyleGalleryKt.NoTextPreview_Edge_no_text.png",
-      "previewId": "NotificationStyleGalleryKt.NoTextPreview_Edge_no_text",
-      "sha256": "fdb6e3347bff6a0928ec0e29fee4d20b94da4230f4b0e64bc21a8411e1c6ba14",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
-      "sha256": "24799e80bf2fe16ba60bdf0d57130c93ec9357bf1d290cb0bcc866742a8c350f",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Dark.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Dark",
-      "sha256": "1d58d10a58e709f399571eeb86a56982425c1888ee0c385d9376ee36ba35d7f6",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_German.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_German",
-      "sha256": "0e3542961a14397b397e58eb7bea5b9b5b84db44aa78b300995817b6b3874cad",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Japanese",
-      "sha256": "d05810b99af727f7e210abdbcca84861fb0b0016c79cf1f0a8f0c3a5a9754118",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Large_font.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Large_font",
-      "sha256": "1fa36172d49bdabd312fecafee1fc64e9d94d64fd62893f45de4dec9a012e642",
-      "sidecarBasename": ""
-    },
-    {
-      "module": "android",
-      "pngBasename": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Light.png",
-      "previewId": "NotificationVariantPreviewsKt.BigTextVariantsPreview_Light",
-      "sha256": "50930c413d84ec47a2baa9e50c4bca32cffc9782dd08b010aa8797e3080c0707",
       "sidecarBasename": ""
     }
   ]
