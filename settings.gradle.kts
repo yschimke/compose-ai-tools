@@ -22,6 +22,12 @@ val matrixRobolectricVersion: String? =
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
+    // Local Mosaic fork, scoped to the `com.jakewharton.mosaic` group so it can't shadow any
+    // other dependency. Populated by `cd ../mosaic && ./gradlew publishToMavenLocal` against
+    // the `compose-ai-tools` branch (PR yschimke/mosaic#1). When the publication is absent the
+    // version pin in `gradle/libs.versions.toml` falls through to upstream stable on
+    // mavenCentral. See `tui-cli/MOSAIC-FORK.md` for the full workflow + rationale.
+    mavenLocal { content { includeGroup("com.jakewharton.mosaic") } }
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
@@ -41,6 +47,16 @@ dependencyResolutionManagement {
 rootProject.name = "compose-ai-tools"
 
 includeBuild("gradle-plugin")
+
+// Local fork of Mosaic carrying the four-commit `compose-ai-tools` branch from
+// https://github.com/yschimke/mosaic/pull/1 — adds `RawText` and an `Image` composable
+// (Kitty Graphics + half-block fallback) that this module's RFCs propose upstream. We don't
+// use `includeBuild("../mosaic")` here because Mosaic's `build-support` plugin uses
+// `java.net.http.HttpClient.use { }` (JDK 21+) while our Gradle daemon is pinned to JDK 17
+// in `gradle/gradle-daemon-jvm.properties`. The two builds have incompatible toolchain
+// floors. Instead, see `tui-cli/MOSAIC-FORK.md` for the publish-to-mavenLocal workflow that
+// builds Mosaic on JDK 21 once, then lets this build consume the artefacts via
+// `mavenLocal()` (added to `dependencyResolutionManagement.repositories` below).
 
 include(":cli")
 

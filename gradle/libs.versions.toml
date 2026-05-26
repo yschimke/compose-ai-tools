@@ -135,11 +135,15 @@ material-kolor = "4.0.5"
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
 metro = "1.1.1"
-# Jake Wharton's Mosaic — Compose-based TUI library, used by `:tui-cli`. 0.18.0 is the
-# current stable line (released 2025-08); the Kotlin compose-compiler plugin pulled in via
-# our toolchain is what compiles the @Composable functions, so no separate Mosaic gradle
-# plugin is needed. See `tui-cli/LIMITATIONS.md` for the API gaps we'd want closed in a fork.
-mosaic = "0.18.0"
+# Jake Wharton's Mosaic — Compose-based TUI library, used by `:tui-cli`. 0.19.0-SNAPSHOT is
+# the version published by the local fork at `yschimke/mosaic@compose-ai-tools` (PR #1) which
+# adds the `RawText` + `Image` composables proposed in `tui-cli/MOSAIC-IMAGE-RFC.md`. The
+# fork's artefact is consumed via `mavenLocal()` (scoped to the `com.jakewharton.mosaic`
+# group in `settings.gradle.kts`); when the local publication is absent this version pin
+# falls back to whatever 0.19.0 line ships upstream. Bump to a stable release tag once the
+# upstream PR lands. The Kotlin compose-compiler plugin pulled in via our toolchain is what
+# compiles the @Composable functions, so no separate Mosaic gradle plugin is needed.
+mosaic = "0.19.0-SNAPSHOT"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
