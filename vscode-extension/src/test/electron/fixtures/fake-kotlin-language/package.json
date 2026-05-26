@@ -1,0 +1,24 @@
+{
+    "name": "fake-kotlin-language",
+    "displayName": "Kotlin language id (test stub)",
+    "description": "Test-only fixture that registers the `kotlin` languageId so .kt files in the e2e workspaces resolve to it. The compose-preview extension's onDidChangeActiveTextEditor preload path bails unless `editor.document.languageId === \"kotlin\"`, and the test electron host doesn't load a real Kotlin extension. Contributes language metadata only — no grammar, no client.",
+    "publisher": "test",
+    "version": "0.0.0-test",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "kotlin",
+                "extensions": [
+                    ".kt",
+                    ".kts"
+                ],
+                "aliases": [
+                    "Kotlin"
+                ]
+            }
+        ]
+    }
+}

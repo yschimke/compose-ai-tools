@@ -61,6 +61,17 @@ async function main(): Promise<void> {
         fixturesRoot,
         "fake-vscode-gradle",
     );
+    // Contributes the `kotlin` languageId so .kt files in the e2e workspaces
+    // resolve to it. The compose-preview extension's
+    // `onDidChangeActiveTextEditor` preload path bails unless
+    // `editor.document.languageId === "kotlin"`, and the test electron host
+    // doesn't bundle a real Kotlin extension. Without this, the cached-preload
+    // suite trips on `setTextDocumentLanguage(doc, "kotlin")` with
+    // `Error: Unknown language id: kotlin`.
+    const fakeKotlinLanguagePath = path.join(
+        fixturesRoot,
+        "fake-kotlin-language",
+    );
 
     console.log(
         `[runTest] extensionDevelopmentPath=${extensionDevelopmentPath}`,
@@ -68,6 +79,7 @@ async function main(): Promise<void> {
     console.log(`[runTest] extensionTestsPath=${extensionTestsPath}`);
     console.log(`[runTest] workspacePath=${workspacePath}`);
     console.log(`[runTest] fakeGradleExtensionPath=${fakeGradleExtensionPath}`);
+    console.log(`[runTest] fakeKotlinLanguagePath=${fakeKotlinLanguagePath}`);
 
     const vscodeExecutablePath = await downloadAndUnzipVSCode("stable");
     console.log(`[runTest] vscodeExecutablePath=${vscodeExecutablePath}`);
@@ -85,6 +97,7 @@ async function main(): Promise<void> {
         extensionDevelopmentPath: [
             extensionDevelopmentPath,
             fakeGradleExtensionPath,
+            fakeKotlinLanguagePath,
         ],
         extensionTestsPath,
         // CI-friendly launch args:
