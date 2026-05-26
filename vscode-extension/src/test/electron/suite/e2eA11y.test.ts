@@ -101,17 +101,94 @@ function dumpA11yFailureDiagnostics(
     for (const line of tail) {
         console.log(`[e2e-a11y-diag/channel] ${line}`);
     }
-    const stableSummary = (raw: unknown): string => {
-        const m = raw as { command?: string; previewId?: string };
-        const cmd = m?.command ?? "<no-command>";
-        const id = m?.previewId ? ` previewId=${m.previewId}` : "";
-        return `${cmd}${id}`;
-    };
-    for (const raw of posted.slice(-30)) {
-        console.log(`[e2e-a11y-diag/posted] ${stableSummary(raw)}`);
+    // Compact the chatty `setProgress`/`clearProgress` stream so they don't
+    // crowd out the actually-interesting `updateA11y` / `webviewA11yState` /
+    // `updateDataProducts` lines when the buffer holds dozens of progress
+    // frames per render. Each summarised group counts the run; the first
+    // non-progress message ends the group.
+    interface Counted {
+        kind: "single" | "progress-group";
+        text: string;
     }
-    for (const raw of received.slice(-30)) {
-        console.log(`[e2e-a11y-diag/received] ${stableSummary(raw)}`);
+    const compact = (msgs: unknown[]): Counted[] => {
+        const out: Counted[] = [];
+        let groupCmd: string | null = null;
+        let groupCount = 0;
+        const flush = () => {
+            if (groupCmd && groupCount > 0) {
+                out.push({
+                    kind: "progress-group",
+                    text: `${groupCmd} ×${groupCount}`,
+                });
+            }
+            groupCmd = null;
+            groupCount = 0;
+        };
+        for (const raw of msgs) {
+            const m = raw as {
+                command?: string;
+                previewId?: string;
+                nodesCount?: unknown;
+                findingsCount?: unknown;
+                kinds?: unknown;
+                findings?: unknown[];
+                nodes?: unknown[];
+                dataProducts?: unknown[];
+            };
+            const cmd = m?.command ?? "<no-command>";
+            if (cmd === "setProgress" || cmd === "clearProgress") {
+                if (cmd === groupCmd) {
+                    groupCount++;
+                } else {
+                    flush();
+                    groupCmd = cmd;
+                    groupCount = 1;
+                }
+                continue;
+            }
+            flush();
+            const fields: string[] = [];
+            if (typeof m?.previewId === "string") {
+                fields.push(`previewId=${m.previewId}`);
+            }
+            // Detail fields useful for the wear-a11y diagnosis: full
+            // count surface of webviewA11yState, plus the upstream
+            // updateA11y shape that drives it (findings/nodes arrays
+            // on host posts). `updateDataProducts` carries the daemon's
+            // attached payload kinds, which is what we ultimately need
+            // to know "did the daemon emit a11y data this render?".
+            if ("nodesCount" in m) fields.push(`nodesCount=${m.nodesCount}`);
+            if ("findingsCount" in m)
+                fields.push(`findingsCount=${m.findingsCount}`);
+            if (Array.isArray(m?.findings))
+                fields.push(`findings=${m.findings.length}`);
+            if (Array.isArray(m?.nodes)) fields.push(`nodes=${m.nodes.length}`);
+            if (Array.isArray(m?.dataProducts)) {
+                const kinds = (m.dataProducts as Array<{ kind?: string }>).map(
+                    (dp) => dp?.kind ?? "<?>",
+                );
+                fields.push(`dataProducts=[${kinds.join(",")}]`);
+            }
+            if (Array.isArray(m?.kinds)) {
+                fields.push(`kinds=[${(m.kinds as unknown[]).join(",")}]`);
+            }
+            out.push({
+                kind: "single",
+                text: `${cmd}${fields.length ? " " + fields.join(" ") : ""}`,
+            });
+        }
+        flush();
+        return out;
+    };
+    // Cap the tail we dump so a long suite doesn't drown the workflow log,
+    // but keep enough room (60) for renderStarted + per-card setProgress
+    // burst + renderFinished + updateA11y + ack from a fresh render to
+    // fit comfortably.
+    for (const entry of compact(posted).slice(-60)) {
+        console.log(`[e2e-a11y-diag/posted] ${entry.text}`);
+    }
+    for (const entry of compact(received).slice(-60)) {
+        console.log(`[e2e-a11y-diag/received] ${entry.text}`);
     }
 }
 
