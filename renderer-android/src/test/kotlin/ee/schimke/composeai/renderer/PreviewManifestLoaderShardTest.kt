@@ -31,11 +31,13 @@ class PreviewManifestLoaderShardTest {
     }
 
     private fun productRow(id: String, cost: Float): PreviewRow {
+        // `@ScrollingPreview(modes = [LONG])` alone produces ONLY a data product — no static
+        // capture sibling (issue #1524). Sharding still needs to weigh data-product cost.
         val entry = RenderPreviewEntry(
             id = id,
             functionName = id,
             className = "com.example.PreviewsKt",
-            captures = listOf(RenderPreviewCapture(renderOutput = "renders/$id.png", cost = 1f)),
+            captures = emptyList(),
             dataProducts =
                 listOf(
                     RenderPreviewDataProduct(

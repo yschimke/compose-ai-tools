@@ -418,7 +418,12 @@ abstract class RobolectricRenderTestBase(
         // Drop any stale .error.json from a prior run before attempting a
         // fresh render. If today's render succeeds, the panel doesn't want
         // to surface yesterday's exception alongside the new PNG.
-        val pngFile = outputFileFor(preview.captures.first(), outputDir)
+        // `@ScrollingPreview(modes = [LONG/GIF])` with no other captures lands
+        // here with an empty captures list (issue #1524) — use the first data
+        // product as the sidecar anchor instead so the same per-output error
+        // surface keeps working.
+        val pngFile = preview.captures.firstOrNull()?.let { outputFileFor(it, outputDir) }
+            ?: outputFileFor(preview.dataProducts.first(), outputDir)
         RenderErrorSidecar.deleteStale(pngFile)
 
         // Catch Throwable per preview. Today, a throw inside the preview

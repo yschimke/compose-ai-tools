@@ -43,10 +43,9 @@ class CleanStaleRendersTest {
   @Test
   fun `missing output check includes scroll data products`() {
     val outDir = tempDir.root.resolve("build/compose-previews")
-    outDir.resolve("renders/Foo.png").also {
-      it.parentFile.mkdirs()
-      it.writeBytes(byteArrayOf(1))
-    }
+    // `@ScrollingPreview(modes = [LONG])` alone produces ONLY a data product — discovery
+    // no longer emits a phantom `renders/<id>.png` capture (issue #1524). The product must
+    // still exist on disk for the preview to be considered rendered.
     val manifest =
       PreviewManifest(
         module = "app",
@@ -57,7 +56,7 @@ class CleanStaleRendersTest {
               id = "Foo",
               functionName = "Foo",
               className = "com.example.PreviewsKt",
-              captures = listOf(Capture(renderOutput = "renders/Foo.png")),
+              captures = emptyList(),
               dataProducts =
                 listOf(
                   PreviewDataProduct(
@@ -85,10 +84,6 @@ class CleanStaleRendersTest {
   @Test
   fun `fast tier tolerates missing heavy data products`() {
     val outDir = tempDir.root.resolve("build/compose-previews")
-    outDir.resolve("renders/Foo.png").also {
-      it.parentFile.mkdirs()
-      it.writeBytes(byteArrayOf(1))
-    }
     val manifest =
       PreviewManifest(
         module = "app",
@@ -99,7 +94,7 @@ class CleanStaleRendersTest {
               id = "Foo",
               functionName = "Foo",
               className = "com.example.PreviewsKt",
-              captures = listOf(Capture(renderOutput = "renders/Foo.png")),
+              captures = emptyList(),
               dataProducts =
                 listOf(
                   PreviewDataProduct(

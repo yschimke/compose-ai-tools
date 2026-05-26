@@ -1008,12 +1008,16 @@ object PreviewDiscovery {
 
     // When ONLY @AnimatedPreview (or @FocusedPreview(gif = true)) is on the function, the
     // scroll/time/focus cross-product would still emit one (null, null, null) row — i.e. a
-    // static PNG capture. Suppress that to keep single-output annotations clean.
+    // static PNG capture. Suppress that to keep single-output annotations clean. The same
+    // applies to @ScrollingPreview with only data-product modes (LONG/GIF): the data product
+    // IS the rendered output (the tall stitched PNG / scrolling GIF), so a sibling static
+    // `renders/<id>.png` would just be the unscrolled initial frame — misleading, and the
+    // exact regression issue #1524 reported.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveFocuses.isNotEmpty() ||
-        (effectiveAnimation == null && effectiveFocusGif == null)
+        (effectiveAnimation == null && effectiveFocusGif == null && productScrolls.isEmpty())
 
     val scrollTimeCaptures: List<Capture> =
       if (!emitStaticCross) emptyList()

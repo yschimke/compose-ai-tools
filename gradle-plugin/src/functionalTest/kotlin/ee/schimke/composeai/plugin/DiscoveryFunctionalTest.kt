@@ -649,7 +649,11 @@ class DiscoveryFunctionalTest {
     }
 
     val longPreview = manifest.previews.single { it.functionName == "LongScrollPreview" }
-    assertThat(longPreview.captures.single().scroll).isNull()
+    // `@ScrollingPreview(modes = [LONG])` with nothing else cross-products to a static frame
+    // produces ONLY a data product — no phantom `renders/<id>.png` capture. The data product
+    // IS the rendered output; emitting a sibling static would just write the unscrolled
+    // initial frame to renders/, which is what issue #1524 reported as confusing.
+    assertThat(longPreview.captures).isEmpty()
     assertThat(longPreview.dataProducts.single().scroll)
       .isEqualTo(
         ScrollCapture(
@@ -691,8 +695,8 @@ class DiscoveryFunctionalTest {
     // `_SCROLL_gif` suffix) and round-trips `frameIntervalMs` onto the
     // manifest so the renderer can honour it.
     val gifOnly = manifest.previews.single { it.functionName == "GifScrollPreview" }
-    assertThat(gifOnly.captures).hasSize(1)
-    assertThat(gifOnly.captures.single().scroll).isNull()
+    // GIF-only follows the same rule as LONG-only — pure data product, no static sibling.
+    assertThat(gifOnly.captures).isEmpty()
     assertThat(gifOnly.dataProducts.single().scroll)
       .isEqualTo(
         ScrollCapture(
