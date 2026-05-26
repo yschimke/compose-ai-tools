@@ -34,11 +34,14 @@
 set -euo pipefail
 
 DEFAULT_REPO_URL="https://github.com/joreilly/Confetti.git"
-# Pinned to the commit that bumped composeai-preview to 0.9.1 (PR #1689).
-# Picked because it's the most recent point where the catalog declares our
-# plugin id, so future Confetti reshuffles can't silently break the suite.
-# Bump when we want to test against newer downstream code.
-DEFAULT_REPO_REF="2044dcc7efe90773b71eecf84ebc318327837984"
+# Track `main` rather than a pinned SHA. Lets the suite pick up upstream
+# fixes (e.g. catalog dep adjustments needed for new plugin task wiring)
+# without requiring a separate bump PR, and the catalog rewrite below
+# still pins our plugin version to the SNAPSHOT we just published, so the
+# only drift we're tracking is Confetti's own code. Override with
+# `EXTERNAL_REPO_REF=<sha>` from `workflow_dispatch` when reproducing a
+# specific regression.
+DEFAULT_REPO_REF="main"
 
 target_dir="${1:-/tmp/compose-preview-external-e2e}"
 repo_url="${EXTERNAL_REPO_URL:-$DEFAULT_REPO_URL}"
@@ -88,7 +91,14 @@ else
     current="$(git rev-parse HEAD)"
     if [[ "$current" != "$repo_ref"* ]]; then
       git fetch --depth 1 origin "$repo_ref"
-      git checkout -q FETCH_HEAD
+      # `--force` discards uncommitted edits in the existing checkout
+      # before moving HEAD. Required because the catalog rewrite below
+      # is regenerated on every run and stays uncommitted: a plain
+      # `checkout` would refuse with "your local changes would be
+      # overwritten" the moment upstream advances `libs.versions.toml`
+      # itself. The rewrite is re-applied right below, so dropping it
+      # here is safe.
+      git checkout -fq FETCH_HEAD
     fi
   )
 fi

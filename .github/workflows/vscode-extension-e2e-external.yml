@@ -3,9 +3,10 @@ name: VS Code Extension E2E (external consumer)
 # Companion to `vscode-extension-e2e.yml`. That workflow drives the
 # extension against `:samples:cmp` / `:samples:wear`, both wired via
 # `includeBuild("gradle-plugin")` — the dev-loop path. This workflow drives
-# the extension against `joreilly/Confetti` (pinned SHA), with the plugin
-# resolved through the consumer's `gradle/libs.versions.toml` against the
-# local SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
+# the extension against `joreilly/Confetti` (tracking `main`, override via
+# `EXTERNAL_REPO_REF` from workflow_dispatch), with the plugin resolved
+# through the consumer's `gradle/libs.versions.toml` against the local
+# SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
 # plugin-coordinate gap: the in-repo suite can't catch regressions where the
 # plugin works fine via `includeBuild` but fails as a published artifact
 # against a real KMP/AGP/Compose classpath.
@@ -30,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       confetti_ref:
-        description: "Confetti git SHA / branch / tag (defaults to the pin in setup-external-e2e.sh)"
+        description: "Confetti git SHA / branch / tag (defaults to `main`; see setup-external-e2e.sh)"
         required: false
         type: string
   push:
@@ -112,11 +113,11 @@ jobs:
         working-directory: vscode-extension
         run: npm run compile
 
-      # Prepare the external workspace: clone Confetti at the pinned SHA
-      # (or the workflow_dispatch override), rewrite its catalog to
-      # point at the SNAPSHOT we just published, seed local.properties
-      # with the runner's Android SDK path. Stdout is the prepared
-      # workspace path — capture it and forward to the test runner.
+      # Prepare the external workspace: clone Confetti at `main` (or the
+      # `EXTERNAL_REPO_REF` workflow_dispatch override), rewrite its
+      # catalog to point at the SNAPSHOT we just published, seed
+      # local.properties with the runner's Android SDK path. Stdout is the
+      # prepared workspace path — capture it and forward to the test runner.
       - name: Prepare external workspace (Confetti)
         id: prepare
         env:
