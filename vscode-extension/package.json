@@ -85,6 +85,11 @@
                 "category": "Compose Preview"
             },
             {
+                "command": "composePreview.verify",
+                "title": "Verify (cross-check manifest, disk, and panel state)",
+                "category": "Compose Preview"
+            },
+            {
                 "command": "composePreview.copyDoctorReport",
                 "title": "Copy Doctor Report (for bug reports)",
                 "category": "Compose Preview",

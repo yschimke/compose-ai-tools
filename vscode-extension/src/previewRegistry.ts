@@ -88,6 +88,13 @@ export class PreviewRegistry {
         );
     }
 
+    /** Image bytes the registry currently holds for [previewId], or `null` when the entry
+     *  is unknown or has never been set. Used by the consistency-verify command to detect
+     *  "panel shows placeholder while disk has a PNG" without exposing the internal Map. */
+    getImage(previewId: string): string | null {
+        return this.byId.get(previewId)?.imageBase64 ?? null;
+    }
+
     dispose(): void {
         this._onDidChange.dispose();
     }
