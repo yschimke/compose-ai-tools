@@ -5359,19 +5359,26 @@ async function handleSetDataExtensionEnabled(
     // module's a11y subscription aggregate (derived from its
     // `subscribedPairs`) and reports the first-on / last-off transition
     // here so the panel can decide whether to repaint.
-    const { a11yTransition } = await daemonScheduler.setDataProductSubscription(
+    // Single subscription call so the wire sees `data/subscribe` per kind followed by exactly
+    // one `renderNow`. The daemon owns the follow-through: the renderNow inside
+    // `setDataProductSubscription` runs with `mode=a11y` (per the
+    // `subscriptionDrivenRenderMode` machinery) and the resulting `renderFinished` carries the
+    // attachments to `onDataProductsAttached`, which paints the overlay via `applyA11yUpdate`.
+    // No extension-side refresh is needed.
+    //
+    // Earlier code fired `refresh(true, undefined, "fast")` here to "kick the panel to repaint
+    // with the freshly-arrived data products" — but a11y is daemon-only (the standalone Gradle
+    // render doesn't produce a11y artefacts), and `refresh(true)` posts `markAllLoading` against
+    // every card. When the daemon's subscribe-driven render comes back with `unchanged=true`
+    // (typical: image bytes don't change, only the attachments do), `paintCardCapture` never
+    // runs and the loading overlay sticks. Dropping the call lets the daemon's own pipeline
+    // drive the repaint, which it does end-to-end via `onDataProductsAttached` → `updateA11y`.
+    await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
         filteredKinds,
         enabled,
     );
-    if (a11yTransition !== "unchanged") {
-        // The daemon's `setDataProductSubscription` already changed which post-capture
-        // products attach on the next render — that's the actual a11y enablement now (a11y is
-        // daemon-only; the standalone Gradle task doesn't run ATF). The follow-up `refresh()`
-        // just kicks the panel to repaint with the freshly-arrived data products.
-        void refresh(true, undefined, "fast");
-    }
     if (!enabled) {
         // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
         // down the cached overlay/legend immediately so the visual layer clears without
