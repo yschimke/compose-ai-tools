@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.11.12](https://github.com/yschimke/compose-ai-tools/compare/v0.11.11...v0.11.12) (2026-05-26)
+
+
+### Features
+
+* add per-card loading spinner for data extension subscriptions ([#1537](https://github.com/yschimke/compose-ai-tools/issues/1537)) ([f816202](https://github.com/yschimke/compose-ai-tools/commit/f8162028839aa2175bb30ae94d1f75cb535d32ec))
+
+
+### Bug Fixes
+
+* **daemon:** ScopedDataProducts forwards renderModeFor to the owning … ([#1535](https://github.com/yschimke/compose-ai-tools/issues/1535)) ([30baaab](https://github.com/yschimke/compose-ai-tools/commit/30baaab05b425a9115ca6fe965be9173ca734fba))
+* **plugin:** nicer renderOutput sanitiser, per-preview shortest unique stem ([#1530](https://github.com/yschimke/compose-ai-tools/issues/1530)) ([f5b8d08](https://github.com/yschimke/compose-ai-tools/commit/f5b8d081ede765687c3639e88202c920207731d6))
+* stop emitting phantom static capture for @ScrollingPreview LONG/GIF-only ([#1526](https://github.com/yschimke/compose-ai-tools/issues/1526)) ([d5def43](https://github.com/yschimke/compose-ai-tools/commit/d5def436cc4fb766be6980a8e1533678e010a25f))
+* **vscode-extension:** a11y toggle works without composePreview.early… ([#1534](https://github.com/yschimke/compose-ai-tools/issues/1534)) ([f3fd784](https://github.com/yschimke/compose-ai-tools/commit/f3fd784a023675582eeedafa577d6f39e401f053))
+* **vscode-extension:** backfill @ScrollingPreview image data products via Gradle ([#1516](https://github.com/yschimke/compose-ai-tools/issues/1516)) ([f9699d1](https://github.com/yschimke/compose-ai-tools/commit/f9699d1b97f7667390d20d52bf4388933a52b9c4))
+* **vscode-extension:** backfill @ScrollingPreview image data products via Gradle ([#1519](https://github.com/yschimke/compose-ai-tools/issues/1519)) ([a580b25](https://github.com/yschimke/compose-ai-tools/commit/a580b250cb6216f7d0be2740acd734dd19c86f1e))
+* **vscode-extension:** drop post-subscribe refresh that stuck a11y ca… ([#1536](https://github.com/yschimke/compose-ai-tools/issues/1536)) ([8115bb6](https://github.com/yschimke/compose-ai-tools/commit/8115bb64b7e7c83eecdd4a26ae30de91f3504534))
+* **vscode-extension:** keep @ScrollingPreview cards at device aspect ratio in every layout ([#1531](https://github.com/yschimke/compose-ai-tools/issues/1531)) ([e38850d](https://github.com/yschimke/compose-ai-tools/commit/e38850df9b70c0d0cc4cc233e81edaf9d994ad9e))
+
 ## [0.11.11](https://github.com/yschimke/compose-ai-tools/compare/v0.11.10...v0.11.11) (2026-05-26)
 
 
