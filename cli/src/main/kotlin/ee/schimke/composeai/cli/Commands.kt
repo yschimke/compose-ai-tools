@@ -656,6 +656,17 @@ abstract class Command(protected val args: List<String>) {
 
 class ShowCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
+  // Auto-on when stdout is an interactive TTY in a kitty-graphics-capable terminal. Users
+  // opt out with `--images=off`; `--images=kitty` forces it on (still TTY-gated). `--json`
+  // always wins — escape sequences would corrupt the JSON envelope.
+  private val imagesMode: TerminalImages.Mode =
+    if (jsonOutput) TerminalImages.Mode.OFF
+    else
+      TerminalImages.resolve(
+        modeArg = args.flagValue("--images"),
+        env = { System.getenv(it) },
+        isTty = System.console() != null,
+      )
 
   override fun run() {
     val outcome =
@@ -731,6 +742,7 @@ class ShowCommand(args: List<String>) : Command(args) {
             println("  [$coord]$tag ${c.pngPath ?: ""}")
           }
         }
+        emitInlineImage(r)
       }
     }
 
@@ -755,6 +767,29 @@ class ShowCommand(args: List<String>) : Command(args) {
       if (shouldFailOnMissingRenders()) exitProcess(2)
     }
     System.out.flush()
+  }
+
+  /**
+   * Emit the rendered PNG(s) inline using the resolved terminal-images mode. Multi-capture previews
+   * — paused-clock frames with increasing `advanceTimeMillis` — become a native kitty animation;
+   * single-capture previews emit a still. Captures with no PNG (render produced nothing) are
+   * skipped so the animation doesn't include a phantom hole; the surrounding `[no PNG]` text tags
+   * still tell the user what happened.
+   */
+  private fun emitInlineImage(r: PreviewResult) {
+    if (imagesMode == TerminalImages.Mode.OFF) return
+    val rendered = r.captures.filter { it.pngPath != null }
+    if (rendered.isEmpty()) return
+    val pngs = rendered.mapNotNull { c -> c.pngPath?.let { File(it) }?.takeIf { it.isFile } }
+    if (pngs.size != rendered.size) return // some path didn't exist on disk — skip silently
+    val bytes = pngs.map { it.readBytes() }
+    if (bytes.size == 1) {
+      TerminalImages.emitStill(System.out, bytes[0])
+    } else {
+      val frames = TerminalImages.framesFromCaptures(bytes, rendered.map { it.advanceTimeMillis })
+      TerminalImages.emitAnimation(System.out, frames)
+    }
+    println()
   }
 }
 

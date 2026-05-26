@@ -140,6 +140,16 @@ private fun printUsage() {
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy matched preview PNG to this path (render)
+      --images[=<mode>]    show: emit rendered PNGs inline using the terminal's image protocol.
+                           Default `auto` — on by default in an interactive TTY when a
+                           kitty-graphics-capable terminal is detected (`KITTY_WINDOW_ID`,
+                           `TERM_PROGRAM` ∈ {WezTerm, ghostty}, or `TERM=xterm-kitty`); silent
+                           on every other terminal. Modes: `auto`, `kitty` (force; still
+                           TTY-gated), `off` (explicit silence). Multi-capture previews
+                           (paused-clock animation frames) emit as a native kitty animation;
+                           inter-frame gaps come from `advanceTimeMillis` deltas so playback
+                           matches the simulated clock. Always off when stdout is piped or
+                           `--json` is set so escape sequences don't pollute captured output.
       --progress           Print per-task milestone/heartbeat lines to stderr
       --verbose, -v        Show full Gradle build output (implies --progress)
       --timeout <seconds>  Gradle build timeout (default: 300)
