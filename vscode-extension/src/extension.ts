@@ -163,6 +163,11 @@ let dataExtensionStatusItem: vscode.StatusBarItem | null = null;
  *  window. Constructed in activate() so the timer callbacks are bound to
  *  the live `panel` / `outputChannel` references. See dataExtensionProgress.ts. */
 let dataExtensionTracker: DataExtensionProgressTracker | null = null;
+/** Preview ids currently displaying the per-card spinner overlay we drop on a
+ *  data-extension subscribe (see `handleSetDataExtensionEnabled`). Owned by the
+ *  host so the clearLoading post stays paired with the setLoading post even on
+ *  paths where the tracker resolves through callbacks (timeout, attach). */
+const extensionPendingPreviews = new Set<string>();
 /** Unfiltered emitter onto the "Compose Preview" output channel. Used by
  *  failure-data dumps (data-extension safety timeout, doctor report) that
  *  must surface regardless of `composePreview.logging.level`. */
@@ -1110,6 +1115,19 @@ export async function activate(
                               previewId,
                               dataProducts.map((dp) => dp.kind),
                           );
+                          // Tear down the per-card spinner once the first
+                          // payload arrives — `updateImage` already strips
+                          // the overlay when the primary PNG is dirty, but
+                          // subscription-driven renders routinely return
+                          // `unchanged=true` (the data product travels in
+                          // a separate file), so we'd otherwise leave the
+                          // spinner pinned until the safety timeout.
+                          if (extensionPendingPreviews.delete(previewId)) {
+                              panel?.postMessage({
+                                  command: "clearLoading",
+                                  previewId,
+                              });
+                          }
                           const decoded = applyDataProductsToRegistry(
                               registry,
                               previewId,
@@ -1444,6 +1462,7 @@ export async function activate(
         dispose: () => {
             dataExtensionTracker?.dispose();
             dataExtensionTracker = null;
+            extensionPendingPreviews.clear();
         },
     });
 
@@ -3536,6 +3555,15 @@ function applyDataExtensionStatus(
 function emitDataExtensionTimeoutDiagnostics(
     diag: DataExtensionPendingDiagnostics,
 ): void {
+    // Safety-net teardown for the per-card spinner: if the daemon never
+    // attached payloads, the overlay would otherwise stick until the next
+    // refresh painted over it.
+    if (extensionPendingPreviews.delete(diag.previewId)) {
+        panel?.postMessage({
+            command: "clearLoading",
+            previewId: diag.previewId,
+        });
+    }
     const lines: string[] = [];
     lines.push(
         `[data-extension-timeout] previewId=${diag.previewId} module=${diag.moduleId} ` +
@@ -5348,8 +5376,19 @@ async function handleSetDataExtensionEnabled(
             moduleId.modulePath,
             filteredKinds,
         );
+        // Drop the per-card spinner overlay onto the focused preview so the
+        // user gets immediate visual feedback for the in-flight subscribe.
+        // The slim panel-wide progress bar at the top is too subtle for a
+        // single-card toggle (and has a 200 ms paint delay that swallows
+        // fast-cache round-trips entirely). Cleared on resolve, on the
+        // tracker's safety timeout, and on the disable branch below.
+        extensionPendingPreviews.add(previewId);
+        panel?.postMessage({ command: "setLoading", previewId });
     } else {
         dataExtensionTracker?.resolve(previewId, filteredKinds);
+        if (extensionPendingPreviews.delete(previewId)) {
+            panel?.postMessage({ command: "clearLoading", previewId });
+        }
     }
     // Single subscription call so the wire sees `data/subscribe` per
     // kind followed by exactly one `renderNow`. Per-kind dispatch
