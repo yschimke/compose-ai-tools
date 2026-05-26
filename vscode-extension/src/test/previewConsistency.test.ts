@@ -229,6 +229,90 @@ describe("pngPathFor", () => {
         } as unknown as PreviewInfo;
         assert.strictEqual(pngPathFor("/ws", module, p), null);
     });
+
+    it("resolves to the scroll data-product output for @ScrollingPreview(LONG)", () => {
+        // The static base PNG the daemon writes (`renders/X.png`) is dropped by the panel
+        // — `withDataProductCaptures` replaces it with `data/render-scroll-long/X.png` so
+        // verify must check the data-product slot, not the daemon's static representative.
+        // Without this, missing scroll PNGs are misreported as "stale placeholder with PNG
+        // on disk" because the daemon's discarded base PNG happens to exist.
+        const module = mod(":app");
+        const p = {
+            ...preview("com.example.LongScroll", "renders/LongScroll.png"),
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: {
+                        mode: "LONG",
+                        axis: "VERTICAL",
+                        maxScrollPx: 0,
+                        reduceMotion: false,
+                        atEnd: false,
+                        reachedPx: null,
+                    },
+                    output: "data/render-scroll-long/LongScroll.png",
+                },
+            ],
+        } as unknown as PreviewInfo;
+        assert.strictEqual(
+            pngPathFor("/ws", module, p),
+            "/ws/app/build/compose-previews/data/render-scroll-long/LongScroll.png",
+        );
+    });
+});
+
+describe("verifyConsistency — scroll/data-product previews", () => {
+    it("reports no-image-anywhere when the scroll PNG is missing even if the daemon's static base PNG sits on disk", () => {
+        // Real-world repro from a Wear sample: 8 stuck placeholders, all scroll-long/gif.
+        // Pre-fix the verify counted the daemon's static `renders/<id>.png` as on-disk and
+        // reported "stale placeholder with PNG on disk" — but the panel ignores that PNG
+        // and was waiting for `data/render-scroll-long/<id>.png`, which never arrives in a
+        // daemon-only flow. After the fold, verify checks the correct slot.
+        const module = mod(":wear");
+        const p = {
+            ...preview(
+                "com.example.ActivityListLongPreview",
+                "renders/ActivityListLongPreview.png",
+            ),
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: {
+                        mode: "LONG",
+                        axis: "VERTICAL",
+                        maxScrollPx: 0,
+                        reduceMotion: false,
+                        atEnd: false,
+                        reachedPx: null,
+                    },
+                    output: "data/render-scroll-long/ActivityListLongPreview.png",
+                },
+            ],
+        } as unknown as PreviewInfo;
+        const result = verifyConsistency(
+            "/ws/wear/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p] }) as PreviewManifest,
+                }),
+                new Map(),
+                // Daemon's static base PNG happens to exist on disk; the scroll
+                // data-product PNG does not. Pre-fix this misreported as a stale
+                // placeholder; post-fix verify checks the scroll slot and reports
+                // the truthful "never rendered" state.
+                new Set([
+                    "/ws/wear/build/compose-previews/renders/ActivityListLongPreview.png",
+                ]),
+            ),
+        );
+        assert.strictEqual(result.inconsistencies.length, 1);
+        assert.strictEqual(result.inconsistencies[0].kind, "no-image-anywhere");
+        assert.strictEqual(result.diskPngCount, 0);
+    });
 });
 
 describe("describeVerifyResult", () => {
