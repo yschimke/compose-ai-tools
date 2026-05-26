@@ -35,9 +35,15 @@ renders them to PNG, and the extension loads those PNGs into a webview.
 A Kotlin LSP is **not required** to render previews — the Gradle plugin
 discovers `@Preview` annotations by scanning compiled `.class` files, so
 rendering, the preview panel, and the refresh / render-all commands all work
-without one. Installing a Kotlin extension that provides a language server
-(e.g. `fwcd.kotlin`, `kotlin-language-server`, or any LSP that registers the
-`kotlin` languageId and document-symbol provider) enables editor-side
+without one. The extension contributes the `kotlin` languageId for `.kt` /
+`.kts` files itself (metadata only — no grammar), so scope resolution still
+finds your preview file in bare hosts (e.g. Antigravity IDE) where no Kotlin
+extension is installed. Install a Kotlin extension when you want syntax
+highlighting and the language-server extras below — VS Code merges language
+contributions, so they layer on top.
+
+A language server (e.g. `fwcd.kotlin`, `kotlin-language-server`, or any LSP
+that registers a document-symbol provider for `kotlin`) enables editor-side
 extras:
 
 - **CodeLens** "Focus in Preview panel" above each `@Preview` function.
