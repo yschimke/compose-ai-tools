@@ -4041,6 +4041,17 @@ async function refresh(
         if (scopeSource === "none" && pendingRefreshKey) {
             return "no-module";
         }
+        // When the panel already has previews painted (preload or a prior render put cards
+        // on screen), focus drifting to the webview / output pane / no-editor-at-all is NOT
+        // a reason to clearAll. Stale cached images are explicitly OK — the daemon's next
+        // render will replace them. Wiping here is what causes the "panel goes back to
+        // placeholders during the 15-25s daemon spawn" bug the verify command surfaces.
+        if (hasPreviewsLoaded) {
+            logLine(
+                `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource}); keeping ${lastLoadedModules.length} loaded module(s) on screen`,
+            );
+            return "no-module";
+        }
         // Cancel any in-flight refresh before clearing state.
         pendingRefresh?.abort();
         pendingRefreshKey = null;
