@@ -548,13 +548,14 @@ runs:
         # resolved body, no-diff+no-prior → only post resolved if
         # comment-on-empty-diff=true.
         RESOLVED_BODY="${MARKER}"$'\n'"## Resource Changes"$'\n\n'"_No resource changes in this PR's latest render._"
+        # Stream body via file when present — large resource diffs would
+        # otherwise blow ARG_MAX. RESOLVED_BODY is small and stays inline.
         if [ -s _comment_body_resources.md ]; then
-          BODY=$(cat _comment_body_resources.md)
           if [ -n "$COMMENT_ID" ]; then
             gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
-              -X PATCH -f body="$BODY"
+              -X PATCH -f "body=@_comment_body_resources.md"
           else
-            gh pr comment "$PR_NUMBER" --body "$BODY"
+            gh pr comment "$PR_NUMBER" --body-file _comment_body_resources.md
           fi
         elif [ -n "$COMMENT_ID" ]; then
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}" \
