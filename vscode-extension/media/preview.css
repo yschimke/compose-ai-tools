@@ -609,6 +609,12 @@ preview-app {
     max-width: 100%;
 }
 .preview-grid.layout-focus .preview-card.focused .image-container img {
+    /* Override the universal `.preview-card[style*="--aspect-ratio"]
+       .image-container img { height: 100% }` so a tall data-product image
+       displays at its natural height (capped at 70vh) inside the focused
+       card — the focus override of the container's aspect-ratio (further
+       below) gives this room to grow past the device square. */
+    height: auto;
     max-height: 70vh;
     object-fit: contain;
 }
@@ -1339,26 +1345,41 @@ preview-app {
    widthDp/heightDp). Cards without known dimensions fall through to the
    default .image-container rules above so their 120dp skeleton stays
    visible during load.
-   - Flow: card width already tracks --size-ratio (set on .preview-card
-     above), so the image container fills the card and just locks aspect.
-     Different-sized previews ⇒ different-sized cards.
-   - Grid: cards stay uniform (auto-fill columns), so we shrink the image
-     container *inside* the card by --size-ratio instead. Smaller previews
-     read as smaller, centered within their grid cell. */
-.preview-grid.layout-flow
-    .preview-card[style*="--aspect-ratio"]
-    .image-container {
+
+   The aspect-ratio constraint itself is universal (any layout): without
+   it a tall data-product image — `@ScrollingPreview(LONG)` stitched PNG,
+   `@ScrollingPreview(GIF)` animation — pushes the card's image-container
+   to the image's natural height and the card grows several hundred
+   pixels tall while every sibling stays at the device size. Pinning the
+   container to `widthDp / heightDp` and pairing it with `object-fit:
+   contain` on the `<img>` (rule below) means the image scales into the
+   device-sized slot regardless of its native dimensions. Focus mode
+   keeps its own `max-height: 70vh` cap so users can still see the full
+   long-scroll content there.
+
+   Layout-grid additionally shrinks the container by --size-ratio so
+   smaller previews read as proportionally smaller within their grid
+   cell. Layout-flow needs no extra width rule — card width already
+   tracks --size-ratio there. */
+.preview-card[style*="--aspect-ratio"] .image-container {
     aspect-ratio: var(--aspect-ratio);
     min-height: 0;
+}
+
+/* Focus mode is the inspector view — let the focused card's container
+   grow past the device aspect ratio so tall data-product images
+   (`@ScrollingPreview(LONG)` stitched PNG, `@ScrollingPreview(GIF)`)
+   show their full content. The `<img>` rule below caps it at 70vh so
+   it still doesn't dominate the viewport. */
+.preview-grid.layout-focus .preview-card.focused .image-container {
+    aspect-ratio: auto;
 }
 
 .preview-grid.layout-grid
     .preview-card[style*="--size-ratio"]
     .image-container {
     width: calc(100% * var(--size-ratio));
-    aspect-ratio: var(--aspect-ratio, auto);
     margin-inline: auto;
-    min-height: 0;
 }
 
 .preview-card[style*="--aspect-ratio"] .image-container img {
