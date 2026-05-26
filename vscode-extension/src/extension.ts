@@ -552,6 +552,18 @@ export interface ComposePreviewTestApi {
     /** Drop both message buffers (posted + received). */
     resetMessages(): void;
     /**
+     * Snapshot of the last [n] lines written to the `Compose Preview` output
+     * channel since extension activation. Used by e2e tests to dump the
+     * daemon channel (`[daemon] dataSubscribe(...) failed: ...` etc.) when a
+     * `waitFor` for a webview ack times out — those failures are otherwise
+     * silent because the scheduler catches and swallows the underlying
+     * dataSubscribe / post-subscribe renderNow rejection. Capped at 2000
+     * lines internally so a long suite can't OOM the host. Empty unless
+     * COMPOSE_PREVIEW_TEST_MODE=1, but the test electron host always sets
+     * that.
+     */
+    getOutputChannelTail(n?: number): string[];
+    /**
      * `true` once the resolved webview has signalled `webviewReady` at
      * least once this session. Survives [resetMessages] so a later test
      * suite can confirm the webview is alive without depending on a
@@ -714,8 +726,54 @@ export async function activate(
 
     extensionContext = context;
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
-    const outputChannel = vscode.window.createOutputChannel("Compose Preview");
-    context.subscriptions.push(outputChannel);
+    const rawOutputChannel =
+        vscode.window.createOutputChannel("Compose Preview");
+    context.subscriptions.push(rawOutputChannel);
+    // E2E diagnostic capture. The wear a11y suite times out 60s after a
+    // `data/subscribe` call without surfacing why — the daemon channel's
+    // `dataSubscribe(...) failed` / `post-subscribe renderNow(...) failed`
+    // lines have the answer but live only in the `Compose Preview` output
+    // channel, which is not part of the test electron host's serialised
+    // logs. Under COMPOSE_PREVIEW_TEST_MODE=1 wrap the channel with a
+    // capped ring buffer so tests can dump the tail when a wait-for
+    // times out. Bounded so a long-running suite can't OOM the host.
+    const outputChannelTail: string[] = [];
+    const OUTPUT_CHANNEL_TAIL_MAX = 2000;
+    const captureOutputChannelLine =
+        process.env.COMPOSE_PREVIEW_TEST_MODE === "1"
+            ? (line: string) => {
+                  outputChannelTail.push(line);
+                  if (outputChannelTail.length > OUTPUT_CHANNEL_TAIL_MAX) {
+                      outputChannelTail.splice(
+                          0,
+                          outputChannelTail.length - OUTPUT_CHANNEL_TAIL_MAX,
+                      );
+                  }
+              }
+            : null;
+    const outputChannel: vscode.OutputChannel = captureOutputChannelLine
+        ? new Proxy(rawOutputChannel, {
+              get(target, prop, receiver) {
+                  if (prop === "appendLine") {
+                      return (value: string) => {
+                          captureOutputChannelLine(value);
+                          target.appendLine(value);
+                      };
+                  }
+                  if (prop === "append") {
+                      return (value: string) => {
+                          // `append` doesn't add a newline; treat the call as
+                          // a partial line for capture purposes (good enough
+                          // for diagnostic tail — production output is
+                          // overwhelmingly appendLine).
+                          captureOutputChannelLine(value);
+                          target.append(value);
+                      };
+                  }
+                  return Reflect.get(target, prop, receiver);
+              },
+          })
+        : rawOutputChannel;
     // `composePreview.logging.level` is read on every emit so a settings.json
     // edit takes effect immediately without a window reload.
     const logFilter = new LogFilter(() =>
@@ -2092,6 +2150,13 @@ export async function activate(
             resetMessages(): void {
                 postedMessageLog.length = 0;
                 receivedMessageLog.length = 0;
+            },
+            getOutputChannelTail(n?: number): string[] {
+                if (typeof n !== "number" || n >= outputChannelTail.length) {
+                    return [...outputChannelTail];
+                }
+                if (n <= 0) return [];
+                return outputChannelTail.slice(-n);
             },
             isWebviewReady(): boolean {
                 return webviewEverReady;
