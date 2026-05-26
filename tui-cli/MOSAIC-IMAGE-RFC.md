@@ -112,14 +112,19 @@ fun Image(
 
 ### 3. Capability-driven dispatch
 
-`Terminal.Capabilities` already exists; it currently carries the Kitty underline /
-keyboard / pointer detection results. Extend it with a graphics-protocol field:
+`Terminal.Capabilities` already exists; it currently carries individual booleans for
+`kittyGraphics`, `kittyKeyboard`, `kittyTextSizingScale`, etc. The Kitty graphics probe
+already runs at startup and `terminal/KittyGraphicsEvent` already decodes the response —
+**Mosaic detects Kitty graphics support today, it just doesn't expose an API that uses
+it.** Extend `Capabilities` with the missing protocol fields:
 
 ```kotlin
-data class Capabilities(
+interface Capabilities {
   // … existing fields …
-  val graphicsProtocols: Set<ImageProtocol> = emptySet(),
-)
+  val kittyGraphics: Boolean        // ALREADY EXISTS
+  val sixel: Boolean                // new — DA1 response parameter 4
+  val iTerm2InlineImages: Boolean   // new — DA1 secondary response / $TERM_PROGRAM=iTerm.app
+}
 ```
 
 Populate it during the existing startup handshake. The Kitty graphics protocol has a
