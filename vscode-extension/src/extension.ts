@@ -110,6 +110,11 @@ import { RefreshQueue, defaultRefreshQueueEffects } from "./refreshQueue";
 import { EditorScope, PreviewModuleIndex } from "./editorScope";
 import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
+    describeVerifyResult,
+    realFileExists,
+    verifyConsistency,
+} from "./previewConsistency";
+import {
     BUNDLED_PLUGIN_VERSION,
     hasIncludedPluginBuild,
     materializeInitScript,
@@ -1693,6 +1698,9 @@ export async function activate(
         );
     };
     context.subscriptions.push(
+        vscode.commands.registerCommand("composePreview.verify", () => {
+            runVerifyConsistency();
+        }),
         vscode.commands.registerCommand("composePreview.runDoctor", () => {
             void vscode.window.withProgress(
                 {
@@ -2090,6 +2098,67 @@ export async function activate(
             },
         };
         return testApi;
+    }
+}
+
+/**
+ * Cross-check the manifest, the on-disk PNGs, and the host's image registry for the file
+ * the panel is currently scoped to. Triggered via the `composePreview.verify` command
+ * (Command Palette → "Compose Preview: Verify").
+ *
+ * The check exists because the user-reported bug ("cached images don't load on startup")
+ * lives at the seam between three pieces of state that should always agree: what
+ * `previews.json` claims exists, what files are actually on disk under `build/compose-previews/`,
+ * and what bytes the in-memory registry is feeding the webview. When they disagree, the
+ * card stays a placeholder. Reporting the disagreement directly takes the guesswork out of
+ * "is this a missing file or a stale registry?".
+ */
+function runVerifyConsistency(): void {
+    if (!gradleService) {
+        vscode.window.showWarningMessage(
+            "Compose Preview verify: extension still initialising — try again in a moment.",
+        );
+        return;
+    }
+    const filePath = editorScope.file;
+    const result = verifyConsistency(filePath, {
+        gradleService,
+        registryGetImage: (id) => registry.getImage(id),
+        fileExists: realFileExists,
+    });
+    const summary = describeVerifyResult(filePath, result);
+    logForce(summary);
+    for (const issue of result.inconsistencies) {
+        if (issue.kind === "disk-has-png-registry-empty") {
+            logForce(
+                `  ⚠ ${issue.previewId}: PNG on disk at ${issue.pngPath} but registry is empty (panel is showing a placeholder unnecessarily)`,
+            );
+        } else {
+            logForce(
+                `  · ${issue.previewId}: never rendered (no PNG, no registry entry; expected ${issue.expectedPngPath})`,
+            );
+        }
+    }
+    if (
+        result.inconsistencies.some(
+            (i) => i.kind === "disk-has-png-registry-empty",
+        )
+    ) {
+        vscode.window
+            .showWarningMessage(
+                summary +
+                    " — see Compose Preview output channel for the per-preview list.",
+                "Show output",
+            )
+            .then((choice) => {
+                if (choice === "Show output") {
+                    vscode.commands.executeCommand(
+                        "workbench.action.output.toggleOutput",
+                    );
+                }
+            });
+    } else {
+        vscode.window.showInformationMessage(summary);
     }
 }
 
