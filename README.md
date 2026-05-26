@@ -276,8 +276,6 @@ _No findings._
 
 ### `RedToBlueScrollGifPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.png" width="400" />
-
 _No findings._
 
 ### `RemoteViewsWeatherWidgetPreview`
@@ -311,8 +309,6 @@ _No findings._
 _No findings._
 
 ### `SettingsListScrollGifPreview`
-
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.png" width="400" />
 
 _No findings._
 
@@ -518,8 +514,6 @@ _No findings._
 
 ### `ScrollingListPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List.png" width="400" />
-
 _No findings._
 
 ### `SwatchPreview`
@@ -630,13 +624,13 @@ _No findings._
 
 ### `ActivityListGifPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round.a11y.png" width="400" />
 
 _No findings._
 
 ### `ActivityListLongPreview` · `wearos_large_round`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.a11y.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png" width="400" />
 
 _No findings._
 

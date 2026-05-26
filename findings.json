@@ -572,7 +572,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.png",
+      "cleanBasename": "",
       "findings": [],
       "functionName": "RedToBlueScrollGifPreview",
       "module": "android",
@@ -632,7 +632,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.png",
+      "cleanBasename": "",
       "findings": [],
       "functionName": "SettingsListScrollGifPreview",
       "module": "android",
@@ -862,7 +862,7 @@
     },
     {
       "annotatedBasename": "",
-      "cleanBasename": "ScrollingPreviewsKt.ScrollingListPreview_Scrolling_List.png",
+      "cleanBasename": "",
       "findings": [],
       "functionName": "ScrollingListPreview",
       "module": "cmp",
@@ -1001,8 +1001,8 @@
       "variant": "wearos_small_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.a11y.png",
-      "cleanBasename": "PreviewsKt.ActivityListGifPreview_Devices_-_Large_Round.png",
+      "annotatedBasename": "com.example.samplewear.PreviewsKt.ActivityListGifPreview_Devices - Large Round.a11y.png",
+      "cleanBasename": "",
       "findings": [],
       "functionName": "ActivityListGifPreview",
       "module": "wear",
@@ -1011,8 +1011,8 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.a11y.png",
-      "cleanBasename": "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
+      "annotatedBasename": "com.example.samplewear.PreviewsKt.ActivityListLongPreview_Devices - Large Round.a11y.png",
+      "cleanBasename": "",
       "findings": [],
       "functionName": "ActivityListLongPreview",
       "module": "wear",
