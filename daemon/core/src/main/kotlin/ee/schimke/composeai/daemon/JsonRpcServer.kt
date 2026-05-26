@@ -3018,60 +3018,39 @@ class JsonRpcServer(
   }
 
   /**
-   * Paths waiting on a deferred discovery scan — populated by [queueDiscoveryAfterRender] from the
-   * `fileChanged({kind:source})` handler, drained by either [emitRenderFinished] (after the next
-   * render notification has flushed) or by a watchdog timer (when no render arrives within
-   * [discoveryWatchdogMs]).
-   *
-   * Identity dedup isn't worth it: two saves of the same file in quick succession scan twice, but
-   * each scan is scoped (one classpath element) and the daemon is bounded by the user's editor
-   * cadence anyway. The queue is correctness-safe under contention thanks to the atomic poll.
+   * Deferred discovery coordination: queue + watchdog + drain race semantics live in
+   * [DeferredDiscoveryQueue]; this file just supplies the per-path scan via
+   * [runIncrementalDiscoveryNow]. Enqueue from the `fileChanged({kind:source})` handler via
+   * [queueDiscoveryAfterRender] (which short-circuits when no [incrementalDiscovery] is wired);
+   * drain from [emitRenderFinished] after the render notification flushes.
    */
-  private val pendingDiscoveryPaths = ConcurrentLinkedQueue<String>()
+  private val deferredDiscovery =
+    DeferredDiscoveryQueue(
+      watchdogMs = discoveryWatchdogMs,
+      runForPath = { path -> runIncrementalDiscoveryNow(path) },
+    )
 
   /**
-   * Queues [path] for a deferred discovery cascade and starts a watchdog so the work always runs
-   * eventually — even when the save lands on a file with no focused previews and no `renderNow`
-   * follows.
-   *
-   * The user-visible invariant this enforces (matching the editor save-loop design): a save NEVER
-   * surfaces a metadata event before the corresponding render. Renders are what the user actually
-   * looks at; the metadata reconcile is a quiet background pass that only paints the panel when the
-   * preview set actually drifted (`discoveryUpdated` is silent on an empty diff — see
-   * [runIncrementalDiscoveryNow]).
+   * Queues [path] for a deferred discovery cascade. The user-visible invariant this enforces
+   * (matching the editor save-loop design): a save NEVER surfaces a metadata event before the
+   * corresponding render. Renders are what the user actually looks at; the metadata reconcile is a
+   * quiet background pass that only paints the panel when the preview set actually drifted
+   * (`discoveryUpdated` is silent on an empty diff — see [runIncrementalDiscoveryNow]).
    *
    * No-op when [incrementalDiscovery] is null — preserves the pre-phase-2 contract for in-process
    * integration tests and the fake-mode harness scenarios that don't wire one.
    */
   private fun queueDiscoveryAfterRender(path: String) {
     if (incrementalDiscovery == null) return
-    pendingDiscoveryPaths.add(path)
-    Thread(
-        {
-          try {
-            Thread.sleep(discoveryWatchdogMs)
-          } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-            return@Thread
-          }
-          drainPendingDiscovery()
-        },
-        "compose-ai-daemon-discovery-watchdog",
-      )
-      .apply { isDaemon = true }
-      .start()
+    deferredDiscovery.enqueue(path)
   }
 
   /**
-   * Drains [pendingDiscoveryPaths] and runs the discovery cascade for each path. Idempotent:
-   * concurrent callers (the watchdog vs. [emitRenderFinished]) compete via the atomic queue poll,
-   * so each path runs at most once.
+   * Drains every pending deferred-discovery scan. Called from [emitRenderFinished] after the render
+   * notification flushes; the queue's own watchdog races this and the loser sees an empty queue.
    */
   private fun drainPendingDiscovery() {
-    while (true) {
-      val path = pendingDiscoveryPaths.poll() ?: return
-      runIncrementalDiscoveryNow(path)
-    }
+    deferredDiscovery.drain()
   }
 
   /**
