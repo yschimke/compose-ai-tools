@@ -91,6 +91,25 @@ Four-stage pipeline, spread across the modules:
 
 The CLI ([cli/](cli/src/main/kotlin/ee/schimke/composeai/cli/)) and VS Code extension ([vscode-extension/](vscode-extension/src/)) are thin drivers over the Gradle tasks — they shell out via the Tooling API (`GradleConnector.kt`, `gradleService.ts`) and read the resulting `previews.json` / PNG files. The CLI also ships a `compose-preview` binary with `installDist` for use as an agent/MCP backend.
 
+## State seams
+
+Coordination state for the edit→render→subscribe loop lives in a handful of named, unit-tested classes rather than module-level `Map`/`Set`/AbortController fields. **When you need to add to this loop, extend the existing seam rather than introducing a parallel mutable.**
+
+VS Code extension (`vscode-extension/src/`):
+
+- **`RefreshQueue`** ([refreshQueue.ts](../vscode-extension/src/refreshQueue.ts)) — save-driven refresh coalescing FSM. Owns `inFlight` / `pendingTarget` / `debounceElapsed` / `seenFiles`. Single entry point `dispatchSave(target, opts)` for both editor saves and file-watcher events. Tests inject a fake clock; real production uses `defaultRefreshQueueEffects`.
+- **`EditorScope`** ([editorScope.ts](../vscode-extension/src/editorScope.ts)) — the `(file, module)` pair the panel is pinned to. Comparison is by `modulePath`, never reference identity. Don't add a parallel "what file is shown" tracker.
+- **`PreviewModuleIndex`** (same file) — `previewId → owning module` lookup, with `replaceModule(module, freshIds)` for the "purge stale entries then install fresh ones" pattern. Per-preview action handlers (chip toggles, focus inspector, history) route through this.
+- **`DaemonScheduler`** ([daemon/daemonScheduler.ts](../vscode-extension/src/daemon/daemonScheduler.ts)) — owns per-module subscription state (`subscribedPairs`) and exposes `setDataProductSubscription` which returns the `a11yTransition` verdict. The extension doesn't keep its own a11y subscription mirror.
+
+Daemon (`daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/`):
+
+- **`SubscriptionStore`** ([SubscriptionStore.kt](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/SubscriptionStore.kt)) — sticky `(previewId, kind)` bookkeeping. Three teardown methods (`unsubscribe`, `retainVisible`, `removeKinds`) return the dropped pairs so the caller routes `onUnsubscribe` through the right producer surface (`publicDataProducts` vs `activeDataProducts`).
+- **`DeferredDiscoveryQueue`** ([DeferredDiscoveryQueue.kt](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DeferredDiscoveryQueue.kt)) — paths waiting for the post-render discovery cascade plus the watchdog that drains them if no render arrives. Watchdog scheduler is injectable; tests use a manual scheduler so race outcomes are deterministic.
+- **`DataProductRegistry.renderModeFor(kind)`** ([DataProductRegistry.kt](../daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/DataProductRegistry.kt)) — producers declare which kinds need a renderer mode tag (`"a11y"`, etc.). The dispatcher iterates subscribed kinds and asks the registry; **do not pattern-match on the kind string in `JsonRpcServer`**.
+
+The seams are deliberately split per concern; a new feature usually maps to extending exactly one. If your change wants to add a new module-level `Map<String, …>` to `extension.ts` or `JsonRpcServer.kt`, check whether one of these classes already owns the conceptual state first.
+
 ## Git conventions
 
 - **Do not add `Co-Authored-By` trailers** to git commit messages. Commits should be attributed solely to the committer.
