@@ -65,12 +65,15 @@ export function renderInitScript(
 // classpath). The withPlugin hooks in projects that already apply the
 // plugin no-op via the plugins.hasPlugin(...) guard.
 //
-// \`COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1\` opts the buildscript repos into
-// \`mavenLocal()\` — mirrors the CLI's AutoInject.kt behavior. Useful for
-// pointing the extension at a locally-published SNAPSHOT of the plugin
-// during dev (e.g. \`./gradlew publishToMavenLocal\` against this repo, then
-// launch VS Code with the flag set). Off by default so cached snapshots
-// don't widen the search surface for normal users.
+// \`mavenLocal()\` is added to the buildscript / settings repos automatically
+// when \`pluginVersion\` ends in \`-SNAPSHOT\` — mirrors the CLI's AutoInject.kt
+// behavior. The only place an unpublished SNAPSHOT plugin can live is
+// \`~/.m2\` (\`./gradlew publishToMavenLocal\` against this repo), so a SNAPSHOT
+// build that doesn't seed it is unusable. Released versions leave \`~/.m2\`
+// alone: the plugin is on Plugin Portal / Maven Central, and widening the
+// search surface to local snapshots would only invite version skew.
+// \`COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1\` still forces the seed on for
+// non-SNAPSHOT runs.
 
 // Auto-inject is suppressed when the consumer's settings file declares
 // \`exclusiveContent { ... }\` inside \`pluginManagement { repositories { ... } }\`
@@ -82,7 +85,8 @@ export function renderInitScript(
 // "plugin not applied" warning still directs users to apply the plugin manually.
 
 val pluginVersion = "${pluginVersion}"
-val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
+val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
+    System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewSettingsHasExclusiveContent: Boolean = false

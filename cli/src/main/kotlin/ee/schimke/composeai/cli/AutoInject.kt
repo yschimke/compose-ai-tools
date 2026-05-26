@@ -63,12 +63,16 @@ internal fun renderInitScript(pluginVersion: String): String =
 // The withPlugin hooks in projects that already apply the plugin no-op via
 // the plugins.hasPlugin(...) guard.
 //
-// `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` opts the buildscript repos into
-// `mavenLocal()` — exercised by the gradle-plugin functional tests, which
-// resolve the plugin from `~/.m2` (where `:publishToMavenLocal` puts it)
-// rather than Maven Central. Plain users have no reason to flip this on:
-// it widens the search surface to whatever snapshots happen to be cached
-// locally and is therefore opt-in, not the default.
+// `mavenLocal()` is added to the buildscript / settings repos automatically
+// when [pluginVersion] ends in `-SNAPSHOT` — the only place an unpublished
+// SNAPSHOT plugin can live is `~/.m2`, so a SNAPSHOT CLI that doesn't seed
+// it is unusable. Released CLIs leave `~/.m2` untouched: the plugin is on
+// Plugin Portal / Maven Central, and widening the search surface to local
+// snapshots would only invite accidental version mismatches.
+// `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` still forces the seed on for
+// non-SNAPSHOT runs — used by the gradle-plugin functional tests, which
+// publish the CLI's own release version to `~/.m2` and resolve from there
+// rather than Maven Central.
 //
 // Auto-inject is suppressed for modules that apply
 // `com.android.kotlin.multiplatform.library` — the AGP-KMP plugin's single
@@ -106,7 +110,8 @@ internal fun renderInitScript(pluginVersion: String): String =
 // AGP visibility stays intact.
 
 val pluginVersion = "$pluginVersion"
-val useMavenLocal = System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
+val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
+    System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
 
 var composeAiPreviewPreAppliedDirs: Set<java.io.File> = emptySet()
 var composeAiPreviewKmpAndroidDirs: Set<java.io.File> = emptySet()

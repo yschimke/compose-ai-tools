@@ -577,7 +577,7 @@ class AutoInjectTest {
   }
 
   @Test
-  fun `init script seeds settings-level mavenLocal when COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL is set`() {
+  fun `init script seeds settings-level mavenLocal automatically for SNAPSHOT versions`() {
     // wear-os-samples WearTilesKotlin (and any consumer that sets
     // `RepositoriesMode.FAIL_ON_PROJECT_REPOS` in settings.gradle.kts) refuses per-project repos —
     // a per-project `mavenLocal()` is not enough for renderer-android AAR resolution. The
@@ -586,10 +586,19 @@ class AutoInjectTest {
     // from `~/.m2`. `pluginManagement.repositories.mavenLocal()` covers the plugins-DSL resolution
     // path for the catalog-alias / literal-`id(...) version "..."` case where we skip our own
     // buildscript classpath injection.
+    //
+    // SNAPSHOT versions enable the seed unconditionally — an unpublished SNAPSHOT plugin can only
+    // live in `~/.m2`, so a SNAPSHOT CLI that doesn't add mavenLocal is unusable against
+    // consumers that don't already have it in their settings. Released versions still gate on the
+    // `COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1` env var (asserted in the sibling test below).
     val script = renderInitScript("0.1.0-SNAPSHOT")
     assertTrue(
       script.contains("if (useMavenLocal) {"),
-      "expected the mavenLocal seeding to be gated on the COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL flag",
+      "expected the mavenLocal seeding to live under a runtime `useMavenLocal` gate",
+    )
+    assertTrue(
+      script.contains("pluginVersion.endsWith(\"-SNAPSHOT\")"),
+      "expected SNAPSHOT versions to auto-enable useMavenLocal",
     )
     assertTrue(
       script.contains("pluginManagement.repositories.mavenLocal()"),
@@ -598,6 +607,18 @@ class AutoInjectTest {
     assertTrue(
       script.contains("dependencyResolutionManagement.repositories.mavenLocal()"),
       "expected dependencyResolutionManagement-level mavenLocal seeding for runtime AAR resolution",
+    )
+  }
+
+  @Test
+  fun `init script keeps COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL escape hatch for non-SNAPSHOT runs`() {
+    // The gradle-plugin functional tests publish the CLI's own release version to `~/.m2` and
+    // resolve from there rather than Maven Central. Releasing the SNAPSHOT auto-seed regression
+    // shouldn't take the env-var path with it.
+    val script = renderInitScript("0.11.10")
+    assertTrue(
+      script.contains("System.getenv(\"COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL\") == \"1\""),
+      "expected the env-var escape hatch to survive for release builds",
     )
   }
 
