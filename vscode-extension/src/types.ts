@@ -462,6 +462,7 @@ export type ExtensionToWebview =
           replaceExisting?: boolean;
       }
     | { command: "setLoading"; previewId?: string }
+    | { command: "clearLoading"; previewId: string }
     | { command: "markAllLoading" }
     | { command: "setError"; previewId: string; message: string }
     | { command: "showMessage"; text: string }
