@@ -4,6 +4,11 @@ import { GradleService, ModuleInfo } from "../gradleService";
 import { DaemonClientEvents } from "./daemonClient";
 import { DaemonGate } from "./daemonGate";
 import {
+    SpeculationCache,
+    VisibilityMemo,
+    WarmCoalescer,
+} from "./schedulerState";
+import {
     DataProductAttachment,
     DiscoveryUpdatedParams,
     FileChangeType,
@@ -224,10 +229,8 @@ export interface DaemonScheduler {
  * has the moduleId, previewId, and pngPath that a history archiver needs.
  */
 export class LiveDaemonScheduler implements DaemonScheduler {
-    /** Last-known-visible IDs per module — let us dedup setVisible spam. */
-    private lastVisible = new Map<string, string[]>();
-    /** Last `setFocus` per module so editor refocus on the same file is a no-op. */
-    private lastFocus = new Map<string, string[]>();
+    /** Per-module `setVisible` / `setFocus` dedup memo. See {@link VisibilityMemo}. */
+    private readonly visibility = new VisibilityMemo();
     /**
      * D2 — `(moduleId, previewId)` pairs we've already issued `data/subscribe` for. Subscribed kinds
      * are pinned at [DEFAULT_SUBSCRIBED_KINDS] today; per-kind tracking moves here when the panel
@@ -249,22 +252,15 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         string,
         Set<Promise<unknown>>
     >();
-    /** Cards we've already speculatively requested so scrolling back over
-     *  them doesn't re-queue identical work. Keyed by `${moduleId}::${id}`. */
-    private speculated = new Set<string>();
+    /** Per-`(module, previewId)` idempotency cache for speculative renders. See
+     *  {@link SpeculationCache}. */
+    private readonly speculation = new SpeculationCache();
     /** Modules where we've already logged a "daemon at stub stage" notice.
      *  Stops the per-render ENOENT spam when the daemon (B1.5) emits
      *  synthetic `daemon-stub-N.png` paths that don't exist on disk. */
     private warnedStubModules = new Set<string>();
-    /**
-     * In-flight `warmModule` promises per module. Concurrent callers
-     * coalesce onto the same promise so a second refresh that arrives
-     * mid-bootstrap doesn't start a second `composePreviewDaemonStart`
-     * (which the first invocation would then cancel). Cleared on settle so
-     * a later call — for instance, the retry after a cancellation — starts
-     * a fresh warm rather than getting a stale rejected promise.
-     */
-    private readonly warmsInFlight = new Map<string, Promise<boolean>>();
+    /** Coalesces concurrent `warmModule` calls per module. See {@link WarmCoalescer}. */
+    private readonly warmCoalescer = new WarmCoalescer<boolean>();
 
     constructor(
         private readonly gate: DaemonGate,
@@ -306,25 +302,19 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         module: ModuleInfo,
         progress?: WarmProgress,
     ): Promise<boolean> {
-        const key = module.modulePath;
-        const existing = this.warmsInFlight.get(key);
-        if (existing) {
-            if (this.gate.isDaemonReady(key)) {
-                progress?.("ready");
-            }
-            return existing;
+        // Surface "ready" progress to a piggy-backing caller when the underlying daemon is
+        // already up — the in-flight promise itself won't re-emit progress events. The
+        // coalescer's getOrStart short-circuits to the existing promise; the side effect
+        // here just keeps the second caller's UI in sync.
+        if (
+            this.warmCoalescer.isInFlight(module) &&
+            this.gate.isDaemonReady(module.modulePath)
+        ) {
+            progress?.("ready");
         }
-        const promise = this.warmModuleInner(
-            gradleService,
-            module,
-            progress,
-        ).finally(() => {
-            if (this.warmsInFlight.get(key) === promise) {
-                this.warmsInFlight.delete(key);
-            }
-        });
-        this.warmsInFlight.set(key, promise);
-        return promise;
+        return this.warmCoalescer.getOrStart(module, () =>
+            this.warmModuleInner(gradleService, module, progress),
+        );
     }
 
     private async warmModuleInner(
@@ -453,14 +443,13 @@ export class LiveDaemonScheduler implements DaemonScheduler {
      * IDs. These are rendered first when the queue drains.
      */
     async setFocus(module: ModuleInfo, previewIds: string[]): Promise<void> {
-        const key = module.modulePath;
-        if (sameSet(this.lastFocus.get(key), previewIds)) {
+        if (this.visibility.sameFocusAsLast(module, previewIds)) {
             return;
         }
-        this.lastFocus.set(key, [...previewIds]);
+        this.visibility.recordFocus(module, previewIds);
         const client = await this.gate.getOrSpawn(
             module,
-            this.daemonEvents(key),
+            this.daemonEvents(module.modulePath),
         );
         if (!client) {
             return;
@@ -482,12 +471,12 @@ export class LiveDaemonScheduler implements DaemonScheduler {
     ): Promise<void> {
         const moduleKey = module.modulePath;
         if (
-            sameSet(this.lastVisible.get(moduleKey), visible) &&
+            this.visibility.sameVisibleAsLast(module, visible) &&
             predicted.length === 0
         ) {
             return;
         }
-        this.lastVisible.set(moduleKey, [...visible]);
+        this.visibility.recordVisible(module, visible);
         const client = await this.gate.getOrSpawn(
             module,
             this.daemonEvents(moduleKey),
@@ -525,13 +514,13 @@ export class LiveDaemonScheduler implements DaemonScheduler {
         const visibleSet = new Set(visible);
         const fresh = predicted
             .filter((id) => !visibleSet.has(id))
-            .filter((id) => !this.speculated.has(specKey(moduleKey, id)))
+            .filter((id) => !this.speculation.has(module, id))
             .slice(0, SPECULATIVE_BUDGET);
         if (fresh.length === 0) {
             return;
         }
         for (const id of fresh) {
-            this.speculated.add(specKey(moduleKey, id));
+            this.speculation.mark(module, id);
         }
         try {
             await client.renderNow({
@@ -758,11 +747,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             onClasspathDirty: (params: { detail: string }) => {
                 // Drop the speculative cache for this module so a re-spawned
                 // daemon doesn't think we already pre-warmed those IDs.
-                for (const k of [...this.speculated]) {
-                    if (k.startsWith(`${moduleId}::`)) {
-                        this.speculated.delete(k);
-                    }
-                }
+                this.speculation.forgetModule({ modulePath: moduleId });
                 this.events.onClasspathDirty(moduleId, params.detail);
             },
             onDiscoveryUpdated: (params: DiscoveryUpdatedParams) => {
@@ -780,13 +765,9 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             onChannelClosed: () => {
                 // Daemon died; clear caches so the next call re-issues them
                 // against a fresh JVM.
-                this.lastVisible.delete(moduleId);
-                this.lastFocus.delete(moduleId);
-                for (const k of [...this.speculated]) {
-                    if (k.startsWith(`${moduleId}::`)) {
-                        this.speculated.delete(k);
-                    }
-                }
+                const modRef = { modulePath: moduleId };
+                this.visibility.forgetModule(modRef);
+                this.speculation.forgetModule(modRef);
                 // D2 — wipe data-product subscription state so the next daemon spawn re-issues
                 // `data/subscribe` against the fresh JVM. Subscriptions don't survive daemon
                 // restarts (PROTOCOL.md / DATA-PRODUCTS.md § "Wire surface").
@@ -812,7 +793,7 @@ export class LiveDaemonScheduler implements DaemonScheduler {
             // Speculative entries graduate to "real" once they actually render —
             // drop them from the dedup set so a subsequent fileChanged for the
             // same preview can re-render via the reactive path.
-            this.speculated.delete(specKey(moduleId, params.id));
+            this.speculation.forget({ modulePath: moduleId }, params.id);
 
             // INTERACTIVE.md § 5 frame dedup. Daemon already determined the bytes are
             // byte-identical to the prior frame; skip the disk read + base64 + postMessage
@@ -984,18 +965,6 @@ function classifyKind(absPath: string): FileKind {
         return "resource";
     }
     return "source";
-}
-
-function sameSet(a: string[] | undefined, b: string[]): boolean {
-    if (!a || a.length !== b.length) {
-        return false;
-    }
-    const set = new Set(a);
-    return b.every((id) => set.has(id));
-}
-
-function specKey(moduleId: string, previewId: string): string {
-    return `${moduleId}::${previewId}`;
 }
 
 /**
