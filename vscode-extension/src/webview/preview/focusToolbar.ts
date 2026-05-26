@@ -125,8 +125,12 @@ export class FocusToolbarController {
         // sidebar panels gate daemon-readiness per-button via the
         // individual `applyXxxButtonState` hooks).
         const daemonHidden = bundle && !s.bundleDaemonReady;
-        this.el.btnA11yOverlay.hidden =
-            daemonHidden || !s.earlyFeatures || !s.inFocus;
+        // a11y is the one bundle graduated out of `earlyFeatures` — the
+        // chip-bar filter at `main.ts:2415` already surfaces it in basic
+        // mode, and the focus-toolbar button is the matching focus-mode
+        // entry point. Other early-features buttons (recording, export
+        // bundle, …) stay gated until those features graduate too.
+        this.el.btnA11yOverlay.hidden = daemonHidden || !s.inFocus;
         this.el.btnRecording.hidden =
             daemonHidden || !s.earlyFeatures || !s.inFocus;
         this.el.recordingFormat.hidden =
@@ -229,9 +233,13 @@ export class FocusToolbarController {
      * inside focus mode `aria-pressed` tracks whether the currently
      * focused preview has the overlay subscription on.
      */
+    // applyA11yOverlayButtonState applies the in-mode pressed-state +
+    // tooltip refresh; the higher-level visibility gate is owned by
+    // applyButtonVisibility above (and intentionally no longer requires
+    // earlyFeatures, since a11y is the graduated bundle).
     applyA11yOverlayButtonState(s: A11yOverlayButtonState): void {
-        this.el.btnA11yOverlay.hidden = !s.earlyFeatures || !s.inFocus;
-        if (!s.earlyFeatures || !s.inFocus) {
+        this.el.btnA11yOverlay.hidden = !s.inFocus;
+        if (!s.inFocus) {
             this.el.btnA11yOverlay.setAttribute("aria-pressed", "false");
             return;
         }

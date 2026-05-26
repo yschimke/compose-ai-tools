@@ -5135,24 +5135,32 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         }
         case "setA11yOverlay":
-            if (earlyFeaturesEnabled()) {
-                logInfo(
-                    `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
-                );
-                void handleSetA11yOverlay(msg.previewId, msg.enabled);
-            }
+            // a11y is the one bundle that's graduated past the early-features
+            // gate — the chip bar at `main.ts:2415` shows the a11y chip even
+            // when `composePreview.earlyFeatures.enabled` is false, so the
+            // matching host handler has to fire too. Other bundles' UIs stay
+            // hidden in basic mode (see `availableBundles`), so dropping the
+            // gate here doesn't widen the surface they post against.
+            logInfo(
+                `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+            );
+            void handleSetA11yOverlay(msg.previewId, msg.enabled);
             break;
         case "setDataExtensionEnabled":
-            if (earlyFeaturesEnabled()) {
-                logInfo(
-                    `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
-                );
-                void handleSetDataExtensionEnabled(
-                    msg.previewId,
-                    msg.kinds,
-                    msg.enabled,
-                );
-            }
+            // Same reasoning as `setA11yOverlay`: a11y is reachable from the
+            // chip bar in basic mode, so a chip click must always dispatch.
+            // Other bundles' chips don't render without early features
+            // (`availableBundles` filter in `main.ts`), so this gate-drop
+            // doesn't surface non-a11y kinds when the user opted out of the
+            // experimental UI.
+            logInfo(
+                `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+            );
+            void handleSetDataExtensionEnabled(
+                msg.previewId,
+                msg.kinds,
+                msg.enabled,
+            );
             break;
         case "setRemoteComposeNamedValue":
             // Panel-side Remote Compose tab body edit. Merges the change
