@@ -279,6 +279,7 @@ A `data/fetch` that needs a re-render:
 | `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. |
 | `compose/recomposition` | instrumented | medium | `[{nodeId, count, sinceFrameStreamId?}]`. Heat map. Snapshot or click-delta. |
 | `compose/theme` | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed them. |
+| `compose/permissions` | default | low | Android runtime-permissions surface: `{ grants: { "android.permission.X" -> "granted" \| "denied" }, queried: ["android.permission.X", …] }`. Around-composable seeds `ShadowApplication.grantPermissions/denyPermissions` from `renderNow.overrides.permissions.grants` so `ContextCompat.checkSelfPermission(...)` / `Activity.checkSelfPermission(...)` return the requested value through the standard platform path; the matching shadow on `ContextWrapper.checkPermission(...)` records the queried permission for the panel's "queried but no grant pinned" surface. Android-only. |
 | `resources/used` | default | low | `R.*` references resolved during render. |
 | `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds, plus per-entry `truncated` / `overflow` / `lineCount` / `maxLines` / `didOverflowWidth/Height` from the Compose `TextLayoutResult`. |
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
@@ -301,6 +302,7 @@ Which `kind` strings each backend's `extensions/list` advertises and serves thro
 | `test/failure` | ✅ | ✅ | Postmortem bundle on `renderFailed`. Renderer-agnostic. |
 | `compose/theme` | ✅ | ✅ | Material 3 theme tokens. Override-extension shape. |
 | `compose/wallpaper` | ✅ | ✅ | Wallpaper override shape. |
+| `compose/permissions` | ✅ | ❌ Android-only | Runtime-permissions surface — Robolectric `ShadowApplication` grant seed + `ContextWrapper.checkPermission` query tracker. Desktop has no Android permission model; CMP panel chip greys out on `serverCapabilities.backend == "desktop"`. |
 | `compose/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
 | `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
@@ -381,6 +383,7 @@ Compose runtime, daemon, or AndroidX:
 | `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` |
 | `compose/theme` | `:data-theme-core` | `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` |
 | `compose/wallpaper` | `:data-wallpaper-core` | `WallpaperPayload` |
+| `compose/permissions` | `:data-permissions-core` | `PermissionsPayload`, `PermissionGrantWire` |
 | `fonts/used` | `:data-fonts-core` | `FontsUsedPayload`, `FontUsedEntry` |
 | `history/diff/regions` | `:data-history-core` | `HistoryDiffPayload`, `HistoryDiffRegion` |
 | `i18n/translations` | `:data-strings-core` | `I18nTranslationsPayload`, `I18nVisibleString` |
