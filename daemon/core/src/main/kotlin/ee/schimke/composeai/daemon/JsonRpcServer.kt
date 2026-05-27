@@ -1006,9 +1006,22 @@ class JsonRpcServer(
       // Extension-driven overrides ride along as a single base64-encoded `PreviewOverrides`
       // bag — the renderer's [PreviewOverrideExtensions] hands the bag to every registered
       // planner. New override-driven fields don't need a new wire token; they ride this bag.
+      // `permissions` is included so the panel's permissions tab body (Inspection bundle)
+      // can push `renderNow.overrides.permissions` and reach
+      // `PermissionsPreviewOverrideExtension.plan(request)` end-to-end — without this the
+      // planner sees `request.permissions == null` and the around-composable's controller
+      // seed never lands.
       val extensionBag =
-        PreviewOverrides(material3Theme = overrides.material3Theme, wallpaper = overrides.wallpaper)
-      if (extensionBag.material3Theme != null || extensionBag.wallpaper != null) {
+        PreviewOverrides(
+          material3Theme = overrides.material3Theme,
+          wallpaper = overrides.wallpaper,
+          permissions = overrides.permissions,
+        )
+      if (
+        extensionBag.material3Theme != null ||
+          extensionBag.wallpaper != null ||
+          extensionBag.permissions != null
+      ) {
         if (isNotEmpty()) append(';')
         append("overrides=")
         append(

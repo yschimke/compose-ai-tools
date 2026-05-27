@@ -50,11 +50,15 @@ import kotlinx.serialization.json.JsonElement
  *
  * Lifecycle:
  *
- * * On enter — [PermissionsController.set] is called with the seed (clears the map when null).
- *   `DisposableEffect(seed)` re-runs only when the override identity changes, so a subsequent
- *   `renderNow.overrides.permissions` with the same shape doesn't churn the controller.
- * * On dispose — clears the override (matches `KeyboardOverrideExtension`'s on-dispose
- *   semantics).
+ * * On construction (planner phase, before composition starts) — [PermissionsController.set]
+ *   is called with the seed (clears the map when null). The seed must land **before** the
+ *   first composition pass so that consumer code reading `Context.checkSelfPermission(...)` on
+ *   the very first composition observes the override; a previous shape applied the seed inside
+ *   a `DisposableEffect(seed)` whose block runs *after* composition, leaving the screen on the
+ *   pre-seed branch for one full render. See `PermissionsOverrideIntegrationTest` in
+ *   `:daemon:android` for the regression that pins this.
+ * * On dispose (composition leaves the tree) — clears the override (matches
+ *   `KeyboardOverrideExtension`'s on-dispose semantics).
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the controller's Robolectric grant state is
  * primed before the user-environment phase reaches preview content — any `LaunchedEffect`-driven
@@ -69,12 +73,23 @@ class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null
         provides = setOf(DataExtensionCapability(PermissionsDataProductRegistry.KIND)),
       ),
   ) {
+
+  init {
+    // Apply the seed eagerly so `Context.checkSelfPermission(...)` reads through the new
+    // `ShadowApplication` grant state on the very first composition. The planner constructs a
+    // fresh instance per render in the `OuterEnvironment` phase, which runs before user-environment
+    // composition starts, so this is the right hook for "seed before any consumer read".
+    //
+    // `seed = null` triggers `PermissionsController.set(null)` which clears the previous render's
+    // grant map and re-syncs `ShadowApplication` to a permission-free baseline — the always-on
+    // planner contract means every render that omits an override still gets a clean slate, not
+    // whatever the previous render left behind.
+    PermissionsController.set(seed)
+  }
+
   @Composable
   override fun AroundComposable(content: @Composable () -> Unit) {
-    DisposableEffect(seed) {
-      PermissionsController.set(seed)
-      onDispose { PermissionsController.set(null) }
-    }
+    DisposableEffect(seed) { onDispose { PermissionsController.set(null) } }
     content()
   }
 
