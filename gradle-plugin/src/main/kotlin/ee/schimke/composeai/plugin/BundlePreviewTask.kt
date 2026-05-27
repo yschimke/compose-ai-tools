@@ -52,6 +52,7 @@ import org.gradle.api.tasks.TaskAction
  * `report.json` with their reachability counts but only the kept ones are recorded in the
  * manifest's classpath (deps with no reachable class don't make it to the player at all).
  */
+@org.gradle.api.tasks.CacheableTask
 abstract class BundlePreviewTask : DefaultTask() {
 
   /**
@@ -384,7 +385,15 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   private fun ZipOutputStream.writeFile(path: String, bytes: ByteArray) {
-    putNextEntry(ZipEntry(path))
+    // Pin every entry to a fixed epoch so the bundle is byte-identical across builds. Without
+    // this, `ZipEntry.time` defaults to `System.currentTimeMillis()` and same-inputs-same-bundle
+    // produces different bytes every run — useless for the build cache and noisy under content
+    // hashing (e.g. when CI compares an uploaded bundle against a baseline). 1980-01-01 is the
+    // DOS-epoch floor that the ZIP format can represent; matching what most reproducible-build
+    // tooling (Bazel, mvn-shade, gradle-shadow) uses.
+    val entry = ZipEntry(path)
+    entry.time = ZIP_DOS_EPOCH_MS
+    putNextEntry(entry)
     write(bytes)
     closeEntry()
   }
@@ -466,6 +475,17 @@ abstract class BundlePreviewTask : DefaultTask() {
       encodeDefaults = true
       classDiscriminator = "kind"
     }
+
+    /**
+     * Fixed timestamp stamped onto every ZIP entry produced by [writeFile]. 1980-01-01T00:00:00
+     * local time is the DOS-epoch floor the ZIP format can represent (anything earlier round-trips
+     * through `ZipEntry` as a different value); matching the reproducible-build floor used by
+     * Bazel, gradle-shadow, and mvn-shade. Hardcoded rather than `0` because the ZIP format
+     * silently clamps timestamps below the DOS epoch, which would silently make the chosen constant
+     * a lie.
+     */
+    val ZIP_DOS_EPOCH_MS: Long =
+      java.util.GregorianCalendar(1980, java.util.Calendar.JANUARY, 1, 0, 0, 0).timeInMillis
 
     /**
      * 1×1 gray PNG built on demand. Used as the cover when no rendered PNG is available — file(1)
