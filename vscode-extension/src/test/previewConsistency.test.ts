@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import {
     describeVerifyResult,
+    manifestExpectedFilesMissing,
     pngPathFor,
     VerifyDeps,
     verifyConsistency,
@@ -498,5 +499,98 @@ describe("verifyConsistency — extra + renamed files on disk", () => {
         );
         const kinds = result.inconsistencies.map((i) => i.kind).sort();
         assert.deepStrictEqual(kinds, ["renamed-on-disk"]);
+    });
+});
+
+describe("manifestExpectedFilesMissing", () => {
+    const module = mod(":app");
+
+    it("returns false when every capture's renderOutput exists on disk", () => {
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const p2 = preview("com.example.BluePreview", "renders/Blue.png");
+        const manifest = { previews: [p1, p2] } as PreviewManifest;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/Red.png",
+            "/ws/app/build/compose-previews/renders/Blue.png",
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (p) =>
+                disk.has(p),
+            ),
+            false,
+        );
+    });
+
+    it("returns true when a capture's renderOutput is missing", () => {
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const p2 = preview("com.example.BluePreview", "renders/Blue.png");
+        const manifest = { previews: [p1, p2] } as PreviewManifest;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/Red.png",
+            // Blue.png missing — the drift signal we want to surface.
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (p) =>
+                disk.has(p),
+            ),
+            true,
+        );
+    });
+
+    it("returns true when a data-product output is missing even if the static capture exists", () => {
+        // The scenario from the original drift report: discover returned a manifest with new-
+        // shape data-product paths under `data/render-scroll-long/`, but the renderer never
+        // ran under that shape so the directory is empty. The static base PNG happens to
+        // exist (carried over from an older render); the panel ignores it and waits for the
+        // scroll product that will never arrive.
+        const p = {
+            ...preview("com.example.LongScroll", "renders/LongScroll.png"),
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: {
+                        mode: "LONG",
+                        axis: "VERTICAL",
+                        maxScrollPx: 0,
+                        reduceMotion: false,
+                        atEnd: false,
+                        reachedPx: null,
+                    },
+                    output: "data/render-scroll-long/LongScroll.png",
+                },
+            ],
+        } as unknown as PreviewInfo;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/LongScroll.png",
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing(
+                "/ws",
+                module,
+                { previews: [p] } as PreviewManifest,
+                (path) => disk.has(path),
+            ),
+            true,
+        );
+    });
+
+    it("short-circuits on the first missing file", () => {
+        // The check fires on every refresh, so the cheap case (everything present) must stay
+        // O(1) and the expensive case (drift) must not pay for files beyond the first miss.
+        const previews = Array.from({ length: 100 }, (_, i) =>
+            preview(`com.example.P${i}`, `renders/P${i}.png`),
+        );
+        let calls = 0;
+        manifestExpectedFilesMissing(
+            "/ws",
+            module,
+            { previews } as PreviewManifest,
+            () => {
+                calls++;
+                return false;
+            },
+        );
+        assert.strictEqual(calls, 1);
     });
 });

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { withDataProductCaptures } from "./captureLabels";
 import { GradleService, ModuleInfo } from "./gradleService";
-import { PreviewInfo } from "./types";
+import { PreviewInfo, PreviewManifest } from "./types";
 
 /**
  * The user-visible bug the verify command targets: "I'm seeing a placeholder card on screen,
@@ -93,6 +93,43 @@ export interface VerifyResult {
  * would call a missing scroll PNG a "stale placeholder with PNG on disk" — the daemon's
  * static base PNG that the panel correctly ignores.
  */
+/**
+ * Cheap "does the manifest match what's on disk?" probe for the refresh path. Walks every
+ * capture and data-product output the manifest references and returns `true` the moment one is
+ * missing. Short-circuits so the cost is one `existsSync` per file at most, and zero when the
+ * manifest's first output is present and complete.
+ *
+ * Used to detect render/manifest drift after `composePreviewDiscover` returns FROM-CACHE with
+ * filenames that no `composePreviewRender` has ever written under (sanitiser bumps, wiped
+ * `build/`, branch switches, half-finished renders). When this returns `true` the refresh path
+ * escalates `forceRender=false` to `forceRender=true` so the renderer fills the gap before the
+ * panel paints — without the escalation the user sees placeholder cards indefinitely.
+ */
+export function manifestExpectedFilesMissing(
+    workspaceRoot: string,
+    module: ModuleInfo,
+    manifest: PreviewManifest,
+    fileExists: (filePath: string) => boolean = realFileExists,
+): boolean {
+    const root = path.join(
+        workspaceRoot,
+        module.projectDir,
+        "build",
+        "compose-previews",
+    );
+    for (const preview of manifest.previews) {
+        for (const capture of preview.captures) {
+            if (!capture.renderOutput) continue;
+            if (!fileExists(path.join(root, capture.renderOutput))) return true;
+        }
+        for (const product of preview.dataProducts ?? []) {
+            if (!product.output) continue;
+            if (!fileExists(path.join(root, product.output))) return true;
+        }
+    }
+    return false;
+}
+
 export function pngPathFor(
     workspaceRoot: string,
     module: ModuleInfo,

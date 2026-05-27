@@ -117,6 +117,7 @@ import { EditorScope, PreviewModuleIndex } from "./editorScope";
 import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
     describeVerifyResult,
+    manifestExpectedFilesMissing,
     realFileExists,
     realListFilesUnder,
     verifyConsistency,
@@ -4496,10 +4497,39 @@ async function refresh(
                           taskOpts,
                       ));
 
+            // Drift escalation. `forceRender=false` only runs `composePreviewDiscover`, so a
+            // cached manifest whose filenames don't match what's on disk (sanitiser bump,
+            // wiped `build/`, branch switch, half-finished render) leaves the panel painting
+            // placeholders forever — discover succeeded, but the PNGs the manifest pointed at
+            // never existed. When we detect that drift, re-issue the call as a render so the
+            // renderer fills the gap before the panel paints. The Gradle render is up-to-date-
+            // checked, so steady-state callers (disk fresh from a prior render) pay nothing.
+            let escalatedFromDrift = false;
+            if (
+                !forceRender &&
+                manifest &&
+                manifestExpectedFilesMissing(
+                    gradleService.workspaceRoot,
+                    mod,
+                    manifest,
+                )
+            ) {
+                logLine(
+                    `disk drift for ${mod.modulePath} — manifest references PNG(s) missing on disk; escalating to render`,
+                );
+                escalatedFromDrift = true;
+                manifest = await gradleService.composePreviewRender(
+                    mod,
+                    tier,
+                    taskOpts,
+                    [],
+                );
+            }
+
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
             // module (heavy captures are now fresh on disk).
-            if (forceRender && manifest) {
+            if ((forceRender || escalatedFromDrift) && manifest) {
                 if (tier === "fast") {
                     fastTierModules.add(modKey);
                 } else {

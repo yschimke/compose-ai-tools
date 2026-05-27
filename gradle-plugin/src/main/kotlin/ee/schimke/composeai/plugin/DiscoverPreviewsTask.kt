@@ -64,16 +64,6 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   // stamps a manifest pointer for them. New per-extension report rollups would add their own
   // dedicated input here when they have an on-disk artefact to point at.
 
-  /**
-   * Wired to [PreviewDiscovery.OUTPUT_SCHEMA_VERSION] in the task registration. Treated as an input
-   * so a cache entry generated under one filename/output-path shape (e.g. pre-#1530's
-   * spaces-in-filenames) doesn't replay into a workspace running a newer plugin whose
-   * `composePreviewRender` is about to write the new shape — the mismatch would otherwise show up
-   * as 21 manifest entries pointing at 0 PNGs on disk because the renderer never wrote them under
-   * the cached names. Static `Int` per plugin build, so it's hashed straight in.
-   */
-  @get:Input abstract val outputSchemaVersion: Property<Int>
-
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   private val json = Json {
