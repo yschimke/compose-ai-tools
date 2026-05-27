@@ -58,6 +58,14 @@ function makeDeps(
         gradleService: gradle,
         registryGetImage: (id) => registryImages.get(id) ?? null,
         fileExists: (filePath) => diskFiles.has(filePath),
+        listFilesUnder: (dir) => {
+            const prefix = dir.endsWith("/") ? dir : dir + "/";
+            const out: string[] = [];
+            for (const f of diskFiles) {
+                if (f.startsWith(prefix)) out.push(f.substring(prefix.length));
+            }
+            return out;
+        },
     };
 }
 
@@ -322,6 +330,7 @@ describe("describeVerifyResult", () => {
             manifestCount: 4,
             diskPngCount: 4,
             registryImageCount: 4,
+            diskFileCount: 4,
             inconsistencies: [],
         });
         assert.ok(msg.includes("consistent"), msg);
@@ -334,6 +343,7 @@ describe("describeVerifyResult", () => {
             manifestCount: 3,
             diskPngCount: 2,
             registryImageCount: 1,
+            diskFileCount: 2,
             inconsistencies: [
                 {
                     kind: "disk-has-png-registry-empty",
@@ -349,5 +359,144 @@ describe("describeVerifyResult", () => {
         });
         assert.ok(msg.includes("1 placeholder"), msg);
         assert.ok(msg.includes("1 never-rendered"), msg);
+    });
+
+    it("calls out renamed-on-disk + extra-file-on-disk in the summary", () => {
+        const msg = describeVerifyResult("/ws/app/Previews.kt", {
+            module: mod(":app"),
+            manifestCount: 2,
+            diskPngCount: 0,
+            registryImageCount: 0,
+            diskFileCount: 3,
+            inconsistencies: [
+                {
+                    kind: "renamed-on-disk",
+                    previewId: "p1",
+                    expectedPngPath:
+                        "/ws/app/build/compose-previews/renders/Foo_Bar.png",
+                    actualPath:
+                        "/ws/app/build/compose-previews/renders/Foo Bar.png",
+                },
+                {
+                    kind: "extra-file-on-disk",
+                    path: "/ws/app/build/compose-previews/renders/Orphan.png",
+                },
+                {
+                    kind: "extra-file-on-disk",
+                    path: "/ws/app/build/compose-previews/renders/Older.png",
+                },
+            ],
+        });
+        assert.ok(msg.includes("1 renamed on disk"), msg);
+        assert.ok(msg.includes("2 extra file(s) on disk"), msg);
+        assert.ok(msg.includes("diskFiles=3"), msg);
+    });
+});
+
+describe("verifyConsistency — extra + renamed files on disk", () => {
+    it("pairs an expected-but-missing PNG with a same-directory file whose stem fingerprints match", () => {
+        // Real-world repro from #1530 aftermath: the discover task came back FROM-CACHE with
+        // the new sanitiser shape (`Foo_Bar.png`), but `composePreviewRender` never ran under
+        // the new schema, so disk still holds the old shape (`Foo Bar.png`). Verify must
+        // pair them as `renamed-on-disk` so the user sees "your renders are stale — re-render"
+        // instead of "21 never-rendered" with extras dangling unexplained.
+        const module = mod(":app");
+        const p1 = preview("com.example.FooBarPreview", "renders/Foo_Bar.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map(),
+                new Set(["/ws/app/build/compose-previews/renders/Foo Bar.png"]),
+            ),
+        );
+        assert.strictEqual(result.inconsistencies.length, 1);
+        const issue = result.inconsistencies[0];
+        assert.strictEqual(issue.kind, "renamed-on-disk");
+        if (issue.kind === "renamed-on-disk") {
+            assert.strictEqual(issue.previewId, p1.id);
+            assert.strictEqual(
+                issue.actualPath,
+                "/ws/app/build/compose-previews/renders/Foo Bar.png",
+            );
+            assert.strictEqual(
+                issue.expectedPngPath,
+                "/ws/app/build/compose-previews/renders/Foo_Bar.png",
+            );
+        }
+    });
+
+    it("flags files on disk that no manifest entry points at", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map([[p1.id, "BYTES"]]),
+                new Set([
+                    "/ws/app/build/compose-previews/renders/Red.png",
+                    "/ws/app/build/compose-previews/renders/Orphan.png",
+                ]),
+            ),
+        );
+        assert.strictEqual(result.inconsistencies.length, 1);
+        const issue = result.inconsistencies[0];
+        assert.strictEqual(issue.kind, "extra-file-on-disk");
+        if (issue.kind === "extra-file-on-disk") {
+            assert.strictEqual(
+                issue.path,
+                "/ws/app/build/compose-previews/renders/Orphan.png",
+            );
+        }
+    });
+
+    it("doesn't flag previews.json or sibling top-level json sidecars as extras", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map([[p1.id, "BYTES"]]),
+                new Set([
+                    "/ws/app/build/compose-previews/renders/Red.png",
+                    "/ws/app/build/compose-previews/previews.json",
+                    "/ws/app/build/compose-previews/a11y-report.json",
+                ]),
+            ),
+        );
+        assert.deepStrictEqual(result.inconsistencies, []);
+    });
+
+    it("doesn't double-count a renamed file as both extra and renamed", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.FooBarPreview", "renders/Foo_Bar.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map(),
+                new Set(["/ws/app/build/compose-previews/renders/Foo Bar.png"]),
+            ),
+        );
+        const kinds = result.inconsistencies.map((i) => i.kind).sort();
+        assert.deepStrictEqual(kinds, ["renamed-on-disk"]);
     });
 });

@@ -26,6 +26,31 @@ import java.io.File
  */
 object PreviewDiscovery {
 
+  /**
+   * Bumped whenever the on-disk filename/output-path shape this library produces changes — the
+   * stem sanitiser, the shortest-unique-suffix algorithm, the data-product output directory
+   * layout. Exposed so the Gradle adapter can pin it as an `@Input` on `DiscoverPreviewsTask`:
+   * a cached manifest survives a plugin upgrade unchanged when filename shapes didn't move, but
+   * a sanitiser change (e.g. #1530 dropping spaces in favour of `_`) bumps the version and the
+   * cache misses, regenerating a manifest whose paths match what `composePreviewRender` is
+   * about to write.
+   *
+   * **Bump rules.**
+   * - Change the sanitiser in [normalizeRenderOutputs] / [shortestUniqueSuffix] / similar —
+   *   bump.
+   * - Move where data-product outputs land (e.g. `data/render-scroll-long/` → `data/scroll/`)
+   *   — bump.
+   * - Change the manifest schema in a way that affects on-disk lookups — bump.
+   * - Pure metadata changes (a new optional field on `PreviewInfo` that doesn't drive a
+   *   filename) — DON'T bump.
+   *
+   * History:
+   * - 1: initial shape, spaces and other non-alphanumerics preserved (pre-#1530).
+   * - 2: per-segment sanitiser collapses non-alphanumerics to `_`, shortest-unique-suffix per
+   *      preview (#1530).
+   */
+  const val OUTPUT_SCHEMA_VERSION: Int = 2
+
   /** Inputs the scan needs from the calling build system. All paths are absolute. */
   data class Input(
     /** Directories of compiled `.class` files belonging to the consumer module. */

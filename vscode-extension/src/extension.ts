@@ -118,6 +118,7 @@ import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
     describeVerifyResult,
     realFileExists,
+    realListFilesUnder,
     verifyConsistency,
 } from "./previewConsistency";
 import {
@@ -2270,6 +2271,7 @@ function runVerifyConsistency(): void {
         gradleService,
         registryGetImage: (id) => registry.getImage(id),
         fileExists: realFileExists,
+        listFilesUnder: realListFilesUnder,
     });
     const summary = describeVerifyResult(filePath, result);
     logForce(summary);
@@ -2277,6 +2279,15 @@ function runVerifyConsistency(): void {
         if (issue.kind === "disk-has-png-registry-empty") {
             logForce(
                 `  ⚠ ${issue.previewId}: PNG on disk at ${issue.pngPath} but registry is empty (panel is showing a placeholder unnecessarily)`,
+            );
+        } else if (issue.kind === "renamed-on-disk") {
+            logForce(
+                `  ⚠ ${issue.previewId}: manifest expects ${issue.expectedPngPath} but disk has ${issue.actualPath} ` +
+                    `(likely stale from a previous sanitiser — re-run composePreviewRenderAll to refresh)`,
+            );
+        } else if (issue.kind === "extra-file-on-disk") {
+            logForce(
+                `  · extra file on disk: ${issue.path} (no manifest entry — safe to delete)`,
             );
         } else {
             logForce(
@@ -2286,7 +2297,9 @@ function runVerifyConsistency(): void {
     }
     if (
         result.inconsistencies.some(
-            (i) => i.kind === "disk-has-png-registry-empty",
+            (i) =>
+                i.kind === "disk-has-png-registry-empty" ||
+                i.kind === "renamed-on-disk",
         )
     ) {
         vscode.window

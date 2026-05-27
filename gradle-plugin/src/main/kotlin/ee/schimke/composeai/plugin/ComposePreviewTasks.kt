@@ -820,6 +820,12 @@ internal object ComposePreviewTasks {
           .map { it.toBooleanStrictOrNull() ?: false }
           .orElse(extension.failOnEmpty)
       )
+      // Cache-key bump rope: when the library's filename / output-path shape changes, this
+      // version moves and the discover cache rebuilds the manifest with paths that match what
+      // `composePreviewRender` will write. Without this, a sanitiser change (#1530) leaves the
+      // editor staring at 21 manifest entries pointing at 0 PNGs on disk — the renderer never
+      // wrote anything under the cached names. See [PreviewDiscovery.OUTPUT_SCHEMA_VERSION].
+      outputSchemaVersion.set(PreviewDiscovery.OUTPUT_SCHEMA_VERSION)
       // No per-extension opt-in plumbed here — a11y data products are produced only by the
       // daemon (see `:daemon:android`'s `RenderEngine`). The standalone `composePreviewDiscover`
       // task writes an empty `dataExtensionReports` map.
