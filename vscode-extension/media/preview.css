@@ -1211,6 +1211,64 @@ preview-app {
     color: var(--text-primary);
 }
 
+/* compose/permissions section — override-toggle UI in the inspection tab body. */
+.inspection-permissions-header {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.inspection-permissions-add {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+.inspection-permissions-add-input {
+    background: var(--vscode-input-background, transparent);
+    border: 1px solid var(--card-border);
+    border-radius: 3px;
+    color: var(--text-primary);
+    flex: 1 1 auto;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: calc(var(--vscode-font-size) - 2px);
+    min-width: 120px;
+    padding: 2px 6px;
+}
+
+.inspection-permissions-actions-cell {
+    white-space: nowrap;
+}
+
+.inspection-permissions-action {
+    align-items: center;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: calc(var(--vscode-font-size) - 3px);
+    gap: 4px;
+    margin-right: 4px;
+    padding: 1px 6px;
+}
+
+.inspection-permissions-action:hover {
+    background: color-mix(in srgb, var(--card-border) 20%, transparent);
+    color: var(--text-primary);
+}
+
+/* The button reflecting the currently-applied grant reads as a pressed toggle. */
+.inspection-permissions-action--current {
+    background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent);
+    border-color: var(--vscode-focusBorder);
+    color: var(--text-primary);
+}
+
 .inspection-source-link {
     background: transparent;
     border: none;

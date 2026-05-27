@@ -64,6 +64,7 @@ import {
 } from "./daemon/daemonScheduler";
 import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
 import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
+import { mergePermissionsChange } from "./daemon/permissionsMerge";
 import {
     buildHistorySource,
     HistoryScope,
@@ -302,6 +303,20 @@ const latestRemoteComposeByPreview = new Map<
             import("./daemon/daemonProtocol").RemoteNamedValueWire
         >;
     }
+>();
+/**
+ * previewId → latest Android-permissions override the panel pushed. The permissions
+ * tab body posts `setPermissionsOverride` per Grant / Deny / Clear / Add click; we
+ * merge into this map and forward the cumulative `PermissionsOverride` on the next
+ * `renderNow` so the daemon's `PermissionsController.set(...)` applies the new state.
+ * Persists across renders for the activation lifetime, mirroring
+ * [remoteComposeOverridesByPreview]'s scope — a `clearAll` change resets the entry
+ * to `{ grants: {} }` rather than removing it, so the next dispatch still strips any
+ * grants the daemon previously pinned.
+ */
+const permissionsOverridesByPreview = new Map<
+    string,
+    import("./daemon/daemonProtocol").PermissionsOverride
 >();
 /** Last edited preview function name per Kotlin file, captured from in-memory edits and
  * consumed on save to prioritize that preview's refresh. */
@@ -5170,6 +5185,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 );
             }
             break;
+        case "setPermissionsOverride":
+            // Panel-side permissions tab body edit (Grant / Deny / Clear button
+            // or "Add permission" / "Clear overrides" action). Merges into the
+            // per-preview override bag and dispatches `renderNow.overrides.permissions`
+            // so the daemon's `PermissionsOverrideExtension` re-seeds Robolectric's
+            // grant state for the next composition. Gated on early features for the
+            // same reason as the Remote Compose edit path.
+            if (earlyFeaturesEnabled()) {
+                void handleSetPermissionsOverride(msg.previewId, msg.change);
+            }
+            break;
         case "openResourceFile":
             void openResourceFile(
                 {
@@ -5505,6 +5531,63 @@ async function handleSetRemoteComposeNamedValue(
         "remotecompose-edit",
         { remoteCompose: next },
     );
+}
+
+/**
+ * Apply one edit from the panel's permissions tab body. Merges the change into
+ * [permissionsOverridesByPreview] and dispatches `renderNow.overrides.permissions`
+ * so the daemon's `PermissionsOverrideExtension` re-seeds Robolectric's grant
+ * state on the next composition.
+ *
+ * No-op when the daemon scheduler isn't wired (Gradle-only mode) or the preview's
+ * owning module isn't yet known (panel rebuild race) — the webview keeps its
+ * optimistic button state; the next `updateDataProducts` payload reconciles.
+ *
+ * No live-session fast-path: unlike Remote Compose, permission changes propagate
+ * through Robolectric's `ShadowApplication` grant map, which is consulted on every
+ * `ContextWrapper.checkPermission` call as part of normal composition. A
+ * `renderNow` is the canonical way to surface the new value because the screen's
+ * `ContextCompat.checkSelfPermission(...)` read only re-fires on recomposition;
+ * mutating the controller without re-rendering would leave the visible UI on the
+ * pre-edit branch.
+ */
+async function handleSetPermissionsOverride(
+    previewId: string,
+    change: import("./types").PermissionsChangeDetail,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleInfo = previewModuleIndex.get(previewId);
+    if (!moduleInfo) {
+        return;
+    }
+    const prior = permissionsOverridesByPreview.get(previewId);
+    const next = mergePermissionsChange(prior, change);
+    permissionsOverridesByPreview.set(previewId, next);
+    logInfo(
+        `[panel] permissions ${describePermissionsChange(change)} for ${previewId} via renderNow (bag size=${Object.keys(next.grants).length})`,
+    );
+    void daemonScheduler.renderNow(
+        moduleInfo,
+        [previewId],
+        "fast",
+        "permissions-edit",
+        { permissions: next },
+    );
+}
+
+function describePermissionsChange(
+    change: import("./types").PermissionsChangeDetail,
+): string {
+    switch (change.field) {
+        case "setGrant":
+            return `${change.permission}=${change.grant}`;
+        case "clearGrant":
+            return `clear ${change.permission}`;
+        case "clearAll":
+            return "clearAll";
+    }
 }
 
 /**

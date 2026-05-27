@@ -521,6 +521,19 @@ export interface PreviewOverrides {
      */
     remoteCompose?: RemoteComposeOverride;
     /**
+     * Android runtime-permissions override. Drives the connector-side
+     * `PermissionsOverrideExtension` (see `:data-permissions-connector`). Mirrors
+     * `PermissionsOverride` in `Messages.kt` — the around-composable seeds
+     * Robolectric's `ShadowApplication` grant state from {@link PermissionsOverride.grants}
+     * so consumer code reading the standard Android permission APIs
+     * (`ContextCompat.checkSelfPermission`, `Activity.checkSelfPermission`,
+     * `Context.checkPermission`, accompanist's `rememberPermissionState`) sees the
+     * requested value. The panel's permissions tab body builds this bag from the user's
+     * Grant / Deny / Clear button clicks and pushes a fresh `renderNow` so the held
+     * preview re-renders with the new grants. Android-only; desktop ignores.
+     */
+    permissions?: PermissionsOverride;
+    /**
      * Launcher-widget container-size override. Drives the connector-side
      * `LauncherWidgetExtension` (see `:data-launcher-widget-connector`) so a held preview can
      * be laid out at a specific whole-cell size on the host's launcher grid — `cells = (4, 2)`
@@ -621,6 +634,25 @@ export type LauncherResizeAxes = "none" | "horizontal" | "vertical" | "both";
 export interface KeyboardOverride {
     visible?: boolean;
     pressedKey?: string;
+}
+
+/**
+ * Wire spelling for `PermissionsOverride.grants` values. Mirrors `PermissionGrantStateOverride`
+ * in `Messages.kt` — the connector accepts a closed `granted | denied` sum so the daemon never
+ * has to disambiguate "unspecified" from "denied".
+ */
+export type PermissionGrantOverride = "granted" | "denied";
+
+/**
+ * Android runtime-permissions override for previews. See `PreviewOverrides.permissions`.
+ *
+ * `grants` is keyed by `Manifest.permission.*` constant string (e.g.
+ * `"android.permission.CAMERA"`). Permissions not listed keep whatever Robolectric's
+ * manifest baseline started them with — by default everything is denied. An empty `grants`
+ * map is the canonical "clear all panel-pinned overrides" payload.
+ */
+export interface PermissionsOverride {
+    grants: Record<string, PermissionGrantOverride>;
 }
 
 /**
