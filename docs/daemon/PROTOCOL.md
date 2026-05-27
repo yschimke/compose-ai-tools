@@ -345,6 +345,10 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
     }>;
     shapes?: Record<string, number>; // Shape token name -> rounded corner size in dp.
   };
+  permissions?: {                    // Android runtime-permissions override. Android-only.
+    grants: Record<string,           // Manifest.permission.* constant string ->
+            "granted" | "denied">;   //   grant state to pin for this render.
+  };
 }
 
 // result
@@ -357,6 +361,8 @@ A `classpath` event triggers Tier-1 fingerprint recomputation; on mismatch the d
 The result resolves as soon as the request is queued, **not** when rendering completes. Per-render progress arrives as `renderStarted` / `renderFinished` / `renderFailed` notifications keyed by ID.
 
 `overrides` are merged onto the discovery-time `RenderSpec` per-call. A subsequent `renderNow` for the same preview **without** `overrides` reverts to the discovery-time defaults — overrides are not sticky across calls. Backends that don't model a particular field ignore it (e.g. desktop `localeTag` requires a Compose UI runtime that exposes a providable locale list). `orientation` is supported on both backends: Android performs a full rotation via the resource qualifier; desktop reduces `landscape`/`portrait` to a `widthPx ↔ heightPx` swap before `ImageComposeScene` construction (issue #1208). The desktop hint is **idempotent** — it means "make it look like X", not "always flip": the swap only fires when the requested orientation conflicts with the current aspect ratio, so a landscape-shaped base plus `orientation = landscape` is a no-op (repeated calls stay stable). Explicit pixel/`device` overrides on the same call win over the orientation hint on desktop — pass `orientation` alone for the swap to fire. `inspectionMode` controls the `LocalInspectionMode` value for this one-shot render; absent/null preserves preview behaviour (`true`). `material3Theme` is applied in the renderer's normal Compose tree as a `MaterialTheme(...) { preview() }` wrapper, so it affects components that read Material 3 locals without requiring the preview source to declare its own theme.
+
+`permissions` drives the runtime-permissions surface (`compose/permissions`). Android-only — the desktop backend ignores it. The around-composable seeds Robolectric's `ShadowApplication.grantPermissions/denyPermissions` from `grants` **before composition starts**, so a screen reading `ContextCompat.checkSelfPermission(...)`, `Activity.checkSelfPermission(...)`, `PackageManager.checkPermission(...)`, accompanist's `rememberPermissionState`, or any standard Android check API observes the requested value on the very first composition — no connector-specific Compose API for the consumer to opt into. A subsequent `renderNow.overrides.permissions` re-renders with the new map (full replacement: permissions absent from the new map fall back to Robolectric's manifest baseline, not "previous grant"); to keep a previous grant on a follow-up render, send it again. The companion shadow on `ContextWrapper.checkPermission(...)` records every queried permission for the panel's "queried but no grant pinned" surface; that list is served back through `data/fetch?kind=compose/permissions`.
 
 **Coalescing.** When `overrides` is non-null and a prior override-bearing render is still in-flight for the same `previewId`, the new request is rejected with `reason = "coalesced: …"` rather than queued. The client (panel, MCP, etc.) is responsible for resubmitting on the next `renderFinished` if the latest override values still differ from what was rendered. Plain (no-overrides) `renderNow` is unaffected — the existing save-debounce loop continues to coalesce upstream.
 
