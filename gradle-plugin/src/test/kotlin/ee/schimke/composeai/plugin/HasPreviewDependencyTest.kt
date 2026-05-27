@@ -198,6 +198,52 @@ class HasPreviewDependencyTest {
   }
 
   @Test
+  fun `transitive preview signal added in dependent project's afterEvaluate is detected`() {
+    // Real-world shape: `:app` is included before `:shared` in `settings.gradle.kts`,
+    // so by the time AGP's `onVariants` fires on `:app` and our gate walks
+    // `:app -> :shared`, `:shared` hasn't been evaluated yet — its
+    // `commonMainImplementation` is empty even though the build script declares
+    // `implementation(compose.components.uiToolingPreview)` in its KMP commonMain
+    // block. `joreilly/Confetti`'s `:androidApp` hits this exactly: no direct
+    // preview-tooling dep, only a transitive `implementation(projects.shared)`,
+    // and `:shared`'s preview-tooling dec is in its commonMain DSL.
+    //
+    // ProjectBuilder doesn't model KMP source sets, but `afterEvaluate` is the
+    // same shape — a config-time hook that only populates configurations once
+    // the target project is told to evaluate. The fix calls
+    // `evaluationDependsOn` on the sub-project before walking its configurations,
+    // which triggers `afterEvaluate` and populates the configs the walk inspects.
+    val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
+    val lib =
+      ProjectBuilder.builder()
+        .withName("lib")
+        .withProjectDir(tmp.newFolder("lib"))
+        .withParent(rootProject)
+        .build()
+    val app =
+      ProjectBuilder.builder()
+        .withName("app")
+        .withProjectDir(tmp.newFolder("app"))
+        .withParent(rootProject)
+        .build()
+
+    lib.plugins.apply("java-library")
+    app.plugins.apply("java")
+
+    lib.afterEvaluate {
+      lib.dependencies.add(
+        "api",
+        "org.jetbrains.compose.components:components-ui-tooling-preview:1.7.5",
+      )
+    }
+
+    val implementation = app.configurations.getByName("implementation")
+    implementation.dependencies.add(app.dependencies.project(mapOf("path" to ":lib")))
+
+    assertThat(AndroidPreviewSupport.hasPreviewDependency(app, "debug")).isTrue()
+  }
+
+  @Test
   fun `project-dependency cycle does not stack-overflow`() {
     // The recursive walk has to bound itself by visited project paths — without it,
     // a `:a` -> `:b` -> `:a` cycle (legal in plain Gradle, exotic but possible) would
