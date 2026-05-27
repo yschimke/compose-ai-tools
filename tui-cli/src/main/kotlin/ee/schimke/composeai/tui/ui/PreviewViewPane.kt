@@ -15,12 +15,14 @@ import java.io.File
 
 /**
  * Centre pane: rendered preview image. The PNG is decoded into a [com.jakewharton.mosaic.ui.Bitmap]
- * and handed to the fork's [Image] composable, which picks the best rendering tier for the host
- * terminal — Kitty Graphics Protocol (kitty / ghostty / WezTerm), truecolor half-block (most modern
- * terminals + tmux), or brightness-ramp ASCII (dumb terminals, snapshot harnesses).
+ * and handed to the fork's [Image] composable, which auto-detects the rendering tier — Kitty
+ * Graphics Protocol on kitty / ghostty / WezTerm, truecolor half-block (`▀`) on any 24-bit
+ * terminal, brightness-ramp ASCII as a final fallback.
  *
  * The bitmap is re-decoded whenever the file's mtime changes, so a daemon notification or a vim
- * write that arrives while the user has this preview pinned recomposes the pane automatically.
+ * write that arrives while the user has this preview pinned recomposes the pane automatically. The
+ * composable resamples internally per tier — the source PNG resolution doesn't have to match the
+ * cell footprint.
  *
  * When the PNG is missing — for example because live mode is OFF and `composePreviewRenderAll` has
  * never been run for this module — the pane shows a one-line "no render yet" hint. Same path when

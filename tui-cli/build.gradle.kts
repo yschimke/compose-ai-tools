@@ -20,7 +20,19 @@ base { archivesName.set("compose-preview-tui") }
 application {
   applicationName = "compose-preview-tui"
   mainClass.set("ee.schimke.composeai.tui.MainKt")
-  applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+  // Force UTF-8 on the streams Mosaic writes to: a JVM launched under POSIX/C locale picks
+  // US-ASCII / ISO-8859-1 by default, which silently replaces every non-ASCII glyph the
+  // composition emits (half-block `▀`, list-cursor `▶`, the long-dash in --help, etc.) with
+  // `?`. `stdout.encoding` / `stderr.encoding` are honoured on JDK 18+; `file.encoding` is the
+  // older umbrella that some libraries still read on JDK 17 paths. Setting all three is belt-
+  // and-braces — none of them break a UTF-8-by-default locale and they fix it on POSIX/C.
+  applicationDefaultJvmArgs =
+    listOf(
+      "--enable-native-access=ALL-UNNAMED",
+      "-Dfile.encoding=UTF-8",
+      "-Dstdout.encoding=UTF-8",
+      "-Dstderr.encoding=UTF-8",
+    )
 }
 
 tasks.named<Tar>("distTar") {
