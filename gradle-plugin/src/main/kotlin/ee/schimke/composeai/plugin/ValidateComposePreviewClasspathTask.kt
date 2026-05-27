@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
@@ -20,16 +21,29 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
 
   @get:Input abstract val platform: Property<String>
 
-  @get:Internal abstract val classpath: ConfigurableFileCollection
+  /**
+   * Resolved runtime classpath. Marked [Classpath] (not [Internal] + a derived absolute-path
+   * `@Input`) so the cache key is content-hashed and machine-independent — two workstations with
+   * the same JARs in different `~/.gradle/caches/...` paths share a cache hit. The validation
+   * outcome itself only ever inspects path substrings (`/androidx.compose.ui/`, `jvmstubs` filename
+   * markers), which travel with the artifact wherever it lives, so a content-keyed cache is a sound
+   * proxy for "we already validated this set of JARs".
+   */
+  @get:Classpath abstract val classpath: ConfigurableFileCollection
 
-  @get:Input
+  /**
+   * Derived helper used by [validate] to feed the [androidxComposeArtifactsOnDesktopClasspath]
+   * substring matcher. Intentionally `@Internal` — the cache key flows through [classpath]'s
+   * content hash, not through these absolute path strings (which would otherwise pin the cache to a
+   * single workstation).
+   */
+  @get:Internal
   val classpathPaths: List<String>
     get() = classpath.files.map { it.absolutePath }
 
   init {
     group = "compose preview"
     description = "Validate the compose-preview runtime classpath for platform-specific artifacts"
-    dependsOn(classpath)
   }
 
   @TaskAction
