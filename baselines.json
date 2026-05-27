@@ -73,6 +73,18 @@
       "sha256": "103d20cb42f4bc2c61d6b8ae5e5fa6d50e3216b8f5301a7986dce229071217c9",
       "size": 49346
     },
+    "permissions.dark.png": {
+      "fixture": "permissions",
+      "theme": "dark",
+      "sha256": "04fd9833a55b5a8acb3b53a838b4acc95a2f0898914601ecf8b2d7c517224f0f",
+      "size": 70617
+    },
+    "permissions.light.png": {
+      "fixture": "permissions",
+      "theme": "light",
+      "sha256": "473153cde03e91308d87148882ad34e1d5d32b8c2fbfb213729e1c1a9099b1a1",
+      "size": 69857
+    },
     "remotecompose-state.dark.png": {
       "fixture": "remotecompose-state",
       "theme": "dark",
