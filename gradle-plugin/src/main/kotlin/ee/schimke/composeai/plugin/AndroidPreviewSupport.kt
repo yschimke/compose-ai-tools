@@ -498,6 +498,11 @@ internal object AndroidPreviewSupport {
     val injectedDependencies =
       mutableListOf<ee.schimke.composeai.plugin.tooling.InjectedDependency>()
     val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
+    // Captured at registration time so the doctor task's `@Input Boolean` is a plain serializable
+    // value (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
+    // so the consumer's `dependencies { }` block has finished evaluating and
+    // `hasPreviewDependency` sees the full declared graph.
+    val previewToolingDeclaredAtRegistration = hasPreviewDependency(project, variantName)
     project.tasks.register(
       "composePreviewDoctor",
       ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java,
@@ -510,6 +515,8 @@ internal object AndroidPreviewSupport {
       this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
       mainRuntimeRoot?.let { this.mainRuntimeRoot.set(it) }
       testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
+      this.previewToolingDeclared.set(previewToolingDeclaredAtRegistration)
+      this.enforcePreviewToolingDependency.set(extension.enforcePreviewToolingDependency)
       this.injectedDependenciesJson.set(
         project.provider {
           injectedDependencyJson.encodeToString(
