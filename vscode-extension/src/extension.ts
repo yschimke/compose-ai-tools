@@ -114,7 +114,9 @@ import { EditorScope, PreviewModuleIndex } from "./editorScope";
 import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
     describeVerifyResult,
+    manifestExpectedFilesMissing,
     realFileExists,
+    realListFilesUnder,
     verifyConsistency,
 } from "./previewConsistency";
 import {
@@ -2283,6 +2285,7 @@ function runVerifyConsistency(): void {
         gradleService,
         registryGetImage: (id) => registry.getImage(id),
         fileExists: realFileExists,
+        listFilesUnder: realListFilesUnder,
     });
     const summary = describeVerifyResult(filePath, result);
     logForce(summary);
@@ -2290,6 +2293,15 @@ function runVerifyConsistency(): void {
         if (issue.kind === "disk-has-png-registry-empty") {
             logForce(
                 `  ⚠ ${issue.previewId}: PNG on disk at ${issue.pngPath} but registry is empty (panel is showing a placeholder unnecessarily)`,
+            );
+        } else if (issue.kind === "renamed-on-disk") {
+            logForce(
+                `  ⚠ ${issue.previewId}: manifest expects ${issue.expectedPngPath} but disk has ${issue.actualPath} ` +
+                    `(likely stale from a previous sanitiser — re-run composePreviewRenderAll to refresh)`,
+            );
+        } else if (issue.kind === "extra-file-on-disk") {
+            logForce(
+                `  · extra file on disk: ${issue.path} (no manifest entry — safe to delete)`,
             );
         } else {
             logForce(
@@ -2299,7 +2311,9 @@ function runVerifyConsistency(): void {
     }
     if (
         result.inconsistencies.some(
-            (i) => i.kind === "disk-has-png-registry-empty",
+            (i) =>
+                i.kind === "disk-has-png-registry-empty" ||
+                i.kind === "renamed-on-disk",
         )
     ) {
         vscode.window
@@ -4502,10 +4516,39 @@ async function refresh(
                           taskOpts,
                       ));
 
+            // Drift escalation. `forceRender=false` only runs `composePreviewDiscover`, so a
+            // cached manifest whose filenames don't match what's on disk (sanitiser bump,
+            // wiped `build/`, branch switch, half-finished render) leaves the panel painting
+            // placeholders forever — discover succeeded, but the PNGs the manifest pointed at
+            // never existed. When we detect that drift, re-issue the call as a render so the
+            // renderer fills the gap before the panel paints. The Gradle render is up-to-date-
+            // checked, so steady-state callers (disk fresh from a prior render) pay nothing.
+            let escalatedFromDrift = false;
+            if (
+                !forceRender &&
+                manifest &&
+                manifestExpectedFilesMissing(
+                    gradleService.workspaceRoot,
+                    mod,
+                    manifest,
+                )
+            ) {
+                logLine(
+                    `disk drift for ${mod.modulePath} — manifest references PNG(s) missing on disk; escalating to render`,
+                );
+                escalatedFromDrift = true;
+                manifest = await gradleService.composePreviewRender(
+                    mod,
+                    tier,
+                    taskOpts,
+                    [],
+                );
+            }
+
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
             // module (heavy captures are now fresh on disk).
-            if (forceRender && manifest) {
+            if ((forceRender || escalatedFromDrift) && manifest) {
                 if (tier === "fast") {
                     fastTierModules.add(modKey);
                 } else {

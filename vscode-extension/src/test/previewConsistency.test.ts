@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import {
     describeVerifyResult,
+    manifestExpectedFilesMissing,
     pngPathFor,
     VerifyDeps,
     verifyConsistency,
@@ -58,6 +59,14 @@ function makeDeps(
         gradleService: gradle,
         registryGetImage: (id) => registryImages.get(id) ?? null,
         fileExists: (filePath) => diskFiles.has(filePath),
+        listFilesUnder: (dir) => {
+            const prefix = dir.endsWith("/") ? dir : dir + "/";
+            const out: string[] = [];
+            for (const f of diskFiles) {
+                if (f.startsWith(prefix)) out.push(f.substring(prefix.length));
+            }
+            return out;
+        },
     };
 }
 
@@ -322,6 +331,7 @@ describe("describeVerifyResult", () => {
             manifestCount: 4,
             diskPngCount: 4,
             registryImageCount: 4,
+            diskFileCount: 4,
             inconsistencies: [],
         });
         assert.ok(msg.includes("consistent"), msg);
@@ -334,6 +344,7 @@ describe("describeVerifyResult", () => {
             manifestCount: 3,
             diskPngCount: 2,
             registryImageCount: 1,
+            diskFileCount: 2,
             inconsistencies: [
                 {
                     kind: "disk-has-png-registry-empty",
@@ -349,5 +360,237 @@ describe("describeVerifyResult", () => {
         });
         assert.ok(msg.includes("1 placeholder"), msg);
         assert.ok(msg.includes("1 never-rendered"), msg);
+    });
+
+    it("calls out renamed-on-disk + extra-file-on-disk in the summary", () => {
+        const msg = describeVerifyResult("/ws/app/Previews.kt", {
+            module: mod(":app"),
+            manifestCount: 2,
+            diskPngCount: 0,
+            registryImageCount: 0,
+            diskFileCount: 3,
+            inconsistencies: [
+                {
+                    kind: "renamed-on-disk",
+                    previewId: "p1",
+                    expectedPngPath:
+                        "/ws/app/build/compose-previews/renders/Foo_Bar.png",
+                    actualPath:
+                        "/ws/app/build/compose-previews/renders/Foo Bar.png",
+                },
+                {
+                    kind: "extra-file-on-disk",
+                    path: "/ws/app/build/compose-previews/renders/Orphan.png",
+                },
+                {
+                    kind: "extra-file-on-disk",
+                    path: "/ws/app/build/compose-previews/renders/Older.png",
+                },
+            ],
+        });
+        assert.ok(msg.includes("1 renamed on disk"), msg);
+        assert.ok(msg.includes("2 extra file(s) on disk"), msg);
+        assert.ok(msg.includes("diskFiles=3"), msg);
+    });
+});
+
+describe("verifyConsistency — extra + renamed files on disk", () => {
+    it("pairs an expected-but-missing PNG with a same-directory file whose stem fingerprints match", () => {
+        // Real-world repro from #1530 aftermath: the discover task came back FROM-CACHE with
+        // the new sanitiser shape (`Foo_Bar.png`), but `composePreviewRender` never ran under
+        // the new schema, so disk still holds the old shape (`Foo Bar.png`). Verify must
+        // pair them as `renamed-on-disk` so the user sees "your renders are stale — re-render"
+        // instead of "21 never-rendered" with extras dangling unexplained.
+        const module = mod(":app");
+        const p1 = preview("com.example.FooBarPreview", "renders/Foo_Bar.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map(),
+                new Set(["/ws/app/build/compose-previews/renders/Foo Bar.png"]),
+            ),
+        );
+        assert.strictEqual(result.inconsistencies.length, 1);
+        const issue = result.inconsistencies[0];
+        assert.strictEqual(issue.kind, "renamed-on-disk");
+        if (issue.kind === "renamed-on-disk") {
+            assert.strictEqual(issue.previewId, p1.id);
+            assert.strictEqual(
+                issue.actualPath,
+                "/ws/app/build/compose-previews/renders/Foo Bar.png",
+            );
+            assert.strictEqual(
+                issue.expectedPngPath,
+                "/ws/app/build/compose-previews/renders/Foo_Bar.png",
+            );
+        }
+    });
+
+    it("flags files on disk that no manifest entry points at", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map([[p1.id, "BYTES"]]),
+                new Set([
+                    "/ws/app/build/compose-previews/renders/Red.png",
+                    "/ws/app/build/compose-previews/renders/Orphan.png",
+                ]),
+            ),
+        );
+        assert.strictEqual(result.inconsistencies.length, 1);
+        const issue = result.inconsistencies[0];
+        assert.strictEqual(issue.kind, "extra-file-on-disk");
+        if (issue.kind === "extra-file-on-disk") {
+            assert.strictEqual(
+                issue.path,
+                "/ws/app/build/compose-previews/renders/Orphan.png",
+            );
+        }
+    });
+
+    it("doesn't flag previews.json or sibling top-level json sidecars as extras", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map([[p1.id, "BYTES"]]),
+                new Set([
+                    "/ws/app/build/compose-previews/renders/Red.png",
+                    "/ws/app/build/compose-previews/previews.json",
+                    "/ws/app/build/compose-previews/a11y-report.json",
+                ]),
+            ),
+        );
+        assert.deepStrictEqual(result.inconsistencies, []);
+    });
+
+    it("doesn't double-count a renamed file as both extra and renamed", () => {
+        const module = mod(":app");
+        const p1 = preview("com.example.FooBarPreview", "renders/Foo_Bar.png");
+        const result = verifyConsistency(
+            "/ws/app/Previews.kt",
+            makeDeps(
+                fakeGradleService({
+                    workspaceRoot: "/ws",
+                    resolveModule: () => module,
+                    readManifest: () => ({ previews: [p1] }) as PreviewManifest,
+                }),
+                new Map(),
+                new Set(["/ws/app/build/compose-previews/renders/Foo Bar.png"]),
+            ),
+        );
+        const kinds = result.inconsistencies.map((i) => i.kind).sort();
+        assert.deepStrictEqual(kinds, ["renamed-on-disk"]);
+    });
+});
+
+describe("manifestExpectedFilesMissing", () => {
+    const module = mod(":app");
+
+    it("returns false when every capture's renderOutput exists on disk", () => {
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const p2 = preview("com.example.BluePreview", "renders/Blue.png");
+        const manifest = { previews: [p1, p2] } as PreviewManifest;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/Red.png",
+            "/ws/app/build/compose-previews/renders/Blue.png",
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (p) =>
+                disk.has(p),
+            ),
+            false,
+        );
+    });
+
+    it("returns true when a capture's renderOutput is missing", () => {
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const p2 = preview("com.example.BluePreview", "renders/Blue.png");
+        const manifest = { previews: [p1, p2] } as PreviewManifest;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/Red.png",
+            // Blue.png missing — the drift signal we want to surface.
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (p) =>
+                disk.has(p),
+            ),
+            true,
+        );
+    });
+
+    it("returns true when a data-product output is missing even if the static capture exists", () => {
+        // The scenario from the original drift report: discover returned a manifest with new-
+        // shape data-product paths under `data/render-scroll-long/`, but the renderer never
+        // ran under that shape so the directory is empty. The static base PNG happens to
+        // exist (carried over from an older render); the panel ignores it and waits for the
+        // scroll product that will never arrive.
+        const p = {
+            ...preview("com.example.LongScroll", "renders/LongScroll.png"),
+            dataProducts: [
+                {
+                    kind: "render/scroll/long",
+                    advanceTimeMillis: null,
+                    scroll: {
+                        mode: "LONG",
+                        axis: "VERTICAL",
+                        maxScrollPx: 0,
+                        reduceMotion: false,
+                        atEnd: false,
+                        reachedPx: null,
+                    },
+                    output: "data/render-scroll-long/LongScroll.png",
+                },
+            ],
+        } as unknown as PreviewInfo;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/LongScroll.png",
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing(
+                "/ws",
+                module,
+                { previews: [p] } as PreviewManifest,
+                (path) => disk.has(path),
+            ),
+            true,
+        );
+    });
+
+    it("short-circuits on the first missing file", () => {
+        // The check fires on every refresh, so the cheap case (everything present) must stay
+        // O(1) and the expensive case (drift) must not pay for files beyond the first miss.
+        const previews = Array.from({ length: 100 }, (_, i) =>
+            preview(`com.example.P${i}`, `renders/P${i}.png`),
+        );
+        let calls = 0;
+        manifestExpectedFilesMissing(
+            "/ws",
+            module,
+            { previews } as PreviewManifest,
+            () => {
+                calls++;
+                return false;
+            },
+        );
+        assert.strictEqual(calls, 1);
     });
 });
