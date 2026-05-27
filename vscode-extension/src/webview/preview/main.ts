@@ -142,6 +142,7 @@ import {
 import {
     computeInspectionBundleData,
     type InspectionKind,
+    type PermissionsChangeDetail,
 } from "./inspectionPresenters";
 import { FilterController } from "./filterController";
 import { showDiffOverlay, type DiffMode } from "./diffOverlay";
@@ -2242,6 +2243,22 @@ export class PreviewApp extends LitElement {
             wrapper.appendChild(expander);
             wrapper.appendChild(host);
             wrapper.appendChild(rowDetail);
+            // Permissions section dispatches Grant / Deny / Clear / Add /
+            // Clear-overrides clicks as a single bubbled CustomEvent. Listen
+            // at the wrapper so the listener survives `host.replaceChildren()`
+            // on every refresh — the section element is re-built per refresh
+            // but the wrapper is cached for the panel lifetime.
+            wrapper.addEventListener("permissions-override-change", (evt) => {
+                const det = (evt as CustomEvent<PermissionsChangeDetail>)
+                    .detail;
+                const target = currentBundleTarget();
+                if (!target) return;
+                vscode.postMessage({
+                    command: "setPermissionsOverride",
+                    previewId: target,
+                    change: det,
+                });
+            });
             inspectionCachedBody = { wrapper, expander, host, rowDetail };
             return inspectionCachedBody;
         };

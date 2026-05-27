@@ -496,15 +496,20 @@ function computeUiaHierarchyBundleData(
  * tables — grants and queried — under one `<section>`. The body sits in the
  * inspection bundle's host alongside the tree-tables; the bundle's merged
  * overlay stays empty for this kind.
+ *
+ * Each table row carries Grant / Deny / Clear buttons that bubble a
+ * `permissions-override-change` CustomEvent ({@link PermissionsChangeDetail})
+ * up to the inspection bundle body wrapper; `main.ts` catches it and posts
+ * `setPermissionsOverride` so the host can push a fresh
+ * `renderNow.overrides.permissions`. The section header also carries an
+ * "Add permission" form for pinning arbitrary `Manifest.permission.*` names
+ * even when the screen hasn't queried them, plus a "Clear overrides" action.
  */
 function computePermissionsInspectionData(
     payload: PermissionsPayload | undefined,
 ): InspectionKindData | null {
     if (!payload) return null;
     const data = computePermissionsBundleData(payload);
-    if (data.grantRows.length === 0 && data.queriedRows.length === 0) {
-        return null;
-    }
     const summary =
         data.allPermissions.length +
         " permission" +
@@ -513,14 +518,20 @@ function computePermissionsInspectionData(
     body.className = "inspection-permissions-section";
     const header = document.createElement("header");
     header.className = "inspection-permissions-header";
-    header.textContent = "Permissions · " + summary;
+    const headerTitle = document.createElement("span");
+    headerTitle.className = "inspection-permissions-title";
+    headerTitle.textContent = "Permissions · " + summary;
+    header.appendChild(headerTitle);
+    header.appendChild(buildClearOverridesButton());
     body.appendChild(header);
+    body.appendChild(buildAddPermissionForm());
     if (data.grantRows.length > 0) {
         body.appendChild(
             buildPermissionsTable("Effective grants", data.grantRows, [
                 "Permission",
                 "Grant",
                 "Queried?",
+                "Actions",
             ]),
         );
     }
@@ -529,6 +540,7 @@ function computePermissionsInspectionData(
             buildPermissionsTable("Queried", data.queriedRows, [
                 "Permission",
                 "Effective grant",
+                "Actions",
             ]),
         );
     }
@@ -542,6 +554,8 @@ function buildPermissionsTable(
 ): HTMLElement {
     const wrap = document.createElement("section");
     wrap.className = "inspection-permissions-table";
+    wrap.dataset.permissionTable =
+        title === "Effective grants" ? "grants" : "queried";
     const heading = document.createElement("h4");
     heading.textContent = title;
     wrap.appendChild(heading);
@@ -556,29 +570,197 @@ function buildPermissionsTable(
     thead.appendChild(headerRow);
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
+    const isGrantsTable = headers.length === 4;
     for (const row of rows) {
         const tr = document.createElement("tr");
         tr.dataset.permissionLevel = row.level;
+        tr.dataset.permissionName = row.permission;
         const permCell = document.createElement("td");
         const code = document.createElement("code");
         code.textContent = row.shortLabel;
         permCell.appendChild(code);
         tr.appendChild(permCell);
         const grantCell = document.createElement("td");
-        grantCell.textContent =
-            row.grant ?? (headers.length === 3 ? "—" : "unknown");
+        grantCell.textContent = row.grant ?? (isGrantsTable ? "—" : "unknown");
         tr.appendChild(grantCell);
-        if (headers.length === 3) {
+        if (isGrantsTable) {
             const queriedCell = document.createElement("td");
             queriedCell.textContent = row.queried ? "yes" : "no";
             tr.appendChild(queriedCell);
         }
+        tr.appendChild(buildRowActionsCell(row, isGrantsTable));
         tbody.appendChild(tr);
     }
     table.appendChild(tbody);
     wrap.appendChild(table);
     return wrap;
 }
+
+/**
+ * Build the per-row override-action cell — Grant / Deny buttons, plus a Clear
+ * button on grant-table rows (queried-only rows have nothing to clear). The
+ * currently-applied grant's button is `aria-pressed` so the panel reads as a
+ * toggle, not a one-shot.
+ */
+function buildRowActionsCell(
+    row: PermissionRow,
+    isGrantsTable: boolean,
+): HTMLElement {
+    const cell = document.createElement("td");
+    cell.className = "inspection-permissions-actions-cell";
+    cell.appendChild(
+        buildGrantButton(row.permission, "granted", row.grant === "granted"),
+    );
+    cell.appendChild(
+        buildGrantButton(row.permission, "denied", row.grant === "denied"),
+    );
+    if (isGrantsTable) {
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "inspection-permissions-action";
+        clearBtn.dataset.permissionAction = "clear";
+        clearBtn.dataset.permissionName = row.permission;
+        clearBtn.textContent = "Clear";
+        clearBtn.title = "Drop this permission's panel-pinned override";
+        clearBtn.addEventListener("click", () => {
+            emitPermissionsChange(clearBtn, {
+                field: "clearGrant",
+                permission: row.permission,
+            });
+        });
+        cell.appendChild(clearBtn);
+    }
+    return cell;
+}
+
+function buildGrantButton(
+    permission: string,
+    grant: "granted" | "denied",
+    isCurrent: boolean,
+): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "inspection-permissions-action";
+    btn.dataset.permissionAction = grant === "granted" ? "grant" : "deny";
+    btn.dataset.permissionName = permission;
+    btn.textContent = grant === "granted" ? "Grant" : "Deny";
+    btn.title =
+        grant === "granted"
+            ? "Pin this permission as granted for the next render"
+            : "Pin this permission as denied for the next render";
+    if (isCurrent) {
+        btn.setAttribute("aria-pressed", "true");
+        btn.classList.add("inspection-permissions-action--current");
+    }
+    btn.addEventListener("click", () => {
+        emitPermissionsChange(btn, {
+            field: "setGrant",
+            permission,
+            grant,
+        });
+    });
+    return btn;
+}
+
+function buildAddPermissionForm(): HTMLElement {
+    const form = document.createElement("form");
+    form.className = "inspection-permissions-add";
+    form.dataset.permissionForm = "add";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "inspection-permissions-add-input";
+    input.placeholder = "android.permission.CAMERA";
+    input.setAttribute(
+        "aria-label",
+        "Permission name to pin (e.g. android.permission.CAMERA)",
+    );
+    form.appendChild(input);
+    const grantBtn = document.createElement("button");
+    grantBtn.type = "submit";
+    grantBtn.className = "inspection-permissions-action";
+    grantBtn.dataset.permissionAction = "add-grant";
+    grantBtn.textContent = "Grant";
+    grantBtn.value = "granted";
+    form.appendChild(grantBtn);
+    const denyBtn = document.createElement("button");
+    denyBtn.type = "submit";
+    denyBtn.className = "inspection-permissions-action";
+    denyBtn.dataset.permissionAction = "add-deny";
+    denyBtn.textContent = "Deny";
+    denyBtn.value = "denied";
+    form.appendChild(denyBtn);
+    let pendingGrant: "granted" | "denied" = "granted";
+    grantBtn.addEventListener("click", () => {
+        pendingGrant = "granted";
+    });
+    denyBtn.addEventListener("click", () => {
+        pendingGrant = "denied";
+    });
+    form.addEventListener("submit", (evt) => {
+        evt.preventDefault();
+        const raw = input.value.trim();
+        if (!raw) return;
+        const permission = normalisePermissionInput(raw);
+        emitPermissionsChange(form, {
+            field: "setGrant",
+            permission,
+            grant: pendingGrant,
+        });
+        input.value = "";
+    });
+    return form;
+}
+
+function buildClearOverridesButton(): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className =
+        "inspection-permissions-action inspection-permissions-clear-all";
+    btn.dataset.permissionAction = "clear-all";
+    btn.textContent = "Clear overrides";
+    btn.title =
+        "Drop every panel-pinned permission override (the next render falls" +
+        " back to the manifest baseline).";
+    btn.addEventListener("click", () => {
+        emitPermissionsChange(btn, { field: "clearAll" });
+    });
+    return btn;
+}
+
+/**
+ * `CAMERA` → `android.permission.CAMERA` so the user can type the short
+ * label they see in the table without remembering the full prefix; an already-
+ * qualified input passes through unchanged. Whitespace-only input is caught by
+ * the form's submit handler before reaching this helper.
+ */
+function normalisePermissionInput(raw: string): string {
+    if (raw.includes(".")) return raw;
+    return "android.permission." + raw.toUpperCase();
+}
+
+function emitPermissionsChange(
+    source: HTMLElement,
+    detail: PermissionsChangeDetail,
+): void {
+    const evt = new CustomEvent<PermissionsChangeDetail>(
+        "permissions-override-change",
+        { detail, bubbles: true, composed: true },
+    );
+    source.dispatchEvent(evt);
+}
+
+/**
+ * Detail payload of the `permissions-override-change` CustomEvent the
+ * permissions section dispatches up to the inspection bundle body wrapper.
+ * Re-typed here (rather than imported from `../types`) because this module
+ * is the only webview-side producer and we don't want to drag the full host
+ * `WebviewToExtension` union into the presenter's type graph. `main.ts`
+ * forwards it verbatim as the `change` field of `setPermissionsOverride`.
+ */
+export type PermissionsChangeDetail =
+    | { field: "setGrant"; permission: string; grant: "granted" | "denied" }
+    | { field: "clearGrant"; permission: string }
+    | { field: "clearAll" };
 
 /** Namespace a node id with its kind so cross-kind dedupe stays clean. */
 function nsId(prefix: string, id: string): string {

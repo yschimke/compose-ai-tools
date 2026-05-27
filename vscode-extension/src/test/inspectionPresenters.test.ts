@@ -248,3 +248,200 @@ describe("computeInspectionBundleData (cardBundleOverlay path)", () => {
         }
     });
 });
+
+// Override-toggle UI in the `compose/permissions` section. The presenter renders
+// per-row Grant / Deny / Clear buttons, an "Add permission" form, and a "Clear
+// overrides" action; each dispatches a bubbled `permissions-override-change`
+// CustomEvent ({@link PermissionsChangeDetail}). `main.ts` catches the event at
+// the inspection bundle wrapper and forwards it as the host's
+// `setPermissionsOverride` message; here we just pin the DOM-level contract.
+describe("computeInspectionBundleData compose/permissions override controls", () => {
+    afterEach(() => {
+        document.body.innerHTML = "";
+    });
+
+    type CapturedChange =
+        | { field: "setGrant"; permission: string; grant: "granted" | "denied" }
+        | { field: "clearGrant"; permission: string }
+        | { field: "clearAll" };
+
+    function mountSection(
+        payload: {
+            grants?: Record<string, "granted" | "denied">;
+            queried?: string[];
+        } | null,
+    ): { body: HTMLElement; events: CapturedChange[] } {
+        const data = computeInspectionBundleData(
+            (kind) => (kind === "compose/permissions" ? payload : undefined),
+            new Set<InspectionKind>(["compose/permissions"]),
+        );
+        assert.strictEqual(data.sections.length, 1);
+        assert.strictEqual(data.sections[0].kind, "compose/permissions");
+        // Mount the section into a wrapper that captures the bubbled events,
+        // mirroring the listener `main.ts` installs on the inspection bundle
+        // body wrapper.
+        const wrapper = document.createElement("div");
+        wrapper.appendChild(data.sections[0].data.body);
+        document.body.appendChild(wrapper);
+        const events: CapturedChange[] = [];
+        wrapper.addEventListener("permissions-override-change", (evt) => {
+            events.push((evt as CustomEvent<CapturedChange>).detail);
+        });
+        return { body: data.sections[0].data.body, events };
+    }
+
+    it("emits a setGrant=granted change when a queried-row Grant button is clicked", () => {
+        const { body, events } = mountSection({
+            grants: {},
+            queried: ["android.permission.CAMERA"],
+        });
+        const queriedTable = body.querySelector<HTMLElement>(
+            '[data-permission-table="queried"]',
+        );
+        assert.ok(queriedTable, "queried table missing");
+        const grantBtn = queriedTable!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="grant"][data-permission-name="android.permission.CAMERA"]',
+        );
+        assert.ok(grantBtn, "queried-row Grant button missing");
+        grantBtn!.click();
+        assert.deepStrictEqual(events, [
+            {
+                field: "setGrant",
+                permission: "android.permission.CAMERA",
+                grant: "granted",
+            },
+        ]);
+    });
+
+    it("emits a clearGrant change when a grant-table Clear button is clicked", () => {
+        const { body, events } = mountSection({
+            grants: { "android.permission.CAMERA": "granted" },
+            queried: [],
+        });
+        const grantsTable = body.querySelector<HTMLElement>(
+            '[data-permission-table="grants"]',
+        );
+        assert.ok(grantsTable, "grants table missing");
+        const clearBtn = grantsTable!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="clear"][data-permission-name="android.permission.CAMERA"]',
+        );
+        assert.ok(clearBtn, "grant-row Clear button missing");
+        clearBtn!.click();
+        assert.deepStrictEqual(events, [
+            {
+                field: "clearGrant",
+                permission: "android.permission.CAMERA",
+            },
+        ]);
+    });
+
+    it("marks the currently-applied grant button as aria-pressed", () => {
+        const { body } = mountSection({
+            grants: { "android.permission.CAMERA": "denied" },
+            queried: [],
+        });
+        const grantsTable = body.querySelector<HTMLElement>(
+            '[data-permission-table="grants"]',
+        );
+        const grantBtn = grantsTable!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="grant"][data-permission-name="android.permission.CAMERA"]',
+        );
+        const denyBtn = grantsTable!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="deny"][data-permission-name="android.permission.CAMERA"]',
+        );
+        assert.strictEqual(grantBtn?.getAttribute("aria-pressed"), null);
+        assert.strictEqual(denyBtn?.getAttribute("aria-pressed"), "true");
+    });
+
+    it("emits a clearAll change when the section's Clear overrides button is clicked", () => {
+        const { body, events } = mountSection({
+            grants: { "android.permission.CAMERA": "granted" },
+            queried: [],
+        });
+        const clearAllBtn = body.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="clear-all"]',
+        );
+        assert.ok(clearAllBtn, "Clear overrides button missing");
+        clearAllBtn!.click();
+        assert.deepStrictEqual(events, [{ field: "clearAll" }]);
+    });
+
+    it("normalises bare short names from the add form and emits a fully-qualified setGrant", () => {
+        const { body, events } = mountSection({ grants: {}, queried: [] });
+        const form = body.querySelector<HTMLFormElement>(
+            '[data-permission-form="add"]',
+        );
+        assert.ok(form, "Add permission form missing");
+        const input = form!.querySelector<HTMLInputElement>(
+            ".inspection-permissions-add-input",
+        );
+        assert.ok(input, "Add permission input missing");
+        input!.value = "camera";
+        const grantBtn = form!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="add-grant"]',
+        );
+        grantBtn!.click();
+        form!.dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+        );
+        assert.deepStrictEqual(events, [
+            {
+                field: "setGrant",
+                permission: "android.permission.CAMERA",
+                grant: "granted",
+            },
+        ]);
+        assert.strictEqual(
+            input!.value,
+            "",
+            "input should be cleared after submission",
+        );
+    });
+
+    it("passes through an already-qualified permission name from the add form unchanged", () => {
+        const { body, events } = mountSection({ grants: {}, queried: [] });
+        const form = body.querySelector<HTMLFormElement>(
+            '[data-permission-form="add"]',
+        );
+        const input = form!.querySelector<HTMLInputElement>(
+            ".inspection-permissions-add-input",
+        );
+        input!.value = "android.permission.FOREGROUND_SERVICE_LOCATION";
+        const denyBtn = form!.querySelector<HTMLButtonElement>(
+            'button[data-permission-action="add-deny"]',
+        );
+        denyBtn!.click();
+        form!.dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true }),
+        );
+        assert.deepStrictEqual(events, [
+            {
+                field: "setGrant",
+                permission: "android.permission.FOREGROUND_SERVICE_LOCATION",
+                grant: "denied",
+            },
+        ]);
+    });
+
+    it("renders the add form and clear-all action even when the payload has no rows", () => {
+        const { body } = mountSection({ grants: {}, queried: [] });
+        assert.ok(
+            body.querySelector('[data-permission-form="add"]'),
+            "Add form should render with an empty payload so the user can pin a permission before the screen queries one",
+        );
+        assert.ok(
+            body.querySelector('button[data-permission-action="clear-all"]'),
+            "Clear overrides should render with an empty payload",
+        );
+        assert.strictEqual(
+            body.querySelector('[data-permission-table="grants"]'),
+            null,
+            "Grants table should be omitted when there are no rows",
+        );
+        assert.strictEqual(
+            body.querySelector('[data-permission-table="queried"]'),
+            null,
+            "Queried table should be omitted when there are no rows",
+        );
+    });
+});
