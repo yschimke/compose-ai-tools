@@ -68,6 +68,20 @@ class GradleConnection(
     vararg tasks: String,
     timeoutSeconds: Long = 300,
     arguments: List<String> = emptyList(),
+  ): Boolean =
+    runTasksInternal(tasks.toList(), timeoutSeconds, arguments, allowKotlinIcRecovery = true)
+
+  /**
+   * Internal entry point that drives the actual Tooling-API invocation. The public [runTasks]
+   * always calls in with [allowKotlinIcRecovery] = true; the recovery pass recurses once with it
+   * set to false so a re-occurrence of the marker doesn't loop forever — see
+   * [recoverFromKotlinIcStorageFailure] (issue #1493).
+   */
+  private fun runTasksInternal(
+    tasks: List<String>,
+    timeoutSeconds: Long,
+    arguments: List<String>,
+    allowKotlinIcRecovery: Boolean,
   ): Boolean {
     val tokenSource: CancellationTokenSource = GradleConnector.newCancellationTokenSource()
     val startTime = System.currentTimeMillis()
@@ -126,92 +140,166 @@ class GradleConnection(
 
     // Capture stderr for error reporting when not in verbose mode
     val errorCapture = ByteArrayOutputStream()
+    // Tee stdout/stderr through a Kotlin IC marker detector regardless of verbose mode — the
+    // "Storage for [...] is already registered" marker can appear on either stream depending on
+    // Kotlin's logger config, and the build typically still reports SUCCESS, so we need to scan
+    // live rather than only after a BuildException. See [recoverFromKotlinIcStorageFailure].
+    val stdoutDetector = KotlinIcStorageDetector(if (verbose) System.err else NullOutputStream)
+    val stderrDetector = KotlinIcStorageDetector(if (verbose) System.err else errorCapture)
 
-    return try {
-      val launcher =
-        connection.newBuild().forTasks(*tasks).withCancellationToken(tokenSource.token())
-      val combinedArguments = extraArguments + arguments
-      if (combinedArguments.isNotEmpty()) {
-        launcher.withArguments(combinedArguments)
-      }
+    val outcome: Boolean =
+      try {
+        val launcher =
+          connection
+            .newBuild()
+            .forTasks(*tasks.toTypedArray())
+            .withCancellationToken(tokenSource.token())
+        val combinedArguments = extraArguments + arguments
+        if (combinedArguments.isNotEmpty()) {
+          launcher.withArguments(combinedArguments)
+        }
 
-      if (verbose) {
-        launcher.setStandardOutput(System.err)
-        launcher.setStandardError(System.err)
-      } else {
-        launcher.setStandardOutput(NullOutputStream)
-        launcher.setStandardError(errorCapture)
-      }
+        launcher.setStandardOutput(stdoutDetector)
+        launcher.setStandardError(stderrDetector)
 
-      // TEST events are always on so we can capture failing-test details
-      // for `printBuildFailure`. Discriminate by descriptor type in the
-      // listener so test events don't pollute the task-progress counters
-      // or the heartbeat's "running:" list (a single render run can fire
-      // hundreds of test events).
-      val listenerTypes = setOf(OperationType.TASK, OperationType.TEST)
+        // TEST events are always on so we can capture failing-test details
+        // for `printBuildFailure`. Discriminate by descriptor type in the
+        // listener so test events don't pollute the task-progress counters
+        // or the heartbeat's "running:" list (a single render run can fire
+        // hundreds of test events).
+        val listenerTypes = setOf(OperationType.TASK, OperationType.TEST)
 
-      launcher.addProgressListener(
-        { event: ProgressEvent ->
-          val descriptor = event.descriptor
-          when {
-            descriptor is TaskOperationDescriptor -> {
-              val desc = descriptor.name
-              when (event) {
-                is StartEvent -> {
-                  taskCount++
-                  runningTasks.add(desc)
-                }
-                is FinishEvent -> {
-                  runningTasks.remove(desc)
-                  tasksFinished++
-                  if (taskCount > 0) {
-                    TerminalProgress.show((tasksFinished * 100) / taskCount)
+        launcher.addProgressListener(
+          { event: ProgressEvent ->
+            val descriptor = event.descriptor
+            when {
+              descriptor is TaskOperationDescriptor -> {
+                val desc = descriptor.name
+                when (event) {
+                  is StartEvent -> {
+                    taskCount++
+                    runningTasks.add(desc)
                   }
-                  if (
-                    progress &&
-                      !verbose &&
-                      (desc.contains("composePreviewDiscover") ||
-                        desc.contains("composePreviewRender") ||
-                        desc.contains("composePreviewRenderAll"))
-                  ) {
-                    val elapsed = (System.currentTimeMillis() - startTime) / 1000
-                    System.err.println("  [${elapsed}s] $desc")
+                  is FinishEvent -> {
+                    runningTasks.remove(desc)
+                    tasksFinished++
+                    if (taskCount > 0) {
+                      TerminalProgress.show((tasksFinished * 100) / taskCount)
+                    }
+                    if (
+                      progress &&
+                        !verbose &&
+                        (desc.contains("composePreviewDiscover") ||
+                          desc.contains("composePreviewRender") ||
+                          desc.contains("composePreviewRenderAll"))
+                    ) {
+                      val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                      System.err.println("  [${elapsed}s] $desc")
+                    }
                   }
+                  else -> {}
                 }
-                else -> {}
+              }
+              descriptor is TestOperationDescriptor && event is FinishEvent -> {
+                val result = event.result
+                if (result is FailureResult) collectTestFailures(descriptor, result.failures)
               }
             }
-            descriptor is TestOperationDescriptor && event is FinishEvent -> {
-              val result = event.result
-              if (result is FailureResult) collectTestFailures(descriptor, result.failures)
-            }
-          }
-        },
-        listenerTypes,
-      )
+          },
+          listenerTypes,
+        )
 
-      launcher.run()
-      TerminalProgress.show(100)
-      true
-    } catch (e: org.gradle.tooling.BuildCancelledException) {
-      TerminalProgress.error()
-      System.err.println("Build cancelled.")
-      false
-    } catch (e: org.gradle.tooling.BuildException) {
-      TerminalProgress.error()
-      printBuildFailure(e, errorCapture)
-      false
-    } catch (e: org.gradle.tooling.GradleConnectionException) {
-      TerminalProgress.error()
-      System.err.println("Gradle connection failed: ${e.message}")
-      false
-    } finally {
-      timer.cancel()
-      tokenSource.cancel()
-      TerminalProgress.hide()
-      try {
-        Runtime.getRuntime().removeShutdownHook(shutdownHook)
-      } catch (_: IllegalStateException) {}
+        launcher.run()
+        TerminalProgress.show(100)
+        true
+      } catch (e: org.gradle.tooling.BuildCancelledException) {
+        TerminalProgress.error()
+        System.err.println("Build cancelled.")
+        false
+      } catch (e: org.gradle.tooling.BuildException) {
+        TerminalProgress.error()
+        printBuildFailure(e, errorCapture)
+        false
+      } catch (e: org.gradle.tooling.GradleConnectionException) {
+        TerminalProgress.error()
+        System.err.println("Gradle connection failed: ${e.message}")
+        false
+      } finally {
+        timer.cancel()
+        tokenSource.cancel()
+        TerminalProgress.hide()
+        try {
+          Runtime.getRuntime().removeShutdownHook(shutdownHook)
+        } catch (_: IllegalStateException) {}
+      }
+
+    val detectedIcDirs =
+      stdoutDetector.detectedCachesJvmDirs() + stderrDetector.detectedCachesJvmDirs()
+    if (allowKotlinIcRecovery && detectedIcDirs.isNotEmpty()) {
+      return recoverFromKotlinIcStorageFailure(detectedIcDirs, tasks, timeoutSeconds, arguments)
+    }
+    return outcome
+  }
+
+  /**
+   * Recovery for upstream Kotlin IC issue KT-59321 / KT-55435 ("Storage for [...] is already
+   * registered"): the in-process Kotlin compiler retains a `FilePageCache` registration across
+   * builds, the next build's re-registration throws, Kotlin falls back to non-incremental, and
+   * Gradle reports SUCCESS — but the on-disk `caches-jvm` can be left inconsistent and a subsequent
+   * `compileKotlin UP-TO-DATE` then fails to reflect the user's edit. We stop the Gradle daemon
+   * (which restarts the Kotlin compile service with a clean cache registry), wipe each affected
+   * `caches-jvm` directory, and re-run the requested tasks once with `--rerun-tasks` so Gradle's
+   * up-to-date check doesn't skip the now-needed recompile.
+   *
+   * One retry only: the recursion passes `allowKotlinIcRecovery = false` so a re-occurrence
+   * propagates the failure to the caller instead of looping. See issue #1493.
+   */
+  private fun recoverFromKotlinIcStorageFailure(
+    detectedDirs: Set<File>,
+    tasks: List<String>,
+    timeoutSeconds: Long,
+    arguments: List<String>,
+  ): Boolean {
+    val dirWord = if (detectedDirs.size == 1) "directory" else "directories"
+    System.err.println(
+      "Kotlin incremental compiler reported 'Storage already registered' (KT-59321). " +
+        "Stopping Gradle daemon, wiping ${detectedDirs.size} stale caches-jvm $dirWord, and retrying once..."
+    )
+    stopGradleDaemons()
+    for (dir in detectedDirs) {
+      if (!dir.exists()) continue
+      if (verbose) System.err.println("  wiping ${dir.absolutePath}")
+      if (!dir.deleteRecursively()) {
+        System.err.println("  warning: failed to wipe ${dir.absolutePath}")
+      }
+    }
+    val retryArgs = if ("--rerun-tasks" in arguments) arguments else arguments + "--rerun-tasks"
+    return runTasksInternal(tasks, timeoutSeconds, retryArgs, allowKotlinIcRecovery = false)
+  }
+
+  /**
+   * Best-effort `./gradlew --stop` to flush the daemon JVM (which is where the stale Kotlin
+   * compiler `FilePageCache` registration lives). Falls through silently if the wrapper script is
+   * missing or the subprocess fails — the cache wipe + `--rerun-tasks` retry still gives the
+   * recovery a fair shot at success on its own.
+   */
+  private fun stopGradleDaemons() {
+    val wrapperName =
+      if (System.getProperty("os.name").lowercase().contains("win")) "gradlew.bat" else "gradlew"
+    val wrapper = File(projectDir, wrapperName)
+    if (!wrapper.exists()) return
+    try {
+      val proc =
+        ProcessBuilder(wrapper.absolutePath, "--stop")
+          .directory(projectDir)
+          .redirectErrorStream(true)
+          .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+          .start()
+      if (!proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+        proc.destroyForcibly()
+      }
+    } catch (_: Exception) {
+      // best-effort
     }
   }
 
