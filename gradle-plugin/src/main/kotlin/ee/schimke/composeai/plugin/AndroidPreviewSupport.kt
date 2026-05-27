@@ -155,12 +155,17 @@ internal object AndroidPreviewSupport {
       if (!extension.enabled.get()) return@onVariants
       val target = extension.variant.get()
       if (!variantMatchesTarget(variant.name, target)) return@onVariants
-      if (!hasPreviewDependency(project, variant.name)) {
+      val enforceToolingDep = extension.enforcePreviewToolingDependency.get()
+      if (enforceToolingDep && !hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
             "'${project.path}'; skipping task registration. " +
             "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
-            "(or remove the plugin from this module) to opt in."
+            "(or remove the plugin from this module) to opt in. " +
+            "If your previews live transitively (CMP-Android `:composeApp` -> `:shared` shape, " +
+            "issue #241 / #1549), set `composePreview { enforcePreviewToolingDependency = false }` " +
+            "in this module's build script (or pass " +
+            "`-PcomposePreview.enforcePreviewToolingDependency=false` on the command line)."
         )
         return@onVariants
       }

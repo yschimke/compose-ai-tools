@@ -31,6 +31,17 @@ constructor(
       project.providers.gradleProperty("composePreview.variant").orElse("debug")
     )
 
+    // `-PcomposePreview.enforcePreviewToolingDependency=false` lets a one-off CLI run
+    // bypass the per-module preview-tooling gate without editing build files — the
+    // CMP-Android escape hatch (issue #241 / #1549). Same convention shape as
+    // `failOnEmpty` / `variant`: gradle property first, fall back to `true`.
+    extension.enforcePreviewToolingDependency.convention(
+      project.providers
+        .gradleProperty("composePreview.enforcePreviewToolingDependency")
+        .map { it.toBooleanStrictOrNull() ?: true }
+        .orElse(true)
+    )
+
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
     // Tooling-API connection for the build. `register` accepts multiple
