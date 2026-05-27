@@ -1,0 +1,154 @@
+{
+  "name": "permissions",
+  "description": "Focused card with a `compose/permissions` payload covering granted / denied / queried-unknown rows. Activates the Inspection bundle, opens the Configure expander, and ticks the Permissions checkbox so the tab body renders the Effective grants + Queried tables, the per-row Grant / Deny / Clear buttons (with `aria-pressed` on the currently-applied grant), the Add-permission form, and the Clear-overrides action — the surface the panel ships for #1400 part 2.",
+  "dataset": {
+    "earlyFeatures": "true",
+    "minimalMode": "false"
+  },
+  "messages": [
+    {
+      "command": "setPreviews",
+      "moduleDir": "/workspace/sample-android",
+      "heavyStaleIds": [],
+      "previews": [
+        {
+          "id": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+          "functionName": "CameraPermissionGrantedPreview",
+          "className": "PermissionGatedPreviewKt",
+          "sourceFile": "PermissionGatedPreview.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.permissionsKt.CameraPermissionGrantedPreview.png",
+              "label": ""
+            }
+          ]
+        },
+        {
+          "id": "com.example.permissionsKt.CameraPermissionGrantedPreviewSibling",
+          "functionName": "CameraPermissionGrantedPreviewSibling",
+          "className": "PermissionGatedPreviewKt",
+          "sourceFile": "PermissionGatedPreview.kt",
+          "params": {
+            "name": null,
+            "device": null,
+            "widthDp": 360,
+            "heightDp": 600,
+            "fontScale": 1,
+            "showSystemUi": false,
+            "showBackground": true,
+            "backgroundColor": 0,
+            "uiMode": 0,
+            "locale": null,
+            "group": null
+          },
+          "captures": [
+            {
+              "advanceTimeMillis": null,
+              "scroll": null,
+              "renderOutput": "renders/com.example.permissionsKt.CameraPermissionGrantedPreviewSibling.png",
+              "label": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command": "updateImage",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "captureIndex": 0,
+      "imageData": "iVBORw0KGgoAAAANSUhEUgAAAWgAAAJYCAIAAADAFeuyAAAH9UlEQVR4nO3UQQ2DUBRFwa+gilDSbW1VAFIQURuwYIWGs+GHdG5GwEtecsbyXgGSMf0C4HGEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8iEA8jGfpwAiXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAAmXAA2bRwvD5fbjDrvz+7ZcKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5QkHwmF5woFwWJ5wIByWJxwIh+UJB8JhecKBcFiecCAcliccCIflCQfCYXnCgXBYnnAgHJYnHAiH5f1dOIDnEg4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gEw4gG5uZWZxwmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFmecJhZnnCYWZ5wmFneBUZcMccpTkvCAAAAAElFTkSuQmCC"
+    },
+    {
+      "command": "updateDataProducts",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "dataProducts": [
+        {
+          "kind": "compose/permissions",
+          "payload": {
+            "grants": {
+              "android.permission.CAMERA": "granted",
+              "android.permission.RECORD_AUDIO": "denied"
+            },
+            "queried": [
+              "android.permission.CAMERA",
+              "android.permission.ACCESS_FINE_LOCATION"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "click": ".preview-card[data-preview-id=\"com.example.permissionsKt.CameraPermissionGrantedPreview\"] .card-focus-btn"
+    },
+    {
+      "click": "bundle-chip-bar button[data-bundle=\"inspection\"]"
+    },
+    {
+      "click": "[data-bundle=\"inspection\"] bundle-expander details > summary"
+    },
+    {
+      "click": "[data-bundle=\"inspection\"] bundle-expander input[data-kind=\"compose/permissions\"]"
+    }
+  ],
+  "expectedPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "kinds": {
+        "$includes": "compose/semantics"
+      },
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "kinds": {
+        "$includes": "compose/permissions"
+      },
+      "enabled": true
+    }
+  ],
+  "forbiddenPosts": [
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "kinds": {
+        "$includes": "layout/inspector"
+      },
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "kinds": {
+        "$includes": "uia/hierarchy"
+      },
+      "enabled": true
+    },
+    {
+      "command": "setDataExtensionEnabled",
+      "previewId": "com.example.permissionsKt.CameraPermissionGrantedPreview",
+      "kinds": {
+        "$includes": "compose/launcher-widget"
+      },
+      "enabled": true
+    }
+  ]
+}
