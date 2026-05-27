@@ -259,7 +259,24 @@ internal object AndroidPreviewSupport {
           // the project isn't part of this build (composite builds, missing
           // `include(...)`) — treat that as "no signal" and continue.
           val sub = runCatching { project.rootProject.findProject(dep.path) }.getOrNull()
-          if (sub != null && hasPreviewDependencyDeep(sub, visited)) return true
+          if (sub != null) {
+            // Force the sub-project to evaluate before we inspect its
+            // configurations. Without this the walk races include-order:
+            // for `include(":androidApp")` before `include(":shared")`,
+            // `:shared`'s build script (including its KMP
+            // `commonMain.dependencies { implementation(...) }` block) has
+            // not run yet when AGP's `onVariants` fires for `:androidApp`,
+            // so `:shared.configurations["commonMainImplementation"]
+            // .allDependencies` is empty and the preview signal is missed —
+            // the exact shape that broke `joreilly/Confetti`'s `:androidApp`
+            // against `compose.components.uiToolingPreview` declared in
+            // `:shared`'s commonMain. `evaluationDependsOn` is safe here —
+            // it triggers configuration, not resolution (so doesn't tip the
+            // "Configuration was resolved during configuration time" warning)
+            // — and is no more cross-project than the `findProject` above.
+            runCatching { project.evaluationDependsOn(sub.path) }
+            if (hasPreviewDependencyDeep(sub, visited)) return true
+          }
         }
       }
     }
