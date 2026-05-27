@@ -37,7 +37,15 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
     val main = resolveConfiguration(project, "${variant}RuntimeClasspath")
     val test = resolveConfiguration(project, "${variant}UnitTestRuntimeClasspath")
     val gradleVersion = org.gradle.util.GradleVersion.current().version
-    val findings: List<ModuleFinding> = CompatRules.evaluate(main, test, gradleVersion)
+    val (toolingDeclared, enforceTooling) = androidPreviewToolingSignals(project, variant)
+    val findings: List<ModuleFinding> =
+      CompatRules.evaluate(
+        main,
+        test,
+        gradleVersion,
+        previewToolingDeclared = toolingDeclared,
+        enforcePreviewToolingDependency = enforceTooling,
+      )
     val info: ModuleInfo =
       ModuleInfoData(
         variant = variant,
@@ -151,6 +159,28 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
           AndroidPreviewSupport.variantMatchesTarget(name.removeSuffix("RuntimeClasspath"), target)
       } ?: return target
     return match.removeSuffix("RuntimeClasspath")
+  }
+
+  /**
+   * Returns the per-module Android signals feeding [CompatRules.checkUndeclaredPreviewTooling], or
+   * `(null, null)` for non-Android modules (CMP Desktop / KMP-Desktop). Android-ness is detected by
+   * the presence of a `${variant}RuntimeClasspath` configuration matching [resolveVariant]'s output
+   * — AGP's variant-specific configurations only exist when `com.android.application` /
+   * `com.android.library` is applied. CMP / Desktop projects expose `runtimeClasspath` /
+   * `desktopRuntimeClasspath` instead, so the check stays silent on them.
+   */
+  private fun androidPreviewToolingSignals(
+    project: Project,
+    variant: String,
+  ): Pair<Boolean?, Boolean?> {
+    val isAndroid = project.configurations.findByName("${variant}RuntimeClasspath") != null
+    if (!isAndroid) return null to null
+    val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return null to null
+    val declared =
+      runCatching { AndroidPreviewSupport.hasPreviewDependency(project, variant) }.getOrNull()
+        ?: return null to null
+    val enforce = ext.enforcePreviewToolingDependency.getOrElse(true)
+    return declared to enforce
   }
 
   /**

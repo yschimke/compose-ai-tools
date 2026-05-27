@@ -63,11 +63,26 @@ internal object CompatRules {
   /**
    * Runs every rule against the given dep snapshot and returns findings ordered by severity. Pure —
    * safe to call from tests and from the serialisation path.
+   *
+   * [previewToolingDeclared] and [enforcePreviewToolingDependency] are the per-module signals the
+   * Android registration captures at `onVariants` time:
+   * - `previewToolingDeclared` — `AndroidPreviewSupport.hasPreviewDependency(project, variant)`,
+   *   i.e. is one of the known `@Preview` tooling coords declared in this module's
+   *   `*Implementation` / `*Api` / `*RuntimeOnly` buckets?
+   * - `enforcePreviewToolingDependency` — `composePreview.enforcePreviewToolingDependency`, the
+   *   escape hatch added for the CMP-Android `:composeApp -> :shared` shape (issue #241 / #1549).
+   *
+   * When both are non-null (i.e. the caller passes meaningful Android signals) and the escape hatch
+   * is in use without a direct dep, [checkUndeclaredPreviewTooling] fires a warning telling the
+   * consumer to declare the dep directly too. CMP / Desktop callers pass `null` for both, and the
+   * check is skipped.
    */
   fun evaluate(
     main: Map<String, String>,
     test: Map<String, String>,
     gradleVersion: String? = null,
+    previewToolingDeclared: Boolean? = null,
+    enforcePreviewToolingDependency: Boolean? = null,
   ): List<ModuleFindingData> {
     val findings = mutableListOf<ModuleFindingData>()
     val mainV = parseVersions(main)
@@ -79,8 +94,65 @@ internal object CompatRules {
     checkComposeBom(main)?.let(findings::add)
     checkHamcrestSkew(test)?.let(findings::add)
     checkKmpAndroidSiblingMismatch(test)?.let(findings::add)
+    checkUndeclaredPreviewTooling(previewToolingDeclared, enforcePreviewToolingDependency)
+      ?.let(findings::add)
     findings += checkOldDeps(mainV, testV, main, test)
     return findings
+  }
+
+  /**
+   * Fires when the consumer is leaning on `composePreview.enforcePreviewToolingDependency = false`
+   * (the IP-safe escape hatch for the CMP-Android `:composeApp -> :shared` shape) AND no
+   * preview-tooling coord is declared directly in this module's `*Implementation` / `*Api` /
+   * `*RuntimeOnly` buckets.
+   *
+   * The escape hatch makes task registration work, but a sibling module's preview tooling is
+   * conceptually a *transitive* dep — pinned by the sibling's version policy. Restating the dep
+   * directly on this module:
+   * - locks the version in this module's view of the graph, so a sibling-only upgrade can't
+   *   silently shift the renderer's expected compose-tooling version,
+   * - makes the dep visible to `compose-preview doctor`'s version-skew checks (the renderer-vs-
+   *   `ui-tooling-preview` version compat rules walk this module's declared graph, not the
+   *   sibling's),
+   * - documents intent for the next maintainer who reads `:composeApp`'s build file looking for
+   *   "why does compose-preview see previews here?".
+   *
+   * Strongly suggested — emitted as a `warning` not an `error` because the escape hatch itself is
+   * an opt-in design choice. Returns `null` (no finding) when either signal is unset (Desktop / CMP
+   * callers) or when the consumer has already declared the dep directly.
+   */
+  private fun checkUndeclaredPreviewTooling(
+    previewToolingDeclared: Boolean?,
+    enforcePreviewToolingDependency: Boolean?,
+  ): ModuleFindingData? {
+    if (previewToolingDeclared == null || enforcePreviewToolingDependency == null) return null
+    if (previewToolingDeclared) return null
+    if (enforcePreviewToolingDependency) return null
+    return ModuleFindingData(
+      id = "module.preview-tooling-not-declared",
+      severity = "warning",
+      message =
+        "composePreview.enforcePreviewToolingDependency = false but no @Preview tooling coord is " +
+          "declared directly in this module",
+      detail =
+        "The escape hatch (#241 / #1549) lets task registration succeed when the preview tooling " +
+          "arrives transitively (e.g. via project(\":shared\")). Declaring the dep here too pins " +
+          "the version in this module's view of the graph, surfaces it to compose-preview " +
+          "doctor's version-skew checks, and documents intent for future readers. Pick whichever " +
+          "tooling coord matches your stack: androidx.compose.ui:ui-tooling-preview (AGP-only), " +
+          "or org.jetbrains.compose.components:components-ui-tooling-preview (CMP / KMP).",
+      remediationSummary =
+        "Declare the preview-tooling dep directly so it's pinned and visible to doctor",
+      remediationCommands =
+        listOf(
+          "dependencies {",
+          "  implementation(\"androidx.compose.ui:ui-tooling-preview\")",
+          "  // or, for Compose Multiplatform consumers:",
+          "  // implementation(compose.components.uiToolingPreview)",
+          "}",
+        ),
+      docsUrl = null,
+    )
   }
 
   /**

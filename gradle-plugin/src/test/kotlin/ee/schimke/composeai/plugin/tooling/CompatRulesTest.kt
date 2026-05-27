@@ -290,6 +290,57 @@ class CompatRulesTest {
     assertNotNull(Semver.parseOrNull("1.13.0-alpha01"))
   }
 
+  @Test
+  fun `undeclared preview tooling with escape hatch on fires warning`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = false,
+        enforcePreviewToolingDependency = false,
+      )
+    val f = findings.single { it.id == "module.preview-tooling-not-declared" }
+    assertEquals("warning", f.severity)
+    assertTrue(f.remediationCommands.any { "ui-tooling-preview" in it })
+  }
+
+  @Test
+  fun `declared preview tooling stays quiet even with escape hatch on`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = true,
+        enforcePreviewToolingDependency = false,
+      )
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
+  @Test
+  fun `enforce-on path does not fire the escape-hatch finding`() {
+    // When the gate is enforced and tooling is declared, the check is a no-op. (When the gate is
+    // enforced and tooling is NOT declared, the plugin's `onVariants` filter skips registration
+    // entirely so doctor never runs — but `CompatRules.evaluate` itself stays silent on the
+    // input, which is the contract pinned here.)
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = false,
+        enforcePreviewToolingDependency = true,
+      )
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
+  @Test
+  fun `null signals skip the check entirely (CMP Desktop path)`() {
+    // CMP / Desktop callers pass null/null because the per-module Android signals aren't
+    // meaningful for them. Asserts the check stays silent rather than emitting a spurious warning
+    // on non-Android modules.
+    val findings = CompatRules.evaluate(mainWithBom(), testWithoutUiTestManifest())
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
   // --- Fixtures ----------------------------------------------------------
 
   private fun mainWithBom(): Map<String, String> =
