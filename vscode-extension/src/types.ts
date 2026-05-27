@@ -840,14 +840,6 @@ export type WebviewToExtension =
      */
     | { command: "requestRefresh" }
     /**
-     * Minimal-mode user clicked the "Apply plugin" link in the panel's
-     * minimal-mode banner. Extension routes to
-     * `composePreview.openModuleBuildFile` against the current scope file
-     * so the user can add `id("ee.schimke.composeai.preview")` to enable
-     * full mode (daemon + auto-render on save).
-     */
-    | { command: "openModuleBuildFile" }
-    /**
      * Webview reports current geometric visibility of preview cards plus
      * cards it predicts will scroll into view next based on scroll velocity
      * and direction. Consumed by the daemon scheduler — see

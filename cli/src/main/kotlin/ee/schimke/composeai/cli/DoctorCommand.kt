@@ -307,11 +307,6 @@ class DoctorCommand(private val args: List<String>) {
   private fun runProjectChecks(projectDir: File) {
     var gradleAccessFailure: GradleAccessFailure? = null
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
-    warnIfPluginNotPreApplied(
-      args,
-      projectRoot = projectDir,
-      autoInjectActive = injectArgs.isNotEmpty(),
-    )
     val model =
       try {
         GradleConnection(projectDir, verbose = verbose, extraArguments = injectArgs).use { gc ->
