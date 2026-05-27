@@ -1419,6 +1419,51 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `record_preview rejection hints at the namespaced id when the unprefixed name was sent`() {
+    // Issue #1550 — older docs (and the InteractiveInputKind enum) list bare names like `click`,
+    // `pointerDown`. The record_preview event ids are namespaced: `input.click`, etc. When an
+    // agent sends the unprefixed form, point them at the namespaced id so they don't have to
+    // round-trip through `list_data_products`.
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataExtensions =
+        listOf(ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor)
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "click")
+                put("pixelX", 10)
+                put("pixelY", 10)
+              }
+            )
+          }
+        },
+      )
+
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("kind 'click' is not advertised by this daemon")
+    assertThat(msg).contains("Did you mean 'input.click'?")
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
   fun `record_preview rejects extension events advertised but not yet implemented`() {
     // The daemon advertises a script event in `dataExtensions[].recordingScriptEvents` with
     // `supported = false` to signal a planned-but-unwired roadmap item. MCP rejects up front so the
