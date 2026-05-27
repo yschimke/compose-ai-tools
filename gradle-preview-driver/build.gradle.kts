@@ -40,6 +40,18 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
+// Surface the running Gradle distribution's install dir to the test JVM so
+// `GradleConnectionRecoveryFunctionalTest` can point its synthetic-project `GradleConnection` at
+// a known installation rather than requiring the temp project to ship a wrapper. The test
+// self-skips when the property is absent (e.g. embedded Gradle invocations); see issue #1493.
+val gradleHomeForTests: String? = gradle.gradleHomeDir?.absolutePath
+
+tasks.named<Test>("test") {
+  if (gradleHomeForTests != null) {
+    systemProperty("composeai.test.gradleHome", gradleHomeForTests)
+  }
+}
+
 composeAiMavenPublishing {
   coordinates(
     artifactId = "gradle-preview-driver",

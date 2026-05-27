@@ -20,6 +20,7 @@ import {
     KotlinCompileError,
     KotlinCompileErrorDetector,
 } from "./kotlinCompileErrorDetector";
+import { KotlinIcStorageDetector } from "./kotlinIcStorageDetector";
 import { LogFilter } from "./logFilter";
 import { ContinuousCompileWorker } from "./daemon/continuousCompileWorker";
 
@@ -1377,6 +1378,10 @@ export class GradleService {
         task: string,
         extraArgs: ReadonlyArray<string> = [],
         opts: TaskOptions = {},
+        // Internal parameter — first call always lets recovery fire; the recursive retry from
+        // [runKotlinIcStorageRecovery] passes `false` so a re-occurrence of the KT-59321
+        // marker on the retry pass propagates the failure to the caller instead of looping.
+        allowKotlinIcRecovery: boolean = true,
     ): Promise<void> {
         const cancellationKey = `compose-preview-${++this.taskCounter}|${task}`;
         this.activeKeys.add(cancellationKey);
@@ -1395,6 +1400,12 @@ export class GradleService {
         // cross-file gap that the LSP-driven gate (compileErrors.ts)
         // misses by design — that gate only inspects the active file.
         const kotlinDetector = new KotlinCompileErrorDetector();
+        // Detects the upstream Kotlin IC "Storage already registered" failure (KT-59321 /
+        // KT-55435 — see [KotlinIcStorageDetector]). The build usually still reports SUCCESS
+        // because Kotlin falls back to non-incremental, but the on-disk `caches-jvm` is then
+        // inconsistent and the next save's `compileKotlin UP-TO-DATE` doesn't reflect the
+        // user's edit — the "save isn't doing anything" symptom in issue #1493.
+        const icDetector = new KotlinIcStorageDetector();
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
@@ -1434,6 +1445,7 @@ export class GradleService {
                         detector.consume(decoded);
                         classVersionDetector.consume(decoded);
                         kotlinDetector.consume(decoded);
+                        icDetector.consume(decoded);
                         const filtered =
                             this.logFilter.filterGradleChunk(decoded);
                         if (filtered.length > 0) {
@@ -1499,6 +1511,143 @@ export class GradleService {
                 this.activeKeys.delete(cancellationKey);
             });
 
-        return Promise.race([taskPromise, timeoutPromise]);
+        const racedPromise = Promise.race([taskPromise, timeoutPromise]);
+        // After the task settles (success, throw, or timeout), check whether the IC marker
+        // fired. Common case is BUILD SUCCESSFUL with a stale `caches-jvm` left behind, so the
+        // recovery has to run on the success path too — not just on errors.
+        return racedPromise.then(
+            async () => {
+                icDetector.end();
+                const dirs = icDetector.getDetectedCachesJvmDirs();
+                if (allowKotlinIcRecovery && dirs.length > 0) {
+                    await this.runKotlinIcStorageRecovery(
+                        dirs,
+                        task,
+                        extraArgs,
+                        opts,
+                    );
+                }
+            },
+            async (err) => {
+                icDetector.end();
+                const dirs = icDetector.getDetectedCachesJvmDirs();
+                // Don't try recovery on user-driven cancel (CANCELLED_RE / TaskCancelledError)
+                // — superseded refreshes are routine and the marker, if any, will fire again
+                // on the next attempt.
+                if (
+                    allowKotlinIcRecovery &&
+                    dirs.length > 0 &&
+                    !(err instanceof TaskCancelledError)
+                ) {
+                    // Returning normally from this onRejected handler swallows `err` and the
+                    // outer promise resolves — that's the intent when recovery succeeds.
+                    // If the retry itself throws, that error replaces `err`, which is the
+                    // most informative thing to surface.
+                    await this.runKotlinIcStorageRecovery(
+                        dirs,
+                        task,
+                        extraArgs,
+                        opts,
+                    );
+                    return;
+                }
+                throw err;
+            },
+        );
+    }
+
+    /**
+     * Recovery for the Kotlin IC "Storage already registered" failure (issue #1493). Stops the
+     * project's Gradle daemons via the local wrapper (so the in-process Kotlin compile service
+     * is rebuilt from scratch on the next invocation), wipes each detected `caches-jvm`
+     * directory, and re-runs the failed task once with `--rerun-tasks` so Gradle's
+     * up-to-date check doesn't skip the now-needed recompile. The recursive [runTask] call
+     * passes `allowKotlinIcRecovery=false` so a re-occurrence of the marker on the retry
+     * propagates instead of looping.
+     */
+    private async runKotlinIcStorageRecovery(
+        dirs: readonly string[],
+        task: string,
+        extraArgs: ReadonlyArray<string>,
+        opts: TaskOptions,
+    ): Promise<void> {
+        const dirWord = dirs.length === 1 ? "directory" : "directories";
+        this.logger.appendLine(
+            `> ${task}: Kotlin IC 'Storage already registered' (KT-59321) detected. ` +
+                `Stopping Gradle daemon, wiping ${dirs.length} stale caches-jvm ${dirWord}, ` +
+                `and retrying once with --rerun-tasks...`,
+        );
+        await this.stopGradleDaemonsForRecovery();
+        for (const dir of dirs) {
+            try {
+                await fs.promises.rm(dir, { recursive: true, force: true });
+            } catch (e) {
+                this.logger.appendLine(
+                    `  warning: failed to wipe ${dir}: ${(e as Error)?.message ?? e}`,
+                );
+            }
+        }
+        const retryArgs = extraArgs.includes("--rerun-tasks")
+            ? extraArgs
+            : [...extraArgs, "--rerun-tasks"];
+        try {
+            await this.runTask(
+                task,
+                retryArgs,
+                opts,
+                /*allowKotlinIcRecovery=*/ false,
+            );
+        } catch (err) {
+            this.logger.appendLine(
+                `> ${task}: Kotlin IC recovery retry did not succeed. Manual workaround: ` +
+                    "`./gradlew --stop` then `rm -rf <module>/build/kotlin && ./gradlew <task>`. " +
+                    "See issue #1493.",
+            );
+            throw err;
+        }
+    }
+
+    /**
+     * Best-effort `./gradlew --stop` from the workspace root — the daemon JVM is where the
+     * stale Kotlin `FilePageCache` registration lives, and stopping it is the only way to drop
+     * the registration. Resolves without throwing if the wrapper is missing or the subprocess
+     * fails: the cache wipe + `--rerun-tasks` retry still gives recovery a fair shot on its
+     * own. Times out at 30s so a stuck stop request doesn't pin save-to-preview latency.
+     */
+    private stopGradleDaemonsForRecovery(): Promise<void> {
+        const wrapperName =
+            process.platform === "win32" ? "gradlew.bat" : "gradlew";
+        const wrapper = path.join(this.workspaceRoot, wrapperName);
+        if (!fs.existsSync(wrapper)) {
+            return Promise.resolve();
+        }
+        return new Promise<void>((resolve) => {
+            // Lazy-require so the unit-test entry points that exercise everything around this
+            // method don't pull `child_process` into bundles where it's unneeded.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { spawn } =
+                require("child_process") as typeof import("child_process");
+            let resolved = false;
+            const done = () => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timer);
+                resolve();
+            };
+            const proc = spawn(wrapper, ["--stop"], {
+                cwd: this.workspaceRoot,
+                stdio: "ignore",
+            });
+            const timer = setTimeout(() => {
+                try {
+                    proc.kill("SIGKILL");
+                } catch {
+                    /* ignore */
+                }
+                done();
+            }, 30_000);
+            proc.once("exit", done);
+            proc.once("error", done);
+        });
     }
 }

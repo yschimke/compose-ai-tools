@@ -45,9 +45,23 @@ class GradleConnection(
    * manually wired it in their `build.gradle.kts`. See [autoInjectInitScriptArgs] for the source.
    */
   private val extraArguments: List<String> = emptyList(),
+  /**
+   * Optional Gradle installation directory passed to [GradleConnector.useInstallation]. Production
+   * callers leave this null so the Tooling API picks the wrapper version from the project tree;
+   * tests point it at a known distribution so they don't depend on a wrapper download. The Kotlin
+   * IC recovery path stays correct under either: it closes and re-opens its connection through the
+   * same [connector] instance, which preserves whichever distribution selection was made.
+   */
+  gradleInstallation: File? = null,
 ) : AutoCloseable {
-  private val connector = GradleConnector.newConnector().forProjectDirectory(projectDir)
-  private val connection = connector.connect()
+  private val connector: GradleConnector =
+    GradleConnector.newConnector().forProjectDirectory(projectDir).let { c ->
+      if (gradleInstallation != null) c.useInstallation(gradleInstallation) else c
+    }
+  // var so the Kotlin IC recovery pass can close + reconnect after wiping caches — the post-stop
+  // daemon is gone, so reusing the original ProjectConnection is undefined. See
+  // [recoverFromKotlinIcStorageFailure] (issue #1493).
+  private var connection: org.gradle.tooling.ProjectConnection = connector.connect()
   private var modelAccessFailure: GradleAccessFailure? = null
 
   val lastModelAccessFailure: GradleAccessFailure?
@@ -246,10 +260,11 @@ class GradleConnection(
    * registered"): the in-process Kotlin compiler retains a `FilePageCache` registration across
    * builds, the next build's re-registration throws, Kotlin falls back to non-incremental, and
    * Gradle reports SUCCESS — but the on-disk `caches-jvm` can be left inconsistent and a subsequent
-   * `compileKotlin UP-TO-DATE` then fails to reflect the user's edit. We stop the Gradle daemon
-   * (which restarts the Kotlin compile service with a clean cache registry), wipe each affected
-   * `caches-jvm` directory, and re-run the requested tasks once with `--rerun-tasks` so Gradle's
-   * up-to-date check doesn't skip the now-needed recompile.
+   * `compileKotlin UP-TO-DATE` then fails to reflect the user's edit. We close our own Tooling-API
+   * connection so the daemon goes idle, request a daemon stop (so the in-process Kotlin compile
+   * service is rebuilt from scratch on next connect), wipe each affected `caches-jvm` directory,
+   * reconnect, and re-run the requested tasks once with `--rerun-tasks` so Gradle's up-to-date
+   * check doesn't skip the now-needed recompile.
    *
    * One retry only: the recursion passes `allowKotlinIcRecovery = false` so a re-occurrence
    * propagates the failure to the caller instead of looping. See issue #1493.
@@ -265,6 +280,15 @@ class GradleConnection(
       "Kotlin incremental compiler reported 'Storage already registered' (KT-59321). " +
         "Stopping Gradle daemon, wiping ${detectedDirs.size} stale caches-jvm $dirWord, and retrying once..."
     )
+    // Release our hold on the daemon BEFORE asking it to stop — otherwise the stop request races
+    // the still-active ProjectConnection. The Kotlin in-process compile service lives in that
+    // daemon JVM, so cleanly killing it is the only way to drop the stale FilePageCache
+    // registration that's the root of KT-59321.
+    try {
+      connection.close()
+    } catch (_: Exception) {
+      // best-effort
+    }
     stopGradleDaemons()
     for (dir in detectedDirs) {
       if (!dir.exists()) continue
@@ -273,8 +297,16 @@ class GradleConnection(
         System.err.println("  warning: failed to wipe ${dir.absolutePath}")
       }
     }
+    connection = connector.connect()
     val retryArgs = if ("--rerun-tasks" in arguments) arguments else arguments + "--rerun-tasks"
-    return runTasksInternal(tasks, timeoutSeconds, retryArgs, allowKotlinIcRecovery = false)
+    val retryOk = runTasksInternal(tasks, timeoutSeconds, retryArgs, allowKotlinIcRecovery = false)
+    if (!retryOk) {
+      System.err.println(
+        "Kotlin IC recovery retry did not succeed. Manual workaround: `./gradlew --stop` then " +
+          "`rm -rf <module>/build/kotlin && ./gradlew <tasks>`. See issue #1493."
+      )
+    }
+    return retryOk
   }
 
   /**

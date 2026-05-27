@@ -1603,6 +1603,183 @@ describe("GradleService", () => {
             }),
         );
     });
+
+    describe("Kotlin IC storage recovery (issue #1493)", () => {
+        // GradleApi stub that emits arbitrary output on a per-call basis. Used to drive the IC
+        // recovery flow: first invocation streams the KT-59321 marker, the retry streams nothing.
+        class QueuedOutputApi implements GradleApi {
+            public runCalls: Array<{
+                taskName: string;
+                args?: ReadonlyArray<string>;
+            }> = [];
+            constructor(
+                private readonly outputsPerCall: ReadonlyArray<string>,
+                // Optional hook that fires AFTER recording the call but BEFORE running onOutput,
+                // so the test can reconstitute on-disk state the marker line points at when the
+                // recovery just deleted it.
+                private readonly beforeOutput?: (callIdx: number) => void,
+            ) {}
+            async runTask(opts: {
+                projectFolder: string;
+                taskName: string;
+                args?: ReadonlyArray<string>;
+                onOutput?: (output: {
+                    getOutputBytes(): Uint8Array;
+                    getOutputType(): number;
+                }) => void;
+            }): Promise<void> {
+                const idx = this.runCalls.length;
+                this.runCalls.push({
+                    taskName: opts.taskName,
+                    args: opts.args,
+                });
+                this.beforeOutput?.(idx);
+                const out = this.outputsPerCall[idx] ?? "";
+                if (out && opts.onOutput) {
+                    opts.onOutput({
+                        getOutputBytes: () => new TextEncoder().encode(out),
+                        getOutputType: () => 0,
+                    });
+                }
+            }
+            async cancelRunTask(): Promise<void> {}
+        }
+
+        function writeFakeGradlewStub(dir: string, stopFlag?: string): void {
+            const wrapper = path.join(dir, "gradlew");
+            const cmd = stopFlag
+                ? `#!/bin/sh\necho stopped > '${stopFlag}'\nexit 0\n`
+                : `#!/bin/sh\nexit 0\n`;
+            fs.writeFileSync(wrapper, cmd);
+            fs.chmodSync(wrapper, 0o755);
+        }
+
+        it(
+            "wipes caches-jvm, stops daemon, and retries with --rerun-tasks",
+            withTempDir(async (dir) => {
+                const stopFlag = path.join(dir, "stop-called.flag");
+                writeFakeGradlewStub(dir, stopFlag);
+
+                const cacheDir = path.join(
+                    dir,
+                    "mod/build/kotlin/compileKotlin/cacheable/caches-jvm",
+                );
+                fs.mkdirSync(path.join(cacheDir, "jvm/kotlin"), {
+                    recursive: true,
+                });
+                const tabPath = path.join(
+                    cacheDir,
+                    "jvm/kotlin/source-to-classes.tab",
+                );
+                fs.writeFileSync(tabPath, "");
+
+                const marker =
+                    "e: Incremental compilation failed: " +
+                    `Storage for [${tabPath}] is already registered\n`;
+                const api = new QueuedOutputApi([marker, ""]);
+
+                const service = new GradleService(dir, api);
+                await service.compileOnly({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                assert.strictEqual(
+                    api.runCalls.length,
+                    2,
+                    "expected initial call + one recovery retry",
+                );
+                assert.strictEqual(
+                    api.runCalls[0].taskName,
+                    ":mod:composePreviewCompile",
+                );
+                assert.strictEqual(
+                    api.runCalls[1].taskName,
+                    ":mod:composePreviewCompile",
+                );
+                assert.ok(
+                    api.runCalls[1].args?.includes("--rerun-tasks"),
+                    `retry call should append --rerun-tasks; got ${JSON.stringify(api.runCalls[1].args)}`,
+                );
+                assert.ok(
+                    !fs.existsSync(cacheDir),
+                    "caches-jvm should have been wiped during recovery",
+                );
+                assert.ok(
+                    fs.existsSync(stopFlag),
+                    "fake gradlew --stop should have been invoked by recovery",
+                );
+            }),
+        );
+
+        it(
+            "does not loop when the marker re-occurs on the retry",
+            withTempDir(async (dir) => {
+                writeFakeGradlewStub(dir);
+
+                const cacheDir = path.join(
+                    dir,
+                    "mod/build/kotlin/compileKotlin/cacheable/caches-jvm",
+                );
+                const tabPath = path.join(
+                    cacheDir,
+                    "jvm/kotlin/source-to-classes.tab",
+                );
+
+                // ALWAYS-emit variant: the recovery retry will re-trigger detection. The retry
+                // guard inside runTask (allowKotlinIcRecovery=false on the recursive call) must
+                // prevent a second recovery pass.
+                const marker = `Storage for [${tabPath}] is already registered\n`;
+                const api = new QueuedOutputApi(
+                    [marker, marker],
+                    (_callIdx) => {
+                        // Reconstitute the directory before each call so the marker's path is
+                        // walkable to caches-jvm even after the recovery's wipe ran.
+                        fs.mkdirSync(path.join(cacheDir, "jvm/kotlin"), {
+                            recursive: true,
+                        });
+                        fs.writeFileSync(tabPath, "");
+                    },
+                );
+
+                const service = new GradleService(dir, api);
+                await service.compileOnly({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+
+                assert.strictEqual(
+                    api.runCalls.length,
+                    2,
+                    "exactly two calls: initial + one retry. A third would mean the guard leaked.",
+                );
+            }),
+        );
+
+        it(
+            "skips recovery on a clean build",
+            withTempDir(async (dir) => {
+                writeFakeGradlewStub(dir);
+                const api = new QueuedOutputApi([
+                    "> Task :mod:compileKotlin\n",
+                ]);
+                const service = new GradleService(dir, api);
+                await service.compileOnly({
+                    projectDir: "mod",
+                    modulePath: ":mod",
+                });
+                assert.strictEqual(
+                    api.runCalls.length,
+                    1,
+                    "no marker, no retry",
+                );
+                assert.ok(
+                    !api.runCalls[0].args?.includes("--rerun-tasks"),
+                    "first call should not have --rerun-tasks",
+                );
+            }),
+        );
+    });
 });
 
 describe("encodeBundlePreviewId", () => {
