@@ -35,6 +35,7 @@ fun main(args: Array<String>) {
       "--with-extension",
       "--with",
       "--missing-renders",
+      "--variant",
     )
   var commandIndex = -1
   var i = 0
@@ -173,6 +174,14 @@ private fun printUsage() {
                            throws), `warn` (logs + keeps going), `ignore` (silent). Useful
                            for multi-module CI where a handful of stubborn previews would
                            otherwise gate the whole run.
+      --variant <name>     Forwarded as `-PcomposePreview.variant=<name>` to every Gradle
+                           invocation (model queries and task runs). Pins which AGP variant
+                           the plugin attaches its `composePreview*` tasks to in each
+                           module — used to disambiguate flavored apps (e.g.
+                           `--variant demoDebug`). Without this flag the plugin defaults to
+                           `debug` with a build-type suffix fallback, so flavorless modules
+                           pick `debug` and flavored modules pick the first `*Debug` variant
+                           AGP enumerates (issue #1546).
       --daemon             doctor: also spawn each module's preview daemon and confirm the
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`

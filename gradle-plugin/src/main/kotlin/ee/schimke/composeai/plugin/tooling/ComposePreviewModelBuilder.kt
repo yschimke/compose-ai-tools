@@ -1,5 +1,6 @@
 package ee.schimke.composeai.plugin.tooling
 
+import ee.schimke.composeai.plugin.AndroidPreviewSupport
 import ee.schimke.composeai.plugin.PluginVersion
 import ee.schimke.composeai.plugin.PreviewExtension
 import java.io.Serializable
@@ -128,13 +129,28 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
   }
 
   /**
-   * Reads the `composePreview { variant = … }` setting, falling back to `"debug"` if the extension
-   * isn't present (plugin not applied on this project). The `Property` itself carries a `"debug"`
-   * convention, so `.getOrElse` is belt-and-braces for the unconfigured case.
+   * Reads the resolved variant — the value AndroidPreviewSupport snapped into
+   * `composePreview.variant` after picking a matching AGP variant, or the consumer's explicit
+   * `composePreview { variant = … }` setting, or the `composePreview.variant` Gradle property
+   * convention (default `"debug"`).
+   *
+   * If the resolved value doesn't correspond to an actual `${variant}RuntimeClasspath`
+   * configuration on this project (flavored modules where the consumer asked for `debug` but the
+   * real variant is `demoDebug`), falls back to the first existing `${name}RuntimeClasspath` whose
+   * name matches the build-type suffix rule from [AndroidPreviewSupport.variantMatchesTarget].
+   * Keeps the doctor's `${variant}RuntimeClasspath` / `${variant}UnitTestRuntimeClasspath` lookups
+   * pointing at real configs when the model builder runs before / outside `onVariants`.
    */
   private fun resolveVariant(project: Project): String {
     val ext = project.extensions.findByType(PreviewExtension::class.java) ?: return "debug"
-    return ext.variant.getOrElse("debug")
+    val target = ext.variant.getOrElse("debug")
+    if (project.configurations.findByName("${target}RuntimeClasspath") != null) return target
+    val match =
+      project.configurations.names.firstOrNull { name ->
+        name.endsWith("RuntimeClasspath") &&
+          AndroidPreviewSupport.variantMatchesTarget(name.removeSuffix("RuntimeClasspath"), target)
+      } ?: return target
+    return match.removeSuffix("RuntimeClasspath")
   }
 
   /**

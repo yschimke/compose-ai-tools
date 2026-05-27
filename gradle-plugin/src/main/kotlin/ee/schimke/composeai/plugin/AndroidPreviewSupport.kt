@@ -154,7 +154,8 @@ internal object AndroidPreviewSupport {
     androidComponents.onVariants(androidComponents.selector().all()) { variant ->
       if (registered) return@onVariants
       if (!extension.enabled.get()) return@onVariants
-      if (variant.name != extension.variant.get()) return@onVariants
+      val target = extension.variant.get()
+      if (!variantMatchesTarget(variant.name, target)) return@onVariants
       if (!hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
@@ -165,6 +166,12 @@ internal object AndroidPreviewSupport {
         return@onVariants
       }
       registered = true
+      // Snap the extension's variant Property to the resolved variant name so
+      // downstream readers (DiscoverPreviewsTask.variantName,
+      // ComposePreviewModelBuilder.resolveVariant, doctor task) report the
+      // actually-selected name instead of the unresolved target. No-op when
+      // the match was already exact.
+      if (variant.name != target) extension.variant.set(variant.name)
       registerAndroidTasks(
         project,
         extension,
@@ -174,6 +181,30 @@ internal object AndroidPreviewSupport {
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
+  }
+
+  /**
+   * Matches an AGP variant name against the target the consumer asked for. Used to gate task
+   * registration in [configure] and to resolve the right `${variant}RuntimeClasspath` in
+   * [ComposePreviewModelBuilder] when a flavored module has no exact match.
+   *
+   * Two rules, in order:
+   * 1. **Exact match.** `target=demoDebug` matches `demoDebug` only — explicit `--variant
+   *    demoDebug` pins a specific flavor and any other variant is ignored.
+   * 2. **Build-type suffix match.** `target=debug` also matches `demoDebug`, `prodDebug`,
+   *    `uatDebug` — anything whose name ends with the capitalized target. Keeps the default
+   *    `--variant=debug` working on flavored apps (issue #1546) without making the consumer add
+   *    `--variant demoDebug` every run.
+   *
+   * The second rule is intentionally one-directional: a target like `demoDebug` does NOT match a
+   * flavorless `debug` variant. The user picked a flavor and the module doesn't have it, so the
+   * module is silently skipped — same outcome as today.
+   */
+  internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
+    if (variantName == target) return true
+    if (target.isEmpty()) return false
+    val capitalized = target.replaceFirstChar { it.uppercase() }
+    return variantName.endsWith(capitalized)
   }
 
   /**

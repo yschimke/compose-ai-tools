@@ -22,6 +22,15 @@ constructor(
 
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
 
+    // `-PcomposePreview.variant=<name>` overrides the convention so consumers can pin
+    // a variant per-run (e.g. `compose-preview --variant demoDebug list` on a flavored
+    // app) without editing build files. The convention chain is read at .get() time, so
+    // an explicit `composePreview { variant = "x" }` in the build script still wins
+    // (Property.set beats convention).
+    extension.variant.convention(
+      project.providers.gradleProperty("composePreview.variant").orElse("debug")
+    )
+
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
     // Tooling-API connection for the build. `register` accepts multiple
