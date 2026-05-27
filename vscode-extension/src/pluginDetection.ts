@@ -1,6 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
-
 /**
  * Pure filesystem helpers for detecting where the Compose Preview Gradle
  * plugin is applied. Lives in its own module (no `vscode` import) so plain
@@ -8,14 +5,9 @@ import * as path from "path";
  *
  * The authoritative signal is the `applied.json` marker written by the
  * Gradle `composePreviewApplied` task (see [GradleService.findPreviewModules]).
- * This module covers two cases the marker doesn't:
- *
- *   1. Literal `id("ee.schimke.composeai.preview")` in a `build.gradle.kts`
- *      before the first Gradle run has had a chance to write markers —
- *      avoids an "empty state" hiccup on freshly opened workspaces.
- *   2. Walking up from an arbitrary file path to find *any* ancestor
- *      applying the plugin, regardless of whether the match sits inside
- *      the current Gradle project or a nested worktree's sibling layout.
+ * This module covers the literal-`id("ee.schimke.composeai.preview")` case
+ * in a `build.gradle.kts` before the first Gradle run has had a chance to
+ * write markers — avoids an "empty state" hiccup on freshly opened workspaces.
  */
 
 export const PLUGIN_ID = "ee.schimke.composeai.preview";
@@ -65,46 +57,4 @@ export function appliesPlugin(content: string): boolean {
         return true;
     }
     return false;
-}
-
-/**
- * Walks up from `filePath`'s directory looking for an ancestor containing a
- * module build script (`build.gradle.kts` or `build.gradle`) that literally
- * applies the plugin. Returns that directory, or null if no such ancestor
- * exists before hitting the filesystem root.
- *
- * This is intentionally workspace-agnostic — unlike `GradleService.resolveModule`,
- * it doesn't care whether the match is a direct child of the VS Code workspace
- * root. That matters for git worktrees nested under the workspace (e.g.
- * `.claude/worktrees/<name>/sample-android/...`): the file is in a preview
- * module, just not one that *this* Gradle project can invoke. Used by the
- * setup-prompt logic to avoid nagging users whose file is clearly already
- * plugin-enabled somewhere in its own project tree.
- *
- * Only matches the literal `id("…")` / `id "…"` application form. Projects
- * that apply via a version catalog are picked up via the `applied.json`
- * marker path in [GradleService.findPreviewModules] once Gradle has run —
- * this helper is a purely static file-walk fallback, used where we don't
- * have a marker.
- */
-export function findPluginAppliedAncestor(filePath: string): string | null {
-    let dir = path.dirname(filePath);
-    while (true) {
-        for (const name of BUILD_SCRIPT_NAMES) {
-            const candidate = path.join(dir, name);
-            try {
-                const content = fs.readFileSync(candidate, "utf-8");
-                if (appliesPlugin(content)) {
-                    return dir;
-                }
-            } catch {
-                /* no build file here, try the next name */
-            }
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir) {
-            return null;
-        }
-        dir = parent;
-    }
 }
