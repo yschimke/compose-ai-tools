@@ -3243,11 +3243,25 @@ class DaemonMcpServer(
         event.kind in advertisedButUnsupported ->
           "event[$index] script event '${event.kind}' is advertised by this daemon but not yet " +
             "implemented (supported=false); list_data_products to inspect the roadmap"
-        else ->
+        else -> {
+          val hint = suggestionFor(event.kind, supportedEventIds)
           "event[$index] kind '${event.kind}' is not advertised by this daemon. Call " +
-            "list_data_products to see the available script-event ids."
+            "list_data_products to see the available script-event ids." +
+            if (hint != null) " Did you mean '$hint'?" else ""
+        }
       }
     }
+  }
+
+  /**
+   * Catch the common "agent followed stale docs and dropped the namespace" mistake — e.g. `{
+   * "kind": "click" }` instead of `{ "kind": "input.click" }`. When the unrecognised name matches a
+   * supported id's tail past the dot, return that id; otherwise no hint (avoid misleading
+   * suggestions for genuinely unknown kinds).
+   */
+  private fun suggestionFor(unknown: String, supported: Set<String>): String? {
+    if (unknown.contains('.')) return null
+    return supported.firstOrNull { it.substringAfter('.', "") == unknown }
   }
 
   private fun nameOf(code: Int): String =
