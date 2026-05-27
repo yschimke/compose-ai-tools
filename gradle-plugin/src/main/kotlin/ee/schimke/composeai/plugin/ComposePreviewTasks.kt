@@ -516,23 +516,13 @@ internal object ComposePreviewTasks {
 
   /**
    * Tier-1 cheap-signal file set for the desktop daemon's [ClasspathFingerprint][
-   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Same set as [AndroidPreviewSupport]'s
-   * private `collectCheapSignalFiles` — duplicated rather than extracted into a shared helper to
-   * keep this PR scoped to the desktop registration; both call sites can be unified once both
-   * branches stabilise.
+   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Delegates to the shared
+   * [CheapSignalFiles.collect] so the Android and Desktop registrations stay in lockstep — critical
+   * because both feed the same daemon `composeai.daemon.cheapSignalFiles` sysprop and the daemon
+   * side hashes them as one logical input.
    */
-  private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> {
-    val out = LinkedHashSet<java.io.File>()
-    val rootProject = project.rootProject
-    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
-    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
-      .forEach { out += rootProject.file(it) }
-    rootProject.allprojects.forEach { sub ->
-      out += sub.file("build.gradle.kts")
-      out += sub.file("build.gradle")
-    }
-    return out.filter { it.isFile }
-  }
+  private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> =
+    CheapSignalFiles.collect(project)
 
   /**
    * Plugin-apply-time setup for stage-2 BTA configurations. Creates the two detached configurations

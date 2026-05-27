@@ -92,6 +92,26 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val manageDependencies: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
   /**
+   * When `true` (default), the plugin skips task registration on modules that don't declare a known
+   * `@Preview`-tooling dependency (`androidx.compose.ui:ui-tooling-preview`, `compose.components
+   * .uiToolingPreview`, `androidx.wear.tiles:tiles-tooling-preview`, …) in any `*Implementation` /
+   * `*Api` / `*RuntimeOnly` bucket. The skip keeps convention-plugin-everywhere setups quiet on
+   * utility modules without `@Preview` surface.
+   *
+   * Flip to `false` on the CMP-Android `:composeApp` (issue #241) shape — the consumer applies
+   * `com.android.application`, declares no preview-tooling dep itself, but depends on `:shared` via
+   * `project(":shared")` where the preview tooling lives. Plugin auto-detection used to follow
+   * `project(":foo")` deps across module boundaries to catch this; the walk was dropped under
+   * Isolated Projects (`rootProject.findProject(...)` is IP-banned — see issue #1549 for the
+   * planned IP-safe redesign). Until that lands this flag is the explicit escape hatch.
+   *
+   * Override at the command line with `-PcomposePreview.enforcePreviewToolingDependency=false` for
+   * a single CLI invocation without editing `build.gradle.kts`.
+   */
+  val enforcePreviewToolingDependency: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(true)
+
+  /**
    * When `true`, the plugin wires the AGP `testDebugUnitTest` / `testReleaseUnitTest` tasks to
    * depend on `composePreviewRenderAll`, so a consumer's pixel-test class (e.g. one that reads the
    * PNGs under `build/compose-previews/renders/`) sees a fully-rendered output directory by the

@@ -7,7 +7,6 @@ import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
 import org.gradle.api.Project
-import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.provider.Property
@@ -154,17 +153,29 @@ internal object AndroidPreviewSupport {
     androidComponents.onVariants(androidComponents.selector().all()) { variant ->
       if (registered) return@onVariants
       if (!extension.enabled.get()) return@onVariants
-      if (variant.name != extension.variant.get()) return@onVariants
-      if (!hasPreviewDependency(project, variant.name)) {
+      val target = extension.variant.get()
+      if (!variantMatchesTarget(variant.name, target)) return@onVariants
+      val enforceToolingDep = extension.enforcePreviewToolingDependency.get()
+      if (enforceToolingDep && !hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
             "'${project.path}'; skipping task registration. " +
             "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
-            "(or remove the plugin from this module) to opt in."
+            "(or remove the plugin from this module) to opt in. " +
+            "If your previews live transitively (CMP-Android `:composeApp` -> `:shared` shape, " +
+            "issue #241 / #1549), set `composePreview { enforcePreviewToolingDependency = false }` " +
+            "in this module's build script (or pass " +
+            "`-PcomposePreview.enforcePreviewToolingDependency=false` on the command line)."
         )
         return@onVariants
       }
       registered = true
+      // Snap the extension's variant Property to the resolved variant name so
+      // downstream readers (DiscoverPreviewsTask.variantName,
+      // ComposePreviewModelBuilder.resolveVariant, doctor task) report the
+      // actually-selected name instead of the unresolved target. No-op when
+      // the match was already exact.
+      if (variant.name != target) extension.variant.set(variant.name)
       registerAndroidTasks(
         project,
         extension,
@@ -174,6 +185,30 @@ internal object AndroidPreviewSupport {
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
+  }
+
+  /**
+   * Matches an AGP variant name against the target the consumer asked for. Used to gate task
+   * registration in [configure] and to resolve the right `${variant}RuntimeClasspath` in
+   * [ComposePreviewModelBuilder] when a flavored module has no exact match.
+   *
+   * Two rules, in order:
+   * 1. **Exact match.** `target=demoDebug` matches `demoDebug` only — explicit `--variant
+   *    demoDebug` pins a specific flavor and any other variant is ignored.
+   * 2. **Build-type suffix match.** `target=debug` also matches `demoDebug`, `prodDebug`,
+   *    `uatDebug` — anything whose name ends with the capitalized target. Keeps the default
+   *    `--variant=debug` working on flavored apps (issue #1546) without making the consumer add
+   *    `--variant demoDebug` every run.
+   *
+   * The second rule is intentionally one-directional: a target like `demoDebug` does NOT match a
+   * flavorless `debug` variant. The user picked a flavor and the module doesn't have it, so the
+   * module is silently skipped — same outcome as today.
+   */
+  internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
+    if (variantName == target) return true
+    if (target.isEmpty()) return false
+    val capitalized = target.replaceFirstChar { it.uppercase() }
+    return variantName.endsWith(capitalized)
   }
 
   /**
@@ -218,65 +253,40 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when this module — or any project it depends on transitively, via declared
-   * `project(":foo")` references — declares a coord in [previewArtifactSignals] in its
-   * `implementation` / `api` / `runtimeOnly` (or `<name>Implementation` / `<name>Api` /
-   * `<name>RuntimeOnly`) buckets.
+   * True when this module declares a coord in [previewArtifactSignals] in its `implementation` /
+   * `api` / `runtimeOnly` (or `<name>Implementation` / `<name>Api` / `<name>RuntimeOnly`) buckets.
    *
-   * The CMP-Android canonical layout (issue #241) has the consumer apply `com.android.application`
-   * and depend on `:shared` via `project(":shared")`, with `:shared` declaring the preview tooling
-   * on `api`. Following declared project dependencies catches that case without resolving any
-   * classpath — keeping the check off the Gradle resolution path so we don't trip the
-   * "Configuration was resolved during configuration time" warning. The previous implementation
-   * walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but pulled
-   * resolution into the configuration phase.
+   * Declared-deps scan (not resolved classpath) — keeps the check off the Gradle resolution path so
+   * we don't trip the "Configuration was resolved during configuration time" warning. The previous
+   * implementation walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but
+   * pulled resolution into the configuration phase.
    *
-   * Scope of the trade-off: a preview-tooling coord that arrives purely through a Maven transitive
-   * (e.g. another AAR's POM declares it on `runtime`) won't match here — declared intent in
-   * `allDependencies` is what we look for. In practice preview tooling is declared explicitly in
-   * the surface that uses it, and the doctor task surfaces the alternative path with a clearer
-   * error than this gate.
+   * **CMP-Android caveat (issue #241).** A prior version followed declared `project(":foo")`
+   * dependencies across module boundaries to catch the canonical CMP-Android shape (`:composeApp` →
+   * `:shared`, preview tooling declared on `:shared`'s `commonMain.api`). That cross-project walk
+   * used `rootProject.findProject(...)` + `evaluationDependsOn(...)`, both rejected under Gradle's
+   * Isolated Projects mode. Resolving it IP-safely needs a settings-time project-info build service
+   * — tracked as a follow-up issue. Until then the workaround is to either apply
+   * `id("ee.schimke.composeai.preview")` to the module that hosts the previews (so previews are
+   * discovered there directly) or declare the preview-tooling dep on the consuming app module too.
    *
-   * The `variantName` argument is unused now but kept on the public signature for test-fixture
-   * compatibility; renaming would churn callers without value.
+   * Other trade-off: a preview-tooling coord that arrives purely through a Maven transitive (e.g.
+   * another AAR's POM declares it on `runtime`) won't match — declared intent in `allDependencies`
+   * is what we look for. In practice preview tooling is declared explicitly in the surface that
+   * uses it.
+   *
+   * The `variantName` argument is unused but kept on the public signature for test-fixture
+   * compatibility.
    */
   internal fun hasPreviewDependency(
     project: Project,
     @Suppress("UNUSED_PARAMETER") variantName: String,
-  ): Boolean = hasPreviewDependencyDeep(project, mutableSetOf())
-
-  private fun hasPreviewDependencyDeep(project: Project, visited: MutableSet<String>): Boolean {
-    if (!visited.add(project.path)) return false
+  ): Boolean {
     for (config in declarableBucketsOf(project)) {
       for (dep in config.allDependencies) {
         val g = dep.group
         if (g != null && previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }) {
           return true
-        }
-        if (dep is ProjectDependency) {
-          // `ProjectDependency.path` is the resolution-free way to identify the
-          // depended-on project. `findProject(...)` returns null silently when
-          // the project isn't part of this build (composite builds, missing
-          // `include(...)`) — treat that as "no signal" and continue.
-          val sub = runCatching { project.rootProject.findProject(dep.path) }.getOrNull()
-          if (sub != null) {
-            // Force the sub-project to evaluate before we inspect its
-            // configurations. Without this the walk races include-order:
-            // for `include(":androidApp")` before `include(":shared")`,
-            // `:shared`'s build script (including its KMP
-            // `commonMain.dependencies { implementation(...) }` block) has
-            // not run yet when AGP's `onVariants` fires for `:androidApp`,
-            // so `:shared.configurations["commonMainImplementation"]
-            // .allDependencies` is empty and the preview signal is missed —
-            // the exact shape that broke `joreilly/Confetti`'s `:androidApp`
-            // against `compose.components.uiToolingPreview` declared in
-            // `:shared`'s commonMain. `evaluationDependsOn` is safe here —
-            // it triggers configuration, not resolution (so doesn't tip the
-            // "Configuration was resolved during configuration time" warning)
-            // — and is no more cross-project than the `findProject` above.
-            runCatching { project.evaluationDependsOn(sub.path) }
-            if (hasPreviewDependencyDeep(sub, visited)) return true
-          }
         }
       }
     }
@@ -2043,30 +2053,47 @@ internal object AndroidPreviewSupport {
   /**
    * B2.1 — collects the cheap-signal file set per
    * [DESIGN § 8 Tier 1](../../../../../docs/daemon/DESIGN.md#tier-1--project-fundamentally-changed):
-   * `gradle/libs.versions.toml`, every `build.gradle.kts` / `build.gradle` reachable from the root
-   * project's allprojects, `settings.gradle.kts` / `settings.gradle`, `gradle.properties`,
-   * `local.properties`. Only files that exist on disk are returned (a missing `local.properties` is
-   * the common case in CI; we don't want a ghost path in the daemon's hash baseline).
+   * `gradle/libs.versions.toml`, this project's `build.gradle.kts` / `build.gradle`,
+   * `settings.gradle.kts` / `settings.gradle`, `gradle.properties`, `local.properties`. Only files
+   * that exist on disk are returned (a missing `local.properties` is the common case in CI; we
+   * don't want a ghost path in the daemon's hash baseline).
    *
-   * **Cheap-signal evolution.** The set is computed at task-action time, not at configuration time,
-   * so a `build.gradle.kts` added under a freshly-included subproject *before* the next
-   * `composePreviewDaemonStart` re-run is picked up. Subprojects added *after* the daemon already
-   * spawned with the previous list won't be in the daemon's baseline — but adding a subproject is
-   * itself a `settings.gradle.kts` edit, which IS in the cheap-signal set, so the very edit that
-   * adds it triggers the Tier-1 dirty path. Net: no missed-dirty case under realistic editor
-   * workflows; the only edge case is hand-creating a `subproject/build.gradle.kts` without touching
-   * `settings.gradle.kts`, which would require manual Gradle re-run anyway.
+   * Shares implementation with the desktop registration; both call sites consume the same shape.
+   *
+   * **Subprojects deliberately not walked.** Reading every subproject's build file requires
+   * `rootProject.allprojects` cross-project access, which Gradle's Isolated Projects mode rejects
+   * with "Project … cannot access … on another project". The daemon's per-module classpath
+   * fingerprint already covers cross-module dependency changes through the variant runtime
+   * classpath, so the missed signal is "edit a sibling subproject's `build.gradle.kts` *without*
+   * touching `settings.gradle.kts`, the variant classpath, or the version catalog." Adding /
+   * removing a subproject still flips `settings.gradle.kts` — which IS in the set — so the
+   * realistic edit cycle still triggers Tier-1 dirty. Tracking the rare standalone-edit case
+   * IP-safely needs a settings-time build service (issue tracked separately).
    */
-  private fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> {
+  internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
+    CheapSignalFiles.collect(project)
+}
+
+/**
+ * IP-safe cheap-signal file collector shared by the Android (`AndroidPreviewSupport`) and Desktop
+ * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot) and the current
+ * project's own `projectDir` only — no `rootProject.file(...)` / `rootProject.allprojects` access.
+ */
+internal object CheapSignalFiles {
+  internal fun collect(project: org.gradle.api.Project): List<java.io.File> {
     val out = LinkedHashSet<java.io.File>()
-    val rootProject = project.rootProject
-    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
-    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
-      .forEach { out += rootProject.file(it) }
-    rootProject.allprojects.forEach { sub ->
-      out += sub.file("build.gradle.kts")
-      out += sub.file("build.gradle")
-    }
+    val rootDir = project.rootDir
+    listOf(
+        "gradle/libs.versions.toml",
+        "settings.gradle.kts",
+        "settings.gradle",
+        "gradle.properties",
+        "local.properties",
+      )
+      .forEach { out += java.io.File(rootDir, it) }
+    val moduleDir = project.projectDir
+    out += java.io.File(moduleDir, "build.gradle.kts")
+    out += java.io.File(moduleDir, "build.gradle")
     // Only emit paths that actually exist — missing files contribute their absolute path string
     // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
     // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
