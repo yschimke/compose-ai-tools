@@ -426,6 +426,8 @@ class DoctorCommand(private val args: List<String>) {
       )
     }
 
+    checkDaemonJdkForAgp(model.modules)
+
     for ((modulePath, info) in model.modules) {
       checkModuleVersions(modulePath, info)
       checkRenderPreviewsTask(modulePath, info)
@@ -502,6 +504,56 @@ class DoctorCommand(private val args: List<String>) {
         status = "ok",
         message = "Gradle ${daemonGradleVersion} on $majorStr",
         detail = "daemon java.home: ${daemonJavaHome}",
+      )
+    )
+  }
+
+  /**
+   * Warn when the Gradle daemon's JVM is past [AGP_JDK_CEILING] and any module on this project
+   * applies AGP. Motivated by issue #1544: AGP's `JdkImageTransform` invokes the daemon JDK's
+   * `jlink` to materialise `android.jar`'s system modules, and on JDK 26 that has been reported
+   * failing on `core-for-system-modules.jar`. The same JDK + configuration-cache combination also
+   * can't serialise `JdkImageInput.generatedModuleFile` (a `TransformBackedProvider`). Neither
+   * failure mode is compose-preview-specific — they reproduce with plain AGP tasks too — but doctor
+   * is where consumers come when their first `compose-preview` invocation blows up, so we flag the
+   * env mismatch here.
+   *
+   * Threshold is the last AGP-blessed LTS at time of writing. Bump in one place ([AGP_JDK_CEILING])
+   * once AGP officially supports a newer LTS. Skipped on CMP Desktop-only projects — the
+   * JdkImageTransform path only runs under AGP.
+   */
+  private fun checkDaemonJdkForAgp(modules: Map<String, ModuleInfo>) {
+    val major = daemonJavaMajor ?: return
+    if (major <= AGP_JDK_CEILING) return
+    val agpVersions = modules.values.mapNotNull { it.agpVersion }.distinct()
+    if (agpVersions.isEmpty()) return
+    addCheck(
+      DoctorCheck(
+        id = "env.daemon-jdk-agp",
+        category = "env",
+        status = "warning",
+        message =
+          "Gradle daemon on JDK $major — AGP is only officially supported up to JDK $AGP_JDK_CEILING",
+        detail =
+          "AGP ${agpVersions.joinToString(", ")} on this project. AGP's JdkImageTransform " +
+            "invokes the daemon JDK's `jlink` to materialise android.jar's system modules; on " +
+            "JDK 26 that has been reported failing on core-for-system-modules.jar (issue #1544). " +
+            "The same JDK + configuration-cache combination also fails to serialise " +
+            "`JdkImageInput.generatedModuleFile`. Reproduces with plain AGP tasks — not specific " +
+            "to compose-preview.",
+        remediation =
+          DoctorRemediation(
+            summary =
+              "Pin the Gradle daemon to JDK $AGP_JDK_CEILING until AGP officially supports a newer LTS.",
+            commands =
+              listOf(
+                "# gradle.properties:",
+                "org.gradle.java.home=/path/to/jdk$AGP_JDK_CEILING",
+                "# or per-invocation:",
+                "JAVA_HOME=/path/to/jdk$AGP_JDK_CEILING ./gradlew …",
+              ),
+            docs = "https://github.com/$REPO/issues/1544",
+          ),
       )
     )
   }
@@ -1163,6 +1215,14 @@ class DoctorCommand(private val args: List<String>) {
      */
     private const val MIN_BOM_YEAR = 2025
     private const val MIN_BOM_MONTH = 1
+
+    /**
+     * Highest JDK we trust to drive AGP without surfacing the issue-1544-class footguns
+     * (`JdkImageTransform` / configuration-cache serialisation of `TransformBackedProvider`). JDK
+     * 21 is the last AGP-blessed LTS at time of writing. Bump once AGP officially supports a newer
+     * LTS — `checkDaemonJdkForAgp` keys off this value.
+     */
+    private const val AGP_JDK_CEILING = 21
 
     private val SKIP_DIRS = setOf("build", "node_modules", "out", "dist", ".gradle")
 
