@@ -127,6 +127,30 @@ fun DarkAwareSquare() {
   Box(modifier = Modifier.fillMaxSize().background(bg))
 }
 
+/**
+ * Reads `Context.checkSelfPermission(android.permission.CAMERA)` through the platform path that
+ * `ContextCompat.checkSelfPermission(...)` ultimately delegates to (`ContextWrapper.checkPermission
+ * (String, int, int)`). Paints green when granted, red when denied. Used by
+ * `PermissionsOverrideIntegrationTest` to prove `renderNow.overrides.permissions` reaches
+ * `PermissionsPreviewOverrideExtension.plan(...)`, the around-composable seeds Robolectric's
+ * `ShadowApplication.grantPermissions`, the `ShadowContextWrapperPermissionTracker` shadow forwards
+ * to the real implementation, and the next `checkSelfPermission` read in the composition observes
+ * the requested value — the full chain the panel's permissions tab body drives.
+ *
+ * No connector-specific Compose API; the screen is the exact shape a consumer would author
+ * against the standard Android permission surface, mirroring `samples/android`'s
+ * `PermissionGatedPreview`.
+ */
+@Composable
+fun PermissionGatedSquare() {
+  val context = androidx.compose.ui.platform.LocalContext.current
+  val granted =
+    context.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+      android.content.pm.PackageManager.PERMISSION_GRANTED
+  val color = if (granted) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
+}
+
 @Composable
 fun ResourceReadingPreview() {
   val label = stringResource(R.string.compose_ai_resource_used_label)
