@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.11.13](https://github.com/yschimke/compose-ai-tools/compare/v0.11.12...v0.11.13) (2026-05-27)
+
+
+### Features
+
+* add permissions override UI to inspection panel ([#1540](https://github.com/yschimke/compose-ai-tools/issues/1540)) ([e7745d8](https://github.com/yschimke/compose-ai-tools/commit/e7745d8f645fa8f346e8c74f82a2437e26508232))
+* detect render/manifest drift after a sanitiser change ([#1548](https://github.com/yschimke/compose-ai-tools/issues/1548)) ([a4e06b6](https://github.com/yschimke/compose-ai-tools/commit/a4e06b6781624b13314fa872ce11d22ffe723f76))
+* **doctor:** surface module.preview-tooling-not-declared finding ([#1553](https://github.com/yschimke/compose-ai-tools/issues/1553)) ([245160d](https://github.com/yschimke/compose-ai-tools/commit/245160dd7492590d2a57499114c6f7f19b4189b9))
+
+
+### Bug Fixes
+
+* detect transitive preview deps in unevaluated projects ([#1541](https://github.com/yschimke/compose-ai-tools/issues/1541)) ([2a81e56](https://github.com/yschimke/compose-ai-tools/commit/2a81e56f9660ddc3c0f821bce43751f517d4b6e5))
+* match flavored AGP variants and add --variant CLI flag ([#1551](https://github.com/yschimke/compose-ai-tools/issues/1551)) ([6f000ad](https://github.com/yschimke/compose-ai-tools/commit/6f000ad9e28b474a54c42d0cb75bfaf864172fa4))
+
 ## [0.11.12](https://github.com/yschimke/compose-ai-tools/compare/v0.11.11...v0.11.12) (2026-05-26)
 
 
