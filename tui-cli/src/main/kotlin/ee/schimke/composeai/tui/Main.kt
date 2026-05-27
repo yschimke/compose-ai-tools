@@ -6,6 +6,9 @@ import ee.schimke.composeai.cli.GradlePreviewDriver
 import ee.schimke.composeai.cli.PreviewModule
 import ee.schimke.composeai.tui.ui.App
 import java.io.File
+import java.io.FileOutputStream
+import java.io.PrintStream
+import java.time.Instant
 import kotlin.system.exitProcess
 
 fun main(argv: Array<String>) {
@@ -35,7 +38,42 @@ fun main(argv: Array<String>) {
   // Mosaic owns stdin/stdout from this point. Any `println` inside the composition will land on
   // the live screen. `runMosaicMain` is the synchronous entry — it blocks the main thread until
   // the composition ends (we exitProcess from inside the App composable's q-handler).
+  //
+  // The daemon subprocess we spawn for live mode forwards its child stderr through
+  // `System.err.println("[daemon …] …")` (see `SubprocessDaemonClientFactory.forwardStderr`),
+  // and a handful of other paths in the shared `:mcp` module fall back to `System.err.println` on
+  // transport errors. Both would corrupt the live screen mid-render. Redirect System.err to a
+  // per-session log file so those writes land somewhere a user can `tail -f` instead of on the
+  // TTY. Real failures we want the user to see surface via `LiveSession.state.lastError`.
+  redirectStderrToLogFile(projectRoot)
+
   runMosaicMain { App(modules = modules, args = args) }
+}
+
+/**
+ * Replace [System.err] with an append-mode log file under
+ * `<projectRoot>/build/compose-preview-tui.log`. Best-effort: if we can't create the file we leave
+ * System.err pointing at the terminal — better to have a corrupted display than to crash the
+ * launcher because `build/` isn't writable.
+ */
+private fun redirectStderrToLogFile(projectRoot: File) {
+  val logFile = File(projectRoot, "build/compose-preview-tui.log")
+  try {
+    logFile.parentFile?.mkdirs()
+    val stream = PrintStream(FileOutputStream(logFile, /* append= */ true), /* autoFlush= */ true)
+    stream.println("--- compose-preview-tui session at ${Instant.now()} ---")
+    System.setErr(stream)
+    Runtime.getRuntime()
+      .addShutdownHook(
+        Thread {
+          // Best-effort flush; the JVM is exiting anyway so a failure here is invisible.
+          runCatching { stream.flush() }
+          runCatching { stream.close() }
+        }
+      )
+  } catch (_: Throwable) {
+    // Stay on the terminal. Garbled output is better than no TUI.
+  }
 }
 
 /**
