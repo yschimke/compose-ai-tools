@@ -126,8 +126,11 @@ internal object AndroidPreviewClasspath {
    * [validateApplicationOnClasspath] surfaces a clear error before the test JVM forks.
    */
   fun buildBootClasspathFallback(project: Project): Provider<List<File>> {
-    val localProperties =
-      project.rootProject.layout.projectDirectory.file("local.properties").asFile
+    // `project.rootDir` is a plain `File` snapshot of the build root and IP-safe to read from
+    // a sub-project (no `Project.method` round-trip into the root project). `rootProject.layout
+    // .projectDirectory.file(...)` is rejected under isolated projects as "Project.layout
+    // functionality on another project". See issue #1546.
+    val localProperties = File(project.rootDir, "local.properties")
     val androidHomeEnv = project.providers.environmentVariable("ANDROID_HOME")
     val androidSdkRootEnv = project.providers.environmentVariable("ANDROID_SDK_ROOT")
     return project.providers.provider {

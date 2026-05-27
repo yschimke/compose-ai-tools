@@ -141,6 +141,22 @@ abstract class Command(protected val args: List<String>) {
   protected val forceReason: String? = args.flagValue("--force")?.takeIf { it.isNotBlank() }
 
   /**
+   * `--variant <name>` forwards as `-PcomposePreview.variant=<name>` on every Gradle invocation
+   * this CLI makes — model queries AND task runs — via the connection's `extraArguments`. Used by
+   * consumers with flavored application modules (e.g. `:app` with `demoDebug` / `prodDebug`
+   * variants and no plain `debug`) to pin which variant the plugin attaches `composePreview*` tasks
+   * to. Default is unset: the plugin's own `composePreview.variant` convention picks `debug` and
+   * falls back to `*Debug` suffix matches in flavored modules — see issue #1546.
+   */
+  protected val variantOverride: String? =
+    args.flagValue("--variant")?.trim()?.takeIf { it.isNotEmpty() }
+
+  protected fun variantGradleArgs(): List<String> {
+    val v = variantOverride ?: return emptyList()
+    return listOf("-PcomposePreview.variant=$v")
+  }
+
+  /**
    * Data extensions the user explicitly requested for this run via `--with-extension`. Repeatable
    * (`--with-extension a11y --with-extension theme`), comma-batched (`--with-extension
    * a11y,theme`), or equals-form (`--with-extension=a11y`).
@@ -250,7 +266,13 @@ abstract class Command(protected val args: List<String>) {
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = root)
     val connection =
       withGradleStdout(silenceStdout) {
-        GradleConnection(root, verbose, progress, extraArguments = injectArgs)
+        // `--variant` goes on the connection rather than per-call so the
+        // ProjectModel query (which picks up `composePreviewDiscover` task
+        // presence to enumerate preview modules) sees the same variant the
+        // task runs use. Without this, a flavored `:app` would still be
+        // invisible to `findPreviewModules()` because its task only registers
+        // when `-PcomposePreview.variant=demoDebug` is on the model query too.
+        GradleConnection(root, verbose, progress, extraArguments = injectArgs + variantGradleArgs())
       }
     connection.use(block)
   }
