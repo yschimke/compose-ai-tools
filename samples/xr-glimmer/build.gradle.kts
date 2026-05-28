@@ -63,6 +63,12 @@ dependencies {
   // `androidx.compose.ui:1.10.0` transitively per the alpha13 POM.
   implementation(libs.xr.glimmer)
 
+  // `@FocusedPreview` — read by FQN at discovery time; the annotation is binary-retained
+  // so the renderer's focus-walking path (`moveFocus(Enter)` + `moveFocus(Next)` per step,
+  // GIF stitching when `gif = true`) sees it without any runtime classpath cost. Used by
+  // `GlimmerXrMenuNavigation` to drive focus through the menu items.
+  implementation(project(":preview-annotations"))
+
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }

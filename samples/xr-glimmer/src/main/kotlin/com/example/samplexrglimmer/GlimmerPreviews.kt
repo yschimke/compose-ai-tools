@@ -44,7 +44,7 @@ import androidx.xr.glimmer.TitleChip
 // inside the sample so we don't have to depend on a `:glimmer-preview-runtime` that doesn't exist
 // yet; the eventual published `GlimmerSurface` from that module is intentionally the same shape.
 @Composable
-private fun GlimmerSurface(content: @Composable () -> Unit) {
+internal fun GlimmerSurface(content: @Composable () -> Unit) {
   Box(Modifier.fillMaxSize().background(Color.Black).padding(24.dp)) {
     GlimmerTheme(content = content)
   }
@@ -135,9 +135,9 @@ fun FocusableMenu() {
 // applies `dpi/160` as the density. Kept as a named const so the previews above all share
 // one source of truth — bump in lockstep when the eventual `@GlimmerPreview` meta-annotation
 // adopts a different spec.
-private const val AI_GLASSES_DEVICE_SPEC: String = "spec:width=640,height=480,dpi=240"
+internal const val AI_GLASSES_DEVICE_SPEC: String = "spec:width=640,height=480,dpi=240"
 
 // Opaque pure black — additive-zero base per the SKILL.md mandate. Drawn by the renderer's
 // background-fill path so the captured PNG carries `RGB == (0, 0, 0)` in every pixel the
 // Glimmer UI didn't paint, ready for an `ADD`-blend env compositor.
-private const val ADDITIVE_ZERO_BACKGROUND: Long = 0xFF000000L
+internal const val ADDITIVE_ZERO_BACKGROUND: Long = 0xFF000000L
