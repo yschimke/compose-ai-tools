@@ -8,12 +8,13 @@ import android.os.Bundle
 import android.os.Parcelable
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.File
 
@@ -57,6 +58,7 @@ import java.io.File
 fun NotificationContent(
   previewId: String? = null,
   surface: NotificationSurface = NotificationSurface.EXPANDED,
+  widthDp: Int = DEFAULT_NOTIFICATION_WIDTH_DP,
   factory: (Context) -> Notification,
 ) {
   val context = LocalContext.current
@@ -72,7 +74,17 @@ fun NotificationContent(
   // scratch on every surface anyway.
   key(surface) {
     AndroidView(
-      modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+      // Force the notification-shape width rather than `fillMaxWidth()`. Under the renderer's
+      // AS-parity wrap-to-content path, a `@Preview` composable hosting `NotificationContent`
+      // gets measured with `minWidth = 0`, and the inflated RemoteViews tree's intrinsic
+      // width (~320dp — the AOSP notification metric) is what comes back through `AndroidView`'s
+      // measure block. The captured PNG then crops to that intrinsic measure, producing the
+      // square ~317×317 footprint reported in issue #1249 instead of the wide-and-short shade
+      // row the inflater is laying out. Setting an exact width here gives the inflater the same
+      // 400dp canvas the renderer-side `NotificationPreviewComposable` path (`@NotificationPreview`
+      // discovery) implicitly hits, so gallery / variant `@Preview` previews share the wide
+      // footprint instead of getting clipped into a square.
+      modifier = Modifier.width(widthDp.dp).wrapContentHeight(),
       factory = { ctx ->
         val parent =
           FrameLayout(ctx).apply {
@@ -128,6 +140,15 @@ enum class NotificationSurface {
   EXPANDED,
   HEADS_UP,
 }
+
+/**
+ * Default notification surface width in dp. Mirrors the renderer's `SANDBOX_WIDTH_DP` so a
+ * `@Preview` composable hosting [NotificationContent] without an explicit `widthDp` lays out at
+ * the same width Android Studio's preview pane and the standalone renderer hand out. The AOSP
+ * notification shade is 360–412dp wide on real devices; 400dp keeps the gallery / variant PNGs
+ * the same shape as `@NotificationPreview`-routed previews.
+ */
+const val DEFAULT_NOTIFICATION_WIDTH_DP: Int = 400
 
 /**
  * AOSP-derived notification surface colours, picked off the active `Configuration.uiMode`. We
