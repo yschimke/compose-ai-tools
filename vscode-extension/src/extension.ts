@@ -29,6 +29,7 @@ import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
 import { visiblePreviewsForFile } from "./previewScope";
+import { anyPreviewSourceTabOpen } from "./previewTabs";
 import {
     AccessibilityFinding,
     AccessibilityNode,
@@ -2576,6 +2577,21 @@ function isFileOpenInTextDocument(filePath: string): boolean {
     );
 }
 
+/**
+ * True iff some preview-source `.kt` file is still open in a tab — visible,
+ * covered, or in a background group. Distinguishes "focus drifted off the
+ * editor" (webview/output pane gets focus during a daemon spawn) from "the
+ * last preview editor was closed" for the refresh() no-module guard. See
+ * [anyPreviewSourceTabOpen] for why tab state, not `textDocuments`, is the
+ * authoritative signal here.
+ */
+function isAnyPreviewSourceTabOpen(): boolean {
+    return anyPreviewSourceTabOpen(
+        vscode.window.tabGroups.all,
+        isPreviewSourceFile,
+    );
+}
+
 function isAntigravityHost(): boolean {
     const bundleId = process.env.__CFBundleIdentifier?.toLowerCase() ?? "";
     return (
@@ -4309,10 +4325,13 @@ async function refresh(
         }
         // When the panel already has previews painted (preload or a prior render put cards
         // on screen), focus drifting to the webview / output pane / no-editor-at-all is NOT
-        // a reason to clearAll. Stale cached images are explicitly OK — the daemon's next
-        // render will replace them. Wiping here is what causes the "panel goes back to
-        // placeholders during the 15-25s daemon spawn" bug the verify command surfaces.
-        if (hasPreviewsLoaded) {
+        // a reason to clearAll *as long as a preview source is still open somewhere*. Stale
+        // cached images are explicitly OK while the daemon's next render is coming — wiping
+        // here is what causes the "panel goes back to placeholders during the 15-25s daemon
+        // spawn" bug the verify command surfaces. But once the last preview editor is closed
+        // there's no source left to render, so holding the cards strands the user on stale
+        // previews (issue #1566) — fall through to the empty-state clear below.
+        if (hasPreviewsLoaded && isAnyPreviewSourceTabOpen()) {
             logLine(
                 `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource}); keeping ${lastLoadedModules.length} loaded module(s) on screen`,
             );
