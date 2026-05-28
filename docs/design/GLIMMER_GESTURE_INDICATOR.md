@@ -42,46 +42,115 @@ Add a `GlimmerGesture` enum to a small shared module (likely the existing
 in `GlimmerInputOverride` (already named in `GLIMMER_PREVIEW.md`) becomes
 the same type, not a separate one.
 
+## Module layout
+
+The gesture API has three distinct consumers that sit in different parts of
+the module graph:
+
+| Consumer                                        | Module               | Needs                                          |
+| ----------------------------------------------- | -------------------- | ---------------------------------------------- |
+| `@GlimmerPreviewInput(gestures = [...])`        | annotation artifact  | The `GlimmerGesture` type as an annotation arg |
+| `GlimmerInputOverride.gesture: GlimmerGesture?` | `:daemon:core`       | The same type, `@Serializable`, no platform deps |
+| `dispatchGesture(...)` Android `KeyEvent` path  | `:renderer-android`  | `GlimmerGesture` + `KeyEvent.KEYCODE_*` mapping |
+| `dispatchGesture(...)` Desktop `KeyEvent` path  | `:renderer-desktop`  | `GlimmerGesture` + `java.awt.event.KeyEvent.VK_*` mapping |
+
+Putting the type in `:renderer-android` would force both the annotation
+artifact and the renderer-agnostic `:daemon:core` to pull in the Android
+renderer — breaking the explicit "no runtime deps" constraint on
+`:preview-annotations` (its `build.gradle.kts` comments that constraint) and
+violating `:daemon:core`'s renderer-agnostic boundary.
+
+**Split into two layers:**
+
+1. **`:glimmer-preview-runtime`** (pure Kotlin JVM, no platform deps) holds
+   the `GlimmerGesture` enum and the `@GlimmerPreviewInput` annotation. The
+   enum carries only the *semantic* properties — glyph + label — that
+   serializers, annotation consumers, and indicator-painters all need. No
+   Android types. Depended on by `:daemon:core`, both renderer modules, and
+   the consumer's sample code. The module is the same one
+   `GLIMMER_PREVIEW.md` already names for Glimmer-specific runtime helpers;
+   the gesture API is its first occupant.
+
+2. **Per-renderer keycode mapping + dispatcher** as extension functions on
+   `GlimmerGesture` in each platform-specific module:
+
 ```kotlin
-enum class GlimmerGesture(
-  internal val keyCode: Int,        // KeyEvent.KEYCODE_DPAD_UP, etc.
-  internal val glyph: String,
-  internal val label: String,
-) {
-  SwipeUp   (KeyEvent.KEYCODE_DPAD_DOWN, "▲", "swipe up"),    // forward in lists
-  SwipeDown (KeyEvent.KEYCODE_DPAD_UP,   "▼", "swipe down"),  // back in lists
-  SwipeLeft (KeyEvent.KEYCODE_DPAD_LEFT, "◀", "swipe left"),
-  SwipeRight(KeyEvent.KEYCODE_DPAD_RIGHT,"▶", "swipe right"),
-  Tap       (KeyEvent.KEYCODE_DPAD_CENTER, "●", "tap"),
-  Back      (KeyEvent.KEYCODE_BACK,        "↺", "back"),
+// :glimmer-preview-runtime — pure Kotlin, no platform deps.
+package androidx.xr.glimmer.preview
+
+enum class GlimmerGesture(val glyph: String, val label: String) {
+  SwipeUp   ("▲", "swipe up"),    // forward in lists
+  SwipeDown ("▼", "swipe down"),  // back in lists
+  SwipeLeft ("◀", "swipe left"),
+  SwipeRight("▶", "swipe right"),
+  Tap       ("●", "tap"),
+  Back      ("↺", "back"),
+}
+
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+annotation class GlimmerPreviewInput(
+  val gestures: Array<GlimmerGesture> = [],
+  val showIndicator: Boolean = true,
+  val gif: Boolean = false,
+)
+```
+
+```kotlin
+// :renderer-android — Android-only keycode mapping + KeyEvent dispatcher.
+import android.view.KeyEvent
+import androidx.xr.glimmer.preview.GlimmerGesture
+
+internal fun GlimmerGesture.androidKeyCode(): Int = when (this) {
+  GlimmerGesture.SwipeUp    -> KeyEvent.KEYCODE_DPAD_DOWN
+  GlimmerGesture.SwipeDown  -> KeyEvent.KEYCODE_DPAD_UP
+  GlimmerGesture.SwipeLeft  -> KeyEvent.KEYCODE_DPAD_LEFT
+  GlimmerGesture.SwipeRight -> KeyEvent.KEYCODE_DPAD_RIGHT
+  GlimmerGesture.Tap        -> KeyEvent.KEYCODE_DPAD_CENTER
+  GlimmerGesture.Back       -> KeyEvent.KEYCODE_BACK
+}
+
+internal fun ComposeViewRoot.dispatchGesture(gesture: GlimmerGesture) {
+  val keyCode = gesture.androidKeyCode()
+  dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+  dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
 }
 ```
 
-The swipe-up → DPAD_DOWN mapping needs verification against
+```kotlin
+// :renderer-desktop — CMP Desktop hot-reload, uses java.awt.event.KeyEvent.
+import java.awt.event.KeyEvent
+import androidx.xr.glimmer.preview.GlimmerGesture
+
+internal fun GlimmerGesture.awtKeyCode(): Int = when (this) {
+  GlimmerGesture.SwipeUp    -> KeyEvent.VK_DOWN
+  GlimmerGesture.SwipeDown  -> KeyEvent.VK_UP
+  GlimmerGesture.SwipeLeft  -> KeyEvent.VK_LEFT
+  GlimmerGesture.SwipeRight -> KeyEvent.VK_RIGHT
+  GlimmerGesture.Tap        -> KeyEvent.VK_ENTER
+  GlimmerGesture.Back       -> KeyEvent.VK_ESCAPE
+}
+```
+
+The swipe-up → DPAD_DOWN / VK_DOWN mapping needs verification against
 `:references/focus-source.md` from the official Glimmer skill — vertical
 swipes on AI Glasses traditionally move focus in the *opposite* direction
 to the finger (content scrolls under the finger, the focused row moves
 toward the next item) but the platform's exact mapping is what counts. Wire
-the enum first, swap the keycodes after the reference confirms.
+the enum first, swap the per-renderer keycode-mapping functions after the
+reference confirms.
 
 Dispatch happens through `androidx.compose.ui.platform.AndroidComposeView`'s
-existing key-event dispatcher. The renderer's host activity already drives
+existing key-event dispatcher (Android) or the Compose Desktop window's key
+listener (Desktop). The renderer's host activity / window already drives
 focus walks via `moveFocus(...)`; we add `dispatchKeyEvent(...)` as a peer.
 Both routes converge on the same `Modifier.focusable` listeners in the
 target composable.
 
-```kotlin
-internal fun ComposeViewRoot.dispatchGesture(gesture: GlimmerGesture) {
-  val event = KeyEvent(KeyEvent.ACTION_DOWN, gesture.keyCode)
-  dispatchKeyEvent(event)
-  dispatchKeyEvent(KeyEvent(event).apply { action = KeyEvent.ACTION_UP })
-}
-```
-
 No special-casing in core (per AGENTS.md → *Important constraints*). The
-dispatcher lives next to the existing `FocusManager` plumbing in
-`:renderer-android`; the Glimmer-specific keycode mapping is the only
-Glimmer-aware part and lives in the enum itself.
+dispatchers live next to the existing `FocusManager` plumbing in each
+renderer; the only Glimmer-aware part is `:glimmer-preview-runtime`'s enum
+and annotation, both pure Kotlin and consumer-facing by design.
 
 ## Client API: opt-in per preview
 
@@ -320,8 +389,10 @@ toolbar is a scratch surface.
 | Primitive                              | Today                                  | After this design                                  |
 | -------------------------------------- | -------------------------------------- | -------------------------------------------------- |
 | `@FocusedPreview(indices = [...])`     | Imperative focus walk via `moveFocus`  | Still supported; gesture annotation supersedes when both are present |
-| `XrGesture` enum (just deleted)        | Hand-rolled in sample, no dispatch     | Resurrected as `GlimmerGesture`, lives in `:renderer-android`, drives both dispatch and indicator |
-| `:data-glimmer-input-connector`        | Named in design, not implemented       | Gains the indicator-painting `AroundComposableExtension` described above |
+| `XrGesture` enum (just deleted)        | Hand-rolled in sample, no dispatch     | Resurrected as `GlimmerGesture` in `:glimmer-preview-runtime` (pure Kotlin, semantic only — glyph + label), per-renderer keycode-mapping extension functions in `:renderer-android` / `:renderer-desktop` |
+| `:glimmer-preview-runtime`             | Named in `GLIMMER_PREVIEW.md`, not created | Created by this design as the home of `GlimmerGesture` + `@GlimmerPreviewInput`. Pure Kotlin JVM, no platform deps, depended on by both renderers + `:daemon:core` + consumer samples |
+| `:data-glimmer-input-connector`        | Named in design, not implemented       | Gains the indicator-painting `AroundComposableExtension` described above. Depends on `:glimmer-preview-runtime` for the enum, not on either renderer |
+| `GlimmerInputOverride.gesture` in `:daemon:core` | Named in `GLIMMER_PREVIEW.md` § wire-format | Resolved to `GlimmerGesture` from `:glimmer-preview-runtime` — daemon stays renderer-agnostic |
 | Focus ring overlay                     | Named in design, not implemented       | Unchanged — still planned, this design adds gesture pill alongside it |
 | `LocalInputModeManager = Keyboard`     | Set by `@FocusedPreview` for focusables to honour focus moves | Same — KeyEvent dispatch needs Keyboard mode for `Modifier.focusable` to react |
 
@@ -370,13 +441,20 @@ toolbar is a scratch surface.
 
 Stages can ship independently:
 
-1. **`GlimmerGesture` enum + `dispatchGesture(...)` in `:renderer-android`**
-   — minimum to flip the current sample from `moveFocus(indices = [...])`
-   to gesture-driven walks. No visual change; the test still asserts four
-   distinct GIFs.
-2. **`@GlimmerPreviewInput` annotation** — discovery wires through. At
-   this point the sample's annotation block flips to the new shape but
-   the GIF still looks the same.
+1. **`:glimmer-preview-runtime` module — `GlimmerGesture` enum +
+   `@GlimmerPreviewInput` annotation** — pure Kotlin JVM, no platform
+   deps. Same shape as the existing `:preview-annotations` module (which
+   has `// no runtime deps so adding it to a Compose app classpath never
+   drags anything else in.` in its `build.gradle.kts`), just Glimmer-
+   specific. Wire-format hookup: `:daemon:core`'s `GlimmerInputOverride`
+   gains a dependency on this module and references `GlimmerGesture`
+   directly. No visual change yet.
+2. **Per-renderer `dispatchGesture(...)`** — `:renderer-android` adds the
+   `KeyEvent.KEYCODE_DPAD_*` mapping + `dispatchKeyEvent(...)` call.
+   `:renderer-desktop` adds the matching `java.awt.event.KeyEvent.VK_*`
+   path. Minimum to flip the current sample from
+   `moveFocus(indices = [...])` to gesture-driven walks. Still no visual
+   change; the test still asserts four distinct GIFs.
 3. **Indicator-painting `AroundComposableExtension` in
    `:data-glimmer-input-connector`** — pill appears in the GIF. This is
    the user-visible deliverable for capture; (1) and (2) can land in
@@ -391,8 +469,24 @@ Stages can ship independently:
    `GLIMMER_PREVIEW.md`-named focus-ring affordance lands next to the
    gesture pill, completing the connector's planned surface.
 
-(1) and (2) are renderer-only and Glimmer-agnostic (the enum is the only
-Glimmer-aware part). (3) and (5) are the Glimmer connector. (4) is host
-chrome — per-platform but small. A non-Glimmer project could ship its own
-connector with a different indicator look and reuse all the
-renderer-side + host-side wiring unchanged.
+**Module ownership across phases:**
+
+- (1) lives in the new `:glimmer-preview-runtime` — pure Kotlin, Glimmer-
+  semantic, no platform deps. Consumer-facing; goes in any `@Preview`
+  module's classpath without dragging Android or Glimmer-runtime in.
+- (2) lives in `:renderer-android` + `:renderer-desktop` — platform-
+  specific keycode mapping, depended-on by the renderer's existing
+  discovery + capture pipeline. Both renderers depend on (1) for the
+  enum.
+- (3) and (5) live in `:data-glimmer-input-connector` — Glimmer-specific
+  visual overlay, depends on (1) but not on either renderer (it's an
+  `AroundComposableExtension` running inside whatever renderer hosts it).
+- (4) lives in the host chrome — per-platform (`vscode-extension/src/`,
+  the Studio plugin, CMP Desktop's window decoration). Calls (2)'s
+  dispatcher; reads (1)'s enum for button labels.
+
+A non-Glimmer project (a Wear input model, a custom widget input model)
+could ship its own analogue of (1) + a per-renderer dispatcher + a
+project-specific connector, reusing the renderer-side discovery /
+annotation-binding wiring unchanged — none of the renderer code is
+Glimmer-aware.
