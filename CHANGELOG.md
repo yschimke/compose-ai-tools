@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.15](https://github.com/yschimke/compose-ai-tools/compare/v0.11.14...v0.11.15) (2026-05-28)
+
+
+### Features
+
+* **samples:** add :samples:xr-glimmer for Jetpack Compose Glimmer (Android XR) ([#1561](https://github.com/yschimke/compose-ai-tools/issues/1561)) ([4b6fa37](https://github.com/yschimke/compose-ai-tools/commit/4b6fa37a94138b086db31b9138889df28c04ca7e))
+* **samples:** fan GlimmerXrMenuNavigation across all four env backdrops ([#1564](https://github.com/yschimke/compose-ai-tools/issues/1564)) ([ad29751](https://github.com/yschimke/compose-ai-tools/commit/ad297510103ca3c15ae049e02ca9c34d51939842))
+* **samples:** interactive XR menu navigation GIF with touchpad gesture overlay ([#1563](https://github.com/yschimke/compose-ai-tools/issues/1563)) ([70faa58](https://github.com/yschimke/compose-ai-tools/commit/70faa5879acaf68117bbf2c2419b4f6bec948630))
+* surface private @Preview methods via reflection ([#1572](https://github.com/yschimke/compose-ai-tools/issues/1572)) ([c02ea5b](https://github.com/yschimke/compose-ai-tools/commit/c02ea5bb277677e340cc4d7c76016a77c6ac3b96))
+
+
+### Bug Fixes
+
+* **a11y:** don't report list items as merged into a scrollable ([#1569](https://github.com/yschimke/compose-ai-tools/issues/1569)) ([9aad66a](https://github.com/yschimke/compose-ai-tools/commit/9aad66a3a11ef362fe32b8437c194e745938033f))
+* allow private @Preview Glance composables to be invoked ([#1574](https://github.com/yschimke/compose-ai-tools/issues/1574)) ([597ad0d](https://github.com/yschimke/compose-ai-tools/commit/597ad0d9512d07b7efa585fbd55a941b97589bd9))
+* set explicit notification width to match renderer canvas ([#1576](https://github.com/yschimke/compose-ai-tools/issues/1576)) ([2017d8c](https://github.com/yschimke/compose-ai-tools/commit/2017d8cb6bf0593cfaed32f671060191b8757d48))
+* **vscode-extension:** clear stale previews when last editor closes ([#1568](https://github.com/yschimke/compose-ai-tools/issues/1568)) ([4f6b69c](https://github.com/yschimke/compose-ai-tools/commit/4f6b69c7f5b6cdc88cc8d02ac85ad398f68d7917))
+* **vscode-extension:** recover from partial render failures, break drift loop ([#1558](https://github.com/yschimke/compose-ai-tools/issues/1558)) ([98c4c16](https://github.com/yschimke/compose-ai-tools/commit/98c4c16ac8cc721fe82cd55769b66c852a520ee1))
+* **vscode-extension:** scope bundle overlays to the focused preview ([#1570](https://github.com/yschimke/compose-ai-tools/issues/1570)) ([600e844](https://github.com/yschimke/compose-ai-tools/commit/600e8442e5d9c8b2073671444040bf3aff746608))
+
 ## [0.11.14](https://github.com/yschimke/compose-ai-tools/compare/v0.11.13...v0.11.14) (2026-05-28)
 
 
