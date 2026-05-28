@@ -32,9 +32,12 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(text = "Hello $name!", modifier = modifier)
 }
 
+// Kept `private` on purpose: exercises the private-@Preview render path
+// (ClassGraph `ignoreMethodVisibility()` + reflective `setAccessible(true)`)
+// end-to-end in the sample. The other boxes stay public to cover both shapes.
 @Preview(name = "Red Box", showBackground = true, backgroundColor = 0xFFFF0000)
 @Composable
-fun RedBoxPreview() {
+private fun RedBoxPreview() {
     Box(
         modifier = Modifier.size(100.dp).background(Color.Red),
         contentAlignment = Alignment.Center,

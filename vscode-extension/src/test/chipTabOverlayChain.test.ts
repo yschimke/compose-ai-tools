@@ -1,9 +1,15 @@
 // Bundle chip ↔ tab ↔ overlay integration smoke. Wires
 // `BundleController` to the three visual surfaces (chip-bar's active
-// set, `<data-tabs>` tab strip, per-card `<box-overlay>` layers) the
-// same way `main.ts`'s `reflectBundleState` + `setTabBody` plumbing
-// does, then drives the chip on / `×`-close round-trip and asserts
-// the full chain.
+// set, `<data-tabs>` tab strip, per-card `<box-overlay>` layers),
+// then drives the chip on / `×`-close round-trip and asserts the full
+// chain.
+//
+// The overlay wiring here paints every card via
+// `paintBundleBoxesEverywhere` to exercise the chip → multi-layer
+// paint/clear mechanics. Production `main.ts` instead scopes overlays
+// to the focused preview (`paintBundleBoxesForFocus`, #1567); this
+// suite covers the chip/tab/overlay state-sync, not the focus
+// scoping.
 //
 // Complementary to the existing leaf-component tests
 // (`bundleChipBar.test.ts`, `dataTabs.test.ts`,

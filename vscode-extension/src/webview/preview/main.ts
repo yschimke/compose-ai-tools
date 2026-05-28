@@ -58,9 +58,8 @@ import type {
 import { findLegendTarget } from "./bundleLegendTarget";
 import {
     clearBundleBoxes,
-    getVisiblePreviewIds,
     paintBundleBoxes,
-    paintBundleBoxesEverywhere,
+    paintBundleBoxesForFocus,
 } from "./cardBundleOverlay";
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
@@ -928,30 +927,27 @@ export class PreviewApp extends LitElement {
             return visible?.dataset.previewId ?? null;
         };
         /**
-         * Paint [bundleId]'s overlay boxes onto either the focused
-         * card (focus mode) or every visible card (grid mode), using
+         * Paint [bundleId]'s overlay boxes on the focused card, using
          * [computeOverlay] to derive that card's `OverlayBox[]` from
-         * its own data caches. Centralises the focused-vs-grid
-         * switch the design doc promises (see
-         * `docs/design/EXTENSION_DATA_EXPOSURE.md` § "Open question
-         * 1 — Multi-preview selection") so each bundle refresh
-         * function only has to supply the per-preview compute.
+         * its own data caches.
+         *
+         * Bundles scope to the focused preview only — `bundleChipBar`
+         * and `<data-tabs>` are hidden outside focus layout, so the
+         * bundles never act on an ambient grid selection (settled
+         * "Open question 1 — Multi-preview selection" in
+         * `docs/design/EXTENSION_DATA_EXPOSURE.md`). Outside focus mode
+         * we therefore tear the layer down rather than paint: a box
+         * stamped while a card was focused must not leak onto the grid
+         * card the user later browses to (#1567).
          */
         const paintOverlaysForBundle = (
             bundleId: string,
             computeOverlay: (previewId: string) => readonly OverlayBox[],
         ): void => {
-            if (focusController?.inFocus?.()) {
-                const focused = focusController.focusedCard();
-                const previewId = focused?.dataset.previewId;
-                if (!focused || !previewId) return;
-                paintBundleBoxes(focused, bundleId, computeOverlay(previewId));
-                return;
-            }
-            const ids = getVisiblePreviewIds();
-            const perCard = new Map<string, readonly OverlayBox[]>();
-            for (const id of ids) perCard.set(id, computeOverlay(id));
-            paintBundleBoxesEverywhere(bundleId, perCard);
+            const focused = focusController?.inFocus?.()
+                ? focusController.focusedCard()
+                : null;
+            paintBundleBoxesForFocus(bundleId, focused, computeOverlay);
         };
         // Per-bundle tab bodies. Each entry holds the wrapper element
         // we attach to `<data-tabs>` plus the `<bundle-expander>` /
@@ -2779,6 +2775,7 @@ export class PreviewApp extends LitElement {
             bundleChipBar,
             dataTabs,
             refreshBundleLegend: () => reflectLegendActiveTab(),
+            refreshBundleState: () => reflectBundleState(),
             focusToolbar,
             inspectorRender: renderFocusInspector,
             liveState,

@@ -17,6 +17,7 @@ import {
     getVisiblePreviewIds,
     paintBundleBoxes,
     paintBundleBoxesEverywhere,
+    paintBundleBoxesForFocus,
 } from "../webview/preview/cardBundleOverlay";
 import { sanitizeId } from "../webview/preview/cardData";
 // Import for side-effect: registers `<box-overlay>` with
@@ -458,6 +459,87 @@ describe("cardBundleOverlay", () => {
                 document.querySelectorAll("box-overlay[data-bundle='history']")
                     .length,
                 0,
+            );
+        });
+    });
+
+    // Production paint path: bundles scope to the focused preview only,
+    // so the overlay must never leak onto a grid card the user later
+    // browses to (#1567). `paintOverlaysForBundle` in `main.ts`
+    // delegates here, passing the focused card in focus layout and
+    // `null` in grid/flow/column layout.
+    describe("paintBundleBoxesForFocus", () => {
+        it("paints the focused card's own boxes", () => {
+            const card = buildCard("p:a");
+            paintBundleBoxesForFocus("a11y", card, () => [box("a-0")]);
+            const layer = card.querySelector<BoxOverlay>(
+                "box-overlay[data-bundle='a11y']",
+            );
+            assert.ok(layer, "focused card should host an a11y layer");
+        });
+
+        it("computes boxes only for the focused card's previewId", () => {
+            const card = buildCard("p:a");
+            const seen: string[] = [];
+            paintBundleBoxesForFocus("a11y", card, (previewId) => {
+                seen.push(previewId);
+                return [box("a-0")];
+            });
+            assert.deepStrictEqual(seen, ["p:a"]);
+        });
+
+        it("clears every layer when there is no focused card (grid layout)", () => {
+            // A box painted while the card was focused...
+            const card = buildCard("p:a");
+            paintBundleBoxesForFocus("a11y", card, () => [box("a-0")]);
+            assert.strictEqual(
+                document.querySelectorAll("box-overlay[data-bundle='a11y']")
+                    .length,
+                1,
+            );
+            // ...must be torn down when the user drops to grid layout —
+            // `null` focused card. This is the #1567 leak guard.
+            let computed = false;
+            paintBundleBoxesForFocus("a11y", null, () => {
+                computed = true;
+                return [box("a-0")];
+            });
+            assert.strictEqual(
+                document.querySelectorAll("box-overlay[data-bundle='a11y']")
+                    .length,
+                0,
+                "a11y overlay must not survive into grid layout",
+            );
+            assert.strictEqual(
+                computed,
+                false,
+                "no overlay is computed when there is no focused card",
+            );
+        });
+
+        it("treats a card without a previewId like no focus — clears, never paints", () => {
+            const card = buildCard("p:a");
+            paintBundleBoxesForFocus("a11y", card, () => [box("a-0")]);
+            delete card.dataset.previewId;
+            paintBundleBoxesForFocus("a11y", card, () => [box("a-0")]);
+            assert.strictEqual(
+                document.querySelectorAll("box-overlay[data-bundle='a11y']")
+                    .length,
+                0,
+            );
+        });
+
+        it("only touches its own bundle's layer, leaving siblings intact", () => {
+            const card = buildCard("p:a");
+            paintBundleBoxes(card, "history", [box("h-0")]);
+            // Switching to grid clears a11y but must not disturb the
+            // history layer (each bundle owns its own teardown).
+            paintBundleBoxesForFocus("a11y", null, () => [box("a-0")]);
+            assert.strictEqual(
+                card.querySelectorAll("box-overlay[data-bundle='history']")
+                    .length,
+                1,
+                "sibling bundle layer is untouched",
             );
         });
     });

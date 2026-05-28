@@ -54,6 +54,16 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
         } else {
             findComposableMethodWithArgs(clazz, preview.functionName, previewArgs)
         }
+        // Kotlin `private fun` previews compile to JVM-private methods.
+        // `getDeclaredComposableMethod` still resolves them (it scans
+        // `declaredMethods`), but the reflective `invoke` below would throw
+        // IllegalAccessException, so open the method up first — the same trick
+        // `resolvePreviewReceiver` uses for private/internal receiver classes.
+        // Guarded with `runCatching`: a SecurityManager or strong module
+        // encapsulation can refuse, in which case we still attempt the invoke
+        // (which succeeds for public/internal previews) rather than fail
+        // resolution outright.
+        runCatching { composableMethod.asMethod().isAccessible = true }
         // Top-level `@Preview` functions compile into static methods on the
         // file's synthetic `FooKt` class, so `receiver = null` works. Google's
         // `com.android.compose.screenshot` tool (and Paparazzi-style tests)
