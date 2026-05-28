@@ -1735,6 +1735,15 @@ internal object AndroidPreviewSupport {
         "composeai.daemon.warmSpare",
         extension.daemon.warmSpare.map { it.toString() },
       )
+      // Mirrors the `application=android.app.Application` line
+      // GenerateRobolectricPropertiesTask writes for the composePreviewRender Test path.
+      // SandboxHoldingRunner.buildGlobalConfig reads this and supplies the Application
+      // default. Without it, the daemon falls back to the consumer's manifest-declared
+      // Application — see RobolectricHost.SandboxRunner KDoc for the URL factory cascade.
+      this.systemProperties.put(
+        "composeai.daemon.useConsumerApplication",
+        extension.useConsumerApplication.map { it.toString() },
+      )
       this.systemProperties.put(
         "composeai.daemon.perfettoTrace",
         resolveComposeAiTraceEnabled(project, extension).map { it.toString() },
