@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 92 preview(s) across 10 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/main`. 111 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -499,6 +499,124 @@ _No findings._
 ### `MainSquarePreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android-screenshot-test/MainSquarePreview_main_square.a11y.png" width="400" />
+
+_No findings._
+
+## cmp
+
+### `AppPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/AppPreview.a11y.png" width="400" />
+
+_No findings._
+
+### `BlueBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/BlueBoxPreview_Blue_Box.a11y.png" width="400" />
+
+_No findings._
+
+### `CmpPseudoBidi`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/CmpPseudoBidi_bidi.a11y.png" width="400" />
+
+_No findings._
+
+### `CmpPseudoDefault`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/CmpPseudoDefault_default.a11y.png" width="400" />
+
+_No findings._
+
+### `KeyboardDemoPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/KeyboardDemoPreview_Keyboard_Demo.a11y.png" width="400" />
+
+_No findings._
+
+### `MultiTouchDrawingPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MultiTouchDrawingPreview_Multi_Touch_Drawing.png" width="400" />
+
+_No findings._
+
+### `MultiTouchDrawingSeededPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png" width="400" />
+
+_No findings._
+
+### `PinchToZoomPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="400" />
+
+_No findings._
+
+### `RedBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/RedBoxPreview_Red_Box.a11y.png" width="400" />
+
+_No findings._
+
+### `ScrollingListPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List.a11y.png" width="400" />
+
+_No findings._
+
+### `SwatchPreview`
+
+_No findings._
+
+### `WallpaperDemoPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/WallpaperDemoPreview_Wallpaper_Demo.a11y.png" width="400" />
+
+_No findings._
+
+## cmp-shared
+
+### `SharedBlueBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedBlueBoxPreview_Blue.a11y.png" width="400" />
+
+_No findings._
+
+### `SharedRedBoxPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp-shared/SharedRedBoxPreview.a11y.png" width="400" />
+
+_No findings._
+
+## desktop-daemon-bench
+
+### `BlueLabelPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/desktop-daemon-bench/BlueLabelPreview_BlueLabel.a11y.png" width="400" />
+
+_No findings._
+
+### `GreenButtonPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/desktop-daemon-bench/GreenButtonPreview_GreenButton.a11y.png" width="400" />
+
+_No findings._
+
+### `RedSquarePreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/desktop-daemon-bench/RedSquarePreview_RedSquare.png" width="400" />
+
+_No findings._
+
+### `RowPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/desktop-daemon-bench/RowPreview_Row.png" width="400" />
+
+_No findings._
+
+### `StackPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/desktop-daemon-bench/StackPreview_Stack.a11y.png" width="400" />
 
 _No findings._
 

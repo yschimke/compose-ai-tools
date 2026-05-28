@@ -937,6 +937,196 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "SharedBlueBoxPreview_Blue.a11y.png",
+      "cleanBasename": "SharedBlueBoxPreview_Blue.png",
+      "findings": [],
+      "functionName": "SharedBlueBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue",
+      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "SharedRedBoxPreview.a11y.png",
+      "cleanBasename": "SharedRedBoxPreview.png",
+      "findings": [],
+      "functionName": "SharedRedBoxPreview",
+      "module": "cmp-shared",
+      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview",
+      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "AppPreview.a11y.png",
+      "cleanBasename": "AppPreview.png",
+      "findings": [],
+      "functionName": "AppPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.AppPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BlueBoxPreview_Blue_Box.a11y.png",
+      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
+      "findings": [],
+      "functionName": "BlueBoxPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CmpPseudoBidi_bidi.a11y.png",
+      "cleanBasename": "CmpPseudoBidi_bidi.png",
+      "findings": [],
+      "functionName": "CmpPseudoBidi",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoBidi_bidi",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "CmpPseudoDefault_default.a11y.png",
+      "cleanBasename": "CmpPseudoDefault_default.png",
+      "findings": [],
+      "functionName": "CmpPseudoDefault",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
+      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
+      "findings": [],
+      "functionName": "KeyboardDemoPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing.png",
+      "findings": [],
+      "functionName": "MultiTouchDrawingPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch Drawing",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png",
+      "findings": [],
+      "functionName": "MultiTouchDrawingSeededPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch Drawing \u2014 seeded",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
+      "findings": [],
+      "functionName": "PinchToZoomPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "RedBoxPreview_Red_Box.a11y.png",
+      "cleanBasename": "RedBoxPreview_Red_Box.png",
+      "findings": [],
+      "functionName": "RedBoxPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List.a11y.png",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "ScrollingListPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "",
+      "findings": [],
+      "functionName": "SwatchPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "WallpaperDemoPreview_Wallpaper_Demo.a11y.png",
+      "cleanBasename": "WallpaperDemoPreview_Wallpaper_Demo.png",
+      "findings": [],
+      "functionName": "WallpaperDemoPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",
+      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
+      "findings": [],
+      "functionName": "BlueLabelPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "GreenButtonPreview_GreenButton.a11y.png",
+      "cleanBasename": "GreenButtonPreview_GreenButton.png",
+      "findings": [],
+      "functionName": "GreenButtonPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RedSquarePreview_RedSquare.png",
+      "findings": [],
+      "functionName": "RedSquarePreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "RowPreview_Row.png",
+      "findings": [],
+      "functionName": "RowPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RowPreview_Row",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "StackPreview_Stack.a11y.png",
+      "cleanBasename": "StackPreview_Stack.png",
+      "findings": [],
+      "functionName": "StackPreview",
+      "module": "desktop-daemon-bench",
+      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.StackPreview_Stack",
+      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "RemoteButtonEnabledPreview.a11y.png",
       "cleanBasename": "RemoteButtonEnabledPreview.png",
       "findings": [
