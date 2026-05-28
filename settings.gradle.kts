@@ -99,6 +99,8 @@ include(":samples:sdk-matrix")
 
 include(":samples:wear")
 
+include(":samples:xr-glimmer")
+
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
