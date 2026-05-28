@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.14](https://github.com/yschimke/compose-ai-tools/compare/v0.11.13...v0.11.14) (2026-05-28)
+
+
+### Features
+
+* **doctor:** warn when Gradle daemon runs above JDK 21 on AGP projects ([#1554](https://github.com/yschimke/compose-ai-tools/issues/1554)) ([55714e9](https://github.com/yschimke/compose-ai-tools/commit/55714e975785ae1c9946784c8c09693798fc441e))
+
+
+### Bug Fixes
+
+* **daemon:** stub Application by default, plumb useConsumerApplication ([#1557](https://github.com/yschimke/compose-ai-tools/issues/1557)) ([288b7f8](https://github.com/yschimke/compose-ai-tools/commit/288b7f88fce1bc3e3bfbd75955c01ea8862bb594))
+* **daemon:** surface bootstrap failures from RobolectricHost workers ([#1556](https://github.com/yschimke/compose-ai-tools/issues/1556)) ([c6faa40](https://github.com/yschimke/compose-ai-tools/commit/c6faa407576a0239f219f7bc9229bf5b4eb1c8ff))
+
 ## [0.11.13](https://github.com/yschimke/compose-ai-tools/compare/v0.11.12...v0.11.13) (2026-05-27)
 
 
