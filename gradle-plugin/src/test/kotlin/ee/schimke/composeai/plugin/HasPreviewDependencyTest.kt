@@ -10,10 +10,11 @@ import org.junit.rules.TemporaryFolder
  * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency].
  *
  * The check walks the current module's declared `*Implementation` / `*Api` / `*RuntimeOnly` buckets
- * — declared intent, no classpath resolution, no cross-project access. That keeps the gate
- * compatible with Gradle's Isolated Projects mode (a cross-project `project(":foo")` recursion
- * existed for issue #241 but had to be dropped — see the function's KDoc for the workaround
- * consumers can apply).
+ * — declared intent, no classpath resolution, no `Project.findProject` / `evaluationDependsOn`
+ * cross-project access. For transitive cross-module preview tooling (issue #241, the CMP-Android
+ * `:composeApp` → `:shared` shape) the gate delegates to [CrossProjectMetadataService], which
+ * parses `settings.gradle.kts` + each subproject's `build.gradle[.kts]` off disk — also IP-safe.
+ * See [CrossProjectMetadataTest] for the parser-level coverage of that fallback.
  */
 class HasPreviewDependencyTest {
 
@@ -51,13 +52,11 @@ class HasPreviewDependencyTest {
   }
 
   @Test
-  fun `preview signal on a sibling project is NOT followed across module boundaries`() {
-    // Regression marker for the issue #241 trade-off: the cross-project walk that used to catch
-    // `:app -> :shared (preview tooling)` was dropped to comply with Isolated Projects. Consumers
-    // hitting this shape now either declare the preview-tooling dep on `:app` too, or apply
-    // `id("ee.schimke.composeai.preview")` to `:shared` directly so previews are discovered there.
-    // Pin the current behaviour here so a future revert reintroducing the recursion gets caught
-    // by a failing test (and prompts the IP-safe redesign tracked in the follow-up issue).
+  fun `direct project dep falls through to false when the metadata service is not registered`() {
+    // With no [CrossProjectMetadataService] registered (this `ProjectBuilder` harness skips
+    // plugin application), a `project(":lib")` dep that would otherwise trigger the deep walk
+    // falls through to false. Mirrors the manual-test seam: production code uses
+    // [CrossProjectMetadataServiceTest] / functional tests for the deep-walk-enabled case.
     val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
     val lib =
       ProjectBuilder.builder()
@@ -74,10 +73,6 @@ class HasPreviewDependencyTest {
 
     lib.plugins.apply("java-library")
     app.plugins.apply("java")
-    lib.dependencies.add(
-      "api",
-      "org.jetbrains.compose.components:components-ui-tooling-preview:1.7.5",
-    )
 
     val implementation = app.configurations.getByName("implementation")
     implementation.dependencies.add(app.dependencies.project(mapOf("path" to ":lib")))

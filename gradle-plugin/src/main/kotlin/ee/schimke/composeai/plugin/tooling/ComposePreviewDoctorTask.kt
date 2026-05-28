@@ -81,6 +81,15 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
    */
   @get:Input abstract val enforcePreviewToolingDependency: Property<Boolean>
 
+  /**
+   * True when the IP-safe cross-project metadata service (issue #1549) detected preview tooling
+   * reachable through a declared `project(":...")` sibling. Independent of
+   * [previewToolingDeclared]; when set, `CompatRules.checkUndeclaredPreviewTooling` surfaces the
+   * soft "pin the dep locally" recommendation even with `enforcePreviewToolingDependency = true`.
+   * Default `false` so older plugin versions' doctor tasks stay quiet when the input isn't wired.
+   */
+  @get:Input abstract val transitivePreviewToolingDetected: Property<Boolean>
+
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   @TaskAction
@@ -95,6 +104,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         gradleVersion.orNull,
         previewToolingDeclared = previewToolingDeclared.getOrElse(true),
         enforcePreviewToolingDependency = enforcePreviewToolingDependency.getOrElse(true),
+        transitivePreviewToolingDetected = transitivePreviewToolingDetected.getOrElse(false),
       )
     val injections = decodeInjectedDependencys(injectedDependenciesJson.getOrElse("[]"))
     val report =

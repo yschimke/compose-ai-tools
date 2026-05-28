@@ -42,6 +42,13 @@ constructor(
         .orElse(true)
     )
 
+    // Idempotent registration of the IP-safe cross-project metadata BuildService (issue #1549).
+    // First applying project registers, subsequent applies share the instance. The service powers
+    // both the deep `hasPreviewDependency` walk for `:composeApp -> :shared` CMP-Android shapes
+    // and the daemon's Tier-1 multi-module cheap-signal file enumeration. Runs lazily — no work
+    // happens until the first consumer calls `hasPreviewToolingDeep` / `allBuildFiles`.
+    CrossProjectMetadataService.registerIfAbsent(project)
+
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
     // Tooling-API connection for the build. `register` accepts multiple

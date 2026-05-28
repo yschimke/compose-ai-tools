@@ -162,10 +162,11 @@ internal object AndroidPreviewSupport {
             "'${project.path}'; skipping task registration. " +
             "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
             "(or remove the plugin from this module) to opt in. " +
-            "If your previews live transitively (CMP-Android `:composeApp` -> `:shared` shape, " +
-            "issue #241 / #1549), set `composePreview { enforcePreviewToolingDependency = false }` " +
-            "in this module's build script (or pass " +
-            "`-PcomposePreview.enforcePreviewToolingDependency=false` on the command line)."
+            "Transitive detection through declared `project(\":...\")` dependencies is enabled " +
+            "(issue #1549) — if a sibling module that hosts preview tooling isn't being picked up, " +
+            "either declare the tooling coord directly here, or set " +
+            "`composePreview { enforcePreviewToolingDependency = false }` in this module's build " +
+            "script (or pass `-PcomposePreview.enforcePreviewToolingDependency=false`)."
         )
         return@onVariants
       }
@@ -261,14 +262,18 @@ internal object AndroidPreviewSupport {
    * implementation walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but
    * pulled resolution into the configuration phase.
    *
-   * **CMP-Android caveat (issue #241).** A prior version followed declared `project(":foo")`
-   * dependencies across module boundaries to catch the canonical CMP-Android shape (`:composeApp` →
-   * `:shared`, preview tooling declared on `:shared`'s `commonMain.api`). That cross-project walk
-   * used `rootProject.findProject(...)` + `evaluationDependsOn(...)`, both rejected under Gradle's
-   * Isolated Projects mode. Resolving it IP-safely needs a settings-time project-info build service
-   * — tracked as a follow-up issue. Until then the workaround is to either apply
-   * `id("ee.schimke.composeai.preview")` to the module that hosts the previews (so previews are
-   * discovered there directly) or declare the preview-tooling dep on the consuming app module too.
+   * **CMP-Android (issue #241, #1549).** For the canonical `:composeApp` → `:shared` shape with
+   * preview tooling declared on `:shared`'s `commonMain.api`, this method falls back to
+   * [CrossProjectMetadataService] — an IP-safe BuildService that parses `settings.gradle.kts` and
+   * each subproject's `build.gradle[.kts]` off disk rather than crossing `Project` boundaries.
+   * Declared `project(":...")` deps in this module's `*Implementation` / `*Api` / `*RuntimeOnly`
+   * buckets are walked transitively through the service; if any of them declares a preview-tooling
+   * coord (or itself depends on a project that does), the gate passes.
+   *
+   * If the service can't be located (e.g. tests using `ProjectBuilder` directly), the deep walk is
+   * silently skipped and only the direct-coord check applies — the same behaviour as before #1549.
+   * Consumers can also still override the whole gate with
+   * `composePreview.enforcePreviewToolingDependency = false`.
    *
    * Other trade-off: a preview-tooling coord that arrives purely through a Maven transitive (e.g.
    * another AAR's POM declares it on `runtime`) won't match — declared intent in `allDependencies`
@@ -281,7 +286,15 @@ internal object AndroidPreviewSupport {
   internal fun hasPreviewDependency(
     project: Project,
     @Suppress("UNUSED_PARAMETER") variantName: String,
-  ): Boolean {
+  ): Boolean = hasDirectPreviewDependency(project) || hasTransitivePreviewDependency(project)
+
+  /**
+   * Direct-only variant — declared preview-tooling coord in this module's `*Implementation` /
+   * `*Api` / `*RuntimeOnly` buckets. Used by the doctor task to surface the "pin the dep locally"
+   * soft recommendation even when [hasTransitivePreviewDependency] is what made
+   * [hasPreviewDependency] pass.
+   */
+  internal fun hasDirectPreviewDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
       for (dep in config.allDependencies) {
         val g = dep.group
@@ -291,6 +304,30 @@ internal object AndroidPreviewSupport {
       }
     }
     return false
+  }
+
+  /**
+   * IP-safe transitive walk through declared `project(":...")` deps in this module's declarable
+   * buckets. Returns `true` if any transitively-reachable subproject declares a preview-tooling
+   * coord in its `build.gradle[.kts]` (as parsed by [CrossProjectMetadataService]). Returns `false`
+   * when the service isn't registered (test harnesses) — the gate then falls back to direct-only
+   * detection.
+   */
+  internal fun hasTransitivePreviewDependency(project: Project): Boolean {
+    val transitiveProjectPaths = LinkedHashSet<String>()
+    for (config in declarableBucketsOf(project)) {
+      for (dep in config.allDependencies) {
+        // `ProjectDependency.getPath()` is the IP-safe accessor (Gradle 8.11+) — returns the
+        // target project's path as a string without touching the other `Project` object the way
+        // the legacy `getDependencyProject()` does.
+        if (dep is org.gradle.api.artifacts.ProjectDependency) {
+          transitiveProjectPaths.add(dep.path)
+        }
+      }
+    }
+    if (transitiveProjectPaths.isEmpty()) return false
+    val service = CrossProjectMetadataService.find(project) ?: return false
+    return transitiveProjectPaths.any { service.hasPreviewToolingDeep(it) }
   }
 
   private fun declarableBucketsOf(
@@ -498,11 +535,14 @@ internal object AndroidPreviewSupport {
     val injectedDependencies =
       mutableListOf<ee.schimke.composeai.plugin.tooling.InjectedDependency>()
     val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
-    // Captured at registration time so the doctor task's `@Input Boolean` is a plain serializable
-    // value (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
-    // so the consumer's `dependencies { }` block has finished evaluating and
-    // `hasPreviewDependency` sees the full declared graph.
-    val previewToolingDeclaredAtRegistration = hasPreviewDependency(project, variantName)
+    // Captured at registration time so the doctor task's `@Input Boolean`s are plain serializable
+    // values (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
+    // so the consumer's `dependencies { }` block has finished evaluating. The direct and
+    // transitive signals are passed separately so the doctor's
+    // `module.preview-tooling-not-declared` finding can distinguish "user pinned the dep here"
+    // from "IP-safe cross-project walk reached it via a `project(...)` sibling".
+    val previewToolingDeclaredAtRegistration = hasDirectPreviewDependency(project)
+    val previewToolingTransitiveAtRegistration = hasTransitivePreviewDependency(project)
     project.tasks.register(
       "composePreviewDoctor",
       ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java,
@@ -517,6 +557,7 @@ internal object AndroidPreviewSupport {
       testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
       this.previewToolingDeclared.set(previewToolingDeclaredAtRegistration)
       this.enforcePreviewToolingDependency.set(extension.enforcePreviewToolingDependency)
+      this.transitivePreviewToolingDetected.set(previewToolingTransitiveAtRegistration)
       this.injectedDependenciesJson.set(
         project.provider {
           injectedDependencyJson.encodeToString(
@@ -2076,15 +2117,11 @@ internal object AndroidPreviewSupport {
    *
    * Shares implementation with the desktop registration; both call sites consume the same shape.
    *
-   * **Subprojects deliberately not walked.** Reading every subproject's build file requires
-   * `rootProject.allprojects` cross-project access, which Gradle's Isolated Projects mode rejects
-   * with "Project … cannot access … on another project". The daemon's per-module classpath
-   * fingerprint already covers cross-module dependency changes through the variant runtime
-   * classpath, so the missed signal is "edit a sibling subproject's `build.gradle.kts` *without*
-   * touching `settings.gradle.kts`, the variant classpath, or the version catalog." Adding /
-   * removing a subproject still flips `settings.gradle.kts` — which IS in the set — so the
-   * realistic edit cycle still triggers Tier-1 dirty. Tracking the rare standalone-edit case
-   * IP-safely needs a settings-time build service (issue tracked separately).
+   * **Sibling subprojects** are read through [CrossProjectMetadataService] — settings-file parsed
+   * off disk rather than via `rootProject.allprojects`, so this stays IP-clean. The service
+   * enumerates every declared subproject's `build.gradle[.kts]` from the IP-safe
+   * [CrossProjectMetadata] snapshot. If the service isn't registered (test harnesses), only the
+   * root + current-module entries flow through, matching the pre-#1549 fallback.
    */
   internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
@@ -2110,6 +2147,13 @@ internal object CheapSignalFiles {
     val moduleDir = project.projectDir
     out += java.io.File(moduleDir, "build.gradle.kts")
     out += java.io.File(moduleDir, "build.gradle")
+    // Sibling subprojects via the IP-safe BuildService (issue #1549). Settings + each
+    // subproject's `build.gradle[.kts]` are parsed off disk inside the service, so a sibling
+    // `:lib/build.gradle.kts` edit flips Tier-1 dirty without needing `rootProject.allprojects`.
+    // The service walks `settings.gradle.kts`'s `include(...)` directives — adding / removing a
+    // subproject still updates `settings.gradle.kts` (already in the set above), and now editing
+    // a sibling subproject's build file is covered too.
+    CrossProjectMetadataService.find(project)?.allBuildFiles()?.let { out.addAll(it) }
     // Only emit paths that actually exist — missing files contribute their absolute path string
     // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
     // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
