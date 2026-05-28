@@ -1053,7 +1053,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
@@ -1132,5 +1132,40 @@
     "renderBasename": "StepsTilePreview_Small_Round.png",
     "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
     "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input": {
+    "captureLabel": "",
+    "functionName": "FocusableMenu",
+    "renderBasename": "FocusableMenu_Glimmer_Input.png",
+    "sha256": "7aa5a926720bead4902b5d9c0f1f91a3ac31686fe09f1ac3eff754e429464939",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy": {
+    "captureLabel": "",
+    "functionName": "NowPlayingCard",
+    "renderBasename": "NowPlayingCard_Glimmer_Busy.png",
+    "sha256": "337514a2a813e4b3023cb9467dba4e76ac6bf0a8b7ed42d9452381339f6bd512",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Dark": {
+    "captureLabel": "",
+    "functionName": "NowPlayingCard",
+    "renderBasename": "NowPlayingCard_Glimmer_Dark.png",
+    "sha256": "337514a2a813e4b3023cb9467dba4e76ac6bf0a8b7ed42d9452381339f6bd512",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Light": {
+    "captureLabel": "",
+    "functionName": "NowPlayingCard",
+    "renderBasename": "NowPlayingCard_Glimmer_Light.png",
+    "sha256": "337514a2a813e4b3023cb9467dba4e76ac6bf0a8b7ed42d9452381339f6bd512",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 VeniceCanalCats": {
+    "captureLabel": "",
+    "functionName": "NowPlayingCard",
+    "renderBasename": "NowPlayingCard_Glimmer_VeniceCanalCats.png",
+    "sha256": "337514a2a813e4b3023cb9467dba4e76ac6bf0a8b7ed42d9452381339f6bd512",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
   }
 }
