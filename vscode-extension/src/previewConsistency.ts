@@ -99,6 +99,15 @@ export interface VerifyResult {
  * missing. Short-circuits so the cost is one `existsSync` per file at most, and zero when the
  * manifest's first output is present and complete.
  *
+ * A per-preview `.error.json` sidecar counts as satisfaction even when the PNG itself is absent.
+ * The sidecar is the renderer's structured "I tried and the preview threw" record; the panel
+ * surfaces it as a per-card error message and the refresh loop must NOT keep escalating to
+ * `composePreviewRender` on every focus event when the source file hasn't changed. Without this
+ * carve-out, a single broken preview pins the whole module into a render-fails-immediately loop
+ * — `manifestExpectedFilesMissing` returns `true` → escalate → render fails → manifest still
+ * references the missing PNG → next focus sees drift again. A source edit invalidates the
+ * per-file freshness stamp (`hasFreshRenderStamp`) and reopens the retry window naturally.
+ *
  * Used to detect render/manifest drift after `composePreviewDiscover` returns FROM-CACHE with
  * filenames that no `composePreviewRender` has ever written under (sanitiser bumps, wiped
  * `build/`, branch switches, half-finished renders). When this returns `true` the refresh path
@@ -117,14 +126,21 @@ export function manifestExpectedFilesMissing(
         "build",
         "compose-previews",
     );
+    const hasOutputOrSidecar = (rel: string): boolean => {
+        const png = path.join(root, rel);
+        if (fileExists(png)) return true;
+        // Sidecar = renderer's structured failure record; counts as "we tried, don't retry
+        // until the source moves" rather than "render never happened".
+        return fileExists(`${png}.error.json`);
+    };
     for (const preview of manifest.previews) {
         for (const capture of preview.captures) {
             if (!capture.renderOutput) continue;
-            if (!fileExists(path.join(root, capture.renderOutput))) return true;
+            if (!hasOutputOrSidecar(capture.renderOutput)) return true;
         }
         for (const product of preview.dataProducts ?? []) {
             if (!product.output) continue;
-            if (!fileExists(path.join(root, product.output))) return true;
+            if (!hasOutputOrSidecar(product.output)) return true;
         }
     }
     return false;

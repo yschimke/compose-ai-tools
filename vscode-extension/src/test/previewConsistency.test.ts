@@ -575,9 +575,11 @@ describe("manifestExpectedFilesMissing", () => {
         );
     });
 
-    it("short-circuits on the first missing file", () => {
+    it("short-circuits on the first preview that has neither PNG nor sidecar", () => {
         // The check fires on every refresh, so the cheap case (everything present) must stay
         // O(1) and the expensive case (drift) must not pay for files beyond the first miss.
+        // After the sidecar carve-out a missing entry costs two probes (PNG + sidecar) before
+        // we declare drift, but the rest of the manifest is still skipped.
         const previews = Array.from({ length: 100 }, (_, i) =>
             preview(`com.example.P${i}`, `renders/P${i}.png`),
         );
@@ -591,6 +593,45 @@ describe("manifestExpectedFilesMissing", () => {
                 return false;
             },
         );
-        assert.strictEqual(calls, 1);
+        assert.strictEqual(calls, 2);
+    });
+
+    it("treats `<png>.error.json` sidecar as satisfaction so a broken preview doesn't loop", () => {
+        // Repro of the wedge the Confetti :wearApp report hit: 5 ThemePreviews threw inside
+        // their composables, the renderer wrote .error.json sidecars and skipped the PNGs.
+        // Without this carve-out, every focus event sees "manifest references PNG missing on
+        // disk" → escalates to composePreviewRender → render fails the same way → infinite
+        // retry loop. The sidecar means "we tried, this preview is in a known bad state until
+        // its source moves" — the per-file freshness stamp opens the retry window again when
+        // the user edits the file.
+        const p1 = preview("com.example.RedPreview", "renders/Red.png");
+        const p2 = preview("com.example.BluePreview", "renders/Blue.png");
+        const manifest = { previews: [p1, p2] } as PreviewManifest;
+        const disk = new Set([
+            "/ws/app/build/compose-previews/renders/Red.png",
+            // Blue.png absent, but the renderer left a structured error sidecar:
+            "/ws/app/build/compose-previews/renders/Blue.png.error.json",
+        ]);
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (p) =>
+                disk.has(p),
+            ),
+            false,
+        );
+    });
+
+    it("still reports drift when neither PNG nor sidecar is on disk", () => {
+        // Guard against the carve-out swallowing the "discover-only, never rendered" case.
+        // That's the original drift signal — wiped `build/`, branch switch, sanitiser bump —
+        // and we still want to escalate to render there.
+        const p = preview("com.example.RedPreview", "renders/Red.png");
+        const manifest = { previews: [p] } as PreviewManifest;
+        const disk = new Set<string>(); // nothing on disk
+        assert.strictEqual(
+            manifestExpectedFilesMissing("/ws", module, manifest, (path) =>
+                disk.has(path),
+            ),
+            true,
+        );
     });
 });
