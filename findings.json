@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.a11y.png",
       "cleanBasename": "FocusOverlayPreview_Focus_Overlay_FOCUS_0.png",
       "findings": [],
       "functionName": "FocusOverlayPreview",
@@ -11,7 +11,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.a11y.png",
       "cleanBasename": "FocusTraversalPreview_Focus_Traversal_FOCUS_step1_Next.png",
       "findings": [],
       "functionName": "FocusTraversalPreview",
@@ -21,7 +21,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out_FOCUS_0.a11y.png",
       "cleanBasename": "InsetFocusRingFanOutPreview_Inset_Focus_Ring_fan_out_FOCUS_0.png",
       "findings": [],
       "functionName": "InsetFocusRingFanOutPreview",
@@ -31,7 +31,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "OpacityFocusPreview_Opacity_Focus.a11y.png",
       "cleanBasename": "OpacityFocusPreview_Opacity_Focus.png",
       "findings": [],
       "functionName": "OpacityFocusPreview",
@@ -41,7 +41,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "BlueLabelPreview_BlueLabel.a11y.png",
       "cleanBasename": "BlueLabelPreview_BlueLabel.png",
       "findings": [],
       "functionName": "BlueLabelPreview",
@@ -51,7 +51,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GreenButtonPreview_GreenButton.a11y.png",
       "cleanBasename": "GreenButtonPreview_GreenButton.png",
       "findings": [],
       "functionName": "GreenButtonPreview",
@@ -81,7 +81,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "StackPreview_Stack.a11y.png",
       "cleanBasename": "StackPreview_Stack.png",
       "findings": [],
       "functionName": "StackPreview",
@@ -91,7 +91,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LibraryBoxPreview_Library_Box.a11y.png",
       "cleanBasename": "LibraryBoxPreview_Library_Box.png",
       "findings": [],
       "functionName": "LibraryBoxPreview",
@@ -101,7 +101,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LibraryGreetingPreview_Library_Greeting.a11y.png",
       "cleanBasename": "LibraryGreetingPreview_Library_Greeting.png",
       "findings": [],
       "functionName": "LibraryGreetingPreview",
@@ -111,7 +111,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "MainSquarePreview_main_square.a11y.png",
       "cleanBasename": "MainSquarePreview_main_square.png",
       "findings": [],
       "functionName": "MainSquarePreview",
@@ -121,9 +121,24 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ActionsPreview_Actions.a11y.png",
       "cleanBasename": "ActionsPreview_Actions.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        },
+        {
+          "boundsInScreen": "0,159,285,317",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "com.android.internal.widget.NotificationActionListLayout #actions"
+        }
+      ],
       "functionName": "ActionsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ActionsPreview_Actions",
@@ -131,9 +146,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "BadButtonPreview_Bad_Button.a11y.png",
       "cleanBasename": "BadButtonPreview_Bad_Button.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,91,91",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "android.widget.Button"
+        }
+      ],
       "functionName": "BadButtonPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.PreviewsKt.BadButtonPreview_Bad Button",
@@ -141,9 +164,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "BigPictureStylePreview_Big_picture.a11y.png",
       "cleanBasename": "BigPictureStylePreview_Big_picture.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "BigPictureStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.BigPictureStylePreview_Big picture",
@@ -151,9 +182,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "BigTextVariantsPreview_Arabic.a11y.png",
       "cleanBasename": "BigTextVariantsPreview_Arabic.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "BigTextVariantsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationVariantPreviewsKt.BigTextVariantsPreview_Arabic",
@@ -161,7 +200,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "BlueBoxPreview_Blue_Box.a11y.png",
       "cleanBasename": "BlueBoxPreview_Blue_Box.png",
       "findings": [],
       "functionName": "BlueBoxPreview",
@@ -201,7 +240,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.a11y.png",
       "cleanBasename": "CircleButtonTransparentPreview_Circle_Button_Transparent.png",
       "findings": [],
       "functionName": "CircleButtonTransparentPreview",
@@ -211,9 +250,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CollapsedSurfacePreview_Surface_collapsed.a11y.png",
       "cleanBasename": "CollapsedSurfacePreview_Surface_collapsed.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "137,108,170,161",
+          "level": "WARNING",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
+        }
+      ],
       "functionName": "CollapsedSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.CollapsedSurfacePreview_Surface \u2014 collapsed",
@@ -221,7 +268,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ConfigProbePreview_Default.a11y.png",
       "cleanBasename": "ConfigProbePreview_Default.png",
       "findings": [],
       "functionName": "ConfigProbePreview",
@@ -231,9 +278,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "DecoratedCustomViewPreview_Decorated_custom_view.a11y.png",
       "cleanBasename": "DecoratedCustomViewPreview_Decorated_custom_view.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "DecoratedCustomViewPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.DecoratedCustomViewPreview_Decorated custom view",
@@ -241,7 +296,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.a11y.png",
       "cleanBasename": "DeviceFontFamilyShowcasePreview_Device_Font_Family_Showcase.png",
       "findings": [],
       "functionName": "DeviceFontFamilyShowcasePreview",
@@ -251,9 +306,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ExpandedSurfacePreview_Surface_expanded.a11y.png",
       "cleanBasename": "ExpandedSurfacePreview_Surface_expanded.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "ExpandedSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ExpandedSurfacePreview_Surface \u2014 expanded",
@@ -261,7 +324,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.a11y.png",
       "cleanBasename": "FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png",
       "findings": [],
       "functionName": "FallbackCoverageSpecimenPreview",
@@ -271,7 +334,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FitsInBoundsPreview.a11y.png",
       "cleanBasename": "FitsInBoundsPreview.png",
       "findings": [],
       "functionName": "FitsInBoundsPreview",
@@ -281,9 +344,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FontFamilySpecimenPreview_FontFamily_specimen.a11y.png",
       "cleanBasename": "FontFamilySpecimenPreview_FontFamily_specimen.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "368,5,1099,117",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox jumps over the lazy dog\" is identical to that of 4 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
       "functionName": "FontFamilySpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TypographyGalleryKt.FontFamilySpecimenPreview_FontFamily specimen",
@@ -291,7 +362,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.a11y.png",
       "cleanBasename": "GlanceWeatherWidgetPreview_Glance_widget_4_2.png",
       "findings": [],
       "functionName": "GlanceWeatherWidgetPreview",
@@ -301,7 +372,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.a11y.png",
       "cleanBasename": "GoogleFontsShowcasePreview_Google_Fonts_Showcase.png",
       "findings": [],
       "functionName": "GoogleFontsShowcasePreview",
@@ -311,7 +382,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GreenBoxPreview_Green_Box.a11y.png",
       "cleanBasename": "GreenBoxPreview_Green_Box.png",
       "findings": [],
       "functionName": "GreenBoxPreview",
@@ -321,7 +392,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GreetingPreview_Default.a11y.png",
       "cleanBasename": "GreetingPreview_Default.png",
       "findings": [],
       "functionName": "GreetingPreview",
@@ -331,9 +402,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "GroupedSummaryPreview_Edge_grouped_summary.a11y.png",
       "cleanBasename": "GroupedSummaryPreview_Edge_grouped_summary.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "GroupedSummaryPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.GroupedSummaryPreview_Edge \u2014 grouped summary",
@@ -341,9 +420,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "HeadsUpSurfacePreview_Surface_heads_up.a11y.png",
       "cleanBasename": "HeadsUpSurfacePreview_Surface_heads_up.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "137,108,170,161",
+          "level": "WARNING",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
+        }
+      ],
       "functionName": "HeadsUpSurfacePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.HeadsUpSurfacePreview_Surface \u2014 heads-up",
@@ -351,7 +438,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.a11y.png",
       "cleanBasename": "ImeAwareListHiddenPreview_IME_aware_list_keyboard_hidden.png",
       "findings": [],
       "functionName": "ImeAwareListHiddenPreview",
@@ -361,7 +448,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.a11y.png",
       "cleanBasename": "ImeAwareListShownPreview_IME_aware_list_keyboard_up.png",
       "findings": [],
       "functionName": "ImeAwareListShownPreview",
@@ -371,9 +458,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "InboxStylePreview_Inbox_style.a11y.png",
       "cleanBasename": "InboxStylePreview_Inbox_style.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "InboxStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.InboxStylePreview_Inbox style",
@@ -381,7 +476,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
       "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
       "findings": [],
       "functionName": "KeyboardDemoPreview",
@@ -391,7 +486,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.a11y.png",
       "cleanBasename": "LauncherWidget1x1Preview_Launcher_widget_1_1.png",
       "findings": [],
       "functionName": "LauncherWidget1x1Preview",
@@ -401,7 +496,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.a11y.png",
       "cleanBasename": "LauncherWidget4x2Preview_Launcher_widget_4_2.png",
       "findings": [],
       "functionName": "LauncherWidget4x2Preview",
@@ -411,7 +506,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.a11y.png",
       "cleanBasename": "LauncherWidgetClampedPreview_Launcher_widget_clamped_to_4_5.png",
       "findings": [],
       "functionName": "LauncherWidgetClampedPreview",
@@ -421,7 +516,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.a11y.png",
       "cleanBasename": "LauncherWidgetResize1x1To4x2Preview_Launcher_widget_resize_1_1_4_2_RESIZE_1x1.png",
       "findings": [],
       "functionName": "LauncherWidgetResize1x1To4x2Preview",
@@ -431,7 +526,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LoadingPreview_Loading_Spinner.a11y.png",
       "cleanBasename": "LoadingPreview_Loading_Spinner.png",
       "findings": [],
       "functionName": "LoadingPreview",
@@ -441,9 +536,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "LongTitlePreview_Edge_long_title.a11y.png",
       "cleanBasename": "LongTitlePreview_Edge_long_title.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "LongTitlePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.LongTitlePreview_Edge \u2014 long title",
@@ -451,9 +554,45 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "ManyActionsPreview_Edge_many_actions.a11y.png",
       "cleanBasename": "ManyActionsPreview_Edge_many_actions.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "11,175,95,301",
+          "level": "ERROR",
+          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.widget.Button #action0 desc=\"Reply\""
+        },
+        {
+          "boundsInScreen": "106,175,190,301",
+          "level": "ERROR",
+          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.widget.Button #action0 desc=\"Archive\""
+        },
+        {
+          "boundsInScreen": "201,175,285,301",
+          "level": "ERROR",
+          "message": "This item's width is 32dp. Consider making the width of this touch target 48dp or larger.",
+          "type": "TouchTargetSizeCheck",
+          "viewDescription": "android.widget.Button #action0 desc=\"Snooze\""
+        },
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        },
+        {
+          "boundsInScreen": "0,159,285,317",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "com.android.internal.widget.NotificationActionListLayout #actions"
+        }
+      ],
       "functionName": "ManyActionsPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.ManyActionsPreview_Edge \u2014 many actions",
@@ -461,9 +600,24 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "MediaStylePreview_Media_style.a11y.png",
       "cleanBasename": "MediaStylePreview_Media_style.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "137,253,275,306",
+          "level": "WARNING",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "com.android.internal.widget.ImageFloatingTextView #text"
+        },
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "MediaStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MediaStylePreview_Media style",
@@ -471,9 +625,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "MessagingStylePreview_Messaging_style.a11y.png",
       "cleanBasename": "MessagingStylePreview_Messaging_style.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "MessagingStylePreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.MessagingStylePreview_Messaging style",
@@ -481,7 +643,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "NavHostHomePreview_NavHost_Home.a11y.png",
       "cleanBasename": "NavHostHomePreview_NavHost_Home.png",
       "findings": [],
       "functionName": "NavHostHomePreview",
@@ -491,9 +653,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "NoLargeIconPreview_Edge_no_large_icon.a11y.png",
       "cleanBasename": "NoLargeIconPreview_Edge_no_large_icon.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "NoLargeIconPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoLargeIconPreview_Edge \u2014 no large icon",
@@ -501,9 +671,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "NoTextPreview_Edge_no_text.a11y.png",
       "cleanBasename": "NoTextPreview_Edge_no_text.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,317,147",
+          "level": "INFO",
+          "message": "Consider modifying the LayoutParams to allow for text expansion.",
+          "type": "TextSizeCheck",
+          "viewDescription": "android.view.NotificationHeaderView #notification_header"
+        }
+      ],
       "functionName": "NoTextPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.NotificationStyleGalleryKt.NoTextPreview_Edge \u2014 no text",
@@ -511,7 +689,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PhoneGreetingPreview_Phone.a11y.png",
       "cleanBasename": "PhoneGreetingPreview_Phone.png",
       "findings": [],
       "functionName": "PhoneGreetingPreview",
@@ -521,7 +699,7 @@
       "variant": "spec:width=411dp,height=891dp"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "Pixel8SystemUiPreview_Pixel_8.a11y.png",
       "cleanBasename": "Pixel8SystemUiPreview_Pixel_8.png",
       "findings": [],
       "functionName": "Pixel8SystemUiPreview",
@@ -531,7 +709,7 @@
       "variant": "pixel_8"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PseudoSampleAccent_accent.a11y.png",
       "cleanBasename": "PseudoSampleAccent_accent.png",
       "findings": [],
       "functionName": "PseudoSampleAccent",
@@ -541,7 +719,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PseudoSampleBidi_bidi.a11y.png",
       "cleanBasename": "PseudoSampleBidi_bidi.png",
       "findings": [],
       "functionName": "PseudoSampleBidi",
@@ -551,7 +729,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "PseudoSampleDefault_default.a11y.png",
       "cleanBasename": "PseudoSampleDefault_default.png",
       "findings": [],
       "functionName": "PseudoSampleDefault",
@@ -571,7 +749,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.ScrollPreviewsKt.RedToBlueScrollGifPreview_ScrollGif.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "RedToBlueScrollGifPreview",
@@ -581,7 +759,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.a11y.png",
       "cleanBasename": "RemoteViewsWeatherWidgetPreview_RemoteViews_widget_4_2.png",
       "findings": [],
       "functionName": "RemoteViewsWeatherWidgetPreview",
@@ -591,7 +769,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SemanticsClickableButtonPreview.a11y.png",
       "cleanBasename": "SemanticsClickableButtonPreview.png",
       "findings": [],
       "functionName": "SemanticsClickableButtonPreview",
@@ -601,7 +779,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SemanticsContentDescriptionPreview.a11y.png",
       "cleanBasename": "SemanticsContentDescriptionPreview.png",
       "findings": [],
       "functionName": "SemanticsContentDescriptionPreview",
@@ -611,7 +789,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SemanticsMergeDescendantsPreview.a11y.png",
       "cleanBasename": "SemanticsMergeDescendantsPreview.png",
       "findings": [],
       "functionName": "SemanticsMergeDescendantsPreview",
@@ -621,7 +799,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SemanticsTestTagPreview.a11y.png",
       "cleanBasename": "SemanticsTestTagPreview.png",
       "findings": [],
       "functionName": "SemanticsTestTagPreview",
@@ -631,7 +809,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "com.example.sampleandroid.SettingsListScrollGifPreviewKt.SettingsListScrollGifPreview_SettingsListScrollGif.a11y.png",
       "cleanBasename": "",
       "findings": [],
       "functionName": "SettingsListScrollGifPreview",
@@ -641,7 +819,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.a11y.png",
       "cleanBasename": "SoftKeyboardIdlePreview_Soft_Keyboard_idle.png",
       "findings": [],
       "functionName": "SoftKeyboardIdlePreview",
@@ -651,7 +829,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.a11y.png",
       "cleanBasename": "SpinnerTimelinePreview_Spinner_Timeline_TIME_0ms.png",
       "findings": [],
       "functionName": "SpinnerTimelinePreview",
@@ -661,7 +839,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SplashDarkThemePreview_Splash_dark_theme.a11y.png",
       "cleanBasename": "SplashDarkThemePreview_Splash_dark_theme.png",
       "findings": [],
       "functionName": "SplashDarkThemePreview",
@@ -671,7 +849,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SplashIconOnlyPreview_Splash_icon_only.a11y.png",
       "cleanBasename": "SplashIconOnlyPreview_Splash_icon_only.png",
       "findings": [],
       "functionName": "SplashIconOnlyPreview",
@@ -681,7 +859,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.a11y.png",
       "cleanBasename": "SplashIconWithBackgroundPreview_Splash_icon_with_background_ring.png",
       "findings": [],
       "functionName": "SplashIconWithBackgroundPreview",
@@ -691,7 +869,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.a11y.png",
       "cleanBasename": "SplashWithBrandingPreview_Splash_icon_with_branding.png",
       "findings": [],
       "functionName": "SplashWithBrandingPreview",
@@ -701,7 +879,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "TruncatedHeightClipPreview.a11y.png",
       "cleanBasename": "TruncatedHeightClipPreview.png",
       "findings": [],
       "functionName": "TruncatedHeightClipPreview",
@@ -711,7 +889,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "TruncatedMaxLinesEllipsisPreview.a11y.png",
       "cleanBasename": "TruncatedMaxLinesEllipsisPreview.png",
       "findings": [],
       "functionName": "TruncatedMaxLinesEllipsisPreview",
@@ -721,7 +899,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "TruncatedWidthNoWrapPreview.a11y.png",
       "cleanBasename": "TruncatedWidthNoWrapPreview.png",
       "findings": [],
       "functionName": "TruncatedWidthNoWrapPreview",
@@ -731,9 +909,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "TypographySpecimenPreview_Typography_specimen.a11y.png",
       "cleanBasename": "TypographySpecimenPreview_Typography_specimen.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "368,5,1099,349",
+          "level": "INFO",
+          "message": "This non-clickable item's speakable text: \"The quick brown fox\" is identical to that of 12 other item(s).",
+          "type": "DuplicateSpeakableTextCheck",
+          "viewDescription": "android.widget.TextView"
+        }
+      ],
       "functionName": "TypographySpecimenPreview",
       "module": "android",
       "previewId": "com.example.sampleandroid.TypographyGalleryKt.TypographySpecimenPreview_Typography specimen",
@@ -751,199 +937,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
-      "cleanBasename": "SharedBlueBoxPreview_Blue.png",
-      "findings": [],
-      "functionName": "SharedBlueBoxPreview",
-      "module": "cmp-shared",
-      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue",
-      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "SharedRedBoxPreview.png",
-      "findings": [],
-      "functionName": "SharedRedBoxPreview",
-      "module": "cmp-shared",
-      "previewId": "com.example.cmpshared.SharedPreviewsKt.SharedRedBoxPreview",
-      "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "AppPreview.png",
-      "findings": [],
-      "functionName": "AppPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PreviewsKt.AppPreview",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "BlueBoxPreview_Blue_Box.png",
-      "findings": [],
-      "functionName": "BlueBoxPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PreviewsKt.BlueBoxPreview_Blue Box",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "CmpPseudoBidi_bidi.png",
-      "findings": [],
-      "functionName": "CmpPseudoBidi",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoBidi_bidi",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "CmpPseudoDefault_default.png",
-      "findings": [],
-      "functionName": "CmpPseudoDefault",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PseudolocalePreviewsKt.CmpPseudoDefault_default",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/PseudolocalePreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
-      "findings": [],
-      "functionName": "KeyboardDemoPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing.png",
-      "findings": [],
-      "functionName": "MultiTouchDrawingPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch Drawing",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png",
-      "findings": [],
-      "functionName": "MultiTouchDrawingSeededPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingSeededPreview_Multi-Touch Drawing \u2014 seeded",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/MultiTouchDrawingPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "PinchToZoomPreview_Pinch_To_Zoom.png",
-      "findings": [],
-      "functionName": "PinchToZoomPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PinchToZoomPreviewKt.PinchToZoomPreview_Pinch To Zoom",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/PinchToZoomPreview.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "RedBoxPreview_Red_Box.png",
-      "findings": [],
-      "functionName": "RedBoxPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "ScrollingListPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.ScrollingPreviewsKt.ScrollingListPreview_Scrolling List",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "",
-      "findings": [],
-      "functionName": "SwatchPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PreviewParameterPreviewsKt.SwatchPreview_Color Swatch",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/PreviewParameterPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "WallpaperDemoPreview_Wallpaper_Demo.png",
-      "findings": [],
-      "functionName": "WallpaperDemoPreview",
-      "module": "cmp",
-      "previewId": "com.example.samplecmp.PreviewsKt.WallpaperDemoPreview_Wallpaper Demo",
-      "sourceFile": "src/main/kotlin/com/example/samplecmp/Previews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "BlueLabelPreview_BlueLabel.png",
-      "findings": [],
-      "functionName": "BlueLabelPreview",
-      "module": "desktop-daemon-bench",
-      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel",
-      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "GreenButtonPreview_GreenButton.png",
-      "findings": [],
-      "functionName": "GreenButtonPreview",
-      "module": "desktop-daemon-bench",
-      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.GreenButtonPreview_GreenButton",
-      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "RedSquarePreview_RedSquare.png",
-      "findings": [],
-      "functionName": "RedSquarePreview",
-      "module": "desktop-daemon-bench",
-      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RedSquarePreview_RedSquare",
-      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "RowPreview_Row.png",
-      "findings": [],
-      "functionName": "RowPreview",
-      "module": "desktop-daemon-bench",
-      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.RowPreview_Row",
-      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
-      "cleanBasename": "StackPreview_Stack.png",
-      "findings": [],
-      "functionName": "StackPreview",
-      "module": "desktop-daemon-bench",
-      "previewId": "com.example.desktopdaemonbench.BenchPreviewsKt.StackPreview_Stack",
-      "sourceFile": "src/main/kotlin/com/example/desktopdaemonbench/BenchPreviews.kt",
-      "variant": ""
-    },
-    {
-      "annotatedBasename": "",
+      "annotatedBasename": "RemoteButtonEnabledPreview.a11y.png",
       "cleanBasename": "RemoteButtonEnabledPreview.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "RemoteButtonEnabledPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonEnabledPreview",
@@ -951,9 +955,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "RemoteButtonWithBorderPreview.a11y.png",
       "cleanBasename": "RemoteButtonWithBorderPreview.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "RemoteButtonWithBorderPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithBorderPreview",
@@ -961,9 +973,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "RemoteButtonWithNamedLabelPreview.a11y.png",
       "cleanBasename": "RemoteButtonWithNamedLabelPreview.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "RemoteButtonWithNamedLabelPreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithNamedLabelPreview",
@@ -971,9 +991,17 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "RemoteButtonWithShapePreview.a11y.png",
       "cleanBasename": "RemoteButtonWithShapePreview.png",
-      "findings": [],
+      "findings": [
+        {
+          "boundsInScreen": "0,0,525,525",
+          "level": "ERROR",
+          "message": "This item may not have a label readable by screen readers.",
+          "type": "SpeakableTextPresentCheck",
+          "viewDescription": "androidx.compose.remote.player.view.RemoteComposePlayer"
+        }
+      ],
       "functionName": "RemoteButtonWithShapePreview",
       "module": "remotecompose",
       "previewId": "com.example.sampleremotecompose.PreviewsKt.RemoteButtonWithShapePreview",
@@ -981,7 +1009,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "SdkMatrixPreview_SdkMatrixPreview.a11y.png",
       "cleanBasename": "SdkMatrixPreview_SdkMatrixPreview.png",
       "findings": [],
       "functionName": "SdkMatrixPreview",
@@ -1089,7 +1117,7 @@
       "variant": "wearos_large_round"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "FocusableMenu_Glimmer_Input.a11y.png",
       "cleanBasename": "FocusableMenu_Glimmer_Input.png",
       "findings": [],
       "functionName": "FocusableMenu",
@@ -1099,7 +1127,7 @@
       "variant": "spec:width=640,height=480,dpi=240"
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
       "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
       "findings": [],
       "functionName": "NowPlayingCard",
