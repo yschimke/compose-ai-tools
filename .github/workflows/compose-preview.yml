@@ -42,5 +42,13 @@ jobs:
           # that change the previews.json schema don't render against a
           # stale released CLI. External consumers omit this input.
           cli-version: source
-          a11y-module: 'samples:wear'
+          # Empty = auto-detect every module the CLI knows about, so the a11y
+          # baseline covers the whole Android sample suite (overlays + legends
+          # on each preview) instead of just one module. Desktop / Compose-
+          # Multiplatform modules are skipped below: their daemon doesn't
+          # advertise `a11y/atf` (ATF is Android-only), so including them would
+          # stamp `atf-unavailable` and surface a misleading "renders not
+          # accessibility-checked" banner over the whole report.
+          a11y-module: ''
+          a11y-skip-modules: 'samples:cmp,samples:cmp-shared,samples:desktop-daemon-bench'
           notifications-module: 'samples:android'
