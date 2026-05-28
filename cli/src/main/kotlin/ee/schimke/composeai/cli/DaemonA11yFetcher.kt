@@ -114,6 +114,7 @@ internal class DaemonA11yFetcher(
           AccessibilityEntry(
             previewId = previewId,
             findings = findings,
+            nodes = readNodes(projectDir, previewId),
             annotatedPath = relativeOverlayPath(projectDir, previewId),
           )
         )
@@ -165,6 +166,28 @@ internal class DaemonA11yFetcher(
   private fun relativeOverlayPath(projectDir: File, previewId: String): String? {
     val overlay = projectDir.resolve("build/compose-previews/data/$previewId/a11y-overlay.png")
     return overlay.takeIf { it.isFile }?.let { "data/$previewId/a11y-overlay.png" }
+  }
+
+  /**
+   * Read the daemon-side `a11y-hierarchy.json` for [previewId] and decode its `nodes` so the
+   * aggregated `accessibility.json` carries the "what a screen reader sees" node list alongside the
+   * overlay PNG — the desktop overlay-only path populates these even when `findings` is empty.
+   * Reads off disk (rather than a second `data/fetch`) so it's robust to the file being a sibling
+   * of the overlay the re-render already produced; returns empty when absent or unparseable.
+   */
+  private fun readNodes(projectDir: File, previewId: String): List<AccessibilityNode> {
+    val file = projectDir.resolve("build/compose-previews/data/$previewId/a11y-hierarchy.json")
+    if (!file.isFile) return emptyList()
+    return try {
+      val obj = json.parseToJsonElement(file.readText()) as? JsonObject ?: return emptyList()
+      val nodes = obj["nodes"] ?: return emptyList()
+      json.decodeFromJsonElement(
+        kotlinx.serialization.builtins.ListSerializer(AccessibilityNode.serializer()),
+        nodes,
+      )
+    } catch (_: Exception) {
+      emptyList()
+    }
   }
 
   private fun parseFindings(payload: JsonElement): List<AccessibilityFinding> {

@@ -312,6 +312,7 @@ class RenderEngine(
    * deterministic frame-zero behavior, while live interactive preview passes monotonic wall-clock
    * timestamps so animations advance at real elapsed time instead of repainting a frozen timeline.
    */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   fun renderOnce(
     state: SceneState,
     requestId: Long,
@@ -357,6 +358,33 @@ class RenderEngine(
       } catch (t: Throwable) {
         System.err.println(
           "RenderEngine: displayfilter write failed for ${state.spec.outputBaseName}: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
+
+    // Accessibility (desktop, overlay-only) — extract Compose semantics from the held scene and
+    // write the a11y artefacts (empty findings + node hierarchy + Paparazzi-style overlay PNG).
+    // ATF is Android-only, so there are no findings here. Gated on `renderMode == "a11y"` so the
+    // default render path stays free; the `a11y` data-product registry advertises
+    // `requiresRerender`, so a `data/fetch` for an a11y kind queues a `mode=a11y` re-render which
+    // lands here. Wrapped in try/catch so an extraction / draw failure never strands the PNG.
+    if (state.spec.renderMode == "a11y") {
+      try {
+        trace.section("a11y:overlay") {
+          val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
+          val nodes =
+            if (root != null) DesktopAccessibilityNodeExtractor.extractNodes(root) else emptyList()
+          DesktopAccessibilityDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = state.spec.outputBaseName,
+            nodes = nodes,
+            pngFile = state.outputFile,
+          )
+        }
+      } catch (t: Throwable) {
+        System.err.println(
+          "RenderEngine: a11y overlay write failed for ${state.spec.outputBaseName}: " +
             "${t.javaClass.simpleName}: ${t.message}"
         )
       }
