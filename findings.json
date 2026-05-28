@@ -1090,6 +1090,26 @@
     },
     {
       "annotatedBasename": "",
+      "cleanBasename": "FocusableMenu_Glimmer_Input.png",
+      "findings": [],
+      "functionName": "FocusableMenu",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
+      "annotatedBasename": "",
+      "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
+      "findings": [],
+      "functionName": "NowPlayingCard",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
+      "annotatedBasename": "",
       "cleanBasename": "com.example.sample.PreviewsKt.StaticPreview.png",
       "findings": [],
       "functionName": "StaticPreview",

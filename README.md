@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 109 preview(s) across 12 module(s) · 1 error(s) · 0 warning(s) · 0 info._
+_Auto-generated from `compose-preview/a11y/main`. 111 preview(s) across 13 module(s) · 1 error(s) · 0 warning(s) · 0 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -669,5 +669,19 @@ _No findings._
 ### `CircularProgressIndicatorPreview` · `wearos_large_round`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/wear/CircularProgressIndicatorPreview_Devices_Large_Round.png" width="400" />
+
+_No findings._
+
+## xr-glimmer
+
+### `FocusableMenu` · `spec:width=640,height=480,dpi=240`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/FocusableMenu_Glimmer_Input.png" width="400" />
+
+_No findings._
+
+### `NowPlayingCard` · `spec:width=640,height=480,dpi=240`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/NowPlayingCard_Glimmer_Busy.png" width="400" />
 
 _No findings._
