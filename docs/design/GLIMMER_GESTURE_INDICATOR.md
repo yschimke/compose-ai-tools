@@ -206,6 +206,115 @@ the CLI surface stays one-gesture-per-invocation because the multi-gesture
 case is "I'm running discovery on a `@GlimmerPreviewInput`-annotated
 function", which goes through the discovery pipeline not the one-shot CLI.
 
+## Live preview surface
+
+The three primitives — `GlimmerGesture` enum, `dispatchGesture(...)`, and
+the indicator overlay — compose into an interactive preview unchanged.
+The same `AndroidComposeView` that the renderer drives during capture
+backs an interactive preview, so dispatching a synthesised `KeyEvent`
+through it has the same effect: focus moves, `Modifier.focusable`
+listeners react, and the indicator pill (since it's an
+`AroundComposableExtension` on the composable's layer, not a capture-time
+post-process) animates against the live composition. No reimplementation
+needed.
+
+What's missing for live use is an **input-trigger surface**. The capture
+case has `@GlimmerPreviewInput(gestures = [...])` as a scripted,
+deterministic sequence. The live case needs the human to be the source.
+Two surfaces, both useful, both ship together:
+
+### Toolbar above the canvas
+
+Six buttons pinned above the preview canvas — one per `GlimmerGesture`
+variant — each labelled with the same glyph + label the indicator pill
+uses. Click → `host.dispatchGesture(SwipeUp)` → the `AndroidComposeView`
+receives a synthesised `KeyEvent`, focus moves, the connector's indicator
+pill animates.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [▲ swipe up] [▼ swipe down] [◀ swipe left] [▶ swipe   │  ◀── toolbar
+│  right]  [● tap]  [↺ back]                             │      (host chrome)
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│   ┌──────────────┐                                      │
+│   │  Next track  │  ◀── focus ring                       │
+│   └──────────────┘                                      │
+│    Previous track                                       │   ◀── live preview
+│    Add to favourites                                    │       canvas
+│    Send to phone                                        │
+│                                                         │
+│           ┌── ▲  swipe up ──┐                            │  ◀── indicator pill
+│           └────────────────┘                            │      (in-canvas, same as
+│                                                         │       in captured GIFs)
+└─────────────────────────────────────────────────────────┘
+```
+
+Lives in the preview host's chrome, not the captured frame — so the
+toolbar exists in VS Code panel / Android Studio interactive preview /
+CMP hot-reload but is **never** baked into the GIF. The pill *inside* the
+canvas is the same overlay either way; the toolbar is just one of several
+ways to trigger a dispatch.
+
+Host integration is per-platform but the wiring is small in each case:
+
+- **VS Code panel** — toolbar buttons in `vscode-extension/src/webview/
+  previewCard.ts` alongside the existing display-filter chips. Click
+  posts an RPC message to the daemon which calls `dispatchGesture` on the
+  host view. Already the pattern the panel uses for other interactive
+  controls.
+- **Android Studio interactive preview** — IDE-integration point is the
+  Studio plugin; a "Gestures" toolbar group sits next to Studio's
+  existing "Interactive" / "Run preview" controls. Calls
+  `dispatchGesture` directly on the in-process renderer.
+- **CMP Desktop hot-reload** — toolbar is a `Row` of buttons in the
+  preview window's `WindowDecoration`. Same `dispatchGesture` call,
+  same overlay reaction.
+
+### Keyboard map
+
+Arrow keys → swipe in that direction. Enter → tap. Esc → back. Faster
+than the toolbar for power users and works in every host without extra
+chrome.
+
+| Key      | Gesture     |
+| -------- | ----------- |
+| `↑`      | SwipeUp     |
+| `↓`      | SwipeDown   |
+| `←`      | SwipeLeft   |
+| `→`      | SwipeRight  |
+| `Enter`  | Tap         |
+| `Esc`    | Back        |
+
+**Important — the keys are intercepted at the host, not in the
+composition.** Without that distinction, `↑` and `↓` would *both* fire
+the synthesised `DPAD_DOWN` / `DPAD_UP` AND continue propagating as the
+original `KEYCODE_DPAD_UP` / `KEYCODE_DPAD_DOWN` events, double-firing
+focus moves. The host's key listener consumes the key, calls
+`dispatchGesture`, and returns true to stop further propagation.
+
+Hold-to-repeat is on (`KeyEvent.ACTION_DOWN` with `getRepeatCount() > 0`
+re-fires the gesture) so holding `↑` walks focus through a long list at
+the platform's key-repeat rate, the same way it would on a desktop. Tap
+and Back don't repeat — first event only.
+
+### Relationship to the annotation
+
+The annotation and the live surface are complementary, not exclusive:
+
+- The annotation drives **capture** — deterministic, reproducible,
+  test-asserted. Reviewers see the GIF in the PR.
+- The toolbar + keyboard map drive **iteration** — the author plays with
+  the preview, finds a focus walk that reads well, then writes the
+  matching `gestures = [...]` array into the annotation to lock it in
+  for capture.
+
+A preview function can be annotated with `@GlimmerPreviewInput(gestures
+= [...])` and *also* be opened in interactive mode — discovery uses the
+annotation for capture, the host's toolbar lets the author override it
+live. The annotation's `gestures` array is the canonical sequence; the
+toolbar is a scratch surface.
+
 ## Relationship to existing primitives
 
 | Primitive                              | Today                                  | After this design                                  |
@@ -241,6 +350,21 @@ function", which goes through the discovery pipeline not the one-shot CLI.
    gesture or post-process tweening. Tweening is cheaper. Lock in a
    format after the indicator's visual treatment is reviewed on real
    renders.
+5. **Live-mode animation timing** — in capture mode the pill's
+   enlarge-fade is baked into the frame timing the renderer controls. In
+   live mode it has to run against the host's wall clock instead. The
+   overlay should drive the animation through Compose's standard
+   `Animatable` / `animateFloatAsState` (the connector already wraps the
+   composable's layer) so the live host inherits the timing from the
+   composition without separate plumbing — verify on first implementation
+   that this matches the capture-time appearance.
+6. **Toolbar focus-stealing** — clicking a toolbar button shouldn't move
+   keyboard focus out of the canvas (the user expects the canvas to
+   remain focused so the synthesised key event reaches the right
+   composable). Each host has its own focus-management story; the
+   simplest fix is `Modifier.focusProperties { canFocus = false }` on the
+   toolbar buttons (Compose hosts) or the `preventDefault` /
+   `tabindex="-1"` equivalent for the VS Code webview.
 
 ## Phasing
 
@@ -255,13 +379,20 @@ Stages can ship independently:
    the GIF still looks the same.
 3. **Indicator-painting `AroundComposableExtension` in
    `:data-glimmer-input-connector`** — pill appears in the GIF. This is
-   the user-visible deliverable; (1) and (2) can land in either order
-   before this.
-4. **Focus-ring overlay in the same connector** — the
+   the user-visible deliverable for capture; (1) and (2) can land in
+   either order before this.
+4. **Live-mode trigger surfaces** — toolbar + keyboard map in each host
+   (VS Code panel, Android Studio interactive preview, CMP hot-reload).
+   Reuses (1)'s dispatcher and (3)'s overlay; the host integration is
+   the only new code per platform. Ships independently per host — VS
+   Code panel first (already the most-customised surface), Studio +
+   Desktop after.
+5. **Focus-ring overlay in the same connector** — the
    `GLIMMER_PREVIEW.md`-named focus-ring affordance lands next to the
    gesture pill, completing the connector's planned surface.
 
 (1) and (2) are renderer-only and Glimmer-agnostic (the enum is the only
-Glimmer-aware part). (3) and (4) are the Glimmer connector. A non-Glimmer
-project could ship its own connector with a different indicator look
-without touching the renderer.
+Glimmer-aware part). (3) and (5) are the Glimmer connector. (4) is host
+chrome — per-platform but small. A non-Glimmer project could ship its own
+connector with a different indicator look and reuse all the
+renderer-side + host-side wiring unchanged.
