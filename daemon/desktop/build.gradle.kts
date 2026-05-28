@@ -102,6 +102,12 @@ dependencies {
   // CMP-portable producer ports (Compose Navigation is multiplatform; the wire payload would only
   // need a portable replacement for the Intent reader).
   implementation(project(":data-navigation-connector"))
+  // Accessibility (desktop, overlay-only) — the desktop a11y path extracts Compose semantics from
+  // `ImageComposeScene.semanticsOwners`, draws the Paparazzi-style overlay + legend with AWT, and
+  // emits the wire-format DTOs from `:preview-data-api` (`ee.schimke.composeai.cli.*`). ATF is
+  // Android-only, so findings are always empty here — no dependency on `:data-a11y-core` (an
+  // android-library). See `DesktopAccessibility*`.
+  implementation(project(":preview-data-api"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,

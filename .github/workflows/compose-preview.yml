@@ -43,12 +43,13 @@ jobs:
           # stale released CLI. External consumers omit this input.
           cli-version: source
           # Empty = auto-detect every module the CLI knows about, so the a11y
-          # baseline covers the whole Android sample suite (overlays + legends
-          # on each preview) instead of just one module. Desktop / Compose-
-          # Multiplatform modules are skipped below: their daemon doesn't
-          # advertise `a11y/atf` (ATF is Android-only), so including them would
-          # stamp `atf-unavailable` and surface a misleading "renders not
-          # accessibility-checked" banner over the whole report.
+          # baseline covers the whole sample suite (overlays + legends on each
+          # preview) instead of just one module. CMP / desktop modules are
+          # included too: ATF itself is Android-only, but the desktop daemon now
+          # produces an overlay-only a11y pass (the "what a screen reader sees"
+          # overlay + legend extracted from Compose semantics) with empty
+          # findings and `status=null`, so they show real overlays and never
+          # stamp the misleading global "ATF data unavailable" banner.
           a11y-module: ''
-          a11y-skip-modules: 'samples:cmp,samples:cmp-shared,samples:desktop-daemon-bench'
+          a11y-skip-modules: ''
           notifications-module: 'samples:android'

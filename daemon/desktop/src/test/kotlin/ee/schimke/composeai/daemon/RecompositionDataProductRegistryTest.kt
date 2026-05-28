@@ -276,14 +276,13 @@ class RecompositionDataProductRegistryTest {
       // reaching any of the assertions below.
       registry.onSubscribe(previewId, "compose/recomposition", params)
 
-      // attachmentsFor still ships — empty nodes list because the observer never installed.
+      // When instrumentation is unavailable the registry ships no attachment at all (rather than an
+      // empty payload) — the client sees no `compose/recomposition` entry on `renderFinished` and
+      // greys out its panel, which is the honest signal. See `attachmentsFor`'s guard.
       val attachments = registry.attachmentsFor(previewId, setOf("compose/recomposition"))
-      assertEquals(1, attachments.size)
-      val payload = attachments[0].payload!!.jsonObject
-      assertEquals(
-        "instrumentation-unavailable subscriptions still emit empty payloads",
-        0,
-        payload["nodes"]?.jsonArray?.size,
+      assertTrue(
+        "instrumentation-unavailable subscriptions ship no attachment, got $attachments",
+        attachments.isEmpty(),
       )
       registry.onUnsubscribe(previewId, "compose/recomposition")
     } finally {

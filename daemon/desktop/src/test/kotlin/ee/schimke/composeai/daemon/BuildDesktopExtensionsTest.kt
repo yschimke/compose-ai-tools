@@ -16,9 +16,11 @@ import org.junit.rules.TemporaryFolder
  *
  * **What's still Android-only.** The negative assertions below pin the kinds the desktop daemon
  * deliberately does NOT advertise yet because their producers are Android-API-bound (`uiautomator`,
- * `a11y` ATF, `resources/used`). Issue #1201's per-row triage tracks the migration path; the panel
- * should honour `ServerCapabilities.backend == "desktop"` and grey those chips out instead of
- * relying on the daemon to advertise them.
+ * `resources/used`). `a11y` IS advertised (overlay-only): ATF itself is Android-only, but the "what
+ * a screen reader sees" overlay + legend is portable — see `a11y_overlay_only_advertised_*`.
+ * Issue #1201's per-row triage tracks the migration path; the panel should honour
+ * `ServerCapabilities.backend == "desktop"` and grey the remaining chips out instead of relying on
+ * the daemon to advertise them.
  */
 class BuildDesktopExtensionsTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
@@ -35,6 +37,7 @@ class BuildDesktopExtensionsTest {
           recompositionRegistry = RecompositionDataProductRegistry(),
           themeRegistry = ThemeDataProductRegistry(),
           wallpaperRegistry = WallpaperDataProductRegistry(),
+          launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
           historyManager = historyManager,
           dataRoot = dataRoot,
           composeTraceEnabled = composeTraceEnabled,
@@ -128,6 +131,7 @@ class BuildDesktopExtensionsTest {
         recompositionRegistry = RecompositionDataProductRegistry(),
         themeRegistry = ThemeDataProductRegistry(),
         wallpaperRegistry = WallpaperDataProductRegistry(),
+        launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
         historyManager = null,
         dataRoot = null,
         composeTraceEnabled = false,
@@ -157,7 +161,15 @@ class BuildDesktopExtensionsTest {
     // `ServerCapabilities.backend == "desktop"` rather than expecting the daemon to advertise.
     // Tracking migration of each in issue #1201.
     assertFalse("resources/used" in ids)
-    assertFalse("a11y" in ids)
     assertFalse("uiautomator" in ids)
+  }
+
+  @Test
+  fun a11y_overlay_only_advertised_when_data_root_set() {
+    // ATF is Android-only, but the desktop daemon now produces an overlay-only a11y pass (Compose
+    // semantics → AWT overlay + legend, empty findings). The registry is file-based, so it gates on
+    // dataRoot like the other file-backed registries.
+    assertFalse("a11y" in build(dataRoot = null))
+    assertTrue("a11y" in build(dataRoot = tempFolder.newFolder("a11y-data")))
   }
 }
