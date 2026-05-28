@@ -393,6 +393,21 @@ open class RobolectricHost(
       Thread({ runJUnit(workerIndex = i) }, threadName(i)).apply { isDaemon = false }
     }
 
+  /**
+   * Bootstrap failures captured by [runJUnit] when its `SandboxRunner` JUnit run exits without
+   * [SandboxRunner.holdSandboxOpen] ever registering the slot. Without this, a Robolectric
+   * bootstrap crash (e.g. a `NoClassDefFoundError` thrown before the test body starts) leaves
+   * the slot's ready latch latched and forces [start] to wait out the full
+   * [DEFAULT_SANDBOX_BOOT_TIMEOUT_MS] before it can report anything useful. With this array,
+   * [runJUnit] trips the latch + records the cause, and [start] re-throws with the real
+   * exception as the cause instead of the opaque timeout message.
+   *
+   * Indexed by `workerIndex`; safe because [start] launches workers serially and waits on each
+   * slot in order, so `worker[i]` is the only thread that can ever claim `slot[i]`.
+   */
+  private val workerBootErrors: java.util.concurrent.atomic.AtomicReferenceArray<Throwable?> =
+    java.util.concurrent.atomic.AtomicReferenceArray<Throwable?>(sandboxCount)
+
   private fun threadName(i: Int): String =
     if (sandboxCount == 1) "compose-ai-daemon-host" else "compose-ai-daemon-host-$i"
 
@@ -441,6 +456,20 @@ open class RobolectricHost(
         )
         val slot = DaemonHostBridge.slot(i)
         val ready = slot.awaitSandboxReady(timeoutMs)
+        // [runJUnit] trips the latch + records the JUnit failure in [workerBootErrors] when the
+        // worker thread exits before `holdSandboxOpen` registered the slot. Check that path first
+        // so a bootstrap crash surfaces with its real cause rather than the timeout message
+        // below — `ready` will read `true` in that case because the latch was counted down by
+        // the same recording step.
+        val bootErr = workerBootErrors.get(i)
+        if (bootErr != null) {
+          if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
+          throw IllegalStateException(
+            "Robolectric sandbox slot $i aborted during bootstrap — see the " +
+              "SandboxRunner[$i] failure(s) logged above for the underlying cause.",
+            bootErr,
+          )
+        }
         if (!ready) {
           if (sandboxCount > 1) dumpAllThreadsToStderr(slot = i, timeoutMs = timeoutMs)
           error(
@@ -1288,6 +1317,24 @@ open class RobolectricHost(
             "RobolectricHost SandboxRunner[$workerIndex] failed: ${failure.message}"
           )
           failure.exception?.printStackTrace()
+        }
+        // If we exit JUnit before the slot's sandbox-ready latch was tripped, no other path will
+        // unblock `start()`. Stash the underlying exception and trip the latch ourselves so the
+        // awaiting `start()` loop reports the real cause instead of the 600s timeout.
+        // Failures that happen *after* the latch was already counted down (e.g. a render-loop
+        // crash during shutdown) are still logged above but not promoted to a boot error —
+        // `start()` has long since returned by then.
+        val slot = DaemonHostBridge.slot(workerIndex)
+        val latch = slot.sandboxReadyLatchRef.get()
+        if (latch.count > 0L) {
+          val first = result.failures.firstOrNull()
+          val cause = first?.exception
+          val message =
+            "RobolectricHost SandboxRunner[$workerIndex] aborted during sandbox bootstrap " +
+              "(${result.failures.size} JUnit failure(s)). First: " +
+              (first?.message ?: "<no message>")
+          workerBootErrors.set(workerIndex, IllegalStateException(message, cause))
+          latch.countDown()
         }
       }
     } finally {
