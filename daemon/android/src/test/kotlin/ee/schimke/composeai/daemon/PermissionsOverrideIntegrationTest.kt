@@ -39,13 +39,11 @@ import org.junit.rules.TemporaryFolder
  * leg is covered separately by [PermissionsOverrideEncodingTest] in `:daemon:core`. Together
  * the two tests pin the full panel → daemon → renderer → shadow chain.
  *
- * Out of scope here: asserting `data/fetch?kind=compose/permissions` returns the queried
- * list — that capture happens inside the sandbox's [PermissionsController] static state, and
- * the daemon-side `PermissionsDataProductRegistry` reads it from there. Cross-classloader
- * read-out from the JUnit runner would need a dedicated surfacing channel; the unit-level
- * `PermissionsDataProductTest.onRender captures override grants plus controller queries`
- * pins the registry's behaviour for now. Pixel correctness is the strongest single E2E
- * signal: it can only succeed if every rung worked.
+ * The data-fetch read-back leg — proving that the queries the shadow caught surface through
+ * `data/fetch?kind=compose/permissions` — lives in [PermissionsDataFetchE2ETest]; it uses the
+ * cross-classloader [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
+ * seam the host-side registry reads. Pixel correctness here remains the strongest single signal
+ * that the override-application chain works: it can only succeed if every rung wired up.
  */
 class PermissionsOverrideIntegrationTest {
 
