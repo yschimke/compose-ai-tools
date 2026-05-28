@@ -1133,6 +1133,13 @@
     "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
     "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
   },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuNavigation_Glimmer XR Menu \u00b7 Navigation": {
+    "captureLabel": "",
+    "functionName": "GlimmerXrMenuNavigation",
+    "renderBasename": "GlimmerXrMenuNavigation_Glimmer_XR_Menu_Navigation.gif",
+    "sha256": "c3e917020fb8f47b1ccf9928225259e5d212e01b4989b4490971ba45bb1e59ba",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
+  },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input": {
     "captureLabel": "",
     "functionName": "FocusableMenu",

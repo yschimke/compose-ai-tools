@@ -223,6 +223,7 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `GlimmerXrMenuNavigation` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuNavigation_Glimmer_XR_Menu_Navigation.gif" width="150" /> |
 | `FocusableMenu` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/FocusableMenu_Glimmer_Input.png" width="150" /> |
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Busy.png" width="150" /> |
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Dark.png" width="150" /> |
