@@ -133,6 +133,45 @@ class AccessibilityCheckerStatesTest {
     }
 
     @Test
+    fun `clickable container merges its descendants`() {
+        // A Button / Card is screen-reader-focusable and folds its inner
+        // Text into a single TalkBack stop — it IS a merging boundary.
+        assertEquals(
+            true,
+            AccessibilityChecker.mergesDescendants(
+                isScreenReaderFocusable = true,
+                isScrollable = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `scrollable container does not merge its descendants`() {
+        // Regression for #1565: a TransformingLazyColumn / LazyColumn is
+        // screen-reader-focusable (so TalkBack can scroll it) but each row
+        // stays its own focus stop — it must NOT be treated as a merging
+        // boundary, otherwise list items get reported as merged = false.
+        assertEquals(
+            false,
+            AccessibilityChecker.mergesDescendants(
+                isScreenReaderFocusable = true,
+                isScrollable = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `non-focusable container never merges`() {
+        assertEquals(
+            false,
+            AccessibilityChecker.mergesDescendants(
+                isScreenReaderFocusable = false,
+                isScrollable = false,
+            ),
+        )
+    }
+
+    @Test
     fun `chip order is stable - structural state, behaviour, disability, descriptive`() {
         assertEquals(
             listOf(
