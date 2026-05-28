@@ -36,10 +36,44 @@ data class AccessibilityFinding(
   val boundsInScreen: String? = null,
 )
 
+/**
+ * One accessibility-relevant node captured for the Paparazzi-style overlay (translucent colour fill
+ * on the screenshot matched against a swatched legend). Mirrors `:data-a11y-core`'s
+ * [AccessibilityNode][ee.schimke.composeai.renderer.AccessibilityNode] field-for-field — same JSON
+ * schema, pinned by the wire format rather than Kotlin type identity. The desktop daemon's
+ * overlay-only a11y path (Compose-semantics extraction, no ATF) emits these from
+ * `ee.schimke.composeai.cli.*` types rather than depending on the Android `:data-a11y-core`.
+ */
+@Serializable
+data class AccessibilityNode(
+  /** Visible text or contentDescription. */
+  val label: String,
+  /** TalkBack-style role announcement (`Button`, `Image`, …). `null` for plain labelled nodes. */
+  val role: String? = null,
+  /**
+   * Non-default behavioural / state flags surfaced to the legend subtitle (`clickable`,
+   * `scrollable`, `checked` / `unchecked`, the verbatim `stateDescription`, …).
+   */
+  val states: List<String> = emptyList(),
+  /**
+   * `true` when this node is its own focus target; `false` when it sits underneath a merged
+   * focusable ancestor (drawn with a dashed border + `↳ ` legend prefix).
+   */
+  val merged: Boolean = true,
+  /** `left,top,right,bottom` in source-bitmap pixels. */
+  val boundsInScreen: String,
+)
+
 @Serializable
 data class AccessibilityEntry(
   val previewId: String,
   val findings: List<AccessibilityFinding>,
+  /**
+   * Every accessibility-relevant node the producer saw on the rendered tree, populated whether or
+   * not [findings] is empty so consumers can render a "what a screen reader sees" overlay even on a
+   * clean preview. Empty list ≈ a11y disabled or no labelled / actionable content.
+   */
+  val nodes: List<AccessibilityNode> = emptyList(),
   val annotatedPath: String? = null,
 )
 

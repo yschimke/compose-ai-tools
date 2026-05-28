@@ -502,10 +502,15 @@ private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.
  * portable: when no producer has written, `data/fetch` returns `NotAvailable` rather than the wire
  * `-32020 kind not advertised`, which is what the panel needs to gate its chips correctly.
  *
- * Kinds whose producer is genuinely Android-bound (`resources/used`, `i18n/translations`, `a11y`,
- * `uiautomator`, `data/navigation`) are NOT registered here — see issue #1201 for the per-kind
- * portability triage. They stay unadvertised on desktop; the panel should honour
- * `ServerCapabilities.backend == "desktop"` to grey out the corresponding chips.
+ * Kinds whose producer is genuinely Android-bound (`resources/used`, `uiautomator`) are NOT
+ * registered here — see issue #1201 for the per-kind portability triage. They stay unadvertised on
+ * desktop; the panel should honour `ServerCapabilities.backend == "desktop"` to grey out the
+ * corresponding chips.
+ *
+ * `a11y` IS registered (overlay-only): ATF itself is Android-only, but the "what a screen reader
+ * sees" overlay + legend is portable — the desktop producer extracts Compose semantics from the
+ * scene and draws the overlay with AWT, shipping empty findings. See
+ * [DesktopAccessibilityDataProductRegistry].
  */
 internal fun buildDesktopExtensions(
   previewIndex: PreviewIndex,
@@ -729,6 +734,20 @@ internal fun buildDesktopExtensions(
         id = "data/navigation",
         displayName = "Navigation snapshot",
         dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
+      )
+    }
+    // Accessibility (desktop, overlay-only). Unlike Android — where the producer runs ATF over the
+    // Robolectric View tree — the desktop path extracts Compose semantics from the scene's
+    // `semanticsOwners` and draws the Paparazzi-style overlay + legend with AWT (see
+    // `DesktopAccessibility*`). ATF is Android-only, so findings are always empty; `a11y/atf` ships
+    // an empty `findings` array so the CLI's per-preview fetch parses and the module report stays
+    // `status=null` (no global "ATF data unavailable" banner). No `previewExtensionDescriptors` —
+    // the overlay is produced post-capture by the RenderEngine, not by an around-composable.
+    tryAdd("a11y") {
+      Extension(
+        id = "a11y",
+        displayName = "Accessibility (desktop, overlay-only)",
+        dataProductRegistry = DesktopAccessibilityDataProductRegistry(rootDir = dataRoot),
       )
     }
     if (displayFilterEnabled) {
