@@ -1305,6 +1305,15 @@ open class RobolectricHost(
    * the daemon module doesn't generate that file (the consumer module does
    * for the existing JUnit path).
    *
+   * **`application` deliberately omitted.** The Application override (default
+   * `android.app.Application`, opt-out via `composePreview.useConsumerApplication = true`)
+   * is supplied at runtime by [SandboxHoldingRunner.buildGlobalConfig] so the daemon mirrors
+   * the Gradle `composePreviewRender` path's behaviour without baking the choice into bytecode.
+   * Without that override, Robolectric would resolve the manifest-declared Application and run
+   * its `onCreate()` on every sandbox worker — fine on worker 0, but any process-global side
+   * effect (e.g. `URL.setURLStreamHandlerFactory`, which only accepts one call per JVM) throws
+   * on worker 1+ and takes down the whole sandbox pool.
+   *
    * `@GraphicsMode(NATIVE)` is required by B1.4's real render body — Roborazzi's
    * `captureRoboImage` walks `HardwareRenderer` to materialise the bitmap, which
    * is only available under NATIVE graphics mode. The B1.3-era stub render
