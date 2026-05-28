@@ -1,0 +1,30 @@
+samples/xr-glimmer
+==================
+
+Third-party content under `src/main/res/drawable-nodpi/`:
+
+- `env_dark.jpg` — night cityscape photograph from Unsplash. Used under
+  the [Unsplash License](https://unsplash.com/license) (free for commercial
+  and non-commercial use, no attribution required). Centre-cropped to 4:3
+  and resized to 960x720 for the AI Glasses preview canvas.
+
+- `env_busy.jpg` — Bangkok street market photograph by Bruno van der Kraan
+  (https://unsplash.com/photos/a-busy-street-market-is-filled-with-people-Jtu6HGNKK7Q).
+  Used under the Unsplash License. Centre-cropped to 4:3 and resized to 960x720.
+
+- `env_venice_canal_cats.jpg` — Venice canal photograph featuring a gondolier
+  in a striped sailor shirt. Used under the Unsplash License. Centre-cropped
+  to 4:3 and resized to 960x720. (The "cats" half of the `VeniceCanalCats`
+  env name is the design's whimsical delight extension from
+  `docs/design/GLIMMER_PREVIEW.md`; no cats in the photo, just the real-
+  world gondolier inspiration.)
+
+The `Glimmer XR Menu * Light` env still uses an in-Compose procedural
+backdrop (no photo asset) and is therefore not subject to any third-party
+attribution.
+
+Photos are sourced under the Unsplash License, which permits use without
+attribution but does not transfer copyright; attribution is provided here
+as a courtesy. Substitute these files with any 960x720 (or larger) JPEG /
+PNG / WebP at the same path and the build picks them up with no code
+changes.
