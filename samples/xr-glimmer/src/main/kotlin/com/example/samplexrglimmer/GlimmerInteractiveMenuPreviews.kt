@@ -48,9 +48,40 @@ import ee.schimke.composeai.preview.FocusedPreview
  * environment is permanently Touch otherwise and Glimmer's `ListItem(onClick)` focusables
  * would refuse focus. `indices` mode lands one capture per focus index; `gif = true` stitches
  * the captures into a single `<basename>.gif` instead of writing five PNG siblings.
+ *
+ * Env fan-out: four stacked `@Preview` annotations, one per backdrop the design doc names
+ * (`docs/design/GLIMMER_PREVIEW.md` § "Data extension: `:data-glimmer-environment-connector`")
+ * — Light / Dark / Busy / VeniceCanalCats. Each annotation produces an independent
+ * `PreviewInfo.id` (distinct `name`) so discovery treats them as four separate captures and
+ * the `@FocusedPreview` walk is replayed per env. Mirrors the pattern `NowPlayingCard` already
+ * uses in the same module. Encoding B (`showBackground = true, backgroundColor = 0xFF000000`)
+ * is shared across all four — the env intent is in the `name` suffix and travels into the
+ * future env compositor, not into the capture itself. The four GIFs are byte-identical today
+ * (the compositor module doesn't exist yet); they'll diverge once `:data-glimmer-environment-
+ * connector` lands and pastes each capture onto its Studio-parity backdrop. The pixel-identity
+ * assertion in `GlimmerInteractiveMenuTest` locks this contract down so any drift surfaces
+ * during the connector's rollout, not silently afterwards.
  */
 @Preview(
-  name = "Glimmer XR Menu · Navigation",
+  name = "Glimmer XR Menu · Light",
+  device = AI_GLASSES_DEVICE_SPEC,
+  showBackground = true,
+  backgroundColor = ADDITIVE_ZERO_BACKGROUND,
+)
+@Preview(
+  name = "Glimmer XR Menu · Dark",
+  device = AI_GLASSES_DEVICE_SPEC,
+  showBackground = true,
+  backgroundColor = ADDITIVE_ZERO_BACKGROUND,
+)
+@Preview(
+  name = "Glimmer XR Menu · Busy",
+  device = AI_GLASSES_DEVICE_SPEC,
+  showBackground = true,
+  backgroundColor = ADDITIVE_ZERO_BACKGROUND,
+)
+@Preview(
+  name = "Glimmer XR Menu · VeniceCanalCats",
   device = AI_GLASSES_DEVICE_SPEC,
   showBackground = true,
   backgroundColor = ADDITIVE_ZERO_BACKGROUND,
