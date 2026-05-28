@@ -5,14 +5,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -26,48 +22,43 @@ import androidx.compose.ui.unit.dp
 import androidx.xr.glimmer.GlimmerTheme
 import androidx.xr.glimmer.ListItem
 import androidx.xr.glimmer.Text
-import androidx.xr.glimmer.TitleChip
 import ee.schimke.composeai.preview.FocusedPreview
-import kotlin.random.Random
 
 /**
- * Interactive XR navigation demo — a Glimmer menu plus a touchpad-gesture overlay, captured as
- * an animated GIF per environment backdrop the design names (`docs/design/GLIMMER_PREVIEW.md`
- * § "Data extension: `:data-glimmer-environment-connector`"). Each frame shows focus on one
- * menu item; the bottom-edge "▲ swipe up" affordance is what drove the transition.
+ * Interactive XR navigation demo — a Glimmer menu captured as an animated GIF per environment
+ * backdrop the design names (`docs/design/GLIMMER_PREVIEW.md` § "Data extension:
+ * `:data-glimmer-environment-connector`"). Each frame shows focus on a different menu item;
+ * the four-frame focus walk is the entire navigation signal.
  *
  * Glimmer's display model is **additive**: pure black pixels render as 100% transparent on-
  * device, lit pixels add light to whatever the wearer is looking at. The env compositor
  * module the design names will eventually be a post-render step, but until it exists the
  * sample paints both pieces inline:
  *
- *  1. The env backdrop ([EnvironmentBackdrop]) — a procedurally-drawn Compose `Canvas`
- *     scene per env (sky / city / market / canal), opaque RGB.
- *  2. The Glimmer UI on top, wrapped in a `graphicsLayer` with `BlendMode.Plus` so the
- *     `Color.Black` base from `GlimmerSurface` adds zero (env shows through unchanged) and
- *     lit pixels (TitleChip primary, ListItem surface tint, focus ring, Text white) add to
- *     the env — which is exactly the physics of an additive display. When
- *     `:data-glimmer-environment-connector` lands the per-env [EnvironmentBackdrop] +
- *     additive-blend wrapper here move into the connector and the sample reverts to plain
- *     additive-RGB captures (Encoding B) on a black background.
+ *  1. The env backdrop ([EnvironmentBackdrop]) — a real photo for Dark / Busy /
+ *     VeniceCanalCats and a procedurally-drawn Compose `Canvas` scene for Light, opaque RGB
+ *     in both cases.
+ *  2. The Glimmer UI on top — `GlimmerTheme` with `ListItem`s that paint their own surface
+ *     tint, occluding the env where the items sit and letting it show through between them.
+ *     When `:data-glimmer-environment-connector` lands the per-env [EnvironmentBackdrop]
+ *     moves into the connector and the sample reverts to plain additive-RGB captures
+ *     (Encoding B) on a black background.
  *
  * The four GIFs (Light / Dark / Busy / VeniceCanalCats) are **visually distinct today** because
  * the env compositing happens at render time — they're not pixel-identical placeholders. The
  * test asserts that explicitly so a future regression (e.g. an env backdrop accidentally falling
  * back to opaque black) surfaces here rather than in a downstream skill.
  *
- * Glimmer's input model is **1-D** (one finger on the touchpad, axis is contextual), so a
- * static swipe-up indicator pinned to the bottom is the honest representation across the whole
- * sequence: every step is one swipe. A future `@GlimmerPreviewInput` + `:data-glimmer-input-
- * connector` will replace the hand-rolled overlay with a planner-driven `AroundComposable`
- * reading `renderNow.overrides.glimmerInput`; at that point the gesture per frame becomes
- * dynamic (`▲ Next` / `▼ Previous` / `● Tap` / `↺ Back`) and the indicator below moves into
- * the connector.
+ * The 1-D touchpad-gesture model is documented in SKILL.md § "Map input controls" but isn't
+ * surfaced visually in these captures — Studio's own Glimmer previews don't paint a persistent
+ * gesture chip onto the menu either, and inventing one for the sample would put a non-existent
+ * affordance on screen. When `@GlimmerPreviewInput` + `:data-glimmer-input-connector` land the
+ * planner's per-frame gesture override paints through that connector.
  *
- * Item count: four — the AI Glasses canvas (640×480dp) seats four `ListItem`s plus the bottom
- * gesture indicator with ~14dp of slack at 16-dp inter-item spacing. A header chip over the
- * menu was the first cut but pushed the fourth item under the indicator and ate the focus ring
- * on frame 4; standalone chips live in the `NowPlayingCard` sample.
+ * Item count: four — the AI Glasses canvas (640×480dp) seats four `ListItem`s with 16-dp
+ * inter-item spacing and 24-dp insets cleanly. A header chip over the menu was the first cut
+ * but ate the focus ring on the fourth item; standalone chips live in the `NowPlayingCard`
+ * sample.
  *
  * Discovery side: `@FocusedPreview` flips `LocalInputModeManager` to Keyboard so Compose's
  * focusable system honours the renderer's `moveFocus(...)` calls — Robolectric's host
@@ -103,26 +94,14 @@ fun GlimmerXrMenuVeniceCanalCats() = InteractiveMenuOnEnv(GlimmerEnvironment.Ven
 @Composable
 private fun InteractiveMenuOnEnv(env: GlimmerEnvironment) {
   GlimmerEnvSurface(env) {
-    Box(Modifier.fillMaxSize()) {
-      Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        ListItem(onClick = {}) { Text("Next track") }
-        ListItem(onClick = {}) { Text("Previous track") }
-        ListItem(onClick = {}) { Text("Add to favourites") }
-        ListItem(onClick = {}) { Text("Send to phone") }
-      }
-
-      // XR touchpad-gesture indicator pinned to the bottom-centre. Mirrors the design
-      // doc's `:data-glimmer-input-connector` arrow-glyph affordance — the same place an
-      // overlay extension would paint, just baked into the composable until that connector
-      // module exists. Drawn through the additive layer so it reads as lit-light against
-      // any env backdrop.
-      XrTouchpadGestureIndicator(
-        gesture = XrGesture.SwipeUp,
-        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
-      )
+    Column(
+      modifier = Modifier.fillMaxWidth(),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+      ListItem(onClick = {}) { Text("Next track") }
+      ListItem(onClick = {}) { Text("Previous track") }
+      ListItem(onClick = {}) { Text("Add to favourites") }
+      ListItem(onClick = {}) { Text("Send to phone") }
     }
   }
 }
@@ -214,25 +193,6 @@ private fun DrawScope.drawLight() {
 }
 
 /**
- * Pill-shaped indicator showing which 1-D touchpad gesture the wearer would use to advance.
- * Drawn as a Glimmer `TitleChip` with the gesture glyph + label so it picks up the theme's
- * pill shape, surface tint, and outline border without us having to recreate that styling
- * by hand. The chip is non-interactive — purely a visual annotation on the capture.
- */
-@Composable
-private fun XrTouchpadGestureIndicator(gesture: XrGesture, modifier: Modifier = Modifier) {
-  Box(modifier = modifier) {
-    TitleChip {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(gesture.glyph)
-        Spacer(Modifier.width(8.dp))
-        Text(gesture.label)
-      }
-    }
-  }
-}
-
-/**
  * Environment backdrops the interactive demo composites against. Matches the per-env names the
  * design doc and the `NowPlayingCard` sample's `@Preview` family already use — Studio's
  * Light / Dark / Busy contrast presets plus the VeniceCanalCats delight scene.
@@ -242,18 +202,4 @@ internal enum class GlimmerEnvironment {
   Dark,
   Busy,
   VeniceCanalCats,
-}
-
-/**
- * The 1-D touchpad gestures Glimmer's input model exposes — see SKILL.md § "Map input
- * controls". Kept as an enum so a future `:data-glimmer-input-connector` can encode the
- * planner's override directly as one of these and the overlay reads the field with no
- * string-parsing in between. `Tap` and `Back` aren't exercised by the GIFs above but are
- * here for the eventual dynamic-gesture variant.
- */
-internal enum class XrGesture(val glyph: String, val label: String) {
-  SwipeUp(glyph = "▲", label = "swipe up"),
-  SwipeDown(glyph = "▼", label = "swipe down"),
-  Tap(glyph = "●", label = "tap"),
-  Back(glyph = "↺", label = "back"),
 }
