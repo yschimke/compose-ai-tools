@@ -1,6 +1,7 @@
 package com.example.samplexrglimmer
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.xr.glimmer.GlimmerTheme
@@ -153,20 +156,46 @@ private fun GlimmerEnvSurface(env: GlimmerEnvironment, content: @Composable () -
 }
 
 /**
- * Procedurally-drawn Compose backdrop per env. Kept inline (no resource assets) so the sample
- * has zero asset deps — Studio's docs name Light / Dark / Busy as their contrast-test backdrops
- * and the design adds VeniceCanalCats as the "delight" preset; each scene below is a
- * recognisable approximation rather than a pixel-faithful asset.
+ * Backdrop per env. Mixes two source modes:
+ *
+ *  - **Dark / Busy / VeniceCanalCats**: bitmap drawables in `res/drawable-nodpi/` (Unsplash
+ *    License photos cropped to 960×720 to match the AI Glasses 4:3 canvas at density 1.5).
+ *    Drawn via `Image(painter = painterResource(...), contentScale = ContentScale.Crop)` so
+ *    the photo fills the box at any device size.
+ *  - **Light**: still procedurally drawn (sky gradient + grass + sun). No clean Unsplash photo
+ *    for the bright-outdoor preset landed in the first asset pass; swapping in a JPEG when one
+ *    arrives is one `Image(painterResource(R.drawable.env_light))` line. The procedural
+ *    fallback at least keeps the four envs visually distinct.
+ *
+ * `drawable-nodpi/` (not `drawable/`) so AGP doesn't bake density-specific variants — the
+ * AI Glasses preview always renders at a fixed canvas size and the renderer doesn't carry
+ * a density qualifier when resolving resources.
  */
 @Composable
 private fun EnvironmentBackdrop(env: GlimmerEnvironment, modifier: Modifier = Modifier) {
-  Canvas(modifier = modifier) {
-    when (env) {
-      GlimmerEnvironment.Light -> drawLight()
-      GlimmerEnvironment.Dark -> drawDark()
-      GlimmerEnvironment.Busy -> drawBusy()
-      GlimmerEnvironment.VeniceCanalCats -> drawVeniceCanalCats()
-    }
+  when (env) {
+    GlimmerEnvironment.Light -> Canvas(modifier = modifier) { drawLight() }
+    GlimmerEnvironment.Dark ->
+      Image(
+        painter = painterResource(R.drawable.env_dark),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+      )
+    GlimmerEnvironment.Busy ->
+      Image(
+        painter = painterResource(R.drawable.env_busy),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+      )
+    GlimmerEnvironment.VeniceCanalCats ->
+      Image(
+        painter = painterResource(R.drawable.env_venice_canal_cats),
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.Crop,
+      )
   }
 }
 
@@ -182,106 +211,6 @@ private fun DrawScope.drawLight() {
     size = Size(size.width, size.height - hillY),
   )
   drawCircle(color = Color(0xFFFFE599), radius = 36f, center = Offset(size.width - 100f, 100f))
-}
-
-private fun DrawScope.drawDark() {
-  drawRect(
-    brush = Brush.verticalGradient(listOf(Color(0xFF0A0F1A), Color(0xFF14213C))),
-    size = size,
-  )
-  val skylineY = size.height * 0.45f
-  val cols = 6
-  val colW = size.width / cols
-  for (i in 0 until cols) {
-    val h = (size.height - skylineY) * (0.55f + (i % 3) * 0.18f)
-    drawRect(
-      color = Color(0xFF1A1F30),
-      topLeft = Offset(i * colW, size.height - h),
-      size = Size(colW + 4f, h),
-    )
-  }
-  val rng = Random(42)
-  repeat(36) {
-    val x = rng.nextFloat() * size.width
-    val y = skylineY + rng.nextFloat() * (size.height - skylineY) * 0.85f
-    drawRect(color = Color(0xFFFFD050), topLeft = Offset(x, y), size = Size(8f, 12f))
-  }
-  repeat(40) {
-    val x = rng.nextFloat() * size.width
-    val y = rng.nextFloat() * skylineY * 0.8f
-    drawCircle(color = Color.White, radius = 1.5f, center = Offset(x, y))
-  }
-}
-
-private fun DrawScope.drawBusy() {
-  drawRect(color = Color(0xFFB89870), size = size)
-  val awningH = size.height * 0.18f
-  val stripeW = size.width / 8
-  val awningColors =
-    listOf(Color(0xFFD63838), Color(0xFFE6C850), Color(0xFF388CC2), Color(0xFF5AB060))
-  for (i in 0..8) {
-    drawRect(
-      color = awningColors[i % 4],
-      topLeft = Offset(i * stripeW, 0f),
-      size = Size(stripeW + 4f, awningH),
-    )
-  }
-  val rng = Random(7)
-  repeat(60) {
-    val x = rng.nextFloat() * size.width
-    val y = size.height * 0.4f + rng.nextFloat() * size.height * 0.55f
-    val r = 16f + rng.nextFloat() * 24f
-    drawCircle(color = Color(0xFF8B5C40), radius = r, center = Offset(x, y), alpha = 0.65f)
-  }
-}
-
-private fun DrawScope.drawVeniceCanalCats() {
-  drawRect(
-    brush = Brush.verticalGradient(listOf(Color(0xFFFFB8A0), Color(0xFFFFD8C0))),
-    size = size,
-  )
-  val buildY = size.height * 0.5f
-  val rng = Random(11)
-  var x = 0f
-  while (x < size.width) {
-    val w = 60f + rng.nextFloat() * 50f
-    val h = 100f + rng.nextFloat() * 80f
-    val facade = Color(0xFFD8A088).copy(alpha = 0.85f + rng.nextFloat() * 0.15f)
-    drawRect(color = facade, topLeft = Offset(x, buildY - h), size = Size(w, h))
-    x += w + rng.nextFloat() * 8f
-  }
-  drawRect(
-    color = Color(0xFF5A8090),
-    topLeft = Offset(0f, buildY),
-    size = Size(size.width, size.height - buildY),
-  )
-  // Two gondolas (dark arcs) with cat-head silhouettes.
-  drawArc(
-    color = Color(0xFF1A2A30),
-    startAngle = 0f,
-    sweepAngle = 180f,
-    useCenter = true,
-    topLeft = Offset(size.width * 0.12f, size.height * 0.78f),
-    size = Size(160f, 36f),
-  )
-  drawCircle(
-    color = Color(0xFFE6964A),
-    radius = 20f,
-    center = Offset(size.width * 0.20f, size.height * 0.72f),
-  )
-  drawArc(
-    color = Color(0xFF1A2A30),
-    startAngle = 0f,
-    sweepAngle = 180f,
-    useCenter = true,
-    topLeft = Offset(size.width * 0.58f, size.height * 0.82f),
-    size = Size(180f, 40f),
-  )
-  drawCircle(
-    color = Color(0xFFE6964A),
-    radius = 24f,
-    center = Offset(size.width * 0.67f, size.height * 0.75f),
-  )
 }
 
 /**
