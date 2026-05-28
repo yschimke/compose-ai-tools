@@ -109,7 +109,7 @@ object AccessibilityChecker {
             // carries its own contentDescription — TalkBack reads only the
             // ancestor's announcement, so the inner Text rows would clutter
             // the legend with content that isn't actually spoken.
-            if (!merged && screenReaderFocusableAncestor(v)?.contentDescription
+            if (!merged && mergingAncestor(v)?.contentDescription
                     ?.toString()?.trim()?.isNotEmpty() == true
             ) continue
             // Drop nodes that wouldn't carry weight in the legend: a label,
@@ -176,12 +176,11 @@ object AccessibilityChecker {
 
     /**
      * `true` when [v] is its own TalkBack focus stop — either ATF marks it
-     * `isScreenReaderFocusable()` or it has no screen-reader-focusable
-     * ancestor (so it's a standalone node, not a child of a merged
-     * container). `false` for the inner `Text` of a `Button` whose
-     * semantics are merged into the button: TalkBack would announce the
-     * button as one stop, so the inner text is "part of" something
-     * already shown.
+     * `isScreenReaderFocusable()` or it has no *merging* ancestor (so it's a
+     * standalone node, not a child of a merged container). `false` for the
+     * inner `Text` of a `Button` whose semantics are merged into the button:
+     * TalkBack would announce the button as one stop, so the inner text is
+     * "part of" something already shown.
      *
      * The overlay renders unmerged descendants with a dashed border + `↳ `
      * legend prefix so reviewers can see structure without mistaking the
@@ -189,19 +188,34 @@ object AccessibilityChecker {
      */
     internal fun isMergedSemanticsRoot(v: ViewHierarchyElement): Boolean {
         if (v.isScreenReaderFocusable) return true
-        return screenReaderFocusableAncestor(v) == null
+        return mergingAncestor(v) == null
     }
 
     /**
-     * Closest screen-reader-focusable ancestor of [v], or `null` when [v] is
-     * itself a focus stop or has no focusable ancestor at all. Used to find
-     * "the parent that owns this node's TalkBack announcement" when filtering
-     * shadowed children.
+     * Whether a screen-reader-focusable ancestor actually *merges* its
+     * descendants' semantics into a single TalkBack announcement.
+     *
+     * Scrollable containers (`LazyColumn`, `TransformingLazyColumn`, …) are
+     * `isScreenReaderFocusable` so TalkBack can issue scroll actions, but
+     * they do NOT fold their children into one stop — each row stays its own
+     * focus target. Treating a scrollable as a merging boundary wrongly
+     * reports every list item (e.g. a header `Text`) as `merged = false`,
+     * making it look like content the user never independently reaches. See
+     * [#1565](https://github.com/yschimke/compose-ai-tools/issues/1565).
      */
-    internal fun screenReaderFocusableAncestor(v: ViewHierarchyElement): ViewHierarchyElement? {
+    internal fun mergesDescendants(isScreenReaderFocusable: Boolean, isScrollable: Boolean): Boolean =
+        isScreenReaderFocusable && !isScrollable
+
+    /**
+     * Closest ancestor of [v] that merges its descendants (see
+     * [mergesDescendants]), or `null` when [v] is itself a focus stop or has
+     * no merging ancestor at all. Used to find "the parent that owns this
+     * node's TalkBack announcement" when filtering shadowed children.
+     */
+    internal fun mergingAncestor(v: ViewHierarchyElement): ViewHierarchyElement? {
         var p = v.parentView
         while (p != null) {
-            if (p.isScreenReaderFocusable) return p
+            if (mergesDescendants(p.isScreenReaderFocusable, p.isScrollable == true)) return p
             p = p.parentView
         }
         return null
