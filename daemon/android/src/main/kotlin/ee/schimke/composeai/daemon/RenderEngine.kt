@@ -179,6 +179,24 @@ class RenderEngine(
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
+    // Issue #1528 Stage 1 — the scroll registry advertises `render/scroll/long` /
+    // `render/scroll/gif` as `requiresRerender = true` so `data/fetch` queues a re-render in
+    // `scroll-long` / `scroll-gif` mode, but the renderer-side scroll-scenario dispatch
+    // (`handleLongCapture` / `handleGifCapture` over in `:renderer-android`) isn't wired into
+    // this engine yet. Decline the render before any Compose work so:
+    //   (a) the baseline END-capture PNG at `<outputDir>/<outputBaseName>.png` is not
+    //       overwritten by an unrelated render that the dispatcher will discard anyway, and
+    //   (b) `JsonRpcServer.handleDataFetchWithRerender` sees `RerenderOutcome.Failed(...)` and
+    //       emits `ERR_DATA_PRODUCT_FETCH_FAILED` with a useful message instead of looping back
+    //       through `RequiresRerender` a second time.
+    // The Stage 2 follow-up replaces this guard with the actual scroll-scenario dispatch.
+    if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
+      throw IllegalStateException(
+        "scroll render mode '${spec.renderMode}' is advertised by the daemon's scroll registry " +
+          "but the renderer-side scenario dispatch is not yet wired (issue #1528, Stage 2). " +
+          "Host should fall back to the Gradle `composePreviewRenderAll` path for now."
+      )
+    }
     val effectiveRunAccessibility =
       runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
@@ -826,6 +844,24 @@ class RenderEngine(
      * `LocalInspectionMode = false` and writes ATF + hierarchy artefacts to `dataDir`.
      */
     const val A11Y_RENDER_MODE: String = "a11y"
+
+    /**
+     * Issue #1528 — scroll scenarios the daemon's `data/fetch` re-render path can request. The
+     * registry in `:data-scroll-connector` advertises `render/scroll/long` / `render/scroll/gif`
+     * as `requiresRerender = true`, so a missing scroll artefact returns
+     * `Outcome.RequiresRerender("scroll-long" | "scroll-gif")` and the dispatcher submits a render
+     * with `spec.renderMode` set to one of these constants.
+     *
+     * **Stage 2 follow-up.** The actual scroll-scenario dispatch (calling
+     * `handleLongCapture` / `handleGifCapture` from the renderer) lands in a follow-up — this
+     * constant pair is here so the early-return guard below has a single named place to live.
+     * Until the wiring is complete the engine declines scroll renders with a structured failure
+     * sidecar so the dispatcher emits `ERR_DATA_PRODUCT_FETCH_FAILED` cleanly instead of running
+     * a normal render whose PNG would overwrite the baseline.
+     */
+    const val SCROLL_LONG_RENDER_MODE: String = "scroll-long"
+
+    const val SCROLL_GIF_RENDER_MODE: String = "scroll-gif"
 
     /**
      * `RenderSpec.kind` value flagging a tile preview (non-composable function returning
