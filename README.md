@@ -223,7 +223,10 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
-| `GlimmerXrMenuNavigation` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuNavigation_Glimmer_XR_Menu_Navigation.gif" width="150" /> |
+| `GlimmerXrMenuBusy` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuBusy_Busy.gif" width="150" /> |
+| `GlimmerXrMenuDark` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuDark_Dark.gif" width="150" /> |
+| `GlimmerXrMenuLight` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuLight_Light.gif" width="150" /> |
+| `GlimmerXrMenuVeniceCanalCats` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuVeniceCanalCats_VeniceCanalCats.gif" width="150" /> |
 | `FocusableMenu` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/FocusableMenu_Glimmer_Input.png" width="150" /> |
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Busy.png" width="150" /> |
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Dark.png" width="150" /> |
