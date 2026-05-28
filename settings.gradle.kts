@@ -173,6 +173,10 @@ include(":data-scroll-android")
 
 project(":data-scroll-android").projectDir = file("data/scroll/android")
 
+include(":data-scroll-connector")
+
+project(":data-scroll-connector").projectDir = file("data/scroll/connector")
+
 include(":data-history-core")
 
 project(":data-history-core").projectDir = file("data/history/core")

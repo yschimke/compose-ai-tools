@@ -130,6 +130,13 @@ dependencies {
   // `PseudolocalePreviewOverrideExtension` planner mapped to `localeTag` in {en-XA, ar-XB}. No
   // build-time `pseudoLocalesEnabled` / `resConfigs` requirement on the consumer.
   implementation(project(":data-pseudolocale-connector"))
+  // Scroll data-product connector — advertises render/scroll/long and render/scroll/gif as
+  // requiresRerender=true kinds. RenderEngine.kt branches into the renderer's scroll scenario
+  // handlers (handleLongCapture / handleGifCapture) when `RenderSpec.renderMode` is
+  // `"scroll-long"` / `"scroll-gif"`. Writes to the same on-disk paths Gradle's
+  // `composePreviewRenderAll` writes, so the host's `gradleService.readPreviewImage` reads the
+  // same file either way. See issue #1528.
+  implementation(project(":data-scroll-connector"))
   // UIAutomator-shaped Selector + UiObject — RobolectricHost.performUiAutomatorAction decodes
   // selector JSON via decodeSelectorJson and walks the SemanticsNode tree via
   // UiAutomator.findObject(rule, selector, useUnmergedTree).
