@@ -53,7 +53,7 @@ private object ComposePreviewStrategy : PreviewRenderStrategy {
             clazz.getDeclaredComposableMethod(preview.functionName)
         } else {
             findComposableMethodWithArgs(clazz, preview.functionName, previewArgs)
-        }
+        }.also { it.asMethod().isAccessible = true }
         // Top-level `@Preview` functions compile into static methods on the
         // file's synthetic `FooKt` class, so `receiver = null` works. Google's
         // `com.android.compose.screenshot` tool (and Paparazzi-style tests)

@@ -210,14 +210,6 @@ object PreviewDiscovery {
       ClassGraph()
         .enableMethodInfo()
         .enableAnnotationInfo()
-        // Surface JVM-private methods so the loop below can actively warn
-        // when a `private fun` is annotated with @Preview (the renderer's
-        // `getDeclaredComposableMethod` fails on private composables, so
-        // we drop them — see the `method.isPrivate` branch). Without this
-        // flag ClassGraph's default visibility filter would drop them
-        // silently and the user would never learn why their preview
-        // disappeared. `internal fun` compiles to JVM `public` (with the
-        // `name$module` mangle) and passes the default filter regardless.
         .ignoreMethodVisibility()
         .overrideClasspath(classpath.map { it.absolutePath })
         .ignoreParentClassLoaders()
@@ -253,36 +245,6 @@ object PreviewDiscovery {
               if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
-              }
-              // Kotlin `private fun` compiles to a JVM `private` method.
-              // `ComposableMethod` resolution at render time fails on those
-              // (NoSuchMethodException from `getDeclaredComposableMethod`, see
-              // RenderEngine), so the renderer cannot invoke private @Preview
-              // composables. Discover into a probe list first, and if anything
-              // came out, drop it with a clear warning instead of letting it
-              // surface and fail downstream. `internal fun` compiles to JVM
-              // `public` (with the `name$module` mangle) and is unaffected.
-              if (method.isPrivate) {
-                val probe = mutableListOf<PreviewInfo>()
-                discoverFromMethod(
-                  classInfo,
-                  method,
-                  annotations.toList(),
-                  scanResult,
-                  projectClassFqns,
-                  probe,
-                  input,
-                  warnings,
-                )
-                if (probe.isNotEmpty()) {
-                  warnings.add(
-                    "composePreview: skipping private @Preview " +
-                      "'${classInfo.name}.${method.name}' — private composables cannot be " +
-                      "reflectively invoked by the renderer; make it `internal` or `public` " +
-                      "to surface this preview."
-                  )
-                }
-                continue
               }
               discoverFromMethod(
                 classInfo,

@@ -34,7 +34,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 
 @Preview(name = "Red Box", showBackground = true, backgroundColor = 0xFFFF0000)
 @Composable
-fun RedBoxPreview() {
+private fun RedBoxPreview() {
     Box(
         modifier = Modifier.size(100.dp).background(Color.Red),
         contentAlignment = Alignment.Center,
@@ -45,7 +45,7 @@ fun RedBoxPreview() {
 
 @Preview(name = "Blue Box", showBackground = true, backgroundColor = 0xFF0000FF)
 @Composable
-fun BlueBoxPreview() {
+private fun BlueBoxPreview() {
     Box(
         modifier = Modifier.size(100.dp).background(Color.Blue),
         contentAlignment = Alignment.Center,
@@ -56,7 +56,7 @@ fun BlueBoxPreview() {
 
 @Preview(name = "Green Box", showBackground = true, backgroundColor = 0xFF00FF00)
 @Composable
-fun GreenBoxPreview() {
+private fun GreenBoxPreview() {
     Box(
         modifier = Modifier.size(100.dp).background(Color.Green),
         contentAlignment = Alignment.Center,
