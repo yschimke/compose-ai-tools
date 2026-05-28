@@ -117,6 +117,20 @@ The seams are deliberately split per concern; a new feature usually maps to exte
 - **Before adding commits to an existing PR branch, check whether the PR has already landed.** Fetch `origin` and inspect the PR state or compare `origin/main` first. If the PR is merged, start a fresh branch from `origin/main` for follow-up work instead of stacking new commits onto the merged branch.
 - **Run the formatter before committing.** CI's `format` job runs `./gradlew ktfmtCheckAll` and it's a hard gate — `ktfmtCheck` aborts on the first unformatted file. Before each commit that touches `*.kt`/`*.kts`, run `./gradlew ktfmtFormat` (or `./gradlew :<module>:ktfmtFormatMain :<module>:ktfmtFormatTest` for the touched modules) and stage the result. For VS Code extension TypeScript changes, run `npm --prefix vscode-extension run format`. Don't push without re-running these — the fix-up round-trip costs more than running the formatter locally.
 
+## PR workflow
+
+These rules also live in [CLAUDE.md](../CLAUDE.md#pr-workflow-must-follow); detail and rationale below.
+
+- **Open PRs automatically.** When a coding task is finished, committed, and pushed, open a PR against `main` without prompting. Conventional-commit title, short summary, test-plan checklist — same shape as the `gh pr create` heredoc template the harness ships with. Skip this only when the user explicitly said "no PR" or framed the task as pure exploration. Always check first whether the branch already has an open PR (`list_pull_requests` or `search_pull_requests` filtered by head); if so, push to it instead of opening a duplicate.
+- **Subscribe to every PR you open.** Call `subscribe_pr_activity` for the PR's number on the same turn you open it. Don't ask the user whether to track — tracking is the default. Mention it in the reply so the user knows the session is now listening (e.g. "Opened PR #N and subscribed to its activity").
+- **Respond to PR review comments and CI events automatically.** `<github-webhook-activity>` events on tracked PRs are not no-ops. For each event:
+  - If the requested change is clear, in-scope, and not architecturally significant — push the fix, update the status checklist on the PR, and don't narrate each round in chat.
+  - If the comment is ambiguous or touches something significant — use `AskUserQuestion` with enough context that the user can answer without scrolling back.
+  - For CI failures on a PR the user asked you to babysit — re-diagnose and re-kick (rebase, re-run, push fix) until green. After several rounds with no progress, reply with the diagnosis and where you're stuck instead of going silent.
+  - When everything is green, reply with the green status. That IS the deliverable.
+- **Stop on request.** "Stop watching", "unsubscribe", "leave it alone" — call `unsubscribe_pr_activity` for that PR and stop pushing.
+- **Don't auto-merge.** Opening, tracking, and fix-up commits are automatic; merging is the user's call. Don't enable auto-merge unless the user explicitly asks.
+
 ## VS Code panel UI changes
 
 Edits under `vscode-extension/src/webview/` or `vscode-extension/media/preview*.css` need a visual record. Capture a baseline + post-change PNG via the preview-harness and send both to the user before reporting the task done — the harness boots the real `<preview-app>` bundle headlessly against fixture JSON and is the panel's equivalent of a Compose `@Preview`. Loop and fixture authoring are documented in [`vscode-extension/preview-harness/README.md`](../vscode-extension/preview-harness/README.md#agent-workflow); seed fixtures are `grid-default` (multi-card grid) and `a11y-findings` (focus mode + Accessibility bundle). Use it for shape, layout, and theming — not as a substitute for `npm test` / `test:electron`, which still own behavioural correctness.
