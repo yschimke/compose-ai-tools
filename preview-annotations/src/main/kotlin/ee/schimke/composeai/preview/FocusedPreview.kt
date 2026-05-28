@@ -89,6 +89,26 @@ annotation class FocusedPreview(
    * annotation collapses to a single step (one `indices` entry, empty `traverse`). Off by default.
    */
   val gif: Boolean = false,
+  /**
+   * Opt-in for previews whose root layout carries the `focusProperties { onEnter = {
+   * initialFocus.requestFocus(); cancelFocusChange() } }.focusGroup()` order-control pattern
+   * documented at `developer.android.com/develop/xr/jetpack-xr-sdk/jetpack-compose-glimmer/focus`.
+   *
+   * The renderer's default focus walk assumes `FocusManager.moveFocus(Enter)` parks focus on an
+   * internal root *before* any focusable, so it advances `tabIndex + 1` Next steps to land on
+   * focusable `tabIndex`. A `focusGroup` whose `onEnter` calls `initialFocus.requestFocus()` breaks
+   * that assumption — `Enter` lands focus directly on the requested child, and the `+1 Next` then
+   * advances past it to the wrong item. Setting `enterPlacesFocus = true` flips the walk to
+   * `tabIndex` Next steps for the first capture, so `@FocusedPreview(indices = [0],
+   * enterPlacesFocus = true)` captures the `focusGroup`'s `onEnter`-placed focus where it lands,
+   * with no extra advance.
+   *
+   * Only meaningful for indexed-mode captures (`indices`); traversal-mode captures ([traverse])
+   * issue one `moveFocus(Enter)` followed by directional steps, none of which apply the `+1`
+   * compensation. Off by default — opt in per-preview when the root composable uses the
+   * `focusGroup` pattern.
+   */
+  val enterPlacesFocus: Boolean = false,
 )
 
 /**

@@ -670,6 +670,13 @@ data class FocusOverride(
   val direction: FocusDirection? = null,
   val step: Int? = null,
   val overlay: Boolean = false,
+  /**
+   * Opt-in for previews whose root carries `focusProperties { onEnter = { … } }.focusGroup()` from
+   * the Glimmer focus doc. Skips the connector's historical `+1 Next` compensation after
+   * `moveFocus(Enter)` — Enter already lands focus on the chosen child in that pattern, so the
+   * extra step advances past it. See `@FocusedPreview.enterPlacesFocus` for the full rationale.
+   */
+  val enterPlacesFocus: Boolean = false,
 )
 
 /**
