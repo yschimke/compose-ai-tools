@@ -2,6 +2,7 @@ package ee.schimke.composeai.plugin
 
 import com.google.common.truth.Truth.assertThat
 import java.io.File
+import org.gradle.testfixtures.ProjectBuilder
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -234,5 +235,33 @@ class CrossProjectMetadataTest {
     assertThat(stripped).contains(":a")
     assertThat(stripped).contains(":b")
     assertThat(stripped).contains(":c")
+  }
+
+  @Test
+  fun `registerIfAbsent populates trackedBuildScripts with settings and subproject build files`() {
+    // Structural assertion that the BuildService's `trackedBuildScripts` parameter — the file
+    // collection Gradle's CC fingerprints for content-level input tracking — actually contains
+    // settings.gradle.kts plus every discovered subproject's build.gradle.kts. Without this set
+    // populated, CC would not invalidate consumer projects when a sibling subproject's build
+    // file content changes (the change-tracking gap that motivated the BuildService refactor).
+    File(tmp.root, "settings.gradle.kts").writeText("""include(":app"); include(":shared")""")
+    File(tmp.root, "build.gradle.kts").writeText("")
+    File(tmp.root, "app").apply { mkdirs() }
+    File(tmp.root, "app/build.gradle.kts").writeText("")
+    File(tmp.root, "shared").apply { mkdirs() }
+    File(tmp.root, "shared/build.gradle.kts").writeText("")
+
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val provider = CrossProjectMetadataService.registerIfAbsent(project)
+    val params = provider.get().parameters
+
+    val tracked = params.trackedBuildScripts.files.map { it.relativeTo(tmp.root).path }.toSet()
+    assertThat(tracked)
+      .containsExactly(
+        "settings.gradle.kts",
+        "build.gradle.kts",
+        "app/build.gradle.kts",
+        "shared/build.gradle.kts",
+      )
   }
 }

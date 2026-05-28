@@ -2,6 +2,7 @@ package ee.schimke.composeai.plugin
 
 import java.io.File
 import org.gradle.api.Project
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.services.BuildService
 import org.gradle.api.services.BuildServiceParameters
 
@@ -23,6 +24,24 @@ import org.gradle.api.services.BuildServiceParameters
  * [previewToolingCoordNames] and for declared `project(":foo")` references. Both happen entirely
  * inside this service's lazy initializer — Gradle never sees a cross-project API call, so IP
  * validation passes.
+ *
+ * ## Change tracking
+ *
+ * The service's parameters declare **every file the parser will read** through a Gradle-managed
+ * [ConfigurableFileCollection], populated via a
+ * [org.gradle.api.provider.ProviderFactory.fileContents]- backed provider chain. That gives CC
+ * content-level invalidation on each tracked file:
+ * - editing `settings.gradle.kts` to add/remove an `include(":foo")` re-derives the list (and
+ *   adds/removes its build file from the tracked set);
+ * - editing any subproject's `build.gradle[.kts]` content flips the file's content fingerprint;
+ * - both shapes invalidate the CC entries of every project that queried the service during its own
+ *   configuration, forcing a reconfigure with fresh data.
+ *
+ * This matters under Isolated Projects, where CC entries are per-project. Without an explicit input
+ * declaration, `:app` could reuse a stale "no preview tooling reachable through `:shared`" result
+ * after `:shared/build.gradle.kts` had been edited to add a tooling coord — the read inside the
+ * lazy initializer would otherwise bypass CC fingerprinting entirely. Populating
+ * [Params.trackedBuildScripts] is what closes that gap.
  *
  * Trade-offs vs. the pre-IP implementation:
  * - **Custom `project.projectDir` overrides** (`project(":foo").projectDir = file("custom")`) are
@@ -47,9 +66,22 @@ internal abstract class CrossProjectMetadataService :
 
   interface Params : BuildServiceParameters {
     val rootDir: org.gradle.api.file.DirectoryProperty
+
+    /**
+     * Every `settings.gradle[.kts]` + subproject `build.gradle[.kts]` the parser will read,
+     * declared as a Gradle-managed file collection so configuration-cache fingerprints each file's
+     * content. The actual reads happen inside [data]'s lazy via plain [File.readText]; this
+     * collection exists purely to plug the parse into CC's input-tracking machinery.
+     */
+    val trackedBuildScripts: ConfigurableFileCollection
   }
 
   private val data: CrossProjectMetadata by lazy {
+    // Touch `trackedBuildScripts` to make the CC fingerprint pick up the file set + contents
+    // before the lazy parse executes. The actual file reads inside `CrossProjectMetadata.build`
+    // run against the same paths — equivalent values, but the CC-tracked access is what closes
+    // the IP-CC stale-data gap.
+    parameters.trackedBuildScripts.files
     CrossProjectMetadata.build(parameters.rootDir.asFile.get())
   }
 
@@ -62,17 +94,51 @@ internal abstract class CrossProjectMetadataService :
 
     fun registerIfAbsent(
       project: Project
-    ): org.gradle.api.provider.Provider<CrossProjectMetadataService> =
-      project.gradle.sharedServices.registerIfAbsent(
+    ): org.gradle.api.provider.Provider<CrossProjectMetadataService> {
+      val rootDir = project.rootDir
+      // Tracked settings file. Wrap the absolute `File` as a `RegularFile` via
+      // `fileProperty().fileValue(...)` (Layout.projectDirectory.file expects a *relative* path),
+      // then feed it through `providers.fileContents(...)` so CC fingerprints the contents.
+      val settingsFile =
+        listOf("settings.gradle.kts", "settings.gradle")
+          .map { File(rootDir, it) }
+          .firstOrNull { it.isFile }
+      val settingsContentsProvider =
+        if (settingsFile != null) {
+          val regular = project.objects.fileProperty().fileValue(settingsFile).get()
+          // `.asText` returns a Provider<String>; CC tracks the underlying file.
+          project.providers.fileContents(regular).asText.orElse("")
+        } else {
+          project.providers.provider { "" }
+        }
+
+      return project.gradle.sharedServices.registerIfAbsent(
         NAME,
         CrossProjectMetadataService::class.java,
       ) {
-        parameters.rootDir.set(project.rootDir)
+        parameters.rootDir.set(rootDir)
+        if (settingsFile != null) {
+          // Settings itself goes in the tracked set directly so CC fingerprints its content even
+          // if no subprojects are declared yet.
+          parameters.trackedBuildScripts.from(settingsFile)
+        }
+        // Subproject build-file list derived from the settings contents Provider. The chain
+        // `Provider<String> -> Provider<List<File>>` keeps CC's input tracking intact: when
+        // settings.gradle.kts changes (add / remove an include), the file list changes, the
+        // tracked-set fingerprint changes, and CC invalidates dependent project entries.
+        // Each file in the final collection is then fingerprinted by content on its own.
+        parameters.trackedBuildScripts.from(
+          settingsContentsProvider.map { contents ->
+            CrossProjectMetadata.parseSettings(rootDir, contents)
+              .values
+              .flatMap { dir -> listOf(File(dir, "build.gradle.kts"), File(dir, "build.gradle")) }
+              .filter { it.isFile }
+          }
+        )
       }
+    }
 
-    /**
-     * Returns the registered service, or `null` if it wasn't registered (manual test harnesses).
-     */
+    /** Returns the registered service, or `null` if it wasn't registered (test harnesses). */
     fun find(project: Project): CrossProjectMetadataService? =
       runCatching {
           val registration =
@@ -88,9 +154,9 @@ internal abstract class CrossProjectMetadataService :
  * need to spin up a Gradle build to exercise the regexes and the transitive closure.
  *
  * Snapshot semantics: the data is captured once at construction (via [build]) and never mutated.
- * The daemon's Tier-1 dirty signal already covers structural edits (any of the returned
- * [allBuildFiles] flipping causes a re-fingerprint), so a stale snapshot inside one daemon run is
- * acceptable.
+ * The BuildService's [CrossProjectMetadataService.Params.trackedBuildScripts] is what makes CC
+ * invalidate consumers when any tracked file's content changes; the next build re-instantiates the
+ * service, the lazy parse runs again, and a fresh snapshot is built.
  */
 internal class CrossProjectMetadata(
   private val projectDirsByPath: Map<String, File>,
@@ -154,11 +220,21 @@ internal class CrossProjectMetadata(
     }
 
     internal fun parseSettings(rootDir: File): Map<String, File> {
+      val settings = findSettingsFile(rootDir) ?: return mapOf(":" to rootDir)
+      val raw = runCatching { settings.readText() }.getOrNull() ?: return mapOf(":" to rootDir)
+      return parseSettings(rootDir, raw)
+    }
+
+    /**
+     * Parser variant that takes the settings-file contents as a pre-read string — used by
+     * [CrossProjectMetadataService.Companion.registerIfAbsent] so the read goes through
+     * `providers.fileContents` (CC-tracked) rather than a bare [File.readText] inside the lazy data
+     * initializer.
+     */
+    internal fun parseSettings(rootDir: File, settingsContents: String): Map<String, File> {
       val map = LinkedHashMap<String, File>()
       map[":"] = rootDir
-      val settings = findSettingsFile(rootDir) ?: return map
-      val raw = runCatching { settings.readText() }.getOrNull() ?: return map
-      val text = stripGradleComments(raw)
+      val text = stripGradleComments(settingsContents)
       // `include(":a", ":b")` / `include ":a", ":b"` / `include(":a")` — capture each quoted
       // path independently so trailing commas / line continuations don't matter.
       val callRe = Regex("""\binclude\b\s*\(?\s*((?:["'][^"']+["']\s*,?\s*)+)""")
