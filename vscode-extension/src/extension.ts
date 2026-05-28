@@ -7,6 +7,7 @@ import {
     GradleApi,
     ModuleInfo,
     TaskCancelledError,
+    TaskOptions,
 } from "./gradleService";
 import { JdkImageError } from "./jdkImageErrorDetector";
 import { ClassVersionError } from "./classVersionErrorDetector";
@@ -33,6 +34,7 @@ import {
     AccessibilityNode,
     HEAVY_COST_THRESHOLD,
     PreviewInfo,
+    PreviewManifest,
     WebviewToExtension,
 } from "./types";
 import { formatRenderErrorMessage } from "./renderError";
@@ -4179,6 +4181,56 @@ function refreshStrength(
     return 1;
 }
 
+/**
+ * Runs `composePreviewRender` but recovers when the task itself exits non-zero with a generic
+ * build failure (e.g. `composePreviewRenderAll: render produced no output file for N
+ * preview(s)`). The earlier discover step has already written `previews.json`, and the
+ * renderer typically writes a `.error.json` sidecar next to each preview that threw — so the
+ * panel can usefully paint: full PNG cards for the previews that rendered, structured error
+ * messages for the ones that threw. Without this recovery the catch handler at the end of
+ * `refresh` clears the whole panel on the first preview-throw and the user sees nothing despite
+ * 100+ valid PNGs sitting on disk.
+ *
+ * Structured errors that callers handle specially — `TaskCancelledError`, `JdkImageError`,
+ * `ClassVersionError`, `KotlinCompileError` — still propagate so the toplevel catch surfaces
+ * their dedicated remediations.
+ */
+async function renderWithDiskFallback(
+    mod: ModuleInfo,
+    tier: "fast" | "full",
+    taskOpts: TaskOptions,
+): Promise<{ manifest: PreviewManifest | null; partialFailure: Error | null }> {
+    if (!gradleService) {
+        throw new Error(
+            "renderWithDiskFallback called before gradleService initialised",
+        );
+    }
+    try {
+        const manifest = await gradleService.composePreviewRender(
+            mod,
+            tier,
+            taskOpts,
+            [],
+        );
+        return { manifest, partialFailure: null };
+    } catch (err) {
+        if (
+            err instanceof TaskCancelledError ||
+            err instanceof JdkImageError ||
+            err instanceof ClassVersionError ||
+            err instanceof KotlinCompileError
+        ) {
+            throw err;
+        }
+        const cached = gradleService.readManifest(mod);
+        if (!cached) {
+            throw err;
+        }
+        const wrapped = err instanceof Error ? err : new Error(String(err));
+        return { manifest: cached, partialFailure: wrapped };
+    }
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
@@ -4466,6 +4518,15 @@ async function refresh(
         // from preload → discover in their public phase state.
         opts.onPhase?.("discover");
 
+        // Collected by `renderWithDiskFallback` whenever composePreviewRender
+        // exits non-zero but a usable manifest sits on disk. Surfaced as a
+        // single non-blocking notice after the panel paints so the user sees
+        // their PNGs AND the underlying "the render task failed" diagnosis.
+        const partialRenderFailures: Array<{
+            module: ModuleInfo;
+            error: Error;
+        }> = [];
+
         for (const mod of modules) {
             if (abort.signal.aborted) {
                 return "cancelled";
@@ -4502,19 +4563,27 @@ async function refresh(
             // `handleSetDataExtensionEnabled` opts the module into a11y via the daemon's
             // subscription API; the daemon attaches the post-capture walk on the next render
             // and stamps the on-disk data products itself.
-            manifest =
-                manifest ??
-                (forceRender
-                    ? await gradleService.composePreviewRender(
-                          mod,
-                          tier,
-                          taskOpts,
-                          [],
-                      )
-                    : await gradleService.composePreviewDiscover(
-                          mod,
-                          taskOpts,
-                      ));
+            if (!manifest) {
+                if (forceRender) {
+                    const result = await renderWithDiskFallback(
+                        mod,
+                        tier,
+                        taskOpts,
+                    );
+                    manifest = result.manifest;
+                    if (result.partialFailure) {
+                        partialRenderFailures.push({
+                            module: mod,
+                            error: result.partialFailure,
+                        });
+                    }
+                } else {
+                    manifest = await gradleService.composePreviewDiscover(
+                        mod,
+                        taskOpts,
+                    );
+                }
+            }
 
             // Drift escalation. `forceRender=false` only runs `composePreviewDiscover`, so a
             // cached manifest whose filenames don't match what's on disk (sanitiser bump,
@@ -4537,12 +4606,18 @@ async function refresh(
                     `disk drift for ${mod.modulePath} — manifest references PNG(s) missing on disk; escalating to render`,
                 );
                 escalatedFromDrift = true;
-                manifest = await gradleService.composePreviewRender(
+                const result = await renderWithDiskFallback(
                     mod,
                     tier,
                     taskOpts,
-                    [],
                 );
+                manifest = result.manifest;
+                if (result.partialFailure) {
+                    partialRenderFailures.push({
+                        module: mod,
+                        error: result.partialFailure,
+                    });
+                }
             }
 
             // Track tier so the webview can mark heavy cards as stale after a
@@ -4791,6 +4866,19 @@ async function refresh(
                 }
             }
             await Promise.all(imageJobs);
+        }
+        // Surface render-task failures that the fallback recovered from. Cards
+        // for previews that DID render are already on screen; this line just
+        // tells the user "the build itself failed too — broken cards are where
+        // to look". Logging once per refresh (vs throwing) keeps the panel
+        // useful instead of going dark on the first preview-throw.
+        if (partialRenderFailures.length > 0) {
+            const first = partialRenderFailures[0];
+            const summary =
+                partialRenderFailures.length === 1
+                    ? `composePreviewRender failed for ${first.module.modulePath} — showing partial results from disk (${first.error.message.slice(0, 200)})`
+                    : `composePreviewRender failed for ${partialRenderFailures.length} module(s) — showing partial results from disk. First: ${first.module.modulePath}: ${first.error.message.slice(0, 200)}`;
+            logLine(summary);
         }
         // RefreshOrchestrator sub-phase: image bytes have streamed to the panel
         // (or were skipped because the source was newer than the on-disk PNGs).
