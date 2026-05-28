@@ -117,6 +117,11 @@ private class SyntheticGlanceAppWidget(
                     classLoader ?: Thread.currentThread().contextClassLoader,
                 )
             val method = cls.getDeclaredComposableMethod(functionName)
+            // Private `@Preview` Glance composables resolve fine but would throw
+            // IllegalAccessException on invoke — open them up, same as the
+            // COMPOSE strategy and the tile/notification paths. Guarded so a
+            // SecurityManager / strong encapsulation can't break public ones.
+            runCatching { method.asMethod().isAccessible = true }
             val receiver = resolvePreviewReceiver(cls)
             method.invoke(currentComposer, receiver)
         }
