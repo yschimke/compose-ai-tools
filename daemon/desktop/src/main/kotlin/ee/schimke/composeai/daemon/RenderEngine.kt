@@ -375,9 +375,15 @@ class RenderEngine(
           val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
           val nodes =
             if (root != null) DesktopAccessibilityNodeExtractor.extractNodes(root) else emptyList()
+          // Key the sidecar dir by the wire `previewId` the data-product registry reads back on
+          // `data/fetch` (`fileFor(previewId, …)`). It resolves to the same dir as
+          // `outputBaseName` for router-driven renders (`outputBaseName = outputBaseName ?: id`),
+          // but using `previewId` directly keeps write-key and read-key aligned regardless of how
+          // the spec was resolved. Falls back to `outputBaseName` for direct className payloads
+          // that carry no `previewId` token.
           DesktopAccessibilityDataProducer.writeArtifacts(
             rootDir = dataDir,
-            previewId = state.spec.outputBaseName,
+            previewId = state.spec.previewId ?: state.spec.outputBaseName,
             nodes = nodes,
             pngFile = state.outputFile,
           )

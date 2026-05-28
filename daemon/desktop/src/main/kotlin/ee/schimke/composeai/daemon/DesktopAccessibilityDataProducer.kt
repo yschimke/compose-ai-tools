@@ -67,12 +67,23 @@ object DesktopAccessibilityDataProducer {
       .resolve(FILE_HIERARCHY)
       .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
 
-    if (pngFile != null) {
-      DesktopAccessibilityOverlay.generate(
-        sourcePng = pngFile,
-        nodes = nodes,
-        destPng = previewDir.resolve(FILE_OVERLAY),
-      )
+    val overlayDest = previewDir.resolve(FILE_OVERLAY)
+    val written =
+      if (pngFile != null) {
+        DesktopAccessibilityOverlay.generate(
+          sourcePng = pngFile,
+          nodes = nodes,
+          destPng = overlayDest,
+        )
+      } else {
+        null
+      }
+    if (written == null) {
+      // No overlay produced this render (empty nodes, or a missing/undecodable source PNG). Drop
+      // any overlay a previous render left behind so the registry extras + CLI `annotatedPath`
+      // (both keyed on the file's existence) can't attach a stale screenshot that no longer matches
+      // the current hierarchy.
+      overlayDest.delete()
     }
   }
 }
