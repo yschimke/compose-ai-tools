@@ -2,9 +2,18 @@
 // round-trip via the production `BundleController`. The existing
 // `cardBundleOverlay.test.ts` covers the helper functions
 // (`paintBundleBoxesEverywhere`, `clearBundleBoxes`) in isolation;
-// this suite wires them through the controller the way `main.ts`
-// does so a regression in the `onChange` → paint/clear plumbing
-// surfaces here instead of waiting for an electron run.
+// this suite wires them through the controller so a regression in the
+// `onChange` → paint/clear plumbing surfaces here instead of waiting
+// for an electron run.
+//
+// Note: production `main.ts` scopes bundle overlays to the focused
+// preview only (`paintBundleBoxesForFocus`) — it does NOT paint every
+// grid card, since the chip bar / data tabs are hidden outside focus
+// layout (#1567, settled "Open question 1" in
+// `docs/design/EXTENSION_DATA_EXPOSURE.md`). This suite drives the
+// `paintBundleBoxesEverywhere` primitive directly via a test-local
+// `wireBundleToOverlay` helper to pin the multi-card paint/clear
+// mechanics of the primitive itself.
 
 import * as assert from "assert";
 import { BundleController } from "../webview/preview/bundleController";
@@ -43,12 +52,15 @@ function box(id: string): OverlayBox {
 }
 
 /**
- * Mirror of the chip → paint plumbing in `main.ts`'s
- * `reflectBundleState`: when [bundleId] is in `activeBundles` we
- * paint every card with its own data; when it leaves, we clear the
- * bundle's `<box-overlay>` layer from every card. The closure is
- * the smallest piece of `reflectBundleState` we can exercise
- * without spinning up the full panel.
+ * Test-local chip → paint plumbing that drives the
+ * `paintBundleBoxesEverywhere` primitive: when [bundleId] is in
+ * `activeBundles` we paint every card with its own data; when it
+ * leaves, we clear the bundle's `<box-overlay>` layer from every card.
+ *
+ * This is intentionally NOT how `main.ts` wires overlays — production
+ * scopes to the focused preview via `paintBundleBoxesForFocus` (#1567).
+ * It exists only to exercise the every-card primitive end-to-end with
+ * the real `BundleController` state machine.
  */
 function wireBundleToOverlay(
     controller: BundleController,

@@ -70,6 +70,15 @@ export interface FocusControllerConfig {
      *  without it, activating a11y in focus mode and then exiting
      *  leaves the legend rendering next to the preview grid. */
     refreshBundleLegend(): void;
+    /** Re-run the chip → card-overlay paint/clear decision. Bundles
+     *  scope to the focused preview, so card overlay layers painted in
+     *  focus mode must be torn down when the user drops back to a
+     *  grid/flow/column layout. Wired from main to `reflectBundleState`
+     *  so layout transitions re-evaluate every active bundle's overlay
+     *  the same way a chip toggle does — without it, an a11y (or other
+     *  bundle) overlay painted while focused leaks onto the grid card
+     *  (#1567). */
+    refreshBundleState(): void;
     focusToolbar: FocusToolbarController;
     /** Repaint the focus inspector for the given card, or clear it
      *  when `null` (no card focused / exiting focus layout). */
@@ -350,6 +359,11 @@ export class FocusController {
         this.applyFocusedToggleButtonStates();
         this.applyEarlyFeatureVisibility();
         this.config.refreshBundleLegend();
+        // Re-evaluate every active bundle's card overlay for the new
+        // layout. Entering focus repaints the focused card; dropping to
+        // a grid/flow/column layout clears any layer painted while
+        // focused, so the overlay never leaks onto a grid card (#1567).
+        this.config.refreshBundleState();
     }
 
     /**
