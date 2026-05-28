@@ -1,0 +1,1 @@
+{"schema":"compose-preview-notification/v1","previewId":"com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview","channelId":"sample","category":null,"group":null,"ongoing":false,"autoCancel":false,"smallIcon":{"resourceId":17301659,"resourceName":"android:drawable/ic_dialog_info"},"extras":{"title":"New message","text":"Hello from compose-preview"}}
