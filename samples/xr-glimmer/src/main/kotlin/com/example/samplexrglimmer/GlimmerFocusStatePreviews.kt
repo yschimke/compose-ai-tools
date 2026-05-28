@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ComposeUiFlags
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.xr.glimmer.ListItem
@@ -75,14 +77,25 @@ import ee.schimke.composeai.preview.FocusedPreview
  * `@FocusedPreview(indices = [0], enterPlacesFocus = true)` annotation will produce the doc's
  * intended capture — no further renderer work required.
  *
- * **`ComposeUiFlags.isInitialFocusOnFocusableAvailable` is not set in this repository** (verified
- * via `grep -rn ComposeUiFlags`, zero hits). The Glimmer doc flags it as a *temporary requirement*
- * for real Glasses activities — set in `Activity.onCreate` before `super.onCreate(savedInstanceState)`
- * so the system auto-focuses the first focusable on screen load. Renderer-side these previews
- * drive focus explicitly via `@FocusedPreview`, so the flag's absence doesn't change captures;
- * an on-device sample app embedding these composables would still want to set it. Wiring it
- * renderer-wide (in `RobolectricRenderTest`) would affect every preview in the repo — notification,
- * glance, splash, Wear — none of which expect auto-focus on the first focusable; out of scope.
+ * **`ComposeUiFlags.isInitialFocusOnFocusableAvailable` is set per-preview, Glimmer-sample-only.**
+ * The Glimmer doc calls this a *temporary requirement* for real Glasses activities — set in
+ * `Activity.onCreate` before `super.onCreate(savedInstanceState)` so the system auto-focuses the
+ * first focusable on screen load. The flag is a process-wide `var` on `androidx.compose.ui.ComposeUiFlags`,
+ * so naively flipping it once in a class-load static initializer would leak across previews
+ * within this module (Robolectric shares one JVM per `:test` task), and a renderer-wide setting
+ * in `RobolectricRenderTest` would leak across other modules' previews (notification, glance,
+ * splash, Wear) — none of which expect auto-focus on the first focusable.
+ *
+ * Resolution: each Glimmer preview here assigns the flag explicitly at the top of its composable
+ * body, before any focusable composes. Reads happen during `focusable()` modifier creation
+ * downstream, so the value the composable wrote takes effect for this render. Different previews
+ * can therefore exercise different flag states deterministically without coupling to JVM-load
+ * order or test ordering — [GlimmerListItemDefault] runs with the flag *off* to capture the
+ * "nothing has focus" baseline, [GlimmerListItemFocused] runs with the flag *on* mirroring the
+ * on-device experience. The `@FocusedPreview(indices = [0])` walk on [GlimmerListItemFocused]
+ * then still works whether the flag was on or off — explicit focus drive overrides auto-focus —
+ * but with the flag on it documents that on-device Glimmer apps see the same focused-on-load
+ * behavior the renderer captures.
  *
  * **Indirect-pointer interaction** — out of scope for a static `@Preview`. Glimmer's
  * `Modifier.onIndirectPointerGesture(enabled, onSwipeForward, onSwipeBackward, onClick)`
@@ -100,8 +113,14 @@ import ee.schimke.composeai.preview.FocusedPreview
   showBackground = true,
   backgroundColor = ADDITIVE_ZERO_BACKGROUND,
 )
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GlimmerListItemDefault() {
+  // Explicit opt-out: ensure no auto-focus on first focusable so the capture shows the
+  // un-styled `ListItem` baseline. Set before any focusable composes — Compose's `focusable`
+  // reads the flag at modifier-creation time, so the assignment here takes effect for the
+  // children below.
+  ComposeUiFlags.isInitialFocusOnFocusableAvailable = false
   GlimmerSurface {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Default") }
@@ -116,8 +135,15 @@ fun GlimmerListItemDefault() {
   backgroundColor = ADDITIVE_ZERO_BACKGROUND,
 )
 @FocusedPreview(indices = [0])
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GlimmerListItemFocused() {
+  // Mirror the on-device requirement the Glimmer doc calls out: with this flag set, the system
+  // auto-focuses the first focusable on screen load. `@FocusedPreview(indices = [0])` would
+  // already drive real focus onto the `ListItem` even with the flag off, so the visual capture
+  // is unchanged — but having the flag on here documents that real Glasses apps embedding this
+  // composable would see the same focused-on-load state the renderer captures.
+  ComposeUiFlags.isInitialFocusOnFocusableAvailable = true
   GlimmerSurface {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Focused") }
