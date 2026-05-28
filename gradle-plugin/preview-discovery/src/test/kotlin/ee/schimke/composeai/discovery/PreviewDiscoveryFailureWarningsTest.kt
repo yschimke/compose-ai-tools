@@ -12,14 +12,15 @@ import org.objectweb.asm.Opcodes
 /**
  * Regression coverage for [PreviewDiscovery.Outcome.Failure] carrying per-method `warnings`
  * symmetrically with [PreviewDiscovery.Outcome.Success]. The historical bug: when
- * `failOnEmpty=true` and every candidate method got filtered out (private `@Preview`, unsupported
- * parameter shapes), discovery returned `Failure` with `diagnostics` only — the skip reasons
- * collected during the scan were silently dropped, leaving the consumer with no actionable signal
- * for "why didn't my preview show up". See issue #1364.
+ * `failOnEmpty=true` and every candidate method got filtered out (unsupported parameter shapes,
+ * etc.), discovery returned `Failure` with `diagnostics` only — the skip reasons collected during
+ * the scan were silently dropped, leaving the consumer with no actionable signal for "why didn't my
+ * preview show up". See issue #1364.
  *
  * Hand-rolls a `.class` file via ASM so the test exercises the real ClassGraph scan against a
- * private-method-with-`@Preview`-annotation candidate, without round-tripping through Kotlin
- * compilation.
+ * skipped `@Preview` candidate, without round-tripping through Kotlin compilation. We use an
+ * unsupported-parameter method (one non-`@PreviewParameter` arg) as the skip trigger — `private`
+ * previews are no longer dropped, they're surfaced and invoked with `setAccessible(true)`.
  */
 class PreviewDiscoveryFailureWarningsTest {
 
@@ -28,7 +29,11 @@ class PreviewDiscoveryFailureWarningsTest {
   @Test
   fun `failure path carries per-method skip-reason warnings`() {
     val classDir = tempDir.newFolder("classes")
-    writePrivatePreviewClass(classDir, internalName = "test/PrivatePreviewKt", methodName = "Hidden")
+    writeUnsupportedParamPreviewClass(
+      classDir,
+      internalName = "test/UnsupportedParamPreviewKt",
+      methodName = "Hidden",
+    )
 
     val outcome =
       PreviewDiscovery.discover(
@@ -48,8 +53,8 @@ class PreviewDiscoveryFailureWarningsTest {
     assertThat(failure.warnings).isNotEmpty()
     // The actionable signal: name the method and explain WHY it was skipped.
     val joined = failure.warnings.joinToString("\n")
-    assertThat(joined).contains("test.PrivatePreviewKt.Hidden")
-    assertThat(joined).contains("private")
+    assertThat(joined).contains("test.UnsupportedParamPreviewKt.Hidden")
+    assertThat(joined).contains("@PreviewParameter")
   }
 
   @Test
@@ -61,13 +66,18 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   /**
-   * Writes a minimal `.class` file containing one private static method annotated with
-   * `androidx.compose.ui.tooling.preview.Preview`. Mirrors the JVM shape Kotlin's compiler
-   * produces for a top-level `private fun @Preview Hidden()` — file-class with a private static
-   * method, single annotation entry. The method body is a no-op (`RETURN`); discovery only
-   * inspects the annotation + visibility, never invokes the method.
+   * Writes a minimal `.class` file containing one public static method annotated with
+   * `androidx.compose.ui.tooling.preview.Preview` that takes a single `int` parameter with no
+   * `@PreviewParameter` wiring. Mirrors the JVM shape Kotlin's compiler produces for a top-level
+   * `@Preview fun Hidden(x: Int)` — discovery flags it as an unsupported-parameter preview and
+   * skips it with a warning. The method body is a no-op (`RETURN`); discovery only inspects the
+   * annotation + signature, never invokes the method.
    */
-  private fun writePrivatePreviewClass(outDir: File, internalName: String, methodName: String) {
+  private fun writeUnsupportedParamPreviewClass(
+    outDir: File,
+    internalName: String,
+    methodName: String,
+  ) {
     val cw = ClassWriter(0)
     cw.visit(
       Opcodes.V17,
@@ -79,9 +89,9 @@ class PreviewDiscoveryFailureWarningsTest {
     )
     val mv =
       cw.visitMethod(
-        Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
         methodName,
-        "()V",
+        "(I)V",
         null,
         null,
       )

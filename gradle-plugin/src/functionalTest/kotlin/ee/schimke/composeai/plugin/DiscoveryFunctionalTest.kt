@@ -804,7 +804,7 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `composePreviewDiscover skips private preview methods`() {
+  fun `composePreviewDiscover discovers private preview methods`() {
     val projectDir = createCmpTestProject()
 
     File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -843,12 +843,16 @@ class DiscoveryFunctionalTest {
         .withPluginClasspath()
         .build()
 
-    assertThat(result.output).contains("skipping private @Preview")
+    // Private previews are surfaced by ClassGraph's `ignoreMethodVisibility()`
+    // and invoked through reflection with `setAccessible(true)` at render time,
+    // so they no longer get dropped with a "skipping private @Preview" warning.
+    assertThat(result.output).doesNotContain("skipping private @Preview")
     val manifest =
       json.decodeFromString<PreviewManifest>(
         File(projectDir, "build/compose-previews/previews.json").readText()
       )
-    assertThat(manifest.previews.map { it.functionName }).containsExactly("PublicPreview")
+    assertThat(manifest.previews.map { it.functionName })
+      .containsExactly("PrivatePreview", "PublicPreview")
   }
 
   @Test
@@ -1221,13 +1225,14 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
-  fun `composePreviewDiscover finds internal previews and skips private previews`() {
+  fun `composePreviewDiscover finds public, internal, and private previews`() {
     // Teams that don't want @Preview functions to leak into their public
     // API mark them `private` (or `internal`). Kotlin compiles `private
-    // fun` to JVM `private` and ClassGraph's default visibility filter
-    // drops them; `internal fun` compiles to JVM `public` (with the
-    // `name$module` mangle) so it has always been visible. Asserting both
-    // shapes so the visibility regression doesn't return on either axis.
+    // fun` to JVM `private` and `internal fun` to JVM `public` (with the
+    // `name$module` mangle); ClassGraph's `ignoreMethodVisibility()` surfaces
+    // both, and the renderer's `setAccessible(true)` lets the private one be
+    // invoked. Asserting all three shapes so the visibility regression doesn't
+    // return on any axis.
     val projectDir = createCmpTestProject()
 
     val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
@@ -1273,7 +1278,7 @@ class DiscoveryFunctionalTest {
         .build()
 
     assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
-    assertThat(result.output).contains("skipping private @Preview")
+    assertThat(result.output).doesNotContain("skipping private @Preview")
 
     val manifest =
       json.decodeFromString<PreviewManifest>(
@@ -1284,7 +1289,8 @@ class DiscoveryFunctionalTest {
     val names = manifest.previews.map { it.functionName }
     assertThat(names).contains("PublicPreview")
     assertThat(names.any { it.startsWith("InternalPreview") }).isTrue()
-    assertThat(manifest.previews).hasSize(2)
+    assertThat(names).contains("PrivatePreview")
+    assertThat(manifest.previews).hasSize(3)
   }
 
   @Test
