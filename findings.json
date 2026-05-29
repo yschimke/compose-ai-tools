@@ -1,4 +1,5 @@
 {
+  "declaredFanoutBases": [],
   "declaredPreviewIds": [
     "bigTextNotificationPreview",
     "simpleNotificationPreview"
@@ -15,14 +16,14 @@
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview.png",
       "previewId": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview",
-      "sha256": "2471d79d70fcc6f61529fcaff70d68371e77064a3b9d9bcbef794ff70185fdb4",
+      "sha256": "ee6914ce1ea305e1677c3b09495fd1761853eb7d0d1d49e146e4348305f1823a",
       "sidecarBasename": "com.example.sampleandroid.NotificationPreviewsKt.bigTextNotificationPreview.notification.json"
     },
     {
       "module": "android",
       "pngBasename": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview.png",
       "previewId": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview",
-      "sha256": "0b3c1afdebba063873394c8044b97a83f7cbf90a39a7a574eb69c70e6b5c3149",
+      "sha256": "970446db1c8f9967e816d69e6abd731706072db3c246486f0b5e00abd36b0cfd",
       "sidecarBasename": "com.example.sampleandroid.NotificationPreviewsKt.simpleNotificationPreview.notification.json"
     },
     {
