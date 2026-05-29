@@ -677,6 +677,14 @@ data class FocusOverride(
    * extra step advances past it. See `@FocusedPreview.enterPlacesFocus` for the full rationale.
    */
   val enterPlacesFocus: Boolean = false,
+  /**
+   * When `true`, the connector dispatches an indirect-pointer Press event onto the focused
+   * composable after the focus walk lands. Drives `AndroidComposeView.sendIndirectPointerEvent`
+   * directly — the same dispatch path XR Glasses touchpads route through — so the captured pixels
+   * show the *pressed* visual state on the focused element. See `@FocusedPreview.pressed` for the
+   * full rationale and platform context.
+   */
+  val pressed: Boolean = false,
 )
 
 /**

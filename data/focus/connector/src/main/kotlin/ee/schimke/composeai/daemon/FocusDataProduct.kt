@@ -1,5 +1,9 @@
 package ee.schimke.composeai.daemon
 
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -8,10 +12,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalIndirectPointerApi
 import androidx.compose.ui.focus.FocusDirection as ComposeFocusDirection
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.input.indirect.IndirectPointerEvent
+import androidx.compose.ui.input.indirect.IndirectPointerEventPrimaryDirectionalMotionAxis
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.platform.LocalView
 import ee.schimke.composeai.daemon.protocol.FocusOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.data.focus.Material3FocusProduct
@@ -62,6 +70,7 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
     }
     CompositionLocalProvider(LocalInputModeManager provides KeyboardInputModeManager) {
       val focusManager = LocalFocusManager.current
+      val view = LocalView.current
       val active by FocusController.activeFocus
       val lastIndex = remember { mutableIntStateOf(-1) }
       val entered = remember { mutableStateOf(false) }
@@ -98,6 +107,15 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
           }
           lastIndex.value = tabIndex
         }
+        // `@FocusedPreview(pressed = true)` — after the focus walk lands, dispatch an
+        // indirect-pointer Press onto the focused composable so its `PressInteraction.Press` fires
+        // before the renderer captures pixels. Glimmer's `Modifier.onIndirectPointerGesture`
+        // observes this event on the focused-target path and emits the pressed-state interaction;
+        // Material's `Modifier.clickable` does the same through its indirect-pointer fallback. See
+        // [dispatchIndirectPress] for the platform rationale.
+        if (cap.pressed) {
+          view.dispatchIndirectPress()
+        }
       }
       content()
     }
@@ -124,4 +142,60 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
   // Renderer-side helper kept here so it can evolve alongside the connector's walk semantics
   // without the renderer reaching into controller internals.
   FocusController.set(override)
+}
+
+/**
+ * Dispatches a single indirect-pointer Press event onto the focused composable through Compose UI's
+ * `AndroidComposeView.sendIndirectPointerEvent` — the same dispatch path real XR Glasses touchpads
+ * route through. The composable's `IndirectPointerInputModifierNode`s (Glimmer's
+ * `onIndirectPointerGesture`, Material `clickable`'s indirect-pointer fallback) observe the event
+ * on the focused-target path and emit `PressInteraction.Press` to their `InteractionSource` — the
+ * focused element's pressed visual then renders before the renderer's per-capture clock advance
+ * elapses.
+ *
+ * Press is dispatched without a matching Release. That holds the composable in its pressed state
+ * for the capture window — the same shape a real "finger held on the touchpad" produces — and
+ * deliberately doesn't fire the `onClick` lambda (a tap = Press+Release). The JVM is recycled
+ * after capture so no manual cleanup is needed.
+ *
+ * Reflection rather than a direct call: `AndroidComposeView` is `internal` at the Kotlin source
+ * level (compiles to `public final class` at the JVM level — `internal` is module-scoped in the
+ * Kotlin compiler only), so a direct `as AndroidComposeView` cast would fail to compile from
+ * outside `androidx.compose.ui`. The bytecode-public `sendIndirectPointerEvent` is callable via
+ * reflection without taking a compile-time dep on the internal class — same pattern the renderer's
+ * focus-overlay reflection uses to read `AndroidComposeView` internals for the post-capture
+ * stroke. We identify the view by class name rather than `isAssignableFrom` checks so the resolver
+ * stays focused on the concrete platform class — wrappers and test stand-ins skip the dispatch
+ * cleanly.
+ *
+ * The motion event sets `source = SOURCE_TOUCHPAD` to match what real Glasses input carries;
+ * coordinates are `(0, 0)` because indirect-pointer events have no screen position (the consumer
+ * routes by focused target, not by hit-test). Axis is `X` — matches Glimmer's primary swipe axis
+ * — but no axis is read for a Press with no motion, so the value is documentation more than
+ * mechanism. We don't recycle the `MotionEvent` because Compose retains it as
+ * `IndirectPointerEvent.nativeEvent` for the event lifetime, and recycling would null out fields
+ * the consumer may still read.
+ */
+@OptIn(ExperimentalIndirectPointerApi::class)
+private fun View.dispatchIndirectPress() {
+  if (javaClass.name != "androidx.compose.ui.platform.AndroidComposeView") return
+  val now = SystemClock.uptimeMillis()
+  val motionEvent =
+    MotionEvent.obtain(
+      /* downTime = */ now,
+      /* eventTime = */ now,
+      /* action = */ MotionEvent.ACTION_DOWN,
+      /* x = */ 0f,
+      /* y = */ 0f,
+      /* metaState = */ 0,
+    )
+  motionEvent.source = InputDevice.SOURCE_TOUCHPAD
+  val event =
+    IndirectPointerEvent(
+      motionEvent = motionEvent,
+      primaryDirectionalMotionAxis = IndirectPointerEventPrimaryDirectionalMotionAxis.X,
+      previousMotionEvent = null,
+    )
+  val send = javaClass.getMethod("sendIndirectPointerEvent", IndirectPointerEvent::class.java)
+  send.invoke(this, event)
 }

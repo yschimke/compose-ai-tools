@@ -71,6 +71,7 @@ data class FocusCapture(
     val step: Int? = null,
     val overlay: Boolean = false,
     val enterPlacesFocus: Boolean = false,
+    val pressed: Boolean = false,
 )
 
 /** Renderer-side mirror of the plugin's `FocusGifCapture`. */
