@@ -2160,11 +2160,15 @@ internal object AndroidPreviewSupport {
    *
    * Shares implementation with the desktop registration; both call sites consume the same shape.
    *
-   * **Sibling subprojects** flow through [SubprojectBuildFilesValueSource] — a Gradle
-   * [ValueSource][org.gradle.api.provider.ValueSource] that parses `settings.gradle[.kts]` off disk
-   * and emits every declared subproject's `build.gradle[.kts]`. IP-safe (no
-   * `rootProject.allprojects`) and CC-tracked (ValueSource re-runs and invalidates dependent
-   * entries iff the returned list of files changes).
+   * **Sibling subprojects deliberately not walked.** Issue #1549 originally asked for sibling
+   * `build.gradle[.kts]` files to flip Tier-1 dirty, restoring the pre-#1546 behaviour. The
+   * intermediate fix (settings-parsing ValueSource) was dropped on review: Tier-1 is the
+   * "fundamentally changed" signal that forces a full daemon reload, and Tier-2 (variant runtime
+   * classpath fingerprint) already invalidates on any sibling build-file edit that changes the
+   * resolved graph. The only edits the sibling walk would have caught and Tier-2 wouldn't are
+   * pure-formatting / comment-only changes on a sibling — and those shouldn't trigger a full
+   * reload. Re-adding the walk under IP needs a settings plugin to expose the project tree
+   * authoritatively; until then, the Tier-2 path covers the meaningful cases.
    */
   internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
@@ -2172,9 +2176,10 @@ internal object AndroidPreviewSupport {
 
 /**
  * IP-safe cheap-signal file collector shared by the Android (`AndroidPreviewSupport`) and Desktop
- * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot), the current
- * project's own `projectDir`, and [SubprojectBuildFilesValueSource] for the sibling-subprojects
- * walk — no `rootProject.file(...)` / `rootProject.allprojects` access.
+ * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot) and the current
+ * project's own `projectDir` only — no `rootProject.file(...)` / `rootProject.allprojects` access.
+ * Sibling subprojects are intentionally excluded; see the kdoc on
+ * [AndroidPreviewSupport.collectCheapSignalFiles] for the rationale.
  */
 internal object CheapSignalFiles {
   internal fun collect(project: org.gradle.api.Project): List<java.io.File> {
@@ -2191,17 +2196,6 @@ internal object CheapSignalFiles {
     val moduleDir = project.projectDir
     out += java.io.File(moduleDir, "build.gradle.kts")
     out += java.io.File(moduleDir, "build.gradle")
-    // Sibling subprojects via the IP-safe ValueSource (issue #1549). Settings + each subproject's
-    // `build.gradle[.kts]` are enumerated by parsing the settings file off disk inside the value
-    // source — adding / removing a subproject still flips `settings.gradle.kts` (already in the
-    // set above), and now editing a sibling subproject's build file is covered too (the daemon's
-    // runtime fingerprinting reads the path's contents). CC invalidates downstream entries iff
-    // the returned file list differs.
-    out.addAll(
-      project.providers
-        .of(SubprojectBuildFilesValueSource::class.java) { parameters.rootDir.set(rootDir) }
-        .get()
-    )
     // Only emit paths that actually exist — missing files contribute their absolute path string
     // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
     // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The
