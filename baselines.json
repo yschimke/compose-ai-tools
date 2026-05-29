@@ -1172,28 +1172,28 @@
     "captureLabel": "",
     "functionName": "GlimmerXrMenuBusy",
     "renderBasename": "GlimmerXrMenuBusy_Busy.gif",
-    "sha256": "9cce5ac0e96c74a7e6f7488f5e55746e02fac62b9ecaa9d51d2da962b1370171",
+    "sha256": "61e67738a7dcfac3f30915a8bba1dddc32d01bb3c27171baa85cdf6b90ee87db",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuDark_Dark": {
     "captureLabel": "",
     "functionName": "GlimmerXrMenuDark",
     "renderBasename": "GlimmerXrMenuDark_Dark.gif",
-    "sha256": "4f500d756ab658f43e1c382180f390f8f6f8dc1b60c58005aa0585ead277d2e6",
+    "sha256": "6752c9f6191639c0ea4a2be55c949bb1a11ac32f0626f14e0982463ddf543688",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuLight_Light": {
     "captureLabel": "",
     "functionName": "GlimmerXrMenuLight",
     "renderBasename": "GlimmerXrMenuLight_Light.gif",
-    "sha256": "5e92f5f9698f43fc93215aae8c22a3537e20fff8edc3899403fdac49286a1723",
+    "sha256": "8022dfac0d35e5a60676ad44a2cf8b7226d4ee9659c78bee490a2acac00426b6",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuVeniceCanalCats_VeniceCanalCats": {
     "captureLabel": "",
     "functionName": "GlimmerXrMenuVeniceCanalCats",
     "renderBasename": "GlimmerXrMenuVeniceCanalCats_VeniceCanalCats.gif",
-    "sha256": "39915509ec78c9c6a01bb8abd8d9a96ca4c9a1a363f820d35be7fe8a8c31bbec",
+    "sha256": "fce661e62ef42cfa19a856b9cac9d4da0d25b6a908e5bfde0ac5e1fe231d9add",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerInteractiveMenuPreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input": {
