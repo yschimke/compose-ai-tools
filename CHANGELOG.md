@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.16](https://github.com/yschimke/compose-ai-tools/compare/v0.11.15...v0.11.16) (2026-05-29)
+
+
+### Features
+
+* **a11y:** render overlays + legends across all sample modules, incl. CMP/desktop ([#1575](https://github.com/yschimke/compose-ai-tools/issues/1575)) ([e423f42](https://github.com/yschimke/compose-ai-tools/commit/e423f4260ed3fca4dc0c5758311f3de63c1333b8))
+* **daemon:** complete stage-2 in-process compile (BTA) behind experimental flag ([#1587](https://github.com/yschimke/compose-ai-tools/issues/1587)) ([6542768](https://github.com/yschimke/compose-ai-tools/commit/654276825fd7313665d43b078861b4816050f9a3))
+* **daemon:** produce @ScrollingPreview artefacts via data/fetch ([#1579](https://github.com/yschimke/compose-ai-tools/issues/1579)) ([6ca2330](https://github.com/yschimke/compose-ai-tools/commit/6ca2330590f7ef0b181f5f70544600209627ea83))
+* IP-safe cross-project metadata service for preview tooling detection ([#1580](https://github.com/yschimke/compose-ai-tools/issues/1580)) ([8064930](https://github.com/yschimke/compose-ai-tools/commit/8064930d58b958145b16cca2c6758c01d1870185))
+* **permissions:** cross-classloader data/fetch readback for compose/permissions queries ([#1582](https://github.com/yschimke/compose-ai-tools/issues/1582)) ([2520b30](https://github.com/yschimke/compose-ai-tools/commit/2520b306af1d62344edb8e1e3647faf6846a8953))
+* **preview:** @FocusedPreview(pressed = true) dispatches indirect-pointer Press ([#1585](https://github.com/yschimke/compose-ai-tools/issues/1585)) ([8e3a23c](https://github.com/yschimke/compose-ai-tools/commit/8e3a23c50252f0596d1b278d54d2b39a56724f12))
+* **xr-glimmer:** real-interaction Default + Focused state captures, enterPlacesFocus opt-in ([#1583](https://github.com/yschimke/compose-ai-tools/issues/1583)) ([5429c12](https://github.com/yschimke/compose-ai-tools/commit/5429c1283b709c3aa6cddd6b56e17454457e5533))
+
+
+### Bug Fixes
+
+* **a11y:** surface only changed previews in PR comment ([#1590](https://github.com/yschimke/compose-ai-tools/issues/1590)) ([560e748](https://github.com/yschimke/compose-ai-tools/commit/560e74890f2be2a7776c9220d97066cd8fed1534))
+* **focus-connector:** release indirect-pointer Press across multi-index captures ([#1589](https://github.com/yschimke/compose-ai-tools/issues/1589)) ([ef0462a](https://github.com/yschimke/compose-ai-tools/commit/ef0462a8460b245fae348115070702800af784e8))
+* **notifications:** distinguish failed renders from removals in PR comment ([#1591](https://github.com/yschimke/compose-ai-tools/issues/1591)) ([934cf60](https://github.com/yschimke/compose-ai-tools/commit/934cf604f652b1fe4b182a74bba84d44a592e1d6))
+
 ## [0.11.15](https://github.com/yschimke/compose-ai-tools/compare/v0.11.14...v0.11.15) (2026-05-28)
 
 
