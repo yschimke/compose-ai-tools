@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.12.0](https://github.com/yschimke/compose-ai-tools/compare/v0.11.16...v0.12.0) (2026-05-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **renderer-android:** default LocalInspectionMode to true for static previews ([#1614](https://github.com/yschimke/compose-ai-tools/issues/1614))
+
+### Features
+
+* **daemon-bench:** drive stage-1/stage-2 compile legs + CI smoke ([#1586](https://github.com/yschimke/compose-ai-tools/issues/1586)) ([#1615](https://github.com/yschimke/compose-ai-tools/issues/1615)) ([a7a077c](https://github.com/yschimke/compose-ai-tools/commit/a7a077c62d2ecdef10b1a6ce73ce90d69c5bac0a))
+* **daemon:** wire desktop scroll scenario runner (render/scroll/long + gif) ([#1609](https://github.com/yschimke/compose-ai-tools/issues/1609)) ([9eed691](https://github.com/yschimke/compose-ai-tools/commit/9eed6919bdc77708620d5d16eb42012330ece0b3))
+* **mcp:** accept and validate override-extension fields in render_preview ([#1611](https://github.com/yschimke/compose-ai-tools/issues/1611)) ([6728921](https://github.com/yschimke/compose-ai-tools/commit/67289211c0d564d3c2e213b1ee8a3d0b7d760f79))
+* **recomposition:** v2 schema with per-scope invalidation reason ([#1612](https://github.com/yschimke/compose-ai-tools/issues/1612)) ([4f30a64](https://github.com/yschimke/compose-ai-tools/commit/4f30a64a67f9420ce2cdb9c479f222417d1abab9))
+* **renderer-android:** default LocalInspectionMode to true for static previews ([#1614](https://github.com/yschimke/compose-ai-tools/issues/1614)) ([154ecef](https://github.com/yschimke/compose-ai-tools/commit/154ecefe5de14466c517802a0c2ae08cecb064a6))
+
+
+### Bug Fixes
+
+* **a11y:** preserve baseline findings on ATF-unavailable runs ([#1608](https://github.com/yschimke/compose-ai-tools/issues/1608)) ([ff17f6b](https://github.com/yschimke/compose-ai-tools/commit/ff17f6b0eab0f2e7752254d42f3e2b1768834cf7))
+* **cli,gradle-plugin:** tighten --variant matching and propagate to doctor ([#1599](https://github.com/yschimke/compose-ai-tools/issues/1599)) ([2d503ba](https://github.com/yschimke/compose-ai-tools/commit/2d503ba923c276e21d84566cb2c87afbb400abd1))
+* **daemon:** truthful supportedOverrides + drop stale Android-only docstrings ([#1603](https://github.com/yschimke/compose-ai-tools/issues/1603)) ([027f611](https://github.com/yschimke/compose-ai-tools/commit/027f61108010ef2fc8bb7207251ef7eadd411f8e))
+* **notifications:** render @NotificationPreview at 400dp wide, not a 320 square ([#1592](https://github.com/yschimke/compose-ai-tools/issues/1592)) ([fd9c7ed](https://github.com/yschimke/compose-ai-tools/commit/fd9c7ed7d996831d408ae3ae6688fbdd8e0be5b2))
+* **notifications:** treat @PreviewParameter fan-out variants as declared ([#1597](https://github.com/yschimke/compose-ai-tools/issues/1597)) ([9e3b9f8](https://github.com/yschimke/compose-ai-tools/commit/9e3b9f8925dac8d3fb4f116442f9b7b1fd06c75d))
+* **permissions:** scope sandbox query bridge by previewId ([#1610](https://github.com/yschimke/compose-ai-tools/issues/1610)) ([f72e29a](https://github.com/yschimke/compose-ai-tools/commit/f72e29ac406bcafefe943b5fce42bce3990d68a3))
+* **samples:** additively composite Glimmer XR menu so the env shows through ([#1601](https://github.com/yschimke/compose-ai-tools/issues/1601)) ([5aa391d](https://github.com/yschimke/compose-ai-tools/commit/5aa391da584d34142a9a5db883e16edccf13924f))
+* **vscode-extension:** address codex follow-ups on preview-tab + focus refresh ([#1598](https://github.com/yschimke/compose-ai-tools/issues/1598)) ([0bab05b](https://github.com/yschimke/compose-ai-tools/commit/0bab05b5a545265cd487745fd20837e8b47802f1))
+
 ## [0.11.16](https://github.com/yschimke/compose-ai-tools/compare/v0.11.15...v0.11.16) (2026-05-29)
 
 
