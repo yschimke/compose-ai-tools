@@ -59,7 +59,7 @@ class PreviewIndex(
   initialFilter: String? = null,
   initialExactId: String? = null,
 ) {
-  private val all: List<PreviewRow> = initialRows
+  private var all: List<PreviewRow> = initialRows
   private var filterText: String? = initialFilter
   private var exactId: String? = initialExactId
   private var cursor: Int = 0
@@ -90,6 +90,25 @@ class PreviewIndex(
   fun selectById(id: String) {
     val idx = rows().indexOfFirst { it.id == id }
     if (idx >= 0) cursor = idx
+  }
+
+  /**
+   * Swap in a freshly-discovered row set (the daemon's file watcher rewrote `previews.json` because
+   * a `@Preview` was added, removed, or renamed) without losing the user's place. The active filter
+   * is preserved and re-applied against the new rows.
+   *
+   * Selection handling mirrors [setFilter] but clamps rather than resetting: if the row that was
+   * selected still exists after the update, the cursor follows it to its new position; otherwise it
+   * clamps to the nearest valid index so an unrelated add/remove doesn't yank the user to the top
+   * of the list.
+   */
+  fun refresh(newRows: List<PreviewRow>) {
+    val previousId = current()?.id
+    all = newRows
+    val n = rows().size
+    cursor =
+      previousId?.let { id -> rows().indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+        ?: cursor.coerceIn(0, (n - 1).coerceAtLeast(0))
   }
 
   private fun applyFilter(filterText: String?, exactId: String?): List<PreviewRow> {
