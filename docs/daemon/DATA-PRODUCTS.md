@@ -397,13 +397,42 @@ Each `core` module advertises its kind identity and schemaVersion via a
 `Material3ThemeProduct.SCHEMA_VERSION`, etc.). Connectors and consumers
 both refer to those constants — never inline the string literals.
 
-### `data/scroll` is renderer-side only
+### `data/scroll` is daemon-produced via `data/fetch` (issue #1528)
 
-`data/scroll/core` carries scroll-scenario drivers (`ScrollDriver`,
-`ScrollGifEncoder`, `ScrollPreviewExtension`) that the renderer
-composes through the regular extension pipeline. There is no
-`data-scroll-connector` because scroll is not a daemon-side data
-product — it produces image artifacts (GIFs, long PNGs), not a JSON
-payload, so it has no `kind` and never appears on the
-`initialize.capabilities.dataProducts` list. The renderer drives it
-directly via the `PreviewPipelineStep` / scenario-driver hooks.
+`data/scroll/core` carries the scroll-scenario primitives — `ScrollDriver`,
+`ScrollGifEncoder`, the LONG / GIF frame-driver extensions — that the renderer
+composes when `@ScrollingPreview(modes = [LONG | GIF])` runs. `data/scroll/connector`
+wires those primitives into the daemon's data-product surface: it advertises
+`render/scroll/long` (PNG) and `render/scroll/gif` (GIF) on
+`initialize.capabilities.dataProducts` as `requiresRerender = true` producers, so
+a missing scroll artefact returns `Outcome.RequiresRerender("scroll-long" |
+"scroll-gif")` and `JsonRpcServer.handleDataFetchWithRerender` queues a
+per-preview re-render in the right scenario via
+`RenderEngine.runScrollScenario`. The engine resolves the annotation's intent
+(axis, maxScrollPx, frameIntervalMs) from `PreviewIndex.scrollCaptureFor` —
+populated from the gradle plugin's `dataProducts[].scroll` field in
+`previews.json` — and delegates the heavy lifting to the renderer's public
+`renderer.handleLongCapture` / `renderer.handleGifCapture` entry points.
+
+**On-disk layout is intentionally identical to the Gradle path.** The daemon
+writes to `<modulePreviewsDir>/data/render-scroll-long/<previewId>.png` and
+`<modulePreviewsDir>/data/render-scroll-gif/<previewId>.gif` — the same files
+`composePreviewRenderAll` writes — so `gradleService.readPreviewImage` and
+`data/fetch` resolve to the exact same path regardless of which side produced
+it. Binary artefacts (PNG / animated GIF) override `allowInlineUpgrade` to
+`false` so an `inline = true` fetch still returns the path (matching the
+a11y overlay PNG's existing behaviour).
+
+| Kind | Transport | Source | Notes |
+| --- | --- | --- | --- |
+| `render/scroll/long` | `PATH` | `data/scroll/connector` + `RenderEngine.runScrollScenario` | One stitched PNG per `@ScrollingPreview(modes = [LONG])`. `requiresRerender = true`. |
+| `render/scroll/gif` | `PATH` | same as above | One animated GIF per `@ScrollingPreview(modes = [GIF])`. `requiresRerender = true`. |
+
+**Host backfill.** The VS Code extension's viewport-driven backfill
+(`triggerViewportScrollBackfill` in `extension.ts`) calls
+`daemonScheduler.fetchScrollDataProduct` per-`(module, previewId, kind)` against
+the daemon; on daemon-side failure it falls back to the historical
+`composePreviewRender('full')` Gradle round-trip so older daemons that don't
+advertise the kinds still work. The fallback gate lives at the
+fetch-result boundary rather than `initialize.capabilities.dataProducts` so an
+in-flight rollout doesn't need a daemon version bump in the host.

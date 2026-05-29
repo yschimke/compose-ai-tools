@@ -72,6 +72,64 @@ data class PreviewInfoDto(
    * incremental rescan.
    */
   val params: PreviewParamsDto? = null,
+  /**
+   * Annotation-sourced data products this preview exposes (e.g. `render/scroll/long` from
+   * `@ScrollingPreview(modes = [LONG])`). Optional — fixtures predating issue #1528 omit the field
+   * entirely, and the daemon only reads the subset it needs (currently the `scroll` sub-shape, used
+   * by the daemon's scroll-scenario dispatch to look up axis / maxScrollPx / frameIntervalMs for a
+   * given `(previewId, render/scroll/long|gif)` pair).
+   */
+  val dataProducts: List<PreviewDataProductDto> = emptyList(),
+)
+
+/**
+ * Daemon-side mirror of the gradle plugin's `PreviewDataProduct`
+ * (`:gradle-plugin:preview-discovery`'s `PreviewData.kt`). Only carries the fields the daemon needs
+ * — `kind` so the daemon can match `render/scroll/long` / `render/scroll/gif`, and `scroll` so the
+ * renderer can replay the annotation's axis / maxScrollPx / frameIntervalMs intent. Other
+ * plugin-side fields (`extensionId`, `usageMode`, `displayName`, `output`, `cost`, …) are
+ * deliberately ignored on parse — the daemon routes the on-disk path via
+ * [ScrollDataProductRegistry.fileFor] off the kind alone, so the plugin-supplied `output` would be
+ * redundant and brittle (path layout changes would have to land in both places). [Json] is
+ * configured with `ignoreUnknownKeys = true` so adding plugin-side fields doesn't require a
+ * daemon-side change.
+ */
+@Serializable
+data class PreviewDataProductDto(val kind: String, val scroll: ScrollCaptureDto? = null)
+
+/**
+ * Daemon-side mirror of the gradle plugin's `ScrollCapture`. Carries only the intent fields the
+ * renderer needs to drive the scrolling — outcome fields (`atEnd`, `reachedPx`) the plugin records
+ * post-render are skipped because the daemon writes its own fresh artefact rather than reading the
+ * plugin's recorded state.
+ */
+@Serializable
+data class ScrollCaptureDto(
+  /**
+   * Mirrors the gradle plugin's `ScrollMode` (`END` / `LONG` / `GIF`). String-typed so the daemon
+   * doesn't depend on the plugin's enum.
+   */
+  val mode: String,
+  /**
+   * Mirrors `ScrollAxis` (`VERTICAL` / `HORIZONTAL`). String-typed for the same reason as [mode].
+   * Defaults to `VERTICAL` matching the annotation default.
+   */
+  val axis: String = "VERTICAL",
+  /**
+   * Annotation-set cap (`@ScrollingPreview(maxScrollPx = N)`). `0` means "no cap — exhaust the
+   * scrollable".
+   */
+  val maxScrollPx: Int = 0,
+  /**
+   * `@ScrollingPreview(reduceMotion = …)`. Carried for wire parity; the renderer reads it via the
+   * same field after population from this DTO.
+   */
+  val reduceMotion: Boolean = true,
+  /**
+   * `@ScrollingPreview(frameIntervalMs = N)` for `GIF` mode. `0` means "renderer default
+   * (`ScrollGifEncoder.DEFAULT_FRAME_DELAY_MS`)".
+   */
+  val frameIntervalMs: Int = 0,
 )
 
 /**
@@ -225,6 +283,25 @@ internal constructor(
 
   /** Lookup by `PreviewInfo.id`. `null` if the id is unknown. */
   fun byId(id: String): PreviewInfoDto? = lock.read { byId[id] }
+
+  /**
+   * Issue #1528 — resolves the [ScrollCaptureDto] for a given `(previewId, renderMode)` pair so the
+   * daemon's `RenderEngine` can drive the scrolling scenario the plugin annotated. `mode` is the
+   * daemon's render-mode tag (`scroll-long` / `scroll-gif`) — the matching kind is
+   * `render/scroll/long` / `render/scroll/gif`. Returns `null` when no preview matches or the
+   * preview has no `dataProducts` entry of that kind (typical for previews without
+   * `@ScrollingPreview`).
+   */
+  fun scrollCaptureFor(previewId: String, mode: String): ScrollCaptureDto? {
+    val kind =
+      when (mode) {
+        "scroll-long" -> "render/scroll/long"
+        "scroll-gif" -> "render/scroll/gif"
+        else -> return null
+      }
+    val info = byId(previewId) ?: return null
+    return info.dataProducts.firstOrNull { it.kind == kind }?.scroll
+  }
 
   /** All known preview ids. Phase 2 will diff a fresh scan against this set. */
   fun ids(): Set<String> = lock.read { byId.keys.toSet() }

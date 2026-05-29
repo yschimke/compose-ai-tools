@@ -10,11 +10,15 @@ import ee.schimke.composeai.data.render.pipeline.PreviewPipelineStep
 /**
  * Pipeline metadata for the scroll preview extension.
  *
- * Unlike most `data/<feature>/`, scroll has only a `core/` module — there is no
- * `data-scroll-connector`. Scroll produces image artifacts (long PNG, GIF) via the renderer's
- * pipeline-step seam, not a JSON payload exposed on `data/fetch`. It never appears on
- * `initialize.capabilities.dataProducts`. See `docs/daemon/DATA-PRODUCTS.md` § "`data/scroll` is
- * renderer-side only".
+ * Scroll has both a `core/` module (the scenario primitives — `ScrollDriver`, `ScrollGifEncoder`,
+ * the LONG / GIF frame-driver extensions) and a `connector/` module (`ScrollDataProductRegistry`)
+ * that advertises [KIND_LONG] / [KIND_GIF] on `initialize.capabilities.dataProducts` as
+ * `requiresRerender = true` producers (issue #1528). A missing scroll artefact resolves through the
+ * daemon's `data/fetch` re-render path — `RenderEngine.runScrollScenario` looks up the annotation
+ * intent via `PreviewIndex.scrollCaptureFor` and dispatches into `renderer.handleLongCapture` /
+ * `renderer.handleGifCapture`, writing the same `<modulePreviewsDir>/data/render-scroll-*` file
+ * paths the gradle plugin's `composePreviewRenderAll` writes. See `docs/daemon/DATA-PRODUCTS.md` §
+ * "`data/scroll` is daemon-produced via `data/fetch`".
  */
 object ScrollPreviewExtension {
   const val ID: String = "scroll"
