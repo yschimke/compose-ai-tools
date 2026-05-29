@@ -1992,6 +1992,7 @@ private fun FocusCapture.toFocusOverride(): FocusOverride =
         step = step,
         overlay = overlay,
         enterPlacesFocus = enterPlacesFocus,
+        pressed = pressed,
     )
 
 private fun FocusDirection.toProtocol(): ProtocolFocusDirection =

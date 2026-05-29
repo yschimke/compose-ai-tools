@@ -1405,10 +1405,13 @@ object PreviewDiscovery {
     val pv = ann.parameterValues
     val overlay = (pv.getValue("overlay") as? Boolean) ?: false
     val enterPlacesFocus = (pv.getValue("enterPlacesFocus") as? Boolean) ?: false
+    val pressed = (pv.getValue("pressed") as? Boolean) ?: false
     val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
     if (directions.isNotEmpty()) {
       // 1-based `step` lets the overlay label and the filename suffix
-      // disambiguate repeated directions (e.g. `Next, Next, Previous`).
+      // disambiguate repeated directions (e.g. `Next, Next, Previous`). `pressed` is
+      // indexed-mode only — traversal-mode walks across focusables without a "settle and press"
+      // point, so it's intentionally not carried here.
       return directions.mapIndexed { i, dir ->
         FocusCapture(direction = dir, step = i + 1, overlay = overlay)
       }
@@ -1424,7 +1427,14 @@ object PreviewDiscovery {
       .filter { it >= 0 }
       .distinct()
       .sorted()
-      .map { FocusCapture(tabIndex = it, overlay = overlay, enterPlacesFocus = enterPlacesFocus) }
+      .map {
+        FocusCapture(
+          tabIndex = it,
+          overlay = overlay,
+          enterPlacesFocus = enterPlacesFocus,
+          pressed = pressed,
+        )
+      }
   }
 
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {

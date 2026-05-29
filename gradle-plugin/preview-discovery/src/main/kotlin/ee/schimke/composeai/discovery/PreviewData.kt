@@ -139,6 +139,15 @@ data class FocusCapture(
    * rationale.
    */
   val enterPlacesFocus: Boolean = false,
+  /**
+   * When `true`, the renderer dispatches an indirect-pointer Press event onto the focused
+   * composable after the focus walk settles, before capturing pixels — captures the *pressed*
+   * visual state on top of the focused state. Drives Compose UI's
+   * `AndroidComposeView.sendIndirectPointerEvent` (the same entry point real XR Glasses touchpads
+   * route through); see `@FocusedPreview.pressed` for the rationale. Only meaningful for
+   * indexed-mode captures (`tabIndex`); traversal-mode skips it.
+   */
+  val pressed: Boolean = false,
 )
 
 /**
