@@ -4319,8 +4319,15 @@ async function refresh(
         // When the preview panel steals keyboard focus, activeTextEditor
         // becomes undefined and scopeSource is "none". Don't abort a
         // valid in-flight discover just because the user glanced at the
-        // panel — it will paint the cards when it finishes.
-        if (scopeSource === "none" && pendingRefreshKey) {
+        // panel — it will paint the cards when it finishes. But if the
+        // user closes the last preview source tab while that discover is
+        // running, the no-source empty-state clear below still has to
+        // run (issue #1566) — otherwise stale cards persist.
+        if (
+            scopeSource === "none" &&
+            pendingRefreshKey &&
+            isAnyPreviewSourceTabOpen()
+        ) {
             return "no-module";
         }
         // When the panel already has previews painted (preload or a prior render put cards

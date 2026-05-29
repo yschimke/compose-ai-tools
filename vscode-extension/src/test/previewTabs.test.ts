@@ -20,6 +20,19 @@ function webviewTab(viewType: string): { input: { viewType: string } } {
     return { input: { viewType } };
 }
 
+/** Build a diff-editor tab (TabInputTextDiff shape: `modified` + `original`). */
+function diffTab(
+    modifiedFsPath: string,
+    originalFsPath: string,
+): { input: { modified: { fsPath: string }; original: { fsPath: string } } } {
+    return {
+        input: {
+            modified: { fsPath: modifiedFsPath },
+            original: { fsPath: originalFsPath },
+        },
+    };
+}
+
 function groups(...tabs: TabGroupLike["tabs"][number][][]): TabGroupLike[] {
     return tabs.map((groupTabs) => ({ tabs: groupTabs }));
 }
@@ -48,6 +61,14 @@ describe("openTabFsPaths", () => {
 
     it("returns empty for no groups", () => {
         assert.deepStrictEqual(openTabFsPaths([]), []);
+    });
+
+    it("collects fsPaths from diff-editor tabs (TabInputTextDiff)", () => {
+        const g = groups([diffTab("/a/Foo.kt", "/a/.git/Foo.kt")]);
+        assert.deepStrictEqual(openTabFsPaths(g), [
+            "/a/Foo.kt",
+            "/a/.git/Foo.kt",
+        ]);
     });
 });
 
@@ -86,6 +107,11 @@ describe("anyPreviewSourceTabOpen", () => {
             textTab("/app/build.gradle.kts"),
             textTab("/app/Screen.kt"),
         ]);
+        assert.strictEqual(anyPreviewSourceTabOpen(g, isPreviewSource), true);
+    });
+
+    it("is true when only a diff editor on the .kt is open", () => {
+        const g = groups([diffTab("/app/Screen.kt", "/app/.git/Screen.kt")]);
         assert.strictEqual(anyPreviewSourceTabOpen(g, isPreviewSource), true);
     });
 });

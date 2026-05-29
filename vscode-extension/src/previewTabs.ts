@@ -30,17 +30,32 @@ export interface TabGroupLike {
 
 /**
  * Collect the filesystem paths of every text-backed tab across [groups].
- * `TabInputText` and the modified side of `TabInputTextDiff` both expose a
- * `uri` with an `fsPath`; non-text tabs (webviews, terminals, notebooks) carry
- * a differently-shaped `input` and are skipped.
+ * `TabInputText` exposes `uri`; `TabInputTextDiff` exposes `modified` and
+ * `original` (no plain `uri`) — both sides count as the source being open in
+ * a tab, so we read both. Non-text tabs (webviews, terminals, notebooks)
+ * carry a differently-shaped `input` and are skipped.
  */
 export function openTabFsPaths(groups: ReadonlyArray<TabGroupLike>): string[] {
     const paths: string[] = [];
     for (const group of groups) {
         for (const tab of group.tabs) {
             const input = tab.input;
-            if (input && typeof input === "object" && "uri" in input) {
-                const uri = (input as { uri?: { fsPath?: unknown } }).uri;
+            if (!input || typeof input !== "object") continue;
+            const candidates: Array<{ fsPath?: unknown } | undefined> = [];
+            if ("uri" in input) {
+                candidates.push((input as { uri?: { fsPath?: unknown } }).uri);
+            }
+            if ("modified" in input) {
+                candidates.push(
+                    (input as { modified?: { fsPath?: unknown } }).modified,
+                );
+            }
+            if ("original" in input) {
+                candidates.push(
+                    (input as { original?: { fsPath?: unknown } }).original,
+                );
+            }
+            for (const uri of candidates) {
                 const fsPath = uri?.fsPath;
                 if (typeof fsPath === "string") {
                     paths.push(fsPath);
