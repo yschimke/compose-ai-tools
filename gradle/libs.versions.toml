@@ -132,10 +132,10 @@ checker-qual = "4.1.0"
 # against `compose-bom-compat` when raising it).
 material-kolor = "4.0.5"
 # Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
-# `:samples-21:android-metro-viewmodel` module to demonstrate that
+# `:samples:sdk21:android-metro-viewmodel` module to demonstrate that
 # constructor-injected ViewModels render under the renderer's @Preview
 # pipeline. The 1.x Gradle plugin jar is compiled to Java 21 bytecode, so
-# the consuming module lives in the conditionally-included `samples-21/`
+# the consuming module lives in the conditionally-included `samples/sdk21/`
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).

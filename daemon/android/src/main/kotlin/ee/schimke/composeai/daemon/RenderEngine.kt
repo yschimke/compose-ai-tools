@@ -58,7 +58,7 @@ import okio.ByteString.Companion.decodeBase64
  * resolved class+method reference into a PNG on disk.
  *
  * **Duplicated from
- * [`renderer-android`'s `RobolectricRenderTest`](../../../../../../../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt).**
+ * [`renderer-android`'s `RobolectricRenderTest`](../../../../../../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt).**
  * Per
  * [DESIGN.md § 7](../../../../../../docs/daemon/DESIGN.md#7-sharing-strategy--what-crosses-the-boundary)
  * the v1 render body lives in two places — the standalone JUnit-driven renderer and the daemon — so

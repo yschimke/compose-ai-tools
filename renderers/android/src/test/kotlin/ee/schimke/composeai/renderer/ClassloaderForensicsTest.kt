@@ -23,7 +23,7 @@ import org.robolectric.annotation.GraphicsMode
  * parent), reflecting the loaded-class graph as seen by the working `getDeclaredComposableMethod`
  * code path.
  *
- * Output: `renderer-android/build/reports/classloader-forensics/standalone.json`. The diff tool
+ * Output: `renderers/android/build/reports/classloader-forensics/standalone.json`. The diff tool
  * (`./gradlew :daemon:harness:dumpClassloaderDiff`) consumes both this JSON and the daemon
  * counterpart's JSON to produce `diff.{json,md}`.
  *
