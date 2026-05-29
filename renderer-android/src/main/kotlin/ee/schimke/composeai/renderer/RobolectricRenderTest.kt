@@ -1287,8 +1287,49 @@ private fun cropPngTopLeft(
  * Returns `true` when [outputFile] was written; `false` to let the caller
  * fall through to END-style single capture (e.g. when no scrollable matched).
  */
+/**
+ * Public so the daemon-android `RenderEngine` can dispatch into the same scroll-scenario logic
+ * the in-process Robolectric harness uses for the `:samples` end-to-end runs — see issue #1528
+ * and [ScrollScenarioHandlers] for the wider scope-and-rationale doc. Wraps the original private
+ * `handleLongCapture` so the harness code path stays unchanged.
+ *
+ * `rule` is the held `AndroidComposeTestRule<*, ComponentActivity>` (`createAndroidComposeRule`)
+ * whose `setContent` has already painted the preview; `scroll` carries the annotation's intent
+ * (axis / maxScrollPx); `previewId` is logged into the structured error messages; `heightDp` is
+ * the viewport height in dp matching the device qualifier; `isRound` triggers the Wear pill clip;
+ * `outputFile` is the final stitched PNG.
+ *
+ * Returns `true` when [outputFile] was written. Returns `false` when there was no scrollable on
+ * `scroll.axis` (caller can fall through to a single-frame capture / structured failure sidecar
+ * — see issue #1528 § "NoScrollable failure shape on the wire").
+ */
 @OptIn(ExperimentalRoborazziApi::class)
-private fun handleLongCapture(
+public fun handleLongCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    scroll: ScrollCapture,
+    previewId: String,
+    heightDp: Int,
+    isRound: Boolean,
+    outputFile: File,
+): Boolean = handleLongCaptureInternal(rule, scroll, previewId, heightDp, isRound, outputFile)
+
+/**
+ * Public sibling of [handleLongCapture] for `@ScrollingPreview(modes = [GIF])`. Same arguments
+ * — see that doc for semantics. Writes [outputFile] as an animated GIF rather than a stitched
+ * still PNG.
+ */
+@OptIn(ExperimentalRoborazziApi::class)
+public fun handleGifCapture(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    scroll: ScrollCapture,
+    previewId: String,
+    heightDp: Int,
+    isRound: Boolean,
+    outputFile: File,
+): Boolean = handleGifCaptureInternal(rule, scroll, previewId, heightDp, isRound, outputFile)
+
+@OptIn(ExperimentalRoborazziApi::class)
+private fun handleLongCaptureInternal(
     rule: AndroidComposeTestRule<*, ComponentActivity>,
     scroll: ScrollCapture,
     previewId: String,
@@ -1452,7 +1493,7 @@ private const val POST_SCROLL_SETTLE_MS = 1000L
  * when the encoder declines).
  */
 @OptIn(ExperimentalRoborazziApi::class)
-private fun handleGifCapture(
+private fun handleGifCaptureInternal(
     rule: AndroidComposeTestRule<*, ComponentActivity>,
     scroll: ScrollCapture,
     previewId: String,

@@ -7243,21 +7243,81 @@ function triggerViewportScrollBackfill(
         pendingScrollBackfill,
         visible,
         predicted,
-        scrollBackfillRequested,
+        // Module-wide Gradle dedup intentionally NOT passed here — the per-
+        // `(module, previewId, kind)` dedup below replaces it (issue #1528).
+        // Keeping the module-level set as a separate Gradle-fallback gate.
+        new Set<string>(),
     );
     for (const candidate of candidates) {
-        scrollBackfillRequested.add(candidate.modulePath);
         const owningModule = previewModuleIndex.get(
             candidate.missing[0].previewId,
         );
         if (!owningModule) continue;
+        // Issue #1528 — per-(module, previewId, kind) dedup. The daemon's
+        // `data/fetch` path takes one preview at a time (vs. Gradle's
+        // module-wide rebuild), so dedup needs to be at the same granularity
+        // or we'd re-issue the same fetch on every viewport tick.
+        const freshlyRequested: MissingImageDataProduct[] = [];
+        for (const m of candidate.missing) {
+            const kind = m.renderOutput.toLowerCase().endsWith(".gif")
+                ? "render/scroll/gif"
+                : "render/scroll/long";
+            const dedupKey = `${candidate.modulePath}::${m.previewId}::${kind}`;
+            if (scrollBackfillRequested.has(dedupKey)) continue;
+            scrollBackfillRequested.add(dedupKey);
+            freshlyRequested.push(m);
+        }
+        if (freshlyRequested.length === 0) continue;
         logLine(
-            `scroll backfill: ${candidate.modulePath} has ${candidate.missing.length} missing image data product(s) in viewport; kicking composePreviewRender('full')`,
+            `scroll backfill: ${candidate.modulePath} has ${freshlyRequested.length} missing image data product(s) in viewport; trying daemon data/fetch per preview`,
         );
-        // Fire-and-forget. After Gradle resolves, the helper re-reads the produced
-        // PNGs and posts `updateImage` for each captureIndex; the panel paints the
-        // previously-placeholdered scroll cards in place.
-        void backfillScrollDataProducts(owningModule, candidate.missing);
+        for (const m of freshlyRequested) {
+            // Fire-and-forget. Daemon path returns the on-disk path the
+            // dispatcher's `RenderEngine.runScrollScenario` wrote (same file
+            // Gradle would write to). On any daemon-side failure the per-kind
+            // dedup is rolled back and the module-wide Gradle path takes over.
+            void (async () => {
+                if (!daemonScheduler) return;
+                const path = await daemonScheduler.fetchScrollDataProduct(
+                    owningModule,
+                    m,
+                );
+                if (path && gradleService) {
+                    const imageData = await gradleService.readPreviewImage(
+                        owningModule,
+                        m.renderOutput,
+                    );
+                    if (imageData && panel) {
+                        panel.postMessage({
+                            command: "updateImage",
+                            previewId: m.previewId,
+                            captureIndex: m.captureIndex,
+                            imageData,
+                        });
+                    }
+                    return;
+                }
+                // Daemon path failed — fall back to the historical Gradle
+                // round-trip for this module. Drop the per-kind dedup entries
+                // we just added so a subsequent viewport tick can retry
+                // through the daemon once it advertises the kinds.
+                const kind = m.renderOutput.toLowerCase().endsWith(".gif")
+                    ? "render/scroll/gif"
+                    : "render/scroll/long";
+                scrollBackfillRequested.delete(
+                    `${candidate.modulePath}::${m.previewId}::${kind}`,
+                );
+                if (scrollBackfillRequested.has(candidate.modulePath)) return;
+                scrollBackfillRequested.add(candidate.modulePath);
+                logLine(
+                    `scroll backfill: daemon data/fetch failed for ${m.previewId}; falling back to composePreviewRender('full') for ${candidate.modulePath}`,
+                );
+                void backfillScrollDataProducts(
+                    owningModule,
+                    candidate.missing,
+                );
+            })();
+        }
     }
 }
 
