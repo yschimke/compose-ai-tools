@@ -560,35 +560,58 @@ def cmd_comment(args: argparse.Namespace) -> int:
         "## Accessibility Report",
         "",
     ]
+
     if status == ATF_UNAVAILABLE:
-        # Header replaces the usual finding-counts line when ATF didn't run
-        # — the counts would be misleadingly zero. The link to the CI logs
-        # is left abstract on purpose; the workflow's failure step already
-        # surfaces a direct link, and we don't want to embed the job URL
-        # here (the python helper doesn't know it).
+        # ATF returned no data this run, so every *current* entry has empty
+        # findings — not because the issues were fixed but because nothing
+        # was checked. Diffing those empties against the baseline would render
+        # prior findings as "resolved" / "_No findings._" (#1595), making a
+        # daemon failure look like a clean run and silently masking real prior
+        # a11y issues.
+        #
+        # Skip the per-preview comparison entirely. Re-surface the baseline's
+        # findings verbatim, marked as carried-over, behind a banner that
+        # explains no comparison was produced. Counts come from the baseline
+        # so the numbers stay consistent with the prior known state instead of
+        # collapsing to a misleading zero. The CI-log link is left abstract on
+        # purpose; the workflow's failure step already surfaces a direct link
+        # and the python helper doesn't know the job URL.
+        preserved = sorted(
+            (e for e in baseline_entries if _entry_findings_key(e)),
+            key=lambda e: (e["module"], e["functionName"]),
+        )
+        b_err, b_warn, b_info = _level_counts(baseline_entries)
         lines.extend([
             "> [!WARNING]",
-            "> ATF data unavailable — the preview daemon did not return "
-            "accessibility findings for this run. The renders below are "
-            "**not** accessibility-checked; see the CI logs for the daemon "
+            "> ATF data unavailable this run — the preview daemon did not "
+            "return accessibility findings. Baseline findings are preserved "
+            "below **unchanged**; no comparison was performed, so nothing here "
+            "reflects this PR's changes. See the CI logs for the daemon "
             "failure.",
             "",
+            f"{b_err} error(s) · {b_warn} warning(s) · {b_info} info "
+            f"across {len(preserved)} baseline preview(s) — carried over, "
+            f"not re-checked.",
+            "",
         ])
+        for entry in preserved:
+            variant = entry.get("variant")
+            header_suffix = f" · `{variant}`" if variant else ""
+            lines.append(
+                f"### `{entry['functionName']}`{header_suffix} "
+                f"({entry['module']})"
+            )
+            lines.append("")
+            lines.extend(_findings_table(entry["findings"]))
+            lines.append("")
+        sys.stdout.write("\n".join(lines).rstrip() + "\n")
+        return 0
+
     lines.extend([
         f"{err} error(s) · {warn} warning(s) · {info} info "
         f"across {len(entries)} preview(s).",
         "",
     ])
-
-    if status == ATF_UNAVAILABLE:
-        # ATF returned no data, so every current entry has empty findings —
-        # not because the issues were fixed but because nothing was checked.
-        # Diffing those empties against a baseline would render prior findings
-        # as "resolved" / "_No findings._", making a daemon failure look like
-        # a clean run. Surface only the warning + counts; the per-preview diff
-        # is meaningless until ATF data comes back.
-        sys.stdout.write("\n".join(lines).rstrip() + "\n")
-        return 0
 
     if findings_count == 0:
         lines.append("No accessibility findings.")
