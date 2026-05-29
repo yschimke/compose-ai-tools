@@ -1,8 +1,13 @@
 # Kotlin Build Tools API — stage 2 spike
 
-**Status:** all five checkpoints green ✅. Not wired into the daemon. Not
-user-facing. Lives in `:daemon:bta-host` (+ companion `:daemon:bta-host-fixture`)
-and produces six test reports under `./gradlew :daemon:bta-host:test` against
+**Status:** all five checkpoints green ✅, and the production wire-up has since
+SHIPPED — in-process compile lives in `:daemon:core` (`bta/BtaCompileSession`,
+`bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the
+experimental, off-by-default workspace flag `composePreview.daemon.compileInProcess`
+(see [COMPILE-IN-PROCESS.md](COMPILE-IN-PROCESS.md)). This module
+(`:daemon:bta-host`, + companion `:daemon:bta-host-fixture`) is retained as the
+standalone parity/soak harness guarding that path; nothing in production depends on
+it. It produces six test reports under `./gradlew :daemon:bta-host:test` against
 Kotlin 2.3.21 + Compose compiler plugin 2.3.21 + JDK 17:
 
   - `compiles @Composable source with Compose plugin loaded` (✅ decisive)
@@ -15,9 +20,14 @@ Kotlin 2.3.21 + Compose compiler plugin 2.3.21 + JDK 17:
   - `BTA compiles a @Composable that references a synthetic Android R class`
     (✅ checkpoint #5, Android-distilled)
 
-The stage-2 design proposal is unblocked; remaining work is the production
-wire-up (JSON-RPC `compileSources` endpoint, classpath assembly per
-variant, fallback strategy for KSP/KAPT modules).
+The stage-2 design proposal was unblocked by these checkpoints and the
+production wire-up has since landed: the JSON-RPC `compileSources` endpoint,
+per-variant classpath assembly (gradle plugin → `composeai.daemon.bta.*`
+sysprops → `DefaultBtaCompileService.fromSysprops`), and the stage-1
+fallback for KSP/KAPT/`annotationProcessor`/KMP modules
+(`ComposePreviewTasks.detectStageTwoIneligibility`). What remains is the
+latency-measurement + promote/demote evaluation, tracked in
+[#1586](https://github.com/yschimke/compose-ai-tools/issues/1586).
 
 [CONTINUOUS-COMPILE.md](CONTINUOUS-COMPILE.md) describes the stage-1 path
 (long-running `gradle --continuous` worker per module). This spike asks the
