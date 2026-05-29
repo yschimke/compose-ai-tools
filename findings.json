@@ -220,7 +220,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.a11y.png",
       "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.png",
       "findings": [],
       "functionName": "CameraPermissionDeniedPreview",
@@ -230,7 +230,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.a11y.png",
       "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.png",
       "findings": [],
       "functionName": "CameraPermissionGrantedPreview",

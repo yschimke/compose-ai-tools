@@ -51,13 +51,13 @@ _No findings._
 
 ### `CameraPermissionDeniedPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/CameraPermissionDeniedPreview_Camera_permission_denied.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/CameraPermissionDeniedPreview_Camera_permission_denied.a11y.png" width="400" />
 
 _No findings._
 
 ### `CameraPermissionGrantedPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/CameraPermissionGrantedPreview_Camera_permission_granted.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/CameraPermissionGrantedPreview_Camera_permission_granted.a11y.png" width="400" />
 
 _No findings._
 
