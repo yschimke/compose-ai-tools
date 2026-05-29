@@ -401,6 +401,19 @@ abstract class RobolectricRenderTestBase(
         val isRound = isRoundDevice(params.device) &&
             (params.showSystemUi || params.kind == PreviewKind.TILE)
 
+        // AS-parity default: previews render with `LocalInspectionMode = true`,
+        // matching Android Studio's `@Preview` behaviour, so a preview that
+        // branches on `LocalInspectionMode.current` (e.g. stub data instead of a
+        // network call) hits the same branch it does in the IDE. Override
+        // globally with `-Dcomposeai.render.inspectionMode=false` — the same
+        // system-property channel the plugin already uses for `tier` /
+        // `outputDir`. Features that strictly need it off (a11y semantics dump,
+        // live interaction) force `false` from the inside on the daemon path;
+        // this static path writes no a11y sidecars, so the property governs
+        // plain previews only. See issue #1584.
+        val inspectionMode =
+            System.getProperty("composeai.render.inspectionMode")?.toBooleanStrictOrNull() ?: true
+
         val composeOptions = RoborazziComposeOptions.Builder().apply {
             size(widthDp, heightDp)
             if (isRound) addOption(RoundScreenOption)
@@ -408,7 +421,7 @@ abstract class RobolectricRenderTestBase(
             if (params.uiMode != 0) uiMode(params.uiMode)
             params.locale?.let { locale(it) }
             background(params.showBackground, params.backgroundColor)
-            inspectionMode(true)
+            inspectionMode(inspectionMode)
         }.build()
 
         val roborazziOptions = RoborazziOptions(
@@ -454,6 +467,7 @@ abstract class RobolectricRenderTestBase(
                 outputDir = outputDir,
                 roborazziOptions = roborazziOptions,
                 composeOptions = composeOptions,
+                inspectionMode = inspectionMode,
             )
         } catch (e: Throwable) {
             System.err.println(
@@ -548,6 +562,7 @@ abstract class RobolectricRenderTestBase(
         outputDir: File,
         roborazziOptions: RoborazziOptions,
         composeOptions: RoborazziComposeOptions,
+        inspectionMode: Boolean,
     ) {
         val appContext: android.app.Application =
             androidx.test.core.app.ApplicationProvider.getApplicationContext()
@@ -588,9 +603,10 @@ abstract class RobolectricRenderTestBase(
         // (`daemon/android`'s `RenderEngine` drives the post-capture walk via
         // `AccessibilityHierarchyExtension` against the live SemanticsNode root). This
         // standalone Robolectric `composePreviewRender` task is the "normal render only" path — no
-        // accessibility sidecars are written here. `LocalInspectionMode` still flips to
-        // `false` unconditionally though: it's what most consumers expect for production-like
-        // rendering, independent of the a11y subject.
+        // accessibility sidecars are written here. `LocalInspectionMode` defaults to `true`
+        // (Android-Studio `@Preview` parity, issue #1584) and is overridable per render run via
+        // `-Dcomposeai.render.inspectionMode`; the a11y subject is unaffected because no ATF /
+        // hierarchy walk runs on this path.
 
         // The v2 replacement (`androidx.compose.ui.test.junit4.v2.createAndroidComposeRule`)
         // that the deprecation warning suggests was added in compose-ui-test
@@ -736,7 +752,7 @@ abstract class RobolectricRenderTestBase(
                     ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(params.locale)
                         ?.let { ee.schimke.composeai.daemon.PseudolocaleOverrideExtension(it) }
                 val providedValues = buildList {
-                    add(LocalInspectionMode provides false)
+                    add(LocalInspectionMode provides inspectionMode)
                     if (scrollCaptureProvidable != null) {
                         add(scrollCaptureProvidable provides scrollCaptureInProgress)
                     }
