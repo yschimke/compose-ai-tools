@@ -257,13 +257,24 @@ internal object AndroidPreviewSupport {
    * Two-tier check, both IP-safe and CC-friendly (no eager resolution at config time):
    * 1. **Direct declared deps** ([hasDirectPreviewDependency]) — a preview-tooling coord is in this
    *    module's `*Implementation` / `*Api` / `*RuntimeOnly` buckets. Authoritative win.
-   * 2. **Project deps exist** ([hasAnyProjectDependency]) — the module declares at least one
-   *    `project(":...")` dep, so the renderer-required preview-tooling coord could arrive
-   *    transitively (the CMP-Android `:composeApp -> :shared` shape from issues #241 / #1549). Tier
-   *    1 of the gate stays cheap; the actual transitive verification happens at task time via
-   *    [ValidatePreviewToolingPresentTask], which walks `${variant}RuntimeClasspath`'s resolved
-   *    graph through a wired `Provider<ResolvedComponentResult>` (the documented IP-safe, CC-safe
-   *    pattern for "I want the authoritative answer at task time").
+   * 2. **Compose plugin applied AND has project deps**
+   *    ([isComposeModule] + [hasAnyProjectDependency]) — the module compiles Compose code and
+   *    declares at least one `project(":...")` dep, so the renderer-required preview-tooling coord
+   *    could arrive transitively (the CMP-Android `:composeApp -> :shared` shape from issues #241
+   *    / #1549). Tier 1 of the gate stays cheap; the actual transitive verification happens at task
+   *    time via [ValidatePreviewToolingPresentTask], which walks `${variant}RuntimeClasspath`'s
+   *    resolved graph through a wired `Provider<ResolvedComponentResult>` (the documented IP-safe,
+   *    CC-safe pattern for "I want the authoritative answer at task time").
+   *
+   * **Why the Compose-plugin gate.** Auto-inject applies this plugin to *every* AGP module in a
+   * multi-module build (the init script's `withPlugin("com.android.application" /
+   * "com.android.library")` hooks don't filter), including pure utility / network modules that
+   * don't compile Compose at all (e.g. nowinandroid's `:core:network`). Without the Compose-plugin
+   * gate, the project-deps tier would register tasks on those modules — and
+   * [registerAndroidTasks]'s `testImplementation(ui-test-manifest)` / `(ui-test-junit4)` injections
+   * then leak Compose into builds that didn't want it. Requiring the Compose compiler plugin keeps
+   * the tier-2 gate scoped to modules that already compile Compose code and could plausibly host
+   * `@Preview` annotations.
    *
    * The previous IP-safe implementation walked sibling project `build.gradle[.kts]` text via a
    * BuildService — fast, but a heuristic that missed coords contributed by convention plugins.
@@ -277,7 +288,26 @@ internal object AndroidPreviewSupport {
   internal fun hasPreviewDependency(
     project: Project,
     @Suppress("UNUSED_PARAMETER") variantName: String,
-  ): Boolean = hasDirectPreviewDependency(project) || hasAnyProjectDependency(project)
+  ): Boolean =
+    hasDirectPreviewDependency(project) ||
+      (isComposeModule(project) && hasAnyProjectDependency(project))
+
+  /**
+   * True when this module applies a Kotlin-Compose-compiler-bearing plugin. Used as the tier-2
+   * sanity check in [hasPreviewDependency] so utility / network modules that auto-inject the plugin
+   * but don't actually compile Compose stay silent (no preview-related dep injection, no preview
+   * tasks registered). The two plugins covered:
+   * - **`org.jetbrains.kotlin.plugin.compose`** — the modern Kotlin 2.x Compose Compiler plugin
+   *   used by AGP modules with Compose UI (and also by Compose Multiplatform modules in
+   *   `kotlin("multiplatform")`-only mode through the same id).
+   * - **`org.jetbrains.compose`** — Compose Multiplatform's umbrella plugin.
+   *
+   * Plugin lookup is via [PluginManager.hasPlugin], which is IP-safe (scoped to the current
+   * project's plugin state).
+   */
+  internal fun isComposeModule(project: Project): Boolean =
+    project.pluginManager.hasPlugin("org.jetbrains.kotlin.plugin.compose") ||
+      project.pluginManager.hasPlugin("org.jetbrains.compose")
 
   /**
    * Direct-only variant — declared preview-tooling coord in this module's `*Implementation` /
