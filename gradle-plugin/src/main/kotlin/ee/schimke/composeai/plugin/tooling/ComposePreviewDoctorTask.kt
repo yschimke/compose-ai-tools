@@ -81,22 +81,25 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
    */
   @get:Input abstract val enforcePreviewToolingDependency: Property<Boolean>
 
-  /**
-   * True when the IP-safe cross-project metadata service (issue #1549) detected preview tooling
-   * reachable through a declared `project(":...")` sibling. Independent of
-   * [previewToolingDeclared]; when set, `CompatRules.checkUndeclaredPreviewTooling` surfaces the
-   * soft "pin the dep locally" recommendation even with `enforcePreviewToolingDependency = true`.
-   * Default `false` so older plugin versions' doctor tasks stay quiet when the input isn't wired.
-   */
-  @get:Input abstract val transitivePreviewToolingDetected: Property<Boolean>
-
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   @TaskAction
   fun run() {
     val variantName = variant.get()
-    val main = collectModuleVersions(mainRuntimeRoot.orNull)
+    val mainRoot = mainRuntimeRoot.orNull
+    val main = collectModuleVersions(mainRoot)
     val test = collectModuleVersions(testRuntimeRoot.orNull)
+    // Compute "is preview tooling reachable through transitively-resolved deps?" at action time
+    // by walking the resolved `${variant}RuntimeClasspath` graph (issue #1549). Doing it here
+    // rather than as an `@Input` Property avoids forcing eager configuration-time resolution —
+    // `mainRuntimeRoot` is a `Provider<ResolvedComponentResult>` whose value materialises at
+    // execution. Independent of [previewToolingDeclared]; when transitive=true and direct=false,
+    // `CompatRules.checkUndeclaredPreviewTooling` surfaces the soft "pin the dep locally"
+    // recommendation under `enforcePreviewToolingDependency = true` too.
+    val transitivePreviewToolingDetected =
+      mainRoot?.let {
+        ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling(it)
+      } ?: false
     val findings =
       CompatRules.evaluate(
         main,
@@ -104,7 +107,7 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         gradleVersion.orNull,
         previewToolingDeclared = previewToolingDeclared.getOrElse(true),
         enforcePreviewToolingDependency = enforcePreviewToolingDependency.getOrElse(true),
-        transitivePreviewToolingDetected = transitivePreviewToolingDetected.getOrElse(false),
+        transitivePreviewToolingDetected = transitivePreviewToolingDetected,
       )
     val injections = decodeInjectedDependencys(injectedDependenciesJson.getOrElse("[]"))
     val report =

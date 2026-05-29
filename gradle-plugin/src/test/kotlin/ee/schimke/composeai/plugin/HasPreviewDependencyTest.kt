@@ -7,14 +7,19 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency].
+ * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency] — the config-time gate that
+ * decides whether to register `composePreview*` tasks for a variant.
  *
- * The check walks the current module's declared `*Implementation` / `*Api` / `*RuntimeOnly` buckets
- * — declared intent, no classpath resolution, no `Project.findProject` / `evaluationDependsOn`
- * cross-project access. For transitive cross-module preview tooling (issue #241, the CMP-Android
- * `:composeApp` → `:shared` shape) the gate delegates to [CrossProjectMetadataService], which
- * parses `settings.gradle.kts` + each subproject's `build.gradle[.kts]` off disk — also IP-safe.
- * See [CrossProjectMetadataTest] for the parser-level coverage of that fallback.
+ * The gate is intentionally cheap and IP-safe: declared `*Implementation` / `*Api` / `*RuntimeOnly`
+ * inspection only, no classpath resolution, no `Project.findProject` / `evaluationDependsOn`
+ * cross-project access. Two-tier:
+ * 1. **Direct preview-tooling coord** → pass.
+ * 2. **Any declared `project(":...")` dep** → pass (we register tasks AND wire
+ *    [ValidatePreviewToolingPresentTask] as a `dependsOn` of the render so the authoritative check
+ *    happens at task action time against `${variant}RuntimeClasspath`'s resolved graph).
+ *
+ * The actual transitive verification lives in [ValidatePreviewToolingPresentTaskTest] / functional
+ * tests.
  */
 class HasPreviewDependencyTest {
 
@@ -31,6 +36,7 @@ class HasPreviewDependencyTest {
     )
 
     assertThat(AndroidPreviewSupport.hasPreviewDependency(project, "debug")).isTrue()
+    assertThat(AndroidPreviewSupport.hasDirectPreviewDependency(project)).isTrue()
   }
 
   @Test
@@ -52,11 +58,11 @@ class HasPreviewDependencyTest {
   }
 
   @Test
-  fun `direct project dep falls through to false when the metadata service is not registered`() {
-    // With no [CrossProjectMetadataService] registered (this `ProjectBuilder` harness skips
-    // plugin application), a `project(":lib")` dep that would otherwise trigger the deep walk
-    // falls through to false. Mirrors the manual-test seam: production code uses
-    // [CrossProjectMetadataServiceTest] / functional tests for the deep-walk-enabled case.
+  fun `project dep on a sibling registers tier-2 gate pass even without direct tooling`() {
+    // Issue #1549 path: `:app` declares `project(":lib")` but no direct preview tooling. The
+    // config-time gate over-approximates ("yes, tasks should register") so the resolved-graph
+    // walk in [ValidatePreviewToolingPresentTask] gets a chance to confirm or reject at task
+    // action time. Pins the contract that the cheap gate accepts the CMP-Android shape.
     val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
     val lib =
       ProjectBuilder.builder()
@@ -73,10 +79,11 @@ class HasPreviewDependencyTest {
 
     lib.plugins.apply("java-library")
     app.plugins.apply("java")
-
     val implementation = app.configurations.getByName("implementation")
     implementation.dependencies.add(app.dependencies.project(mapOf("path" to ":lib")))
 
-    assertThat(AndroidPreviewSupport.hasPreviewDependency(app, "debug")).isFalse()
+    assertThat(AndroidPreviewSupport.hasPreviewDependency(app, "debug")).isTrue()
+    assertThat(AndroidPreviewSupport.hasDirectPreviewDependency(app)).isFalse()
+    assertThat(AndroidPreviewSupport.hasAnyProjectDependency(app)).isTrue()
   }
 }

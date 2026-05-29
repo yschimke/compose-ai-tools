@@ -159,14 +159,11 @@ internal object AndroidPreviewSupport {
       if (enforceToolingDep && !hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
-            "'${project.path}'; skipping task registration. " +
-            "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
-            "(or remove the plugin from this module) to opt in. " +
-            "Transitive detection through declared `project(\":...\")` dependencies is enabled " +
-            "(issue #1549) — if a sibling module that hosts preview tooling isn't being picked up, " +
-            "either declare the tooling coord directly here, or set " +
-            "`composePreview { enforcePreviewToolingDependency = false }` in this module's build " +
-            "script (or pass `-PcomposePreview.enforcePreviewToolingDependency=false`)."
+            "'${project.path}' and no `project(\":...\")` deps that could carry it transitively; " +
+            "skipping task registration. Add one of " +
+            "${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
+            "(or remove the plugin from this module) to opt in, or set " +
+            "`composePreview { enforcePreviewToolingDependency = false }` to bypass this gate."
         )
         return@onVariants
       }
@@ -254,31 +251,25 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when this module declares a coord in [previewArtifactSignals] in its `implementation` /
-   * `api` / `runtimeOnly` (or `<name>Implementation` / `<name>Api` / `<name>RuntimeOnly`) buckets.
+   * Config-time decision: does this module *potentially* host previewable composables, such that we
+   * should register the renderer tasks?
    *
-   * Declared-deps scan (not resolved classpath) — keeps the check off the Gradle resolution path so
-   * we don't trip the "Configuration was resolved during configuration time" warning. The previous
-   * implementation walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but
-   * pulled resolution into the configuration phase.
+   * Two-tier check, both IP-safe and CC-friendly (no eager resolution at config time):
+   * 1. **Direct declared deps** ([hasDirectPreviewDependency]) — a preview-tooling coord is in this
+   *    module's `*Implementation` / `*Api` / `*RuntimeOnly` buckets. Authoritative win.
+   * 2. **Project deps exist** ([hasAnyProjectDependency]) — the module declares at least one
+   *    `project(":...")` dep, so the renderer-required preview-tooling coord could arrive
+   *    transitively (the CMP-Android `:composeApp -> :shared` shape from issues #241 / #1549). Tier
+   *    1 of the gate stays cheap; the actual transitive verification happens at task time via
+   *    [ValidatePreviewToolingPresentTask], which walks `${variant}RuntimeClasspath`'s resolved
+   *    graph through a wired `Provider<ResolvedComponentResult>` (the documented IP-safe, CC-safe
+   *    pattern for "I want the authoritative answer at task time").
    *
-   * **CMP-Android (issue #241, #1549).** For the canonical `:composeApp` → `:shared` shape with
-   * preview tooling declared on `:shared`'s `commonMain.api`, this method falls back to
-   * [CrossProjectMetadataService] — an IP-safe BuildService that parses `settings.gradle.kts` and
-   * each subproject's `build.gradle[.kts]` off disk rather than crossing `Project` boundaries.
-   * Declared `project(":...")` deps in this module's `*Implementation` / `*Api` / `*RuntimeOnly`
-   * buckets are walked transitively through the service; if any of them declares a preview-tooling
-   * coord (or itself depends on a project that does), the gate passes.
-   *
-   * If the service can't be located (e.g. tests using `ProjectBuilder` directly), the deep walk is
-   * silently skipped and only the direct-coord check applies — the same behaviour as before #1549.
-   * Consumers can also still override the whole gate with
-   * `composePreview.enforcePreviewToolingDependency = false`.
-   *
-   * Other trade-off: a preview-tooling coord that arrives purely through a Maven transitive (e.g.
-   * another AAR's POM declares it on `runtime`) won't match — declared intent in `allDependencies`
-   * is what we look for. In practice preview tooling is declared explicitly in the surface that
-   * uses it.
+   * The previous IP-safe implementation walked sibling project `build.gradle[.kts]` text via a
+   * BuildService — fast, but a heuristic that missed coords contributed by convention plugins.
+   * Switching tier-2 verification to the resolved graph closes that gap: the resolved classpath is
+   * exactly what AGP gives the test JVM, so any coord that would actually be on the renderer's
+   * classpath gets seen.
    *
    * The `variantName` argument is unused but kept on the public signature for test-fixture
    * compatibility.
@@ -286,13 +277,13 @@ internal object AndroidPreviewSupport {
   internal fun hasPreviewDependency(
     project: Project,
     @Suppress("UNUSED_PARAMETER") variantName: String,
-  ): Boolean = hasDirectPreviewDependency(project) || hasTransitivePreviewDependency(project)
+  ): Boolean = hasDirectPreviewDependency(project) || hasAnyProjectDependency(project)
 
   /**
    * Direct-only variant — declared preview-tooling coord in this module's `*Implementation` /
    * `*Api` / `*RuntimeOnly` buckets. Used by the doctor task to surface the "pin the dep locally"
-   * soft recommendation even when [hasTransitivePreviewDependency] is what made
-   * [hasPreviewDependency] pass.
+   * soft recommendation even when the gate passed via the project-dep tier of
+   * [hasPreviewDependency].
    */
   internal fun hasDirectPreviewDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
@@ -307,27 +298,22 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * IP-safe transitive walk through declared `project(":...")` deps in this module's declarable
-   * buckets. Returns `true` if any transitively-reachable subproject declares a preview-tooling
-   * coord in its `build.gradle[.kts]` (as parsed by [CrossProjectMetadataService]). Returns `false`
-   * when the service isn't registered (test harnesses) — the gate then falls back to direct-only
-   * detection.
+   * True when this module declares at least one `project(":...")` dep in any declarable bucket.
+   * IP-safe via [ProjectDependency.getPath] (Gradle 8.11+) — returns the target project's path as a
+   * string without touching the other `Project` object the way the legacy `getDependencyProject()`
+   * does.
+   *
+   * Used as a config-time over-approximation of "could preview tooling reach this module
+   * transitively"; the resolved-graph walk in [ValidatePreviewToolingPresentTask] is what confirms
+   * or rejects at task time.
    */
-  internal fun hasTransitivePreviewDependency(project: Project): Boolean {
-    val transitiveProjectPaths = LinkedHashSet<String>()
+  internal fun hasAnyProjectDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
       for (dep in config.allDependencies) {
-        // `ProjectDependency.getPath()` is the IP-safe accessor (Gradle 8.11+) — returns the
-        // target project's path as a string without touching the other `Project` object the way
-        // the legacy `getDependencyProject()` does.
-        if (dep is org.gradle.api.artifacts.ProjectDependency) {
-          transitiveProjectPaths.add(dep.path)
-        }
+        if (dep is org.gradle.api.artifacts.ProjectDependency) return true
       }
     }
-    if (transitiveProjectPaths.isEmpty()) return false
-    val service = CrossProjectMetadataService.find(project) ?: return false
-    return transitiveProjectPaths.any { service.hasPreviewToolingDeep(it) }
+    return false
   }
 
   private fun declarableBucketsOf(
@@ -535,14 +521,13 @@ internal object AndroidPreviewSupport {
     val injectedDependencies =
       mutableListOf<ee.schimke.composeai.plugin.tooling.InjectedDependency>()
     val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
-    // Captured at registration time so the doctor task's `@Input Boolean`s are plain serializable
-    // values (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
-    // so the consumer's `dependencies { }` block has finished evaluating. The direct and
-    // transitive signals are passed separately so the doctor's
-    // `module.preview-tooling-not-declared` finding can distinguish "user pinned the dep here"
-    // from "IP-safe cross-project walk reached it via a `project(...)` sibling".
+    // Captured at registration time so the doctor task's `@Input Boolean` is a plain serializable
+    // value (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
+    // so the consumer's `dependencies { }` block has finished evaluating. The "transitive
+    // detection" signal that used to ride alongside this is computed at the doctor's action time
+    // from `mainRuntimeRoot` — that's the IP-safe, CC-safe way to ask "is preview tooling
+    // reachable through the resolved graph?" without forcing config-time resolution (issue #1549).
     val previewToolingDeclaredAtRegistration = hasDirectPreviewDependency(project)
-    val previewToolingTransitiveAtRegistration = hasTransitivePreviewDependency(project)
     project.tasks.register(
       "composePreviewDoctor",
       ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java,
@@ -557,7 +542,6 @@ internal object AndroidPreviewSupport {
       testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
       this.previewToolingDeclared.set(previewToolingDeclaredAtRegistration)
       this.enforcePreviewToolingDependency.set(extension.enforcePreviewToolingDependency)
-      this.transitivePreviewToolingDetected.set(previewToolingTransitiveAtRegistration)
       this.injectedDependenciesJson.set(
         project.provider {
           injectedDependencyJson.encodeToString(
@@ -569,6 +553,31 @@ internal object AndroidPreviewSupport {
         }
       )
     }
+
+    // Task-time preview-tooling validation (issue #1549). When the config-time gate passed via
+    // the project-deps tier rather than a direct declared coord, we don't yet know whether the
+    // resolved runtime classpath actually contains preview tooling — only Gradle's resolution
+    // engine can answer that authoritatively, and it can only be invoked at task-action time
+    // without tripping the "Configuration was resolved during configuration time" CC warning.
+    // Wiring `ValidatePreviewToolingPresentTask` as a `dependsOn` of `composePreviewRender` runs
+    // the resolved-graph walk first; if no preview-tooling coord is reachable, render bails fast
+    // with a remediation-oriented error instead of hitting Robolectric with a missing-class
+    // explosion. When the direct check already passed we know the coord is on the classpath and
+    // skip registering the validator entirely — saves a resolution at execution time.
+    val validatePreviewToolingPresentTask =
+      if (
+        !previewToolingDeclaredAtRegistration &&
+          extension.enforcePreviewToolingDependency.get() &&
+          mainRuntimeRoot != null
+      ) {
+        project.tasks.register(
+          "composePreviewValidatePreviewToolingPresent",
+          ValidatePreviewToolingPresentTask::class.java,
+        ) {
+          this.modulePath.set(project.path)
+          this.runtimeClasspathRoot.set(mainRuntimeRoot)
+        }
+      } else null
 
     // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
     // `testImplementation`:
@@ -1377,6 +1386,10 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRender", Test::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
+        // Bail fast (with remediation) when the gate passed via project-deps tier but the
+        // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
+        // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
+        validatePreviewToolingPresentTask?.let { dependsOn(it) }
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
@@ -2117,11 +2130,11 @@ internal object AndroidPreviewSupport {
    *
    * Shares implementation with the desktop registration; both call sites consume the same shape.
    *
-   * **Sibling subprojects** are read through [CrossProjectMetadataService] — settings-file parsed
-   * off disk rather than via `rootProject.allprojects`, so this stays IP-clean. The service
-   * enumerates every declared subproject's `build.gradle[.kts]` from the IP-safe
-   * [CrossProjectMetadata] snapshot. If the service isn't registered (test harnesses), only the
-   * root + current-module entries flow through, matching the pre-#1549 fallback.
+   * **Sibling subprojects** flow through [SubprojectBuildFilesValueSource] — a Gradle
+   * [ValueSource][org.gradle.api.provider.ValueSource] that parses `settings.gradle[.kts]` off disk
+   * and emits every declared subproject's `build.gradle[.kts]`. IP-safe (no
+   * `rootProject.allprojects`) and CC-tracked (ValueSource re-runs and invalidates dependent
+   * entries iff the returned list of files changes).
    */
   internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
@@ -2129,8 +2142,9 @@ internal object AndroidPreviewSupport {
 
 /**
  * IP-safe cheap-signal file collector shared by the Android (`AndroidPreviewSupport`) and Desktop
- * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot) and the current
- * project's own `projectDir` only — no `rootProject.file(...)` / `rootProject.allprojects` access.
+ * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot), the current
+ * project's own `projectDir`, and [SubprojectBuildFilesValueSource] for the sibling-subprojects
+ * walk — no `rootProject.file(...)` / `rootProject.allprojects` access.
  */
 internal object CheapSignalFiles {
   internal fun collect(project: org.gradle.api.Project): List<java.io.File> {
@@ -2147,13 +2161,17 @@ internal object CheapSignalFiles {
     val moduleDir = project.projectDir
     out += java.io.File(moduleDir, "build.gradle.kts")
     out += java.io.File(moduleDir, "build.gradle")
-    // Sibling subprojects via the IP-safe BuildService (issue #1549). Settings + each
-    // subproject's `build.gradle[.kts]` are parsed off disk inside the service, so a sibling
-    // `:lib/build.gradle.kts` edit flips Tier-1 dirty without needing `rootProject.allprojects`.
-    // The service walks `settings.gradle.kts`'s `include(...)` directives — adding / removing a
-    // subproject still updates `settings.gradle.kts` (already in the set above), and now editing
-    // a sibling subproject's build file is covered too.
-    CrossProjectMetadataService.find(project)?.allBuildFiles()?.let { out.addAll(it) }
+    // Sibling subprojects via the IP-safe ValueSource (issue #1549). Settings + each subproject's
+    // `build.gradle[.kts]` are enumerated by parsing the settings file off disk inside the value
+    // source — adding / removing a subproject still flips `settings.gradle.kts` (already in the
+    // set above), and now editing a sibling subproject's build file is covered too (the daemon's
+    // runtime fingerprinting reads the path's contents). CC invalidates downstream entries iff
+    // the returned file list differs.
+    out.addAll(
+      project.providers
+        .of(SubprojectBuildFilesValueSource::class.java) { parameters.rootDir.set(rootDir) }
+        .get()
+    )
     // Only emit paths that actually exist — missing files contribute their absolute path string
     // to the daemon's hash, but emitting `gradle/libs.versions.toml` for a project that doesn't
     // use a TOML catalog would brand every daemon classpath fingerprint with a ghost path. The

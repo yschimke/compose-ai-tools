@@ -15,7 +15,8 @@ import org.junit.rules.TemporaryFolder
  * [CheapSignalFiles] enumeration — are exercised here through a real Gradle Test Kit invocation
  * with `org.gradle.unsafe.isolated-projects=true` set, so any latent IP violation in the new code
  * paths fails the build instead of being silently downgraded to a warning. Unit-level coverage of
- * the parser lives in [CrossProjectMetadataTest].
+ * the resolved-graph walk lives in [ValidatePreviewToolingPresentTaskTest], and unit coverage for
+ * the cheap-signal subproject enumeration lives in [SubprojectBuildFilesValueSourceTest].
  */
 class CrossProjectMetadataFunctionalTest {
 

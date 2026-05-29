@@ -70,9 +70,11 @@ internal object CompatRules {
    * - `previewToolingDeclared` — `AndroidPreviewSupport.hasDirectPreviewDependency(project)`, i.e.
    *   is one of the known `@Preview` tooling coords declared **directly** in this module's
    *   `*Implementation` / `*Api` / `*RuntimeOnly` buckets?
-   * - `transitivePreviewToolingDetected` — IP-safe transitive walk via
-   *   [ee.schimke.composeai.plugin.CrossProjectMetadataService] reached preview tooling through a
-   *   declared `project(":...")` sibling (issue #1549). Independent of `previewToolingDeclared`.
+   * - `transitivePreviewToolingDetected` — `${variant}RuntimeClasspath`'s resolved graph reached a
+   *   preview-tooling coord transitively (issue #1549). The doctor task computes this at action
+   *   time via
+   *   [ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling]
+   *   walking `mainRuntimeRoot`. Independent of `previewToolingDeclared`.
    * - `enforcePreviewToolingDependency` — `composePreview.enforcePreviewToolingDependency`, the
    *   manual escape hatch added for the CMP-Android `:composeApp -> :shared` shape (issue #241).
    *
