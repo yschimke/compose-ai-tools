@@ -208,6 +208,20 @@ describeExternal(
         it("warms the daemon for :androidApp and renders at least one preview", async function () {
             api.resetMessages();
 
+            // Phase timings emitted as a single `[bench] {...}` JSON line at
+            // the end of the suite. Captured into a `bench-result.json`
+            // workflow artifact by `vscode-extension-e2e-external.yml`'s grep
+            // step. Soft signal only — no assertions key off these numbers
+            // (CI variance + cold Apollo/KMP config would flake any hard
+            // threshold). Anchor: `t0` is suite-entry wall-clock; per-phase
+            // figures are deltas from `t0` so a single timestamp suffices.
+            const t0 = Date.now();
+            const phases: Record<string, number> = {};
+            const phaseStart = (): number => Date.now();
+            const phaseEnd = (key: string, start: number): void => {
+                phases[key] = Date.now() - start;
+            };
+
             // Confetti's `:androidApp` applies the compose-preview plugin
             // via `alias(libs.plugins.composeai.preview)` — the literal
             // `id(...)` text-scan in `appliesPlugin` doesn't match catalog
@@ -218,7 +232,9 @@ describeExternal(
             // above replaced), so without an explicit await the warm below
             // races the marker write and intermittently fails on cold
             // workspaces. Regression for #1362.
+            const tBootstrap = phaseStart();
             await api.triggerBootstrapAppliedMarkers();
+            phaseEnd("bootstrapAppliedMarkersMs", tBootstrap);
 
             // Drive the same activation-time path the user hits: warm
             // the daemon (composePreviewDaemonStart → JVM spawn →
@@ -227,7 +243,9 @@ describeExternal(
             // message actionable when initialize fails — the daemon
             // stderr tail is already in the channel log thanks to
             // issue #1326's wrapping (`formatDaemonSpawnFailure`).
+            const tWarm = phaseStart();
             const warmed = await api.triggerWarmDaemon(kotlinFile);
+            phaseEnd("warmDaemonMs", tWarm);
             if (!warmed) {
                 // Post-mortem: surface every applied.json the workspace has on
                 // disk so the CI log shows whether `composePreviewApplied` fanned
@@ -317,6 +335,7 @@ describeExternal(
                     `tail. lastWarmDaemonError=${api.getLastWarmDaemonError() ?? "<null>"}`,
             );
 
+            const tRefresh = phaseStart();
             await api.triggerRefresh(kotlinFile, /* force */ true, "full");
 
             const previewsMessage = await waitFor(
@@ -339,6 +358,7 @@ describeExternal(
                     return undefined;
                 },
             );
+            phaseEnd("firstNonEmptySetPreviewsMs", tRefresh);
 
             const previews = previewsMessage.previews as Array<{
                 id: string;
@@ -392,10 +412,36 @@ describeExternal(
                     return m;
                 },
             );
+            phaseEnd("webviewPreviewsRenderedMs", tRefresh);
             assert.ok(
                 renderedSignal.count >= 1,
                 `webview rendered ${renderedSignal.count} cards but ${previews.length} previews were sent`,
             );
+
+            // Single-line JSON record for the workflow's bench-result grep.
+            // The `[bench]` prefix is the contract — `vscode-extension-e2e-external.yml`
+            // greps stdout for `^\[bench\] ` and writes the trailing payload
+            // to `bench-result.json`. Keep all timings in milliseconds so the
+            // downstream comparator doesn't have to disambiguate units.
+            // Fields:
+            //   scenario          — which workspace + module the numbers come from
+            //   totalElapsedMs    — suite-entry to last phase, includes Gradle config
+            //                       which dominates on cold runs
+            //   previewCount      — guards against a regression that drops the
+            //                       set; a 10x change in count makes any per-render
+            //                       metric meaningless on its own
+            //   renderedCount     — webview ack count; mismatch with previewCount
+            //                       is the existing-assertion signal, surfaced here
+            //                       too for the dashboard
+            const bench = {
+                scenario: "confetti-androidApp-cold",
+                schemaVersion: 1,
+                ...phases,
+                totalElapsedMs: Date.now() - t0,
+                previewCount: previews.length,
+                renderedCount: renderedSignal.count,
+            };
+            console.log(`[bench] ${JSON.stringify(bench)}`);
         });
     },
 );
