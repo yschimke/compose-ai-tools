@@ -23,9 +23,13 @@ import java.io.File
  * **Re-render contract** mirrors [AccessibilityDataProductRegistry]: both kinds are
  * `requiresRerender = true`, and a missing artefact returns
  * [DataProductRegistry.Outcome.RequiresRerender] with the matching `scroll-long` / `scroll-gif`
- * render mode so the dispatcher queues a per-preview re-render in the right scenario. Binary
- * artefacts (PNG / animated GIF) — never parse the file as JSON, so [allowInlineUpgrade] is
- * overridden to `false`.
+ * render mode so the dispatcher queues a per-preview re-render in the right scenario.
+ * `RenderEngine.runScrollScenario` on the daemon-android side picks up the mode, resolves the
+ * annotation intent (axis, maxScrollPx, frameIntervalMs) via `PreviewIndex.scrollCaptureFor`
+ * (populated from the gradle plugin's `dataProducts[].scroll` field in `previews.json`), and
+ * dispatches into the renderer's `handleLongCapture` / `handleGifCapture` to write the artefact at
+ * the path [fileFor] resolves to. Binary artefacts (PNG / animated GIF) — never parse the file as
+ * JSON, so [allowInlineUpgrade] is overridden to `false`.
  *
  * **Why per-kind subdirectories, not per-preview.** Unlike most file-backed registries (which use
  * the [FileBackedDataProductRegistry] default `<rootDir>/<previewId>/<file>` layout), scroll's

@@ -207,6 +207,24 @@ export interface DaemonScheduler {
         reason?: string,
         overrides?: PreviewOverrides,
     ): Promise<boolean>;
+    /**
+     * Issue #1528 — pulls a single `render/scroll/long` / `render/scroll/gif` artefact through
+     * the daemon's `data/fetch` re-render path. `kind` is inferred from the missing entry's
+     * `renderOutput` extension (`.png` → `render/scroll/long`, `.gif` → `render/scroll/gif`).
+     * Returns the absolute on-disk path the daemon wrote (typically equal to
+     * `missing.absolutePath` since the daemon writes to the same `<module>/build/compose-previews/`
+     * location Gradle does), or `null` when the daemon isn't ready, doesn't advertise the kind,
+     * or the fetch fails. Callers post `updateImage` against the returned path.
+     */
+    fetchScrollDataProduct(
+        module: ModuleInfo,
+        missing: {
+            previewId: string;
+            captureIndex: number;
+            renderOutput: string;
+            absolutePath: string;
+        },
+    ): Promise<string | null>;
     daemonEvents(moduleId: string): DaemonClientEvents;
 }
 
@@ -741,8 +759,53 @@ export class LiveDaemonScheduler implements DaemonScheduler {
      * the same events bag when issuing one-off `historyList` /
      * `historyRead` / `historyDiff` calls — the gate's daemon registry
      * keys on identity equivalence of the events bag, so reusing the
-     * same one keeps a single live registration.
+     * Issue #1528 — pull a scroll artefact (`render/scroll/long` / `render/scroll/gif`) through
+     * `data/fetch`. The daemon registry's `requiresRerender = true` semantics mean a missing
+     * artefact returns `Outcome.RequiresRerender`, which the dispatcher converts into a
+     * `mode=scroll-long|gif` re-render via `RenderEngine.runScrollScenario`. Returns the
+     * on-disk path the daemon wrote (matches the `missing.absolutePath` the host already
+     * computed off the manifest); `null` on any failure so callers can keep their Gradle
+     * fallback behind the same code path.
      */
+    async fetchScrollDataProduct(
+        module: ModuleInfo,
+        missing: {
+            previewId: string;
+            captureIndex: number;
+            renderOutput: string;
+            absolutePath: string;
+        },
+    ): Promise<string | null> {
+        const client = await this.gate.getOrSpawn(
+            module,
+            this.daemonEvents(module.modulePath),
+        );
+        if (!client) return null;
+        const lower = missing.renderOutput.toLowerCase();
+        const kind = lower.endsWith(".gif")
+            ? "render/scroll/gif"
+            : lower.endsWith(".png")
+              ? "render/scroll/long"
+              : null;
+        if (!kind) return null;
+        try {
+            const result = await client.dataFetch({
+                previewId: missing.previewId,
+                kind,
+                inline: false,
+            });
+            return result.path ?? missing.absolutePath;
+        } catch (err) {
+            // FetchFailed / Unknown / BudgetExceeded all surface as throws from the
+            // protocol client. Logged at the caller via the `null` return so the host
+            // can fall back to its Gradle path on older daemons that don't advertise
+            // the kinds. The thrown reason isn't logged here because the caller already
+            // has the (previewId, kind) context that makes the error meaningful.
+            void err;
+            return null;
+        }
+    }
+
     daemonEvents(moduleId: string) {
         return {
             onRenderFinished: (params: RenderFinishedParams) => {
@@ -954,6 +1017,19 @@ export class GradleOnlyDaemonScheduler implements DaemonScheduler {
         _reason?: string,
     ): Promise<boolean> {
         return false;
+    }
+
+    async fetchScrollDataProduct(
+        _module: ModuleInfo,
+        _missing: {
+            previewId: string;
+            captureIndex: number;
+            renderOutput: string;
+            absolutePath: string;
+        },
+    ): Promise<string | null> {
+        /* no-op: minimal mode has no daemon; caller falls back to Gradle */
+        return null;
     }
 
     daemonEvents(_moduleId: string): DaemonClientEvents {
