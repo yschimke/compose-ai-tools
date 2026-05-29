@@ -76,6 +76,7 @@ class DesktopSceneRecomposerTest {
         override fun installObserver(
           scene: ImageComposeScene,
           onScopeRecomposed: (RecomposeScope) -> Unit,
+          onScopeInvalidatedByState: (RecomposeScope) -> Unit,
           onScopeDisposed: (RecomposeScope) -> Unit,
         ): CompositionObserverHandle {
           installAttempts++

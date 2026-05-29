@@ -33,7 +33,7 @@ class AndroidRecompositionDataProductRegistryTest {
     assertEquals(setOf("compose/recomposition"), byKind.keys)
     val cap = byKind.getValue("compose/recomposition")
     assertEquals(DataProductTransport.INLINE, cap.transport)
-    assertEquals(1, cap.schemaVersion)
+    assertEquals(2, cap.schemaVersion)
     assertTrue("compose/recomposition must be attachable", cap.attachable)
     assertTrue("compose/recomposition must be fetchable", cap.fetchable)
     assertTrue(
@@ -155,6 +155,19 @@ class AndroidRecompositionDataProductRegistryTest {
         assertTrue(
           "post-click delta must carry at least one recomposed scope (got '$nodes')",
           nodes!!.size >= 1,
+        )
+
+        // v2 (#1605): the reason field rides the bridge symmetrically with desktop. The toggle
+        // fixture reads its `clicked` state in composition, so the click invalidates that scope
+        // via a snapshot write — STATE_READ must surface, and every node must carry a reason.
+        val reasons = nodes.map { it.jsonObject["reason"]?.jsonPrimitive?.content }
+        assertTrue(
+          "every v2 node must carry a non-null reason (got '$reasons')",
+          reasons.all { it != null },
+        )
+        assertTrue(
+          "a state-read click must surface at least one STATE_READ scope (got '$reasons')",
+          reasons.contains("STATE_READ"),
         )
 
         // Quiet flush — no further input, so the next drain ships an empty nodes list.

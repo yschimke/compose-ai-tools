@@ -54,7 +54,7 @@ class RecompositionDataProductRegistryTest {
     assertEquals(setOf("compose/recomposition"), byKind.keys)
     val cap = byKind.getValue("compose/recomposition")
     assertEquals(DataProductTransport.INLINE, cap.transport)
-    assertEquals(1, cap.schemaVersion)
+    assertEquals(2, cap.schemaVersion)
     assertTrue("compose/recomposition must be attachable", cap.attachable)
     assertTrue("compose/recomposition must be fetchable", cap.fetchable)
     assertTrue(
@@ -133,7 +133,7 @@ class RecompositionDataProductRegistryTest {
         assertEquals(1, postClickAttachments.size)
         val postClick = postClickAttachments[0]
         assertEquals("compose/recomposition", postClick.kind)
-        assertEquals(1, postClick.schemaVersion)
+        assertEquals(2, postClick.schemaVersion)
         assertNotNull("delta payload must travel inline", postClick.payload)
         assertNull("compose/recomposition is INLINE-only; path must be null", postClick.path)
         val payload = postClick.payload!!.jsonObject
@@ -151,6 +151,19 @@ class RecompositionDataProductRegistryTest {
         assertTrue(
           "post-click delta must carry at least one recomposed scope (got '$nodes')",
           nodes!!.size >= 1,
+        )
+
+        // v2 (#1605): every node carries a reason; ClickRecomposingSquare's inner `key(clicks)`
+        // scope reads the clicks state, so the click invalidates it via a snapshot write — the
+        // STATE_READ signal must surface in the delta.
+        val reasons = nodes.map { it.jsonObject["reason"]?.jsonPrimitive?.content }
+        assertTrue(
+          "every v2 node must carry a non-null reason (got '$reasons')",
+          reasons.all { it != null },
+        )
+        assertTrue(
+          "a state-read click must surface at least one STATE_READ scope (got '$reasons')",
+          reasons.contains("STATE_READ"),
         )
 
         // 4. Without a second click, the next flush carries an empty nodes list — the post-
@@ -252,6 +265,7 @@ class RecompositionDataProductRegistryTest {
         override fun installObserver(
           scene: androidx.compose.ui.ImageComposeScene,
           onScopeRecomposed: (androidx.compose.runtime.RecomposeScope) -> Unit,
+          onScopeInvalidatedByState: (androidx.compose.runtime.RecomposeScope) -> Unit,
           onScopeDisposed: (androidx.compose.runtime.RecomposeScope) -> Unit,
         ): androidx.compose.runtime.tooling.CompositionObserverHandle {
           throw NoSuchMethodError(
