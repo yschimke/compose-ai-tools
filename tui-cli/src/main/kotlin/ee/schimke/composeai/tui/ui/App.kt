@@ -1,6 +1,7 @@
 package ee.schimke.composeai.tui.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -17,11 +18,15 @@ import com.jakewharton.mosaic.modifier.Modifier
 import com.jakewharton.mosaic.ui.Column
 import com.jakewharton.mosaic.ui.Spacer
 import ee.schimke.composeai.cli.PreviewModule
+import ee.schimke.composeai.tui.DiscoveryWatcher
 import ee.schimke.composeai.tui.LiveSession
 import ee.schimke.composeai.tui.PreviewIndex
 import ee.schimke.composeai.tui.TuiArgs
 import ee.schimke.composeai.tui.terminal.TerminalSize
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Top-level TUI composition. Holds the [PreviewIndex] (filtered, navigable rows) and the
@@ -61,6 +66,29 @@ fun App(modules: List<PreviewModule>, args: TuiArgs) {
   var filterDraft by remember { mutableStateOf(args.filter ?: "") }
   var exitRequested by remember { mutableStateOf(false) }
   var cursorTick by remember { mutableIntStateOf(0) }
+
+  // Discovery refresh: a filesystem watcher rooted at each module's build/compose-previews bumps
+  // this counter whenever `previews.json` is rewritten (a @Preview added / removed / renamed). The
+  // watcher fires from a background thread, so it writes through a StateFlow — collectAsState
+  // marshals
+  // the value back onto the composition thread safely. Single writer (the watcher thread) means the
+  // read-modify-write below is race-free.
+  val discoverySignal = remember { MutableStateFlow(0L) }
+  DisposableEffect(modules) {
+    val watcher = DiscoveryWatcher(modules)
+    watcher.start { discoverySignal.value = discoverySignal.value + 1 }
+    onDispose { watcher.close() }
+  }
+  val discoveryTick by discoverySignal.collectAsState()
+  LaunchedEffect(discoveryTick) {
+    if (discoveryTick == 0L) return@LaunchedEffect
+    val newRows = withContext(Dispatchers.IO) { PreviewIndex.loadRows(modules) }
+    index.refresh(newRows)
+    // Bump the navigation tick so the panes re-read index.rows() and the live-session re-target
+    // effect runs — if the previously-selected preview was removed, the cursor clamped to a new
+    // current and the visible-set needs to follow.
+    cursorTick++
+  }
 
   // Sticky live mode: when the user toggles live on, this effect opens the session against the
   // current preview's module. Toggling off disables. Navigation between previews is handled by
