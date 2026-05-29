@@ -193,20 +193,18 @@ val dumpClassloaderDiff by tasks.registering {
       "forensics dumps. Writes daemon/harness/build/reports/classloader-forensics/diff.{md,json}. v1 — " +
       "developer-invoked diagnostic, not a CI gate."
   group = "verification"
-  val standaloneJsonProvider =
-    project(":renderer-android")
-      .layout
-      .buildDirectory
-      .file("reports/classloader-forensics/standalone.json")
-  val daemonJsonProvider =
-    project(":daemon:android")
-      .layout
-      .buildDirectory
-      .file("reports/classloader-forensics/daemon.json")
+  // Reference the sibling modules' forensics dumps by path anchored at the build root — Isolated
+  // Projects forbids reaching into another project's `layout`. Dev-only diagnostic inputs.
+  val standaloneJson =
+    layout.settingsDirectory.file(
+      "renderer-android/build/reports/classloader-forensics/standalone.json"
+    )
+  val daemonJson =
+    layout.settingsDirectory.file("daemon/android/build/reports/classloader-forensics/daemon.json")
   val diffMdFile = layout.buildDirectory.file("reports/classloader-forensics/diff.md")
   val diffJsonFile = layout.buildDirectory.file("reports/classloader-forensics/diff.json")
-  inputs.file(standaloneJsonProvider)
-  inputs.file(daemonJsonProvider)
+  inputs.file(standaloneJson)
+  inputs.file(daemonJson)
   outputs.file(diffMdFile)
   outputs.file(diffJsonFile)
 
@@ -215,8 +213,8 @@ val dumpClassloaderDiff by tasks.registering {
   val libFiles = classloaderForensicsLib.elements
 
   doLast {
-    val standalone = standaloneJsonProvider.get().asFile
-    val daemon = daemonJsonProvider.get().asFile
+    val standalone = standaloneJson.asFile
+    val daemon = daemonJson.asFile
     require(standalone.exists()) {
       "Configuration A dump missing — run :renderer-android:test --tests \"*ClassloaderForensicsTest\" first.\n" +
         "Expected: ${standalone.absolutePath}"

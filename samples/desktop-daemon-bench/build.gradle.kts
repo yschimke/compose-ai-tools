@@ -64,7 +64,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
 
   @get:Internal
   val rootProjectDir: org.gradle.api.file.DirectoryProperty =
-    project.objects.directoryProperty().convention(project.rootProject.layout.projectDirectory)
+    project.objects.directoryProperty().convention(project.layout.settingsDirectory)
 
   @get:Internal
   val benchModulePath: org.gradle.api.provider.Property<String> =
@@ -84,9 +84,7 @@ abstract class BenchPreviewLatencyTask : DefaultTask() {
   val outputCsv: org.gradle.api.file.RegularFileProperty =
     project.objects
       .fileProperty()
-      .convention(
-        project.rootProject.layout.projectDirectory.file("docs/daemon/baseline-latency.csv")
-      )
+      .convention(project.layout.settingsDirectory.file("docs/daemon/baseline-latency.csv"))
 
   @get:Internal
   val previewsJsonFile: org.gradle.api.file.RegularFileProperty =
