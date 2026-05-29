@@ -192,19 +192,28 @@ internal object AndroidPreviewSupport {
    *
    * Two rules, in order:
    * 1. **Exact match.** `target=demoDebug` matches `demoDebug` only — explicit `--variant
-   *    demoDebug` pins a specific flavor and any other variant is ignored.
-   * 2. **Build-type suffix match.** `target=debug` also matches `demoDebug`, `prodDebug`,
-   *    `uatDebug` — anything whose name ends with the capitalized target. Keeps the default
-   *    `--variant=debug` working on flavored apps (issue #1546) without making the consumer add
-   *    `--variant demoDebug` every run.
+   *    demoDebug` pins a specific flavor and any other variant is ignored. Suffix matching is
+   *    skipped for flavored targets so `--variant paidDebug` does NOT silently match
+   *    `minApi23PaidDebug` on a multi-dimension flavored module.
+   * 2. **Build-type suffix match.** A bare build-type target (`debug`, `release`) also matches
+   *    `demoDebug`, `prodDebug`, `uatDebug` — anything whose name ends with the capitalized target.
+   *    Keeps the default `--variant=debug` working on flavored apps (issue #1546) without making
+   *    the consumer add `--variant demoDebug` every run.
    *
-   * The second rule is intentionally one-directional: a target like `demoDebug` does NOT match a
-   * flavorless `debug` variant. The user picked a flavor and the module doesn't have it, so the
-   * module is silently skipped — same outcome as today.
+   * "Bare build-type" is detected as a target containing no uppercase characters — matches AGP's
+   * convention that build types are lowercase identifiers while combined variant names carry an
+   * uppercased segment (`paidDebug`, `minApi23PaidDebug`). If the target itself has an internal
+   * uppercase, it's a flavored variant name and rule 2 is bypassed.
+   *
+   * Rule 2 is intentionally one-directional: a target like `demoDebug` does NOT match a flavorless
+   * `debug` variant. The user picked a flavor and the module doesn't have it, so the module is
+   * silently skipped — same outcome as today.
    */
   internal fun variantMatchesTarget(variantName: String, target: String): Boolean {
     if (variantName == target) return true
     if (target.isEmpty()) return false
+    val isBareBuildType = target.none { it.isUpperCase() }
+    if (!isBareBuildType) return false
     val capitalized = target.replaceFirstChar { it.uppercase() }
     return variantName.endsWith(capitalized)
   }
