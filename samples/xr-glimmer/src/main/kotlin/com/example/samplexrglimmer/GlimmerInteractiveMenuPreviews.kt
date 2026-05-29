@@ -2,6 +2,7 @@ package com.example.samplexrglimmer
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,11 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -38,11 +44,15 @@ import ee.schimke.composeai.preview.FocusedPreview
  *  1. The env backdrop ([EnvironmentBackdrop]) — a real photo for Dark / Busy /
  *     VeniceCanalCats and a procedurally-drawn Compose `Canvas` scene for Light, opaque RGB
  *     in both cases.
- *  2. The Glimmer UI on top — `GlimmerTheme` with `ListItem`s that paint their own surface
- *     tint, occluding the env where the items sit and letting it show through between them.
- *     When `:data-glimmer-environment-connector` lands the per-env [EnvironmentBackdrop]
- *     moves into the connector and the sample reverts to plain additive-RGB captures
- *     (Encoding B) on a black background.
+ *  2. The Glimmer UI on top — `GlimmerTheme` with `ListItem`s drawn on a `Color.Black`
+ *     additive-zero base and composited with `BlendMode.Plus`, so the display *adds* its lit
+ *     pixels onto the env exactly as on-device: black contributes nothing (the env shows
+ *     through a `ListItem` untouched), the dark Glimmer surface tint brightens the env where
+ *     items sit, and white text / focus borders add full light. When
+ *     `:data-glimmer-environment-connector` lands the per-env [EnvironmentBackdrop] moves into
+ *     the connector and the sample reverts to plain additive-RGB captures (Encoding B) on a
+ *     black background — the `ADD`-blend then happens post-render on the captured PNG instead
+ *     of inline.
  *
  * The four GIFs (Light / Dark / Busy / VeniceCanalCats) are **visually distinct today** because
  * the env compositing happens at render time — they're not pixel-identical placeholders. The
@@ -107,30 +117,49 @@ private fun InteractiveMenuOnEnv(env: GlimmerEnvironment) {
 }
 
 /**
- * Wraps [content] in `GlimmerTheme` on top of [env]'s procedurally-drawn backdrop. No
- * `Color.Black` base layer — Glimmer's own surface tokens (`Card`, `ListItem`, `TitleChip` all
- * paint their own surface fill) cover the env where the UI sits, and the empty space between
- * elements lets the env show through.
+ * Composites [content] (wrapped in `GlimmerTheme`) additively over [env]'s backdrop, reproducing
+ * the on-device additive-display physics: real AI-Glasses displays *sum* lit pixels onto the
+ * wearer's view, so pure black ≡ transparent and a dark surface tint ≡ a faint brightening.
  *
- * **Compromise vs. on-device physics.** Real additive AI-Glasses displays additively sum lit
- * pixels onto the wearer's view (black ≡ transparent). Reproducing that in Compose needs
- * `Modifier.drawWithContent { saveLayer + BlendMode.Plus }` around the Glimmer UI on top of an
- * opaque-black base — Robolectric's hardware-rendering screenshot path drops the blend mode
- * silently (verified empirically: the resulting captures collapsed to identical opaque-black
- * frames regardless of env). Until we either (a) plumb a software-rendering option through
- * `RoborazziComposeOptions` or (b) move the env composite into the post-render
- * `:data-glimmer-environment-connector` (where it operates on the captured PNG and `ADD`-
- * blending is a per-pixel arithmetic step we control), the sample picks the simpler
- * "occluding-overlay" model: lit Glimmer surfaces cover the env where they sit, empty space
- * shows the env. Loses the additive-light illusion (a dark Card on a bright Light env reads
- * more like Material 3 on a wallpaper than like a HUD overlay) but the user can see the env
- * actually differing per variant, which is the point of having per-env names.
+ * Two layers in a `Box`:
+ *
+ *  1. [EnvironmentBackdrop] — the opaque world the wearer is looking at.
+ *  2. The Glimmer UI on a `Color.Black` additive-zero base, wrapped in
+ *     `Modifier.drawWithContent { saveLayer(BlendMode.Plus) }` so the whole layer is `ADD`-
+ *     blended onto the backdrop. Black pixels add nothing (the env shows through a `ListItem`
+ *     untouched), the dark Glimmer surface tint brightens the env where items sit, and white
+ *     text / focus borders add full light.
+ *
+ * `BlendMode.Plus` **does** survive Robolectric's hardware-rendering screenshot path — verified
+ * empirically (an earlier revision of this sample wrongly assumed it was dropped and fell back to
+ * an opaque "occluding-overlay" model, which read like Material 3 on a wallpaper rather than a
+ * transparent HUD overlay). The `saveLayer` is what makes the add correct: it flattens the black
+ * base + Glimmer UI into one buffer first, then adds that buffer to the env in a single step, so
+ * overlapping translucent Glimmer draws don't double-count against the backdrop.
+ *
+ * When `:data-glimmer-environment-connector` lands, this inline `ADD`-blend moves to a post-render
+ * pass over the captured PNG and `GlimmerEnvSurface` reverts to the plain `Color.Black` base of
+ * the static [NowPlayingCard] previews (Encoding B in `docs/design/GLIMMER_PREVIEW.md`).
  */
 @Composable
 private fun GlimmerEnvSurface(env: GlimmerEnvironment, content: @Composable () -> Unit) {
   Box(Modifier.fillMaxSize()) {
     EnvironmentBackdrop(env, modifier = Modifier.fillMaxSize())
-    Box(Modifier.fillMaxSize().padding(24.dp)) { GlimmerTheme(content = content) }
+    Box(
+      Modifier.fillMaxSize()
+        .drawWithContent {
+          drawIntoCanvas { canvas ->
+            val paint = Paint().apply { blendMode = BlendMode.Plus }
+            canvas.saveLayer(Rect(0f, 0f, size.width, size.height), paint)
+            drawContent()
+            canvas.restore()
+          }
+        }
+        .background(Color.Black)
+        .padding(24.dp)
+    ) {
+      GlimmerTheme(content = content)
+    }
   }
 }
 
