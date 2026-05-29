@@ -48,9 +48,12 @@ class GradlePreviewDriver(projectRoot: File, private val options: DriverOptions 
     get() = connection.lastModelAccessFailure
 
   /**
-   * Find every subproject that applies the `ee.schimke.composeai.preview` plugin. Detection is by
-   * task-name presence (`composePreviewDiscover`) so it works against any consumer plugin version
-   * that ships the discovery task.
+   * Find every subproject that applies the `ee.schimke.composeai.preview` plugin. Detection is via
+   * the plugin's `ComposePreviewModel` Tooling-API model (see [DiscoverPreviewModulesAction])
+   * rather than a task-graph scan, so it avoids realizing unrelated modules' tasks during discovery
+   * (issue #1620). This requires the plugin to register that model — present since 0.11.13. The
+   * CLI's default auto-inject path always supplies a current plugin, so this only matters for
+   * projects that manually pin an older plugin version *and* disable auto-inject.
    */
   fun discoverModules(): List<PreviewModule> = connection.findPreviewModules()
 
