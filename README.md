@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 111 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/main`. 113 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -733,6 +733,18 @@ _No findings._
 ### `FocusableMenu` · `spec:width=640,height=480,dpi=240`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/FocusableMenu_Glimmer_Input.a11y.png" width="400" />
+
+_No findings._
+
+### `GlimmerListItemDefault` · `spec:width=640,height=480,dpi=240`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListItemDefault_Glimmer_Default.a11y.png" width="400" />
+
+_No findings._
+
+### `GlimmerListItemFocused` · `spec:width=640,height=480,dpi=240`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListItemFocused_Glimmer_Focused.a11y.png" width="400" />
 
 _No findings._
 

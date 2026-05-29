@@ -1317,6 +1317,26 @@
       "variant": "spec:width=640,height=480,dpi=240"
     },
     {
+      "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
+      "cleanBasename": "GlimmerListItemDefault_Glimmer_Default.png",
+      "findings": [],
+      "functionName": "GlimmerListItemDefault",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
+      "cleanBasename": "GlimmerListItemFocused_Glimmer_Focused.png",
+      "findings": [],
+      "functionName": "GlimmerListItemFocused",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
       "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
       "findings": [],
