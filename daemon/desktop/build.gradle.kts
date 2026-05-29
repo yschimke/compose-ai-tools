@@ -26,6 +26,7 @@
 // Pre-1.0; see DESIGN.md § 17.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)

@@ -15,6 +15,7 @@
 //    Consumers don't reach for it directly; they get the band for free through the extension.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)

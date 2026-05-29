@@ -12,6 +12,7 @@
 // change; only the resolved module on Maven Central changes.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

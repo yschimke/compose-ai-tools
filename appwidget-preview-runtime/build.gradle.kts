@@ -19,6 +19,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // itself to what the widget actually supports.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

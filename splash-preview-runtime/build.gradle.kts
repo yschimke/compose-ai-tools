@@ -29,6 +29,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // appearance for tooling).
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

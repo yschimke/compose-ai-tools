@@ -8,7 +8,10 @@
 // docs/daemon/BTA-SPIKE.md for the checkpoints and docs/daemon/COMPILE-IN-PROCESS.md for the
 // production design these tests guard.
 
-plugins { alias(libs.plugins.kotlin.jvm) }
+plugins {
+  id("composeai.base-conventions")
+  alias(libs.plugins.kotlin.jvm)
+}
 
 // Same JDK floor as the rest of the daemon modules — BTA's `kotlin-build-tools-impl`
 // is built against JDK 17 in the 2.3.x line, matching our `ComposeAiJvmConventionsPlugin`
@@ -66,17 +69,17 @@ tasks.named<Test>("test") {
     configurations.named("testRuntimeClasspath").map {
       it.files.joinToString(File.pathSeparator) { jar -> jar.absolutePath }
     }
-  // Gradle-compiled fixture inputs for the parity test.
-  val fixtureProject = project(":daemon:bta-host-fixture")
-  val fixtureClassesDir =
-    fixtureProject.layout.buildDirectory.dir("classes/kotlin/main").map { it.asFile.absolutePath }
-  val fixtureSourceDir =
-    fixtureProject.layout.projectDirectory.dir("src/main/kotlin").asFile.absolutePath
+  // Gradle-compiled fixture inputs for the parity test. `:daemon:bta-host-fixture` is compiled via
+  // the `testImplementation` dependency above; reference its outputs by path anchored at the build
+  // root, since Isolated Projects forbids reaching into another project's `layout`.
+  val fixtureDir = layout.settingsDirectory.dir("daemon/bta-host-fixture")
+  val fixtureClassesDir = fixtureDir.dir("build/classes/kotlin/main").asFile.absolutePath
+  val fixtureSourceDir = fixtureDir.dir("src/main/kotlin").asFile.absolutePath
   jvmArgumentProviders.add(
     CommandLineArgumentProvider {
       listOf(
         "-Dcomposeai.bta.testRuntimeClasspath=${testRuntime.get()}",
-        "-Dcomposeai.bta.fixtureGradleClassesDir=${fixtureClassesDir.get()}",
+        "-Dcomposeai.bta.fixtureGradleClassesDir=$fixtureClassesDir",
         "-Dcomposeai.bta.fixtureSourceDir=$fixtureSourceDir",
       )
     }

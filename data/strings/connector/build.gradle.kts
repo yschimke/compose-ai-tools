@@ -4,6 +4,7 @@
 // are `androidx.compose.ui.semantics.*` which CMP exposes on JVM.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)

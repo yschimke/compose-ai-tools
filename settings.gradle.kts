@@ -7,6 +7,14 @@ pluginManagement {
   }
 }
 
+// The per-project conventions that used to live in the root build's `allprojects {}` block (ktfmt
+// + googleStyle + the history-gate test system property) now live in `ComposeAiBaseConventionsPlugin`
+// (build-logic), applied by each module via `plugins { id("composeai.base-conventions") }`. Isolated
+// Projects forbids the root build configuring its siblings, and `gradle.lifecycle.beforeProject`
+// can't apply an included-build plugin (its imperative `pluginManager.apply(id)` doesn't resolve
+// against `pluginManagement`), so explicit per-module application is the IP-safe route — and it
+// keeps `googleStyle()` typed (the convention plugin's classpath carries the ktfmt type).
+
 // Snapshot probe for the SDK compatibility matrix's snapshot cells. Pulls Robolectric
 // snapshots (which carry API 37 fixes ahead of the next stable release) from the new Sonatype
 // Central Maven snapshots endpoint so `:samples:sdk-matrix` can render at SDK 37. The legacy
@@ -395,3 +403,26 @@ include(":render-cli")
 if (JavaVersion.current() >= JavaVersion.VERSION_21) {
   include(":samples-21:android-metro-viewmodel")
 }
+
+// Snapshot the project paths that carry ktfmt (every project except the root, which applies no
+// convention plugin) for the root build's `ktfmtCheckAll` / `ktfmtFormatAll` aggregate tasks. Under
+// Isolated Projects the root build can't iterate `allprojects` to discover its siblings, but it can
+// depend on their tasks by path. We gather the paths here in settings — where every project is
+// already known — and hand them to the root build through a system property, read back via a
+// configuration-cache-tracked `providers.systemProperty(...)`. The channel must be closure-free: a
+// `gradle.lifecycle.beforeProject` closure can't carry the list (IP isolates the action and can't
+// serialize the captured settings-script reference).
+val ktfmtProjectPaths = buildList {
+  fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+    // Only projects with a build script apply `composeai.base-conventions` (and therefore own a
+    // `ktfmtCheck`/`ktfmtFormat` task). Container projects like `:daemon` / `:samples`, which exist
+    // only because of nested includes and have no build file, are skipped.
+    if (descriptor.buildFile.exists()) add(descriptor.path)
+    descriptor.children.forEach(::visit)
+  }
+  // Start from the root's children: the root project can't apply `composeai.base-conventions`
+  // (a build-logic plugin on the root classpath leaks to every subproject and collides with their
+  // versioned plugin aliases), so the root carries no ktfmt and is left out.
+  rootProject.children.forEach(::visit)
+}
+System.setProperty("composeai.ktfmtProjectPaths", ktfmtProjectPaths.joinToString(","))

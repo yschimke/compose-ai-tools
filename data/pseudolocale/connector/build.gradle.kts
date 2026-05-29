@@ -16,6 +16,7 @@
 //    in {`en-XA`, `ar-XB`} to the around-composable.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
