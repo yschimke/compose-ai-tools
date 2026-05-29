@@ -12,8 +12,8 @@ import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 /**
  * Stage-2 measurement driver for `:samples:*-daemon-bench:benchCompileStages` — tracked in
  * [#1586](https://github.com/yschimke/compose-ai-tools/issues/1586). See
- * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../../docs/daemon/COMPILE-IN-PROCESS.md)
- * § "What we expect to measure".
+ * [docs/daemon/COMPILE-IN-PROCESS.md](../../../../../../docs/daemon/COMPILE-IN-PROCESS.md) § "What
+ * we expect to measure".
  *
  * This is a thin, standalone `main` so the bench Gradle task can `javaexec` it on `:daemon:core`'s
  * runtime classpath, feeding it the exact `btaCompile` block the daemon would consume at startup
@@ -145,7 +145,9 @@ private class BtaBenchClassLoaderMarker
 
 // --- Pure helpers (unit-tested in BtaBenchMainTest) -------------------------------------------
 
-/** Bench JVM-side config, assembled from the daemon `btaCompile` sysprops plus `composeai.bench.*`. */
+/**
+ * Bench JVM-side config, assembled from the daemon `btaCompile` sysprops plus `composeai.bench.*`.
+ */
 internal data class BenchConfig(
   val implClasspath: List<Path>,
   val compileClasspath: List<Path>,

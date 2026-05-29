@@ -701,9 +701,9 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         cmd += "-Dcomposeai.daemon.bta.moduleName=${bta["moduleName"]}"
         cmd += "-Dcomposeai.daemon.bta.outputDir=${bta["outputDir"]}"
         cmd += "-Dcomposeai.daemon.bta.icWorkingDir=${bta["icWorkingDir"]}"
-        (bta["ineligibilityReason"] as? String)?.takeIf { it.isNotEmpty() }?.let {
-          cmd += "-Dcomposeai.daemon.bta.ineligibilityReason=$it"
-        }
+        (bta["ineligibilityReason"] as? String)
+          ?.takeIf { it.isNotEmpty() }
+          ?.let { cmd += "-Dcomposeai.daemon.bta.ineligibilityReason=$it" }
         cmd += "-Dcomposeai.bench.sources=$sources"
         cmd += "-Dcomposeai.bench.editFile=${previewFile.absolutePath}"
         cmd += "-Dcomposeai.bench.runs=$runs"
@@ -747,7 +747,9 @@ abstract class BenchCompileStagesTask : DefaultTask() {
   ) {
     fun median(xs: List<Long>): Long? = if (xs.isEmpty()) null else xs.sorted()[xs.size / 2]
     fun medianFor(phase: String, scenario: String) =
-      median(rows.filter { it.phase == phase && it.scenario == scenario && it.ms >= 0 }.map { it.ms })
+      median(
+        rows.filter { it.phase == phase && it.scenario == scenario && it.ms >= 0 }.map { it.ms }
+      )
 
     val s1 = medianFor("compile", "stage-1-warm-after-1-line-edit")
     val s2compile = medianFor("compile", "stage-2-warm-after-1-line-edit")
@@ -781,7 +783,9 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     sb.appendLine("| --- | --- | --- |")
     sb.appendLine("| compile (warm, 1-line edit) | ${fmt(s1)} | ${fmt(s2compile)} |")
     sb.appendLine("| classloader-swap | — | ${fmt(s2swap)} |")
-    sb.appendLine("| render (warm, from stage-0 baseline) | ${fmt(renderBaseline)} | ${fmt(renderBaseline)} |")
+    sb.appendLine(
+      "| render (warm, from stage-0 baseline) | ${fmt(renderBaseline)} | ${fmt(renderBaseline)} |"
+    )
     sb.appendLine("| **save → pixel total** | **${fmt(s1SavePixel)}** | **${fmt(s2SavePixel)}** |")
     sb.appendLine()
     sb.appendLine("## Promote criteria")
@@ -810,7 +814,8 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         latencyOk == true && demoteSignal != true ->
           "PROMOTE CANDIDATE — latency threshold met; confirm the manual criteria before flipping the default."
         latencyOk == false || demoteSignal == true -> "DO NOT PROMOTE — see failed criteria above."
-        else -> "INCONCLUSIVE — missing measurements (did `benchPreviewLatency` run first for the render baseline?)."
+        else ->
+          "INCONCLUSIVE — missing measurements (did `benchPreviewLatency` run first for the render baseline?)."
       }
     sb.appendLine("## Verdict: $overall")
     if (notes.isNotEmpty()) {
@@ -835,12 +840,7 @@ abstract class BenchCompileStagesTask : DefaultTask() {
         .filterNot { it.startsWith("#") || it.isBlank() }
         .mapNotNull { line ->
           val c = line.split(",")
-          if (
-            c.size >= 5 &&
-              c[0] == target &&
-              c[1] == "render" &&
-              c[2] == "warm-after-1-line-edit"
-          )
+          if (c.size >= 5 && c[0] == target && c[1] == "render" && c[2] == "warm-after-1-line-edit")
             c[4].toLongOrNull()
           else null
         }
@@ -881,8 +881,12 @@ abstract class BenchCompileStagesTask : DefaultTask() {
     val existing = if (csv.exists()) csv.readText() else ""
     val sb = StringBuilder()
     if (existing.isBlank()) {
-      sb.appendLine("# baseline-latency.csv — captured by the daemon-bench :benchPreviewLatency and")
-      sb.appendLine("# :benchCompileStages tasks. See docs/daemon/baseline-latency.md for methodology.")
+      sb.appendLine(
+        "# baseline-latency.csv — captured by the daemon-bench :benchPreviewLatency and"
+      )
+      sb.appendLine(
+        "# :benchCompileStages tasks. See docs/daemon/baseline-latency.md for methodology."
+      )
       sb.appendLine(newHeader)
     } else {
       val lines = existing.lineSequence().toList()
@@ -907,7 +911,9 @@ abstract class BenchCompileStagesTask : DefaultTask() {
       }
     }
     for (r in rows) {
-      sb.appendLine("$target,${r.phase},${r.scenario},${r.run},${r.ms},${r.notes.replace(",", ";")}")
+      sb.appendLine(
+        "$target,${r.phase},${r.scenario},${r.run},${r.ms},${r.notes.replace(",", ";")}"
+      )
     }
     csv.writeText(sb.toString())
   }
