@@ -306,6 +306,9 @@ export class FocusController {
                 this.config.inspectorRender(null);
                 this.publishScopedPreview();
                 this.config.refreshBundleLegend();
+                // Filter zeroed out the focused set; clear any bundle
+                // overlay still painted on a now-hidden card (#1567).
+                this.config.refreshBundleState();
                 return;
             }
             let focusIndex = this.config.getFocusIndex();
