@@ -59,7 +59,7 @@ include(":cli")
 // "Built-in scripts" / clean-API discussion.
 include(":preview-data-api")
 
-project(":preview-data-api").projectDir = file("preview-data-api")
+project(":preview-data-api").projectDir = file("api/preview-data-api")
 
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
@@ -68,7 +68,7 @@ project(":preview-data-api").projectDir = file("preview-data-api")
 // this library, keeping a single source of truth.
 include(":gradle-preview-driver")
 
-project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
+project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 // `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
 // in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
@@ -83,15 +83,27 @@ include(":bundle-viewer")
 
 include(":preview-annotations")
 
+project(":preview-annotations").projectDir = file("api/preview-annotations")
+
 include(":notification-preview-runtime")
+
+project(":notification-preview-runtime").projectDir = file("runtimes/notification")
 
 include(":glance-preview-runtime")
 
+project(":glance-preview-runtime").projectDir = file("runtimes/glance")
+
 include(":appwidget-preview-runtime")
+
+project(":appwidget-preview-runtime").projectDir = file("runtimes/appwidget")
 
 include(":typography-preview-runtime")
 
+project(":typography-preview-runtime").projectDir = file("runtimes/typography")
+
 include(":splash-preview-runtime")
+
+project(":splash-preview-runtime").projectDir = file("runtimes/splash")
 
 include(":samples:android")
 
@@ -119,7 +131,11 @@ include(":samples:remotecompose")
 
 include(":renderer-desktop")
 
+project(":renderer-desktop").projectDir = file("renderers/desktop")
+
 include(":renderer-android")
+
+project(":renderer-android").projectDir = file("renderers/android")
 
 include(":daemon:core")
 
@@ -387,21 +403,23 @@ project(":render-session-embedded-desktop").projectDir = file("render-session/em
 // (Bazel rules, Amper tasks in `yschimke/compose-ai-contrib`). See `contrib/README.md`.
 include(":render-cli")
 
+project(":render-cli").projectDir = file("render-session/cli")
+
 // JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
 // is compiled to Java 21 bytecode and therefore can't load on this repo's
 // default JDK 17 build daemon (see `gradle/gradle-daemon-jvm.properties`,
 // pinned to `toolchainVersion=17`). Rather than bump the daemon repo-wide
 // and force every contributor onto JDK 21, we keep the pin at 17 and gate
 // inclusion on `JavaVersion.current()`. The dedicated CI workflow
-// `.github/workflows/samples-21.yml` rewrites the daemon-jvm-properties
+// `.github/workflows/samples-sdk21.yml` rewrites the daemon-jvm-properties
 // file on the runner (never committed) so the daemon launches on 21 and
 // the subtree gets exercised on every PR that touches it.
 //
 // Currently:
-//  * `samples-21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
+//  * `samples/sdk21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
 //    plugin jar targets Java 21.
 if (JavaVersion.current() >= JavaVersion.VERSION_21) {
-  include(":samples-21:android-metro-viewmodel")
+  include(":samples:sdk21:android-metro-viewmodel")
 }
 
 // Snapshot the project paths that carry ktfmt (every project except the root, which applies no

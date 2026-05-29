@@ -21,7 +21,7 @@ plugins {
 //    provides its `MetroViewModelFactory` to the composition. Exercises
 //    the production wiring under Robolectric.
 //
-// No `composePreview.sdkVersion.set(35)` rescue here — the `samples-21/`
+// No `composePreview.sdkVersion.set(35)` rescue here — the `samples/sdk21/`
 // subtree only runs under a JDK 21 daemon (see settings.gradle.kts), so
 // Robolectric 4.16.1 can render against the auto-detected SDK 36 the way
 // `compileSdk` declares.

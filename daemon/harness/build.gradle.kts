@@ -197,7 +197,7 @@ val dumpClassloaderDiff by tasks.registering {
   // Projects forbids reaching into another project's `layout`. Dev-only diagnostic inputs.
   val standaloneJson =
     layout.settingsDirectory.file(
-      "renderer-android/build/reports/classloader-forensics/standalone.json"
+      "renderers/android/build/reports/classloader-forensics/standalone.json"
     )
   val daemonJson =
     layout.settingsDirectory.file("daemon/android/build/reports/classloader-forensics/daemon.json")

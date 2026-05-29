@@ -7,7 +7,7 @@ classloader identity skew, stale bytecode, or unexpected Robolectric instrumenta
 ## Entry Points
 
 - Library: `daemon/core/src/main/kotlin/ee/schimke/composeai/daemon/forensics/ClassloaderForensics.kt`
-- Standalone control test: `renderer-android/src/test/.../ClassloaderForensicsTest.kt`
+- Standalone control test: `renderers/android/src/test/.../ClassloaderForensicsTest.kt`
 - Daemon-path test: `daemon/android/src/test/.../ClassloaderForensicsDaemonTest.kt`
 - Diff task: `./gradlew :daemon:harness:diffClassloaderForensics`
 

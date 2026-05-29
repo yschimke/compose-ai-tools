@@ -1095,7 +1095,7 @@ internal object AndroidPreviewSupport {
     // `rootProject.findProject(...)` here because reading the sibling's
     // model under Isolated Projects is disallowed — a filesystem check is
     // IP-safe, and only the in-repo layout matches it.
-    val rendererProjectDir = project.rootDir.resolve("renderer-android")
+    val rendererProjectDir = project.rootDir.resolve("renderers/android")
     val useLocalRenderer =
       rendererProjectDir.resolve("build.gradle.kts").exists() ||
         rendererProjectDir.resolve("build.gradle").exists()

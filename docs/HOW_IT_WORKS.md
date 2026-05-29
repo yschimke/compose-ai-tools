@@ -93,9 +93,9 @@ composePreview {
 | Module | Purpose |
 |--------|---------|
 | `gradle-plugin/` | Gradle plugin — discovery, rendering task orchestration |
-| `renderer-desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
-| `renderer-android/` | Android renderer — Robolectric harness |
-| `preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
+| `renderers/desktop/` | Desktop renderer — `ImageComposeScene` + Skia PNG capture |
+| `renderers/android/` | Android renderer — Robolectric harness |
+| `api/preview-annotations/` | Shared annotations consumed by samples (`@ScrollingPreview`, etc.) |
 | `cli/` | CLI — Tooling-API driver over `composePreviewDiscover` / `composePreviewRenderAll` |
 | `vscode-extension/` | VS Code extension that surfaces rendered previews in the editor |
 | `samples/android/` | Android sample with colored box `@Preview` composables |
