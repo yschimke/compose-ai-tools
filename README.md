@@ -223,6 +223,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 
 | Preview | Image |
 |---------|-------|
+| `GlimmerListItemDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemDefault_Glimmer_Default.png" width="150" /> |
+| `GlimmerListItemFocused` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerListItemFocused_Glimmer_Focused.png" width="150" /> |
 | `GlimmerXrMenuBusy` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuBusy_Busy.gif" width="150" /> |
 | `GlimmerXrMenuDark` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuDark_Dark.gif" width="150" /> |
 | `GlimmerXrMenuLight` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/GlimmerXrMenuLight_Light.gif" width="150" /> |

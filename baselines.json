@@ -1053,7 +1053,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
+    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
@@ -1132,6 +1132,20 @@
     "renderBasename": "StepsTilePreview_Small_Round.png",
     "sha256": "68d195a0da14544f31457d49789403a6ea89234b1e1662e259ed99d992294df8",
     "sourceFile": "src/main/kotlin/com/example/samplewear/TilePreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default": {
+    "captureLabel": "",
+    "functionName": "GlimmerListItemDefault",
+    "renderBasename": "GlimmerListItemDefault_Glimmer_Default.png",
+    "sha256": "92cc3aae2af9830aa90ed29d57347f808139134de93529e6abc9fa072967c7ac",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
+  },
+  "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused": {
+    "captureLabel": "",
+    "functionName": "GlimmerListItemFocused",
+    "renderBasename": "GlimmerListItemFocused_Glimmer_Focused.png",
+    "sha256": "d7c89122dc8bd611558b9ff5302528d94b29120e89c0fc3f44b48a8f5e9d1cff",
+    "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt"
   },
   "samples:xr-glimmer/com.example.samplexrglimmer.GlimmerInteractiveMenuPreviewsKt.GlimmerXrMenuBusy_Busy": {
     "captureLabel": "",
