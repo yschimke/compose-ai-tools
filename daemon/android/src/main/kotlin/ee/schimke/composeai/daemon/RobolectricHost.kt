@@ -344,6 +344,12 @@ open class RobolectricHost(
       "material3Theme",
       "wallpaper",
       "ambient",
+      "focus",
+      "keyboard",
+      "touchOverlay",
+      "launcherWidget",
+      "permissions",
+      "remoteCompose",
     )
 
   /** PROTOCOL.md § 3 — android backend identifier surfaced via `capabilities.backend`. */

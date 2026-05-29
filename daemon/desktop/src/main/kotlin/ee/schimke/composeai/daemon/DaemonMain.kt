@@ -631,13 +631,14 @@ internal fun buildDesktopExtensions(
     // `DesktopHost.acquireRecordingSession`. The around-composable observes pointer events via
     // `Modifier.pointerInput` on the Initial pass without consuming them, so the inner preview's
     // gesture detectors (`Modifier.transformable`, `Modifier.clickable`, …) keep working
-    // unchanged. Lives in `:daemon:desktop` for now since this is the first backend with live
-    // mode; a future `data/touch-overlay/connector/` module will host the planner so Android picks
-    // it up automatically when live mode lands on Robolectric.
+    // unchanged. The planner lives in the shared `:data-touch-overlay-connector` module so both
+    // backends register the same `TouchOverlayPreviewOverrideExtension` — Android wires it from
+    // `RobolectricHost.previewOverrideExtensions` and advertises the extension descriptor from
+    // `:daemon:android`'s `DaemonMain`.
     //
     // [dataExtensionDescriptors] advertises `TouchOverlayExtension.ID` so the panel / MCP can
     // discover the extension via `initialize.capabilities.dataExtensions` and gate the per-card
-    // "touch overlay" toggle on the daemon actually shipping it (today: desktop only).
+    // "touch overlay" toggle on the daemon actually shipping it.
     Extension(
       id = "data/touch-overlay",
       displayName = "Touch event overlay",
