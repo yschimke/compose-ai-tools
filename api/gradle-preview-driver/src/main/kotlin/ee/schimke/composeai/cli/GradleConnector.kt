@@ -26,7 +26,7 @@ import org.gradle.tooling.events.test.TestOperationDescriptor
  * Tooling API. Using it instead of `projectRoot/$gradlePath` is what makes nested subprojects
  * (`:foo:bar`) and any custom `project.projectDir` override work correctly — see issue #157.
  */
-data class PreviewModule(val gradlePath: String, val projectDir: File)
+data class PreviewModule(val gradlePath: String, val projectDir: File) : java.io.Serializable
 
 data class GradleAccessFailure(
   val operation: String,
@@ -366,44 +366,30 @@ class GradleConnection(
   }
 
   /**
-   * Find all subprojects that have a `composePreviewDiscover` task — these have the
-   * compose-ai-tools plugin applied.
+   * Find all subprojects that apply the compose-ai-tools plugin (detected by the presence of a
+   * `composePreviewDiscover` task).
    *
    * Each entry carries both the Gradle path (used to build task specs like
    * `:foo:bar:composePreviewRenderAll`) and the resolved filesystem `projectDir`. Nested
    * subprojects (`:foo:bar`) have directory layouts like `foo/bar/`, so substituting `:` for `/`
    * doesn't always work — and even for standard layouts a user can point `project.projectDir`
-   * anywhere. Reading it from the Tooling API's [GradleProject.projectDirectory] is the only
+   * anywhere. Reading it from the Tooling API's `BasicGradleProject.projectDirectory` is the only
    * reliable way to resolve manifests / PNGs on disk without replicating Gradle's own
    * project-layout logic.
+   *
+   * Implemented via [DiscoverPreviewModulesAction] rather than the `GradleProject` model: fetching
+   * `GradleProject` realizes every task in every module, which runs unrelated modules'
+   * configuration-time side effects (e.g. a `nativeCompile` task provisioning a Java toolchain)
+   * during mere discovery (issue #1620). The build action queries the lightweight `GradleBuild` +
+   * per-project `ComposePreviewModel` instead, which never realizes the full task graph.
+   *
+   * On a tooling-API failure the action returns `null`; we fold that into an empty list and leave
+   * [lastModelAccessFailure] populated so callers can tell "no preview modules" from "couldn't talk
+   * to Gradle." A generous timeout matches the old un-timed model query — discovery configures each
+   * project, which can be slow on a cold daemon.
    */
-  fun findPreviewModules(): List<PreviewModule> {
-    return try {
-      val model =
-        connection
-          .model(org.gradle.tooling.model.GradleProject::class.java)
-          .apply { if (extraArguments.isNotEmpty()) withArguments(extraArguments) }
-          .get()
-      modelAccessFailure = null
-      val modules = mutableListOf<PreviewModule>()
-      fun visit(project: org.gradle.tooling.model.GradleProject) {
-        val hasPreviewTask = project.tasks.any { it.name == "composePreviewDiscover" }
-        if (hasPreviewTask) {
-          val path = project.path.removePrefix(":")
-          if (path.isNotEmpty()) {
-            modules.add(PreviewModule(gradlePath = path, projectDir = project.projectDirectory))
-          }
-        }
-        for (child in project.children) visit(child)
-      }
-      visit(model)
-      modules
-    } catch (e: Exception) {
-      recordModelAccessFailure("GradleProject", e)
-      if (verbose) System.err.println("Could not query project model: ${e.message}")
-      emptyList()
-    }
-  }
+  fun findPreviewModules(): List<PreviewModule> =
+    runBuildAction(DiscoverPreviewModulesAction(), timeoutSeconds = 300) ?: emptyList()
 
   /**
    * Resolve a single module by its Gradle path (colon-separated, with or without the leading `:`).
