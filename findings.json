@@ -1347,6 +1347,16 @@
       "variant": "spec:width=640,height=480,dpi=240"
     },
     {
+      "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png",
+      "cleanBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.png",
+      "findings": [],
+      "functionName": "GlimmerListPressedWalk",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
       "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
       "findings": [],

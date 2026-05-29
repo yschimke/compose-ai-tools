@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/pr`. 114 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/pr`. 115 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -751,6 +751,12 @@ _No findings._
 ### `GlimmerListItemPressed` · `spec:width=640,height=480,dpi=240`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed.a11y.png" width="400" />
+
+_No findings._
+
+### `GlimmerListPressedWalk` · `spec:width=640,height=480,dpi=240`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/pr/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png" width="400" />
 
 _No findings._
 
