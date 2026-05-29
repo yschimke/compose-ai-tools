@@ -109,6 +109,29 @@ annotation class FocusedPreview(
    * `focusGroup` pattern.
    */
   val enterPlacesFocus: Boolean = false,
+  /**
+   * When `true`, the renderer dispatches an indirect-pointer Press event onto the focused
+   * composable after the focus walk lands, before capturing pixels. The composable renders in its
+   * pressed visual state — `Modifier.clickable`'s `PressInteraction.Press` is emitted to the
+   * focused element's interaction source, so material ripples / Glimmer's brighter pressed surface
+   * appear in the PNG.
+   *
+   * Indirect-pointer dispatch (rather than synthetic `MotionEvent.ACTION_DOWN` on the View) is
+   * required for **XR Glasses**: the display has no touchscreen, so input arrives from the
+   * temple-mounted touchpad as `IndirectPointerEvent`s through Compose UI's
+   * `AndroidComposeView.sendIndirectPointerEvent`. Glimmer's `Modifier.onIndirectPointerGesture` is
+   * the only consumer that routes those events into per-modifier `onClick` / `onSwipeForward` /
+   * `onSwipeBackward` lambdas, and it always targets the currently-focused composable — so this
+   * flag pairs naturally with `indices` (focus the n-th focusable, then press it). For plain
+   * touch-screen surfaces (`Modifier.clickable` on a phone-style preview) the same Press still
+   * dispatches via the focus-targeted indirect-pointer path: `Modifier.clickable` registers a
+   * fallback indirect-pointer handler, so the visual still arrives.
+   *
+   * Only meaningful for indexed-mode captures (`indices`) — traversal-mode (`traverse`) doesn't
+   * carry a "settle and press" point. Off by default; opt in per-preview when you want the
+   * pressed-state capture in addition to (or instead of) the focused-state capture.
+   */
+  val pressed: Boolean = false,
 )
 
 /**

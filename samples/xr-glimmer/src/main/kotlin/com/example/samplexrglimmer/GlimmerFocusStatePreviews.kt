@@ -150,3 +150,26 @@ fun GlimmerListItemFocused() {
     }
   }
 }
+
+@Preview(
+  name = "Glimmer · Pressed",
+  device = AI_GLASSES_DEVICE_SPEC,
+  showBackground = true,
+  backgroundColor = ADDITIVE_ZERO_BACKGROUND,
+)
+@FocusedPreview(indices = [0], pressed = true)
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun GlimmerListItemPressed() {
+  // `pressed = true` opts in to the indirect-pointer Press dispatch the connector fires after the
+  // focus walk lands. On XR Glasses the temple touchpad routes through
+  // `AndroidComposeView.sendIndirectPointerEvent`; Glimmer's `surface()` (under `ListItem`) reads
+  // those events through `Modifier.onIndirectPointerGesture` and emits `PressInteraction.Press`
+  // onto its interaction source — the focused item's pressed visual then renders before capture.
+  ComposeUiFlags.isInitialFocusOnFocusableAvailable = true
+  GlimmerSurface {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Pressed") }
+    }
+  }
+}
