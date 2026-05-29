@@ -416,15 +416,22 @@ class CommentTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
 
-    def _entry(self, *, findings: list[dict] | None = None) -> dict:
+    def _entry(
+        self,
+        *,
+        findings: list[dict] | None = None,
+        function: str = "Bad",
+        preview_id: str = "x.Bad_small_round",
+        module: str = "sample-wear",
+    ) -> dict:
         return {
-            "module": "sample-wear",
-            "functionName": "Bad",
+            "module": module,
+            "functionName": function,
             "sourceFile": "Previews.kt",
-            "previewId": "x.Bad_small_round",
+            "previewId": preview_id,
             "variant": "small_round",
-            "cleanBasename": "Bad.png",
-            "annotatedBasename": "Bad.a11y.png" if findings else "",
+            "cleanBasename": f"{function}.png",
+            "annotatedBasename": f"{function}.a11y.png" if findings else "",
             "findings": findings or [],
         }
 
@@ -533,6 +540,71 @@ class CommentTest(unittest.TestCase):
         )
         self.assertNotEqual(body, "")
         self.assertIn("No accessibility findings", body)
+
+    def test_only_changed_preview_gets_a_block_others_collapsed(self):
+        # Two previews exist; only one gains a finding vs the baseline. The
+        # changed one gets a full findings table, the unchanged-but-flagged
+        # one is collapsed to a name in the <details> roster rather than
+        # re-posting its table (#1585).
+        kept = self._entry(
+            function="Kept", preview_id="x.Kept", findings=[_finding(level="ERROR")]
+        )
+        added = self._entry(
+            function="Added", preview_id="x.Added", findings=[_finding(level="WARNING")]
+        )
+        baseline_kept = self._entry(
+            function="Kept", preview_id="x.Kept", findings=[_finding(level="ERROR")]
+        )
+        baseline_added = self._entry(function="Added", preview_id="x.Added", findings=[])
+        body = self._run_comment(
+            [kept, added], baseline_entries=[baseline_kept, baseline_added]
+        )
+        # The changed preview gets its own h3 block + table.
+        self.assertIn("### `Added`", body)
+        # The unchanged preview is only listed as a name inside <details>.
+        self.assertIn("<summary>Unchanged (1 preview(s))</summary>", body)
+        self.assertIn("- `Kept`", body)
+        self.assertNotIn("### `Kept`", body)
+
+    def test_new_clean_preview_stays_silent(self):
+        # Adding a brand-new preview that has no findings is not an a11y
+        # change — it must not break silence with a near-empty comment.
+        existing = self._entry(function="A", preview_id="x.A", findings=[])
+        new_clean = self._entry(function="B", preview_id="x.B", findings=[])
+        body = self._run_comment([existing, new_clean], baseline_entries=[existing])
+        self.assertEqual(body, "")
+
+    def test_atf_unavailable_does_not_render_findings_as_resolved(self):
+        # When ATF fails, copy-annotated still emits the manifest previews
+        # with empty findings. Diffing those against a baseline that had
+        # findings must NOT render them as changed-to-empty/"No findings" or
+        # "Resolved" — that would make a daemon failure look like the issues
+        # were fixed. Only the warning + counts should appear.
+        baseline = self._entry(
+            function="Bad", preview_id="x.Bad", findings=[_finding(level="ERROR")]
+        )
+        current = self._entry(function="Bad", preview_id="x.Bad", findings=[])
+        body = self._run_comment(
+            [current], baseline_entries=[baseline], status="atf-unavailable"
+        )
+        self.assertIn("ATF data unavailable", body)
+        self.assertNotIn("_No findings._", body)
+        self.assertNotIn("### `Bad`", body)
+        self.assertNotIn("Resolved", body)
+        self.assertNotIn("No accessibility findings", body)
+
+    def test_resolved_preview_listed_when_removed(self):
+        # A preview that carried a finding on the baseline but is gone now
+        # should be called out as resolved.
+        baseline = self._entry(
+            function="Gone", preview_id="x.Gone", findings=[_finding(level="ERROR")]
+        )
+        survivor = self._entry(
+            function="Stay", preview_id="x.Stay", findings=[_finding(level="WARNING")]
+        )
+        body = self._run_comment([survivor], baseline_entries=[baseline, survivor])
+        self.assertIn("Resolved", body)
+        self.assertIn("`Gone`", body)
 
 
 if __name__ == "__main__":
