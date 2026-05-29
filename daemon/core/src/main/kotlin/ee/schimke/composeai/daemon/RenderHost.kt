@@ -108,9 +108,10 @@ interface RenderHost {
    *
    * The default empty set is the safe pre-feature value — clients treat absent and `[]` identically
    * and assume any field they pass might be ignored. Real backends override: `RobolectricHost`
-   * advertises all fields; `DesktopHost` omits `orientation` (no rotation concept on
-   * `ImageComposeScene`), Android-only timing knobs, and `localeTag` unless the Compose UI runtime
-   * exposes a providable locale list.
+   * advertises all fields; `DesktopHost` omits Android-only timing knobs (`captureAdvanceMs` —
+   * `ImageComposeScene` has no paused-clock concept) and `localeTag` unless the Compose UI runtime
+   * exposes a providable locale list. `orientation` IS advertised on desktop — reduced to a
+   * `widthPx ↔ heightPx` swap by `DesktopHost` (issue #1208).
    */
   val supportedOverrides: Set<String>
     get() = emptySet()
