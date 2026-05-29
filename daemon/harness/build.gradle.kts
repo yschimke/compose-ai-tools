@@ -133,13 +133,22 @@ tasks.withType<Test>().configureEach {
   // Real-mode flips the launcher in `HarnessTestSupport.launcherFor(...)` and unblocks
   // `S1LifecycleRealModeTest`, which asserts a real Compose render's PNG against an in-repo
   // baseline.
-  systemProperty("composeai.harness.host", findProperty("harness.host") ?: "fake")
+  // `providers.gradleProperty(...)` rather than `findProperty(...)`: the latter does a dynamic
+  // lookup that falls back to searching the parent project (`:daemon`), which Isolated Projects
+  // forbids; the provider reads only the Gradle property and is IP- and config-cache-safe.
+  systemProperty(
+    "composeai.harness.host",
+    providers.gradleProperty("harness.host").orNull ?: "fake",
+  )
   // D-harness.v2 — `-Ptarget=desktop|android` flag. Default `desktop` keeps the v1.5a/b real-mode
   // tests pointed at the desktop daemon. `target=android` activates the parallel
   // `*AndroidRealModeTest.kt` test classes which spawn the real `:daemon:android`
   // `DaemonMain` via `RealAndroidHarnessLauncher`. Tests skip via `Assume.assumeTrue` when
   // target doesn't match — both target sets coexist in the same JUnit suite.
-  systemProperty("composeai.harness.target", findProperty("harness.target") ?: "desktop")
+  systemProperty(
+    "composeai.harness.target",
+    providers.gradleProperty("harness.target").orNull ?: "desktop",
+  )
 }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
@@ -247,7 +256,10 @@ val regenerateBaselines by
         "desktop. Captures into daemon/harness/baselines/<target>/<scenario>/<id>.png."
     group = "verification"
     systemProperty("composeai.harness.host", "real")
-    systemProperty("composeai.harness.target", findProperty("harness.target") ?: "desktop")
+    systemProperty(
+      "composeai.harness.target",
+      providers.gradleProperty("harness.target").orNull ?: "desktop",
+    )
     systemProperty("composeai.harness.regenerate", "true")
     val baseTest = tasks.test.get()
     classpath = baseTest.classpath
