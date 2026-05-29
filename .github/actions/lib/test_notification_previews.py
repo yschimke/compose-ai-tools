@@ -30,21 +30,37 @@ def _make_module(
     module: str,
     png_names: list[str],
     declared: list[str] | None = None,
+    fanout: list[str] | None = None,
 ) -> Path:
     build = root / module.replace(":", "/") / "build" / "compose-previews"
     (build / "renders").mkdir(parents=True)
     for name in png_names:
         (build / "renders" / name).write_bytes(f"png-{name}".encode())
     manifest: dict = {"module": module}
+    previews: list[dict] = []
     if declared is not None:
         # Declare each render output in the manifest so the stage step can
         # record `declaredPreviewIds` — including names with no PNG on disk
         # (a render that failed), which is the case the comment diff cares
         # about.
-        manifest["previews"] = [
+        previews += [
             {"id": Path(n).stem, "captures": [{"renderOutput": f"renders/{n}"}]}
             for n in declared
         ]
+    if fanout is not None:
+        # `@PreviewParameter` previews: the manifest carries the unsuffixed
+        # base renderOutput plus a provider class; the renderer fans the base
+        # out into `<base>_<label>` ids post-load.
+        previews += [
+            {
+                "id": Path(n).stem,
+                "params": {"previewParameterProviderClassName": "test.FakeProvider"},
+                "captures": [{"renderOutput": f"renders/{n}"}],
+            }
+            for n in fanout
+        ]
+    if declared is not None or fanout is not None:
+        manifest["previews"] = previews
     (build / "previews.json").write_text(json.dumps(manifest))
     return build
 
@@ -148,6 +164,28 @@ class StageTest(unittest.TestCase):
             ["FooNotification", "GoneNotification"],
         )
 
+    def test_stage_records_fanout_bases(self):
+        # A `@PreviewParameter` notification preview declares only the base
+        # stem in the manifest; record it in `declaredFanoutBases` so the
+        # comment can prefix-match its rendered `<base>_<label>` variants.
+        build = _make_module(
+            self.tmp,
+            "samples:android",
+            ["StaticNotification.png"],
+            declared=["StaticNotification.png"],
+            fanout=["ParamNotification.png"],
+        )
+        out = self.tmp / "out"
+        rc = np.cmd_stage(argparse.Namespace(
+            build_dir=str(build),
+            output_dir=str(out),
+        ))
+        self.assertEqual(rc, 0)
+        findings = json.loads((out / "findings.json").read_text())
+        self.assertEqual(findings["declaredFanoutBases"], ["ParamNotification"])
+        # The base also lands in declaredPreviewIds (it's a notification stem).
+        self.assertIn("ParamNotification", findings["declaredPreviewIds"])
+
 
 class CommentTest(unittest.TestCase):
     def setUp(self):
@@ -164,7 +202,7 @@ class CommentTest(unittest.TestCase):
             "sha256": sha,
         }
 
-    def _run_comment(self, head, baseline, declared=None) -> str:
+    def _run_comment(self, head, baseline, declared=None, fanout=None) -> str:
         import contextlib
         import io
 
@@ -172,6 +210,8 @@ class CommentTest(unittest.TestCase):
         payload: dict = {"entries": head}
         if declared is not None:
             payload["declaredPreviewIds"] = declared
+        if fanout is not None:
+            payload["declaredFanoutBases"] = fanout
         head_path.write_text(json.dumps(payload))
         base_path = self.tmp / "base.json"
         base_path.write_text(json.dumps({"entries": baseline}))
@@ -244,6 +284,36 @@ class CommentTest(unittest.TestCase):
             declared=["x.Same"],
         )
         self.assertEqual(body, "")
+
+    def test_fanout_variant_failed_render_is_not_rendered_not_removed(self):
+        # A `@PreviewParameter` notification preview: the baseline has the
+        # rendered `x.Param_busy` variant, but the head failed to render it.
+        # The head manifest only declares the unsuffixed base `x.Param`, so
+        # exact matching alone would mis-class the variant as Removed. The
+        # fan-out base must prefix-match it into Not rendered.
+        body = self._run_comment(
+            head=[],
+            baseline=[self._entry("x.Param_busy")],
+            declared=["x.Param"],
+            fanout=["x.Param"],
+        )
+        self.assertIn("Not rendered", body)
+        self.assertIn("`x.Param_busy`", body)
+        self.assertNotIn("### Removed", body)
+
+    def test_fanout_base_does_not_swallow_sibling_removal(self):
+        # Prefix matching must respect the `_` boundary: declaring base `x.Foo`
+        # should not absorb a genuinely-removed sibling `x.FooBar` (no
+        # underscore right after the base), which stays Removed.
+        body = self._run_comment(
+            head=[self._entry("x.Foo_a")],
+            baseline=[self._entry("x.Foo_a"), self._entry("x.FooBar")],
+            declared=["x.Foo"],
+            fanout=["x.Foo"],
+        )
+        self.assertIn("### Removed", body)
+        self.assertIn("`x.FooBar`", body)
+        self.assertNotIn("Not rendered", body)
 
 
 if __name__ == "__main__":
