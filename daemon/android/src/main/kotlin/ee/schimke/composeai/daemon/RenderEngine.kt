@@ -365,6 +365,10 @@ class RenderEngine(
                             // the PNG for daemon-driven renders (same path used by the standalone
                             // `composePreviewRender` Test task).
                             previewId = spec.previewId,
+                            // Exact surface width = the resolved canvas width (400dp for FQN-
+                            // discovered notifications), so the shade isn't cropped to its ~320dp
+                            // intrinsic square. Mirrors the Glance branch's dp conversion.
+                            widthDp = pxToDp(spec.widthPx, spec.density),
                           )
                         } else if (isGlanceAppWidget) {
                           // `@androidx.glance.preview.Preview` — mirrors the standalone

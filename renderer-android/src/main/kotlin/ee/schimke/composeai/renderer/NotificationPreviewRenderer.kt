@@ -6,13 +6,23 @@ import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.lang.reflect.Method
+
+/**
+ * Fallback notification surface width when a caller doesn't pass [NotificationPreviewComposable]'s
+ * `widthDp`. Mirrors the discovery / gallery sandbox width
+ * (`DeviceDimensions.SANDBOX_WIDTH_DP` / `DEFAULT_NOTIFICATION_WIDTH_DP`, both 400dp) so a
+ * directly-invoked render still gets the wide shade footprint rather than the ~320dp intrinsic
+ * square from #1249.
+ */
+const val NOTIFICATION_PREVIEW_DEFAULT_WIDTH_DP: Int = 400
 
 /**
  * Renders a `@NotificationPreview` function — `(Context) -> Notification` — into the surrounding
@@ -44,10 +54,19 @@ fun NotificationPreviewComposable(
      * use today pass the manifest's preview id.
      */
     previewId: String? = null,
+    /**
+     * Width of the notification surface in dp — the render canvas width the caller laid out for.
+     * Set as an exact width rather than `fillMaxWidth()`: under the renderer's wrap-to-content
+     * measure path the `AndroidView` is handed `minWidth = 0`, and the inflated RemoteViews tree's
+     * ~320dp AOSP intrinsic width is what comes back, cropping the PNG to a square (#1249). Pinning
+     * the width gives the inflater the full canvas, matching the `NotificationContent` gallery fix
+     * (#1576). Defaults to [NOTIFICATION_PREVIEW_DEFAULT_WIDTH_DP] for direct callers.
+     */
+    widthDp: Int = NOTIFICATION_PREVIEW_DEFAULT_WIDTH_DP,
 ) {
     val context = LocalContext.current
     AndroidView(
-        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+        modifier = Modifier.width(widthDp.dp).wrapContentHeight(),
         factory = { ctx ->
             val parent = FrameLayout(ctx).apply {
                 layoutParams = ViewGroup.LayoutParams(

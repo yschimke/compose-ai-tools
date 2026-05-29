@@ -183,6 +183,7 @@ private object NotificationPreviewStrategy : PreviewRenderStrategy {
             className = preview.className,
             functionName = preview.functionName,
             previewId = preview.id,
+            widthDp = widthDp,
         )
     }
 }
