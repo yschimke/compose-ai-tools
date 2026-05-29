@@ -109,6 +109,20 @@ dependencies {
   // Android-only, so findings are always empty here — no dependency on `:data-a11y-core` (an
   // android-library). See `DesktopAccessibility*`.
   implementation(project(":preview-data-api"))
+  // Scroll data-product connector — issue #1604. Advertises render/scroll/long and
+  // render/scroll/gif as requiresRerender=true kinds, and carries `ScrollDataProductRegistry`
+  // plus the `ScrollPreviewExtension.KIND_*` / descriptor constants. Pure-JVM module — mirrors the
+  // Android side's `implementation(project(":data-scroll-connector"))`. `RenderEngine` branches
+  // into the scroll scenario when the dispatcher's `data/fetch` re-render path queues
+  // `mode=scroll-long` / `scroll-gif`, writing to the same on-disk paths the registry reads back.
+  implementation(project(":data-scroll-connector"))
+  // Renderer-desktop — the `runComposeUiTest`-driven scroll capture (`renderScrollPreview`) that
+  // drives `SemanticsActions.ScrollBy`, stitches LONG slices, and encodes the GIF. Mirrors
+  // `:daemon:android`'s `implementation(project(":renderer-android"))` dependency for the scroll
+  // handlers; the daemon's `RenderEngine.runScrollScenario` delegates to it per re-render. The
+  // function's `compose.uiTest` machinery stays internal to `:renderer-desktop` (that module's
+  // `implementation` dep) and rides along on the runtime classpath transitively.
+  implementation(project(":renderer-desktop"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,
