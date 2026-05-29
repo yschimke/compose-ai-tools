@@ -85,11 +85,21 @@ object PermissionsController {
    * Record a query against [permission]. Idempotent — duplicate queries don't re-append. The
    * insertion-ordered list is what the data-product payload surfaces, so the panel can display
    * queries in roughly the sequence the composition issued them.
+   *
+   * Also forwards to the cross-classloader [SandboxPermissionsBridge][bridgeForwarder] so the
+   * daemon-side `PermissionsDataProductRegistry`, which lives in the host classloader, can read
+   * out the sandbox-side queries. Without the forward, the host registry's
+   * `PermissionsController.queried.value` read returns the host-CL controller's (empty) state and
+   * `data/fetch?kind=compose/permissions` reports no queries even though
+   * `ShadowContextWrapperPermissionTracker` caught them. The bridge is loaded reflectively so the
+   * connector keeps its no-`:daemon:android` dependency shape — the same pattern
+   * [syncRobolectricGrants] uses for Robolectric.
    */
   fun recordQuery(permission: String) {
     if (queriedSeen.add(permission)) {
       synchronized(lock) { queriedSet.value = queriedSet.value + permission }
     }
+    bridgeForwarder?.recordQuery(permission)
   }
 
   /** Register a callback fired on every [set] transition. Returns an unregister handle. */
@@ -110,6 +120,7 @@ object PermissionsController {
       queriedSeen.clear()
       syncRobolectricGrants(emptyMap())
     }
+    bridgeForwarder?.reset()
   }
 
   /**
@@ -157,6 +168,65 @@ object PermissionsController {
     } catch (_: ReflectiveOperationException) {
       // Underlying invocation failure (e.g. application not yet initialised). Drop silently — the
       // controller's snapshot state still reflects the requested grants for the data product.
+    }
+  }
+
+  /**
+   * Resolved once per JVM, cached even on failure. `null` means the bridge class isn't on the
+   * classpath (connector-module unit tests; consumers that depend on the connector without the
+   * `:daemon:android` artefact) — every forward call no-ops in that case.
+   */
+  private val bridgeForwarder: BridgeForwarder? by lazy { BridgeForwarder.tryLoad() }
+
+  /**
+   * Reflective handle to [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * The bridge lives in `:daemon:android` (a downstream module the connector does NOT depend on),
+   * so the connector reaches it through `Class.forName` — same shape as [syncRobolectricGrants]'s
+   * reach into Robolectric. Connector-only consumers (no daemon-android on the classpath) see
+   * `tryLoad() == null` and the connector still serves the in-CL controller state.
+   *
+   * `Class.forName(..., javaClass.classLoader)`: in the production daemon, the controller is
+   * sandbox-loaded so `javaClass.classLoader` is the Robolectric sandbox CL; the bridge package
+   * (`ee.schimke.composeai.daemon.bridge`) is registered as do-not-acquire on that CL, so the
+   * sandbox delegates loading to the daemon CL parent — both sides observe the same single bridge
+   * instance and writes here are readable from the host registry.
+   */
+  private class BridgeForwarder(
+    private val recordQueryMethod: java.lang.reflect.Method,
+    private val resetMethod: java.lang.reflect.Method,
+  ) {
+    fun recordQuery(permission: String) {
+      try {
+        recordQueryMethod.invoke(null, permission)
+      } catch (_: ReflectiveOperationException) {
+        // Bridge invocation failed (unexpected — the class loaded but the call failed). Drop —
+        // controller's in-CL state still serves the same-CL fast path.
+      }
+    }
+
+    fun reset() {
+      try {
+        resetMethod.invoke(null)
+      } catch (_: ReflectiveOperationException) {
+        // Same defensive drop as recordQuery; the controller's in-CL state already cleared above.
+      }
+    }
+
+    companion object {
+      private const val BRIDGE_FQN: String = "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
+
+      fun tryLoad(): BridgeForwarder? =
+        try {
+          val cls = Class.forName(BRIDGE_FQN, true, PermissionsController::class.java.classLoader)
+          BridgeForwarder(
+            recordQueryMethod = cls.getMethod("recordQuery", String::class.java),
+            resetMethod = cls.getMethod("reset"),
+          )
+        } catch (_: ClassNotFoundException) {
+          null
+        } catch (_: NoSuchMethodException) {
+          null
+        }
     }
   }
 }
