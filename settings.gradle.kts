@@ -338,15 +338,18 @@ include(":daemon:desktop")
 
 include(":daemon:harness")
 
-// Stage-2 spike for the kotlinc-in-daemon investigation (#1332 → follow-up). Standalone
-// proof-of-concept that the Kotlin Build Tools API can compile a `@Composable` source file
-// with the Compose compiler plugin loaded, in-process, with no Gradle. NOT wired into the
-// daemon yet — see docs/daemon/BTA-SPIKE.md. Remove this module if the spike abandons.
+// Standalone Kotlin Build Tools API parity/soak harness (#1332). The stage-2 spike it began as
+// has SHIPPED: in-process compile is wired into `:daemon:core` (`bta/BtaCompileSession`,
+// `bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the experimental
+// workspace flag `composePreview.daemon.compileInProcess` — see docs/daemon/COMPILE-IN-PROCESS.md.
+// Nothing in production depends on this module; it's retained only for its BTA-impl parity, IC,
+// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`, see
+// docs/daemon/BTA-SPIKE.md).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
-// standard `compileKotlin`, so the BTA spike's Gradle-parity test has a reference artefact
-// to diff against. Same lifecycle as `:daemon:bta-host`; remove together with it.
+// standard `compileKotlin`, so the BTA parity test has a reference artefact to diff against.
+// Same lifecycle as `:daemon:bta-host`; remove together with it.
 include(":daemon:bta-host-fixture")
 
 include(":mcp")

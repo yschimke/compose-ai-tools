@@ -1,10 +1,12 @@
-// Stage-2 spike for the kotlinc-in-daemon investigation. Standalone proof-of-concept
-// that the Kotlin Build Tools API (BTA) can compile a `@Composable` source file with
-// the Compose compiler plugin loaded, in-process, with no Gradle.
+// Standalone Kotlin Build Tools API (BTA) parity/soak harness. Began as the stage-2 spike
+// proving BTA can compile a `@Composable` source file with the Compose compiler plugin loaded,
+// in-process, with no Gradle — that work has SHIPPED in `:daemon:core` (bta/BtaCompileSession,
+// the `compileSources` JSON-RPC method) behind `composePreview.daemon.compileInProcess`.
 //
-// NOT published. NOT wired into the daemon. The only artifact this module produces
-// today is a test report demonstrating BTA + Compose-plugin viability against Kotlin
-// 2.3.21. See docs/daemon/BTA-SPIKE.md for goals + exit criteria + what to do next.
+// NOT published. Nothing in production depends on this module; it's retained for its BTA-impl
+// parity, incremental-compile, and classloader-leak soak tests against Kotlin 2.3.21. See
+// docs/daemon/BTA-SPIKE.md for the checkpoints and docs/daemon/COMPILE-IN-PROCESS.md for the
+// production design these tests guard.
 
 plugins { alias(libs.plugins.kotlin.jvm) }
 

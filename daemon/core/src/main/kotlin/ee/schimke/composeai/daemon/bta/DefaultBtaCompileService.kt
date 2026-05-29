@@ -7,6 +7,7 @@ import java.nio.file.Path
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
+import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
 
 /**
  * Production [BtaCompileService] adapter. Constructed once per daemon JVM at startup if (and only
@@ -28,14 +29,14 @@ import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
  *    become `SourcesChanges.Known`; null becomes `SourcesChanges.ToBeCalculated` (BTA inspects file
  *    timestamps against its IC cache). Same shape KGP uses.
  *
- * 3. **Exception → Fallback mapping.** Any throw from [backend] is treated as a transient runtime
- *    failure (typically: BTA bootstrap fault, missing JAR, file system error) and downgraded to
- *    [BtaCompileService.Outcome.Fallback]. The daemon's stage-1 `gradle --continuous` worker picks
- *    up the save instead. Diagnostic-bearing compile failures (Kotlin source errors) are not yet
- *    surfaced as [BtaCompileService.Outcome.CompileError] from here — that requires a
- *    `KotlinLogger`-backed diagnostic collector wired through the session, tracked as a follow-up.
- *    Until then, a compile-error save falls through to stage 1 which still surfaces the diagnostics
- *    via `KotlinCompileErrorDetector`. Lossy but not silent.
+ * 3. **Exception → outcome mapping.** [forSession]'s backend routes BTA's diagnostic stream through
+ *    a [DiagnosticCollector]; on a `COMPILATION_ERROR` it re-throws the collected diagnostics as a
+ *    typed [BtaCompileDiagnosticException], which this adapter maps to
+ *    [BtaCompileService.Outcome.CompileError] so the editor's existing compile-error banner renders
+ *    the Kotlin source errors directly from stage 2. Any *other* throw (BTA bootstrap fault,
+ *    missing JAR, file system error, or a `COMPILATION_ERROR` with no diagnostics captured) is
+ *    treated as a transient runtime failure and downgraded to [BtaCompileService.Outcome.Fallback]
+ *    so the daemon's stage-1 `gradle --continuous` worker picks up the save instead.
  *
  * The split between [backend] (a function reference) and [forSession] (the production factory
  * wrapping a [BtaCompileSession]) lets unit tests stub the compile behaviour without dragging in a
@@ -182,17 +183,7 @@ class DefaultBtaCompileService(
       val compileClasspath = sysprops(SYSPROP_COMPILE_CLASSPATH).toPathList()
       val pluginJars = sysprops(SYSPROP_COMPILER_PLUGINS).toPathList()
       val ineligibilityReason = sysprops(SYSPROP_INELIGIBILITY_REASON)?.takeIf { it.isNotEmpty() }
-      val compilerPlugins =
-        if (pluginJars.isEmpty()) emptyList()
-        else
-          listOf(
-            CompilerPlugin(
-              "androidx.compose.compiler.plugins.kotlin",
-              pluginJars,
-              emptyList(),
-              emptySet(),
-            )
-          )
+      val compilerPlugins = composeCompilerPlugins(pluginJars)
       val session =
         BtaCompileSession(
           implClasspath = implClasspath,
@@ -207,6 +198,30 @@ class DefaultBtaCompileService(
         ineligibilityReason = ineligibilityReason,
       )
     }
+
+    /**
+     * Compose compiler plugin config for the in-process BTA compile. Mirrors what KGP's Compose
+     * plugin hands to `compileKotlin`: the plugin id, the embeddable plugin JARs, and the
+     * `sourceInformation=true` option.
+     *
+     * The option is load-bearing, not cosmetic. KGP enables `sourceInformation` by default and the
+     * markers it emits (`~236 byte` delta measured in BTA-SPIKE.md §4) are read by Compose
+     * Inspector / Live Literals / recomposition tooling. Without it, stage-2-emitted classes drift
+     * from the Gradle-emitted classes the daemon's hot-swap diffs against — see
+     * COMPILE-IN-PROCESS.md § "Compose plugin option drift". Returns an empty list when no plugin
+     * JARs were resolved (plain Kotlin/JVM module with no Compose plugin on the classpath).
+     */
+    internal fun composeCompilerPlugins(pluginJars: List<Path>): List<CompilerPlugin> =
+      if (pluginJars.isEmpty()) emptyList()
+      else
+        listOf(
+          CompilerPlugin(
+            "androidx.compose.compiler.plugins.kotlin",
+            pluginJars,
+            listOf(CompilerPluginOption("sourceInformation", "true")),
+            emptySet(),
+          )
+        )
 
     private fun String?.toPathList(): List<Path> =
       if (this.isNullOrEmpty()) emptyList()

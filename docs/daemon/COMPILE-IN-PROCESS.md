@@ -1,10 +1,24 @@
 # In-process compile — stage-2 production design
 
-**Status:** design proposal. Not yet implemented. Builds on the
+**Status:** implemented and shipping behind the experimental, off-by-default
+workspace flag `composePreview.daemon.compileInProcess`. Builds on the
 spike findings in [BTA-SPIKE.md](BTA-SPIKE.md) (all five checkpoints
 green) and on the stage-1 baseline in
 [CONTINUOUS-COMPILE.md](CONTINUOUS-COMPILE.md) (`gradle --continuous`
 worker, already shipping behind `composePreview.daemon.continuousCompile`).
+
+> **As-built note.** The sections below are the original design. What
+> actually landed differs from the "Module layout" sketch in two ways:
+> the per-module session is `daemon/core/.../bta/BtaCompileSession.kt`
+> (a new class, not a moved `BtaCompiler.kt`), and the spike modules
+> `:daemon:bta-host` / `:daemon:bta-host-fixture` were **kept** as
+> standalone parity/soak test harnesses rather than removed — nothing in
+> production depends on them. The eligibility predicate
+> ([`ComposePreviewTasks.detectStageTwoIneligibility`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt))
+> short-circuits KSP, KAPT, `annotationProcessor` dependencies, and KMP
+> modules to stage 1. The bench-harness measurement work in § "What we
+> expect to measure" is tracked in
+> [#1586](https://github.com/yschimke/compose-ai-tools/issues/1586).
 
 This doc describes the next layer: a JSON-RPC `compileSources` endpoint
 on `:daemon:core` that hosts the Kotlin compiler in-process via the
