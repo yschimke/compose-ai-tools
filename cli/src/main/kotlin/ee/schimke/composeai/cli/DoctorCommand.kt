@@ -71,6 +71,21 @@ class DoctorCommand(private val args: List<String>) {
   private val recommendedPluginVersion = args.flagValue("--plugin-version") ?: BUNDLE_VERSION
 
   /**
+   * `--variant <name>` forwarded as `-PcomposePreview.variant=<name>` on the Gradle connection,
+   * mirroring [BaseCommand.variantOverride]. Without this the model query (and any subsequent
+   * daemon spawn through `--with-daemon`) defaults to whatever the plugin's
+   * `composePreview.variant` convention picks, so `doctor --variant prodRelease` would silently
+   * report on `debug` instead.
+   */
+  private val variantOverride: String? =
+    args.flagValue("--variant")?.trim()?.takeIf { it.isNotEmpty() }
+
+  private fun variantGradleArgs(): List<String> {
+    val v = variantOverride ?: return emptyList()
+    return listOf("-PcomposePreview.variant=$v")
+  }
+
+  /**
    * Plugin version actually applied to the project, read from the Tooling model after
    * [runProjectChecks] fetches it. Null when no project was detected or no module applies the
    * plugin. Surfaced in the report header and as an explicit `project.plugin-version` check so
@@ -309,15 +324,20 @@ class DoctorCommand(private val args: List<String>) {
     val injectArgs = autoInjectInitScriptArgs(args, projectRoot = projectDir)
     val model =
       try {
-        GradleConnection(projectDir, verbose = verbose, extraArguments = injectArgs).use { gc ->
-          // Daemon-JVM + Gradle-version snapshot. Runs first so other
-          // project-scope checks can compare against the daemon's JDK
-          // (e.g. flagging test worker mismatch in #142).
-          checkGradleDaemon(gc)
-          gc.runBuildAction(GatherComposePreviewModelAction()).also {
-            gradleAccessFailure = gc.lastModelAccessFailure
+        GradleConnection(
+            projectDir,
+            verbose = verbose,
+            extraArguments = injectArgs + variantGradleArgs(),
+          )
+          .use { gc ->
+            // Daemon-JVM + Gradle-version snapshot. Runs first so other
+            // project-scope checks can compare against the daemon's JDK
+            // (e.g. flagging test worker mismatch in #142).
+            checkGradleDaemon(gc)
+            gc.runBuildAction(GatherComposePreviewModelAction()).also {
+              gradleAccessFailure = gc.lastModelAccessFailure
+            }
           }
-        }
       } catch (e: Exception) {
         addCheck(
           DoctorCheck(
