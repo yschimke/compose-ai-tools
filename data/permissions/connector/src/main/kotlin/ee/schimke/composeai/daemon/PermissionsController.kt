@@ -35,6 +35,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 object PermissionsController {
 
+  /**
+   * Bridge scope key for a render with no previewId. Must equal
+   * `SandboxPermissionsBridge.NO_PREVIEW_SCOPE`; duplicated as a literal here because the
+   * controller reaches the bridge reflectively (no compile-time dependency on `:daemon:android`).
+   */
+  private const val NO_PREVIEW_SCOPE: String = ""
+
   private val lock = Any()
 
   /** Effective grant map. Persisted across renders so a session that flips a grant mid-flight is observable. */
@@ -49,6 +56,19 @@ object PermissionsController {
 
   /** Cache of unique queried permissions for O(1) duplicate suppression in [recordQuery]. */
   private val queriedSeen: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+  /**
+   * previewId of the render whose composition is currently driving this controller, or `null` for
+   * a render with no previewId. Set by [PermissionsOverrideExtension]'s around-composable from
+   * `ExtensionComposeContext.previewId` before the preview content composes, so the shadow-driven
+   * [recordQuery] can stamp the cross-classloader bridge with the right scope (issue #1593).
+   *
+   * `@Volatile`, not mutex-guarded: composition for a given sandbox is single-threaded, so the only
+   * cross-thread reader is a defensive one; a plain volatile is enough to publish the write made on
+   * the composition thread. The controller is loaded fresh per sandbox, so this never holds two
+   * concurrent previews' ids — those live in separate classloaders, each with their own static.
+   */
+  @Volatile private var activePreviewId: String? = null
 
   val grants: State<Map<String, PermissionGrantStateOverride>>
     get() = grantsState
@@ -99,8 +119,21 @@ object PermissionsController {
     if (queriedSeen.add(permission)) {
       synchronized(lock) { queriedSet.value = queriedSet.value + permission }
     }
-    bridgeForwarder?.recordQuery(permission)
+    bridgeForwarder?.recordQuery(bridgeScope(), permission)
   }
+
+  /**
+   * Sandbox-side: stamp the previewId whose composition is about to read permissions, so the
+   * subsequent shadow-driven [recordQuery] forwards land in that preview's bridge scope. Called by
+   * [PermissionsOverrideExtension]'s around-composable before the preview content composes. `null`
+   * (a render with no previewId) maps to the bridge's no-preview scope.
+   */
+  fun beginRender(previewId: String?) {
+    activePreviewId = previewId
+  }
+
+  /** Bridge scope key for the active render — the bridge's no-preview sentinel when unset. */
+  private fun bridgeScope(): String = activePreviewId ?: NO_PREVIEW_SCOPE
 
   /** Register a callback fired on every [set] transition. Returns an unregister handle. */
   fun addChangeListener(listener: () -> Unit): () -> Unit {
@@ -114,13 +147,17 @@ object PermissionsController {
    * `KeyboardController.resetForNewSession` / `AmbientStateController.resetForNewSession`.
    */
   fun resetForNewSession() {
+    val scope = bridgeScope()
     synchronized(lock) {
       grantsState.value = emptyMap()
       queriedSet.value = emptyList()
       queriedSeen.clear()
+      activePreviewId = null
       syncRobolectricGrants(emptyMap())
     }
-    bridgeForwarder?.reset()
+    // Scope the bridge reset to the closing preview so a concurrent preview's queries survive —
+    // a JVM-wide clear here would reintroduce the cross-preview leak the per-preview keying fixes.
+    bridgeForwarder?.reset(scope)
   }
 
   /**
@@ -195,18 +232,18 @@ object PermissionsController {
     private val recordQueryMethod: java.lang.reflect.Method,
     private val resetMethod: java.lang.reflect.Method,
   ) {
-    fun recordQuery(permission: String) {
+    fun recordQuery(previewId: String, permission: String) {
       try {
-        recordQueryMethod.invoke(null, permission)
+        recordQueryMethod.invoke(null, previewId, permission)
       } catch (_: ReflectiveOperationException) {
         // Bridge invocation failed (unexpected — the class loaded but the call failed). Drop —
         // controller's in-CL state still serves the same-CL fast path.
       }
     }
 
-    fun reset() {
+    fun reset(previewId: String) {
       try {
-        resetMethod.invoke(null)
+        resetMethod.invoke(null, previewId)
       } catch (_: ReflectiveOperationException) {
         // Same defensive drop as recordQuery; the controller's in-CL state already cleared above.
       }
@@ -219,8 +256,9 @@ object PermissionsController {
         try {
           val cls = Class.forName(BRIDGE_FQN, true, PermissionsController::class.java.classLoader)
           BridgeForwarder(
-            recordQueryMethod = cls.getMethod("recordQuery", String::class.java),
-            resetMethod = cls.getMethod("reset"),
+            recordQueryMethod =
+              cls.getMethod("recordQuery", String::class.java, String::class.java),
+            resetMethod = cls.getMethod("reset", String::class.java),
           )
         } catch (_: ClassNotFoundException) {
           null

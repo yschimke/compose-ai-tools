@@ -16,10 +16,12 @@ import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
-import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -65,14 +67,17 @@ import kotlinx.serialization.json.JsonElement
  * permission check composed in user code sees the override.
  */
 class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null) :
-  AroundComposableExtension(
-    id = ID,
-    constraints =
-      DataExtensionConstraints(
-        phase = DataExtensionPhase.OuterEnvironment,
-        provides = setOf(DataExtensionCapability(PermissionsDataProductRegistry.KIND)),
-      ),
-  ) {
+  AroundComposableHook {
+
+  override val id: DataExtensionId = ID
+
+  override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AroundComposable)
+
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.OuterEnvironment,
+      provides = setOf(DataExtensionCapability(PermissionsDataProductRegistry.KIND)),
+    )
 
   init {
     // Apply the seed eagerly so `Context.checkSelfPermission(...)` reads through the new
@@ -88,7 +93,12 @@ class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null
   }
 
   @Composable
-  override fun AroundComposable(content: @Composable () -> Unit) {
+  override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    // Stamp the active previewId before the preview content composes so the shadow-driven
+    // `recordQuery` lands in this preview's bridge scope, not a concurrent preview's (issue #1593).
+    // Plain call (not a SideEffect) so it runs during composition, ahead of any
+    // `ContextCompat.checkSelfPermission(...)` read in `content()`.
+    PermissionsController.beginRender(context.previewId)
     DisposableEffect(seed) { onDispose { PermissionsController.set(null) } }
     content()
   }
@@ -198,7 +208,12 @@ class PermissionsDataProductRegistry : DataProductRegistry {
     // through the controller without a seed, and the panel still wants to surface that. An empty
     // payload (no grants, no queries) is filtered out so we don't masquerade `NotAvailable`.
     val grants = overrides?.permissions?.grants.orEmpty() + PermissionsController.grants.value
-    val queried = readQueriedAcrossClassloaders()
+    // Read the bridge by the previewId the sandbox stamped its queries under. Prefer the render's
+    // own `previewContext.previewId` (literally `spec.previewId`, the exact key the sandbox-side
+    // controller used) and fall back to the registry's `previewId` argument when no context is
+    // attached (connector-only tests, where the bridge is absent and the in-CL controller answers).
+    val scope = previewContext?.previewId ?: previewId
+    val queried = readQueriedAcrossClassloaders(scope)
     if (grants.isEmpty() && queried.isEmpty()) {
       clear(previewId)
       return
@@ -219,11 +234,11 @@ class PermissionsDataProductRegistry : DataProductRegistry {
    * (`PermissionsDataProductTest`) working unchanged — they exercise both sides from a single
    * classloader where the controller's in-CL state IS the source of truth.
    */
-  private fun readQueriedAcrossClassloaders(): List<String> {
+  private fun readQueriedAcrossClassloaders(scope: String): List<String> {
     val bridge = SandboxPermissionsBridgeReader.tryLoad()
     val controllerQueried = PermissionsController.queried.value
     if (bridge == null) return controllerQueried
-    val bridgeQueried = bridge.snapshot()
+    val bridgeQueried = bridge.snapshot(scope)
     // Union of bridge and same-CL controller views, preserving bridge insertion order first and
     // appending controller-only entries (the rare same-CL `:daemon:android` test path where a
     // direct controller call wrote to in-CL state but the bridge was the loaded singleton).
@@ -242,10 +257,10 @@ class PermissionsDataProductRegistry : DataProductRegistry {
   private class SandboxPermissionsBridgeReader(
     private val snapshotMethod: java.lang.reflect.Method,
   ) {
-    fun snapshot(): List<String> =
+    fun snapshot(scope: String): List<String> =
       try {
         @Suppress("UNCHECKED_CAST")
-        (snapshotMethod.invoke(null) as Array<String>).toList()
+        (snapshotMethod.invoke(null, scope) as Array<String>).toList()
       } catch (_: ReflectiveOperationException) {
         emptyList()
       }
@@ -269,7 +284,9 @@ class PermissionsDataProductRegistry : DataProductRegistry {
                   true,
                   PermissionsDataProductRegistry::class.java.classLoader,
                 )
-              SandboxPermissionsBridgeReader(snapshotMethod = cls.getMethod("snapshot"))
+              SandboxPermissionsBridgeReader(
+                snapshotMethod = cls.getMethod("snapshot", String::class.java)
+              )
             } catch (_: ClassNotFoundException) {
               null
             } catch (_: NoSuchMethodException) {
