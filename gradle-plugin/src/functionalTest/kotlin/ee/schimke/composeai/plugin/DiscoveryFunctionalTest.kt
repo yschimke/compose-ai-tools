@@ -1612,6 +1612,9 @@ class DiscoveryFunctionalTest {
       .containsExactly("SimpleNotificationPreview", "NoArgNotificationPreview")
     assertThat(notificationPreviews.map { it.params.kind }.toSet())
       .containsExactly(PreviewKind.NOTIFICATION)
+    // `widthDp` is pinned to the 400dp sandbox width so the shade renders at its wide footprint
+    // rather than the router's 320dp square default (#1249). Height is left to the renderer.
+    assertThat(notificationPreviews.map { it.params.widthDp }.toSet()).containsExactly(400)
     // Each notification preview produces exactly one capture (no scroll / time / focus / ambient
     // fan-out — `buildOutputPlan` treats NOTIFICATION the same as TILE for dimensional axes).
     assertThat(notificationPreviews.map { it.captures.size }).containsExactly(1, 1)
