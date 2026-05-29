@@ -1404,6 +1404,7 @@ object PreviewDiscovery {
   private fun readFocusSteps(ann: AnnotationInfo): List<FocusCapture> {
     val pv = ann.parameterValues
     val overlay = (pv.getValue("overlay") as? Boolean) ?: false
+    val enterPlacesFocus = (pv.getValue("enterPlacesFocus") as? Boolean) ?: false
     val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
     if (directions.isNotEmpty()) {
       // 1-based `step` lets the overlay label and the filename suffix
@@ -1423,7 +1424,7 @@ object PreviewDiscovery {
       .filter { it >= 0 }
       .distinct()
       .sorted()
-      .map { FocusCapture(tabIndex = it, overlay = overlay) }
+      .map { FocusCapture(tabIndex = it, overlay = overlay, enterPlacesFocus = enterPlacesFocus) }
   }
 
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {

@@ -79,10 +79,20 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
           // `moveFocus(Enter)` lands the owner on an internal root that sits *before* the first
           // focusable, so the first walk needs `tabIndex + 1` Next steps to land on button
           // `tabIndex`. Subsequent calls walk only the delta.
+          //
+          // Exception: when the preview's root layout carries
+          // `Modifier.focusProperties { onEnter = { initialFocus.requestFocus() } }.focusGroup()`
+          // (the order-control pattern documented at
+          // `developer.android.com/develop/xr/jetpack-xr-sdk/jetpack-compose-glimmer/focus`),
+          // `Enter` already lands focus directly on the requested child and the `+1 Next` advances
+          // past it. The preview opts into the alternative walk by setting
+          // [FocusOverride.enterPlacesFocus] (driven by `@FocusedPreview(enterPlacesFocus = true)`).
+          val enterPlacesFocus = cap.enterPlacesFocus
           val from = lastIndex.value
           if (from < 0) {
             focusManager.moveFocus(ComposeFocusDirection.Enter)
-            repeat(tabIndex + 1) { focusManager.moveFocus(ComposeFocusDirection.Next) }
+            val steps = if (enterPlacesFocus) tabIndex else tabIndex + 1
+            repeat(steps) { focusManager.moveFocus(ComposeFocusDirection.Next) }
           } else if (tabIndex > from) {
             repeat(tabIndex - from) { focusManager.moveFocus(ComposeFocusDirection.Next) }
           }
