@@ -541,6 +541,52 @@ class CommentTest(unittest.TestCase):
         self.assertNotEqual(body, "")
         self.assertIn("No accessibility findings", body)
 
+    def test_atf_unavailable_preserves_baseline_findings_not_resolved(self):
+        # Regression for #1595: when the current run is atf-unavailable its
+        # entries are empty, but the baseline had real findings. Those must be
+        # preserved as carried-over — NOT diffed away into a "Resolved" block,
+        # which would falsely signal the issues were fixed when in fact nothing
+        # was checked.
+        baseline_entry = self._entry(
+            function="Bad", findings=[_finding(level="ERROR", message="Contrast.")]
+        )
+        body = self._run_comment(
+            [],  # daemon down: no current entries
+            baseline_entries=[baseline_entry],
+            status="atf-unavailable",
+        )
+        # The prior finding is re-surfaced, not dropped or marked resolved.
+        self.assertIn("`Bad`", body)
+        self.assertIn("Contrast.", body)
+        self.assertNotIn("Resolved", body)
+        self.assertNotIn("_No findings._", body)
+        # Banner explains no comparison was produced.
+        self.assertIn("[!WARNING]", body)
+        self.assertIn("no comparison was performed", body)
+        self.assertIn("preserved", body)
+
+    def test_atf_unavailable_counts_track_baseline_not_zero(self):
+        # Regression for #1595: the summary counters must reflect the baseline
+        # findings being preserved, not collapse to a misleading zero from the
+        # empty current entries.
+        baseline_entries = [
+            self._entry(
+                function="A", preview_id="x.A",
+                findings=[_finding(level="ERROR"), _finding(level="WARNING")],
+            ),
+            self._entry(
+                function="B", preview_id="x.B", findings=[_finding(level="INFO")]
+            ),
+            self._entry(function="Clean", preview_id="x.Clean", findings=[]),
+        ]
+        body = self._run_comment(
+            [], baseline_entries=baseline_entries, status="atf-unavailable"
+        )
+        self.assertIn("1 error(s) · 1 warning(s) · 1 info", body)
+        # Only the two previews carrying findings are counted; the clean one
+        # is not surfaced.
+        self.assertIn("across 2 baseline preview(s)", body)
+
     def test_only_changed_preview_gets_a_block_others_collapsed(self):
         # Two previews exist; only one gains a finding vs the baseline. The
         # changed one gets a full findings table, the unchanged-but-flagged
@@ -579,7 +625,8 @@ class CommentTest(unittest.TestCase):
         # with empty findings. Diffing those against a baseline that had
         # findings must NOT render them as changed-to-empty/"No findings" or
         # "Resolved" — that would make a daemon failure look like the issues
-        # were fixed. Only the warning + counts should appear.
+        # were fixed (#1595). Instead the baseline finding is preserved
+        # verbatim under the carried-over banner.
         baseline = self._entry(
             function="Bad", preview_id="x.Bad", findings=[_finding(level="ERROR")]
         )
@@ -589,9 +636,10 @@ class CommentTest(unittest.TestCase):
         )
         self.assertIn("ATF data unavailable", body)
         self.assertNotIn("_No findings._", body)
-        self.assertNotIn("### `Bad`", body)
         self.assertNotIn("Resolved", body)
         self.assertNotIn("No accessibility findings", body)
+        # The prior finding is preserved, not silently dropped.
+        self.assertIn("### `Bad`", body)
 
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now
