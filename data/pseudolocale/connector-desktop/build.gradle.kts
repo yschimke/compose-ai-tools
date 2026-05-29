@@ -21,6 +21,7 @@
 // See `site/reference/pseudolocale.md` for the platform support matrix.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)

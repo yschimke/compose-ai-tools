@@ -26,6 +26,7 @@
 //    time is safe; concurrent sessions against different modules need external coordination.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

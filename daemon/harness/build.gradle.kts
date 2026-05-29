@@ -16,6 +16,7 @@
 import java.net.URLClassLoader
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)
@@ -132,13 +133,22 @@ tasks.withType<Test>().configureEach {
   // Real-mode flips the launcher in `HarnessTestSupport.launcherFor(...)` and unblocks
   // `S1LifecycleRealModeTest`, which asserts a real Compose render's PNG against an in-repo
   // baseline.
-  systemProperty("composeai.harness.host", findProperty("harness.host") ?: "fake")
+  // `providers.gradleProperty(...)` rather than `findProperty(...)`: the latter does a dynamic
+  // lookup that falls back to searching the parent project (`:daemon`), which Isolated Projects
+  // forbids; the provider reads only the Gradle property and is IP- and config-cache-safe.
+  systemProperty(
+    "composeai.harness.host",
+    providers.gradleProperty("harness.host").orNull ?: "fake",
+  )
   // D-harness.v2 — `-Ptarget=desktop|android` flag. Default `desktop` keeps the v1.5a/b real-mode
   // tests pointed at the desktop daemon. `target=android` activates the parallel
   // `*AndroidRealModeTest.kt` test classes which spawn the real `:daemon:android`
   // `DaemonMain` via `RealAndroidHarnessLauncher`. Tests skip via `Assume.assumeTrue` when
   // target doesn't match — both target sets coexist in the same JUnit suite.
-  systemProperty("composeai.harness.target", findProperty("harness.target") ?: "desktop")
+  systemProperty(
+    "composeai.harness.target",
+    providers.gradleProperty("harness.target").orNull ?: "desktop",
+  )
 }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon
@@ -183,20 +193,18 @@ val dumpClassloaderDiff by tasks.registering {
       "forensics dumps. Writes daemon/harness/build/reports/classloader-forensics/diff.{md,json}. v1 — " +
       "developer-invoked diagnostic, not a CI gate."
   group = "verification"
-  val standaloneJsonProvider =
-    project(":renderer-android")
-      .layout
-      .buildDirectory
-      .file("reports/classloader-forensics/standalone.json")
-  val daemonJsonProvider =
-    project(":daemon:android")
-      .layout
-      .buildDirectory
-      .file("reports/classloader-forensics/daemon.json")
+  // Reference the sibling modules' forensics dumps by path anchored at the build root — Isolated
+  // Projects forbids reaching into another project's `layout`. Dev-only diagnostic inputs.
+  val standaloneJson =
+    layout.settingsDirectory.file(
+      "renderer-android/build/reports/classloader-forensics/standalone.json"
+    )
+  val daemonJson =
+    layout.settingsDirectory.file("daemon/android/build/reports/classloader-forensics/daemon.json")
   val diffMdFile = layout.buildDirectory.file("reports/classloader-forensics/diff.md")
   val diffJsonFile = layout.buildDirectory.file("reports/classloader-forensics/diff.json")
-  inputs.file(standaloneJsonProvider)
-  inputs.file(daemonJsonProvider)
+  inputs.file(standaloneJson)
+  inputs.file(daemonJson)
   outputs.file(diffMdFile)
   outputs.file(diffJsonFile)
 
@@ -205,8 +213,8 @@ val dumpClassloaderDiff by tasks.registering {
   val libFiles = classloaderForensicsLib.elements
 
   doLast {
-    val standalone = standaloneJsonProvider.get().asFile
-    val daemon = daemonJsonProvider.get().asFile
+    val standalone = standaloneJson.asFile
+    val daemon = daemonJson.asFile
     require(standalone.exists()) {
       "Configuration A dump missing — run :renderer-android:test --tests \"*ClassloaderForensicsTest\" first.\n" +
         "Expected: ${standalone.absolutePath}"
@@ -246,7 +254,10 @@ val regenerateBaselines by
         "desktop. Captures into daemon/harness/baselines/<target>/<scenario>/<id>.png."
     group = "verification"
     systemProperty("composeai.harness.host", "real")
-    systemProperty("composeai.harness.target", findProperty("harness.target") ?: "desktop")
+    systemProperty(
+      "composeai.harness.target",
+      providers.gradleProperty("harness.target").orNull ?: "desktop",
+    )
     systemProperty("composeai.harness.regenerate", "true")
     val baseTest = tasks.test.get()
     classpath = baseTest.classpath

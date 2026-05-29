@@ -19,6 +19,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // Bazel modules or JVM unit tests that don't carry the full Robolectric renderer.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

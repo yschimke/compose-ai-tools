@@ -22,6 +22,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // path) or the composable-helper authoring path (this module).
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

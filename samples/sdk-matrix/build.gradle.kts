@@ -20,6 +20,7 @@ import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
 
 plugins {
+  id("composeai.base-conventions")
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   id("ee.schimke.composeai.preview")

@@ -19,6 +19,7 @@ import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 // "Module split (D2.2)".
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)
