@@ -220,7 +220,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.a11y.png",
       "cleanBasename": "CameraPermissionDeniedPreview_Camera_permission_denied.png",
       "findings": [],
       "functionName": "CameraPermissionDeniedPreview",
@@ -230,7 +230,7 @@
       "variant": ""
     },
     {
-      "annotatedBasename": "",
+      "annotatedBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.a11y.png",
       "cleanBasename": "CameraPermissionGrantedPreview_Camera_permission_granted.png",
       "findings": [],
       "functionName": "CameraPermissionGrantedPreview",
@@ -1314,6 +1314,26 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
+      "cleanBasename": "GlimmerListItemDefault_Glimmer_Default.png",
+      "findings": [],
+      "functionName": "GlimmerListItemDefault",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
+      "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
+      "cleanBasename": "GlimmerListItemFocused_Glimmer_Focused.png",
+      "findings": [],
+      "functionName": "GlimmerListItemFocused",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
       "variant": "spec:width=640,height=480,dpi=240"
     },
     {
