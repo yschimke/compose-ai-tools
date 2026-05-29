@@ -198,12 +198,89 @@ class PermissionsDataProductRegistry : DataProductRegistry {
     // through the controller without a seed, and the panel still wants to surface that. An empty
     // payload (no grants, no queries) is filtered out so we don't masquerade `NotAvailable`.
     val grants = overrides?.permissions?.grants.orEmpty() + PermissionsController.grants.value
-    val queried = PermissionsController.queried.value
+    val queried = readQueriedAcrossClassloaders()
     if (grants.isEmpty() && queried.isEmpty()) {
       clear(previewId)
       return
     }
     capture(previewId, payloadFor(grants, queried))
+  }
+
+  /**
+   * Read the queried-permission list with cross-classloader awareness. In production, the daemon's
+   * registry runs in the host classloader, while
+   * [ShadowContextWrapperPermissionTracker]-driven `recordQuery` writes land in the sandbox
+   * classloader's [PermissionsController] static state — different `static` per classloader, so the
+   * host-CL controller's `queried.value` is empty even though queries fired. The
+   * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
+   * is a do-not-acquire singleton shared across the boundary, so we prefer it when reachable.
+   *
+   * Fallback to [PermissionsController.queried] keeps connector-only unit tests
+   * (`PermissionsDataProductTest`) working unchanged — they exercise both sides from a single
+   * classloader where the controller's in-CL state IS the source of truth.
+   */
+  private fun readQueriedAcrossClassloaders(): List<String> {
+    val bridge = SandboxPermissionsBridgeReader.tryLoad()
+    val controllerQueried = PermissionsController.queried.value
+    if (bridge == null) return controllerQueried
+    val bridgeQueried = bridge.snapshot()
+    // Union of bridge and same-CL controller views, preserving bridge insertion order first and
+    // appending controller-only entries (the rare same-CL `:daemon:android` test path where a
+    // direct controller call wrote to in-CL state but the bridge was the loaded singleton).
+    if (bridgeQueried.isEmpty()) return controllerQueried
+    if (controllerQueried.isEmpty()) return bridgeQueried
+    val seen = LinkedHashSet(bridgeQueried)
+    seen.addAll(controllerQueried)
+    return seen.toList()
+  }
+
+  /**
+   * Reflective lookup of [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * Cached per JVM (object init). `null` means the bridge isn't on the classpath (connector-only
+   * unit tests; non-daemon consumers) — the registry falls back to the in-CL controller state.
+   */
+  private class SandboxPermissionsBridgeReader(
+    private val snapshotMethod: java.lang.reflect.Method,
+  ) {
+    fun snapshot(): List<String> =
+      try {
+        @Suppress("UNCHECKED_CAST")
+        (snapshotMethod.invoke(null) as Array<String>).toList()
+      } catch (_: ReflectiveOperationException) {
+        emptyList()
+      }
+
+    companion object {
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
+
+      @Volatile private var resolved: SandboxPermissionsBridgeReader? = null
+      @Volatile private var resolutionAttempted: Boolean = false
+
+      fun tryLoad(): SandboxPermissionsBridgeReader? {
+        if (resolutionAttempted) return resolved
+        synchronized(this) {
+          if (resolutionAttempted) return resolved
+          val r =
+            try {
+              val cls =
+                Class.forName(
+                  BRIDGE_FQN,
+                  true,
+                  PermissionsDataProductRegistry::class.java.classLoader,
+                )
+              SandboxPermissionsBridgeReader(snapshotMethod = cls.getMethod("snapshot"))
+            } catch (_: ClassNotFoundException) {
+              null
+            } catch (_: NoSuchMethodException) {
+              null
+            }
+          resolved = r
+          resolutionAttempted = true
+          return r
+        }
+      }
+    }
   }
 
   private fun payloadFor(
