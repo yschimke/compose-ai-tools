@@ -1337,6 +1337,16 @@
       "variant": "spec:width=640,height=480,dpi=240"
     },
     {
+      "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed.a11y.png",
+      "cleanBasename": "GlimmerListItemPressed_Glimmer_Pressed.png",
+      "findings": [],
+      "functionName": "GlimmerListItemPressed",
+      "module": "xr-glimmer",
+      "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed",
+      "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
+      "variant": "spec:width=640,height=480,dpi=240"
+    },
+    {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
       "cleanBasename": "NowPlayingCard_Glimmer_Busy.png",
       "findings": [],
