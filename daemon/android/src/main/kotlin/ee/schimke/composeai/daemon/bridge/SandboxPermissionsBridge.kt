@@ -83,7 +83,7 @@ object SandboxPermissionsBridge {
    *
    * Returns a primitive `String[]` so the cross-loader transport stays in JLS types only —
    * neither side reinterprets a `kotlin.collections.List` from the other's classloader. Mirrors
-   * the `arrayOf(String[], long[])` shape `SandboxRecompositionBridge.drainCounters` uses.
+   * the parallel-primitive-arrays shape `SandboxRecompositionBridge.drainCounters` uses.
    */
   @JvmStatic
   fun snapshot(previewId: String): Array<String> {

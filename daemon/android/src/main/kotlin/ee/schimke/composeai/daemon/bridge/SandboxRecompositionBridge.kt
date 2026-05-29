@@ -24,11 +24,13 @@ import java.util.concurrent.ConcurrentHashMap
  * snapshots and clears the entries so each subsequent call carries only the delta since the previous
  * drain.
  *
- * **Wire shape across the bridge.** [drainCounters] returns `arrayOf(String[], long[])`: the first
- * element holds the base-16 scope ids (sorted), the second holds the matching counts. Mirrors the
- * parallel-primitive-arrays convention `DaemonHostBridge` already uses (and what the issue brief
- * spells out as the prescribed seam shape) — keeps the cross-loader transport in pure JLS types so
- * neither side reinterprets the other's `Map<*,*>` or `Pair<*,*>`.
+ * **Wire shape across the bridge.** [drainCounters] returns `arrayOf(String[], long[], long[])`:
+ * the first element holds the base-16 scope ids (sorted), the second the matching recomposition
+ * counts, and the third (v2, #1605) the matching snapshot-invalidation counts the host side uses to
+ * attribute each scope's `InvalidationReason`. Mirrors the parallel-primitive-arrays convention
+ * `DaemonHostBridge` already uses (and what the issue brief spells out as the prescribed seam
+ * shape) — keeps the cross-loader transport in pure JLS types so neither side reinterprets the
+ * other's `Map<*,*>` or `Pair<*,*>`.
  */
 object SandboxRecompositionBridge {
 
@@ -40,6 +42,13 @@ object SandboxRecompositionBridge {
    *  ("thread-safe ConcurrentHashMap per (previewId, frameStreamId)"). */
   private val counters: ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>> = ConcurrentHashMap()
 
+  /** Per-stream snapshot-invalidation maps (v2, #1605), keyed by `System.identityHashCode(scope)`.
+   *  Parallel to [counters]: bumped by [markInvalidated] when the runtime invalidates a scope with a
+   *  snapshot value, drained alongside the counts so the host can attribute STATE_READ vs
+   *  PARAMETER_CHANGE. */
+  private val invalidations: ConcurrentHashMap<String, ConcurrentHashMap<Int, Int>> =
+    ConcurrentHashMap()
+
   /**
    * Sandbox-side: open a counter slot for [previewId] + [streamId]. Idempotent — re-calling on a
    * live slot is a no-op (returns the same inner map). The host-side registry calls into this via
@@ -48,6 +57,7 @@ object SandboxRecompositionBridge {
   @JvmStatic
   fun open(previewId: String, streamId: String) {
     counters.computeIfAbsent(key(previewId, streamId)) { ConcurrentHashMap() }
+    invalidations.computeIfAbsent(key(previewId, streamId)) { ConcurrentHashMap() }
   }
 
   /**
@@ -57,6 +67,7 @@ object SandboxRecompositionBridge {
   @JvmStatic
   fun close(previewId: String, streamId: String) {
     counters.remove(key(previewId, streamId))
+    invalidations.remove(key(previewId, streamId))
   }
 
   /**
@@ -71,41 +82,65 @@ object SandboxRecompositionBridge {
   }
 
   /**
+   * Sandbox-side (v2, #1605): bump the snapshot-invalidation counter for [scopeHash]. Called from
+   * the `CompositionObserver.onScopeInvalidated` callback when the runtime invalidates a scope with
+   * a non-null snapshot value — the STATE_READ signal. Silently dropped if the slot has been closed.
+   */
+  @JvmStatic
+  fun markInvalidated(previewId: String, streamId: String, scopeHash: Int) {
+    val map = invalidations[key(previewId, streamId)] ?: return
+    map.merge(scopeHash, 1, Int::plus)
+  }
+
+  /**
    * Sandbox-side: drop the counter for [scopeHash] when the recompose scope is disposed. Keeps the
    * map from leaking entries across a long-running session.
    */
   @JvmStatic
   fun markDisposed(previewId: String, streamId: String, scopeHash: Int) {
-    val map = counters[key(previewId, streamId)] ?: return
-    map.remove(scopeHash)
+    counters[key(previewId, streamId)]?.remove(scopeHash)
+    invalidations[key(previewId, streamId)]?.remove(scopeHash)
   }
 
   /**
    * Host-side: snapshot + reset the per-scope counters for [previewId] + [streamId].
    *
-   * Wire shape: `arrayOf(String[] ids, long[] counts)` where `ids[i]` is `Integer.toHexString(hash)`
-   * for the i-th entry (sorted ascending by id for deterministic payloads) and `counts[i]` is the
-   * delta count since the previous drain. Returns `arrayOf(String[0], long[0])` when no observer
-   * is active for the slot — the caller treats that the same as a live-but-quiet slot, i.e. an
-   * empty `nodes: []` attachment.
+   * Wire shape: `arrayOf(String[] ids, long[] counts, long[] invalidationCounts)` where `ids[i]` is
+   * `Integer.toHexString(hash)` for the i-th entry (sorted ascending by id for deterministic
+   * payloads), `counts[i]` is the recomposition delta count since the previous drain, and
+   * `invalidationCounts[i]` (v2, #1605) is how many times that scope was invalidated with a snapshot
+   * value over the same window — the host derives each scope's `InvalidationReason` from the two.
+   * Returns `arrayOf(String[0], long[0], long[0])` when no observer is active for the slot — the
+   * caller treats that the same as a live-but-quiet slot, i.e. an empty `nodes: []` attachment.
    *
    * Reset is per-entry (`ConcurrentHashMap.remove`) so concurrent observer increments don't lose
-   * a count between snapshot and reset — same atomic pattern the desktop producer uses.
+   * a count between snapshot and reset — same atomic pattern the desktop producer uses. The
+   * invalidation map is keyed on the recomposed ids and any invalidate-but-didn't-recompose
+   * leftovers are cleared so they don't mis-attribute a later structural recomposition.
    */
   @JvmStatic
   fun drainCounters(previewId: String, streamId: String): Array<Any> {
-    val map = counters[key(previewId, streamId)] ?: return arrayOf(emptyArray<String>(), LongArray(0))
-    if (map.isEmpty()) return arrayOf(emptyArray<String>(), LongArray(0))
+    val empty = arrayOf<Any>(emptyArray<String>(), LongArray(0), LongArray(0))
+    val map = counters[key(previewId, streamId)] ?: return empty
+    val invMap = invalidations[key(previewId, streamId)]
+    if (map.isEmpty()) {
+      invMap?.clear()
+      return empty
+    }
     val keys = map.keys.toList()
-    val pairs = ArrayList<Pair<String, Long>>(keys.size)
+    val rows = ArrayList<Triple<String, Long, Long>>(keys.size)
     for (k in keys) {
       val v = map.remove(k) ?: continue
-      pairs.add(Integer.toHexString(k) to v.toLong())
+      val inv = invMap?.remove(k) ?: 0
+      rows.add(Triple(Integer.toHexString(k), v.toLong(), inv.toLong()))
     }
-    pairs.sortBy { it.first }
-    val ids = Array(pairs.size) { pairs[it].first }
-    val counts = LongArray(pairs.size) { pairs[it].second }
-    return arrayOf(ids, counts)
+    // Drop invalidate-but-didn't-recompose leftovers so the next window starts clean.
+    invMap?.clear()
+    rows.sortBy { it.first }
+    val ids = Array(rows.size) { rows[it].first }
+    val countsOut = LongArray(rows.size) { rows[it].second }
+    val invCountsOut = LongArray(rows.size) { rows[it].third }
+    return arrayOf(ids, countsOut, invCountsOut)
   }
 
   /**
@@ -116,5 +151,6 @@ object SandboxRecompositionBridge {
   @JvmStatic
   fun resetAll() {
     counters.clear()
+    invalidations.clear()
   }
 }
