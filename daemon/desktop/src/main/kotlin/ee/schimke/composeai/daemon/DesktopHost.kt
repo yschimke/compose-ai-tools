@@ -209,6 +209,12 @@ open class DesktopHost(
     // `data/focus` (`FocusPreviewOverrideExtension`), which installs the around-composable that
     // flips `LocalInputModeManager` to keyboard mode and drives `FocusManager.moveFocus(...)`.
     add("focus")
+    // Other override-driven extensions whose planners are registered in `buildDesktopExtensions`.
+    // Advertising them matches the actual behaviour: a `renderNow.overrides.<field>` IS applied,
+    // not silently ignored. Pseudolocale is driven by `localeTag` (no separate field).
+    add("keyboard")
+    add("touchOverlay")
+    add("launcherWidget")
   }
 
   /** PROTOCOL.md § 3 — desktop backend identifier surfaced via `capabilities.backend`. */
