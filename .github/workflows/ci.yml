@@ -71,6 +71,17 @@ jobs:
       # `composePreviewDiscover` alone would pass even when broken.
       - name: Render Android screenshot-test sample previews
         run: ./gradlew :samples:android-screenshot-test:composePreviewRenderAll
+      # Daemon-bench smoke (issue #1586). The full latency benches
+      # (benchPreviewLatency / benchCompileStages) are deliberately slow and run on the
+      # reference machine — see .github/workflows/daemon-bench.yml. Here we only render
+      # the five trivial previews in each bench module so they can't bit-rot: a cheap
+      # proof the modules build, discovery wires up, and the renderer path is intact on
+      # both the Android (Robolectric) and desktop (Compose-Desktop) targets.
+      - name: Render daemon-bench samples (smoke)
+        run: |
+          ./gradlew \
+            :samples:android-daemon-bench:composePreviewRender \
+            :samples:desktop-daemon-bench:composePreviewRender
       # samples/wear's pixel-scan tests (`LongScrollPreviewPixelTest`) gate
       # the stitched Wear long-preview output against known flake
       # signatures — ghost peek-pill rows, scaled-card seam ghosts,
