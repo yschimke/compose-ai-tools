@@ -60,9 +60,9 @@ class PermissionsDataFetchE2ETest {
   @After
   fun resetBridge() {
     // Bridge is a JVM-wide singleton; previous test methods or sibling test classes that
-    // exercised the sandbox can leak queries into ours. Reset the bridge here AND between every
-    // render submission below so each assertion sees only the queries from the render it gated.
-    SandboxPermissionsBridge.reset()
+    // exercised the sandbox can leak queries into ours. Reset every preview scope here AND between
+    // render submissions below so each assertion sees only the queries from the render it gated.
+    SandboxPermissionsBridge.resetAll()
   }
 
   @Test
@@ -105,7 +105,7 @@ class PermissionsDataFetchE2ETest {
         )
       val payload =
         "previewId=$previewId;overrides=${encodeOverridesBag(overrideBag)}"
-      SandboxPermissionsBridge.reset()
+      SandboxPermissionsBridge.resetAll()
       val result = host.submit(RenderRequest.Render(payload = payload), timeoutMs = 120_000)
 
       // Pixel correctness — sanity check that the override actually drove the granted branch.
