@@ -1,0 +1,75 @@
+name: Daemon Latency Bench
+
+# Scheduled, NON-BLOCKING latency bench for the preview daemon — issue #1586.
+#
+# These harnesses (`:samples:android-daemon-bench`, `:samples:desktop-daemon-bench`)
+# are deliberately slow (~10-15 min Android, ~5-10 min desktop) and measure
+# wall-clock latency, so they must NOT gate PRs — the per-PR critical path only runs
+# the cheap `composePreviewRender` smoke in ci.yml's build-samples job.
+#
+# This workflow runs weekly (and on demand) and publishes the measured CSV + the
+# stage-2 graduation verdict as artifacts. It feeds the "should stage 2 graduate from
+# experimental?" decision (COMPILE-IN-PROCESS.md § "Promote / demote criteria"); it
+# does not change any default. Numbers from a shared CI runner are noisier than the
+# reference machine in docs/daemon/baseline-latency.md — treat them as trend, not gospel.
+#
+# Each job runs `benchPreviewLatency` first (stage 0 + the render baseline the verdict
+# reuses) then `benchCompileStages` (stage 1 + stage 2 + verdict).
+
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-bench:
+    name: Daemon Bench (desktop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run desktop latency bench (stage 0 + render baseline)
+        run: ./gradlew :samples:desktop-daemon-bench:benchPreviewLatency
+      - name: Run desktop compile-stage bench (stage 1 + stage 2 + verdict)
+        run: ./gradlew :samples:desktop-daemon-bench:benchCompileStages
+      - name: Upload desktop baseline CSV + verdict
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-bench-desktop
+          path: |
+            docs/daemon/baseline-latency.csv
+            docs/daemon/stage-2-verdict-desktop.md
+
+  android-bench:
+    name: Daemon Bench (android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Run android latency bench (stage 0 + render baseline)
+        run: ./gradlew :samples:android-daemon-bench:benchPreviewLatency
+      - name: Run android compile-stage bench (stage 1 + stage 2 + verdict)
+        run: ./gradlew :samples:android-daemon-bench:benchCompileStages
+      - name: Upload android baseline CSV + verdict
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-bench-android
+          path: |
+            docs/daemon/baseline-latency.csv
+            docs/daemon/stage-2-verdict-android.md

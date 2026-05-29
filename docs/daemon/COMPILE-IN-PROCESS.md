@@ -17,8 +17,12 @@ worker, already shipping behind `composePreview.daemon.continuousCompile`).
 > ([`ComposePreviewTasks.detectStageTwoIneligibility`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/ComposePreviewTasks.kt))
 > short-circuits KSP, KAPT, `annotationProcessor` dependencies, and KMP
 > modules to stage 1. The bench-harness measurement work in § "What we
-> expect to measure" is tracked in
-> [#1586](https://github.com/yschimke/compose-ai-tools/issues/1586).
+> expect to measure" landed in
+> [#1586](https://github.com/yschimke/compose-ai-tools/issues/1586): the
+> `:samples:*-daemon-bench:benchCompileStages` task drives the stage-1 and
+> stage-2 legs and writes the graduation verdict
+> (`docs/daemon/stage-2-verdict-<target>.md`) against § "Promote / demote
+> criteria" below.
 
 This doc describes the next layer: a JSON-RPC `compileSources` endpoint
 on `:daemon:core` that hosts the Kotlin compiler in-process via the
@@ -221,8 +225,10 @@ Gradle invocation) stays as the floor when the workspace flag is off
 
 ## What we expect to measure
 
-Reuse the harness from `samples/desktop-daemon-bench` and
-`samples/android-daemon-bench`, same baseline methodology as
+Implemented by `:samples:{android,desktop}-daemon-bench:benchCompileStages`
+(#1586) — it `javaexec`s `:daemon:core`'s `BtaBenchMain`, which drives the
+production `BtaCompileSession.compileIncremental()` using the `btaCompile`
+block from the module's `daemon-launch.json`. Same baseline methodology as
 [`baseline-latency.csv`](baseline-latency.csv). New columns:
 
 ```
