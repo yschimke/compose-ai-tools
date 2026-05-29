@@ -16,6 +16,7 @@
 // interface itself is the stable contract we evolve carefully.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

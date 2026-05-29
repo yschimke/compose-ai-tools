@@ -19,6 +19,7 @@ import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 // debug-friendly walk for selector tuning.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

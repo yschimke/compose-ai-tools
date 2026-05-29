@@ -21,6 +21,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // shape is duplicated locally rather than imported.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

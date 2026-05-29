@@ -18,6 +18,7 @@ import java.time.Instant
 import org.w3c.dom.Element
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.android-conventions")
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)

@@ -6,6 +6,7 @@
 // surface, so one module covers both backends.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)

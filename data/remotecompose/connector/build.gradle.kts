@@ -29,6 +29,7 @@
 // Wear-AAR pattern.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   id("composeai.android-conventions")
   alias(libs.plugins.android.library)

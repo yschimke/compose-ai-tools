@@ -8,7 +8,10 @@
 // docs/daemon/BTA-SPIKE.md for the checkpoints and docs/daemon/COMPILE-IN-PROCESS.md for the
 // production design these tests guard.
 
-plugins { alias(libs.plugins.kotlin.jvm) }
+plugins {
+  id("composeai.base-conventions")
+  alias(libs.plugins.kotlin.jvm)
+}
 
 // Same JDK floor as the rest of the daemon modules — BTA's `kotlin-build-tools-impl`
 // is built against JDK 17 in the 2.3.x line, matching our `ComposeAiJvmConventionsPlugin`

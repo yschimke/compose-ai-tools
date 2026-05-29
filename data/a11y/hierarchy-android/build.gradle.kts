@@ -16,6 +16,7 @@ import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 // the planner's target filter selects exactly one provider per platform.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.tapmoc)

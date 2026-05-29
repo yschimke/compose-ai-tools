@@ -8,6 +8,7 @@
 // See docs/daemon/DATA-PRODUCTS.md § "Module split (D2.2)" for the rationale.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)

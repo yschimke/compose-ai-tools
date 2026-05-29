@@ -6,7 +6,11 @@ plugins {
   alias(libs.plugins.compose.multiplatform) apply false
   alias(libs.plugins.android.application) apply false
   alias(libs.plugins.android.library) apply false
-  alias(libs.plugins.ktfmt) apply false
+  // ktfmt is no longer declared here: `ComposeAiBaseConventionsPlugin` (build-logic) applies and
+  // configures it on every project from settings.gradle.kts via `gradle.lifecycle.beforeProject` —
+  // the Isolated Projects-safe replacement for the old `allprojects {}` block. ktfmt + the Kotlin
+  // Gradle plugin it links against ride on the build-logic classpath, so declaring the alias here
+  // too would put a second ktfmt on a different classloader.
   // Loaded into the root scope so :renderer-android and :daemon:android (and
   // any future sibling) share the plugin's ClassLoader. Without this, each
   // sibling instantiates its own MavenCentralBuildService class and Gradle
@@ -16,34 +20,38 @@ plugins {
   alias(libs.plugins.maven.publish) apply false
 }
 
-allprojects {
-  apply(plugin = "com.ncorti.ktfmt.gradle")
-  extensions.configure<com.ncorti.ktfmt.gradle.KtfmtExtension>("ktfmt") { googleStyle() }
-
-  // History feature gate (`HistoryFeature.ENABLED`, post-1.0). Test JVMs run with the gate
-  // flipped on so the history implementation stays green and unbroken for the 1.1 re-enable —
-  // production daemons leave the property unset and the const-default `false` keeps the
-  // wire-up dead. Re-evaluate (and drop) when the 1.1 cut flips the default to `true`.
-  tasks.withType<Test>().configureEach { systemProperty("composeai.history.enabled", "true") }
-}
+// The per-project conventions that used to live here in an `allprojects {}` block (ktfmt +
+// googleStyle + the history-gate test system property) now live in `ComposeAiBaseConventionsPlugin`
+// (build-logic), applied by each module via `plugins { id("composeai.base-conventions") }`.
+// Isolated Projects forbids the root build reaching across project boundaries, so the configuration
+// is pushed down to each project instead of pulled in from the root.
 
 // `./gradlew ktfmtCheck` already fans out to every project that applies the
 // plugin via Gradle's task-name matching. The aggregate tasks below add the
 // `gradle-plugin` included build, whose tasks aren't reachable that way.
-fun Project.taskPath(name: String) = if (path == ":") ":$name" else "$path:$name"
+//
+// Under Isolated Projects the root can't iterate `allprojects` to discover its siblings, so the
+// ktfmt-carrying project paths (every project except the root) are gathered in `settings.gradle.kts`
+// and handed over via a system property (read through a configuration-cache-tracked provider).
+// Depending on a sibling task *by path* is an ordinary (lazy) task-graph edge and stays IP-clean —
+// it never touches the sibling Project object at configuration time.
+// Every path here is a non-root project (the root carries no ktfmt — see settings.gradle.kts), so
+// `:$path:task` is always well-formed.
+val ktfmtProjectPaths =
+  providers.systemProperty("composeai.ktfmtProjectPaths").get().split(",")
 
 tasks.register("ktfmtCheckAll") {
   group = "verification"
   description = "Runs ktfmtCheck across this build and the gradle-plugin included build."
   dependsOn(gradle.includedBuild("gradle-plugin").task(":ktfmtCheck"))
-  allprojects.forEach { dependsOn(it.taskPath("ktfmtCheck")) }
+  ktfmtProjectPaths.forEach { dependsOn("$it:ktfmtCheck") }
 }
 
 tasks.register("ktfmtFormatAll") {
   group = "formatting"
   description = "Runs ktfmtFormat across this build and the gradle-plugin included build."
   dependsOn(gradle.includedBuild("gradle-plugin").task(":ktfmtFormat"))
-  allprojects.forEach { dependsOn(it.taskPath("ktfmtFormat")) }
+  ktfmtProjectPaths.forEach { dependsOn("$it:ktfmtFormat") }
 }
 
 // Convenience entrypoint for `CliA11yEndToEndFunctionalTest`. The test runs an Android-flavour
@@ -145,12 +153,22 @@ tasks.register("functionalTestWithBundleRender") {
 // `:cli:installDist` and the included build's `functionalTest` would otherwise run in parallel
 // (Gradle's parallel scheduler doesn't serialise cross-build deps automatically). The functional
 // test invokes the CLI via `ProcessBuilder`, so it crashes with `NoClassDefFoundError` against a
-// half-populated `lib/` dir. Enforce ordering at task-graph-ready time — the test mustRunAfter the
-// install. Applies to both `functionalTestWithAndroid` and `functionalTestWithBundleRender`; both
-// drive the CLI binary out of the same `:cli:installDist` outputs.
-gradle.taskGraph.whenReady {
-  val installCli = allTasks.firstOrNull { it.path == ":cli:installDist" } ?: return@whenReady
-  allTasks
-    .filter { it.path.endsWith(":functionalTest") && it.path.contains("gradle-plugin") }
-    .forEach { it.mustRunAfter(installCli) }
-}
+// half-populated `lib/` dir.
+//
+// This used to be enforced with a `gradle.taskGraph.whenReady { allTasks.… mustRunAfter … }`
+// hook, but Isolated Projects forbids it twice over: reading the global `allTasks` graph and
+// annotating a task that belongs to another project / build. The ordering is fundamentally
+// cross-build (the producer `:cli:installDist` lives in this build; the consumer `functionalTest`
+// lives in the `gradle-plugin` included build, which can't be handed a back-reference), so it
+// can't be re-expressed as a normal dependency edge under IP.
+//
+// CI already sidesteps the race the robust way — it pre-builds the install dir in a *separate*
+// Gradle invocation before running the e2e task (see `.github/workflows/ci.yml`):
+//
+//     ./gradlew :cli:installDist :gradle-plugin:publishToMavenLocal
+//     ./gradlew functionalTestWithBundleRender -Pbundle.render.e2e=true
+//
+// Run these two opt-in aggregates the same way locally (install dist first, then the e2e task);
+// the second invocation sees the install up-to-date, so the only cost is dodging the race. The
+// functionalTest also self-checks the binary's presence past its opt-in gate and fails with a
+// useful message rather than a bare `NoClassDefFoundError`.

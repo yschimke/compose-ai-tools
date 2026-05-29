@@ -13,6 +13,7 @@
 // see DESIGN.md § 17 (decisions log).
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

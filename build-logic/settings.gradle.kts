@@ -11,6 +11,9 @@ dependencyResolutionManagement {
   repositories {
     google()
     mavenCentral()
+    // `ComposeAiBaseConventionsPlugin` depends on the ktfmt plugin via its plugin marker, which is
+    // published to the Gradle Plugin Portal (not to mavenCentral / google).
+    gradlePluginPortal()
   }
   versionCatalogs { create("libs") { from(files("../gradle/libs.versions.toml")) } }
 }

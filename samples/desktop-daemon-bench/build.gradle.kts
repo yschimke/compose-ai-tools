@@ -19,6 +19,7 @@ import java.time.Duration
 import java.time.Instant
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.multiplatform)
