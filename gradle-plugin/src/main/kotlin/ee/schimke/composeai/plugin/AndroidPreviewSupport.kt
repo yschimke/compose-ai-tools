@@ -159,13 +159,11 @@ internal object AndroidPreviewSupport {
       if (enforceToolingDep && !hasPreviewDependency(project, variant.name)) {
         project.logger.info(
           "compose-preview: no known @Preview dependency declared in module " +
-            "'${project.path}'; skipping task registration. " +
-            "Add one of ${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
-            "(or remove the plugin from this module) to opt in. " +
-            "If your previews live transitively (CMP-Android `:composeApp` -> `:shared` shape, " +
-            "issue #241 / #1549), set `composePreview { enforcePreviewToolingDependency = false }` " +
-            "in this module's build script (or pass " +
-            "`-PcomposePreview.enforcePreviewToolingDependency=false` on the command line)."
+            "'${project.path}' and no `project(\":...\")` deps that could carry it transitively; " +
+            "skipping task registration. Add one of " +
+            "${previewArtifactSignals.joinToString { "${it.first}:${it.second}" }} " +
+            "(or remove the plugin from this module) to opt in, or set " +
+            "`composePreview { enforcePreviewToolingDependency = false }` to bypass this gate."
         )
         return@onVariants
       }
@@ -253,27 +251,36 @@ internal object AndroidPreviewSupport {
   }
 
   /**
-   * True when this module declares a coord in [previewArtifactSignals] in its `implementation` /
-   * `api` / `runtimeOnly` (or `<name>Implementation` / `<name>Api` / `<name>RuntimeOnly`) buckets.
+   * Config-time decision: does this module *potentially* host previewable composables, such that we
+   * should register the renderer tasks?
    *
-   * Declared-deps scan (not resolved classpath) — keeps the check off the Gradle resolution path so
-   * we don't trip the "Configuration was resolved during configuration time" warning. The previous
-   * implementation walked `${variantName}RuntimeClasspath`'s resolved graph; that was correct but
-   * pulled resolution into the configuration phase.
+   * Two-tier check, both IP-safe and CC-friendly (no eager resolution at config time):
+   * 1. **Direct declared deps** ([hasDirectPreviewDependency]) — a preview-tooling coord is in this
+   *    module's `*Implementation` / `*Api` / `*RuntimeOnly` buckets. Authoritative win.
+   * 2. **Compose plugin applied AND has project deps**
+   *    ([isComposeModule] + [hasAnyProjectDependency]) — the module compiles Compose code and
+   *    declares at least one `project(":...")` dep, so the renderer-required preview-tooling coord
+   *    could arrive transitively (the CMP-Android `:composeApp -> :shared` shape from issues #241
+   *    / #1549). Tier 1 of the gate stays cheap; the actual transitive verification happens at task
+   *    time via [ValidatePreviewToolingPresentTask], which walks `${variant}RuntimeClasspath`'s
+   *    resolved graph through a wired `Provider<ResolvedComponentResult>` (the documented IP-safe,
+   *    CC-safe pattern for "I want the authoritative answer at task time").
    *
-   * **CMP-Android caveat (issue #241).** A prior version followed declared `project(":foo")`
-   * dependencies across module boundaries to catch the canonical CMP-Android shape (`:composeApp` →
-   * `:shared`, preview tooling declared on `:shared`'s `commonMain.api`). That cross-project walk
-   * used `rootProject.findProject(...)` + `evaluationDependsOn(...)`, both rejected under Gradle's
-   * Isolated Projects mode. Resolving it IP-safely needs a settings-time project-info build service
-   * — tracked as a follow-up issue. Until then the workaround is to either apply
-   * `id("ee.schimke.composeai.preview")` to the module that hosts the previews (so previews are
-   * discovered there directly) or declare the preview-tooling dep on the consuming app module too.
+   * **Why the Compose-plugin gate.** Auto-inject applies this plugin to *every* AGP module in a
+   * multi-module build (the init script's `withPlugin("com.android.application" /
+   * "com.android.library")` hooks don't filter), including pure utility / network modules that
+   * don't compile Compose at all (e.g. nowinandroid's `:core:network`). Without the Compose-plugin
+   * gate, the project-deps tier would register tasks on those modules — and
+   * [registerAndroidTasks]'s `testImplementation(ui-test-manifest)` / `(ui-test-junit4)` injections
+   * then leak Compose into builds that didn't want it. Requiring the Compose compiler plugin keeps
+   * the tier-2 gate scoped to modules that already compile Compose code and could plausibly host
+   * `@Preview` annotations.
    *
-   * Other trade-off: a preview-tooling coord that arrives purely through a Maven transitive (e.g.
-   * another AAR's POM declares it on `runtime`) won't match — declared intent in `allDependencies`
-   * is what we look for. In practice preview tooling is declared explicitly in the surface that
-   * uses it.
+   * The previous IP-safe implementation walked sibling project `build.gradle[.kts]` text via a
+   * BuildService — fast, but a heuristic that missed coords contributed by convention plugins.
+   * Switching tier-2 verification to the resolved graph closes that gap: the resolved classpath is
+   * exactly what AGP gives the test JVM, so any coord that would actually be on the renderer's
+   * classpath gets seen.
    *
    * The `variantName` argument is unused but kept on the public signature for test-fixture
    * compatibility.
@@ -281,13 +288,59 @@ internal object AndroidPreviewSupport {
   internal fun hasPreviewDependency(
     project: Project,
     @Suppress("UNUSED_PARAMETER") variantName: String,
-  ): Boolean {
+  ): Boolean =
+    hasDirectPreviewDependency(project) ||
+      (isComposeModule(project) && hasAnyProjectDependency(project))
+
+  /**
+   * True when this module applies a Kotlin-Compose-compiler-bearing plugin. Used as the tier-2
+   * sanity check in [hasPreviewDependency] so utility / network modules that auto-inject the plugin
+   * but don't actually compile Compose stay silent (no preview-related dep injection, no preview
+   * tasks registered). The two plugins covered:
+   * - **`org.jetbrains.kotlin.plugin.compose`** — the modern Kotlin 2.x Compose Compiler plugin
+   *   used by AGP modules with Compose UI (and also by Compose Multiplatform modules in
+   *   `kotlin("multiplatform")`-only mode through the same id).
+   * - **`org.jetbrains.compose`** — Compose Multiplatform's umbrella plugin.
+   *
+   * Plugin lookup is via [PluginManager.hasPlugin], which is IP-safe (scoped to the current
+   * project's plugin state).
+   */
+  internal fun isComposeModule(project: Project): Boolean =
+    project.pluginManager.hasPlugin("org.jetbrains.kotlin.plugin.compose") ||
+      project.pluginManager.hasPlugin("org.jetbrains.compose")
+
+  /**
+   * Direct-only variant — declared preview-tooling coord in this module's `*Implementation` /
+   * `*Api` / `*RuntimeOnly` buckets. Used by the doctor task to surface the "pin the dep locally"
+   * soft recommendation even when the gate passed via the project-dep tier of
+   * [hasPreviewDependency].
+   */
+  internal fun hasDirectPreviewDependency(project: Project): Boolean {
     for (config in declarableBucketsOf(project)) {
       for (dep in config.allDependencies) {
         val g = dep.group
         if (g != null && previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }) {
           return true
         }
+      }
+    }
+    return false
+  }
+
+  /**
+   * True when this module declares at least one `project(":...")` dep in any declarable bucket.
+   * IP-safe via [ProjectDependency.getPath] (Gradle 8.11+) — returns the target project's path as a
+   * string without touching the other `Project` object the way the legacy `getDependencyProject()`
+   * does.
+   *
+   * Used as a config-time over-approximation of "could preview tooling reach this module
+   * transitively"; the resolved-graph walk in [ValidatePreviewToolingPresentTask] is what confirms
+   * or rejects at task time.
+   */
+  internal fun hasAnyProjectDependency(project: Project): Boolean {
+    for (config in declarableBucketsOf(project)) {
+      for (dep in config.allDependencies) {
+        if (dep is org.gradle.api.artifacts.ProjectDependency) return true
       }
     }
     return false
@@ -500,9 +553,11 @@ internal object AndroidPreviewSupport {
     val injectedDependencyJson = kotlinx.serialization.json.Json { encodeDefaults = true }
     // Captured at registration time so the doctor task's `@Input Boolean` is a plain serializable
     // value (no `Project` capture in the Provider chain). We're already inside `onVariants` here,
-    // so the consumer's `dependencies { }` block has finished evaluating and
-    // `hasPreviewDependency` sees the full declared graph.
-    val previewToolingDeclaredAtRegistration = hasPreviewDependency(project, variantName)
+    // so the consumer's `dependencies { }` block has finished evaluating. The "transitive
+    // detection" signal that used to ride alongside this is computed at the doctor's action time
+    // from `mainRuntimeRoot` — that's the IP-safe, CC-safe way to ask "is preview tooling
+    // reachable through the resolved graph?" without forcing config-time resolution (issue #1549).
+    val previewToolingDeclaredAtRegistration = hasDirectPreviewDependency(project)
     project.tasks.register(
       "composePreviewDoctor",
       ee.schimke.composeai.plugin.tooling.ComposePreviewDoctorTask::class.java,
@@ -528,6 +583,31 @@ internal object AndroidPreviewSupport {
         }
       )
     }
+
+    // Task-time preview-tooling validation (issue #1549). When the config-time gate passed via
+    // the project-deps tier rather than a direct declared coord, we don't yet know whether the
+    // resolved runtime classpath actually contains preview tooling — only Gradle's resolution
+    // engine can answer that authoritatively, and it can only be invoked at task-action time
+    // without tripping the "Configuration was resolved during configuration time" CC warning.
+    // Wiring `ValidatePreviewToolingPresentTask` as a `dependsOn` of `composePreviewRender` runs
+    // the resolved-graph walk first; if no preview-tooling coord is reachable, render bails fast
+    // with a remediation-oriented error instead of hitting Robolectric with a missing-class
+    // explosion. When the direct check already passed we know the coord is on the classpath and
+    // skip registering the validator entirely — saves a resolution at execution time.
+    val validatePreviewToolingPresentTask =
+      if (
+        !previewToolingDeclaredAtRegistration &&
+          extension.enforcePreviewToolingDependency.get() &&
+          mainRuntimeRoot != null
+      ) {
+        project.tasks.register(
+          "composePreviewValidatePreviewToolingPresent",
+          ValidatePreviewToolingPresentTask::class.java,
+        ) {
+          this.modulePath.set(project.path)
+          this.runtimeClasspathRoot.set(mainRuntimeRoot)
+        }
+      } else null
 
     // Always inject `ui-test-manifest` + `ui-test-junit4` into the consumer's
     // `testImplementation`:
@@ -1336,6 +1416,10 @@ internal object AndroidPreviewSupport {
       project.tasks.register("composePreviewRender", Test::class.java) {
         group = "compose preview"
         description = "Render Android previews via Robolectric"
+        // Bail fast (with remediation) when the gate passed via project-deps tier but the
+        // resolved runtime classpath doesn't actually reach a preview-tooling coord (issue #1549).
+        // Null when direct tooling was found (validator wasn't registered — nothing to depend on).
+        validatePreviewToolingPresentTask?.let { dependsOn(it) }
         val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
         testClassesDirs =
           if (compileShardsTask != null) {
@@ -2076,15 +2160,15 @@ internal object AndroidPreviewSupport {
    *
    * Shares implementation with the desktop registration; both call sites consume the same shape.
    *
-   * **Subprojects deliberately not walked.** Reading every subproject's build file requires
-   * `rootProject.allprojects` cross-project access, which Gradle's Isolated Projects mode rejects
-   * with "Project … cannot access … on another project". The daemon's per-module classpath
-   * fingerprint already covers cross-module dependency changes through the variant runtime
-   * classpath, so the missed signal is "edit a sibling subproject's `build.gradle.kts` *without*
-   * touching `settings.gradle.kts`, the variant classpath, or the version catalog." Adding /
-   * removing a subproject still flips `settings.gradle.kts` — which IS in the set — so the
-   * realistic edit cycle still triggers Tier-1 dirty. Tracking the rare standalone-edit case
-   * IP-safely needs a settings-time build service (issue tracked separately).
+   * **Sibling subprojects deliberately not walked.** Issue #1549 originally asked for sibling
+   * `build.gradle[.kts]` files to flip Tier-1 dirty, restoring the pre-#1546 behaviour. The
+   * intermediate fix (settings-parsing ValueSource) was dropped on review: Tier-1 is the
+   * "fundamentally changed" signal that forces a full daemon reload, and Tier-2 (variant runtime
+   * classpath fingerprint) already invalidates on any sibling build-file edit that changes the
+   * resolved graph. The only edits the sibling walk would have caught and Tier-2 wouldn't are
+   * pure-formatting / comment-only changes on a sibling — and those shouldn't trigger a full
+   * reload. Re-adding the walk under IP needs a settings plugin to expose the project tree
+   * authoritatively; until then, the Tier-2 path covers the meaningful cases.
    */
   internal fun collectCheapSignalFiles(project: org.gradle.api.Project): List<java.io.File> =
     CheapSignalFiles.collect(project)
@@ -2094,6 +2178,8 @@ internal object AndroidPreviewSupport {
  * IP-safe cheap-signal file collector shared by the Android (`AndroidPreviewSupport`) and Desktop
  * (`ComposePreviewTasks`) registrations. Uses `project.rootDir` (a `File` snapshot) and the current
  * project's own `projectDir` only — no `rootProject.file(...)` / `rootProject.allprojects` access.
+ * Sibling subprojects are intentionally excluded; see the kdoc on
+ * [AndroidPreviewSupport.collectCheapSignalFiles] for the rationale.
  */
 internal object CheapSignalFiles {
   internal fun collect(project: org.gradle.api.Project): List<java.io.File> {

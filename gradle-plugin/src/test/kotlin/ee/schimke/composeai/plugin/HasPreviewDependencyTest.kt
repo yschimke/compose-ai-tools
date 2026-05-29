@@ -7,13 +7,23 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency].
+ * Pins the contract of [AndroidPreviewSupport.hasPreviewDependency] — the config-time gate that
+ * decides whether to register `composePreview*` tasks for a variant.
  *
- * The check walks the current module's declared `*Implementation` / `*Api` / `*RuntimeOnly` buckets
- * — declared intent, no classpath resolution, no cross-project access. That keeps the gate
- * compatible with Gradle's Isolated Projects mode (a cross-project `project(":foo")` recursion
- * existed for issue #241 but had to be dropped — see the function's KDoc for the workaround
- * consumers can apply).
+ * The gate is intentionally cheap and IP-safe: declared `*Implementation` / `*Api` / `*RuntimeOnly`
+ * inspection only, no classpath resolution, no `Project.findProject` / `evaluationDependsOn`
+ * cross-project access. Two-tier:
+ * 1. **Direct preview-tooling coord** → pass.
+ * 2. **Compose compiler plugin applied AND any declared `project(":...")` dep** → pass. The
+ *    Compose-plugin gate keeps the tier-2 path scoped to modules that actually compile Compose
+ *    code, so utility / network modules that auto-inject the plugin (via the CLI's init script
+ *    `withPlugin("com.android.library") { applyComposeAiPreview() }` hook) stay silent. Tasks
+ *    register AND we wire [ValidatePreviewToolingPresentTask] as a `dependsOn` of the render so the
+ *    authoritative check happens at task action time against `${variant}RuntimeClasspath`'s
+ *    resolved graph.
+ *
+ * The actual transitive verification lives in [ValidatePreviewToolingPresentTaskTest] / functional
+ * tests.
  */
 class HasPreviewDependencyTest {
 
@@ -30,6 +40,7 @@ class HasPreviewDependencyTest {
     )
 
     assertThat(AndroidPreviewSupport.hasPreviewDependency(project, "debug")).isTrue()
+    assertThat(AndroidPreviewSupport.hasDirectPreviewDependency(project)).isTrue()
   }
 
   @Test
@@ -51,13 +62,15 @@ class HasPreviewDependencyTest {
   }
 
   @Test
-  fun `preview signal on a sibling project is NOT followed across module boundaries`() {
-    // Regression marker for the issue #241 trade-off: the cross-project walk that used to catch
-    // `:app -> :shared (preview tooling)` was dropped to comply with Isolated Projects. Consumers
-    // hitting this shape now either declare the preview-tooling dep on `:app` too, or apply
-    // `id("ee.schimke.composeai.preview")` to `:shared` directly so previews are discovered there.
-    // Pin the current behaviour here so a future revert reintroducing the recursion gets caught
-    // by a failing test (and prompts the IP-safe redesign tracked in the follow-up issue).
+  fun `tier-2 gate stays closed without the Compose plugin even when project deps exist`() {
+    // Auto-inject applies the plugin to *every* AGP module — including pure utility / network
+    // modules with `project(":...")` deps but no Compose (the nowinandroid `:core:network` failure
+    // shape). Without the Compose-plugin guard, the tier-2 path would register tasks on those
+    // modules and `registerAndroidTasks` would inject ui-test-manifest into testImplementation,
+    // leaking Compose into builds that didn't want it. The Compose Kotlin compiler plugin isn't on
+    // this test's classpath so we can't *apply* it to make the affirmative case work in a unit
+    // test (functional + integration tests cover that); what we can pin here is the
+    // no-Compose-plugin case stays closed even with declared project deps.
     val rootProject = ProjectBuilder.builder().withName("root").withProjectDir(tmp.root).build()
     val lib =
       ProjectBuilder.builder()
@@ -71,17 +84,13 @@ class HasPreviewDependencyTest {
         .withProjectDir(tmp.newFolder("app"))
         .withParent(rootProject)
         .build()
-
     lib.plugins.apply("java-library")
     app.plugins.apply("java")
-    lib.dependencies.add(
-      "api",
-      "org.jetbrains.compose.components:components-ui-tooling-preview:1.7.5",
-    )
-
     val implementation = app.configurations.getByName("implementation")
     implementation.dependencies.add(app.dependencies.project(mapOf("path" to ":lib")))
 
     assertThat(AndroidPreviewSupport.hasPreviewDependency(app, "debug")).isFalse()
+    assertThat(AndroidPreviewSupport.hasAnyProjectDependency(app)).isTrue()
+    assertThat(AndroidPreviewSupport.isComposeModule(app)).isFalse()
   }
 }
