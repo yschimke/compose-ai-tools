@@ -119,6 +119,51 @@ class BuildDesktopExtensionsTest {
   }
 
   @Test
+  fun scroll_advertised_when_data_root_set() {
+    // Issue #1604 — scroll is the first #1201 gap closed end-to-end on desktop: the registry lives
+    // in the pure-JVM `:data-scroll-connector` and `:renderer-desktop` already carries the capture,
+    // so `render/scroll/long` / `render/scroll/gif` are produced on demand rather than tripping
+    // `-32020 kind not advertised`. The extension gates on `dataRoot` like the other file-backed
+    // registries (the artefacts land under `<dataRoot>/render-scroll-{long,gif}/`).
+    assertFalse("scroll" in build(dataRoot = null))
+    val ids = build(dataRoot = tempFolder.newFolder("scroll-data"))
+    assertTrue("scroll" in ids)
+  }
+
+  @Test
+  fun scroll_extension_advertises_long_and_gif_descriptors() {
+    // The scroll extension carries the LONG / GIF preview-extension descriptors so MCP /
+    // `previewExtensions/list` clients discover the scroll surface — mirroring `:daemon:android`'s
+    // `DaemonMain`. Without the descriptors the panel would see an advertised data-product kind it
+    // can't attribute to an extension.
+    val extensions =
+      buildDesktopExtensions(
+        previewIndex = PreviewIndex.empty(),
+        recompositionRegistry = RecompositionDataProductRegistry(),
+        themeRegistry = ThemeDataProductRegistry(),
+        wallpaperRegistry = WallpaperDataProductRegistry(),
+        launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
+        historyManager = null,
+        dataRoot = tempFolder.newFolder("scroll-desc-data"),
+        composeTraceEnabled = false,
+        displayFilterEnabled = false,
+      )
+    val scroll = extensions.single { it.id == "scroll" }
+    val kinds = scroll.dataProductCapabilities.map { it.kind }.toSet()
+    assertTrue(
+      "scroll registry must advertise render/scroll/long + render/scroll/gif; got $kinds",
+      ee.schimke.composeai.scroll.ScrollPreviewExtension.KIND_LONG in kinds &&
+        ee.schimke.composeai.scroll.ScrollPreviewExtension.KIND_GIF in kinds,
+    )
+    val descriptorIds = scroll.previewExtensionDescriptors.map { it.id }.toSet()
+    assertTrue(
+      "scroll extension must advertise its LONG + GIF descriptors; got $descriptorIds",
+      ee.schimke.composeai.scroll.ScrollPreviewExtension.longScrollDescriptor.id in descriptorIds &&
+        ee.schimke.composeai.scroll.ScrollPreviewExtension.gifScrollDescriptor.id in descriptorIds,
+    )
+  }
+
+  @Test
   fun touch_overlay_and_keyboard_band_advertise_data_extension_descriptors() {
     // The override-driven extensions (`data/touch-overlay` + `data/keyboard`) carry a
     // `DataExtensionDescriptor` so GUI clients (panel, MCP) can discover them via

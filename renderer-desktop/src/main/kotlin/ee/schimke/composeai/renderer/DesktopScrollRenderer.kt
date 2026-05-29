@@ -86,8 +86,20 @@ fun renderScrollPreview(
   axis: ScrollAxis,
   maxScrollPx: Int,
   frameIntervalMs: Int,
+  /**
+   * Classloader used to resolve [className] (and any `@PreviewWrapper` provider). B2.0 — the daemon
+   * (`:daemon:desktop`'s `RenderEngine.runScrollScenario`) loads user previews from a disposable
+   * child classloader (CLASSLOADER.md), not the app classpath, so a bare `Class.forName(className)`
+   * — which resolves against this module's own loader — would miss the freshly-recompiled preview
+   * class. When non-null it's used for the reflective class lookup and threaded into the wrapper
+   * resolution below. The standalone CLI / Gradle path (`DesktopRendererMain`) passes null and
+   * keeps the app-classloader behaviour.
+   */
+  classLoader: ClassLoader? = null,
 ): Boolean {
-  val clazz = Class.forName(className)
+  val clazz =
+    if (classLoader != null) Class.forName(className, true, classLoader)
+    else Class.forName(className)
   val composableMethod =
     if (previewArgs.isEmpty()) clazz.getDeclaredComposableMethod(functionName)
     else findComposableMethodForScroll(clazz, functionName, previewArgs)
@@ -136,7 +148,7 @@ fun renderScrollPreview(
           }
         }
         if (wrapperClassName != null) {
-          InvokeScrollWrappedComposable(wrapperClassName, body)
+          InvokeScrollWrappedComposable(wrapperClassName, classLoader, body)
         } else {
           body()
         }
@@ -479,10 +491,16 @@ private fun InvokeScrollComposable(
 }
 
 @Composable
-private fun InvokeScrollWrappedComposable(wrapperFqn: String, body: @Composable () -> Unit) {
+private fun InvokeScrollWrappedComposable(
+  wrapperFqn: String,
+  classLoader: ClassLoader?,
+  body: @Composable () -> Unit,
+) {
   val resolved =
-    androidx.compose.runtime.remember(wrapperFqn) {
-      val cls = Class.forName(wrapperFqn)
+    androidx.compose.runtime.remember(wrapperFqn, classLoader) {
+      val cls =
+        if (classLoader != null) Class.forName(wrapperFqn, true, classLoader)
+        else Class.forName(wrapperFqn)
       val instance = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
       val method = cls.getDeclaredComposableMethod("Wrap", Function2::class.java)
       method to instance
