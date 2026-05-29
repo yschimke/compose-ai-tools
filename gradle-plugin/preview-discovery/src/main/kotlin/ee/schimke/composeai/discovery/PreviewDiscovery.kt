@@ -1665,11 +1665,19 @@ object PreviewDiscovery {
   ): PreviewParams {
     // `@NotificationPreview` has no parameters, so the rest of this function — which
     // dereferences `device` / `widthDp` / `fontScale` / etc. from `ann.parameterValues` — would
-    // throw `NoSuchElementException`. Return a minimal params object up-front; the renderer
-    // applies its own default qualifiers when rendering RemoteViews. Width/height parameters
-    // will be added when the variants matrix from #1249 lands.
+    // throw `NoSuchElementException`. Return a minimal params object up-front.
+    //
+    // Pin `widthDp` to the sandbox width (400dp) rather than leaving it null: without it the
+    // router falls back to its 320dp square default and the AOSP notification shade inflates to
+    // its ~320dp intrinsic width, producing the cramped ~320×320 PNG from #1249. 400dp matches
+    // the canvas the `@Preview` + `NotificationContent` gallery path renders at (its
+    // `DEFAULT_NOTIFICATION_WIDTH_DP`), so FQN-discovered notifications share the wider shade
+    // footprint. Height stays on the renderer default.
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
-      return PreviewParams(kind = PreviewKind.NOTIFICATION)
+      return PreviewParams(
+        kind = PreviewKind.NOTIFICATION,
+        widthDp = DeviceDimensions.SANDBOX_WIDTH_DP,
+      )
     }
     // Glance's own `androidx.glance.preview.Preview(widthDp, heightDp)`. The annotation's params
     // started life as `()` in 1.0.x, gained `widthDp` / `heightDp` in 1.1.0-rc01. Read both
