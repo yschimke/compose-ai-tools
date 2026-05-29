@@ -1,4 +1,8 @@
 {
+  "declaredPreviewIds": [
+    "bigTextNotificationPreview",
+    "simpleNotificationPreview"
+  ],
   "entries": [
     {
       "module": "android",
