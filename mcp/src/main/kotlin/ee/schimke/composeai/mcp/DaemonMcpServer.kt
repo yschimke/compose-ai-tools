@@ -1,15 +1,22 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
+import ee.schimke.composeai.daemon.protocol.FocusOverride
+import ee.schimke.composeai.daemon.protocol.KeyboardOverride
+import ee.schimke.composeai.daemon.protocol.LauncherWidgetOverride
 import ee.schimke.composeai.daemon.protocol.Material3ThemeOverrides
 import ee.schimke.composeai.daemon.protocol.Orientation
+import ee.schimke.composeai.daemon.protocol.PermissionsOverride
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
+import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.mcp.protocol.CallToolResult
@@ -1069,8 +1076,11 @@ class DaemonMcpServer(
         description =
           "Render a preview by URI, bypassing the in-memory render cache. Returns the rendered PNG " +
             "inline. Optional `overrides` apply per-call display-property overrides (size, density, " +
-            "locale, fontScale, uiMode, orientation, device, inspectionMode) — see PROTOCOL.md " +
-            "§ 5 (`renderNow.overrides`). " +
+            "locale, fontScale, uiMode, orientation, device, inspectionMode) plus the connector- " +
+            "driven extensions (material3Theme, wallpaper, ambient, focus, keyboard, touchOverlay, " +
+            "permissions, remoteCompose, launcherWidget) — see PROTOCOL.md § 5 " +
+            "(`renderNow.overrides`). The server validates each set field against the daemon's " +
+            "advertised `supportedOverrides` and rejects ones the backend would silently ignore. " +
             "Optional `force={reason}` is the sanctioned escape hatch for when the freshness " +
             "probe missed a real edit — it forwards a `fileChanged({kind:\"classpath\"})` to every " +
             "replica before rendering, dropping the daemon's user classloader. Use of `force` is a " +
@@ -1107,6 +1117,79 @@ class DaemonMcpServer(
                         "typography":{"type":"object","additionalProperties":{"type":"object","properties":{"fontSizeSp":{"type":"number"},"lineHeightSp":{"type":"number"},"letterSpacingSp":{"type":"number"},"fontWeight":{"type":"integer"},"italic":{"type":"boolean"}}},"description":"Text style names to partial overrides, e.g. bodyLarge, titleMedium, labelSmall."},
                         "shapes":{"type":"object","additionalProperties":{"type":"number"},"description":"Shape token names to rounded corner size in dp, e.g. small, medium, extraLarge."}
                       }
+                    },
+                    "wallpaper":{
+                      "type":"object",
+                      "description":"Dynamic-color override. Derives a Material 3 scheme from a seed color and wraps the preview in MaterialTheme(colorScheme=…). material3Theme on the same call still wins per role.",
+                      "properties":{
+                        "seedColor":{"type":"string","description":"Seed color as #RRGGBB or #AARRGGBB."},
+                        "isDark":{"type":"boolean","description":"Force the dark variant; null inherits the host theme's surface luminance."},
+                        "paletteStyle":{"type":"string","enum":["tonalSpot","neutral","vibrant","expressive","rainbow","fruitSalad","monochrome","fidelity","content"],"description":"Algorithm variant; null = tonalSpot."},
+                        "contrastLevel":{"type":"number","description":"Material 3 contrast in [-1.0,1.0]; 0.0 default, 0.5 medium, 1.0 high."}
+                      },
+                      "required":["seedColor"]
+                    },
+                    "ambient":{
+                      "type":"object",
+                      "description":"Wear OS ambient-state override. Drives the AmbientLifecycleObserver shadow so AmbientAware UI composes under the requested state. Wear-only; other backends ignore it.",
+                      "properties":{
+                        "state":{"type":"string","enum":["interactive","ambient","inactive"],"description":"Requested ambient state."},
+                        "burnInProtectionRequired":{"type":"boolean","description":"Forwarded to onEnterAmbient(...); null = false."},
+                        "deviceHasLowBitAmbient":{"type":"boolean","description":"Forwarded to onEnterAmbient(...); null = false."},
+                        "updateTimeMillis":{"type":"integer","description":"Synthetic minute-tick timestamp; null uses render-time wall-clock."},
+                        "idleTimeoutMs":{"type":"integer","description":"Idle-after-input timeout before restoring the requested state during interactive sessions; null = ~5000."}
+                      },
+                      "required":["state"]
+                    },
+                    "focus":{
+                      "type":"object",
+                      "description":"Focus / keyboard-traversal override. tabIndex focuses the n-th focusable; direction applies one directional step. Backends without a Compose focus owner (e.g. desktop CMP) ignore it.",
+                      "properties":{
+                        "tabIndex":{"type":"integer","description":"Focus the n-th focusable in tab order."},
+                        "direction":{"type":"string","enum":["Next","Previous","Up","Down","Left","Right"],"description":"Single directional traversal step."},
+                        "step":{"type":"integer","description":"1-based step index for overlay labels."},
+                        "overlay":{"type":"boolean","description":"Draw a stroke + label over the focused element's bounds."},
+                        "enterPlacesFocus":{"type":"boolean","description":"Skip the historical +1 Next compensation for focusGroup onEnter patterns."},
+                        "pressed":{"type":"boolean","description":"Dispatch an indirect-pointer Press onto the focused element after the walk lands."}
+                      }
+                    },
+                    "keyboard":{
+                      "type":"object",
+                      "description":"Soft-keyboard (IME) override. Forces band visibility and per-cap press highlight on top of the app's natural IME behaviour.",
+                      "properties":{
+                        "visible":{"type":"boolean","description":"Force the IME band visible/hidden; null observes the app's natural signals."},
+                        "pressedKey":{"type":"string","description":"Highlight a key cap: a single lowercase letter or one of 'space','enter','shift','backspace','sym'."}
+                      }
+                    },
+                    "touchOverlay":{"type":"boolean","description":"Opt-in touch-event visualization (Android 'Show touches' style) for live/recording sessions."},
+                    "permissions":{
+                      "type":"object",
+                      "description":"Android runtime-permissions override. Seeds Robolectric's grant state so checkSelfPermission reads see the requested values. Android-only; desktop ignores it.",
+                      "properties":{
+                        "grants":{"type":"object","additionalProperties":{"type":"string","enum":["granted","denied"]},"description":"Manifest.permission.* constant string -> grant state."}
+                      }
+                    },
+                    "remoteCompose":{
+                      "type":"object",
+                      "description":"Remote Compose override. Seeds the profile and named values a RemotePreview{} block reads via LocalRemoteComposeHost. Android-only; desktop ignores it.",
+                      "properties":{
+                        "profile":{"type":"string","enum":["androidx","androidx7","androidx8","androidx9","widgetsV6","widgetsV7","wearWidgets"],"description":"RcPlatformProfiles variant to compile the remote document against."},
+                        "namedValues":{"type":"object","additionalProperties":{"type":"object","properties":{"kind":{"type":"string","enum":["float","dp","int","string","bool","color"]}},"description":"Typed named value, e.g. {kind:'float',value:1.5} or {kind:'color',argb:'#FF0000FF'}."},"description":"Named state seeds keyed by the name user code binds."},
+                        "acceptedHostActions":{"type":"array","items":{"type":"string"},"description":"Restrict which HostAction ids the connector captures; null captures all."}
+                      }
+                    },
+                    "launcherWidget":{
+                      "type":"object",
+                      "description":"Launcher-widget container-size override. Lays the preview out at a whole-cell size on the host's launcher grid (defaults mirror the Pixel launcher: 72dp cells, 8dp gaps, 1×1..5×5).",
+                      "properties":{
+                        "cells":{"type":"object","properties":{"width":{"type":"integer"},"height":{"type":"integer"}},"required":["width","height"],"description":"Target whole-cell size, clamped into minCells..maxCells."},
+                        "cellSizeDp":{"type":"integer","description":"One cell's edge length in dp; null = 72."},
+                        "cellSpacingDp":{"type":"integer","description":"Gap between adjacent cells in dp; null = 8."},
+                        "minCells":{"type":"object","properties":{"width":{"type":"integer"},"height":{"type":"integer"}},"required":["width","height"],"description":"Inclusive lower bound per axis; null = 1×1."},
+                        "maxCells":{"type":"object","properties":{"width":{"type":"integer"},"height":{"type":"integer"}},"required":["width","height"],"description":"Inclusive upper bound per axis; null = 5×5."},
+                        "resizeOrder":{"type":"string","enum":["diagonal","widthFirst","heightFirst"],"description":"Hint for a future resize-loop orchestrator; the single-shot connector ignores it."}
+                      },
+                      "required":["cells"]
                     }
                   }
                 },
@@ -1877,6 +1960,17 @@ class DaemonMcpServer(
       check("captureAdvanceMs", overrides.captureAdvanceMs != null)
       check("inspectionMode", overrides.inspectionMode != null)
       check("material3Theme", overrides.material3Theme != null)
+      // Override-extension fields (#1606). #1603 made supportedOverrides advertise these, so the
+      // validator can now warn before a backend silently drops them — e.g. desktop, which has no
+      // Robolectric grant/IME/permission/RemoteCompose shadow, never lists `permissions` etc.
+      check("wallpaper", overrides.wallpaper != null)
+      check("ambient", overrides.ambient != null)
+      check("focus", overrides.focus != null)
+      check("keyboard", overrides.keyboard != null)
+      check("touchOverlay", overrides.touchOverlay != null)
+      check("launcherWidget", overrides.launcherWidget != null)
+      check("permissions", overrides.permissions != null)
+      check("remoteCompose", overrides.remoteCompose != null)
     }
     val deviceOverride = overrides.device
     val knownIds = daemon.knownDeviceIds
@@ -1941,6 +2035,20 @@ class DaemonMcpServer(
           else -> error("orientation must be 'portrait' or 'landscape', got '$it'")
         }
       }
+    // Override-extension fields (#1606). These drive the connector-side around-composable hooks
+    // (focus, keyboard, permissions, RemoteCompose, wallpaper, ambient, launcher-widget) and the
+    // touch-overlay developer toggle. They're advertised in `supportedOverrides` since #1603, so
+    // `render_preview` can now forward them through `renderNow.overrides` and `validateOverrides`
+    // warns when a backend (e.g. desktop) doesn't model the field. Each is decoded straight from
+    // its `@Serializable` wire shape; a malformed object throws so the caller sees "invalid
+    // overrides: …" rather than a silent drop.
+    fun <T> nested(
+      name: String,
+      deserializer: kotlinx.serialization.DeserializationStrategy<T>,
+    ): T? =
+      obj[name]
+        ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+        ?.let { json.decodeFromJsonElement(deserializer, it) }
     return PreviewOverrides(
       widthPx = int("widthPx"),
       heightPx = int("heightPx"),
@@ -1952,10 +2060,15 @@ class DaemonMcpServer(
       device = str("device"),
       captureAdvanceMs = int("captureAdvanceMs")?.toLong(),
       inspectionMode = bool("inspectionMode"),
-      material3Theme =
-        obj["material3Theme"]
-          ?.takeUnless { it is kotlinx.serialization.json.JsonNull }
-          ?.let { json.decodeFromJsonElement(Material3ThemeOverrides.serializer(), it) },
+      material3Theme = nested("material3Theme", Material3ThemeOverrides.serializer()),
+      wallpaper = nested("wallpaper", WallpaperOverride.serializer()),
+      ambient = nested("ambient", AmbientOverride.serializer()),
+      focus = nested("focus", FocusOverride.serializer()),
+      keyboard = nested("keyboard", KeyboardOverride.serializer()),
+      touchOverlay = bool("touchOverlay"),
+      permissions = nested("permissions", PermissionsOverride.serializer()),
+      remoteCompose = nested("remoteCompose", RemoteComposeOverride.serializer()),
+      launcherWidget = nested("launcherWidget", LauncherWidgetOverride.serializer()),
     )
   }
 
