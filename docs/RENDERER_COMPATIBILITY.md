@@ -25,7 +25,7 @@ The VS Code extension surfaces the same findings in the Problems panel (via
 - **The four mitigation mechanisms** in the renderer/plugin that must move
   together — remove any one and the compat matrix re-opens:
   1. `compileOnly` for Compose / Activity / UI-test libs in
-     [`renderer-android/build.gradle.kts`](../renderer-android/build.gradle.kts).
+     [`renderers/android/build.gradle.kts`](../renderers/android/build.gradle.kts).
      Consumer's versions win at runtime, so classes match their APK.
   2. `rendererConfig.extendsFrom(testConfig)` in
      [`AndroidPreviewSupport.kt`](../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt).

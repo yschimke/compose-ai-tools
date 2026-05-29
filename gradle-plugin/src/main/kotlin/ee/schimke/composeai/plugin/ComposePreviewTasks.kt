@@ -107,7 +107,7 @@ internal object ComposePreviewTasks {
     // matching renderer artifact is selected automatically — see [PluginVersion]. The default
     // add is skipped when the consumer has already populated `composePreviewRenderer` themselves,
     // so `dependencies { "composePreviewRenderer"(files(...)) }` still works as an override.
-    val rendererProjectDir = project.rootDir.resolve("renderer-desktop")
+    val rendererProjectDir = project.rootDir.resolve("renderers/desktop")
     val useLocalRenderer =
       rendererProjectDir.resolve("build.gradle.kts").exists() ||
         rendererProjectDir.resolve("build.gradle").exists()

@@ -13,7 +13,7 @@ Nine externally-observable surfaces, each with its own evolution story. Anything
 | 3 | Per-data-product payload schemas | `data/<feature>/connector/`, [docs/daemon/DATA-PRODUCTS.md](daemon/DATA-PRODUCTS.md) | Daemon clients (versioned per-kind) | Stable per-kind |
 | 4 | Gradle plugin DSL (`composePreview { … }`) | `gradle-plugin/.../PreviewExtension.kt` | Consumer `build.gradle.kts` | Stable |
 | 5 | AGP × Kotlin × Compose × Robolectric matrix | [docs/RENDERER_COMPATIBILITY.md](RENDERER_COMPATIBILITY.md), [docs/AGENTS.md](AGENTS.md) | Consumers' transitive resolution | Documented, gated |
-| 6 | Preview annotations (`@ScrollingPreview`, `@AnimatedPreview`) | `preview-annotations/` | Consumer source code | Stable |
+| 6 | Preview annotations (`@ScrollingPreview`, `@AnimatedPreview`) | `api/preview-annotations/` | Consumer source code | Stable |
 | 7 | CLI argv (`compose-preview …`) | `cli/.../Args.kt`, `cli/.../Main.kt` | CI scripts, agents, GH actions | Stable |
 | 8 | MCP tool names + input schemas | `mcp/.../DaemonMcpServer.kt` | External AI agents | Stable |
 | 9 | GH composite actions + `compose-preview/main` branch convention | `.github/actions/*/action.yml` | Consumer workflows | Stable |

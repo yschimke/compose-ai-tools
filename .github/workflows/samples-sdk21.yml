@@ -1,35 +1,35 @@
-name: Samples-21 (JDK 21)
+name: Samples-SDK21 (JDK 21)
 
-# Build/render the `samples-21/*` subtree. These modules pull in tooling whose
+# Build/render the `samples/sdk21/*` subtree. These modules pull in tooling whose
 # Gradle plugin jars are compiled to Java 21 bytecode and therefore can't
 # load on this repo's default JDK 17 build daemon (see
 # `gradle/gradle-daemon-jvm.properties`, pinned to `toolchainVersion=17`).
 #
 # Rather than bump the daemon JVM repo-wide and force every contributor onto
 # JDK 21, the daemon pin stays at 17 and `settings.gradle.kts` skips the
-# `samples-21:*` projects when `JavaVersion.current() < 21`. This workflow:
+# `samples:sdk21:*` projects when `JavaVersion.current() < 21`. This workflow:
 #
 #   1. Installs JDK 21 on the runner.
 #   2. Rewrites `gradle/gradle-daemon-jvm.properties` (in-place on the
 #      runner's checkout — never committed) so the daemon launches on 21.
-#   3. Invokes the render task, which now sees `:samples-21:*` in the
+#   3. Invokes the render task, which now sees `:samples:sdk21:*` in the
 #      project tree and pulls in Metro's compiler plugin without complaint.
 
 on:
   push:
     branches: [main]
     paths:
-      - 'samples-21/**'
+      - 'samples/sdk21/**'
       - 'gradle/libs.versions.toml'
       - 'settings.gradle.kts'
-      - '.github/workflows/samples-21.yml'
+      - '.github/workflows/samples-sdk21.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'samples-21/**'
+      - 'samples/sdk21/**'
       - 'gradle/libs.versions.toml'
       - 'settings.gradle.kts'
-      - '.github/workflows/samples-21.yml'
+      - '.github/workflows/samples-sdk21.yml'
 
 permissions:
   contents: read
@@ -40,7 +40,7 @@ concurrency:
 
 jobs:
   render:
-    name: Render samples-21
+    name: Render samples/sdk21
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -59,12 +59,12 @@ jobs:
       - name: Bump daemon JVM criteria to 21 (ephemeral, runner-only)
         run: echo "toolchainVersion=21" > gradle/gradle-daemon-jvm.properties
 
-      - name: Render :samples-21:android-metro-viewmodel
-        run: ./gradlew :samples-21:android-metro-viewmodel:composePreviewRenderAll
+      - name: Render :samples:sdk21:android-metro-viewmodel
+        run: ./gradlew :samples:sdk21:android-metro-viewmodel:composePreviewRenderAll
 
       - name: Upload rendered previews
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: samples-21-android-metro-viewmodel-renders
-          path: samples-21/android-metro-viewmodel/build/compose-previews/renders/
+          name: samples-sdk21-android-metro-viewmodel-renders
+          path: samples/sdk21/android-metro-viewmodel/build/compose-previews/renders/

@@ -49,7 +49,7 @@ import org.jetbrains.skia.EncodedImageFormat
  * resolved class+method reference into a PNG on disk.
  *
  * **Duplicated from
- * [`renderer-desktop`'s `DesktopRendererMain`](../../../../../../../renderer-desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt).**
+ * [`renderer-desktop`'s `DesktopRendererMain`](../../../../../../../renderers/desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt).**
  * Per
  * [DESIGN.md § 7](../../../../../../docs/daemon/DESIGN.md#7-sharing-strategy--what-crosses-the-boundary)
  * the v1 render body lives in two places — the standalone renderer (existing CLI / Gradle path) and
