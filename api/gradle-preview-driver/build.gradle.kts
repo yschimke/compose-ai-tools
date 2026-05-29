@@ -41,6 +41,15 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
+tasks.withType<Test>().configureEach {
+  // The unpacked Gradle distribution this build runs from. `DiscoverPreviewModulesIntegrationTest`
+  // points a real Tooling-API connection at it via `useInstallation(...)` so it reuses the
+  // already-present distribution instead of downloading one (the test `assumeTrue`s out when this
+  // is absent — e.g. a bare IDE run). Read at configuration time so the configuration cache
+  // captures it.
+  systemProperty("composeai.test.gradleHome", gradle.gradleHomeDir?.absolutePath ?: "")
+}
+
 composeAiMavenPublishing {
   coordinates(
     artifactId = "gradle-preview-driver",
