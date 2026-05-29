@@ -74,8 +74,18 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
       val active by FocusController.activeFocus
       val lastIndex = remember { mutableIntStateOf(-1) }
       val entered = remember { mutableStateOf(false) }
+      val pressHeld = remember { mutableStateOf(false) }
       LaunchedEffect(active) {
         val cap = active ?: return@LaunchedEffect
+        // Release any indirect-pointer Press from the prior capture *before* walking focus to the
+        // new target. Indirect-pointer events route to the focused composable, so a Release
+        // dispatched after the focus walk would land on the new target and leave the previous
+        // target's `PressInteraction.Press` active — surfacing as two simultaneously-pressed items
+        // in a multi-index capture (`@FocusedPreview(indices = [0, 1], pressed = true)`).
+        if (pressHeld.value) {
+          view.dispatchIndirectRelease()
+          pressHeld.value = false
+        }
         val direction = cap.direction
         val tabIndex = cap.tabIndex
         if (direction != null) {
@@ -112,9 +122,12 @@ class FocusOverrideExtension(private val seed: FocusOverride? = null) :
         // before the renderer captures pixels. Glimmer's `Modifier.onIndirectPointerGesture`
         // observes this event on the focused-target path and emits the pressed-state interaction;
         // Material's `Modifier.clickable` does the same through its indirect-pointer fallback. See
-        // [dispatchIndirectPress] for the platform rationale.
+        // [dispatchIndirectPress] for the platform rationale. The matching Release is held off
+        // until the NEXT capture's LaunchedEffect runs (above) — held-press across the capture
+        // window is exactly the "finger held on touchpad" shape we want pixels to show.
         if (cap.pressed) {
           view.dispatchIndirectPress()
+          pressHeld.value = true
         }
       }
       content()
@@ -153,10 +166,15 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
  * focused element's pressed visual then renders before the renderer's per-capture clock advance
  * elapses.
  *
- * Press is dispatched without a matching Release. That holds the composable in its pressed state
- * for the capture window — the same shape a real "finger held on the touchpad" produces — and
- * deliberately doesn't fire the `onClick` lambda (a tap = Press+Release). The JVM is recycled
- * after capture so no manual cleanup is needed.
+ * The matching Release isn't sent here — it's deferred to the next capture's `LaunchedEffect`
+ * pass (via the `pressHeld` flag) so the composable stays in its pressed state for *this*
+ * capture window (the "finger held on the touchpad" shape) and deliberately doesn't fire the
+ * `onClick` lambda (a tap = Press+Release). The next capture, if any, dispatches
+ * [dispatchIndirectRelease] before walking focus, clearing the prior target's
+ * `PressInteraction.Press` while focus is still on it — without that step, a multi-index pressed
+ * walk (`@FocusedPreview(indices = [0, 1], pressed = true)`) would leave item 0 still visually
+ * pressed in the index-1 capture. After the final capture the JVM is recycled, so no terminal
+ * Release is needed.
  *
  * Reflection rather than a direct call: `AndroidComposeView` is `internal` at the Kotlin source
  * level (compiles to `public final class` at the JVM level — `internal` is module-scoped in the
@@ -178,13 +196,30 @@ fun FocusManager.applyFocusOverride(override: FocusOverride?) {
  */
 @OptIn(ExperimentalIndirectPointerApi::class)
 private fun View.dispatchIndirectPress() {
+  sendIndirectPointer(MotionEvent.ACTION_DOWN)
+}
+
+/**
+ * Matching Release for [dispatchIndirectPress] — clears the held `PressInteraction.Press` on the
+ * focused composable so a subsequent capture (next focus walk) doesn't leave the prior target
+ * visually pressed. Must dispatch *before* `FocusManager.moveFocus(...)` walks focus to the next
+ * target: indirect-pointer events route to whatever's currently focused, so a Release after the
+ * walk would land on the new target and leave the previous target's interaction source dangling.
+ */
+@OptIn(ExperimentalIndirectPointerApi::class)
+private fun View.dispatchIndirectRelease() {
+  sendIndirectPointer(MotionEvent.ACTION_UP)
+}
+
+@OptIn(ExperimentalIndirectPointerApi::class)
+private fun View.sendIndirectPointer(action: Int) {
   if (javaClass.name != "androidx.compose.ui.platform.AndroidComposeView") return
   val now = SystemClock.uptimeMillis()
   val motionEvent =
     MotionEvent.obtain(
       /* downTime = */ now,
       /* eventTime = */ now,
-      /* action = */ MotionEvent.ACTION_DOWN,
+      /* action = */ action,
       /* x = */ 0f,
       /* y = */ 0f,
       /* metaState = */ 0,

@@ -1,6 +1,8 @@
 package com.example.samplexrglimmer
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -9,6 +11,7 @@ import androidx.compose.ui.ComposeUiFlags
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.xr.glimmer.ListItem
 import androidx.xr.glimmer.Text
 import ee.schimke.composeai.preview.FocusedPreview
@@ -147,6 +150,33 @@ fun GlimmerListItemFocused() {
   GlimmerSurface {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Focused") }
+    }
+  }
+}
+
+@Preview(
+  name = "Glimmer · Pressed Walk",
+  device = AI_GLASSES_DEVICE_SPEC,
+  showBackground = true,
+  backgroundColor = ADDITIVE_ZERO_BACKGROUND,
+)
+@FocusedPreview(indices = [0, 1], pressed = true)
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun GlimmerListPressedWalk() {
+  // Two-item walk that exercises the cross-capture Press/Release pairing in the focus connector.
+  // Capture 0 lands focus on item 0 and presses it (item 0 visually pressed, item 1 neutral);
+  // capture 1 must release item 0's held press before walking focus to item 1 — otherwise both
+  // items would render in their pressed visual state. Visually verifies the connector's
+  // `pressHeld`-tracked Release on the prior target.
+  ComposeUiFlags.isInitialFocusOnFocusableAvailable = true
+  GlimmerSurface {
+    Column(
+      modifier = Modifier.fillMaxSize(),
+      verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+    ) {
+      ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Item 0") }
+      ListItem(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("Item 1") }
     }
   }
 }
