@@ -52,6 +52,15 @@ class VariantMatchesTargetTest {
   }
 
   @Test
+  fun `flavored target does not suffix-match a multi-dimension variant`() {
+    // Regression: --variant paidDebug must not silently match minApi23PaidDebug on a
+    // multi-dimension flavored module. Only bare build-type targets get suffix matching.
+    assertThat(AndroidPreviewSupport.variantMatchesTarget("minApi23PaidDebug", "paidDebug"))
+      .isFalse()
+    assertThat(AndroidPreviewSupport.variantMatchesTarget("freePaidDebug", "paidDebug")).isFalse()
+  }
+
+  @Test
   fun `empty target matches only an empty variant name`() {
     assertThat(AndroidPreviewSupport.variantMatchesTarget("debug", "")).isFalse()
     assertThat(AndroidPreviewSupport.variantMatchesTarget("", "")).isTrue()
