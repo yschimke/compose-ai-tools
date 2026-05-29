@@ -22,7 +22,10 @@ stage
     staging dir, and write ``findings.json`` summarising what was staged
     (one entry per preview: id, png filename, sidecar filename, sha256) plus
     ``declaredPreviewIds`` — every notification previewId the manifests
-    declared, so the comment can tell a removal from a failed render.
+    declared — and ``declaredFanoutBases`` — the unsuffixed stems of any
+    ``@PreviewParameter`` previews, whose rendered ids gain a ``_<label>``
+    suffix the manifest stem lacks. The comment uses both to tell a removal
+    from a failed render.
 
 readme
     Render ``findings.json`` to a browsable Markdown gallery with inline
@@ -89,33 +92,51 @@ def _sanitize_preview_id(preview_id: str) -> str:
     return "".join("_" if c in _SANITIZE_REPLACE else c for c in preview_id)
 
 
-def _declared_notification_ids(build_dir: Path) -> set[str]:
+def _declared_notification_ids(build_dir: Path) -> tuple[set[str], set[str]]:
     """Notification previewIds the module *declares*, read from previews.json.
 
-    Mirrors the staging glob: a manifest preview counts as a notification
-    preview when any of its capture render outputs is a ``*Notification*.png``.
-    The id is derived from the PNG basename (its stem) rather than the manifest
-    ``id`` so it matches the previewId [_preview_id_from_png] assigns to the
-    staged render — including ``@Preview`` gallery variants whose render
-    basename carries a ``_<name>`` suffix the manifest id lacks.
+    Returns ``(declared, fanout_bases)``.
+
+    ``declared`` mirrors the staging glob: a manifest preview counts as a
+    notification preview when any of its capture render outputs is a
+    ``*Notification*.png``. The id is derived from the PNG basename (its stem)
+    rather than the manifest ``id`` so it matches the previewId
+    [_preview_id_from_png] assigns to the staged render — including
+    ``@Preview`` gallery variants whose render basename carries a ``_<name>``
+    suffix the manifest id lacks.
+
+    ``fanout_bases`` holds the stems of previews that carry a
+    ``@PreviewParameter`` provider. The renderer expands those *after* loading
+    the manifest, appending a ``_<label>`` / ``_PARAM_<idx>`` suffix to each
+    capture's renderOutput (see ``RobolectricRenderTest.expandParameterProvider``),
+    so the actual rendered (and baseline) previewIds are ``<stem>_<suffix>`` —
+    ids the unsuffixed manifest stem never matches. The comment subcommand
+    prefix-matches missing baseline ids against these bases so a parameterized
+    notification preview that fails to render is still classed as *not
+    rendered* rather than *removed*.
 
     Used by the comment subcommand to tell a *removed* preview (gone from the
     manifest) apart from one that's declared but failed to render this run.
     """
     previews_json = build_dir / "previews.json"
     if not previews_json.exists():
-        return set()
+        return set(), set()
     try:
         manifest = json.loads(previews_json.read_text())
     except json.JSONDecodeError:
-        return set()
+        return set(), set()
     declared: set[str] = set()
+    fanout_bases: set[str] = set()
     for preview in manifest.get("previews", []):
+        has_provider = bool((preview.get("params") or {}).get("previewParameterProviderClassName"))
         for capture in preview.get("captures", []):
             name = Path(capture.get("renderOutput") or "").name
             if fnmatch(name, _PNG_GLOB):
-                declared.add(Path(name).stem)
-    return declared
+                stem = Path(name).stem
+                declared.add(stem)
+                if has_provider:
+                    fanout_bases.add(stem)
+    return declared, fanout_bases
 
 
 def cmd_stage(args: argparse.Namespace) -> int:
@@ -139,6 +160,7 @@ def cmd_stage(args: argparse.Namespace) -> int:
     total_pngs = 0
     modules_seen: list[str] = []
     declared_ids: set[str] = set()
+    fanout_bases: set[str] = set()
 
     for raw_build_dir in build_dirs:
         build_dir = Path(raw_build_dir)
@@ -153,7 +175,9 @@ def cmd_stage(args: argparse.Namespace) -> int:
 
         # Record what the manifest declares even when a render is missing, so
         # the comment can distinguish a failed render from a real removal.
-        declared_ids |= _declared_notification_ids(build_dir)
+        module_declared, module_fanout = _declared_notification_ids(build_dir)
+        declared_ids |= module_declared
+        fanout_bases |= module_fanout
 
         pngs = sorted(renders_dir.glob(_PNG_GLOB))
         if not pngs:
@@ -229,7 +253,11 @@ def cmd_stage(args: argparse.Namespace) -> int:
     entries.sort(key=lambda e: (e["module"], e["previewId"]))
     (out_dir / "findings.json").write_text(
         json.dumps(
-            {"entries": entries, "declaredPreviewIds": sorted(declared_ids)},
+            {
+                "entries": entries,
+                "declaredPreviewIds": sorted(declared_ids),
+                "declaredFanoutBases": sorted(fanout_bases),
+            },
             indent=2,
             sort_keys=True,
         )
@@ -263,14 +291,34 @@ def _load_entries(path: Path) -> list[dict]:
         return []
 
 
-def _load_declared(path: Path) -> set[str]:
-    """Set of notification previewIds the head manifest declared (see stage)."""
+def _load_declared(path: Path) -> tuple[set[str], set[str]]:
+    """``(declaredPreviewIds, declaredFanoutBases)`` from a findings.json (see stage)."""
     if not path.exists():
-        return set()
+        return set(), set()
     try:
-        return set(json.loads(path.read_text()).get("declaredPreviewIds", []))
+        payload = json.loads(path.read_text())
     except json.JSONDecodeError:
-        return set()
+        return set(), set()
+    return (
+        set(payload.get("declaredPreviewIds", [])),
+        set(payload.get("declaredFanoutBases", [])),
+    )
+
+
+def _is_declared(preview_id: str, declared: set[str], fanout_bases: set[str]) -> bool:
+    """Whether the head manifest declared ``preview_id``.
+
+    Exact match covers static previews and multi-``@Preview`` variants (the
+    manifest carries their suffixed renderOutput verbatim). The prefix check
+    covers ``@PreviewParameter`` fan-out, whose rendered ids are
+    ``<base>_<label>`` / ``<base>_PARAM_<idx>`` — the manifest only has the
+    unsuffixed ``<base>`` (the renderer appends the suffix post-load), so a
+    baseline id beginning with a declared fan-out base + ``_`` is still
+    declared.
+    """
+    if preview_id in declared:
+        return True
+    return any(preview_id.startswith(f"{base}_") for base in fanout_bases)
 
 
 def _by_id(entries: list[dict]) -> dict[str, dict]:
@@ -356,7 +404,7 @@ def _diff(
 
 def cmd_comment(args: argparse.Namespace) -> int:
     head = _load_entries(Path(args.findings))
-    declared = _load_declared(Path(args.findings))
+    declared, fanout_bases = _load_declared(Path(args.findings))
     baseline = _load_entries(Path(args.baseline)) if args.baseline else []
 
     added, changed, removed = _diff(head, baseline)
@@ -369,10 +417,11 @@ def cmd_comment(args: argparse.Namespace) -> int:
     # missing preview removed when the head no longer declares it; when there's
     # no manifest coverage at all (empty `declared`) we can't be sure, so we
     # err toward "not rendered" rather than asserting a removal.
+    has_coverage = bool(declared or fanout_bases)
     not_rendered: list[dict] = []
     truly_removed: list[dict] = []
     for entry in removed:
-        if not declared or entry["previewId"] in declared:
+        if not has_coverage or _is_declared(entry["previewId"], declared, fanout_bases):
             not_rendered.append(entry)
         else:
             truly_removed.append(entry)
