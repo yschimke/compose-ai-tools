@@ -64,18 +64,24 @@ internal object CompatRules {
    * Runs every rule against the given dep snapshot and returns findings ordered by severity. Pure —
    * safe to call from tests and from the serialisation path.
    *
-   * [previewToolingDeclared] and [enforcePreviewToolingDependency] are the per-module signals the
-   * Android registration captures at `onVariants` time:
-   * - `previewToolingDeclared` — `AndroidPreviewSupport.hasPreviewDependency(project, variant)`,
-   *   i.e. is one of the known `@Preview` tooling coords declared in this module's
+   * [previewToolingDeclared], [transitivePreviewToolingDetected], and
+   * [enforcePreviewToolingDependency] are the per-module signals the Android registration captures
+   * at `onVariants` time:
+   * - `previewToolingDeclared` — `AndroidPreviewSupport.hasDirectPreviewDependency(project)`, i.e.
+   *   is one of the known `@Preview` tooling coords declared **directly** in this module's
    *   `*Implementation` / `*Api` / `*RuntimeOnly` buckets?
+   * - `transitivePreviewToolingDetected` — `${variant}RuntimeClasspath`'s resolved graph reached a
+   *   preview-tooling coord transitively (issue #1549). The doctor task computes this at action
+   *   time via
+   *   [ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling]
+   *   walking `mainRuntimeRoot`. Independent of `previewToolingDeclared`.
    * - `enforcePreviewToolingDependency` — `composePreview.enforcePreviewToolingDependency`, the
-   *   escape hatch added for the CMP-Android `:composeApp -> :shared` shape (issue #241 / #1549).
+   *   manual escape hatch added for the CMP-Android `:composeApp -> :shared` shape (issue #241).
    *
-   * When both are non-null (i.e. the caller passes meaningful Android signals) and the escape hatch
-   * is in use without a direct dep, [checkUndeclaredPreviewTooling] fires a warning telling the
-   * consumer to declare the dep directly too. CMP / Desktop callers pass `null` for both, and the
-   * check is skipped.
+   * When the Android signals are non-null, [checkUndeclaredPreviewTooling] fires the "pin the dep
+   * locally" soft recommendation whenever the direct dep is missing AND the gate passed via either
+   * the escape hatch (enforce=false) OR auto-detection (transitive=true). CMP / Desktop callers
+   * pass `null` for all three and the check is skipped.
    */
   fun evaluate(
     main: Map<String, String>,
@@ -83,6 +89,7 @@ internal object CompatRules {
     gradleVersion: String? = null,
     previewToolingDeclared: Boolean? = null,
     enforcePreviewToolingDependency: Boolean? = null,
+    transitivePreviewToolingDetected: Boolean? = null,
   ): List<ModuleFindingData> {
     val findings = mutableListOf<ModuleFindingData>()
     val mainV = parseVersions(main)
@@ -94,21 +101,22 @@ internal object CompatRules {
     checkComposeBom(main)?.let(findings::add)
     checkHamcrestSkew(test)?.let(findings::add)
     checkKmpAndroidSiblingMismatch(test)?.let(findings::add)
-    checkUndeclaredPreviewTooling(previewToolingDeclared, enforcePreviewToolingDependency)
+    checkUndeclaredPreviewTooling(
+        previewToolingDeclared,
+        enforcePreviewToolingDependency,
+        transitivePreviewToolingDetected,
+      )
       ?.let(findings::add)
     findings += checkOldDeps(mainV, testV, main, test)
     return findings
   }
 
   /**
-   * Fires when the consumer is leaning on `composePreview.enforcePreviewToolingDependency = false`
-   * (the IP-safe escape hatch for the CMP-Android `:composeApp -> :shared` shape) AND no
-   * preview-tooling coord is declared directly in this module's `*Implementation` / `*Api` /
-   * `*RuntimeOnly` buckets.
-   *
-   * The escape hatch makes task registration work, but a sibling module's preview tooling is
-   * conceptually a *transitive* dep — pinned by the sibling's version policy. Restating the dep
-   * directly on this module:
+   * Fires when the gate passed without a direct preview-tooling declaration on this module — either
+   * via the manual `composePreview.enforcePreviewToolingDependency = false` escape hatch, or via
+   * the IP-safe transitive walk added in #1549 (declared `project(":...")` sibling carries the
+   * tooling). In both cases the sibling's preview tooling is conceptually a *transitive* dep,
+   * pinned by the sibling's version policy. Restating the dep directly on this module:
    * - locks the version in this module's view of the graph, so a sibling-only upgrade can't
    *   silently shift the renderer's expected compose-tooling version,
    * - makes the dep visible to `compose-preview doctor`'s version-skew checks (the renderer-vs-
@@ -117,30 +125,41 @@ internal object CompatRules {
    * - documents intent for the next maintainer who reads `:composeApp`'s build file looking for
    *   "why does compose-preview see previews here?".
    *
-   * Strongly suggested — emitted as a `warning` not an `error` because the escape hatch itself is
-   * an opt-in design choice. Returns `null` (no finding) when either signal is unset (Desktop / CMP
-   * callers) or when the consumer has already declared the dep directly.
+   * Strongly suggested — emitted as a `warning` not an `error` because relying on transitive
+   * reachability is a defensible design choice. Returns `null` (no finding) when the signals are
+   * unset (Desktop / CMP callers), when the direct dep IS declared, or when the gate didn't pass by
+   * either fallback path (enforce=true AND transitive=false — registration wouldn't have happened,
+   * doctor wouldn't run, but pin the contract here for completeness).
    */
   private fun checkUndeclaredPreviewTooling(
     previewToolingDeclared: Boolean?,
     enforcePreviewToolingDependency: Boolean?,
+    transitivePreviewToolingDetected: Boolean?,
   ): ModuleFindingData? {
     if (previewToolingDeclared == null || enforcePreviewToolingDependency == null) return null
     if (previewToolingDeclared) return null
-    if (enforcePreviewToolingDependency) return null
+    val gatePassedViaEscapeHatch = !enforcePreviewToolingDependency
+    val gatePassedViaTransitive = transitivePreviewToolingDetected == true
+    if (!gatePassedViaEscapeHatch && !gatePassedViaTransitive) return null
+    val cause =
+      when {
+        gatePassedViaTransitive ->
+          "preview tooling reaches this module transitively via a declared `project(\":...\")` " +
+            "dep (auto-detected by the IP-safe cross-project metadata service added in #1549)"
+        else ->
+          "composePreview.enforcePreviewToolingDependency = false bypasses the per-module " +
+            "preview-tooling gate"
+      }
     return ModuleFindingData(
       id = "module.preview-tooling-not-declared",
       severity = "warning",
-      message =
-        "composePreview.enforcePreviewToolingDependency = false but no @Preview tooling coord is " +
-          "declared directly in this module",
+      message = "$cause; no @Preview tooling coord is declared directly in this module",
       detail =
-        "The escape hatch (#241 / #1549) lets task registration succeed when the preview tooling " +
-          "arrives transitively (e.g. via project(\":shared\")). Declaring the dep here too pins " +
-          "the version in this module's view of the graph, surfaces it to compose-preview " +
-          "doctor's version-skew checks, and documents intent for future readers. Pick whichever " +
-          "tooling coord matches your stack: androidx.compose.ui:ui-tooling-preview (AGP-only), " +
-          "or org.jetbrains.compose.components:components-ui-tooling-preview (CMP / KMP).",
+        "Declaring the dep here too pins the version in this module's view of the graph, " +
+          "surfaces it to compose-preview doctor's version-skew checks, and documents intent for " +
+          "future readers. Pick whichever tooling coord matches your stack: " +
+          "androidx.compose.ui:ui-tooling-preview (AGP-only), or " +
+          "org.jetbrains.compose.components:components-ui-tooling-preview (CMP / KMP).",
       remediationSummary =
         "Declare the preview-tooling dep directly so it's pinned and visible to doctor",
       remediationCommands =
