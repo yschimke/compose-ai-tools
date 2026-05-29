@@ -22,7 +22,10 @@ readme
 
 comment
     Render ``findings.json`` to a PR-comment Markdown body with the
-    ``<!-- a11y-report -->`` marker the action upserts on.
+    ``<!-- a11y-report -->`` marker the action upserts on. Diffs against the
+    baseline ``findings.json`` and surfaces only the previews whose findings
+    changed (collapsing the rest into a roster); stays silent when nothing
+    a reviewer cares about changed.
 """
 
 from __future__ import annotations
@@ -427,37 +430,59 @@ def cmd_readme(args: argparse.Namespace) -> int:
 # comment
 # ---------------------------------------------------------------------------
 
+def _finding_tuple(f: dict) -> tuple:
+    """Hash-stable representation of a single finding for change detection.
+
+    Filenames are deliberately excluded elsewhere; here we capture only the
+    fields a reviewer reacts to (level, rule type, message, element, bounds).
+    """
+    return (
+        f.get("level"),
+        f.get("type"),
+        f.get("message"),
+        f.get("viewDescription"),
+        f.get("boundsInScreen"),
+    )
+
+
+def _entry_findings_key(entry: dict) -> tuple:
+    """Order-insensitive key for one preview's findings.
+
+    Returns the empty tuple for a preview with no findings, so an
+    absent-from-baseline preview (default ``()``) and a clean preview compare
+    equal — the surface rule in [cmd_comment] treats "clean" and "not present"
+    as the same neutral state.
+    """
+    return tuple(sorted(_finding_tuple(f) for f in entry.get("findings", [])))
+
+
 def _findings_fingerprint(entries: list[dict], status: str | None = None) -> tuple:
-    """Stable representation of (status, preview, findings) used for change detection.
+    """Stable representation of (status, previews-with-findings) for change detection.
 
     Compares only the data a reviewer would care about — top-level status,
     plus per-entry module, previewId, and findings list. Filenames
     (`cleanBasename`, `annotatedBasename`) are excluded because identical
     findings can move around between files when the renderer renames variants,
-    and we don't want to wake the PR comment for that. Findings are
-    tuple-ified so the comparison is hash-stable and order-insensitive
-    (sorted below).
+    and we don't want to wake the PR comment for that.
+
+    Previews with **no** findings are excluded entirely: adding or removing a
+    clean preview is not an accessibility change, so it must neither break the
+    comment's silence nor surface a near-empty "nothing to see" comment. Only
+    previews that carry findings participate, which mirrors the per-preview
+    surface rule in [cmd_comment] (an absent/clean preview has the empty
+    findings key).
 
     ``status`` is included so the fingerprint diverges when the daemon goes
     from "ran cleanly" to "atf-unavailable" or vice versa — without this, a
     daemon crash would match a clean baseline and the workflow would stay
     silent on the very condition the comment needs to surface.
     """
-    def finding_tuple(f: dict) -> tuple:
-        return (
-            f.get("level"),
-            f.get("type"),
-            f.get("message"),
-            f.get("viewDescription"),
-            f.get("boundsInScreen"),
-        )
     return (status,) + tuple(
-        (
-            e["module"],
-            e["previewId"],
-            tuple(sorted(finding_tuple(f) for f in e.get("findings", []))),
+        (e["module"], e["previewId"], _entry_findings_key(e))
+        for e in sorted(
+            (e for e in entries if e.get("findings")),
+            key=lambda e: (e["module"], e["previewId"]),
         )
-        for e in sorted(entries, key=lambda e: (e["module"], e["previewId"]))
     )
 
 
@@ -477,6 +502,8 @@ def cmd_comment(args: argparse.Namespace) -> int:
     # this side never matches a clean-run baseline — that flips on the
     # comment so reviewers see the daemon failure rather than the misleading
     # "no findings" the bug in #1453 produced.
+    baseline_entries: list[dict] = []
+    baseline_status: str | None = None
     if args.baseline:
         baseline_path = Path(args.baseline)
         if baseline_path.exists():
@@ -492,12 +519,40 @@ def cmd_comment(args: argparse.Namespace) -> int:
             ):
                 return 0  # silent
 
+    # Per-preview diff against the baseline. The comment used to re-post every
+    # preview's findings on every PR that tripped the fingerprint (#1585);
+    # instead, surface only the previews whose findings actually changed and
+    # collapse the rest. A preview's findings key defaults to `()` when it's
+    # absent from the baseline, so a brand-new *clean* preview compares equal
+    # to its (empty) baseline and is treated as unchanged — only new or
+    # changed findings get a full block.
+    baseline_by_key: dict[tuple[str, str], tuple] = {
+        (e["module"], e["previewId"]): _entry_findings_key(e)
+        for e in baseline_entries
+    }
+    current_keys = {(e["module"], e["previewId"]) for e in entries}
+
+    changed: list[dict] = []
+    unchanged: list[dict] = []
+    for entry in entries:
+        key = (entry["module"], entry["previewId"])
+        if _entry_findings_key(entry) != baseline_by_key.get(key, ()):
+            changed.append(entry)
+        else:
+            unchanged.append(entry)
+
+    # Previews that carried findings on the baseline but are gone now — the
+    # underlying issue is no longer reachable. A clean baseline preview that
+    # disappears isn't an accessibility change, so those are ignored.
+    resolved = [
+        e
+        for e in baseline_entries
+        if (e["module"], e["previewId"]) not in current_keys
+        and _entry_findings_key(e)
+    ]
+
     err, warn, info = _level_counts(entries)
     findings_count = err + warn + info
-
-    by_module: dict[str, list[dict]] = {}
-    for entry in entries:
-        by_module.setdefault(entry["module"], []).append(entry)
 
     marker = "<!-- a11y-report -->"
     lines = [
@@ -528,30 +583,36 @@ def cmd_comment(args: argparse.Namespace) -> int:
     if findings_count == 0:
         lines.append("No accessibility findings.")
         lines.append("")
-        # Still link the gallery thumbnails so reviewers can spot-check
-        # what was actually rendered — same data the readme would show,
-        # without the table.
-        for module, module_entries in sorted(by_module.items()):
-            lines.append(f"### {module}")
-            lines.append("")
-            for entry in sorted(module_entries, key=lambda e: e["functionName"]):
-                image = entry["annotatedBasename"] or entry["cleanBasename"]
-                if not image:
-                    continue
-                url = _image_url(args.repo, args.head_ref, module, image)
-                lines.append(
-                    f"- `{entry['functionName']}` "
-                    f'<img src="{url}" width="120" />'
-                )
-            lines.append("")
-        sys.stdout.write("\n".join(lines).rstrip() + "\n")
-        return 0
 
-    for module, module_entries in sorted(by_module.items()):
+    # Changed / new previews, grouped by module — these get the full block.
+    changed_by_module: dict[str, list[dict]] = {}
+    for entry in changed:
+        changed_by_module.setdefault(entry["module"], []).append(entry)
+    for module, module_entries in sorted(changed_by_module.items()):
         lines.append(f"### {module}")
         lines.append("")
         for entry in sorted(module_entries, key=lambda e: e["functionName"]):
             lines.extend(_entry_block(entry, args.head_ref, args.repo, image_width=240))
+
+    if resolved:
+        lines.append(f"### Resolved ({len(resolved)} preview(s) no longer present)")
+        lines.append("")
+        for entry in sorted(resolved, key=lambda e: (e["module"], e["functionName"])):
+            lines.append(f"- `{entry['functionName']}` ({entry['module']})")
+        lines.append("")
+
+    if unchanged:
+        # Collapse everything that didn't change into a names-only roster so
+        # reviewers can still confirm the tool covered the full preview set
+        # without scrolling past 100+ unchanged tables.
+        lines.append("<details>")
+        lines.append(f"<summary>Unchanged ({len(unchanged)} preview(s))</summary>")
+        lines.append("")
+        for entry in sorted(unchanged, key=lambda e: (e["module"], e["functionName"])):
+            lines.append(f"- `{entry['functionName']}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
 
     sys.stdout.write("\n".join(lines).rstrip() + "\n")
     return 0
