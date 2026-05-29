@@ -737,6 +737,30 @@ internal fun buildDesktopExtensions(
         dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
       )
     }
+    // Issue #1604 — daemon-side scroll artefact production on CMP-desktop. Unlike the registries
+    // above (whose producers are still Android-bound), scroll is fully portable: the registry
+    // lives in the pure-JVM `:data-scroll-connector`, and `:renderer-desktop` already carries the
+    // `runComposeUiTest`-driven capture. The registry advertises `render/scroll/long` /
+    // `render/scroll/gif` as `requiresRerender = true`, so a missing scroll artefact returns
+    // `Outcome.RequiresRerender("scroll-long"|"scroll-gif")` and the dispatcher queues a
+    // per-preview re-render that `RenderEngine.runScrollScenario` routes into
+    // `renderScrollPreview`, writing to the same
+    // `<dataRoot>/render-scroll-{long,gif}/<id>.{png,gif}`
+    // paths Gradle does so the host's `gradleService.readPreviewImage` reads the same file either
+    // way. Descriptors are advertised too so MCP / `previewExtensions/list` clients see the scroll
+    // surface — exactly mirroring `:daemon:android`'s `DaemonMain`.
+    tryAdd("scroll") {
+      Extension(
+        id = "scroll",
+        displayName = "Scrolling preview artifacts",
+        dataProductRegistry = ScrollDataProductRegistry(rootDir = dataRoot),
+        previewExtensionDescriptors =
+          listOf(
+            ee.schimke.composeai.scroll.ScrollPreviewExtension.longScrollDescriptor,
+            ee.schimke.composeai.scroll.ScrollPreviewExtension.gifScrollDescriptor,
+          ),
+      )
+    }
     // Accessibility (desktop, overlay-only). Unlike Android — where the producer runs ATF over the
     // Robolectric View tree — the desktop path extracts Compose semantics from the scene's
     // `semanticsOwners` and draws the Paparazzi-style overlay + legend with AWT (see
