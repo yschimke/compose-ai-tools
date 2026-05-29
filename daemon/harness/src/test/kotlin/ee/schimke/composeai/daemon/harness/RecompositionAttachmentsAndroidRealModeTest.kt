@@ -157,7 +157,7 @@ class RecompositionAttachmentsAndroidRealModeTest {
                 "attachment; got kinds=" +
                 attachments.map { it.jsonObject["kind"]?.jsonPrimitive?.contentOrNull }
             )
-        assertEquals(1, recomp["schemaVersion"]?.jsonPrimitive?.long?.toInt())
+        assertEquals(2, recomp["schemaVersion"]?.jsonPrimitive?.long?.toInt())
         assertEquals(
           "compose/recomposition is INLINE — path must be absent on the wire",
           null,

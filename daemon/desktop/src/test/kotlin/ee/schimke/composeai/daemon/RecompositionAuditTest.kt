@@ -41,11 +41,13 @@ import org.junit.rules.TemporaryFolder
  *    further input drains to `nodes: []`, confirming the producer reset counters between flushes
  *    (not "the fix masked the producer").
  *
- * ## Data shape gap — what visualisation needs that the v1 payload does not expose
+ * ## Data shape — what the v2 payload exposes (and what is still deferred)
  *
- * The test uses the existing [ee.schimke.composeai.data.recomposition.RecompositionPayload] which
- * carries `{nodeId: hexhash, count: int}` per recomposed scope. That's enough for "did N scopes
- * recompose?" assertions like this test makes, but a *user-facing* visualisation needs more:
+ * The test uses [ee.schimke.composeai.data.recomposition.RecompositionPayload], which in v2 (#1605)
+ * carries `{nodeId, count, reason, …}` per recomposed scope. The `reason` field is what this test
+ * now asserts on: the bad fixture's parent shows up as `STATE_READ` and its forwarded-parameter
+ * children as `PARAMETER_CHANGE`, and the fix collapses that parameter-change cascade. A
+ * *user-facing* visualisation still wants more, deferred per the issue's Risk section:
  *
  * - **PNG heat-map overlay.** Needs per-scope screen bounds (x, y, width, height in the rendered
  *   image's pixel space) so a colour-shaded region can be drawn over the captured PNG. The current
@@ -57,17 +59,16 @@ import org.junit.rules.TemporaryFolder
  *   bytecode; the same path Layout Inspector reads. A v2 producer would parse those markers off the
  *   scope's anchor in the slot table — the same `(file:line:column)` key the producer KDoc already
  *   flags as a v2 followup for stable cross-session ids.
- * - **Investigate-the-fix diagnostic.** Needs a reason field per scope: parameter-change vs
- *   snapshot-state read vs both. [androidx.compose.runtime.tooling.CompositionObserver] surfaces
- *   `onScopeInvalidated(scope, value)` carrying the value that triggered invalidation; the v1
- *   producer ignores it. DejaVu's `$dirty`-bit reflection is the next rung up: it can flag a
- *   parameter as dirty-but-equal, which is exactly the surprising-recomposition signal.
+ * - **Investigate-the-fix diagnostic.** *Shipped in v2.* Each node now carries
+ *   [ee.schimke.composeai.data.recomposition.InvalidationReason] derived from
+ *   [androidx.compose.runtime.tooling.CompositionObserver]'s `onScopeInvalidated(scope, value)` (a
+ *   non-null value being the snapshot object that triggered it) compared against the recompose
+ *   count. DejaVu's `$dirty`-bit reflection is the next rung up — it can flag a parameter as
+ *   dirty-but-equal — but stays optional and out of scope here, falling back to `UNKNOWN`.
  *
- * Without those fields the audit *test* still works — it asserts on a count of distinct opaque ids
- * — but a human or agent reading the JSON payload sees `[{"nodeId": "1a2b3c4d", "count": 1}, …]`
- * with no way to tell which composable each entry is. The fix path is the v2 schema bump outlined
- * in [RecompositionDataProductRegistry]'s KDoc; this test exists in part to make that gap concrete
- * and testable.
+ * The `bounds` and source-marker fields exist on the v2 wire (nullable) but stay unpopulated until
+ * the post-layout bounds join and slot-table reflection land — both flagged risky in the issue's
+ * Risk section. The `reason` field is the non-risky core, and this test asserts on it directly.
  */
 class RecompositionAuditTest {
 
@@ -75,12 +76,46 @@ class RecompositionAuditTest {
 
   @Test
   fun bad_fixture_invalidates_whole_subtree_then_fix_narrows_invalidation_footprint() {
-    val nodeCountsBad = clickAndCaptureDeltaNodeIds(FIXTURES.first)
-    val nodeCountsBetter = clickAndCaptureDeltaNodeIds(FIXTURES.second)
+    val nodesBad = clickAndCaptureDeltaNodes(FIXTURES.first)
+    val nodesBetter = clickAndCaptureDeltaNodes(FIXTURES.second)
+    val nodeCountsBad = nodesBad.associate { it.nodeId to it.count }
+    val nodeCountsBetter = nodesBetter.associate { it.nodeId to it.count }
 
     assertTrue(
-      "Bad fixture: parent + 3 children should each invalidate (got '$nodeCountsBad')",
+      "Bad fixture: parent + 3 children should each invalidate (got '$nodesBad')",
       nodeCountsBad.size >= 3,
+    )
+
+    // v2 (#1605) — the audit now reads per-scope invalidation reasons instead of opaque ids. The
+    // bad fixture's defining shape: the parent reads `clicks` (STATE_READ) and forwards it as an
+    // `Int` parameter to three children, each of which re-runs because its argument changed
+    // (PARAMETER_CHANGE) without itself reading any state. That STATE_READ-cascades-into-
+    // PARAMETER_CHANGE mix is exactly what a reviewer wants to see surfaced.
+    val reasonsBad = nodesBad.map { it.reason }
+    assertTrue(
+      "Bad fixture: the parent's snapshot read must surface as STATE_READ (got '$nodesBad')",
+      reasonsBad.contains("STATE_READ"),
+    )
+    assertTrue(
+      "Bad fixture: the forwarded-parameter children must surface as PARAMETER_CHANGE " +
+        "(got '$nodesBad')",
+      reasonsBad.contains("PARAMETER_CHANGE"),
+    )
+
+    // The fix hoists the state into a holder whose reference is passed down, so the parent no
+    // longer reads `.value` during composition and the children take no changing parameter. The
+    // parameter-change cascade collapses — strictly fewer PARAMETER_CHANGE scopes than the bad
+    // case — while the one legitimate consumer still shows up as STATE_READ.
+    val paramChangeBad = reasonsBad.count { it == "PARAMETER_CHANGE" }
+    val paramChangeBetter = nodesBetter.count { it.reason == "PARAMETER_CHANGE" }
+    assertTrue(
+      "Better fixture: a state read must still be attributed (got '$nodesBetter')",
+      nodesBetter.any { it.reason == "STATE_READ" },
+    )
+    assertTrue(
+      "Better fixture: the fix must collapse the parameter-change cascade " +
+        "(bad PARAMETER_CHANGE=$paramChangeBad, better=$paramChangeBetter)",
+      paramChangeBetter < paramChangeBad,
     )
 
     // The audit's "fix worked" signal: a narrow invalidation footprint, not necessarily exactly
@@ -109,7 +144,7 @@ class RecompositionAuditTest {
     )
   }
 
-  private fun clickAndCaptureDeltaNodeIds(fixture: Fixture): Map<String, Int> {
+  private fun clickAndCaptureDeltaNodes(fixture: Fixture): List<DeltaNode> {
     val outputDir = tempFolder.newFolder("renders-${fixture.previewId}")
     val engine = RenderEngine(outputDir = outputDir)
     val registry = RecompositionDataProductRegistry()
@@ -166,9 +201,13 @@ class RecompositionAuditTest {
           registry.attachmentsFor(fixture.previewId, setOf("compose/recomposition")).single()
         val payload = postClick.payload!!.jsonObject
         val nodes = payload["nodes"]!!.jsonArray
-        val counts = nodes.associate { node ->
+        val captured = nodes.map { node ->
           val obj = node.jsonObject
-          obj["nodeId"]!!.jsonPrimitive.content to obj["count"]!!.jsonPrimitive.content.toInt()
+          DeltaNode(
+            nodeId = obj["nodeId"]!!.jsonPrimitive.content,
+            count = obj["count"]!!.jsonPrimitive.content.toInt(),
+            reason = obj["reason"]!!.jsonPrimitive.content,
+          )
         }
 
         // The "confirm a fix" rung needs the producer to actually reset between flushes — render
@@ -184,7 +223,7 @@ class RecompositionAuditTest {
           idleNodes.size,
         )
 
-        return counts
+        return captured
       } finally {
         registry.onUnsubscribe(fixture.previewId, "compose/recomposition")
         session.close()
@@ -195,6 +234,11 @@ class RecompositionAuditTest {
   }
 
   private data class Fixture(val previewId: String, val functionName: String, val streamId: String)
+
+  /**
+   * One recomposed scope from a delta payload: opaque id, exit count, and v2 invalidation reason.
+   */
+  private data class DeltaNode(val nodeId: String, val count: Int, val reason: String)
 
   companion object {
     private val FIXTURES =

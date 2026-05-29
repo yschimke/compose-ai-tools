@@ -2414,7 +2414,19 @@ open class RobolectricHost(
           override fun onScopeInvalidated(
             scope: androidx.compose.runtime.RecomposeScope,
             value: Any?,
-          ) {}
+          ) {
+            // v2 (#1605): a non-null [value] is the snapshot object that invalidated the scope —
+            // the STATE_READ signal. The host derives each node's InvalidationReason by comparing
+            // these against the recomposition counts. A null value (unconditional invalidate)
+            // carries no state attribution, so we ignore it.
+            if (value != null) {
+              ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.markInvalidated(
+                previewId,
+                streamId,
+                System.identityHashCode(scope),
+              )
+            }
+          }
 
           override fun onScopeDisposed(scope: androidx.compose.runtime.RecomposeScope) {
             ee.schimke.composeai.daemon.bridge.SandboxRecompositionBridge.markDisposed(

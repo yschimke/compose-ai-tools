@@ -16,7 +16,7 @@ recomposed N times for one click" reviews.
 | | |
 |---|---|
 | Kind | `compose/recomposition` |
-| Schema version | 1 |
+| Schema version | 2 |
 | Modules | `:data-recomposition-core` (published) · `:data-recomposition-connector` |
 | Render mode | instrumented |
 | Cost | medium |
@@ -53,18 +53,34 @@ Two modes:
 [`:data-recomposition-core`](https://github.com/yschimke/compose-ai-tools/tree/main/data/recomposition/core).
 
 ```jsonc
-// compose/recomposition
+// compose/recomposition (schemaVersion 2)
 {
-  "mode": "snapshot",         // or "clickDelta"
-  "frameStreamId": "f-7a1c",  // when click-delta
+  "mode": "delta",                  // or "snapshot"
+  "sinceFrameStreamId": "f-7a1c",   // populated in delta mode
+  "inputSeq": 2,                    // monotonic per flushed delta
   "nodes": [
-    { "nodeId": 12, "name": "Row", "count": 3,
-      "boundsInScreen": "0,80,1080,160" },
-    { "nodeId": 14, "name": "Text", "count": 12,
-      "boundsInScreen": "16,96,1064,144" }
+    // reason: PARAMETER_CHANGE | STATE_READ | BOTH | UNKNOWN
+    { "nodeId": "1a2b3c4d", "count": 1, "reason": "STATE_READ" },
+    { "nodeId": "5e6f7a8b", "count": 1, "reason": "PARAMETER_CHANGE" }
   ]
 }
 ```
+
+Each node's `reason` is attributed from the Compose runtime's
+`onScopeInvalidated(scope, value)` signal compared against the recompose
+count: a scope invalidated by a snapshot write it subscribed to reads
+`STATE_READ`, one that re-ran only because its caller did reads
+`PARAMETER_CHANGE`, and a mix reads `BOTH`. This is the
+"why did this recompose?" signal — a parent reading state and forwarding
+it as parameters shows up as one `STATE_READ` dragging a fan of
+`PARAMETER_CHANGE` children.
+
+Nodes also carry nullable `bounds` (`{x, y, width, height}`) and
+source-marker fields (`sourceFile` / `sourceLine` / `sourceColumn` /
+`functionName`) for the heat-map and source-overlay surfaces. These are
+present on the v2 wire but not yet populated — the post-layout bounds
+join and slot-table reflection that fill them are deferred increments
+(see [issue #1605](https://github.com/yschimke/compose-ai-tools/issues/1605)).
 
 ## Enabling
 

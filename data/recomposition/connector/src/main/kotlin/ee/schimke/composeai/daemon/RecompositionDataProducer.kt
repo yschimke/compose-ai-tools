@@ -16,6 +16,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.recomposition.InvalidationReason
 import ee.schimke.composeai.data.recomposition.RecompositionNode
 import ee.schimke.composeai.data.recomposition.RecompositionPayload
 import ee.schimke.composeai.data.recomposition.RecompositionProduct
@@ -42,12 +43,14 @@ import kotlinx.serialization.json.contentOrNull
  * "Recomposition + interactive mode" for the wire contract this implements.
  *
  * **What it does.**
- * - Advertises a single kind, `compose/recomposition`, schemaVersion=1, transport=INLINE,
+ * - Advertises a single kind, `compose/recomposition`, schemaVersion=2, transport=INLINE,
  *   attachable=true, fetchable=true, requiresRerender=true.
  * - On `data/subscribe` with `params: { frameStreamId, mode: "delta" }` against a live
  *   [DesktopInteractiveSession]: looks up the live scene via [liveScenes], reaches the held scene's
  *   [androidx.compose.runtime.Recomposer] reflectively, and installs a [CompositionObserver] that
- *   increments per-[RecomposeScope] counters on each `onScopeExit`.
+ *   increments per-[RecomposeScope] counters on each `onScopeExit` and records snapshot-driven
+ *   invalidations on `onScopeInvalidated` so each emitted node carries an [InvalidationReason]
+ *   (v2, #1605).
  * - On each `interactive/input` cycle the daemon's render watcher emits `renderFinished` and calls
  *   [attachmentsFor]; we snapshot the current counter map, attach it as a [RecompositionPayload],
  *   then reset counters to zero so the next input's payload is the delta *since the previous
@@ -130,6 +133,14 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
      * while [attachmentsFor] runs from JsonRpcServer's render watcher.
      */
     val counters: ConcurrentHashMap<Int, Int> = ConcurrentHashMap(),
+    /**
+     * Map of identity-hashcode-of-RecomposeScope → how many times the runtime invalidated it with a
+     * snapshot value this delta window (`onScopeInvalidated(scope, value != null)`). Compared
+     * against [counters] in [snapshotAndReset] to attribute each scope's [InvalidationReason]: an
+     * entry here means a state read drove (at least one of) the scope's recompositions; its absence
+     * means the scope re-ran because its caller did — a parameter change. v2 (#1605).
+     */
+    val invalidations: ConcurrentHashMap<Int, Int> = ConcurrentHashMap(),
   )
 
   /** Keyed by previewId. One subscription per (previewId, kind=compose/recomposition). */
@@ -185,7 +196,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
               mode = MODE_DELTA,
               sinceFrameStreamId = state.frameStreamId,
               inputSeq = state.inputSeq,
-              nodes = state.counters.snapshot(),
+              nodes = state.snapshot(),
             )
           }
         DataProductRegistry.Outcome.Ok(
@@ -223,7 +234,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     // post-input renderFinished in the interactive path (the dispatcher calls attachmentsFor
     // once per render). Snapshot the counter map *before* incrementing so the payload reads
     // monotonically from the client's perspective: the n-th attachment carries inputSeq=n.
-    val nodes = state.counters.snapshotAndReset()
+    val nodes = state.snapshotAndReset()
     state.inputSeq += 1L
     val payload =
       RecompositionPayload(
@@ -329,7 +340,15 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
             val key = System.identityHashCode(scope)
             state.counters.merge(key, 1, Int::plus)
           },
-          onScopeDisposed = { scope -> state.counters.remove(System.identityHashCode(scope)) },
+          onScopeInvalidatedByState = { scope ->
+            val key = System.identityHashCode(scope)
+            state.invalidations.merge(key, 1, Int::plus)
+          },
+          onScopeDisposed = { scope ->
+            val key = System.identityHashCode(scope)
+            state.counters.remove(key)
+            state.invalidations.remove(key)
+          },
         )
       } catch (t: Throwable) {
         // The brief mandates LinkageError / NoSuchMethodError specifically; we widen to any
@@ -367,6 +386,7 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
   protected open fun installObserver(
     scene: ImageComposeScene,
     onScopeRecomposed: (RecomposeScope) -> Unit,
+    onScopeInvalidatedByState: (RecomposeScope) -> Unit,
     onScopeDisposed: (RecomposeScope) -> Unit,
   ): CompositionObserverHandle {
     val recomposer = reflectRecomposer(scene)
@@ -399,9 +419,13 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
         }
 
         override fun onScopeInvalidated(scope: RecomposeScope, value: Any?) {
-          // Compose calls this when a Snapshot write invalidates [scope]. We could surface "n
-          // invalidations since last flush" alongside counts, but the brief asks only for the
-          // recomposition count; defer.
+          // v2 (#1605): Compose calls this when a Snapshot write invalidates [scope]. A non-null
+          // [value] is the snapshot object that triggered it — i.e. this scope read state that was
+          // then written, the STATE_READ signal. A null value means an unconditional invalidate
+          // (e.g. a direct RecomposeScope.invalidate()), which carries no state attribution, so we
+          // ignore it. Scopes that recompose without ever landing here re-ran because their caller
+          // did — that's the PARAMETER_CHANGE signal, derived by absence in snapshotAndReset.
+          if (value != null) onScopeInvalidatedByState(scope)
         }
 
         override fun onScopeDisposed(scope: RecomposeScope) {
@@ -456,22 +480,57 @@ open class RecompositionDataProductRegistry : DataProductRegistry {
     return SubscribeParamsView(frameStreamId = frameStreamId, mode = mode)
   }
 
-  private fun ConcurrentHashMap<Int, Int>.snapshot(): List<RecompositionNode> =
-    map { (k, v) -> RecompositionNode(nodeId = Integer.toHexString(k), count = v) }
+  /**
+   * Non-destructive snapshot (used by `fetch(mode=delta)`): reads counts + invalidations, leaves
+   * both maps intact so the next `attachmentsFor` flush still drains them.
+   */
+  private fun SubscriptionState.snapshot(): List<RecompositionNode> =
+    counters
+      .map { (k, v) ->
+        RecompositionNode(
+          nodeId = Integer.toHexString(k),
+          count = v,
+          reason = reasonFor(count = v, invalidations = invalidations[k] ?: 0),
+        )
+      }
       .sortedBy { it.nodeId }
 
-  private fun ConcurrentHashMap<Int, Int>.snapshotAndReset(): List<RecompositionNode> {
+  private fun SubscriptionState.snapshotAndReset(): List<RecompositionNode> {
     val out = mutableListOf<RecompositionNode>()
-    val keys = keys.toList()
+    val keys = counters.keys.toList()
     for (k in keys) {
       // Atomic per-key read+remove; Compose's observer thread may be incrementing concurrently,
       // so a `get()`-then-`remove()` sequence could lose a count between the two. `remove()`
       // returns the prior value atomically.
-      val v = remove(k) ?: continue
-      out.add(RecompositionNode(nodeId = Integer.toHexString(k), count = v))
+      val v = counters.remove(k) ?: continue
+      val inv = invalidations.remove(k) ?: 0
+      out.add(
+        RecompositionNode(
+          nodeId = Integer.toHexString(k),
+          count = v,
+          reason = reasonFor(count = v, invalidations = inv),
+        )
+      )
     }
+    // Drop invalidation signals for scopes that were invalidated this window but never recomposed
+    // (no matching counter entry). Keeping them would mis-attribute a *later* structural
+    // recomposition as STATE_READ. Safe to clear here: this runs after the synchronous render
+    // settles, with no recomposition cycle in flight.
+    invalidations.clear()
     return out.sortedBy { it.nodeId }
   }
+
+  /**
+   * Attribute a scope's recomposition from how its exit count relates to how many times the runtime
+   * invalidated it with a snapshot value this window. See [InvalidationReason].
+   */
+  private fun reasonFor(count: Int, invalidations: Int): InvalidationReason =
+    when {
+      count <= 0 -> InvalidationReason.UNKNOWN
+      invalidations <= 0 -> InvalidationReason.PARAMETER_CHANGE
+      invalidations >= count -> InvalidationReason.STATE_READ
+      else -> InvalidationReason.BOTH
+    }
 
   private fun SubscriptionState.disposeObserver() {
     val handle = observerHandle ?: return

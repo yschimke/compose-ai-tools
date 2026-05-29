@@ -277,7 +277,7 @@ A `data/fetch` that needs a re-render:
 | `a11y/touchTargets` | a11y | low | 48dp + overlap detection. |
 | `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. |
 | `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. |
-| `compose/recomposition` | instrumented | medium | `[{nodeId, count, sinceFrameStreamId?}]`. Heat map. Snapshot or click-delta. |
+| `compose/recomposition` | instrumented | medium | schemaVersion 2: `[{nodeId, count, reason, bounds?, sourceFile?…}]` + `sinceFrameStreamId`/`inputSeq`. `reason` (PARAMETER_CHANGE/STATE_READ/BOTH/UNKNOWN) attributes each scope; `bounds`/source markers nullable until their joins land (#1605). Heat map. Snapshot or click-delta. |
 | `compose/theme` | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed them. |
 | `compose/permissions` | default | low | Android runtime-permissions surface: `{ grants: { "android.permission.X" -> "granted" \| "denied" }, queried: ["android.permission.X", …] }`. Around-composable seeds `ShadowApplication.grantPermissions/denyPermissions` from `renderNow.overrides.permissions.grants` so `ContextCompat.checkSelfPermission(...)` / `Activity.checkSelfPermission(...)` return the requested value through the standard platform path; the matching shadow on `ContextWrapper.checkPermission(...)` records the queried permission for the panel's "queried but no grant pinned" surface. Android-only. |
 | `resources/used` | default | low | `R.*` references resolved during render. |
@@ -303,7 +303,7 @@ Which `kind` strings each backend's `extensions/list` advertises and serves thro
 | `compose/theme` | ✅ | ✅ | Material 3 theme tokens. Override-extension shape. |
 | `compose/wallpaper` | ✅ | ✅ | Wallpaper override shape. |
 | `compose/permissions` | ✅ | ❌ Android-only | Runtime-permissions surface — Robolectric `ShadowApplication` grant seed + `ContextWrapper.checkPermission` query tracker. Desktop has no Android permission model; CMP panel chip greys out on `serverCapabilities.backend == "desktop"`. |
-| `compose/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
+| `compose/recomposition` | ✅ producer | ✅ producer | Compose-runtime observer install on both backends (desktop in-process; Android via the in-sandbox bridge). schemaVersion 2 adds the per-scope `reason` (#1605), derived symmetrically from `onScopeInvalidated`. |
 | `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
 | `compose/semantics` / `layout/inspector` | ✅ producer | 📁 registry-only | Android producer reads the Robolectric semantics tree. Desktop registry serves the file once a CMP-portable producer driving `LocalView` / `SemanticsOwner` lands. |

@@ -7,6 +7,7 @@ import ee.schimke.composeai.daemon.protocol.DataFetchResult
 import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.data.recomposition.InvalidationReason
 import ee.schimke.composeai.data.recomposition.RecompositionNode
 import ee.schimke.composeai.data.recomposition.RecompositionPayload
 import ee.schimke.composeai.data.recomposition.RecompositionProduct
@@ -329,9 +330,30 @@ open class AndroidRecompositionDataProductRegistry : DataProductRegistry {
     @Suppress("UNCHECKED_CAST")
     val ids = drained[0] as Array<String>
     val counts = drained[1] as LongArray
+    val invalidations = drained[2] as LongArray
     if (ids.isEmpty()) return emptyList()
-    return List(ids.size) { i -> RecompositionNode(nodeId = ids[i], count = counts[i].toInt()) }
+    return List(ids.size) { i ->
+      val count = counts[i].toInt()
+      RecompositionNode(
+        nodeId = ids[i],
+        count = count,
+        reason = reasonFor(count = count, invalidations = invalidations[i].toInt()),
+      )
+    }
   }
+
+  /**
+   * Attribute a scope's recomposition from its recomposition count vs how many times the runtime
+   * invalidated it with a snapshot value this window — same derivation as the desktop producer.
+   * v2 (#1605). See [InvalidationReason].
+   */
+  private fun reasonFor(count: Int, invalidations: Int): InvalidationReason =
+    when {
+      count <= 0 -> InvalidationReason.UNKNOWN
+      invalidations <= 0 -> InvalidationReason.PARAMETER_CHANGE
+      invalidations >= count -> InvalidationReason.STATE_READ
+      else -> InvalidationReason.BOTH
+    }
 
   private fun parseParams(params: JsonElement?): SubscribeParamsView? {
     if (params == null) return null
