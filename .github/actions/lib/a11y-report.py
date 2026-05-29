@@ -580,6 +580,16 @@ def cmd_comment(args: argparse.Namespace) -> int:
         "",
     ])
 
+    if status == ATF_UNAVAILABLE:
+        # ATF returned no data, so every current entry has empty findings —
+        # not because the issues were fixed but because nothing was checked.
+        # Diffing those empties against a baseline would render prior findings
+        # as "resolved" / "_No findings._", making a daemon failure look like
+        # a clean run. Surface only the warning + counts; the per-preview diff
+        # is meaningless until ATF data comes back.
+        sys.stdout.write("\n".join(lines).rstrip() + "\n")
+        return 0
+
     if findings_count == 0:
         lines.append("No accessibility findings.")
         lines.append("")

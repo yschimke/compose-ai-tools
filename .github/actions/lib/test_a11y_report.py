@@ -574,6 +574,25 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment([existing, new_clean], baseline_entries=[existing])
         self.assertEqual(body, "")
 
+    def test_atf_unavailable_does_not_render_findings_as_resolved(self):
+        # When ATF fails, copy-annotated still emits the manifest previews
+        # with empty findings. Diffing those against a baseline that had
+        # findings must NOT render them as changed-to-empty/"No findings" or
+        # "Resolved" — that would make a daemon failure look like the issues
+        # were fixed. Only the warning + counts should appear.
+        baseline = self._entry(
+            function="Bad", preview_id="x.Bad", findings=[_finding(level="ERROR")]
+        )
+        current = self._entry(function="Bad", preview_id="x.Bad", findings=[])
+        body = self._run_comment(
+            [current], baseline_entries=[baseline], status="atf-unavailable"
+        )
+        self.assertIn("ATF data unavailable", body)
+        self.assertNotIn("_No findings._", body)
+        self.assertNotIn("### `Bad`", body)
+        self.assertNotIn("Resolved", body)
+        self.assertNotIn("No accessibility findings", body)
+
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now
         # should be called out as resolved.
