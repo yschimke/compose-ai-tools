@@ -613,6 +613,7 @@ internal object AndroidPreviewSupport {
     val validatePreviewToolingPresentTask =
       if (
         !previewToolingDeclaredAtRegistration &&
+          extension.enforcePreviewToolingDependency.get() &&
           extension.failOnMissingPreviewTooling.get() &&
           mainRuntimeRoot != null
       ) {
