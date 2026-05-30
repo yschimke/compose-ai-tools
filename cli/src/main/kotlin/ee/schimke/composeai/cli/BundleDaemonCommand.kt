@@ -14,11 +14,12 @@ import kotlin.system.exitProcess
  * # Layout
  *
  * The packed bundle is a PNG+ZIP polyglot whose zip portion contains `classes/app.jar` (consumer
- * module + inlined project deps) plus `previews.json` (discovery output). We extract both to a temp
- * working directory, then launch a Java subprocess whose classpath joins
- * `$APP_HOME/lib-daemon-desktop/` (daemon + data-extension connectors) with
- * `$APP_HOME/lib-renderer/` (Compose Multiplatform + Skiko). The consumer's bytecode is exposed to
- * the daemon via `-Dcomposeai.daemon.userClassDirs=<extracted-jar>`, and the discovery manifest via
+ * module + inlined project deps), optionally embedded third-party jars under `libs/`, plus
+ * `previews.json` (discovery output). We extract them to a temp working directory, then launch a
+ * Java subprocess whose classpath joins `$APP_HOME/lib-daemon-desktop/` (daemon + data-extension
+ * connectors) with `$APP_HOME/lib-renderer/` (Compose Multiplatform + Skiko). The consumer's
+ * bytecode — the extracted app classes plus any embedded `libs/` jars — is exposed to the daemon
+ * via `-Dcomposeai.daemon.userClassDirs=<paths>`, and the discovery manifest via
  * `-Dcomposeai.daemon.previewsJsonPath=<extracted-previews-json>` — the same sysprops the Gradle
  * daemon launch path uses.
  *
@@ -26,12 +27,14 @@ import kotlin.system.exitProcess
  * additional plumbing. We don't wait on it from this command — `daemon` is `exec`-style: we print
  * one ready line on stderr and replace this process via `ProcessBuilder.inheritIO`.
  *
- * # Maven coordinates intentionally not resolved
+ * # Dependency resolution
  *
- * `bundle.json`'s `classpath[]` entries record Maven coordinates for every dependency that
- * contributed reachable classes to the rendered previews. v1 ignores them — the renderer's bundled
- * Compose stack supplies every API call the bundle's classes resolve against, and a full resolver
- * pass (download Maven, hash-verify, layer-on) is its own milestone. Same trade-off `bundle render`
+ * Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable third-party
+ * deps under `libs/`; those are extracted and joined onto the daemon's `userClassDirs` so a
+ * preview's own deps resolve with no network. For coordinate-mode bundles, `bundle.json`'s
+ * `ClasspathEntry.Maven` entries are still *not* resolved here — the renderer's bundled Compose
+ * stack supplies the common API surface, and a full coordinate-resolver pass (download Maven,
+ * hash-verify, layer-on) is its own milestone (#1632, Tier 3). Same trade-off `bundle render`
  * makes.
  */
 class BundleDaemonCommand(args: List<String>) : Command(args) {
@@ -51,9 +54,17 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val verbose = "--verbose" in args || "-v" in args
     val workDir = createTempWorkDir()
     val classesDir = workDir.resolve("classes").apply { mkdirs() }
+    val libsDir = workDir.resolve("libs").apply { mkdirs() }
     val previewsJson = workDir.resolve("previews.json")
     val zipBytes = BundleReader.extractZipBytes(file)
-    expandAppJarAndManifest(zipBytes, classesDir, previewsJson, file)
+    expandAppJarAndManifest(zipBytes, classesDir, libsDir, previewsJson, file)
+    // Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry the preview's reachable
+    // third-party deps under `libs/`. They're consumer classes, so they ride the daemon's
+    // `userClassDirs` holder (dirs-before-jars ordered, see UserClassLoaderHolder) alongside the
+    // extracted app classes — NOT the daemon/renderer `-cp`. Empty for coordinate bundles.
+    val libJars = libsDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sorted().orEmpty()
+    val userClassPath =
+      (listOf(classesDir) + libJars).joinToString(File.pathSeparator) { it.absolutePath }
 
     val daemonJars = locateSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {
@@ -81,7 +92,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       add("--enable-native-access=ALL-UNNAMED")
       // PROTOCOL.md § 3a — the daemon advertises capabilities lazily; the client
       // (BundleViewerPanel's DaemonClient) does the `initialize` round-trip on stdin.
-      add("-D${USER_CLASS_DIRS_PROP}=${classesDir.absolutePath}")
+      add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
       add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
       // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
@@ -93,6 +104,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     if (verbose) {
       System.err.println("[bundle-daemon] working dir: ${workDir.absolutePath}")
       System.err.println("[bundle-daemon] classes dir: ${classesDir.absolutePath}")
+      System.err.println("[bundle-daemon] embedded lib jars: ${libJars.size}")
       System.err.println("[bundle-daemon] previews.json: ${previewsJson.absolutePath}")
       System.err.println("[bundle-daemon] daemon jars: ${daemonJars.size}")
       System.err.println("[bundle-daemon] renderer jars: ${rendererJars.size}")
@@ -147,30 +159,41 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Extract `classes/app.jar` into [classesDir] and `previews.json` into [previewsJson]. Throws if
-   * either entry is missing — both are required for the daemon to come up against a usable preview
-   * index.
+   * Extract `classes/app.jar` into [classesDir], any embedded jars under `libs/` into [libsDir],
+   * and `previews.json` into [previewsJson]. Throws if app.jar or previews.json is missing — both
+   * are required for the daemon to come up against a usable preview index. The `libs/` directory is
+   * optional (only embedded-mode bundles carry it).
    */
   private fun expandAppJarAndManifest(
     zipBytes: ByteArray,
     classesDir: File,
+    libsDir: File,
     previewsJson: File,
     bundleFile: File,
   ) {
     var sawAppJar = false
     var sawPreviewsJson = false
+    val canonicalLibs = libsDir.canonicalFile
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
-        when (entry.name) {
-          "previews.json" -> {
+        val name = entry.name
+        when {
+          name == "previews.json" -> {
             previewsJson.writeBytes(zin.readBytes())
             sawPreviewsJson = true
           }
-          "classes/app.jar" -> {
+          name == "classes/app.jar" -> {
             val appJarBytes = zin.readBytes()
             expandJarBytesSafely(appJarBytes, classesDir)
             sawAppJar = true
+          }
+          !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
+            // Flatten to a safe basename under libsDir; guard against Zip Slip on a hostile bundle.
+            val dest = File(libsDir, File(name).name).canonicalFile
+            if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
+              dest.writeBytes(zin.readBytes())
+            }
           }
         }
         zin.closeEntry()
