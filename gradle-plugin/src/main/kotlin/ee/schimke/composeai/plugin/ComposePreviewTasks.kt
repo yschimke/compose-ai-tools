@@ -496,8 +496,16 @@ internal object ComposePreviewTasks {
       manifestPath.set(previewsJsonProvider)
       // @Optional @InputFile — see kdoc on `DaemonBootstrapTask.previewsManifest`. Matches the
       // Android registration's wire-up so descriptor invalidation is consistent across backends.
-      // No `mustRunAfter("composePreviewDiscover")` — see AndroidPreviewSupport.kt for why.
-      previewsManifest.set(previewOutputDir.map { it.file("previews.json") })
+      // Conditional Provider returns `null` when previews.json is absent; @Optional on @InputFile
+      // requires *unset*, not "set to a missing file" (Gradle fails the task on the latter).
+      previewsManifest.fileProvider(
+        previewOutputDir.flatMap { dir ->
+          project.providers.provider {
+            val f = dir.file("previews.json").asFile
+            if (f.isFile) f else null
+          }
+        }
+      )
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
       group = "compose preview"

@@ -1895,14 +1895,18 @@ internal object AndroidPreviewSupport {
       // @Optional @InputFile — present when composePreviewDiscover has populated previews.json,
       // missing on the very first warm. Drives Gradle to invalidate the launch descriptor (and
       // therefore re-trigger VS Code's descriptor-watcher respawn path) when the manifest first
-      // appears or its content changes. Order vs. composePreviewDiscover is intentionally NOT
-      // pinned with `mustRunAfter` — under the cold-start bundle's discover-then-daemon-start
-      // sequencing this would tighten the in-Gradle-invocation guarantee, but a soft ordering
-      // here interacted poorly with the functional-test cache assertions on CI. Without it, the
-      // descriptor still gets refreshed on the *next* coldStartBundle that includes discover —
-      // typically the user's first save after the initial refresh — so in-session recovery costs
-      // at most one stub-fallback render before the extension's mtime watcher respawns.
-      this.previewsManifest.set(previewOutputDir.map { it.file("previews.json") })
+      // appears or its content changes. Use a conditional Provider that returns `null` when the
+      // file is absent: `@Optional` on an @InputFile means the *property* may be unset, but if it
+      // is set the underlying file must exist (Gradle fails the task otherwise). A null-returning
+      // Provider leaves the property unset, which is what `@Optional` actually consumes.
+      this.previewsManifest.fileProvider(
+        previewOutputDir.flatMap { dir ->
+          project.providers.provider {
+            val f = dir.file("previews.json").asFile
+            if (f.isFile) f else null
+          }
+        }
+      )
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
   }
