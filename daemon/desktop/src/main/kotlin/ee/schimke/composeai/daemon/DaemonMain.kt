@@ -502,10 +502,15 @@ private fun installSigtermShutdownHook(host: RenderHost, originalStdin: java.io.
  * portable: when no producer has written, `data/fetch` returns `NotAvailable` rather than the wire
  * `-32020 kind not advertised`, which is what the panel needs to gate its chips correctly.
  *
- * Kinds whose producer is genuinely Android-bound (`resources/used`, `i18n/translations`, `a11y`,
- * `uiautomator`, `data/navigation`) are NOT registered here — see issue #1201 for the per-kind
- * portability triage. They stay unadvertised on desktop; the panel should honour
- * `ServerCapabilities.backend == "desktop"` to grey out the corresponding chips.
+ * Kinds whose producer is genuinely Android-bound (`resources/used`, `uiautomator`) are NOT
+ * registered here — see issue #1201 for the per-kind portability triage. They stay unadvertised on
+ * desktop; the panel should honour `ServerCapabilities.backend == "desktop"` to grey out the
+ * corresponding chips.
+ *
+ * `a11y` IS registered (overlay-only): ATF itself is Android-only, but the "what a screen reader
+ * sees" overlay + legend is portable — the desktop producer extracts Compose semantics from the
+ * scene and draws the overlay with AWT, shipping empty findings. See
+ * [DesktopAccessibilityDataProductRegistry].
  */
 internal fun buildDesktopExtensions(
   previewIndex: PreviewIndex,
@@ -626,13 +631,14 @@ internal fun buildDesktopExtensions(
     // `DesktopHost.acquireRecordingSession`. The around-composable observes pointer events via
     // `Modifier.pointerInput` on the Initial pass without consuming them, so the inner preview's
     // gesture detectors (`Modifier.transformable`, `Modifier.clickable`, …) keep working
-    // unchanged. Lives in `:daemon:desktop` for now since this is the first backend with live
-    // mode; a future `data/touch-overlay/connector/` module will host the planner so Android picks
-    // it up automatically when live mode lands on Robolectric.
+    // unchanged. The planner lives in the shared `:data-touch-overlay-connector` module so both
+    // backends register the same `TouchOverlayPreviewOverrideExtension` — Android wires it from
+    // `RobolectricHost.previewOverrideExtensions` and advertises the extension descriptor from
+    // `:daemon:android`'s `DaemonMain`.
     //
     // [dataExtensionDescriptors] advertises `TouchOverlayExtension.ID` so the panel / MCP can
     // discover the extension via `initialize.capabilities.dataExtensions` and gate the per-card
-    // "touch overlay" toggle on the daemon actually shipping it (today: desktop only).
+    // "touch overlay" toggle on the daemon actually shipping it.
     Extension(
       id = "data/touch-overlay",
       displayName = "Touch event overlay",
@@ -729,6 +735,44 @@ internal fun buildDesktopExtensions(
         id = "data/navigation",
         displayName = "Navigation snapshot",
         dataProductRegistry = NavigationDataProductRegistry(rootDir = dataRoot),
+      )
+    }
+    // Issue #1604 — daemon-side scroll artefact production on CMP-desktop. Unlike the registries
+    // above (whose producers are still Android-bound), scroll is fully portable: the registry
+    // lives in the pure-JVM `:data-scroll-connector`, and `:renderer-desktop` already carries the
+    // `runComposeUiTest`-driven capture. The registry advertises `render/scroll/long` /
+    // `render/scroll/gif` as `requiresRerender = true`, so a missing scroll artefact returns
+    // `Outcome.RequiresRerender("scroll-long"|"scroll-gif")` and the dispatcher queues a
+    // per-preview re-render that `RenderEngine.runScrollScenario` routes into
+    // `renderScrollPreview`, writing to the same
+    // `<dataRoot>/render-scroll-{long,gif}/<id>.{png,gif}`
+    // paths Gradle does so the host's `gradleService.readPreviewImage` reads the same file either
+    // way. Descriptors are advertised too so MCP / `previewExtensions/list` clients see the scroll
+    // surface — exactly mirroring `:daemon:android`'s `DaemonMain`.
+    tryAdd("scroll") {
+      Extension(
+        id = "scroll",
+        displayName = "Scrolling preview artifacts",
+        dataProductRegistry = ScrollDataProductRegistry(rootDir = dataRoot),
+        previewExtensionDescriptors =
+          listOf(
+            ee.schimke.composeai.scroll.ScrollPreviewExtension.longScrollDescriptor,
+            ee.schimke.composeai.scroll.ScrollPreviewExtension.gifScrollDescriptor,
+          ),
+      )
+    }
+    // Accessibility (desktop, overlay-only). Unlike Android — where the producer runs ATF over the
+    // Robolectric View tree — the desktop path extracts Compose semantics from the scene's
+    // `semanticsOwners` and draws the Paparazzi-style overlay + legend with AWT (see
+    // `DesktopAccessibility*`). ATF is Android-only, so findings are always empty; `a11y/atf` ships
+    // an empty `findings` array so the CLI's per-preview fetch parses and the module report stays
+    // `status=null` (no global "ATF data unavailable" banner). No `previewExtensionDescriptors` —
+    // the overlay is produced post-capture by the RenderEngine, not by an around-composable.
+    tryAdd("a11y") {
+      Extension(
+        id = "a11y",
+        displayName = "Accessibility (desktop, overlay-only)",
+        dataProductRegistry = DesktopAccessibilityDataProductRegistry(rootDir = dataRoot),
       )
     }
     if (displayFilterEnabled) {

@@ -19,6 +19,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // sandbox for `record_preview`'s `uia.*` script events.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)

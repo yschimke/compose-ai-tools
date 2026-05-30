@@ -9,6 +9,7 @@ import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

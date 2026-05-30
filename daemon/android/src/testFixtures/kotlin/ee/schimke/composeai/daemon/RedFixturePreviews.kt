@@ -127,6 +127,46 @@ fun DarkAwareSquare() {
   Box(modifier = Modifier.fillMaxSize().background(bg))
 }
 
+/**
+ * Reads `ContextCompat.checkSelfPermission(...)` for `android.permission.CAMERA` — the exact call
+ * shape `samples/android`'s `PermissionGatedPreview` uses and the path the panel's permission UI
+ * targets. Paints green when granted, red when denied. Used by `PermissionsOverrideIntegrationTest`
+ * to prove `renderNow.overrides.permissions` reaches `PermissionsPreviewOverrideExtension.plan(...)`,
+ * the around-composable seeds Robolectric's `ShadowApplication.grantPermissions`, and by
+ * `PermissionsDataFetchE2ETest` to prove the `ShadowContextWrapperPermissionTracker` shadow
+ * intercepts the call and records the query into the cross-classloader bridge the registry reads.
+ *
+ * **Why `ContextCompat.checkSelfPermission` and not `context.checkSelfPermission`.** They look
+ * interchangeable but route differently inside the Android framework: `Context.checkSelfPermission
+ * (String)` is implemented in `ContextImpl` as a direct `PermissionManager.checkPermission(...)`
+ * call that bypasses `ContextWrapper.checkPermission(String, int, int)`, where the shadow lives.
+ * `ContextCompat.checkSelfPermission(context, perm)` instead calls `context.checkPermission(perm,
+ * Process.myPid(), Process.myUid())` — which on any `ContextWrapper`-rooted context (every
+ * Activity) dispatches into `ContextWrapper.checkPermission`, the path
+ * `ShadowContextWrapperPermissionTracker` intercepts. Pixel correctness held either way because
+ * `ShadowApplication`'s grant state is consulted by both code paths; the query-tracking surface
+ * only sees the `ContextCompat` path.
+ */
+@Composable
+fun PermissionGatedSquare() {
+  val context = androidx.compose.ui.platform.LocalContext.current
+  // Inlines what `androidx.core.content.ContextCompat.checkSelfPermission(context, perm)` does:
+  // a virtual `context.checkPermission(perm, Process.myPid(), Process.myUid())` dispatch. On any
+  // `ContextWrapper`-rooted context (every Activity) that lands in `ContextWrapper.checkPermission
+  // (String, int, int)` — the method `ShadowContextWrapperPermissionTracker` shadows. Using the
+  // raw call avoids adding `androidx.core:core` to the test-fixtures source set just to import
+  // the static helper; the production sample (`samples/android/.../PermissionGatedPreview.kt`)
+  // imports `ContextCompat` because it's already on the consumer's classpath.
+  val granted =
+    context.checkPermission(
+      android.Manifest.permission.CAMERA,
+      android.os.Process.myPid(),
+      android.os.Process.myUid(),
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+  val color = if (granted) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color))
+}
+
 @Composable
 fun ResourceReadingPreview() {
   val label = stringResource(R.string.compose_ai_resource_used_label)

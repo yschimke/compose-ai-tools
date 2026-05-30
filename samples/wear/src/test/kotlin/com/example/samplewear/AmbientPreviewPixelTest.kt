@@ -27,10 +27,10 @@ class AmbientPreviewPixelTest {
   private val rendersDir = File("build/compose-previews/renders")
 
   private val interactivePng =
-    File(rendersDir, "AmbientPreviewsKt.AmbientStatusInteractivePreview_Ambient_body_interactive.png")
+    File(rendersDir, "AmbientStatusInteractivePreview_Ambient_body_interactive.png")
 
   private val ambientPng =
-    File(rendersDir, "AmbientPreviewsKt.AmbientStatusAmbientPreview_Ambient_body_ambient.png")
+    File(rendersDir, "AmbientStatusAmbientPreview_Ambient_body_ambient.png")
 
   /**
    * Both PNGs must exist and differ — same composition body, the only difference is the

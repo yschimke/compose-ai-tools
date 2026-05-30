@@ -462,6 +462,7 @@ export type ExtensionToWebview =
           replaceExisting?: boolean;
       }
     | { command: "setLoading"; previewId?: string }
+    | { command: "clearLoading"; previewId: string }
     | { command: "markAllLoading" }
     | { command: "setError"; previewId: string; message: string }
     | { command: "showMessage"; text: string }
@@ -743,6 +744,28 @@ export type RemoteComposeChangeDetail =
     | { field: "profile"; value: RemoteComposeProfile | null }
     | { field: "namedValue"; name: string; value: RemoteNamedValue };
 
+/**
+ * Detail bag carried by `setPermissionsOverride`. Discriminated union so a single
+ * post-message channel covers every panel-side affordance on the permissions tab
+ * body — per-row Grant / Deny / Clear buttons, the "Add permission" form, and the
+ * "Clear all" action — without exploding into one message per shape.
+ *
+ *  * `field: "setGrant"` — pin `permission` to `granted` / `denied` in the cumulative
+ *    override bag the host maintains per preview.
+ *  * `field: "clearGrant"` — remove the named permission from the bag. The next render
+ *    falls back to whatever Robolectric's manifest baseline carries for it.
+ *  * `field: "clearAll"` — replace the cumulative bag with an empty `PermissionsOverride`,
+ *    so the next render strips every panel-pinned grant.
+ */
+export type PermissionsChangeDetail =
+    | {
+          field: "setGrant";
+          permission: string;
+          grant: "granted" | "denied";
+      }
+    | { field: "clearGrant"; permission: string }
+    | { field: "clearAll" };
+
 /** Messages from webview to extension */
 export type WebviewToExtension =
     /**
@@ -838,14 +861,6 @@ export type WebviewToExtension =
      * faded-card click.
      */
     | { command: "requestRefresh" }
-    /**
-     * Minimal-mode user clicked the "Apply plugin" link in the panel's
-     * minimal-mode banner. Extension routes to
-     * `composePreview.openModuleBuildFile` against the current scope file
-     * so the user can add `id("ee.schimke.composeai.preview")` to enable
-     * full mode (daemon + auto-render on save).
-     */
-    | { command: "openModuleBuildFile" }
     /**
      * Webview reports current geometric visibility of preview cards plus
      * cards it predicts will scroll into view next based on scroll velocity
@@ -1119,6 +1134,22 @@ export type WebviewToExtension =
           command: "setRemoteComposeNamedValue";
           previewId: string;
           change: RemoteComposeChangeDetail;
+      }
+    /**
+     * Edit dispatched from the panel's permissions tab body (Inspection bundle,
+     * `compose/permissions` chip). The presenter's per-row Grant / Deny / Clear
+     * buttons, the "Add permission" input, and the "Clear overrides" action all
+     * bubble a `permissions-override-change` CustomEvent up to the bundle body
+     * wrapper, which re-emits it as this message. The extension host merges the
+     * change into its per-preview `PermissionsOverride` bag and dispatches a fresh
+     * `renderNow.overrides.permissions` so the daemon's
+     * `PermissionsOverrideExtension` re-seeds Robolectric's
+     * `ShadowApplication.grantPermissions/denyPermissions` for the next composition.
+     */
+    | {
+          command: "setPermissionsOverride";
+          previewId: string;
+          change: PermissionsChangeDetail;
       };
 
 /**

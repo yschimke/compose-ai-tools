@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import org.junit.runners.model.FrameworkMethod
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.internal.bytecode.InstrumentationConfiguration
 
 /**
@@ -32,7 +33,7 @@ import org.robolectric.internal.bytecode.InstrumentationConfiguration
  * single cached sandbox (the cache key would be identical) and concurrent renders queue on one
  * single-thread executor.
  */
-class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClass) {
+open class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClass) {
 
   /**
    * Snapshot of the worker-index hint at construction time. The ThreadLocal is set on the pool
@@ -48,6 +49,44 @@ class SandboxHoldingRunner(testClass: Class<*>) : RobolectricTestRunner(testClas
    * across runs.
    */
   private val poolWorkerIndex: Int? = SandboxHoldingHints.workerIndex.get()
+
+  /**
+   * Mirrors the `application=android.app.Application` line that
+   * [ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask] writes to the consumer's
+   * `ee/schimke/composeai/renderer/robolectric.properties` for the Gradle `composePreviewRender`
+   * path. That properties file is package-scoped — Robolectric only finds it for tests under
+   * `ee.schimke.composeai.renderer`, so the daemon's [RobolectricHost.SandboxRunner] (package
+   * `ee.schimke.composeai.daemon`) never picks it up. Without an explicit override here, Robolectric
+   * falls back to the consumer's `AndroidManifest.xml` and invokes the production `Application`
+   * subclass, defeating the renderer's "previews shouldn't run app-lifecycle init" contract.
+   *
+   * Setting the global config's `application` field is equivalent to the properties-file line: it
+   * supplies the default that gets merged with `@Config` on the test class. The host loads
+   * `android.app.Application` via the daemon-classpath's `android.jar`; the sandbox re-resolves it
+   * by FQN through its instrumenting loader, same as Robolectric's own internals.
+   *
+   * `composeai.daemon.useConsumerApplication=true` (sourced from `composePreview.useConsumerApplication`
+   * via [ee.schimke.composeai.plugin.daemon.DaemonBootstrapTask]) restores the historical "Robolectric
+   * reads the manifest" behaviour for previews that genuinely depend on consumer-Application init
+   * (Koin/Hilt seeded in `onCreate`, etc.). Consumers opting in are responsible for making their
+   * `Application.onCreate` Robolectric-safe — multiple sandbox workers run in the same JVM, so any
+   * process-global side effect (`URL.setURLStreamHandlerFactory`, static `init {}` blocks that throw
+   * on second invocation) must be idempotent.
+   *
+   * `buildGlobalConfig` is `@Deprecated` in Robolectric 4.16 in favour of a `Configurer` extension,
+   * but it remains the documented seam for "default for tests in this runner" overrides and is still
+   * invoked by `RobolectricTestRunner.getConfig`. Migrating to a `Configurer` would require
+   * registering it via `META-INF/services` and rebuilding the merge ordering by hand; the deprecated
+   * hook does exactly what the consumer-side `robolectric.properties` line does without that churn.
+   */
+  @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+  override fun buildGlobalConfig(): Config {
+    val parent = super.buildGlobalConfig()
+    val useConsumerApp =
+      System.getProperty("composeai.daemon.useConsumerApplication", "false").toBoolean()
+    if (useConsumerApp) return parent
+    return Config.Builder(parent).setApplication(android.app.Application::class.java).build()
+  }
 
   override fun createClassLoaderConfig(method: org.junit.runners.model.FrameworkMethod):
     InstrumentationConfiguration {

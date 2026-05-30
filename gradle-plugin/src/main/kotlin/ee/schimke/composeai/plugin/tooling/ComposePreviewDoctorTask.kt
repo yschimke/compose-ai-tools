@@ -64,14 +64,51 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
    */
   @get:Input abstract val injectedDependenciesJson: Property<String>
 
+  /**
+   * True when this module declared a known `@Preview` tooling coord directly. Captured at
+   * `onVariants` time inside `AndroidPreviewSupport.registerAndroidTasks` — at that point
+   * `AndroidPreviewSupport.hasPreviewDependency(project, variant)` has the consumer's full
+   * `dependencies { }` block to inspect. Feeds `CompatRules.checkUndeclaredPreviewTooling`. Default
+   * `true` so the check stays silent when the input isn't wired (e.g. an older plugin version's
+   * doctor task running against a newer model).
+   */
+  @get:Input abstract val previewToolingDeclared: Property<Boolean>
+
+  /**
+   * Value of `composePreview.enforcePreviewToolingDependency` at registration time — wired through
+   * the Property so an `-PcomposePreview.enforcePreviewToolingDependency=false` override flows into
+   * the finding. Default `true` for the same parity reason as [previewToolingDeclared].
+   */
+  @get:Input abstract val enforcePreviewToolingDependency: Property<Boolean>
+
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
   @TaskAction
   fun run() {
     val variantName = variant.get()
-    val main = collectModuleVersions(mainRuntimeRoot.orNull)
+    val mainRoot = mainRuntimeRoot.orNull
+    val main = collectModuleVersions(mainRoot)
     val test = collectModuleVersions(testRuntimeRoot.orNull)
-    val findings = CompatRules.evaluate(main, test, gradleVersion.orNull)
+    // Compute "is preview tooling reachable through transitively-resolved deps?" at action time
+    // by walking the resolved `${variant}RuntimeClasspath` graph (issue #1549). Doing it here
+    // rather than as an `@Input` Property avoids forcing eager configuration-time resolution —
+    // `mainRuntimeRoot` is a `Provider<ResolvedComponentResult>` whose value materialises at
+    // execution. Independent of [previewToolingDeclared]; when transitive=true and direct=false,
+    // `CompatRules.checkUndeclaredPreviewTooling` surfaces the soft "pin the dep locally"
+    // recommendation under `enforcePreviewToolingDependency = true` too.
+    val transitivePreviewToolingDetected =
+      mainRoot?.let {
+        ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling(it)
+      } ?: false
+    val findings =
+      CompatRules.evaluate(
+        main,
+        test,
+        gradleVersion.orNull,
+        previewToolingDeclared = previewToolingDeclared.getOrElse(true),
+        enforcePreviewToolingDependency = enforcePreviewToolingDependency.getOrElse(true),
+        transitivePreviewToolingDetected = transitivePreviewToolingDetected,
+      )
     val injections = decodeInjectedDependencys(injectedDependenciesJson.getOrElse("[]"))
     val report =
       DoctorModuleReport(

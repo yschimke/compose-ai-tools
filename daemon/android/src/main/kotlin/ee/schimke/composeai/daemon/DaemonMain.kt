@@ -529,6 +529,27 @@ fun main(args: Array<String>) {
                 ),
             )
           }
+          // Issue #1528 — daemon-side scroll artefact production. The registry advertises
+          // `render/scroll/long` and `render/scroll/gif` as `requiresRerender = true`, so a
+          // missing scroll artefact returns `Outcome.RequiresRerender("scroll-long"|"scroll-gif")`
+          // and the dispatcher queues a per-preview re-render in the right scenario instead of
+          // the host falling back to a module-wide Gradle `composePreviewRenderAll`. Writes to
+          // the same `<modulePreviewsDir>/data/render-scroll-{long,gif}/<id>.{png,gif}` paths
+          // Gradle does, so the host's `gradleService.readPreviewImage` reads the same file
+          // either way. Descriptors are also advertised here so MCP /
+          // `previewExtensions/list` clients see the scroll extension surface.
+          tryAdd("scroll") {
+            Extension(
+              id = "scroll",
+              displayName = "Scrolling preview artifacts",
+              dataProductRegistry = ScrollDataProductRegistry(rootDir = dataRoot),
+              previewExtensionDescriptors =
+                listOf(
+                  ee.schimke.composeai.scroll.ScrollPreviewExtension.longScrollDescriptor,
+                  ee.schimke.composeai.scroll.ScrollPreviewExtension.gifScrollDescriptor,
+                ),
+            )
+          }
           // UIAutomator-shaped script events (`uia.click`, `uia.inputText`, etc.) plus the
           // `uia/hierarchy` data product (#874). Always wired on the Android backend — the
           // dispatch path lives in RobolectricHost and the hierarchy producer ride along on

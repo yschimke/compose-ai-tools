@@ -222,6 +222,35 @@ export function paintBundleBoxesEverywhere(
     }
 }
 
+/**
+ * Paint [bundleId]'s boxes on the focused card only, or tear the layer
+ * down when there is no focused card. This is the production paint path
+ * for bundle overlays: bundles scope to the focused preview, and
+ * `bundleChipBar` / `<data-tabs>` are hidden outside focus layout, so a
+ * bundle must never paint an overlay on an ambient grid selection
+ * (settled "Open question 1 — Multi-preview selection" in
+ * `docs/design/EXTENSION_DATA_EXPOSURE.md`).
+ *
+ * Passing `null` (grid/flow/column layout, or focus mode with no card
+ * selected) clears every layer the bundle previously stamped — without
+ * this, a layer painted while a card was focused would linger on that
+ * card after the user dropped back to the grid (#1567). Passing a card
+ * with no `data-preview-id` is treated the same as `null` since there's
+ * no preview to compute boxes for.
+ */
+export function paintBundleBoxesForFocus(
+    bundleId: string,
+    focusedCard: HTMLElement | null,
+    computeOverlay: (previewId: string) => readonly OverlayBox[],
+): void {
+    const previewId = focusedCard?.dataset.previewId;
+    if (!focusedCard || !previewId) {
+        clearBundleBoxes(null, bundleId);
+        return;
+    }
+    paintBundleBoxes(focusedCard, bundleId, computeOverlay(previewId));
+}
+
 function isCardHidden(card: HTMLElement): boolean {
     if (card.hasAttribute("hidden")) return true;
     // happy-dom doesn't run CSS layout so `getComputedStyle` only

@@ -16,10 +16,12 @@ import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.DataExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionCapability
 import ee.schimke.composeai.data.render.extensions.DataExtensionConstraints
+import ee.schimke.composeai.data.render.extensions.DataExtensionHookKind
 import ee.schimke.composeai.data.render.extensions.DataExtensionId
 import ee.schimke.composeai.data.render.extensions.DataExtensionPhase
 import ee.schimke.composeai.data.render.extensions.PlannedDataExtension
-import ee.schimke.composeai.data.render.extensions.compose.AroundComposableExtension
+import ee.schimke.composeai.data.render.extensions.compose.AroundComposableHook
+import ee.schimke.composeai.data.render.extensions.compose.ExtensionComposeContext
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -50,31 +52,54 @@ import kotlinx.serialization.json.JsonElement
  *
  * Lifecycle:
  *
- * * On enter — [PermissionsController.set] is called with the seed (clears the map when null).
- *   `DisposableEffect(seed)` re-runs only when the override identity changes, so a subsequent
- *   `renderNow.overrides.permissions` with the same shape doesn't churn the controller.
- * * On dispose — clears the override (matches `KeyboardOverrideExtension`'s on-dispose
- *   semantics).
+ * * On construction (planner phase, before composition starts) — [PermissionsController.set]
+ *   is called with the seed (clears the map when null). The seed must land **before** the
+ *   first composition pass so that consumer code reading `Context.checkSelfPermission(...)` on
+ *   the very first composition observes the override; a previous shape applied the seed inside
+ *   a `DisposableEffect(seed)` whose block runs *after* composition, leaving the screen on the
+ *   pre-seed branch for one full render. See `PermissionsOverrideIntegrationTest` in
+ *   `:daemon:android` for the regression that pins this.
+ * * On dispose (composition leaves the tree) — clears the override (matches
+ *   `KeyboardOverrideExtension`'s on-dispose semantics).
  *
  * Runs in [DataExtensionPhase.OuterEnvironment] so the controller's Robolectric grant state is
  * primed before the user-environment phase reaches preview content — any `LaunchedEffect`-driven
  * permission check composed in user code sees the override.
  */
 class PermissionsOverrideExtension(private val seed: PermissionsOverride? = null) :
-  AroundComposableExtension(
-    id = ID,
-    constraints =
-      DataExtensionConstraints(
-        phase = DataExtensionPhase.OuterEnvironment,
-        provides = setOf(DataExtensionCapability(PermissionsDataProductRegistry.KIND)),
-      ),
-  ) {
+  AroundComposableHook {
+
+  override val id: DataExtensionId = ID
+
+  override val hooks: Set<DataExtensionHookKind> = setOf(DataExtensionHookKind.AroundComposable)
+
+  override val constraints: DataExtensionConstraints =
+    DataExtensionConstraints(
+      phase = DataExtensionPhase.OuterEnvironment,
+      provides = setOf(DataExtensionCapability(PermissionsDataProductRegistry.KIND)),
+    )
+
+  init {
+    // Apply the seed eagerly so `Context.checkSelfPermission(...)` reads through the new
+    // `ShadowApplication` grant state on the very first composition. The planner constructs a
+    // fresh instance per render in the `OuterEnvironment` phase, which runs before user-environment
+    // composition starts, so this is the right hook for "seed before any consumer read".
+    //
+    // `seed = null` triggers `PermissionsController.set(null)` which clears the previous render's
+    // grant map and re-syncs `ShadowApplication` to a permission-free baseline — the always-on
+    // planner contract means every render that omits an override still gets a clean slate, not
+    // whatever the previous render left behind.
+    PermissionsController.set(seed)
+  }
+
   @Composable
-  override fun AroundComposable(content: @Composable () -> Unit) {
-    DisposableEffect(seed) {
-      PermissionsController.set(seed)
-      onDispose { PermissionsController.set(null) }
-    }
+  override fun Around(context: ExtensionComposeContext, content: @Composable () -> Unit) {
+    // Stamp the active previewId before the preview content composes so the shadow-driven
+    // `recordQuery` lands in this preview's bridge scope, not a concurrent preview's (issue #1593).
+    // Plain call (not a SideEffect) so it runs during composition, ahead of any
+    // `ContextCompat.checkSelfPermission(...)` read in `content()`.
+    PermissionsController.beginRender(context.previewId)
+    DisposableEffect(seed) { onDispose { PermissionsController.set(null) } }
     content()
   }
 
@@ -183,12 +208,96 @@ class PermissionsDataProductRegistry : DataProductRegistry {
     // through the controller without a seed, and the panel still wants to surface that. An empty
     // payload (no grants, no queries) is filtered out so we don't masquerade `NotAvailable`.
     val grants = overrides?.permissions?.grants.orEmpty() + PermissionsController.grants.value
-    val queried = PermissionsController.queried.value
+    // Read the bridge by the previewId the sandbox stamped its queries under. Prefer the render's
+    // own `previewContext.previewId` (literally `spec.previewId`, the exact key the sandbox-side
+    // controller used) and fall back to the registry's `previewId` argument when no context is
+    // attached (connector-only tests, where the bridge is absent and the in-CL controller answers).
+    val scope = previewContext?.previewId ?: previewId
+    val queried = readQueriedAcrossClassloaders(scope)
     if (grants.isEmpty() && queried.isEmpty()) {
       clear(previewId)
       return
     }
     capture(previewId, payloadFor(grants, queried))
+  }
+
+  /**
+   * Read the queried-permission list with cross-classloader awareness. In production, the daemon's
+   * registry runs in the host classloader, while
+   * [ShadowContextWrapperPermissionTracker]-driven `recordQuery` writes land in the sandbox
+   * classloader's [PermissionsController] static state — different `static` per classloader, so the
+   * host-CL controller's `queried.value` is empty even though queries fired. The
+   * [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge]
+   * is a do-not-acquire singleton shared across the boundary, so we prefer it when reachable.
+   *
+   * Fallback to [PermissionsController.queried] keeps connector-only unit tests
+   * (`PermissionsDataProductTest`) working unchanged — they exercise both sides from a single
+   * classloader where the controller's in-CL state IS the source of truth.
+   */
+  private fun readQueriedAcrossClassloaders(scope: String): List<String> {
+    val bridge = SandboxPermissionsBridgeReader.tryLoad()
+    val controllerQueried = PermissionsController.queried.value
+    if (bridge == null) return controllerQueried
+    val bridgeQueried = bridge.snapshot(scope)
+    // Union of bridge and same-CL controller views, preserving bridge insertion order first and
+    // appending controller-only entries (the rare same-CL `:daemon:android` test path where a
+    // direct controller call wrote to in-CL state but the bridge was the loaded singleton).
+    if (bridgeQueried.isEmpty()) return controllerQueried
+    if (controllerQueried.isEmpty()) return bridgeQueried
+    val seen = LinkedHashSet(bridgeQueried)
+    seen.addAll(controllerQueried)
+    return seen.toList()
+  }
+
+  /**
+   * Reflective lookup of [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * Cached per JVM (object init). `null` means the bridge isn't on the classpath (connector-only
+   * unit tests; non-daemon consumers) — the registry falls back to the in-CL controller state.
+   */
+  private class SandboxPermissionsBridgeReader(
+    private val snapshotMethod: java.lang.reflect.Method,
+  ) {
+    fun snapshot(scope: String): List<String> =
+      try {
+        @Suppress("UNCHECKED_CAST")
+        (snapshotMethod.invoke(null, scope) as Array<String>).toList()
+      } catch (_: ReflectiveOperationException) {
+        emptyList()
+      }
+
+    companion object {
+      private const val BRIDGE_FQN: String =
+        "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
+
+      @Volatile private var resolved: SandboxPermissionsBridgeReader? = null
+      @Volatile private var resolutionAttempted: Boolean = false
+
+      fun tryLoad(): SandboxPermissionsBridgeReader? {
+        if (resolutionAttempted) return resolved
+        synchronized(this) {
+          if (resolutionAttempted) return resolved
+          val r =
+            try {
+              val cls =
+                Class.forName(
+                  BRIDGE_FQN,
+                  true,
+                  PermissionsDataProductRegistry::class.java.classLoader,
+                )
+              SandboxPermissionsBridgeReader(
+                snapshotMethod = cls.getMethod("snapshot", String::class.java)
+              )
+            } catch (_: ClassNotFoundException) {
+              null
+            } catch (_: NoSuchMethodException) {
+              null
+            }
+          resolved = r
+          resolutionAttempted = true
+          return r
+        }
+      }
+    }
   }
 
   private fun payloadFor(

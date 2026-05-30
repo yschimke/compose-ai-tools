@@ -52,7 +52,7 @@ fun simpleNotificationPreview(context: Context): Notification =
 Working example: [samples/android/src/main/kotlin/com/example/sampleandroid/NotificationPreviews.kt](../samples/android/src/main/kotlin/com/example/sampleandroid/NotificationPreviews.kt).
 
 The renderer side that picks these up is
-[`NotificationPreviewComposable`](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt)
+[`NotificationPreviewComposable`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt)
 in `:renderer-android`.
 
 ### `@Preview` + `NotificationContent` — Studio preview pane + multi-preview
@@ -240,7 +240,7 @@ Captured fields:
   MessagingStyle message (sender resolved from `sender_person` or the legacy
   `sender` extras key).
 
-Implementation: [renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt).
+Implementation: [renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt).
 
 ### Coverage
 
@@ -301,7 +301,7 @@ up as a PR comment the same way UI preview diffs do.
 ## Related
 
 - [Issue #1249](https://github.com/yschimke/compose-ai-tools/issues/1249) — design discussion and rollout plan.
-- [`preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt`](../preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt) — annotation source.
-- [`renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt`](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt) — renderer entry point.
-- [`renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt`](../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt) — sidecar schema and writer.
+- [`api/preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt`](../api/preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/NotificationPreview.kt) — annotation source.
+- [`renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationPreviewRenderer.kt) — renderer entry point.
+- [`renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt`](../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/NotificationSidecar.kt) — sidecar schema and writer.
 - [`samples/android/src/main/kotlin/com/example/sampleandroid/`](../samples/android/src/main/kotlin/com/example/sampleandroid/) — end-to-end working samples.

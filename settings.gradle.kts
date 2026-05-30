@@ -7,6 +7,14 @@ pluginManagement {
   }
 }
 
+// The per-project conventions that used to live in the root build's `allprojects {}` block (ktfmt
+// + googleStyle + the history-gate test system property) now live in `ComposeAiBaseConventionsPlugin`
+// (build-logic), applied by each module via `plugins { id("composeai.base-conventions") }`. Isolated
+// Projects forbids the root build configuring its siblings, and `gradle.lifecycle.beforeProject`
+// can't apply an included-build plugin (its imperative `pluginManager.apply(id)` doesn't resolve
+// against `pluginManagement`), so explicit per-module application is the IP-safe route — and it
+// keeps `googleStyle()` typed (the convention plugin's classpath carries the ktfmt type).
+
 // Snapshot probe for the SDK compatibility matrix's snapshot cells. Pulls Robolectric
 // snapshots (which carry API 37 fixes ahead of the next stable release) from the new Sonatype
 // Central Maven snapshots endpoint so `:samples:sdk-matrix` can render at SDK 37. The legacy
@@ -77,7 +85,7 @@ project(":tui-cli").projectDir = file("tui-cli")
 // "Built-in scripts" / clean-API discussion.
 include(":preview-data-api")
 
-project(":preview-data-api").projectDir = file("preview-data-api")
+project(":preview-data-api").projectDir = file("api/preview-data-api")
 
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
@@ -86,7 +94,7 @@ project(":preview-data-api").projectDir = file("preview-data-api")
 // this library, keeping a single source of truth.
 include(":gradle-preview-driver")
 
-project(":gradle-preview-driver").projectDir = file("gradle-preview-driver")
+project(":gradle-preview-driver").projectDir = file("api/gradle-preview-driver")
 
 // `:cli-scripting` (the Kotlin-scripting host for `compose-preview script <path>`) was removed
 // in the step C carve-out — see issue #1084 / the clean-API discussion. Scripting now lives in
@@ -101,15 +109,27 @@ include(":bundle-viewer")
 
 include(":preview-annotations")
 
+project(":preview-annotations").projectDir = file("api/preview-annotations")
+
 include(":notification-preview-runtime")
+
+project(":notification-preview-runtime").projectDir = file("runtimes/notification")
 
 include(":glance-preview-runtime")
 
+project(":glance-preview-runtime").projectDir = file("runtimes/glance")
+
 include(":appwidget-preview-runtime")
+
+project(":appwidget-preview-runtime").projectDir = file("runtimes/appwidget")
 
 include(":typography-preview-runtime")
 
+project(":typography-preview-runtime").projectDir = file("runtimes/typography")
+
 include(":splash-preview-runtime")
+
+project(":splash-preview-runtime").projectDir = file("runtimes/splash")
 
 include(":samples:android")
 
@@ -125,6 +145,8 @@ include(":samples:sdk-matrix")
 
 include(":samples:wear")
 
+include(":samples:xr-glimmer")
+
 include(":samples:cmp")
 
 include(":samples:cmp-shared")
@@ -135,7 +157,11 @@ include(":samples:remotecompose")
 
 include(":renderer-desktop")
 
+project(":renderer-desktop").projectDir = file("renderers/desktop")
+
 include(":renderer-android")
+
+project(":renderer-android").projectDir = file("renderers/android")
 
 include(":daemon:core")
 
@@ -196,6 +222,10 @@ project(":data-scroll-core").projectDir = file("data/scroll/core")
 include(":data-scroll-android")
 
 project(":data-scroll-android").projectDir = file("data/scroll/android")
+
+include(":data-scroll-connector")
+
+project(":data-scroll-connector").projectDir = file("data/scroll/connector")
 
 include(":data-history-core")
 
@@ -358,15 +388,18 @@ include(":daemon:desktop")
 
 include(":daemon:harness")
 
-// Stage-2 spike for the kotlinc-in-daemon investigation (#1332 → follow-up). Standalone
-// proof-of-concept that the Kotlin Build Tools API can compile a `@Composable` source file
-// with the Compose compiler plugin loaded, in-process, with no Gradle. NOT wired into the
-// daemon yet — see docs/daemon/BTA-SPIKE.md. Remove this module if the spike abandons.
+// Standalone Kotlin Build Tools API parity/soak harness (#1332). The stage-2 spike it began as
+// has SHIPPED: in-process compile is wired into `:daemon:core` (`bta/BtaCompileSession`,
+// `bta/DefaultBtaCompileService`, the `compileSources` JSON-RPC method) behind the experimental
+// workspace flag `composePreview.daemon.compileInProcess` — see docs/daemon/COMPILE-IN-PROCESS.md.
+// Nothing in production depends on this module; it's retained only for its BTA-impl parity, IC,
+// and classloader-leak soak tests (`./gradlew :daemon:bta-host:test`, see
+// docs/daemon/BTA-SPIKE.md).
 include(":daemon:bta-host")
 
 // Companion fixture for `:daemon:bta-host` — same Kotlin source compiled through Gradle's
-// standard `compileKotlin`, so the BTA spike's Gradle-parity test has a reference artefact
-// to diff against. Same lifecycle as `:daemon:bta-host`; remove together with it.
+// standard `compileKotlin`, so the BTA parity test has a reference artefact to diff against.
+// Same lifecycle as `:daemon:bta-host`; remove together with it.
 include(":daemon:bta-host-fixture")
 
 include(":mcp")
@@ -396,19 +429,44 @@ project(":render-session-embedded-desktop").projectDir = file("render-session/em
 // (Bazel rules, Amper tasks in `yschimke/compose-ai-contrib`). See `contrib/README.md`.
 include(":render-cli")
 
+project(":render-cli").projectDir = file("render-session/cli")
+
 // JDK 21+ samples. Each module here pulls in tooling whose own gradle plugin
 // is compiled to Java 21 bytecode and therefore can't load on this repo's
 // default JDK 17 build daemon (see `gradle/gradle-daemon-jvm.properties`,
 // pinned to `toolchainVersion=17`). Rather than bump the daemon repo-wide
 // and force every contributor onto JDK 21, we keep the pin at 17 and gate
 // inclusion on `JavaVersion.current()`. The dedicated CI workflow
-// `.github/workflows/samples-21.yml` rewrites the daemon-jvm-properties
+// `.github/workflows/samples-sdk21.yml` rewrites the daemon-jvm-properties
 // file on the runner (never committed) so the daemon launches on 21 and
 // the subtree gets exercised on every PR that touches it.
 //
 // Currently:
-//  * `samples-21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
+//  * `samples/sdk21/android-metro-viewmodel` — Metro 1.x DI; its Gradle
 //    plugin jar targets Java 21.
 if (JavaVersion.current() >= JavaVersion.VERSION_21) {
-  include(":samples-21:android-metro-viewmodel")
+  include(":samples:sdk21:android-metro-viewmodel")
 }
+
+// Snapshot the project paths that carry ktfmt (every project except the root, which applies no
+// convention plugin) for the root build's `ktfmtCheckAll` / `ktfmtFormatAll` aggregate tasks. Under
+// Isolated Projects the root build can't iterate `allprojects` to discover its siblings, but it can
+// depend on their tasks by path. We gather the paths here in settings — where every project is
+// already known — and hand them to the root build through a system property, read back via a
+// configuration-cache-tracked `providers.systemProperty(...)`. The channel must be closure-free: a
+// `gradle.lifecycle.beforeProject` closure can't carry the list (IP isolates the action and can't
+// serialize the captured settings-script reference).
+val ktfmtProjectPaths = buildList {
+  fun visit(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
+    // Only projects with a build script apply `composeai.base-conventions` (and therefore own a
+    // `ktfmtCheck`/`ktfmtFormat` task). Container projects like `:daemon` / `:samples`, which exist
+    // only because of nested includes and have no build file, are skipped.
+    if (descriptor.buildFile.exists()) add(descriptor.path)
+    descriptor.children.forEach(::visit)
+  }
+  // Start from the root's children: the root project can't apply `composeai.base-conventions`
+  // (a build-logic plugin on the root classpath leaks to every subproject and collides with their
+  // versioned plugin aliases), so the root carries no ktfmt and is left out.
+  rootProject.children.forEach(::visit)
+}
+System.setProperty("composeai.ktfmtProjectPaths", ktfmtProjectPaths.joinToString(","))

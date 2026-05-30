@@ -84,8 +84,8 @@ abstract `RenderHost` interface; both per-target modules depend on it.
 ### Module layout
 
 ```
-renderer-android/                    UNCHANGED — RobolectricRenderTest.kt etc.
-renderer-desktop/                    UNCHANGED — existing Skiko renderer
+renderers/android/                   UNCHANGED — RobolectricRenderTest.kt etc.
+renderers/desktop/                   UNCHANGED — existing Skiko renderer
 
 daemon/core/                NEW — pure JVM, renderer-agnostic
   src/main/kotlin/.../daemon/

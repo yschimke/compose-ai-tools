@@ -131,6 +131,23 @@ data class FocusCapture(
    * pre-overlay capture is kept alongside as `<basename>.raw.png`.
    */
   val overlay: Boolean = false,
+  /**
+   * When `true`, the connector's focus walk skips the historical `+1 Next` compensation after
+   * `moveFocus(Enter)` — used by previews whose root carries
+   * `focusProperties { onEnter = { initialFocus.requestFocus() } }.focusGroup()`, where Enter
+   * already lands focus on the chosen child. See `@FocusedPreview.enterPlacesFocus` for the full
+   * rationale.
+   */
+  val enterPlacesFocus: Boolean = false,
+  /**
+   * When `true`, the renderer dispatches an indirect-pointer Press event onto the focused
+   * composable after the focus walk settles, before capturing pixels — captures the *pressed*
+   * visual state on top of the focused state. Drives Compose UI's
+   * `AndroidComposeView.sendIndirectPointerEvent` (the same entry point real XR Glasses touchpads
+   * route through); see `@FocusedPreview.pressed` for the rationale. Only meaningful for
+   * indexed-mode captures (`tabIndex`); traversal-mode skips it.
+   */
+  val pressed: Boolean = false,
 )
 
 /**

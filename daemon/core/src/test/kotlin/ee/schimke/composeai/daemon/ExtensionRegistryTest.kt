@@ -154,6 +154,57 @@ class ExtensionRegistryTest {
   }
 
   @Test
+  fun `publicDataProducts forwards renderModeFor to the owning extension's registry`() {
+    // Regression: pre-fix `ScopedDataProducts` didn't override `renderModeFor` and fell back to
+    // the interface default of null. `JsonRpcServer.subscriptionDrivenRenderMode` asks
+    // `publicDataProducts()` for the mode tag implied by a preview's subscribed kinds; without
+    // this delegation it always got null and the follow-up renderNow ran without `mode=a11y`,
+    // leaving the panel waiting 30 s for a11y attachments that the renderer never produced.
+    val a11yProducer =
+      object : DataProductRegistry {
+        override val capabilities = listOf(cap("a11y/atf"), cap("a11y/hierarchy"))
+
+        override fun fetch(
+          previewId: String,
+          kind: String,
+          params: JsonElement?,
+          inline: Boolean,
+        ): DataProductRegistry.Outcome =
+          DataProductRegistry.Outcome.Ok(DataFetchResult(kind = kind, schemaVersion = 1))
+
+        override fun attachmentsFor(
+          previewId: String,
+          kinds: Set<String>,
+        ): List<DataProductAttachment> = emptyList()
+
+        override fun isKnown(kind: String): Boolean = kind == "a11y/atf" || kind == "a11y/hierarchy"
+
+        override fun renderModeFor(kind: String): String? = if (isKnown(kind)) "a11y" else null
+      }
+    val theming = RecordingRegistry("compose/theme")
+    val registry =
+      ExtensionRegistry(
+        listOf(
+          Extension(id = "ext/a11y", dataProductRegistry = a11yProducer),
+          Extension(id = "ext/theming", dataProductRegistry = theming),
+        )
+      )
+    registry.enable(listOf("ext/a11y", "ext/theming"))
+
+    val products = registry.publicDataProducts()
+    assertEquals("a11y", products.renderModeFor("a11y/atf"))
+    assertEquals("a11y", products.renderModeFor("a11y/hierarchy"))
+    // Kinds whose owning registry doesn't declare a mode keep returning null, so the dispatcher's
+    // `firstNotNullOfOrNull` lookup picks the a11y-driving kind without being short-circuited by
+    // an earlier theming subscription on the same preview.
+    assertEquals(null, products.renderModeFor("compose/theme"))
+    // Unknown kinds resolve to null too (no producer claimed them) — important for the
+    // subscriptionDrivenRenderMode contract: missing producers don't accidentally synthesise a
+    // mode tag the renderer can't honour.
+    assertEquals(null, products.renderModeFor("does/not/exist"))
+  }
+
+  @Test
   fun `disabling a public extension keeps it active when another dependent extension still wants it`() {
     val a = RecordingRegistry("a/kind")
     val b = RecordingRegistry("b/kind")

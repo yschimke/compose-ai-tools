@@ -35,6 +35,7 @@ fun main(args: Array<String>) {
       "--with-extension",
       "--with",
       "--missing-renders",
+      "--variant",
     )
   var commandIndex = -1
   var i = 0
@@ -140,6 +141,16 @@ private fun printUsage() {
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy matched preview PNG to this path (render)
+      --images[=<mode>]    show: emit rendered PNGs inline using the terminal's image protocol.
+                           Default `auto` — on by default in an interactive TTY when a
+                           kitty-graphics-capable terminal is detected (`KITTY_WINDOW_ID`,
+                           `TERM_PROGRAM` ∈ {WezTerm, ghostty}, or `TERM=xterm-kitty`); silent
+                           on every other terminal. Modes: `auto`, `kitty` (force; still
+                           TTY-gated), `off` (explicit silence). Multi-capture previews
+                           (paused-clock animation frames) emit as a native kitty animation;
+                           inter-frame gaps come from `advanceTimeMillis` deltas so playback
+                           matches the simulated clock. Always off when stdout is piped or
+                           `--json` is set so escape sequences don't pollute captured output.
       --progress           Print per-task milestone/heartbeat lines to stderr
       --verbose, -v        Show full Gradle build output (implies --progress)
       --timeout <seconds>  Gradle build timeout (default: 300)
@@ -163,6 +174,14 @@ private fun printUsage() {
                            throws), `warn` (logs + keeps going), `ignore` (silent). Useful
                            for multi-module CI where a handful of stubborn previews would
                            otherwise gate the whole run.
+      --variant <name>     Forwarded as `-PcomposePreview.variant=<name>` to every Gradle
+                           invocation (model queries and task runs). Pins which AGP variant
+                           the plugin attaches its `composePreview*` tasks to in each
+                           module — used to disambiguate flavored apps (e.g.
+                           `--variant demoDebug`). Without this flag the plugin defaults to
+                           `debug` with a build-type suffix fallback, so flavorless modules
+                           pick `debug` and flavored modules pick the first `*Debug` variant
+                           AGP enumerates (issue #1546).
       --daemon             doctor: also spawn each module's preview daemon and confirm the
                            `initialize` round-trip succeeds. Adds ~600ms (Desktop) or 3-10s
                            (Android/Robolectric) per module — opt-in because plain `doctor`
@@ -177,11 +196,6 @@ private fun printUsage() {
                            already wired manually and you don't want the bundled
                            classpath dependency added. `COMPOSE_PREVIEW_NO_AUTO_INJECT=1`
                            is an equivalent environment-variable escape hatch.
-      --no-plugin-warning  Suppress the one-line stderr warning emitted when the plugin is
-                           supplied entirely via auto-inject (i.e. no build.gradle(.kts)
-                           applies `id("ee.schimke.composeai.preview")`).
-                           `COMPOSE_PREVIEW_NO_PLUGIN_WARNING=1` is an equivalent
-                           environment-variable escape hatch.
 
     OSC 9;4 terminal progress (native taskbar/tab progress bar) is on by
     default in a TTY and auto-disables when stdout is piped or redirected.

@@ -25,11 +25,10 @@ import org.junit.Test
  *   etc.). The exception message is folded into the Fallback reason for diagnostic surfacing in the
  *   panel log.
  *
- * The fourth outcome ([BtaCompileService.Outcome.CompileError]) isn't reachable from
- * [DefaultBtaCompileService] yet — that lands when the `KotlinLogger`-backed diagnostic collector
- * is wired through [BtaCompileSession]. Until then, diagnostic-bearing compile failures fall
- * through to stage 1's `KotlinCompileErrorDetector` via the editor's Fallback retry path. Tracked
- * in COMPILE-IN-PROCESS.md follow-ups.
+ * - **CompileError** → [forSession]'s backend routes BTA's diagnostics through a
+ *   [DiagnosticCollector] and re-throws a [BtaCompileDiagnosticException] on `COMPILATION_ERROR`;
+ *   the service maps that to [BtaCompileService.Outcome.CompileError] so the editor's diagnostic
+ *   banner renders the Kotlin source errors from stage 2 directly.
  */
 class DefaultBtaCompileServiceTest {
 
@@ -205,6 +204,27 @@ class DefaultBtaCompileServiceTest {
       outcome is BtaCompileService.Outcome.CompileError,
     )
     assertEquals(errors, (outcome as BtaCompileService.Outcome.CompileError).errors)
+  }
+
+  @Test
+  fun `composeCompilerPlugins passes sourceInformation=true to the Compose plugin`() {
+    val jars = listOf(Path.of("/abs/kotlin-compose-compiler-plugin-embeddable.jar"))
+    val plugins = DefaultBtaCompileService.composeCompilerPlugins(jars)
+    assertEquals(1, plugins.size)
+    val plugin = plugins.single()
+    assertEquals("androidx.compose.compiler.plugins.kotlin", plugin.pluginId)
+    assertEquals(jars, plugin.classpath)
+    val sourceInformation = plugin.rawArguments.single { it.key == "sourceInformation" }
+    assertEquals(
+      "sourceInformation must be true so BTA bytecode stays byte-parity with Gradle's output",
+      "true",
+      sourceInformation.value,
+    )
+  }
+
+  @Test
+  fun `composeCompilerPlugins is empty when no plugin JARs were resolved`() {
+    assertTrue(DefaultBtaCompileService.composeCompilerPlugins(emptyList()).isEmpty())
   }
 
   @Test

@@ -70,6 +70,15 @@ export interface FocusControllerConfig {
      *  without it, activating a11y in focus mode and then exiting
      *  leaves the legend rendering next to the preview grid. */
     refreshBundleLegend(): void;
+    /** Re-run the chip → card-overlay paint/clear decision. Bundles
+     *  scope to the focused preview, so card overlay layers painted in
+     *  focus mode must be torn down when the user drops back to a
+     *  grid/flow/column layout. Wired from main to `reflectBundleState`
+     *  so layout transitions re-evaluate every active bundle's overlay
+     *  the same way a chip toggle does — without it, an a11y (or other
+     *  bundle) overlay painted while focused leaks onto the grid card
+     *  (#1567). */
+    refreshBundleState(): void;
     focusToolbar: FocusToolbarController;
     /** Repaint the focus inspector for the given card, or clear it
      *  when `null` (no card focused / exiting focus layout). */
@@ -244,7 +253,10 @@ export class FocusController {
      * preview, first turn the previous one off so the wire stays clean.
      */
     toggleA11yOverlay(): void {
-        if (!this.config.earlyFeatures()) return;
+        // a11y is the graduated bundle — no early-features gate (the chip bar
+        // and the focus-toolbar button are both visible in basic mode, the
+        // host's `setA11yOverlay` handler also drops its gate). Other entry
+        // points (`launch-on-device`, `record`, `export-bundle`) keep theirs.
         if (!this.inFocus()) return;
         const card = this.getVisibleCards()[this.config.getFocusIndex()];
         const previewId = card ? card.dataset.previewId : null;
@@ -294,6 +306,9 @@ export class FocusController {
                 this.config.inspectorRender(null);
                 this.publishScopedPreview();
                 this.config.refreshBundleLegend();
+                // Filter zeroed out the focused set; clear any bundle
+                // overlay still painted on a now-hidden card (#1567).
+                this.config.refreshBundleState();
                 return;
             }
             let focusIndex = this.config.getFocusIndex();
@@ -347,6 +362,11 @@ export class FocusController {
         this.applyFocusedToggleButtonStates();
         this.applyEarlyFeatureVisibility();
         this.config.refreshBundleLegend();
+        // Re-evaluate every active bundle's card overlay for the new
+        // layout. Entering focus repaints the focused card; dropping to
+        // a grid/flow/column layout clears any layer painted while
+        // focused, so the overlay never leaks onto a grid card (#1567).
+        this.config.refreshBundleState();
     }
 
     /**

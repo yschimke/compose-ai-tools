@@ -210,14 +210,6 @@ object PreviewDiscovery {
       ClassGraph()
         .enableMethodInfo()
         .enableAnnotationInfo()
-        // Surface JVM-private methods so the loop below can actively warn
-        // when a `private fun` is annotated with @Preview (the renderer's
-        // `getDeclaredComposableMethod` fails on private composables, so
-        // we drop them — see the `method.isPrivate` branch). Without this
-        // flag ClassGraph's default visibility filter would drop them
-        // silently and the user would never learn why their preview
-        // disappeared. `internal fun` compiles to JVM `public` (with the
-        // `name$module` mangle) and passes the default filter regardless.
         .ignoreMethodVisibility()
         .overrideClasspath(classpath.map { it.absolutePath })
         .ignoreParentClassLoaders()
@@ -253,36 +245,6 @@ object PreviewDiscovery {
               if (annotations.isNotEmpty()) scanMethodsWithAnnotations++
               for (ann in annotations) {
                 annotationFqnCounts.merge(ann.name, 1, Int::plus)
-              }
-              // Kotlin `private fun` compiles to a JVM `private` method.
-              // `ComposableMethod` resolution at render time fails on those
-              // (NoSuchMethodException from `getDeclaredComposableMethod`, see
-              // RenderEngine), so the renderer cannot invoke private @Preview
-              // composables. Discover into a probe list first, and if anything
-              // came out, drop it with a clear warning instead of letting it
-              // surface and fail downstream. `internal fun` compiles to JVM
-              // `public` (with the `name$module` mangle) and is unaffected.
-              if (method.isPrivate) {
-                val probe = mutableListOf<PreviewInfo>()
-                discoverFromMethod(
-                  classInfo,
-                  method,
-                  annotations.toList(),
-                  scanResult,
-                  projectClassFqns,
-                  probe,
-                  input,
-                  warnings,
-                )
-                if (probe.isNotEmpty()) {
-                  warnings.add(
-                    "composePreview: skipping private @Preview " +
-                      "'${classInfo.name}.${method.name}' — private composables cannot be " +
-                      "reflectively invoked by the renderer; make it `internal` or `public` " +
-                      "to surface this preview."
-                  )
-                }
-                continue
               }
               discoverFromMethod(
                 classInfo,
@@ -461,26 +423,33 @@ object PreviewDiscovery {
   }
 
   /**
-   * Computes the common dotted prefix shared by every preview id (up to and including the last
-   * matched `.`) and strips it from each capture's `renderOutput` filename. Also runs every stem
-   * through [sanitizeFileStem] so spaces and shell-unfriendly characters inherited from
-   * `@Preview(name = "tile light (light)")` don't end up in the PNG filename.
+   * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
+   * filename. Two passes shape the result:
    *
-   * `preview.id` itself is deliberately left untouched — it's the stable identity consumers key by
-   * (history folders, CLI state, JUnit test names). The renderOutput is purely the on-disk
-   * filename, and that's what benefits from a shorter, quoted-free form.
+   *   1. **Sanitisation per dotted segment.** Within a segment (the chunks between `.`s of the
+   *      preview id) any run of non-alphanumeric characters collapses to a single `_`. So
+   *      `Devices - Large Round` becomes `Devices_Large_Round`, `tile light (light)` becomes
+   *      `tile_light_light`, etc. Dots stay as segment separators.
+   *   2. **Shortest unique suffix per preview.** Each preview takes the rightmost segments needed
+   *      to disambiguate it from every other preview in the module — the function-name-plus-variant
+   *      segment alone for unique names, prepending the class only when another preview shares the
+   *      same function name, prepending package parts only when classes collide too. So
+   *      `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round` becomes
+   *      `ActivityListPreview_Devices_Large_Round` in most modules.
    *
-   * No-op on a single-preview module (empty prefix) or when sanitization would collapse two
-   * distinct ids to the same stem — in that case we keep the un-stripped, un-sanitized id for
-   * everyone so the pretty rename never introduces a filename collision.
+   * `preview.id` itself stays untouched — it's the stable identity consumers key by (history
+   * folders, CLI state, JUnit test names). Only the on-disk filename benefits from the prettier
+   * form.
+   *
+   * If sanitisation forces a true collision (two distinct ids whose fully-sanitised forms are
+   * byte-identical — e.g. `Foo_bar` vs `Foo-bar` after collapsing), a `_<idx>` suffix
+   * disambiguates. The renders directory has to stay collision-free even when input names couldn't.
    */
   private fun normalizeRenderOutputs(previews: List<PreviewInfo>): List<PreviewInfo> {
     if (previews.isEmpty()) return previews
-    val commonPrefix = commonDottedPrefix(previews.map { it.id })
-    val stems = previews.map { sanitizeFileStem(it.id.removePrefix(commonPrefix)) }
-    val safe = stems.toSet().size == previews.size && stems.none { it.isEmpty() }
+    val resolvedStems = resolveRenderStems(previews)
     return previews.mapIndexed { i, preview ->
-      val newStem = if (safe) stems[i] else preview.id
+      val newStem = resolvedStems[i]
       val rewritten =
         preview.captures.map { c ->
           c.copy(renderOutput = rewriteRenderStem(c.renderOutput, preview.id, newStem))
@@ -493,6 +462,85 @@ object PreviewDiscovery {
     }
   }
 
+  /**
+   * Pick one shell-safe stem per preview. Each stem is the shortest sanitised suffix that
+   * uniquely identifies its preview against the others — see [normalizeRenderOutputs] for the
+   * algorithm and rationale. Exposed `internal` so the unit tests can assert "no spaces ever",
+   * "no `class.` prefix when the function name is unique", and the collision-disambiguator paths
+   * directly without a full discovery pipeline.
+   */
+  internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
+    if (previews.isEmpty()) return emptyList()
+    val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it.id) }
+    val stems =
+      sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
+        shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
+      }
+    return disambiguateExactCollisions(stems)
+  }
+
+  /**
+   * Returns the joined stem (segments joined with `.`) made from the rightmost segments of
+   * [mySegs] that aren't matched, at the same depth, by any other preview's sanitised segments.
+   *
+   * If no proper suffix is unique (two distinct ids whose sanitised segment lists are
+   * byte-identical — the only way every depth matches), return JUST the last segment. The user
+   * wants short on-disk names; the resulting duplicate is then disambiguated with a `_<idx>`
+   * suffix by [disambiguateExactCollisions] rather than padded with the full package path.
+   */
+  private fun shortestUniqueSuffix(
+    myIndex: Int,
+    mySegs: List<String>,
+    allSegs: List<List<String>>,
+  ): String {
+    if (mySegs.isEmpty()) return ""
+    for (depth in 1..mySegs.size) {
+      val mySuffix = mySegs.takeLast(depth)
+      val collides =
+        allSegs.withIndex().any { (otherIndex, otherSegs) ->
+          otherIndex != myIndex && otherSegs.takeLast(depth) == mySuffix
+        }
+      if (!collides) return mySuffix.joinToString(".")
+    }
+    return mySegs.last()
+  }
+
+  /**
+   * Splits a preview id into dot-separated segments and sanitises each one. Sanitisation collapses
+   * every run of non-alphanumeric characters within a segment to a single `_` and trims `_`/`-`
+   * from the segment edges; the inter-segment `.` is preserved as the segment join.
+   *
+   * Empty segments (e.g. from a leading or trailing `.`, or from a segment that was all-punctuation
+   * pre-sanitisation) are dropped so they don't introduce `..` in the resulting stem.
+   */
+  private fun sanitiseSegments(id: String): List<String> =
+    id.split('.').map(::sanitiseSegment).filter { it.isNotEmpty() }
+
+  /**
+   * Collapse every run of non-alphanumeric characters to a single `_`, then trim `_` and `-` from
+   * the edges. Designed for one dotted segment of a preview id; dots inside [segment] would be
+   * misinterpreted as segment boundaries, so callers split first.
+   */
+  private fun sanitiseSegment(segment: String): String =
+    segment.replace(Regex("[^A-Za-z0-9]+"), "_").trim('_', '-')
+
+  /**
+   * Last-ditch tiebreaker when two distinct preview ids sanitise to exactly the same stem (e.g.
+   * `Foo_bar` and `Foo-bar` both become `Foo_bar`). Appends `_<idx>` to the second-and-later
+   * occurrences in the manifest order; the first occurrence keeps its clean form so the common
+   * case still gets the pretty filename.
+   */
+  private fun disambiguateExactCollisions(stems: List<String>): List<String> {
+    if (stems.toSet().size == stems.size && stems.none { it.isEmpty() }) return stems
+    val counts = mutableMapOf<String, Int>()
+    return stems.mapIndexed { i, raw ->
+      val base = if (raw.isEmpty()) "preview" else raw
+      val seen = counts.getOrDefault(base, 0)
+      counts[base] = seen + 1
+      if (seen == 0 && raw.isNotEmpty()) base else "${base}_${i}"
+    }
+  }
+
   /** `renders/<oldStem><tail>.<ext>` → `renders/<newStem><tail>.<ext>`. */
   private fun rewriteRenderStem(renderOutput: String, oldStem: String, newStem: String): String {
     if (renderOutput.isEmpty() || oldStem == newStem) return renderOutput
@@ -502,32 +550,6 @@ object PreviewDiscovery {
     val rewritten = newStem + leaf.removePrefix(oldStem)
     return if (dir.isEmpty()) rewritten else "$dir/$rewritten"
   }
-
-  private fun commonDottedPrefix(ids: List<String>): String {
-    if (ids.size < 2) return ""
-    var prefix = ids.first()
-    for (id in ids.drop(1)) {
-      var i = 0
-      val limit = minOf(prefix.length, id.length)
-      while (i < limit && prefix[i] == id[i]) i++
-      prefix = prefix.substring(0, i)
-      if (prefix.isEmpty()) return ""
-    }
-    val lastDot = prefix.lastIndexOf('.')
-    return if (lastDot < 0) "" else prefix.substring(0, lastDot + 1)
-  }
-
-  /**
-   * Sanitizes a filename stem to an ASCII-safe whitelist (`[A-Za-z0-9._-]`). Every other character
-   * collapses to `_`, runs of `_` collapse to a single `_`, and leading/trailing `_`, `.`, `-` are
-   * trimmed. A whitelist is deliberate: we can't enumerate every awkward character a preview name
-   * might contain (Unicode dashes, NBSP, RTL marks, emoji), and any one of them can break a
-   * downstream tool that expects a POSIX-plain filename. `.` is preserved so FQN-shaped stems
-   * (`CardPreviewsKt.Tile_Light_States`) survive intact when the package prefix strip can't flatten
-   * them further.
-   */
-  private fun sanitizeFileStem(s: String): String =
-    s.replace(Regex("""[^A-Za-z0-9._-]"""), "_").replace(Regex("""_+"""), "_").trim('_', '.', '-')
 
   // Renders the distinguishing bits of a preview variant for the discovery log
   // so sibling expansions (e.g. @WearPreviewFontScales × 6) aren't visually
@@ -1008,12 +1030,16 @@ object PreviewDiscovery {
 
     // When ONLY @AnimatedPreview (or @FocusedPreview(gif = true)) is on the function, the
     // scroll/time/focus cross-product would still emit one (null, null, null) row — i.e. a
-    // static PNG capture. Suppress that to keep single-output annotations clean.
+    // static PNG capture. Suppress that to keep single-output annotations clean. The same
+    // applies to @ScrollingPreview with only data-product modes (LONG/GIF): the data product
+    // IS the rendered output (the tall stitched PNG / scrolling GIF), so a sibling static
+    // `renders/<id>.png` would just be the unscrolled initial frame — misleading, and the
+    // exact regression issue #1524 reported.
     val emitStaticCross =
       captureScrolls.isNotEmpty() ||
         effectiveTimings.isNotEmpty() ||
         effectiveFocuses.isNotEmpty() ||
-        (effectiveAnimation == null && effectiveFocusGif == null)
+        (effectiveAnimation == null && effectiveFocusGif == null && productScrolls.isEmpty())
 
     val scrollTimeCaptures: List<Capture> =
       if (!emitStaticCross) emptyList()
@@ -1378,10 +1404,14 @@ object PreviewDiscovery {
   private fun readFocusSteps(ann: AnnotationInfo): List<FocusCapture> {
     val pv = ann.parameterValues
     val overlay = (pv.getValue("overlay") as? Boolean) ?: false
+    val enterPlacesFocus = (pv.getValue("enterPlacesFocus") as? Boolean) ?: false
+    val pressed = (pv.getValue("pressed") as? Boolean) ?: false
     val directions = readEnumArray(pv.getValue("traverse")) { FocusDirection.valueOf(it) }
     if (directions.isNotEmpty()) {
       // 1-based `step` lets the overlay label and the filename suffix
-      // disambiguate repeated directions (e.g. `Next, Next, Previous`).
+      // disambiguate repeated directions (e.g. `Next, Next, Previous`). `pressed` is
+      // indexed-mode only — traversal-mode walks across focusables without a "settle and press"
+      // point, so it's intentionally not carried here.
       return directions.mapIndexed { i, dir ->
         FocusCapture(direction = dir, step = i + 1, overlay = overlay)
       }
@@ -1397,7 +1427,14 @@ object PreviewDiscovery {
       .filter { it >= 0 }
       .distinct()
       .sorted()
-      .map { FocusCapture(tabIndex = it, overlay = overlay) }
+      .map {
+        FocusCapture(
+          tabIndex = it,
+          overlay = overlay,
+          enterPlacesFocus = enterPlacesFocus,
+          pressed = pressed,
+        )
+      }
   }
 
   private fun extractScrollSpecs(annotations: List<AnnotationInfo>): List<ScrollCapture> {
@@ -1628,11 +1665,19 @@ object PreviewDiscovery {
   ): PreviewParams {
     // `@NotificationPreview` has no parameters, so the rest of this function — which
     // dereferences `device` / `widthDp` / `fontScale` / etc. from `ann.parameterValues` — would
-    // throw `NoSuchElementException`. Return a minimal params object up-front; the renderer
-    // applies its own default qualifiers when rendering RemoteViews. Width/height parameters
-    // will be added when the variants matrix from #1249 lands.
+    // throw `NoSuchElementException`. Return a minimal params object up-front.
+    //
+    // Pin `widthDp` to the sandbox width (400dp) rather than leaving it null: without it the
+    // router falls back to its 320dp square default and the AOSP notification shade inflates to
+    // its ~320dp intrinsic width, producing the cramped ~320×320 PNG from #1249. 400dp matches
+    // the canvas the `@Preview` + `NotificationContent` gallery path renders at (its
+    // `DEFAULT_NOTIFICATION_WIDTH_DP`), so FQN-discovered notifications share the wider shade
+    // footprint. Height stays on the renderer default.
     if (ann.name == NOTIFICATION_PREVIEW_FQN) {
-      return PreviewParams(kind = PreviewKind.NOTIFICATION)
+      return PreviewParams(
+        kind = PreviewKind.NOTIFICATION,
+        widthDp = DeviceDimensions.SANDBOX_WIDTH_DP,
+      )
     }
     // Glance's own `androidx.glance.preview.Preview(widthDp, heightDp)`. The annotation's params
     // started life as `()` in 1.0.x, gained `widthDp` / `heightDp` in 1.1.0-rc01. Read both

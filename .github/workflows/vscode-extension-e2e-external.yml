@@ -3,9 +3,10 @@ name: VS Code Extension E2E (external consumer)
 # Companion to `vscode-extension-e2e.yml`. That workflow drives the
 # extension against `:samples:cmp` / `:samples:wear`, both wired via
 # `includeBuild("gradle-plugin")` — the dev-loop path. This workflow drives
-# the extension against `joreilly/Confetti` (pinned SHA), with the plugin
-# resolved through the consumer's `gradle/libs.versions.toml` against the
-# local SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
+# the extension against `joreilly/Confetti` (tracking `main`, override via
+# `EXTERNAL_REPO_REF` from workflow_dispatch), with the plugin resolved
+# through the consumer's `gradle/libs.versions.toml` against the local
+# SNAPSHOT just `publishToMavenLocal`'d. That closes the published-
 # plugin-coordinate gap: the in-repo suite can't catch regressions where the
 # plugin works fine via `includeBuild` but fails as a published artifact
 # against a real KMP/AGP/Compose classpath.
@@ -30,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       confetti_ref:
-        description: "Confetti git SHA / branch / tag (defaults to the pin in setup-external-e2e.sh)"
+        description: "Confetti git SHA / branch / tag (defaults to `main`; see setup-external-e2e.sh)"
         required: false
         type: string
   push:
@@ -112,11 +113,11 @@ jobs:
         working-directory: vscode-extension
         run: npm run compile
 
-      # Prepare the external workspace: clone Confetti at the pinned SHA
-      # (or the workflow_dispatch override), rewrite its catalog to
-      # point at the SNAPSHOT we just published, seed local.properties
-      # with the runner's Android SDK path. Stdout is the prepared
-      # workspace path — capture it and forward to the test runner.
+      # Prepare the external workspace: clone Confetti at `main` (or the
+      # `EXTERNAL_REPO_REF` workflow_dispatch override), rewrite its
+      # catalog to point at the SNAPSHOT we just published, seed
+      # local.properties with the runner's Android SDK path. Stdout is the
+      # prepared workspace path — capture it and forward to the test runner.
       - name: Prepare external workspace (Confetti)
         id: prepare
         env:
@@ -131,7 +132,50 @@ jobs:
         working-directory: vscode-extension
         env:
           COMPOSE_PREVIEW_E2E_WORKSPACE: ${{ steps.prepare.outputs.workspace }}
-        run: xvfb-run -a npm run test:e2e-external
+        # `tee` so the bench-extraction step below has a file to grep, while
+        # the live workflow log still gets the full stream for debugging.
+        # `set -o pipefail` propagates a mocha failure through tee — without
+        # it tee's success would mask the real exit code and the workflow
+        # would go green on a broken suite.
+        run: |
+          set -o pipefail
+          xvfb-run -a npm run test:e2e-external 2>&1 | tee "${RUNNER_TEMP}/e2e-external.log"
+
+      # Extract the single-line `[bench] {...}` JSON record the suite emits
+      # at end-of-`it` into a standalone artifact so a downstream comparator
+      # (rolling median, threshold alert, gh-pages chart) can consume it
+      # without parsing mocha's stdout. `if: always()` so a soft failure
+      # still publishes whatever phases completed — useful when warm
+      # finishes but the post-warm render times out.
+      - name: Extract bench timings
+        if: always()
+        run: |
+          log="${RUNNER_TEMP}/e2e-external.log"
+          out="${RUNNER_TEMP}/bench-result.json"
+          if [[ ! -f "$log" ]]; then
+            echo "[bench-extract] no log file at $log — suite did not start"
+            exit 0
+          fi
+          # Pick the last `[bench] ` line to handle a future multi-`it`
+          # expansion gracefully; today there's exactly one. `|| true` so
+          # a missing line on a soft failure doesn't break the workflow.
+          line=$(grep -E '^\[bench\] ' "$log" | tail -n 1 || true)
+          if [[ -z "$line" ]]; then
+            echo "[bench-extract] no [bench] line in log — suite aborted before bench emit"
+            exit 0
+          fi
+          printf '%s\n' "${line#\[bench\] }" > "$out"
+          echo "[bench-extract] wrote $out:"
+          cat "$out"
+
+      - name: Upload bench result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-external-bench
+          path: ${{ runner.temp }}/bench-result.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Upload renders + daemon logs on failure
         if: failure()

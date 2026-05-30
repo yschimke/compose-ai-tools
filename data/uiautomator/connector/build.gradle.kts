@@ -23,6 +23,7 @@ import com.vanniktech.maven.publish.SourcesJar
 // `RobolectricHost.performUiAutomatorAction`.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.kotlin.serialization)

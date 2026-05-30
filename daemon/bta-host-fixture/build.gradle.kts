@@ -5,6 +5,7 @@
 // bta-host test classpath. Remove together with `:daemon:bta-host` when the spike retires.
 
 plugins {
+  id("composeai.base-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.compiler)
 }

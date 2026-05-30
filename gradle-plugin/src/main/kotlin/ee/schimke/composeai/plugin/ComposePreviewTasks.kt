@@ -107,7 +107,7 @@ internal object ComposePreviewTasks {
     // matching renderer artifact is selected automatically — see [PluginVersion]. The default
     // add is skipped when the consumer has already populated `composePreviewRenderer` themselves,
     // so `dependencies { "composePreviewRenderer"(files(...)) }` still works as an override.
-    val rendererProjectDir = project.rootDir.resolve("renderer-desktop")
+    val rendererProjectDir = project.rootDir.resolve("renderers/desktop")
     val useLocalRenderer =
       rendererProjectDir.resolve("build.gradle.kts").exists() ||
         rendererProjectDir.resolve("build.gradle").exists()
@@ -516,23 +516,13 @@ internal object ComposePreviewTasks {
 
   /**
    * Tier-1 cheap-signal file set for the desktop daemon's [ClasspathFingerprint][
-   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Same set as [AndroidPreviewSupport]'s
-   * private `collectCheapSignalFiles` — duplicated rather than extracted into a shared helper to
-   * keep this PR scoped to the desktop registration; both call sites can be unified once both
-   * branches stabilise.
+   * ee.schimke.composeai.daemon.ClasspathFingerprint]. Delegates to the shared
+   * [CheapSignalFiles.collect] so the Android and Desktop registrations stay in lockstep — critical
+   * because both feed the same daemon `composeai.daemon.cheapSignalFiles` sysprop and the daemon
+   * side hashes them as one logical input.
    */
-  private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> {
-    val out = LinkedHashSet<java.io.File>()
-    val rootProject = project.rootProject
-    listOf("gradle/libs.versions.toml").forEach { out += rootProject.file(it) }
-    listOf("settings.gradle.kts", "settings.gradle", "gradle.properties", "local.properties")
-      .forEach { out += rootProject.file(it) }
-    rootProject.allprojects.forEach { sub ->
-      out += sub.file("build.gradle.kts")
-      out += sub.file("build.gradle")
-    }
-    return out.filter { it.isFile }
-  }
+  private fun collectDesktopCheapSignalFiles(project: Project): List<java.io.File> =
+    CheapSignalFiles.collect(project)
 
   /**
    * Plugin-apply-time setup for stage-2 BTA configurations. Creates the two detached configurations
@@ -695,16 +685,23 @@ internal object ComposePreviewTasks {
     setupBtaConfigurations(project, extension)
 
   /**
-   * Daemon-warm-time KSP/KAPT detection. Returns a human-readable string when the consumer's module
-   * is NOT eligible for stage 2; `null` when eligible.
+   * Daemon-warm-time stage-2 eligibility predicate. Returns a human-readable string when the
+   * consumer's module is NOT eligible for in-process compile; `null` when eligible. Mirrors
+   * `docs/daemon/COMPILE-IN-PROCESS.md` § "Eligibility" — keep the two in sync.
    *
-   * - KSP-using modules need their generated sources recompiled on every save. BTA doesn't drive
-   *   KSP; stage 1's `gradle --continuous` covers KSP because Gradle drives KSP for it.
-   * - KAPT is the legacy variant of the same problem.
-   * - Plain `annotationProcessor` configurations (javac APs) similarly aren't BTA-driven.
+   * - **KSP** modules need their generated sources recompiled on every save. BTA doesn't drive KSP;
+   *   stage 1's `gradle --continuous` covers it because Gradle drives KSP for it.
+   * - **KAPT** is the legacy variant of the same problem.
+   * - **Plain `annotationProcessor` dependencies** (javac APs) similarly aren't BTA-driven — a save
+   *   in an AP-processed source would render with stale generated code.
+   * - **KMP** modules: the spike covered a single JVM source set only; the stage-2 wiring uses the
+   *   plain Kotlin/JVM module-name + `classes/kotlin/main` output dir, which doesn't model KMP's
+   *   per-target source-set layout. Re-evaluate when KMP support is explicitly added.
    *
-   * Listed by plugin id rather than dependency probing because the ids are stable across KGP
-   * versions and don't require resolving the consumer's classpath at config time.
+   * Plugins are matched by id (stable across KGP versions, no classpath resolution). The
+   * annotationProcessor check reads declared dependencies on the AP configurations by name —
+   * `configurations.names` doesn't realize the container, and only the matching configs are
+   * realized — so it stays configuration-cache-safe.
    */
   private fun detectStageTwoIneligibility(project: Project): String? =
     when {
@@ -713,8 +710,28 @@ internal object ComposePreviewTasks {
           "docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
       project.plugins.hasPlugin("org.jetbrains.kotlin.kapt") ->
         "org.jetbrains.kotlin.kapt plugin applied (stage 2 doesn't drive KAPT yet)"
+      project.plugins.hasPlugin("org.jetbrains.kotlin.multiplatform") ->
+        "org.jetbrains.kotlin.multiplatform plugin applied (stage 2 covers single-source-set " +
+          "JVM/Android modules only; KMP source-set wiring stays on stage 1 — see " +
+          "docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
+      hasAnnotationProcessorDependencies(project) ->
+        "annotationProcessor dependencies declared (javac annotation processors aren't BTA-driven " +
+          "— see docs/daemon/COMPILE-IN-PROCESS.md § Eligibility)"
       else -> null
     }
+
+  /**
+   * True when the consumer declares any dependency on an `annotationProcessor`-shaped configuration
+   * (`annotationProcessor`, `testAnnotationProcessor`, AGP's per-variant
+   * `<variant>AnnotationProcessor`, …). Reads `configurations.names` (which does not force the
+   * container to realize) and only realizes the configurations whose name matches, reading their
+   * *declared* dependencies — no classpath resolution — so the check is configuration-cache-safe at
+   * config time.
+   */
+  private fun hasAnnotationProcessorDependencies(project: Project): Boolean =
+    project.configurations.names
+      .filter { it.contains("annotationProcessor", ignoreCase = true) }
+      .any { name -> project.configurations.getByName(name).dependencies.isNotEmpty() }
 
   /**
    * Reads the consumer's Kotlin version from their `libs.versions.toml` `kotlin` entry — the

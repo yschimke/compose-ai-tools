@@ -16,9 +16,11 @@ import org.junit.rules.TemporaryFolder
  *
  * **What's still Android-only.** The negative assertions below pin the kinds the desktop daemon
  * deliberately does NOT advertise yet because their producers are Android-API-bound (`uiautomator`,
- * `a11y` ATF, `resources/used`). Issue #1201's per-row triage tracks the migration path; the panel
- * should honour `ServerCapabilities.backend == "desktop"` and grey those chips out instead of
- * relying on the daemon to advertise them.
+ * `resources/used`). `a11y` IS advertised (overlay-only): ATF itself is Android-only, but the "what
+ * a screen reader sees" overlay + legend is portable — see `a11y_overlay_only_advertised_*`.
+ * Issue #1201's per-row triage tracks the migration path; the panel should honour
+ * `ServerCapabilities.backend == "desktop"` and grey the remaining chips out instead of relying on
+ * the daemon to advertise them.
  */
 class BuildDesktopExtensionsTest {
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
@@ -35,6 +37,7 @@ class BuildDesktopExtensionsTest {
           recompositionRegistry = RecompositionDataProductRegistry(),
           themeRegistry = ThemeDataProductRegistry(),
           wallpaperRegistry = WallpaperDataProductRegistry(),
+          launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
           historyManager = historyManager,
           dataRoot = dataRoot,
           composeTraceEnabled = composeTraceEnabled,
@@ -116,6 +119,51 @@ class BuildDesktopExtensionsTest {
   }
 
   @Test
+  fun scroll_advertised_when_data_root_set() {
+    // Issue #1604 — scroll is the first #1201 gap closed end-to-end on desktop: the registry lives
+    // in the pure-JVM `:data-scroll-connector` and `:renderer-desktop` already carries the capture,
+    // so `render/scroll/long` / `render/scroll/gif` are produced on demand rather than tripping
+    // `-32020 kind not advertised`. The extension gates on `dataRoot` like the other file-backed
+    // registries (the artefacts land under `<dataRoot>/render-scroll-{long,gif}/`).
+    assertFalse("scroll" in build(dataRoot = null))
+    val ids = build(dataRoot = tempFolder.newFolder("scroll-data"))
+    assertTrue("scroll" in ids)
+  }
+
+  @Test
+  fun scroll_extension_advertises_long_and_gif_descriptors() {
+    // The scroll extension carries the LONG / GIF preview-extension descriptors so MCP /
+    // `previewExtensions/list` clients discover the scroll surface — mirroring `:daemon:android`'s
+    // `DaemonMain`. Without the descriptors the panel would see an advertised data-product kind it
+    // can't attribute to an extension.
+    val extensions =
+      buildDesktopExtensions(
+        previewIndex = PreviewIndex.empty(),
+        recompositionRegistry = RecompositionDataProductRegistry(),
+        themeRegistry = ThemeDataProductRegistry(),
+        wallpaperRegistry = WallpaperDataProductRegistry(),
+        launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
+        historyManager = null,
+        dataRoot = tempFolder.newFolder("scroll-desc-data"),
+        composeTraceEnabled = false,
+        displayFilterEnabled = false,
+      )
+    val scroll = extensions.single { it.id == "scroll" }
+    val kinds = scroll.dataProductCapabilities.map { it.kind }.toSet()
+    assertTrue(
+      "scroll registry must advertise render/scroll/long + render/scroll/gif; got $kinds",
+      ee.schimke.composeai.scroll.ScrollPreviewExtension.KIND_LONG in kinds &&
+        ee.schimke.composeai.scroll.ScrollPreviewExtension.KIND_GIF in kinds,
+    )
+    val descriptorIds = scroll.previewExtensionDescriptors.map { it.id }.toSet()
+    assertTrue(
+      "scroll extension must advertise its LONG + GIF descriptors; got $descriptorIds",
+      ee.schimke.composeai.scroll.ScrollPreviewExtension.longScrollDescriptor.id in descriptorIds &&
+        ee.schimke.composeai.scroll.ScrollPreviewExtension.gifScrollDescriptor.id in descriptorIds,
+    )
+  }
+
+  @Test
   fun touch_overlay_and_keyboard_band_advertise_data_extension_descriptors() {
     // The override-driven extensions (`data/touch-overlay` + `data/keyboard`) carry a
     // `DataExtensionDescriptor` so GUI clients (panel, MCP) can discover them via
@@ -128,6 +176,7 @@ class BuildDesktopExtensionsTest {
         recompositionRegistry = RecompositionDataProductRegistry(),
         themeRegistry = ThemeDataProductRegistry(),
         wallpaperRegistry = WallpaperDataProductRegistry(),
+        launcherWidgetRegistry = LauncherWidgetDataProductRegistry(),
         historyManager = null,
         dataRoot = null,
         composeTraceEnabled = false,
@@ -157,7 +206,15 @@ class BuildDesktopExtensionsTest {
     // `ServerCapabilities.backend == "desktop"` rather than expecting the daemon to advertise.
     // Tracking migration of each in issue #1201.
     assertFalse("resources/used" in ids)
-    assertFalse("a11y" in ids)
     assertFalse("uiautomator" in ids)
+  }
+
+  @Test
+  fun a11y_overlay_only_advertised_when_data_root_set() {
+    // ATF is Android-only, but the desktop daemon now produces an overlay-only a11y pass (Compose
+    // semantics → AWT overlay + legend, empty findings). The registry is file-based, so it gates on
+    // dataRoot like the other file-backed registries.
+    assertFalse("a11y" in build(dataRoot = null))
+    assertTrue("a11y" in build(dataRoot = tempFolder.newFolder("a11y-data")))
   }
 }

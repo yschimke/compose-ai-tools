@@ -21,7 +21,7 @@ class LongScrollPreviewPixelTest {
 
     private val longPng = File(
         "build/compose-previews/data/render-scroll-long/" +
-            "PreviewsKt.ActivityListLongPreview_Devices_-_Large_Round.png",
+            "ActivityListLongPreview_Devices_Large_Round.png",
     )
 
     @Test

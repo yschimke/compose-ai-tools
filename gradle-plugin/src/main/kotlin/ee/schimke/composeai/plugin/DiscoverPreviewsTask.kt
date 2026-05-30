@@ -92,7 +92,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         outcome.infoMessages.forEach { logger.lifecycle(it) }
       }
       is PreviewDiscovery.Outcome.Failure -> {
-        // Surface per-method skip reasons (private @Preview, unsupported parameters) before the
+        // Surface per-method skip reasons (e.g. unsupported parameters) before the
         // diagnostics dump so users can see WHY a method was filtered out — when failOnEmpty=true
         // and every candidate was skipped, these warnings are the most actionable signal. Mirrors
         // the Success branch's warning emission so the failure path doesn't drop them.

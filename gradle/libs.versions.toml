@@ -55,6 +55,11 @@ wear-compose = "1.6.1"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
+# Jetpack Compose Glimmer — the Compose UI toolkit for Android XR display AI
+# glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
+# `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
+# `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
+xr-glimmer = "1.0.0-alpha13"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
@@ -127,10 +132,10 @@ checker-qual = "4.1.0"
 # against `compose-bom-compat` when raising it).
 material-kolor = "4.0.5"
 # Metro — Zac Sweers' compile-time DI framework, used only by the JDK 21+
-# `:samples-21:android-metro-viewmodel` module to demonstrate that
+# `:samples:sdk21:android-metro-viewmodel` module to demonstrate that
 # constructor-injected ViewModels render under the renderer's @Preview
 # pipeline. The 1.x Gradle plugin jar is compiled to Java 21 bytecode, so
-# the consuming module lives in the conditionally-included `samples-21/`
+# the consuming module lives in the conditionally-included `samples/sdk21/`
 # subtree (see `settings.gradle.kts`) — the rest of the repo can keep
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
@@ -170,6 +175,8 @@ wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wear-tiles" 
 wear-tiles-renderer = { module = "androidx.wear.tiles:tiles-renderer", version.ref = "wear-tiles" }
 wear-tiles-tooling = { module = "androidx.wear.tiles:tiles-tooling", version.ref = "wear-tiles" }
 wear-tiles-tooling-preview = { module = "androidx.wear.tiles:tiles-tooling-preview", version.ref = "wear-tiles" }
+xr-glimmer = { module = "androidx.xr.glimmer:glimmer", version.ref = "xr-glimmer" }
+xr-glimmer-google-fonts = { module = "androidx.xr.glimmer:glimmer-google-fonts", version.ref = "xr-glimmer" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }

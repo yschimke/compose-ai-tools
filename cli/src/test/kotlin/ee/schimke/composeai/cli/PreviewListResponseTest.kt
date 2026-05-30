@@ -130,11 +130,9 @@ class PreviewListResponseTest {
   @Test
   fun `scroll artifact data products surface as preview captures`() {
     val projectDir = Files.createTempDirectory("preview-result-test").toFile()
-    val clean =
-      projectDir.resolve("build/compose-previews/renders/LongPreview.png").also {
-        it.parentFile.mkdirs()
-        it.writeBytes(byteArrayOf(1, 2, 3))
-      }
+    // `@ScrollingPreview(modes = [LONG])` with nothing else now produces a manifest with NO
+    // static capture and just the data product (issue #1524). The data product surfaces as
+    // the result's single capture.
     val long =
       projectDir.resolve("build/compose-previews/data/render-scroll-long/LongPreview.png").also {
         it.parentFile.mkdirs()
@@ -150,7 +148,7 @@ class PreviewListResponseTest {
               id = "com.example.LongPreview",
               functionName = "LongPreview",
               className = "com.example.PreviewsKt",
-              captures = listOf(Capture(renderOutput = "renders/${clean.name}")),
+              captures = emptyList(),
               dataProducts =
                 listOf(
                   PreviewDataProduct(

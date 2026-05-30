@@ -277,8 +277,9 @@ A `data/fetch` that needs a re-render:
 | `a11y/touchTargets` | a11y | low | 48dp + overlap detection. |
 | `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. |
 | `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. |
-| `compose/recomposition` | instrumented | medium | `[{nodeId, count, sinceFrameStreamId?}]`. Heat map. Snapshot or click-delta. |
+| `compose/recomposition` | instrumented | medium | schemaVersion 2: `[{nodeId, count, reason, bounds?, sourceFile?…}]` + `sinceFrameStreamId`/`inputSeq`. `reason` (PARAMETER_CHANGE/STATE_READ/BOTH/UNKNOWN) attributes each scope; `bounds`/source markers nullable until their joins land (#1605). Heat map. Snapshot or click-delta. |
 | `compose/theme` | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed them. |
+| `compose/permissions` | default | low | Android runtime-permissions surface: `{ grants: { "android.permission.X" -> "granted" \| "denied" }, queried: ["android.permission.X", …] }`. Around-composable seeds `ShadowApplication.grantPermissions/denyPermissions` from `renderNow.overrides.permissions.grants` so `ContextCompat.checkSelfPermission(...)` / `Activity.checkSelfPermission(...)` return the requested value through the standard platform path; the matching shadow on `ContextWrapper.checkPermission(...)` records the queried permission for the panel's "queried but no grant pinned" surface. Android-only. |
 | `resources/used` | default | low | `R.*` references resolved during render. |
 | `text/strings` | default | low | Drawn text with locale, fontScale, fontSize, colors, bounds, plus per-entry `truncated` / `overflow` / `lineCount` / `maxLines` / `didOverflowWidth/Height` from the Compose `TextLayoutResult`. |
 | `i18n/translations` | default | low | Per-string locale coverage from `values*/strings.xml`. Android only. |
@@ -301,7 +302,8 @@ Which `kind` strings each backend's `extensions/list` advertises and serves thro
 | `test/failure` | ✅ | ✅ | Postmortem bundle on `renderFailed`. Renderer-agnostic. |
 | `compose/theme` | ✅ | ✅ | Material 3 theme tokens. Override-extension shape. |
 | `compose/wallpaper` | ✅ | ✅ | Wallpaper override shape. |
-| `compose/recomposition` | ✅ stub | ✅ producer | The Compose-runtime observer install lands on desktop; Android exposes a `NotAvailable`-only stub until the in-sandbox install ships. |
+| `compose/permissions` | ✅ | ❌ Android-only | Runtime-permissions surface — Robolectric `ShadowApplication` grant seed + `ContextWrapper.checkPermission` query tracker. Desktop has no Android permission model; CMP panel chip greys out on `serverCapabilities.backend == "desktop"`. |
+| `compose/recomposition` | ✅ producer | ✅ producer | Compose-runtime observer install on both backends (desktop in-process; Android via the in-sandbox bridge). schemaVersion 2 adds the per-scope `reason` (#1605), derived symmetrically from `onScopeInvalidated`. |
 | `displayfilter/variants` | ✅ | ✅ | Both backends, gated on `composeai.displayfilter.filters`. Producer is pure `BufferedImage` post-capture. |
 | `fonts/used` | ✅ producer | 📁 registry-only | Android: `GoogleFontInterceptor` + Typeface accounting. Desktop: registry returns `NotAvailable` until a Skia-side font producer ports. |
 | `compose/semantics` / `layout/inspector` | ✅ producer | 📁 registry-only | Android producer reads the Robolectric semantics tree. Desktop registry serves the file once a CMP-portable producer driving `LocalView` / `SemanticsOwner` lands. |
@@ -381,6 +383,7 @@ Compose runtime, daemon, or AndroidX:
 | `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` |
 | `compose/theme` | `:data-theme-core` | `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` |
 | `compose/wallpaper` | `:data-wallpaper-core` | `WallpaperPayload` |
+| `compose/permissions` | `:data-permissions-core` | `PermissionsPayload`, `PermissionGrantWire` |
 | `fonts/used` | `:data-fonts-core` | `FontsUsedPayload`, `FontUsedEntry` |
 | `history/diff/regions` | `:data-history-core` | `HistoryDiffPayload`, `HistoryDiffRegion` |
 | `i18n/translations` | `:data-strings-core` | `I18nTranslationsPayload`, `I18nVisibleString` |
@@ -394,13 +397,42 @@ Each `core` module advertises its kind identity and schemaVersion via a
 `Material3ThemeProduct.SCHEMA_VERSION`, etc.). Connectors and consumers
 both refer to those constants — never inline the string literals.
 
-### `data/scroll` is renderer-side only
+### `data/scroll` is daemon-produced via `data/fetch` (issue #1528)
 
-`data/scroll/core` carries scroll-scenario drivers (`ScrollDriver`,
-`ScrollGifEncoder`, `ScrollPreviewExtension`) that the renderer
-composes through the regular extension pipeline. There is no
-`data-scroll-connector` because scroll is not a daemon-side data
-product — it produces image artifacts (GIFs, long PNGs), not a JSON
-payload, so it has no `kind` and never appears on the
-`initialize.capabilities.dataProducts` list. The renderer drives it
-directly via the `PreviewPipelineStep` / scenario-driver hooks.
+`data/scroll/core` carries the scroll-scenario primitives — `ScrollDriver`,
+`ScrollGifEncoder`, the LONG / GIF frame-driver extensions — that the renderer
+composes when `@ScrollingPreview(modes = [LONG | GIF])` runs. `data/scroll/connector`
+wires those primitives into the daemon's data-product surface: it advertises
+`render/scroll/long` (PNG) and `render/scroll/gif` (GIF) on
+`initialize.capabilities.dataProducts` as `requiresRerender = true` producers, so
+a missing scroll artefact returns `Outcome.RequiresRerender("scroll-long" |
+"scroll-gif")` and `JsonRpcServer.handleDataFetchWithRerender` queues a
+per-preview re-render in the right scenario via
+`RenderEngine.runScrollScenario`. The engine resolves the annotation's intent
+(axis, maxScrollPx, frameIntervalMs) from `PreviewIndex.scrollCaptureFor` —
+populated from the gradle plugin's `dataProducts[].scroll` field in
+`previews.json` — and delegates the heavy lifting to the renderer's public
+`renderer.handleLongCapture` / `renderer.handleGifCapture` entry points.
+
+**On-disk layout is intentionally identical to the Gradle path.** The daemon
+writes to `<modulePreviewsDir>/data/render-scroll-long/<previewId>.png` and
+`<modulePreviewsDir>/data/render-scroll-gif/<previewId>.gif` — the same files
+`composePreviewRenderAll` writes — so `gradleService.readPreviewImage` and
+`data/fetch` resolve to the exact same path regardless of which side produced
+it. Binary artefacts (PNG / animated GIF) override `allowInlineUpgrade` to
+`false` so an `inline = true` fetch still returns the path (matching the
+a11y overlay PNG's existing behaviour).
+
+| Kind | Transport | Source | Notes |
+| --- | --- | --- | --- |
+| `render/scroll/long` | `PATH` | `data/scroll/connector` + `RenderEngine.runScrollScenario` | One stitched PNG per `@ScrollingPreview(modes = [LONG])`. `requiresRerender = true`. |
+| `render/scroll/gif` | `PATH` | same as above | One animated GIF per `@ScrollingPreview(modes = [GIF])`. `requiresRerender = true`. |
+
+**Host backfill.** The VS Code extension's viewport-driven backfill
+(`triggerViewportScrollBackfill` in `extension.ts`) calls
+`daemonScheduler.fetchScrollDataProduct` per-`(module, previewId, kind)` against
+the daemon; on daemon-side failure it falls back to the historical
+`composePreviewRender('full')` Gradle round-trip so older daemons that don't
+advertise the kinds still work. The fallback gate lives at the
+fetch-result boundary rather than `initialize.capabilities.dataProducts` so an
+in-flight rollout doesn't need a daemon version bump in the host.

@@ -208,6 +208,21 @@ class ExtensionRegistry(extensions: List<Extension>) {
     override fun isKnown(kind: String): Boolean =
       ids().any { byId.getValue(it).dataProductRegistry?.isKnown(kind) == true }
 
+    /**
+     * Delegates to the owning extension's registry — matches the pattern used by [fetch],
+     * [onSubscribe], and [onUnsubscribe]. Without this override the facade falls back to the
+     * [DataProductRegistry.renderModeFor] interface default of `null`, which silently breaks
+     * [JsonRpcServer.subscriptionDrivenRenderMode]: the dispatcher asks `publicDataProducts()` for
+     * the mode tag implied by a preview's subscribed kinds, gets `null` for every kind, and the
+     * follow-up `renderNow` runs without `mode=a11y`. The renderer then produces no a11y artefacts
+     * and the panel's `dataExtensionTracker` times out after 30 s waiting for attachments. See the
+     * regression note above the previous fix in [JsonRpcServer.subscriptionDrivenRenderMode].
+     */
+    override fun renderModeFor(kind: String): String? =
+      ids()
+        .firstOrNull { byId.getValue(it).dataProductRegistry?.isKnown(kind) == true }
+        ?.let { byId.getValue(it).dataProductRegistry?.renderModeFor(kind) }
+
     override fun fetch(
       previewId: String,
       kind: String,

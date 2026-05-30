@@ -3,6 +3,7 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.tapmoc)

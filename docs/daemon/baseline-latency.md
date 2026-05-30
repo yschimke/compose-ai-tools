@@ -36,6 +36,29 @@ render rows compare like-for-like across targets.
 
 Total render set per run: **5 captures**.
 
+## Stages (CSV column `scenario` prefix)
+
+The CSV started as a stage-0 baseline (per-save `./gradlew`). Issue #1586 added
+the two faster save loops that shipped behind experimental flags, driven by the
+sibling `benchCompileStages` task:
+
+| Stage | Save loop | `scenario` values | Source |
+| ----- | --------- | ----------------- | ------ |
+| 0 | per-save `./gradlew` | `cold`, `warm-no-edit`, `warm-after-1-line-edit` | `benchPreviewLatency` |
+| 1 | resident `gradle --continuous` (`composePreview.daemon.continuousCompile`) | `stage-1-warm-after-1-line-edit` | `benchCompileStages` |
+| 2 | in-process BTA (`composePreview.daemon.compileInProcess`) | `stage-2-cold-first-save`, `stage-2-warm-after-1-line-edit`, `stage-2-warm` | `benchCompileStages` |
+
+Stage 1 rows carry `phase=compile` — the wall of one resident-Gradle rebuild,
+parsed from `BUILD SUCCESSFUL in N` exactly as `ContinuousCompileWorker` does.
+Stage 2 rows carry `phase=compile` (the real
+`BtaCompileSession.compileIncremental()` driven via `:daemon:core`'s
+`BtaBenchMain`) and `phase=classloader-swap` (the child-loader rotation that
+follows a successful compile). The stage-2 `render` leg is unchanged from stage
+0, so it is not re-measured — `benchCompileStages` reuses the stage-0
+`render,warm-after-1-line-edit` median when it evaluates the graduation verdict
+(`docs/daemon/stage-2-verdict-<target>.md`) against
+[COMPILE-IN-PROCESS.md](COMPILE-IN-PROCESS.md) § "Promote / demote criteria".
+
 ## Phases (CSV column `phase`)
 
 `config`, `compile`, and `discovery` match across targets (Gradle
@@ -109,12 +132,21 @@ on both targets because it absorbs first-time classloader/runtime init.
 ## Running it
 
 ```sh
-# Android — see :samples:android-daemon-bench/README.md
-./gradlew :samples:android-daemon-bench:benchPreviewLatency
+# Stage 0 (+ render baseline the stage-2 verdict reuses).
+./gradlew :samples:android-daemon-bench:benchPreviewLatency   # Android
+./gradlew :samples:desktop-daemon-bench:benchPreviewLatency   # Desktop
 
-# Desktop — see :samples:desktop-daemon-bench/README.md
-./gradlew :samples:desktop-daemon-bench:benchPreviewLatency
+# Stage 1 + stage 2 + graduation verdict. Run after benchPreviewLatency.
+./gradlew :samples:android-daemon-bench:benchCompileStages    # Android
+./gradlew :samples:desktop-daemon-bench:benchCompileStages    # Desktop
 ```
+
+Both also run weekly (and on demand) via
+[`.github/workflows/daemon-bench.yml`](../../.github/workflows/daemon-bench.yml),
+which uploads the CSV + per-target verdict as artifacts. That workflow is
+**non-blocking** — the per-PR critical path only runs the cheap
+`composePreviewRender` smoke (`ci.yml` build-samples job). Shared-runner numbers
+are noisier than the reference machine above; treat them as trend, not gospel.
 
 Wall time on the reference machine: **~85 s** (android), **~170 s**
 (desktop — desktop's per-preview forks dominate). Both tasks do ~36

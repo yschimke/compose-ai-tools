@@ -150,9 +150,9 @@ Typical agent flow:
   "fps": 12,
   "format": "apng",
   "events": [
-    { "tMs": 0, "kind": "click", "pixelX": 120, "pixelY": 80 },
+    { "tMs": 0, "kind": "input.click", "pixelX": 120, "pixelY": 80 },
     { "tMs": 400, "kind": "recording.probe", "label": "after-first-click" },
-    { "tMs": 600, "kind": "click", "pixelX": 120, "pixelY": 80 }
+    { "tMs": 600, "kind": "input.click", "pixelX": 120, "pixelY": 80 }
   ]
 }
 ```
@@ -160,14 +160,35 @@ Typical agent flow:
 Events sharing a `tMs` are treated as one script step. Control markers in the
 step are applied before the frame for that timestamp is captured.
 
-`record_preview` accepts two kinds of events:
+Every `kind` is a namespaced id advertised by the daemon's
+`capabilities.dataExtensions[].recordingScriptEvents[]` — there are no bare /
+un-namespaced kinds. Call `list_data_products` (or read
+`InitializeResult.capabilities.dataExtensions`) for the authoritative list on
+the active daemon; the catalogue below is the current cross-host roster:
 
-1. **Built-in input kinds** — `click`, `pointerDown`, `pointerMove`, `pointerUp`,
-   `rotaryScroll`, `keyDown`, `keyUp`. Sourced from `InteractiveInputKind`.
-2. **Namespaced data-extension events** — advertised by the daemon via
-   `capabilities.dataExtensions[].recordingScriptEvents[]`. Only entries with
-   `supported = true` are accepted. Today the only supported extension event
-   is `recording.probe`.
+| Namespace | Event ids | Hosts |
+|-----------|-----------|-------|
+| `input.touch` | `input.click`, `input.pointerDown`, `input.pointerMove`, `input.pointerUp` | desktop + Android |
+| `input.keyboard` | `input.keyDown`, `input.keyUp` | desktop + Android |
+| `input.rsb` | `input.rotaryScroll` | Android (Wear) |
+| `recording` | `recording.probe` | desktop + Android |
+| `uiautomator` | `uia.click`, `uia.longClick`, `uia.scrollForward`, `uia.scrollBackward`, `uia.requestFocus`, `uia.expand`, `uia.collapse`, `uia.dismiss`, `uia.inputText` (each needs a `selector`) | Android |
+| `navigation` | `navigation.deepLink`, `navigation.back`, `navigation.predictiveBackStarted`, `navigation.predictiveBackProgressed`, `navigation.predictiveBackCommitted`, `navigation.predictiveBackCancelled` | Android |
+| `lifecycle` | `lifecycle.pause`, `lifecycle.resume`, `lifecycle.stop` | Android |
+| `preview.reload` | `preview.reload` | Android |
+| `state` | `state.recreate`, `state.save`, `state.restore` | Android |
+| `a11y` | `a11y.action.<name>` (e.g. `a11y.action.click`, `a11y.action.scrollForward`) | Android, when the `a11y` extension is enabled |
+
+The `uiautomator` extension is wired unconditionally on Android daemons — no
+Gradle DSL opt-in is needed to use `uia.*` events. The `composePreview {
+previewExtensions { … } }` block gates Gradle-task render extensions only; it
+does not change what the daemon advertises here.
+
+The deprecated names listed in `InteractiveInputKind` (`click`, `pointerDown`,
+`pointerMove`, `pointerUp`, `rotaryScroll`, `keyDown`, `keyUp`) are the
+interactive-session payload variants and are **not** valid `record_preview`
+event ids — agents that send `{ "kind": "click" }` get rejected with
+`kind 'click' is not advertised by this daemon`. Prefix with `input.` instead.
 
 On success the tool returns an inline media block plus a JSON metadata text
 block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,

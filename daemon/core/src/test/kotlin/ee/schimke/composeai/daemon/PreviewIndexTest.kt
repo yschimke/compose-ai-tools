@@ -242,4 +242,111 @@ class PreviewIndexTest {
     assertTrue(empty.ids().isEmpty())
     assertNull(empty.byId("anything"))
   }
+
+  @Test
+  fun `scrollCaptureFor resolves dataProducts scroll metadata per (previewId mode) pair`() {
+    val tmp = Files.createTempFile("previews-scroll", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          {
+            "id": "ScrollPreview_1",
+            "className": "com.example.ScrollPreviewsKt",
+            "functionName": "MyScrollPreview",
+            "dataProducts": [
+              {
+                "kind": "render/scroll/long",
+                "scroll": {
+                  "mode": "LONG",
+                  "axis": "VERTICAL",
+                  "maxScrollPx": 4000,
+                  "frameIntervalMs": 0
+                }
+              },
+              {
+                "kind": "render/scroll/gif",
+                "scroll": {
+                  "mode": "GIF",
+                  "axis": "VERTICAL",
+                  "maxScrollPx": 0,
+                  "frameIntervalMs": 33
+                }
+              }
+            ]
+          },
+          {
+            "id": "NoScrollPreview_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "Other"
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      val longScroll = index.scrollCaptureFor("ScrollPreview_1", "scroll-long")
+      assertNotNull(
+        "scroll-long should resolve when render/scroll/long is in dataProducts",
+        longScroll,
+      )
+      assertEquals("LONG", longScroll!!.mode)
+      assertEquals(4000, longScroll.maxScrollPx)
+
+      val gifScroll = index.scrollCaptureFor("ScrollPreview_1", "scroll-gif")
+      assertNotNull(gifScroll)
+      assertEquals(33, gifScroll!!.frameIntervalMs)
+
+      // Unknown mode → null (the kind isn't reachable from the mode tag).
+      assertNull(index.scrollCaptureFor("ScrollPreview_1", "a11y"))
+      // Preview that doesn't carry the kind → null.
+      assertNull(index.scrollCaptureFor("NoScrollPreview_1", "scroll-long"))
+      // Unknown previewId → null.
+      assertNull(index.scrollCaptureFor("DoesNotExist", "scroll-long"))
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
+
+  @Test
+  fun `loadFromFile ignores unknown dataProducts fields so plugin-side schema additions don't break`() {
+    val tmp = Files.createTempFile("previews-scroll-extra", ".json")
+    Files.writeString(
+      tmp,
+      """
+      {
+        "previews": [
+          {
+            "id": "P_1",
+            "className": "com.example.PreviewsKt",
+            "functionName": "P",
+            "dataProducts": [
+              {
+                "kind": "render/scroll/long",
+                "extensionId": "scroll-long",
+                "displayName": "Long scroll",
+                "output": "data/render-scroll-long/P_1.png",
+                "cost": 7.5,
+                "scroll": { "mode": "LONG" }
+              }
+            ]
+          }
+        ]
+      }
+      """
+        .trimIndent(),
+    )
+    try {
+      val index = PreviewIndex.loadFromFile(tmp)
+      val scroll = index.scrollCaptureFor("P_1", "scroll-long")
+      assertNotNull(scroll)
+      assertEquals("LONG", scroll!!.mode)
+      // Plugin-side fields are silently dropped — no parse exception.
+    } finally {
+      Files.deleteIfExists(tmp)
+    }
+  }
 }

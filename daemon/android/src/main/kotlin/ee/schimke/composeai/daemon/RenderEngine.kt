@@ -58,7 +58,7 @@ import okio.ByteString.Companion.decodeBase64
  * resolved class+method reference into a PNG on disk.
  *
  * **Duplicated from
- * [`renderer-android`'s `RobolectricRenderTest`](../../../../../../../renderer-android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt).**
+ * [`renderer-android`'s `RobolectricRenderTest`](../../../../../../../renderers/android/src/main/kotlin/ee/schimke/composeai/renderer/RobolectricRenderTest.kt).**
  * Per
  * [DESIGN.md § 7](../../../../../../docs/daemon/DESIGN.md#7-sharing-strategy--what-crosses-the-boundary)
  * the v1 render body lives in two places — the standalone JUnit-driven renderer and the daemon — so
@@ -179,6 +179,20 @@ class RenderEngine(
      */
     runAccessibility: Boolean? = null,
   ): RenderResult {
+    // Issue #1528 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
+    // queues `mode=scroll-long` / `scroll-gif`, route into the renderer's scroll handlers
+    // (`renderer.handleLongCapture` / `renderer.handleGifCapture`) instead of the default
+    // single-frame Compose path. The handlers write to the on-disk path the scroll registry
+    // (`ScrollDataProductRegistry.fileFor`) reads back, so the second registry fetch sees the
+    // file and emits `Ok(path)`. Looks up `ScrollCaptureDto` via the daemon's PreviewIndex
+    // (`scrollCaptureFor`) — the previews.json path is loaded lazily via
+    // `PreviewIndex.loadFromFile` against the `composeai.daemon.previewsJsonPath` system property
+    // so the engine doesn't need a constructor-time previewIndex injection. The DTO carries
+    // `axis` / `maxScrollPx` / `frameIntervalMs` straight from the annotation through the
+    // gradle plugin's `dataProducts[].scroll` field.
+    if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
+      return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+    }
     val effectiveRunAccessibility =
       runAccessibility ?: (spec.renderMode == A11Y_RENDER_MODE)
     // Roborazzi defaults to "compare" mode — `captureRoboImage` reads the existing baseline at
@@ -351,6 +365,10 @@ class RenderEngine(
                             // the PNG for daemon-driven renders (same path used by the standalone
                             // `composePreviewRender` Test task).
                             previewId = spec.previewId,
+                            // Exact surface width = the resolved canvas width (400dp for FQN-
+                            // discovered notifications), so the shade isn't cropped to its ~320dp
+                            // intrinsic square. Mirrors the Glance branch's dp conversion.
+                            widthDp = pxToDp(spec.widthPx, spec.density),
                           )
                         } else if (isGlanceAppWidget) {
                           // `@androidx.glance.preview.Preview` — mirrors the standalone
@@ -735,6 +753,179 @@ class RenderEngine(
     )
   }
 
+  /**
+   * Issue #1528 — dispatch for `scroll-long` / `scroll-gif` render modes. Builds the held
+   * `AndroidComposeTestRule`, paints the preview's `@Composable` body via
+   * [setHeldComposableContentForScroll], then calls the renderer's public scroll handlers to
+   * write the final stitched PNG / animated GIF under `<dataRoot>/render-scroll-{long,gif}/`.
+   *
+   * Returns a [RenderResult] with `pngPath` pointing at the produced scroll artefact so the
+   * dispatcher's second-fetch picks up the file. Throws [IllegalStateException] when the preview
+   * has no `dataProducts[].scroll` metadata (the dispatcher surfaces this as
+   * `ERR_DATA_PRODUCT_FETCH_FAILED` with the message body), or when the renderer's scroll handler
+   * returns `false` (no scrollable on the requested axis — the dispatcher surfaces the same
+   * error code so the host can fall back to its Gradle path or paint a "no scrollable" hint).
+   *
+   * Looks up the scroll intent by lazily loading the daemon's `previews.json`
+   * ([PreviewIndex.PREVIEWS_JSON_PATH_PROP]) per render. The cost is one ~kB file read per
+   * `data/fetch` re-render, which is dwarfed by the render itself.
+   */
+  @OptIn(ExperimentalRoborazziApi::class)
+  private fun runScrollScenario(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult {
+    val previewId =
+      spec.previewId
+        ?: error(
+          "RenderEngine: scroll mode '${spec.renderMode}' requires a previewId on the RenderSpec " +
+            "so the scroll metadata can be resolved from the previews.json index"
+        )
+    val previewIndex = loadPreviewIndexLazily()
+    val scroll =
+      previewIndex.scrollCaptureFor(previewId, spec.renderMode!!)
+        ?: error(
+          "RenderEngine: scroll mode '${spec.renderMode}' requested for previewId '$previewId' " +
+            "but the preview has no matching dataProducts[].scroll entry in previews.json — " +
+            "the host should fall back to the Gradle composePreviewRenderAll path"
+        )
+    val scenarioDataDir =
+      dataDir
+        ?: error(
+          "RenderEngine: scroll mode '${spec.renderMode}' needs a non-null dataDir to write " +
+            "<dataDir>/render-scroll-{long,gif}/<previewId>.{png,gif}"
+        )
+    val (subdir, ext) =
+      when (spec.renderMode) {
+        SCROLL_LONG_RENDER_MODE -> "render-scroll-long" to "png"
+        SCROLL_GIF_RENDER_MODE -> "render-scroll-gif" to "gif"
+        else -> error("RenderEngine: unreachable scroll mode '${spec.renderMode}'")
+      }
+    val outputFile = scenarioDataDir.resolve(subdir).resolve("$previewId.$ext")
+    outputFile.parentFile?.mkdirs()
+
+    val isRound = isRoundDevice(spec.device)
+    applyPreviewQualifiers(
+      widthDp = pxToDp(spec.widthPx, spec.density),
+      heightDp = pxToDp(spec.heightPx, spec.density),
+      density = spec.density,
+      isRound = isRound,
+      localeTag = spec.localeTag,
+      uiMode = spec.uiMode,
+      orientation = spec.orientation,
+    )
+    org.robolectric.RuntimeEnvironment.setFontScale(spec.fontScale ?: 1.0f)
+
+    val appContext: android.app.Application =
+      androidx.test.core.app.ApplicationProvider.getApplicationContext()
+    org.robolectric.Shadows.shadowOf(appContext.packageManager)
+      .addActivityIfNotPresent(
+        android.content.ComponentName(appContext.packageName, ComponentActivity::class.java.name)
+      )
+
+    @Suppress("DEPRECATION") val rule = createAndroidComposeRule<ComponentActivity>()
+    val description =
+      org.junit.runner.Description.createTestDescription(
+        RenderEngine::class.java,
+        "scroll_${spec.outputBaseName}",
+      )
+    val startNs = System.nanoTime()
+    var handled = false
+    val statement =
+      object : org.junit.runners.model.Statement() {
+        override fun evaluate() {
+          rule.mainClock.autoAdvance = false
+          val clazz = Class.forName(spec.className, true, classLoader)
+          val composableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
+          val bgArgb = resolveBackgroundColor(spec).toArgb()
+          val heightDp = pxToDp(spec.heightPx, spec.density)
+          rule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides false) {
+              Box(modifier = Modifier.fillMaxSize().background(Color(bgArgb))) {
+                InvokeComposable(composableMethod)
+              }
+            }
+          }
+          rule.mainClock.advanceTimeBy(spec.captureAdvanceMs ?: CAPTURE_ADVANCE_MS)
+          handled =
+            when (spec.renderMode) {
+              SCROLL_LONG_RENDER_MODE ->
+                ee.schimke.composeai.renderer.handleLongCapture(
+                  rule = rule,
+                  scroll = scroll.toRendererScrollCapture(),
+                  previewId = previewId,
+                  heightDp = heightDp,
+                  isRound = isRound,
+                  outputFile = outputFile,
+                )
+              SCROLL_GIF_RENDER_MODE ->
+                ee.schimke.composeai.renderer.handleGifCapture(
+                  rule = rule,
+                  scroll = scroll.toRendererScrollCapture(),
+                  previewId = previewId,
+                  heightDp = heightDp,
+                  isRound = isRound,
+                  outputFile = outputFile,
+                )
+              else -> false
+            }
+        }
+      }
+    rule.apply(statement, description).evaluate()
+
+    if (!handled) {
+      error(
+        "RenderEngine: scroll mode '${spec.renderMode}' returned false (no scrollable on " +
+          "scroll.axis=${scroll.axis} for previewId '$previewId')"
+      )
+    }
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = outputFile.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
+  /**
+   * Lazily reads the daemon's `previews.json` via [PreviewIndex.loadFromFile] using the
+   * `composeai.daemon.previewsJsonPath` system property the gradle plugin populates. Falls back to
+   * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) — callers that
+   * need a real index check for an empty result and emit a structured error.
+   */
+  private fun loadPreviewIndexLazily(): PreviewIndex {
+    val path = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    return if (path.isNullOrBlank()) {
+      PreviewIndex.empty()
+    } else {
+      PreviewIndex.loadFromFile(java.nio.file.Paths.get(path))
+    }
+  }
+
+  private fun ScrollCaptureDto.toRendererScrollCapture():
+    ee.schimke.composeai.renderer.ScrollCapture =
+    ee.schimke.composeai.renderer.ScrollCapture(
+      mode =
+        when (mode.uppercase()) {
+          "LONG" -> ee.schimke.composeai.renderer.ScrollMode.LONG
+          "GIF" -> ee.schimke.composeai.renderer.ScrollMode.GIF
+          "END" -> ee.schimke.composeai.renderer.ScrollMode.END
+          "TOP" -> ee.schimke.composeai.renderer.ScrollMode.TOP
+          else -> error("ScrollCaptureDto: unknown mode '$mode'")
+        },
+      axis =
+        when (axis.uppercase()) {
+          "HORIZONTAL" -> ee.schimke.composeai.renderer.ScrollAxis.HORIZONTAL
+          else -> ee.schimke.composeai.renderer.ScrollAxis.VERTICAL
+        },
+      maxScrollPx = maxScrollPx,
+      reduceMotion = reduceMotion,
+      frameIntervalMs = frameIntervalMs,
+    )
+
   private fun resolveBackgroundColor(spec: RenderSpec): Color =
     when {
       spec.backgroundColor != 0L -> Color(spec.backgroundColor.toInt())
@@ -826,6 +1017,19 @@ class RenderEngine(
      * `LocalInspectionMode = false` and writes ATF + hierarchy artefacts to `dataDir`.
      */
     const val A11Y_RENDER_MODE: String = "a11y"
+
+    /**
+     * Issue #1528 — scroll scenarios the daemon's `data/fetch` re-render path can request. The
+     * registry in `:data-scroll-connector` advertises `render/scroll/long` / `render/scroll/gif`
+     * as `requiresRerender = true`, so a missing scroll artefact returns
+     * `Outcome.RequiresRerender("scroll-long" | "scroll-gif")` and the dispatcher submits a render
+     * with `spec.renderMode` set to one of these constants. [render] routes scroll-mode requests
+     * into [runScrollScenario], which delegates to the renderer's public
+     * [ee.schimke.composeai.renderer.handleLongCapture] / [handleGifCapture] entry points.
+     */
+    const val SCROLL_LONG_RENDER_MODE: String = "scroll-long"
+
+    const val SCROLL_GIF_RENDER_MODE: String = "scroll-gif"
 
     /**
      * `RenderSpec.kind` value flagging a tile preview (non-composable function returning

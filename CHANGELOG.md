@@ -1,5 +1,135 @@
 # Changelog
 
+## [0.12.0](https://github.com/yschimke/compose-ai-tools/compare/v0.11.16...v0.12.0) (2026-05-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **renderer-android:** default LocalInspectionMode to true for static previews ([#1614](https://github.com/yschimke/compose-ai-tools/issues/1614))
+
+### Features
+
+* **daemon-bench:** drive stage-1/stage-2 compile legs + CI smoke ([#1586](https://github.com/yschimke/compose-ai-tools/issues/1586)) ([#1615](https://github.com/yschimke/compose-ai-tools/issues/1615)) ([a7a077c](https://github.com/yschimke/compose-ai-tools/commit/a7a077c62d2ecdef10b1a6ce73ce90d69c5bac0a))
+* **daemon:** wire desktop scroll scenario runner (render/scroll/long + gif) ([#1609](https://github.com/yschimke/compose-ai-tools/issues/1609)) ([9eed691](https://github.com/yschimke/compose-ai-tools/commit/9eed6919bdc77708620d5d16eb42012330ece0b3))
+* **mcp:** accept and validate override-extension fields in render_preview ([#1611](https://github.com/yschimke/compose-ai-tools/issues/1611)) ([6728921](https://github.com/yschimke/compose-ai-tools/commit/67289211c0d564d3c2e213b1ee8a3d0b7d760f79))
+* **recomposition:** v2 schema with per-scope invalidation reason ([#1612](https://github.com/yschimke/compose-ai-tools/issues/1612)) ([4f30a64](https://github.com/yschimke/compose-ai-tools/commit/4f30a64a67f9420ce2cdb9c479f222417d1abab9))
+* **renderer-android:** default LocalInspectionMode to true for static previews ([#1614](https://github.com/yschimke/compose-ai-tools/issues/1614)) ([154ecef](https://github.com/yschimke/compose-ai-tools/commit/154ecefe5de14466c517802a0c2ae08cecb064a6))
+
+
+### Bug Fixes
+
+* **a11y:** preserve baseline findings on ATF-unavailable runs ([#1608](https://github.com/yschimke/compose-ai-tools/issues/1608)) ([ff17f6b](https://github.com/yschimke/compose-ai-tools/commit/ff17f6b0eab0f2e7752254d42f3e2b1768834cf7))
+* **cli,gradle-plugin:** tighten --variant matching and propagate to doctor ([#1599](https://github.com/yschimke/compose-ai-tools/issues/1599)) ([2d503ba](https://github.com/yschimke/compose-ai-tools/commit/2d503ba923c276e21d84566cb2c87afbb400abd1))
+* **daemon:** truthful supportedOverrides + drop stale Android-only docstrings ([#1603](https://github.com/yschimke/compose-ai-tools/issues/1603)) ([027f611](https://github.com/yschimke/compose-ai-tools/commit/027f61108010ef2fc8bb7207251ef7eadd411f8e))
+* **notifications:** render @NotificationPreview at 400dp wide, not a 320 square ([#1592](https://github.com/yschimke/compose-ai-tools/issues/1592)) ([fd9c7ed](https://github.com/yschimke/compose-ai-tools/commit/fd9c7ed7d996831d408ae3ae6688fbdd8e0be5b2))
+* **notifications:** treat @PreviewParameter fan-out variants as declared ([#1597](https://github.com/yschimke/compose-ai-tools/issues/1597)) ([9e3b9f8](https://github.com/yschimke/compose-ai-tools/commit/9e3b9f8925dac8d3fb4f116442f9b7b1fd06c75d))
+* **permissions:** scope sandbox query bridge by previewId ([#1610](https://github.com/yschimke/compose-ai-tools/issues/1610)) ([f72e29a](https://github.com/yschimke/compose-ai-tools/commit/f72e29ac406bcafefe943b5fce42bce3990d68a3))
+* **samples:** additively composite Glimmer XR menu so the env shows through ([#1601](https://github.com/yschimke/compose-ai-tools/issues/1601)) ([5aa391d](https://github.com/yschimke/compose-ai-tools/commit/5aa391da584d34142a9a5db883e16edccf13924f))
+* **vscode-extension:** address codex follow-ups on preview-tab + focus refresh ([#1598](https://github.com/yschimke/compose-ai-tools/issues/1598)) ([0bab05b](https://github.com/yschimke/compose-ai-tools/commit/0bab05b5a545265cd487745fd20837e8b47802f1))
+
+## [0.11.16](https://github.com/yschimke/compose-ai-tools/compare/v0.11.15...v0.11.16) (2026-05-29)
+
+
+### Features
+
+* **a11y:** render overlays + legends across all sample modules, incl. CMP/desktop ([#1575](https://github.com/yschimke/compose-ai-tools/issues/1575)) ([e423f42](https://github.com/yschimke/compose-ai-tools/commit/e423f4260ed3fca4dc0c5758311f3de63c1333b8))
+* **daemon:** complete stage-2 in-process compile (BTA) behind experimental flag ([#1587](https://github.com/yschimke/compose-ai-tools/issues/1587)) ([6542768](https://github.com/yschimke/compose-ai-tools/commit/654276825fd7313665d43b078861b4816050f9a3))
+* **daemon:** produce @ScrollingPreview artefacts via data/fetch ([#1579](https://github.com/yschimke/compose-ai-tools/issues/1579)) ([6ca2330](https://github.com/yschimke/compose-ai-tools/commit/6ca2330590f7ef0b181f5f70544600209627ea83))
+* IP-safe cross-project metadata service for preview tooling detection ([#1580](https://github.com/yschimke/compose-ai-tools/issues/1580)) ([8064930](https://github.com/yschimke/compose-ai-tools/commit/8064930d58b958145b16cca2c6758c01d1870185))
+* **permissions:** cross-classloader data/fetch readback for compose/permissions queries ([#1582](https://github.com/yschimke/compose-ai-tools/issues/1582)) ([2520b30](https://github.com/yschimke/compose-ai-tools/commit/2520b306af1d62344edb8e1e3647faf6846a8953))
+* **preview:** @FocusedPreview(pressed = true) dispatches indirect-pointer Press ([#1585](https://github.com/yschimke/compose-ai-tools/issues/1585)) ([8e3a23c](https://github.com/yschimke/compose-ai-tools/commit/8e3a23c50252f0596d1b278d54d2b39a56724f12))
+* **xr-glimmer:** real-interaction Default + Focused state captures, enterPlacesFocus opt-in ([#1583](https://github.com/yschimke/compose-ai-tools/issues/1583)) ([5429c12](https://github.com/yschimke/compose-ai-tools/commit/5429c1283b709c3aa6cddd6b56e17454457e5533))
+
+
+### Bug Fixes
+
+* **a11y:** surface only changed previews in PR comment ([#1590](https://github.com/yschimke/compose-ai-tools/issues/1590)) ([560e748](https://github.com/yschimke/compose-ai-tools/commit/560e74890f2be2a7776c9220d97066cd8fed1534))
+* **focus-connector:** release indirect-pointer Press across multi-index captures ([#1589](https://github.com/yschimke/compose-ai-tools/issues/1589)) ([ef0462a](https://github.com/yschimke/compose-ai-tools/commit/ef0462a8460b245fae348115070702800af784e8))
+* **notifications:** distinguish failed renders from removals in PR comment ([#1591](https://github.com/yschimke/compose-ai-tools/issues/1591)) ([934cf60](https://github.com/yschimke/compose-ai-tools/commit/934cf604f652b1fe4b182a74bba84d44a592e1d6))
+
+## [0.11.15](https://github.com/yschimke/compose-ai-tools/compare/v0.11.14...v0.11.15) (2026-05-28)
+
+
+### Features
+
+* **samples:** add :samples:xr-glimmer for Jetpack Compose Glimmer (Android XR) ([#1561](https://github.com/yschimke/compose-ai-tools/issues/1561)) ([4b6fa37](https://github.com/yschimke/compose-ai-tools/commit/4b6fa37a94138b086db31b9138889df28c04ca7e))
+* **samples:** fan GlimmerXrMenuNavigation across all four env backdrops ([#1564](https://github.com/yschimke/compose-ai-tools/issues/1564)) ([ad29751](https://github.com/yschimke/compose-ai-tools/commit/ad297510103ca3c15ae049e02ca9c34d51939842))
+* **samples:** interactive XR menu navigation GIF with touchpad gesture overlay ([#1563](https://github.com/yschimke/compose-ai-tools/issues/1563)) ([70faa58](https://github.com/yschimke/compose-ai-tools/commit/70faa5879acaf68117bbf2c2419b4f6bec948630))
+* surface private @Preview methods via reflection ([#1572](https://github.com/yschimke/compose-ai-tools/issues/1572)) ([c02ea5b](https://github.com/yschimke/compose-ai-tools/commit/c02ea5bb277677e340cc4d7c76016a77c6ac3b96))
+
+
+### Bug Fixes
+
+* **a11y:** don't report list items as merged into a scrollable ([#1569](https://github.com/yschimke/compose-ai-tools/issues/1569)) ([9aad66a](https://github.com/yschimke/compose-ai-tools/commit/9aad66a3a11ef362fe32b8437c194e745938033f))
+* allow private @Preview Glance composables to be invoked ([#1574](https://github.com/yschimke/compose-ai-tools/issues/1574)) ([597ad0d](https://github.com/yschimke/compose-ai-tools/commit/597ad0d9512d07b7efa585fbd55a941b97589bd9))
+* set explicit notification width to match renderer canvas ([#1576](https://github.com/yschimke/compose-ai-tools/issues/1576)) ([2017d8c](https://github.com/yschimke/compose-ai-tools/commit/2017d8cb6bf0593cfaed32f671060191b8757d48))
+* **vscode-extension:** clear stale previews when last editor closes ([#1568](https://github.com/yschimke/compose-ai-tools/issues/1568)) ([4f6b69c](https://github.com/yschimke/compose-ai-tools/commit/4f6b69c7f5b6cdc88cc8d02ac85ad398f68d7917))
+* **vscode-extension:** recover from partial render failures, break drift loop ([#1558](https://github.com/yschimke/compose-ai-tools/issues/1558)) ([98c4c16](https://github.com/yschimke/compose-ai-tools/commit/98c4c16ac8cc721fe82cd55769b66c852a520ee1))
+* **vscode-extension:** scope bundle overlays to the focused preview ([#1570](https://github.com/yschimke/compose-ai-tools/issues/1570)) ([600e844](https://github.com/yschimke/compose-ai-tools/commit/600e8442e5d9c8b2073671444040bf3aff746608))
+
+## [0.11.14](https://github.com/yschimke/compose-ai-tools/compare/v0.11.13...v0.11.14) (2026-05-28)
+
+
+### Features
+
+* **doctor:** warn when Gradle daemon runs above JDK 21 on AGP projects ([#1554](https://github.com/yschimke/compose-ai-tools/issues/1554)) ([55714e9](https://github.com/yschimke/compose-ai-tools/commit/55714e975785ae1c9946784c8c09693798fc441e))
+
+
+### Bug Fixes
+
+* **daemon:** stub Application by default, plumb useConsumerApplication ([#1557](https://github.com/yschimke/compose-ai-tools/issues/1557)) ([288b7f8](https://github.com/yschimke/compose-ai-tools/commit/288b7f88fce1bc3e3bfbd75955c01ea8862bb594))
+* **daemon:** surface bootstrap failures from RobolectricHost workers ([#1556](https://github.com/yschimke/compose-ai-tools/issues/1556)) ([c6faa40](https://github.com/yschimke/compose-ai-tools/commit/c6faa407576a0239f219f7bc9229bf5b4eb1c8ff))
+
+## [0.11.13](https://github.com/yschimke/compose-ai-tools/compare/v0.11.12...v0.11.13) (2026-05-27)
+
+
+### Features
+
+* add permissions override UI to inspection panel ([#1540](https://github.com/yschimke/compose-ai-tools/issues/1540)) ([e7745d8](https://github.com/yschimke/compose-ai-tools/commit/e7745d8f645fa8f346e8c74f82a2437e26508232))
+* detect render/manifest drift after a sanitiser change ([#1548](https://github.com/yschimke/compose-ai-tools/issues/1548)) ([a4e06b6](https://github.com/yschimke/compose-ai-tools/commit/a4e06b6781624b13314fa872ce11d22ffe723f76))
+* **doctor:** surface module.preview-tooling-not-declared finding ([#1553](https://github.com/yschimke/compose-ai-tools/issues/1553)) ([245160d](https://github.com/yschimke/compose-ai-tools/commit/245160dd7492590d2a57499114c6f7f19b4189b9))
+
+
+### Bug Fixes
+
+* detect transitive preview deps in unevaluated projects ([#1541](https://github.com/yschimke/compose-ai-tools/issues/1541)) ([2a81e56](https://github.com/yschimke/compose-ai-tools/commit/2a81e56f9660ddc3c0f821bce43751f517d4b6e5))
+* match flavored AGP variants and add --variant CLI flag ([#1551](https://github.com/yschimke/compose-ai-tools/issues/1551)) ([6f000ad](https://github.com/yschimke/compose-ai-tools/commit/6f000ad9e28b474a54c42d0cb75bfaf864172fa4))
+
+## [0.11.12](https://github.com/yschimke/compose-ai-tools/compare/v0.11.11...v0.11.12) (2026-05-26)
+
+
+### Features
+
+* add per-card loading spinner for data extension subscriptions ([#1537](https://github.com/yschimke/compose-ai-tools/issues/1537)) ([f816202](https://github.com/yschimke/compose-ai-tools/commit/f8162028839aa2175bb30ae94d1f75cb535d32ec))
+
+
+### Bug Fixes
+
+* **daemon:** ScopedDataProducts forwards renderModeFor to the owning … ([#1535](https://github.com/yschimke/compose-ai-tools/issues/1535)) ([30baaab](https://github.com/yschimke/compose-ai-tools/commit/30baaab05b425a9115ca6fe965be9173ca734fba))
+* **plugin:** nicer renderOutput sanitiser, per-preview shortest unique stem ([#1530](https://github.com/yschimke/compose-ai-tools/issues/1530)) ([f5b8d08](https://github.com/yschimke/compose-ai-tools/commit/f5b8d081ede765687c3639e88202c920207731d6))
+* stop emitting phantom static capture for @ScrollingPreview LONG/GIF-only ([#1526](https://github.com/yschimke/compose-ai-tools/issues/1526)) ([d5def43](https://github.com/yschimke/compose-ai-tools/commit/d5def436cc4fb766be6980a8e1533678e010a25f))
+* **vscode-extension:** a11y toggle works without composePreview.early… ([#1534](https://github.com/yschimke/compose-ai-tools/issues/1534)) ([f3fd784](https://github.com/yschimke/compose-ai-tools/commit/f3fd784a023675582eeedafa577d6f39e401f053))
+* **vscode-extension:** backfill @ScrollingPreview image data products via Gradle ([#1516](https://github.com/yschimke/compose-ai-tools/issues/1516)) ([f9699d1](https://github.com/yschimke/compose-ai-tools/commit/f9699d1b97f7667390d20d52bf4388933a52b9c4))
+* **vscode-extension:** backfill @ScrollingPreview image data products via Gradle ([#1519](https://github.com/yschimke/compose-ai-tools/issues/1519)) ([a580b25](https://github.com/yschimke/compose-ai-tools/commit/a580b250cb6216f7d0be2740acd734dd19c86f1e))
+* **vscode-extension:** drop post-subscribe refresh that stuck a11y ca… ([#1536](https://github.com/yschimke/compose-ai-tools/issues/1536)) ([8115bb6](https://github.com/yschimke/compose-ai-tools/commit/8115bb64b7e7c83eecdd4a26ae30de91f3504534))
+* **vscode-extension:** keep @ScrollingPreview cards at device aspect ratio in every layout ([#1531](https://github.com/yschimke/compose-ai-tools/issues/1531)) ([e38850d](https://github.com/yschimke/compose-ai-tools/commit/e38850df9b70c0d0cc4cc233e81edaf9d994ad9e))
+
+## [0.11.11](https://github.com/yschimke/compose-ai-tools/compare/v0.11.10...v0.11.11) (2026-05-26)
+
+
+### Features
+
+* add inline image rendering for terminal preview display ([#1515](https://github.com/yschimke/compose-ai-tools/issues/1515)) ([18e56b5](https://github.com/yschimke/compose-ai-tools/commit/18e56b51da8ce9ce85a4b7b22d939dd7aea71a6c))
+* **vscode-extension:** add 'Compose Preview: Verify' consistency-check command ([#1509](https://github.com/yschimke/compose-ai-tools/issues/1509)) ([d89929e](https://github.com/yschimke/compose-ai-tools/commit/d89929ec9decfe0392b35fdf7dc01f05fb8430f6))
+* **vscode-extension:** trace preload skips + gradle cancel source ([#1508](https://github.com/yschimke/compose-ai-tools/issues/1508)) ([0923d74](https://github.com/yschimke/compose-ai-tools/commit/0923d743cb6fbe3bca3d5c22c882c5c9ca786a77))
+
+
+### Bug Fixes
+
+* **cli:** auto-enable mavenLocal for SNAPSHOT plugin versions ([#1512](https://github.com/yschimke/compose-ai-tools/issues/1512)) ([ccf235d](https://github.com/yschimke/compose-ai-tools/commit/ccf235d26c57b838fea11699dd37ca63ff67c19f))
+* stream large PR comment bodies via file to avoid ARG_MAX ([#1511](https://github.com/yschimke/compose-ai-tools/issues/1511)) ([6fe6e0f](https://github.com/yschimke/compose-ai-tools/commit/6fe6e0fbe0b622a573cb7925c956e90c15dc61d8))
+* **vscode-extension:** PreviewRegistry preserves image bytes across refresh ([#1513](https://github.com/yschimke/compose-ai-tools/issues/1513)) ([8f04638](https://github.com/yschimke/compose-ai-tools/commit/8f04638ce338c0c7869b561f42a64f13564b7f65))
+
 ## [0.11.10](https://github.com/yschimke/compose-ai-tools/compare/v0.11.9...v0.11.10) (2026-05-25)
 
 

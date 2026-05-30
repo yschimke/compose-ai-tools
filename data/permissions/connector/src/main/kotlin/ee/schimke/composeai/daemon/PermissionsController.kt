@@ -35,6 +35,13 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 object PermissionsController {
 
+  /**
+   * Bridge scope key for a render with no previewId. Must equal
+   * `SandboxPermissionsBridge.NO_PREVIEW_SCOPE`; duplicated as a literal here because the
+   * controller reaches the bridge reflectively (no compile-time dependency on `:daemon:android`).
+   */
+  private const val NO_PREVIEW_SCOPE: String = ""
+
   private val lock = Any()
 
   /** Effective grant map. Persisted across renders so a session that flips a grant mid-flight is observable. */
@@ -49,6 +56,19 @@ object PermissionsController {
 
   /** Cache of unique queried permissions for O(1) duplicate suppression in [recordQuery]. */
   private val queriedSeen: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+  /**
+   * previewId of the render whose composition is currently driving this controller, or `null` for
+   * a render with no previewId. Set by [PermissionsOverrideExtension]'s around-composable from
+   * `ExtensionComposeContext.previewId` before the preview content composes, so the shadow-driven
+   * [recordQuery] can stamp the cross-classloader bridge with the right scope (issue #1593).
+   *
+   * `@Volatile`, not mutex-guarded: composition for a given sandbox is single-threaded, so the only
+   * cross-thread reader is a defensive one; a plain volatile is enough to publish the write made on
+   * the composition thread. The controller is loaded fresh per sandbox, so this never holds two
+   * concurrent previews' ids — those live in separate classloaders, each with their own static.
+   */
+  @Volatile private var activePreviewId: String? = null
 
   val grants: State<Map<String, PermissionGrantStateOverride>>
     get() = grantsState
@@ -85,12 +105,35 @@ object PermissionsController {
    * Record a query against [permission]. Idempotent — duplicate queries don't re-append. The
    * insertion-ordered list is what the data-product payload surfaces, so the panel can display
    * queries in roughly the sequence the composition issued them.
+   *
+   * Also forwards to the cross-classloader [SandboxPermissionsBridge][bridgeForwarder] so the
+   * daemon-side `PermissionsDataProductRegistry`, which lives in the host classloader, can read
+   * out the sandbox-side queries. Without the forward, the host registry's
+   * `PermissionsController.queried.value` read returns the host-CL controller's (empty) state and
+   * `data/fetch?kind=compose/permissions` reports no queries even though
+   * `ShadowContextWrapperPermissionTracker` caught them. The bridge is loaded reflectively so the
+   * connector keeps its no-`:daemon:android` dependency shape — the same pattern
+   * [syncRobolectricGrants] uses for Robolectric.
    */
   fun recordQuery(permission: String) {
     if (queriedSeen.add(permission)) {
       synchronized(lock) { queriedSet.value = queriedSet.value + permission }
     }
+    bridgeForwarder?.recordQuery(bridgeScope(), permission)
   }
+
+  /**
+   * Sandbox-side: stamp the previewId whose composition is about to read permissions, so the
+   * subsequent shadow-driven [recordQuery] forwards land in that preview's bridge scope. Called by
+   * [PermissionsOverrideExtension]'s around-composable before the preview content composes. `null`
+   * (a render with no previewId) maps to the bridge's no-preview scope.
+   */
+  fun beginRender(previewId: String?) {
+    activePreviewId = previewId
+  }
+
+  /** Bridge scope key for the active render — the bridge's no-preview sentinel when unset. */
+  private fun bridgeScope(): String = activePreviewId ?: NO_PREVIEW_SCOPE
 
   /** Register a callback fired on every [set] transition. Returns an unregister handle. */
   fun addChangeListener(listener: () -> Unit): () -> Unit {
@@ -104,12 +147,17 @@ object PermissionsController {
    * `KeyboardController.resetForNewSession` / `AmbientStateController.resetForNewSession`.
    */
   fun resetForNewSession() {
+    val scope = bridgeScope()
     synchronized(lock) {
       grantsState.value = emptyMap()
       queriedSet.value = emptyList()
       queriedSeen.clear()
+      activePreviewId = null
       syncRobolectricGrants(emptyMap())
     }
+    // Scope the bridge reset to the closing preview so a concurrent preview's queries survive —
+    // a JVM-wide clear here would reintroduce the cross-preview leak the per-preview keying fixes.
+    bridgeForwarder?.reset(scope)
   }
 
   /**
@@ -157,6 +205,66 @@ object PermissionsController {
     } catch (_: ReflectiveOperationException) {
       // Underlying invocation failure (e.g. application not yet initialised). Drop silently — the
       // controller's snapshot state still reflects the requested grants for the data product.
+    }
+  }
+
+  /**
+   * Resolved once per JVM, cached even on failure. `null` means the bridge class isn't on the
+   * classpath (connector-module unit tests; consumers that depend on the connector without the
+   * `:daemon:android` artefact) — every forward call no-ops in that case.
+   */
+  private val bridgeForwarder: BridgeForwarder? by lazy { BridgeForwarder.tryLoad() }
+
+  /**
+   * Reflective handle to [bridge.SandboxPermissionsBridge][ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge].
+   * The bridge lives in `:daemon:android` (a downstream module the connector does NOT depend on),
+   * so the connector reaches it through `Class.forName` — same shape as [syncRobolectricGrants]'s
+   * reach into Robolectric. Connector-only consumers (no daemon-android on the classpath) see
+   * `tryLoad() == null` and the connector still serves the in-CL controller state.
+   *
+   * `Class.forName(..., javaClass.classLoader)`: in the production daemon, the controller is
+   * sandbox-loaded so `javaClass.classLoader` is the Robolectric sandbox CL; the bridge package
+   * (`ee.schimke.composeai.daemon.bridge`) is registered as do-not-acquire on that CL, so the
+   * sandbox delegates loading to the daemon CL parent — both sides observe the same single bridge
+   * instance and writes here are readable from the host registry.
+   */
+  private class BridgeForwarder(
+    private val recordQueryMethod: java.lang.reflect.Method,
+    private val resetMethod: java.lang.reflect.Method,
+  ) {
+    fun recordQuery(previewId: String, permission: String) {
+      try {
+        recordQueryMethod.invoke(null, previewId, permission)
+      } catch (_: ReflectiveOperationException) {
+        // Bridge invocation failed (unexpected — the class loaded but the call failed). Drop —
+        // controller's in-CL state still serves the same-CL fast path.
+      }
+    }
+
+    fun reset(previewId: String) {
+      try {
+        resetMethod.invoke(null, previewId)
+      } catch (_: ReflectiveOperationException) {
+        // Same defensive drop as recordQuery; the controller's in-CL state already cleared above.
+      }
+    }
+
+    companion object {
+      private const val BRIDGE_FQN: String = "ee.schimke.composeai.daemon.bridge.SandboxPermissionsBridge"
+
+      fun tryLoad(): BridgeForwarder? =
+        try {
+          val cls = Class.forName(BRIDGE_FQN, true, PermissionsController::class.java.classLoader)
+          BridgeForwarder(
+            recordQueryMethod =
+              cls.getMethod("recordQuery", String::class.java, String::class.java),
+            resetMethod = cls.getMethod("reset", String::class.java),
+          )
+        } catch (_: ClassNotFoundException) {
+          null
+        } catch (_: NoSuchMethodException) {
+          null
+        }
     }
   }
 }

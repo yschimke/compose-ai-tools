@@ -290,6 +290,90 @@ class CompatRulesTest {
     assertNotNull(Semver.parseOrNull("1.13.0-alpha01"))
   }
 
+  @Test
+  fun `undeclared preview tooling with escape hatch on fires warning`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = false,
+        enforcePreviewToolingDependency = false,
+      )
+    val f = findings.single { it.id == "module.preview-tooling-not-declared" }
+    assertEquals("warning", f.severity)
+    assertTrue(f.remediationCommands.any { "ui-tooling-preview" in it })
+  }
+
+  @Test
+  fun `declared preview tooling stays quiet even with escape hatch on`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = true,
+        enforcePreviewToolingDependency = false,
+      )
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
+  @Test
+  fun `enforce-on path does not fire the escape-hatch finding`() {
+    // When the gate is enforced and tooling is declared, the check is a no-op. (When the gate is
+    // enforced and tooling is NOT declared and transitive detection didn't catch it either, the
+    // plugin's `onVariants` filter skips registration entirely so doctor never runs — but
+    // `CompatRules.evaluate` itself stays silent on the input, which is the contract pinned here.)
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = false,
+        enforcePreviewToolingDependency = true,
+      )
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
+  @Test
+  fun `transitive auto-detection with enforce on still fires the soft recommendation`() {
+    // Issue #1549 path: gate passes through the IP-safe cross-project walk (a declared
+    // `project(":shared")` sibling carries the preview-tooling coord) so the user no longer needs
+    // `enforcePreviewToolingDependency = false`. Pin-the-dep-locally finding still fires as a
+    // soft recommendation — message text routes through the "auto-detected by the cross-project
+    // metadata service" branch.
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = false,
+        enforcePreviewToolingDependency = true,
+        transitivePreviewToolingDetected = true,
+      )
+    val f = findings.single { it.id == "module.preview-tooling-not-declared" }
+    assertEquals("warning", f.severity)
+    assertTrue(f.message.contains("transitively"))
+  }
+
+  @Test
+  fun `transitive auto-detection with the dep declared directly stays quiet`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        testWithoutUiTestManifest(),
+        previewToolingDeclared = true,
+        enforcePreviewToolingDependency = true,
+        transitivePreviewToolingDetected = true,
+      )
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
+  @Test
+  fun `null signals skip the check entirely (CMP Desktop path)`() {
+    // CMP / Desktop callers pass null/null because the per-module Android signals aren't
+    // meaningful for them. Asserts the check stays silent rather than emitting a spurious warning
+    // on non-Android modules.
+    val findings = CompatRules.evaluate(mainWithBom(), testWithoutUiTestManifest())
+    assertNull(findings.firstOrNull { it.id == "module.preview-tooling-not-declared" })
+  }
+
   // --- Fixtures ----------------------------------------------------------
 
   private fun mainWithBom(): Map<String, String> =

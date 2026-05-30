@@ -187,9 +187,10 @@ data class ServerCapabilities(
    * fields the backend would silently ignore. Empty list = pre-feature daemon (clients treat absent
    * and `[]` identically and assume any field they pass might be ignored).
    *
-   * Today: `RobolectricHost` advertises every field; `DesktopHost` omits `orientation` (no rotation
-   * concept on `ImageComposeScene`), Android-only timing knobs, and `localeTag` unless the Compose
-   * UI runtime exposes a providable locale list.
+   * Today: `RobolectricHost` advertises every field; `DesktopHost` omits Android-only timing knobs
+   * (`captureAdvanceMs` — `ImageComposeScene` has no paused-clock concept) and `localeTag` unless
+   * the Compose UI runtime exposes a providable locale list. `orientation` IS advertised on desktop
+   * — reduced to a `widthPx ↔ heightPx` swap by `DesktopHost` (issue #1208).
    */
   val supportedOverrides: List<String> = emptyList(),
   /**
@@ -465,9 +466,17 @@ data class PreviewOverrides(
   val localeTag: String? = null,
   /** Font scale multiplier (1.0 = system default, 1.3 = "large", 2.0 = max accessibility). */
   val fontScale: Float? = null,
-  /** Light/dark mode override. Android-only today. */
+  /**
+   * Light/dark mode override. Android applies via `Configuration.uiMode`; desktop applies via
+   * `LocalSystemTheme` on `ImageComposeScene`.
+   */
   val uiMode: UiMode? = null,
-  /** Portrait/landscape override. Android-only today. */
+  /**
+   * Portrait/landscape override. Android applies via the corresponding qualifier; desktop reduces
+   * the hint to a `widthPx ↔ heightPx` swap when neither an explicit pixel dimension nor a `device`
+   * token is supplied AND the requested orientation conflicts with the current aspect ratio
+   * (issue #1208) — `ImageComposeScene` has no display-rotation concept of its own.
+   */
   val orientation: Orientation? = null,
   /**
    * `@Preview(device = ...)` string — `id:pixel_5`, `id:wearos_small_round`, `id:tv_1080p`, or a
@@ -670,6 +679,21 @@ data class FocusOverride(
   val direction: FocusDirection? = null,
   val step: Int? = null,
   val overlay: Boolean = false,
+  /**
+   * Opt-in for previews whose root carries `focusProperties { onEnter = { … } }.focusGroup()` from
+   * the Glimmer focus doc. Skips the connector's historical `+1 Next` compensation after
+   * `moveFocus(Enter)` — Enter already lands focus on the chosen child in that pattern, so the
+   * extra step advances past it. See `@FocusedPreview.enterPlacesFocus` for the full rationale.
+   */
+  val enterPlacesFocus: Boolean = false,
+  /**
+   * When `true`, the connector dispatches an indirect-pointer Press event onto the focused
+   * composable after the focus walk lands. Drives `AndroidComposeView.sendIndirectPointerEvent`
+   * directly — the same dispatch path XR Glasses touchpads route through — so the captured pixels
+   * show the *pressed* visual state on the focused element. See `@FocusedPreview.pressed` for the
+   * full rationale and platform context.
+   */
+  val pressed: Boolean = false,
 )
 
 /**

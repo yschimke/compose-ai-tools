@@ -134,13 +134,15 @@ jobs:
             ref: main
             workdir: ComposeStarter
             module: app
-            # ComposeStarter enables isolated-projects + configuration-cache;
-            # our plugin uses `afterEvaluate` and `rootProject.findProject`,
-            # both banned under isolated projects. Turn them off for this run.
-            extra_gradle_args: >-
-              -Dorg.gradle.unsafe.isolated-projects=false
-              -Dorg.gradle.isolated-projects=false
-              --no-configuration-cache
+            # ComposeStarter enables isolated-projects + configuration-cache. The plugin used to
+            # need `-Dorg.gradle.unsafe.isolated-projects=false -Dorg.gradle.isolated-projects
+            # =false --no-configuration-cache` here because of `rootProject.findProject` walks +
+            # `rootProject.layout` reads; both were removed in #1546's IP-cleanup pass (#1549
+            # tracks the cross-project-metadata follow-up). Leave the field empty so this cell
+            # exercises IP + CC end-to-end. Re-add specific opt-outs below (with a fresh comment
+            # naming the regression) if the consumer's own build script surfaces an IP problem
+            # we haven't seen before.
+            extra_gradle_args: ""
             # Exercise the full render pipeline on at least one matrix entry
             # so the `renderer-android` AAR resolution + Robolectric launch
             # path is covered against the locally-published snapshot. The
@@ -187,7 +189,10 @@ jobs:
             ref: main
             workdir: .
             module: app
-            extra_gradle_args: --no-configuration-cache
+            # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
+            # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
+            # if the consumer's build surfaces a new CC / IP gap.
+            extra_gradle_args: ""
             # Firebase Crashlytics + Google Services need a real
             # google-services.json that we don't ship. Comment the aliases
             # and the CrashlyticsExtension configure block out.
@@ -216,6 +221,63 @@ jobs:
               p.write_text(t)
               print(f"patched {p}")
               PY
+          - name: "nowinandroid (flavored app + library modules — #1546)"
+            slug: nowinandroid
+            repo: android/nowinandroid
+            ref: main
+            workdir: .
+            # `:app` declares productFlavors `demo` / `prod` with build types
+            # `debug` / `release`, so its variants are `demoDebug`, `prodDebug`,
+            # `demoRelease`, `prodRelease` — no plain `debug`. `:app-nia-catalog`
+            # is flavorless (`debug` / `release`). The build-type suffix
+            # fallback added in #1546 is what makes `:app` register its
+            # `composePreview*` tasks under the default `composePreview.variant
+            # = debug` — without that, this entry would surface "Discovery ran
+            # but every module reported zero previews" because the flavored
+            # `:app` is skipped at the variant filter and `:app-nia-catalog`
+            # alone has zero `@Preview` functions.
+            #
+            # Discovery-only (no `render: true`): nowinandroid has ~80 modules
+            # and a render fan-out would dominate the matrix wall time. The
+            # discovery path is what proves the variant-matching fix; render
+            # coverage stays on the `wear-os-samples` cells.
+            module: app
+            # Firebase Crashlytics shape mirrors the `androidify` entry — same
+            # plugin aliases, same `configure<CrashlyticsExtension>` block.
+            # Library modules (`core:*`, `feature:*`) don't reach for Firebase
+            # so only `app/build.gradle.kts` needs patching.
+            pre_gradle_script: |
+              python3 - <<'PY'
+              import re
+              from pathlib import Path
+              p = Path("app/build.gradle.kts")
+              if not p.exists():
+                  raise SystemExit(f"expected build script not found: {p}")
+              t = p.read_text()
+              # Match the aliases nowinandroid declares as of `main`:
+              # `gms` (the Google Services plugin alias used in libs.versions.toml)
+              # and `firebase.crashlytics`. The defensive list also covers the
+              # `google.services` alias androidify uses so the same script can
+              # be reused if upstream renames.
+              for line in (
+                  "alias(libs.plugins.gms)",
+                  "alias(libs.plugins.google.services)",
+                  "alias(libs.plugins.firebase.crashlytics)",
+                  "import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension",
+              ):
+                  t = t.replace(line, f"// {line} // disabled for integration CI")
+              t = re.sub(
+                  r"[ \t]*configure<CrashlyticsExtension>\s*\{[^}]*\}\s*\n",
+                  "\n",
+                  t,
+              )
+              p.write_text(t)
+              print(f"patched {p}")
+              PY
+            # No opt-outs after #1546's IP-cleanup pass (#1549 tracks the cross-project-metadata
+            # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
+            # if the consumer's build surfaces a new CC / IP gap.
+            extra_gradle_args: ""
           # PeopleInSpace is a KMP project — the :app module is a thin Android
           # wrapper with no @Preview functions; all Compose UI lives in the
           # :common KMP module. Targeting :common needs KMP-Android-target

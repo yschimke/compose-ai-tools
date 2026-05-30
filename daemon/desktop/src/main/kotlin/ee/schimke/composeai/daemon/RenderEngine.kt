@@ -49,7 +49,7 @@ import org.jetbrains.skia.EncodedImageFormat
  * resolved class+method reference into a PNG on disk.
  *
  * **Duplicated from
- * [`renderer-desktop`'s `DesktopRendererMain`](../../../../../../../renderer-desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt).**
+ * [`renderer-desktop`'s `DesktopRendererMain`](../../../../../../../renderers/desktop/src/main/kotlin/ee/schimke/composeai/renderer/DesktopRendererMain.kt).**
  * Per
  * [DESIGN.md § 7](../../../../../../docs/daemon/DESIGN.md#7-sharing-strategy--what-crosses-the-boundary)
  * the v1 render body lives in two places — the standalone renderer (existing CLI / Gradle path) and
@@ -123,6 +123,16 @@ class RenderEngine(
      */
     sandboxStats: SandboxLifecycleStats = SandboxLifecycleStats(),
   ): RenderResult {
+    // Issue #1604 — scroll-scenario dispatch. When the dispatcher's `data/fetch` re-render path
+    // queues `mode=scroll-long` / `scroll-gif` (because the `ScrollDataProductRegistry` advertised
+    // the kind as `requiresRerender = true` and the artefact was missing), leave the single-frame
+    // `ImageComposeScene` path and drive `:renderer-desktop`'s `renderScrollPreview` instead. It
+    // writes the stitched PNG (LONG) / animated GIF (GIF) to the same on-disk path the registry
+    // (`ScrollDataProductRegistry.fileFor`) reads back, so the dispatcher's second fetch sees the
+    // file and emits `Ok(path)`. Mirrors `:daemon:android`'s `RenderEngine.runScrollScenario`.
+    if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
+      return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+    }
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop")
     val state =
       trace.section("compose:setUp") {
@@ -312,6 +322,7 @@ class RenderEngine(
    * deterministic frame-zero behavior, while live interactive preview passes monotonic wall-clock
    * timestamps so animations advance at real elapsed time instead of repainting a frozen timeline.
    */
+  @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
   fun renderOnce(
     state: SceneState,
     requestId: Long,
@@ -357,6 +368,39 @@ class RenderEngine(
       } catch (t: Throwable) {
         System.err.println(
           "RenderEngine: displayfilter write failed for ${state.spec.outputBaseName}: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+      }
+    }
+
+    // Accessibility (desktop, overlay-only) — extract Compose semantics from the held scene and
+    // write the a11y artefacts (empty findings + node hierarchy + Paparazzi-style overlay PNG).
+    // ATF is Android-only, so there are no findings here. Gated on `renderMode == "a11y"` so the
+    // default render path stays free; the `a11y` data-product registry advertises
+    // `requiresRerender`, so a `data/fetch` for an a11y kind queues a `mode=a11y` re-render which
+    // lands here. Wrapped in try/catch so an extraction / draw failure never strands the PNG.
+    if (state.spec.renderMode == "a11y") {
+      try {
+        trace.section("a11y:overlay") {
+          val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
+          val nodes =
+            if (root != null) DesktopAccessibilityNodeExtractor.extractNodes(root) else emptyList()
+          // Key the sidecar dir by the wire `previewId` the data-product registry reads back on
+          // `data/fetch` (`fileFor(previewId, …)`). It resolves to the same dir as
+          // `outputBaseName` for router-driven renders (`outputBaseName = outputBaseName ?: id`),
+          // but using `previewId` directly keeps write-key and read-key aligned regardless of how
+          // the spec was resolved. Falls back to `outputBaseName` for direct className payloads
+          // that carry no `previewId` token.
+          DesktopAccessibilityDataProducer.writeArtifacts(
+            rootDir = dataDir,
+            previewId = state.spec.previewId ?: state.spec.outputBaseName,
+            nodes = nodes,
+            pngFile = state.outputFile,
+          )
+        }
+      } catch (t: Throwable) {
+        System.err.println(
+          "RenderEngine: a11y overlay write failed for ${state.spec.outputBaseName}: " +
             "${t.javaClass.simpleName}: ${t.message}"
         )
       }
@@ -465,6 +509,116 @@ class RenderEngine(
     }
   }
 
+  /**
+   * Issue #1604 — dispatch for `scroll-long` / `scroll-gif` render modes on CMP-desktop. Resolves
+   * the `@ScrollingPreview` intent (axis / maxScrollPx / frameIntervalMs) from the daemon's
+   * `previews.json` index via [PreviewIndex.scrollCaptureFor], then delegates to
+   * `:renderer-desktop`'s [ee.schimke.composeai.renderer.renderScrollPreview] (a `runComposeUiTest`
+   * capture that drives `SemanticsActions.ScrollBy`, stitches the LONG slices, or encodes the GIF).
+   * The artefact lands at `<dataDir>/render-scroll-{long,gif}/<previewId>.{png,gif}` — the exact
+   * path [ScrollDataProductRegistry.fileFor] resolves to — so the dispatcher's second fetch reads
+   * it back. Returns a [RenderResult] whose `pngPath` points at the produced artefact.
+   *
+   * Throws [IllegalStateException] when the spec carries no `previewId`, when the preview has no
+   * matching `dataProducts[].scroll` entry in `previews.json`, or when the renderer reports "no
+   * scrollable on the requested axis" (returns `false`). The dispatcher surfaces each as
+   * `ERR_DATA_PRODUCT_FETCH_FAILED` so the host can fall back to its Gradle path. Mirrors the
+   * Android side's `runScrollScenario` one-to-one (same lookup, same on-disk layout, same error
+   * contract) so consumer code stays platform-agnostic.
+   */
+  private fun runScrollScenario(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult {
+    val previewId =
+      spec.previewId
+        ?: error(
+          "RenderEngine: scroll mode '${spec.renderMode}' requires a previewId on the RenderSpec " +
+            "so the scroll metadata can be resolved from the previews.json index"
+        )
+    val previewIndex = loadPreviewIndexLazily()
+    val scroll =
+      previewIndex.scrollCaptureFor(previewId, spec.renderMode!!)
+        ?: error(
+          "RenderEngine: scroll mode '${spec.renderMode}' requested for previewId '$previewId' " +
+            "but the preview has no matching dataProducts[].scroll entry in previews.json — " +
+            "the host should fall back to the Gradle composePreviewRenderAll path"
+        )
+    val (subdir, ext) =
+      when (spec.renderMode) {
+        SCROLL_LONG_RENDER_MODE -> ScrollDataProductRegistry.SCROLL_LONG_SUBDIR to "png"
+        SCROLL_GIF_RENDER_MODE -> ScrollDataProductRegistry.SCROLL_GIF_SUBDIR to "gif"
+        else -> error("RenderEngine: unreachable scroll mode '${spec.renderMode}'")
+      }
+    val outputFile = dataDir.resolve(subdir).resolve("$previewId.$ext")
+    outputFile.parentFile?.mkdirs()
+
+    val scrollMode =
+      when (spec.renderMode) {
+        SCROLL_LONG_RENDER_MODE -> ee.schimke.composeai.renderer.DesktopScrollMode.LONG
+        else -> ee.schimke.composeai.renderer.DesktopScrollMode.GIF
+      }
+    val axis =
+      when (scroll.axis.uppercase()) {
+        "HORIZONTAL" -> ee.schimke.composeai.scroll.ScrollAxis.HORIZONTAL
+        else -> ee.schimke.composeai.scroll.ScrollAxis.VERTICAL
+      }
+
+    val startNs = System.nanoTime()
+    val handled =
+      ee.schimke.composeai.renderer.renderScrollPreview(
+        className = spec.className,
+        functionName = spec.functionName,
+        widthPx = spec.widthPx,
+        heightPx = spec.heightPx,
+        density = spec.density,
+        showBackground = spec.showBackground,
+        backgroundColor = spec.backgroundColor,
+        outputFile = outputFile,
+        wrapperClassName = spec.wrapperClassName,
+        // v1 daemon renders the parameterless `@Preview` overload only — `@PreviewParameter`
+        // fan-out stays behind the standalone renderer (see this file's class doc).
+        previewArgs = emptyList(),
+        localeTag = spec.localeTag,
+        scrollMode = scrollMode,
+        axis = axis,
+        maxScrollPx = scroll.maxScrollPx,
+        frameIntervalMs = scroll.frameIntervalMs,
+        classLoader = classLoader,
+      )
+    if (!handled) {
+      error(
+        "RenderEngine: scroll mode '${spec.renderMode}' returned false (no scrollable on " +
+          "scroll.axis=${scroll.axis} for previewId '$previewId')"
+      )
+    }
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = outputFile.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
+  /**
+   * Lazily reads the daemon's `previews.json` via [PreviewIndex.loadFromFile] using the
+   * `composeai.daemon.previewsJsonPath` system property the gradle plugin populates. Falls back to
+   * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) —
+   * [runScrollScenario] then surfaces a structured "no scroll metadata" error. Mirrors the Android
+   * engine's helper of the same name so the two backends resolve scroll intent identically.
+   */
+  private fun loadPreviewIndexLazily(): PreviewIndex {
+    val path = System.getProperty(PreviewIndex.PREVIEWS_JSON_PATH_PROP)
+    return if (path.isNullOrBlank()) {
+      PreviewIndex.empty()
+    } else {
+      PreviewIndex.loadFromFile(java.nio.file.Paths.get(path))
+    }
+  }
+
   interface PreviewContextCapture {
     fun shouldCapture(previewId: String?, renderMode: String?): Boolean
   }
@@ -475,6 +629,19 @@ class RenderEngine(
      * side uses; the gradle plugin's daemon launch descriptor sets it once at JVM start.
      */
     const val OUTPUT_DIR_PROP: String = "composeai.render.outputDir"
+
+    /**
+     * Issue #1604 — scroll scenarios the daemon's `data/fetch` re-render path can request. The
+     * registry in `:data-scroll-connector` advertises `render/scroll/long` / `render/scroll/gif` as
+     * `requiresRerender = true`, so a missing scroll artefact returns
+     * `Outcome.RequiresRerender("scroll-long" | "scroll-gif")` and the dispatcher submits a render
+     * with `spec.renderMode` set to one of these constants. [render] routes scroll-mode requests
+     * into [runScrollScenario]. Values match `:daemon:android`'s `RenderEngine` constants byte for
+     * byte so a single payload drives both backends.
+     */
+    const val SCROLL_LONG_RENDER_MODE: String = "scroll-long"
+
+    const val SCROLL_GIF_RENDER_MODE: String = "scroll-gif"
 
     fun supportsLocaleTagOverride(): Boolean = localProvidableLocaleListOrNull() != null
 

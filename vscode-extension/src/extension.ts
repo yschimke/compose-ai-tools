@@ -7,14 +7,11 @@ import {
     GradleApi,
     ModuleInfo,
     TaskCancelledError,
+    TaskOptions,
 } from "./gradleService";
 import { JdkImageError } from "./jdkImageErrorDetector";
 import { ClassVersionError } from "./classVersionErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
-import {
-    BUILD_SCRIPT_NAMES,
-    findPluginAppliedAncestor,
-} from "./pluginDetection";
 import { PreviewPanel } from "./previewPanel";
 import { BundleViewerPanel } from "./bundleViewerPanel";
 import { isLikelyBundle } from "./bundleFormat";
@@ -32,16 +29,24 @@ import { PreviewA11yDiagnostics } from "./previewA11yDiagnostics";
 import { PreviewDoctorDiagnostics } from "./previewDoctorDiagnostics";
 import { moduleRelativeSourcePath, previewSourceMatches } from "./sourcePath";
 import { visiblePreviewsForFile } from "./previewScope";
+import { anyPreviewSourceTabOpen } from "./previewTabs";
 import {
     AccessibilityFinding,
     AccessibilityNode,
     HEAVY_COST_THRESHOLD,
     PreviewInfo,
+    PreviewManifest,
     WebviewToExtension,
 } from "./types";
 import { formatRenderErrorMessage } from "./renderError";
 import { openResourceFile } from "./resourceFileResolver";
 import { readFontPreview, resolveFontPreviewPath } from "./fontPreviewLoader";
+import {
+    findMissingImageDataProducts,
+    MissingImageDataProduct,
+} from "./scrollDataProductRender";
+import { modulesNeedingViewportBackfill } from "./viewportScrollBackfill";
+import { RefreshOrchestrator } from "./refreshOrchestrator";
 import {
     captureLabel,
     staticBaseCaptureIndex,
@@ -62,6 +67,7 @@ import {
 } from "./daemon/daemonScheduler";
 import { ContinuousCompileManager } from "./daemon/continuousCompileManager";
 import { mergeRemoteComposeChange } from "./daemon/remoteComposeMerge";
+import { mergePermissionsChange } from "./daemon/permissionsMerge";
 import {
     buildHistorySource,
     HistoryScope,
@@ -111,7 +117,9 @@ import { EditorScope, PreviewModuleIndex } from "./editorScope";
 import { describePreloadOutcome, loadCachedPreviews } from "./previewPreload";
 import {
     describeVerifyResult,
+    manifestExpectedFilesMissing,
     realFileExists,
+    realListFilesUnder,
     verifyConsistency,
 } from "./previewConsistency";
 import {
@@ -157,6 +165,11 @@ let dataExtensionStatusItem: vscode.StatusBarItem | null = null;
  *  window. Constructed in activate() so the timer callbacks are bound to
  *  the live `panel` / `outputChannel` references. See dataExtensionProgress.ts. */
 let dataExtensionTracker: DataExtensionProgressTracker | null = null;
+/** Preview ids currently displaying the per-card spinner overlay we drop on a
+ *  data-extension subscribe (see `handleSetDataExtensionEnabled`). Owned by the
+ *  host so the clearLoading post stays paired with the setLoading post even on
+ *  paths where the tracker resolves through callbacks (timeout, attach). */
+const extensionPendingPreviews = new Set<string>();
 /** Unfiltered emitter onto the "Compose Preview" output channel. Used by
  *  failure-data dumps (data-extension safety timeout, doctor report) that
  *  must surface regardless of `composePreview.logging.level`. */
@@ -205,6 +218,29 @@ async function isSourceNewerThanRenders(
 }
 
 const moduleManifestCache = new Map<string, PreviewInfo[]>();
+/**
+ * Per-session dedup for the scroll/animation data-product backfill: modules where we've
+ * already kicked off `composePreviewRender('full')` to populate missing image data
+ * products (today: `@ScrollingPreview(LONG/GIF)` outputs). The daemon's renderNow
+ * produces only the static base capture and scroll producers are renderer-side only
+ * (`docs/daemon/DATA-PRODUCTS.md` § "data/scroll is renderer-side only"), so daemon-only
+ * flows leave scroll cards permanently placeholdered without this fallback. One Gradle
+ * render per module per session is the upper bound — re-arms on `restart`/extension
+ * activation, not on file focus changes, so a fresh save doesn't loop. Failure (no
+ * scroll PNG produced even after Gradle) intentionally doesn't re-arm; the user's
+ * "Render Previews" command remains the manual escape hatch.
+ */
+const scrollBackfillRequested = new Set<string>();
+/**
+ * Missing image data products from the most recent refresh, grouped by owning
+ * module. Computed once at the tail end of `refresh()` (when we know the displayed
+ * preview set) and consumed by `notifyDaemonViewport` to decide whether the latest
+ * viewport push has brought a `@ScrollingPreview` card into view that still needs a
+ * Gradle backfill. Empty when the active scope has no missing image data products,
+ * which makes the viewport-side check a no-op for the overwhelmingly common case of
+ * a project without scroll/animation previews.
+ */
+let pendingScrollBackfill: Map<string, MissingImageDataProduct[]> = new Map();
 /**
  * Heavy previews the user explicitly asked to keep fresh for the current
  * editor focus scope. Cleared when focus leaves the backing Kotlin file.
@@ -273,6 +309,20 @@ const latestRemoteComposeByPreview = new Map<
         >;
     }
 >();
+/**
+ * previewId → latest Android-permissions override the panel pushed. The permissions
+ * tab body posts `setPermissionsOverride` per Grant / Deny / Clear / Add click; we
+ * merge into this map and forward the cumulative `PermissionsOverride` on the next
+ * `renderNow` so the daemon's `PermissionsController.set(...)` applies the new state.
+ * Persists across renders for the activation lifetime, mirroring
+ * [remoteComposeOverridesByPreview]'s scope — a `clearAll` change resets the entry
+ * to `{ grants: {} }` rather than removing it, so the next dispatch still strips any
+ * grants the daemon previously pinned.
+ */
+const permissionsOverridesByPreview = new Map<
+    string,
+    import("./daemon/daemonProtocol").PermissionsOverride
+>();
 /** Last edited preview function name per Kotlin file, captured from in-memory edits and
  * consumed on save to prioritize that preview's refresh. */
 const lastEditedPreviewFunctionByFile = new Map<string, string>();
@@ -297,8 +347,6 @@ const editJourneyByModule = new Map<string, number>();
  *  re-rendering the same cards on every focus bounce. */
 const daemonShownPreviewWarmScopes = new Set<string>();
 const daemonStartupProgressTimers = new Map<string, NodeJS.Timeout>();
-/** Workspace-state key that suppresses the "plugin not applied" notification. */
-const DISMISS_KEY = "composePreview.dismissedMissingPluginWarning";
 /** Workspace-state key for per-module phase-duration calibration. Shape:
  *  `Record<moduleId, PhaseDurations>`. Updated after every successful refresh
  *  so the progress bar's animation rate matches what each module actually
@@ -319,23 +367,12 @@ let logLine: (msg: string) => void = () => {
 let logInfo: (msg: string) => void = () => {
     /* noop pre-activate */
 };
-/** Guard against firing the "plugin not applied" notification more than once
- *  per session — users shouldn't see it on every refresh tick. */
-let warnedMissingPluginThisSession = false;
 /** Same idea for the jlink-missing notification: save-driven refreshes would
  *  otherwise re-surface it on every build after the user dismissed it. */
 let warnedJdkImageThisSession = false;
 /** Same idea for the class-version mismatch (build-logic compiled on a newer
  *  JDK than Gradle is running). */
 let warnedClassVersionThisSession = false;
-// Decide whether a file "probably wants previews" with the plugin off. Kept
-// deliberately loose: the file just needs to contain the substring "Preview"
-// (covers `@Preview`, `@PreviewLightDark`, preview-tooling imports, and
-// custom-multipreview definition sites) and be a Composable file at all.
-// False positives are cheap — an extra informational message. False
-// negatives (silence when the user wanted a nudge) are the worse outcome.
-const SETUP_DOCS_URL =
-    "https://github.com/yschimke/compose-ai-tools/tree/main/vscode-extension#readme";
 const JDK_DOCS_URL =
     "https://github.com/yschimke/compose-ai-tools/blob/main/docs/AGENTS.md#important-constraints";
 
@@ -716,6 +753,52 @@ function readJsonPath(
     }
 }
 
+/**
+ * Backfill one module's missing image data products (scroll/long PNG, scroll/gif GIF)
+ * via `composePreviewRender('full')`, then read the newly-produced files and post one
+ * `updateImage` per backfilled capture so the panel's placeholder cards repaint with
+ * the actual content. Fire-and-forget — failure is logged but doesn't surface to the
+ * user, on the theory that the manual "Render Previews" command is the right escape
+ * hatch when the renderer truly can't produce the artifact.
+ */
+async function backfillScrollDataProducts(
+    module: ModuleInfo,
+    missing: readonly {
+        previewId: string;
+        captureIndex: number;
+        renderOutput: string;
+    }[],
+): Promise<void> {
+    if (!gradleService) return;
+    try {
+        await gradleService.composePreviewRender(module, "full");
+    } catch (err) {
+        logLine(
+            `scroll backfill: composePreviewRender failed for ${module.modulePath}: ${(err as Error).message}`,
+        );
+        return;
+    }
+    if (!panel) return;
+    for (const entry of missing) {
+        const imageData = await gradleService.readPreviewImage(
+            module,
+            entry.renderOutput,
+        );
+        if (!imageData) {
+            logLine(
+                `scroll backfill: render finished but ${entry.renderOutput} still missing for ${entry.previewId}`,
+            );
+            continue;
+        }
+        panel.postMessage({
+            command: "updateImage",
+            previewId: entry.previewId,
+            captureIndex: entry.captureIndex,
+            imageData,
+        });
+    }
+}
+
 export async function activate(
     context: vscode.ExtensionContext,
 ): Promise<ComposePreviewTestApi | void> {
@@ -1035,6 +1118,19 @@ export async function activate(
                               previewId,
                               dataProducts.map((dp) => dp.kind),
                           );
+                          // Tear down the per-card spinner once the first
+                          // payload arrives — `updateImage` already strips
+                          // the overlay when the primary PNG is dirty, but
+                          // subscription-driven renders routinely return
+                          // `unchanged=true` (the data product travels in
+                          // a separate file), so we'd otherwise leave the
+                          // spinner pinned until the safety timeout.
+                          if (extensionPendingPreviews.delete(previewId)) {
+                              panel?.postMessage({
+                                  command: "clearLoading",
+                                  previewId,
+                              });
+                          }
                           const decoded = applyDataProductsToRegistry(
                               registry,
                               previewId,
@@ -1369,6 +1465,7 @@ export async function activate(
         dispose: () => {
             dataExtensionTracker?.dispose();
             dataExtensionTracker = null;
+            extensionPendingPreviews.clear();
         },
     });
 
@@ -1508,10 +1605,6 @@ export async function activate(
                     refresh(true, target);
                 }
             },
-        ),
-        vscode.commands.registerCommand(
-            "composePreview.openModuleBuildFile",
-            (filePath?: string) => openModuleBuildFile(workspaceRoot, filePath),
         ),
         vscode.commands.registerCommand(
             "composePreview.focusPreview",
@@ -1867,31 +1960,11 @@ export async function activate(
                 panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
                 // Reconcile the panel first, then pre-warm the daemon for
-                // this file's module. Once daemon startup finishes we run a
-                // second discover pass and pre-render the shown previews so
-                // the first edit doesn't have to pay JVM/sandbox startup.
-                //
-                // Abort any in-flight refresh for the previous file NOW,
-                // before preloadCachedPreviews. Without this early abort,
-                // the old refresh's post-discover continuation can resume
-                // while preload awaits disk reads and overwrite the preloaded
-                // state (clearAll, hasPreviewsLoaded=false, setPreviews for
-                // the wrong module) before refresh() for the new file ever
-                // fires the abort signal itself.
-                pendingRefresh?.abort();
-                pendingRefreshKey = null;
-                void (async () => {
-                    // Paint on-disk cache for the new file before
-                    // composePreviewDiscover runs so the panel isn't
-                    // blank while Gradle warms up.
-                    const preloaded = await preloadCachedPreviews(filePath);
-                    await refresh(false, filePath, "full", {
-                        showLoadingOverlay: !preloaded,
-                    });
-                    await warmDaemonForFile(filePath, {
-                        refreshAfterReady: true,
-                    });
-                })();
+                // this file's module. transitionToFile aborts the previous
+                // file's in-flight refresh up-front so its post-discover
+                // continuation can't race the new file's preload and overwrite
+                // the freshly-painted cards with the wrong module's state.
+                void transitionToFile(filePath);
                 return;
             }
             // New active isn't a Kotlin editor (webview focus, Agent plan,
@@ -1916,7 +1989,21 @@ export async function activate(
                 panel?.postMessage({ command: "clearInteractive" });
                 panel?.postMessage({ command: "clearRecording" });
                 clearHeavyRefreshOptIns();
-                refresh(false);
+                // Route through the same preload-first sequence as the
+                // happy path so this fallback can no longer skip preload —
+                // resolving an active editor lets us paint that file's
+                // cached previews instead of flashing through refresh()'s
+                // no-module clear branch when the active editor isn't a
+                // preview source. No active editor at all falls back to
+                // refresh(false), whose no-module guard already does the
+                // right thing (hold prior cards or clear to empty state).
+                const fallbackPath =
+                    vscode.window.activeTextEditor?.document.uri.fsPath;
+                if (fallbackPath) {
+                    void transitionToFile(fallbackPath);
+                } else {
+                    void refresh(false);
+                }
             }
         }),
     );
@@ -1936,7 +2023,18 @@ export async function activate(
                 )
             ) {
                 clearHeavyRefreshOptIns();
-                refresh(false);
+                // Same fallback pattern as the focus-change handler above:
+                // route the active editor through transitionToFile so the
+                // new module's preload lands before refresh, instead of
+                // dropping into refresh()'s no-module clear branch and
+                // flashing the user back through placeholders.
+                const fallbackPath =
+                    vscode.window.activeTextEditor?.document.uri.fsPath;
+                if (fallbackPath) {
+                    void transitionToFile(fallbackPath);
+                } else {
+                    void refresh(false);
+                }
             }
         }),
     );
@@ -2190,6 +2288,7 @@ function runVerifyConsistency(): void {
         gradleService,
         registryGetImage: (id) => registry.getImage(id),
         fileExists: realFileExists,
+        listFilesUnder: realListFilesUnder,
     });
     const summary = describeVerifyResult(filePath, result);
     logForce(summary);
@@ -2197,6 +2296,15 @@ function runVerifyConsistency(): void {
         if (issue.kind === "disk-has-png-registry-empty") {
             logForce(
                 `  ⚠ ${issue.previewId}: PNG on disk at ${issue.pngPath} but registry is empty (panel is showing a placeholder unnecessarily)`,
+            );
+        } else if (issue.kind === "renamed-on-disk") {
+            logForce(
+                `  ⚠ ${issue.previewId}: manifest expects ${issue.expectedPngPath} but disk has ${issue.actualPath} ` +
+                    `(likely stale from a previous sanitiser — re-run composePreviewRenderAll to refresh)`,
+            );
+        } else if (issue.kind === "extra-file-on-disk") {
+            logForce(
+                `  · extra file on disk: ${issue.path} (no manifest entry — safe to delete)`,
             );
         } else {
             logForce(
@@ -2206,7 +2314,9 @@ function runVerifyConsistency(): void {
     }
     if (
         result.inconsistencies.some(
-            (i) => i.kind === "disk-has-png-registry-empty",
+            (i) =>
+                i.kind === "disk-has-png-registry-empty" ||
+                i.kind === "renamed-on-disk",
         )
     ) {
         vscode.window
@@ -2464,6 +2574,21 @@ function isFileVisibleInEditor(filePath: string): boolean {
 function isFileOpenInTextDocument(filePath: string): boolean {
     return vscode.workspace.textDocuments.some(
         (document) => document.uri.fsPath === filePath,
+    );
+}
+
+/**
+ * True iff some preview-source `.kt` file is still open in a tab — visible,
+ * covered, or in a background group. Distinguishes "focus drifted off the
+ * editor" (webview/output pane gets focus during a daemon spawn) from "the
+ * last preview editor was closed" for the refresh() no-module guard. See
+ * [anyPreviewSourceTabOpen] for why tab state, not `textDocuments`, is the
+ * authoritative signal here.
+ */
+function isAnyPreviewSourceTabOpen(): boolean {
+    return anyPreviewSourceTabOpen(
+        vscode.window.tabGroups.all,
+        isPreviewSourceFile,
     );
 }
 
@@ -2768,9 +2893,7 @@ async function preloadCachedPreviews(filePath: string): Promise<boolean> {
  * pipeline through `runRefreshExclusive`.
  */
 async function runActivationRefresh(filePath: string): Promise<void> {
-    await preloadCachedPreviews(filePath);
-    await refresh(false, filePath, "full", { showLoadingOverlay: false });
-    await warmDaemonForFile(filePath, { refreshAfterReady: true });
+    await transitionToFile(filePath);
     if (!gradleService || !daemonGate) {
         return;
     }
@@ -2783,6 +2906,33 @@ async function runActivationRefresh(filePath: string): Promise<void> {
     // renderNow + the panel updates via the existing onPreviewImageReady
     // wiring. No need for a separate code path.
     await notifyDaemonOfSave(filePath);
+}
+
+/**
+ * Single host-scoped {@link RefreshOrchestrator}. Owns the public phase state for the
+ * in-flight file transition and exposes a re-entrant `transitionToFile` entry point.
+ * Module-level so panel-restore, focus-change, activation, and visible-editor-change
+ * all share one phase machine; per-call instantiation would lose the transition-id
+ * supersession guarantee that lets a stale refresh's late phase callback be ignored.
+ */
+const refreshOrchestrator = new RefreshOrchestrator({
+    abortPendingRefresh: () => {
+        pendingRefresh?.abort();
+        pendingRefreshKey = null;
+    },
+    preloadCachedPreviews,
+    refresh,
+    warmDaemonForFile,
+});
+
+/**
+ * Thin shim — every host entry point that moves the panel to a new active file
+ * goes through this. See `refreshOrchestrator.ts` for the phase contract and the
+ * cancellation model (each call aborts the previous in-flight refresh and
+ * supersedes any late phase callbacks from the prior transition).
+ */
+function transitionToFile(filePath: string): Promise<void> {
+    return refreshOrchestrator.transitionToFile(filePath);
 }
 
 /**
@@ -3431,6 +3581,15 @@ function applyDataExtensionStatus(
 function emitDataExtensionTimeoutDiagnostics(
     diag: DataExtensionPendingDiagnostics,
 ): void {
+    // Safety-net teardown for the per-card spinner: if the daemon never
+    // attached payloads, the overlay would otherwise stick until the next
+    // refresh painted over it.
+    if (extensionPendingPreviews.delete(diag.previewId)) {
+        panel?.postMessage({
+            command: "clearLoading",
+            previewId: diag.previewId,
+        });
+    }
     const lines: string[] = [];
     lines.push(
         `[data-extension-timeout] previewId=${diag.previewId} module=${diag.moduleId} ` +
@@ -4038,11 +4197,69 @@ function refreshStrength(
     return 1;
 }
 
+/**
+ * Runs `composePreviewRender` but recovers when the task itself exits non-zero with a generic
+ * build failure (e.g. `composePreviewRenderAll: render produced no output file for N
+ * preview(s)`). The earlier discover step has already written `previews.json`, and the
+ * renderer typically writes a `.error.json` sidecar next to each preview that threw — so the
+ * panel can usefully paint: full PNG cards for the previews that rendered, structured error
+ * messages for the ones that threw. Without this recovery the catch handler at the end of
+ * `refresh` clears the whole panel on the first preview-throw and the user sees nothing despite
+ * 100+ valid PNGs sitting on disk.
+ *
+ * Structured errors that callers handle specially — `TaskCancelledError`, `JdkImageError`,
+ * `ClassVersionError`, `KotlinCompileError` — still propagate so the toplevel catch surfaces
+ * their dedicated remediations.
+ */
+async function renderWithDiskFallback(
+    mod: ModuleInfo,
+    tier: "fast" | "full",
+    taskOpts: TaskOptions,
+): Promise<{ manifest: PreviewManifest | null; partialFailure: Error | null }> {
+    if (!gradleService) {
+        throw new Error(
+            "renderWithDiskFallback called before gradleService initialised",
+        );
+    }
+    try {
+        const manifest = await gradleService.composePreviewRender(
+            mod,
+            tier,
+            taskOpts,
+            [],
+        );
+        return { manifest, partialFailure: null };
+    } catch (err) {
+        if (
+            err instanceof TaskCancelledError ||
+            err instanceof JdkImageError ||
+            err instanceof ClassVersionError ||
+            err instanceof KotlinCompileError
+        ) {
+            throw err;
+        }
+        const cached = gradleService.readManifest(mod);
+        if (!cached) {
+            throw err;
+        }
+        const wrapped = err instanceof Error ? err : new Error(String(err));
+        return { manifest: cached, partialFailure: wrapped };
+    }
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
     tier: "fast" | "full" = "full",
-    opts: { showLoadingOverlay?: boolean } = {},
+    opts: {
+        showLoadingOverlay?: boolean;
+        // Sub-phase observability for RefreshOrchestrator — fires at the three
+        // natural boundaries inside this function (after composePreviewDiscover/Render
+        // resolves, after the setPreviews post, after Promise.all(imageJobs)). The
+        // orchestrator threads its phase tracker through this so the 5-phase
+        // contract stays accurate without decomposing refresh() itself.
+        onPhase?: (phase: "discover" | "reconcile" | "render") => void;
+    } = {},
 ): Promise<RefreshOutcome> {
     if (!gradleService || !panel) {
         return "no-module";
@@ -4102,16 +4319,26 @@ async function refresh(
         // When the preview panel steals keyboard focus, activeTextEditor
         // becomes undefined and scopeSource is "none". Don't abort a
         // valid in-flight discover just because the user glanced at the
-        // panel — it will paint the cards when it finishes.
-        if (scopeSource === "none" && pendingRefreshKey) {
+        // panel — it will paint the cards when it finishes. But if the
+        // user closes the last preview source tab while that discover is
+        // running, the no-source empty-state clear below still has to
+        // run (issue #1566) — otherwise stale cards persist.
+        if (
+            scopeSource === "none" &&
+            pendingRefreshKey &&
+            isAnyPreviewSourceTabOpen()
+        ) {
             return "no-module";
         }
         // When the panel already has previews painted (preload or a prior render put cards
         // on screen), focus drifting to the webview / output pane / no-editor-at-all is NOT
-        // a reason to clearAll. Stale cached images are explicitly OK — the daemon's next
-        // render will replace them. Wiping here is what causes the "panel goes back to
-        // placeholders during the 15-25s daemon spawn" bug the verify command surfaces.
-        if (hasPreviewsLoaded) {
+        // a reason to clearAll *as long as a preview source is still open somewhere*. Stale
+        // cached images are explicitly OK while the daemon's next render is coming — wiping
+        // here is what causes the "panel goes back to placeholders during the 15-25s daemon
+        // spawn" bug the verify command surfaces. But once the last preview editor is closed
+        // there's no source left to render, so holding the cards strands the user on stale
+        // previews (issue #1566) — fall through to the empty-state clear below.
+        if (hasPreviewsLoaded && isAnyPreviewSourceTabOpen()) {
             logLine(
                 `no module — activeFile=${activeFile ?? "<none>"} (${scopeSource}); keeping ${lastLoadedModules.length} loaded module(s) on screen`,
             );
@@ -4130,12 +4357,13 @@ async function refresh(
         });
         lastLoadedModules = [];
         hasPreviewsLoaded = false;
+        // Scope is gone — any previously-stashed scroll backfill targets the file
+        // we just transitioned away from. Drop them so a stray viewport report
+        // doesn't fire a Gradle render against a module the panel is no longer on.
+        pendingScrollBackfill = new Map();
         setCurrentScopeFile(null);
         clearHeavyRefreshOptIns();
         historyScopeRef.current = null;
-        if (activeFile && isPreviewSourceFile(activeFile)) {
-            maybeShowSetupPrompt(activeFile);
-        }
         return "no-module";
     }
     // Cancel any in-flight refresh — we have a valid replacement.
@@ -4310,6 +4538,21 @@ async function refresh(
         const allPreviews: PreviewInfo[] = [];
         previewModuleIndex.clear();
 
+        // RefreshOrchestrator sub-phase: about to run Gradle's
+        // composePreviewDiscover/Render for each module. Fires once per refresh,
+        // before the per-module loop; orchestrator listeners use this to flip
+        // from preload → discover in their public phase state.
+        opts.onPhase?.("discover");
+
+        // Collected by `renderWithDiskFallback` whenever composePreviewRender
+        // exits non-zero but a usable manifest sits on disk. Surfaced as a
+        // single non-blocking notice after the panel paints so the user sees
+        // their PNGs AND the underlying "the render task failed" diagnosis.
+        const partialRenderFailures: Array<{
+            module: ModuleInfo;
+            error: Error;
+        }> = [];
+
         for (const mod of modules) {
             if (abort.signal.aborted) {
                 return "cancelled";
@@ -4346,24 +4589,67 @@ async function refresh(
             // `handleSetDataExtensionEnabled` opts the module into a11y via the daemon's
             // subscription API; the daemon attaches the post-capture walk on the next render
             // and stamps the on-disk data products itself.
-            manifest =
-                manifest ??
-                (forceRender
-                    ? await gradleService.composePreviewRender(
-                          mod,
-                          tier,
-                          taskOpts,
-                          [],
-                      )
-                    : await gradleService.composePreviewDiscover(
-                          mod,
-                          taskOpts,
-                      ));
+            if (!manifest) {
+                if (forceRender) {
+                    const result = await renderWithDiskFallback(
+                        mod,
+                        tier,
+                        taskOpts,
+                    );
+                    manifest = result.manifest;
+                    if (result.partialFailure) {
+                        partialRenderFailures.push({
+                            module: mod,
+                            error: result.partialFailure,
+                        });
+                    }
+                } else {
+                    manifest = await gradleService.composePreviewDiscover(
+                        mod,
+                        taskOpts,
+                    );
+                }
+            }
+
+            // Drift escalation. `forceRender=false` only runs `composePreviewDiscover`, so a
+            // cached manifest whose filenames don't match what's on disk (sanitiser bump,
+            // wiped `build/`, branch switch, half-finished render) leaves the panel painting
+            // placeholders forever — discover succeeded, but the PNGs the manifest pointed at
+            // never existed. When we detect that drift, re-issue the call as a render so the
+            // renderer fills the gap before the panel paints. The Gradle render is up-to-date-
+            // checked, so steady-state callers (disk fresh from a prior render) pay nothing.
+            let escalatedFromDrift = false;
+            if (
+                !forceRender &&
+                manifest &&
+                manifestExpectedFilesMissing(
+                    gradleService.workspaceRoot,
+                    mod,
+                    manifest,
+                )
+            ) {
+                logLine(
+                    `disk drift for ${mod.modulePath} — manifest references PNG(s) missing on disk; escalating to render`,
+                );
+                escalatedFromDrift = true;
+                const result = await renderWithDiskFallback(
+                    mod,
+                    tier,
+                    taskOpts,
+                );
+                manifest = result.manifest;
+                if (result.partialFailure) {
+                    partialRenderFailures.push({
+                        module: mod,
+                        error: result.partialFailure,
+                    });
+                }
+            }
 
             // Track tier so the webview can mark heavy cards as stale after a
             // fast save. A successful full render clears the flag for this
             // module (heavy captures are now fresh on disk).
-            if (forceRender && manifest) {
+            if ((forceRender || escalatedFromDrift) && manifest) {
                 if (tier === "fast") {
                     fastTierModules.add(modKey);
                 } else {
@@ -4461,6 +4747,10 @@ async function refresh(
             moduleDir: modules.map((m) => m.projectDir).join(","),
             heavyStaleIds,
         });
+        // RefreshOrchestrator sub-phase: panel now has the displayed manifest;
+        // image bytes are about to stream in via the imageJobs pass. discover →
+        // reconcile complete.
+        opts.onPhase?.("reconcile");
         hasPreviewsLoaded = true;
         logLine(
             `rendered ${visiblePreviews.length} preview(s) for ${path.basename(activeFile)}`,
@@ -4603,6 +4893,24 @@ async function refresh(
             }
             await Promise.all(imageJobs);
         }
+        // Surface render-task failures that the fallback recovered from. Cards
+        // for previews that DID render are already on screen; this line just
+        // tells the user "the build itself failed too — broken cards are where
+        // to look". Logging once per refresh (vs throwing) keeps the panel
+        // useful instead of going dark on the first preview-throw.
+        if (partialRenderFailures.length > 0) {
+            const first = partialRenderFailures[0];
+            const summary =
+                partialRenderFailures.length === 1
+                    ? `composePreviewRender failed for ${first.module.modulePath} — showing partial results from disk (${first.error.message.slice(0, 200)})`
+                    : `composePreviewRender failed for ${partialRenderFailures.length} module(s) — showing partial results from disk. First: ${first.module.modulePath}: ${first.error.message.slice(0, 200)}`;
+            logLine(summary);
+        }
+        // RefreshOrchestrator sub-phase: image bytes have streamed to the panel
+        // (or were skipped because the source was newer than the on-disk PNGs).
+        // After this point only auto-render scheduling + scroll backfill run,
+        // both of which fire-and-forget further refreshes.
+        opts.onPhase?.("render");
         if (!abort.signal.aborted) {
             // Drive the bar to 100% and stop the tick. The webview holds
             // the completed state for ~600ms then fades the strip away.
@@ -4610,6 +4918,34 @@ async function refresh(
             // called finish().
             tracker.finish();
             writeCalibration(module, tracker.phaseDurations);
+        }
+
+        // Compute `@ScrollingPreview(LONG/GIF)` image data products that no producer
+        // has filled in yet, and stash them for the viewport-driven trigger. Scroll
+        // outputs are renderer-side only (the daemon's renderNow produces just the
+        // static base capture, which the panel correctly drops for scroll previews)
+        // so daemon-only flows leave these cards permanently empty. Skip in the
+        // forceRender path — that pass just produced everything Gradle could produce.
+        // Skip in minimal mode — the user opted out of auto-renders and would expect
+        // to drive `composePreviewRender` themselves.
+        //
+        // The actual `composePreviewRender('full')` trigger fires from
+        // `notifyDaemonViewport` once a missing-PNG preview enters the viewport's
+        // visible-or-predicted set. Replaces the prior pattern of always firing a
+        // module-wide Gradle render at activation time — a project with 50 scroll
+        // previews where the user only sees the top few no longer pays the full
+        // module's cost up-front. Per-module session dedup via
+        // `scrollBackfillRequested` still keeps the trigger one-shot.
+        if (!abort.signal.aborted && !forceRender && !inMinimalMode()) {
+            pendingScrollBackfill = findMissingImageDataProducts(
+                displayPreviews,
+                (id) => previewModuleIndex.get(id),
+                gradleService.workspaceRoot,
+            );
+        } else if (forceRender) {
+            // forceRender ran composePreviewRender directly — no backfill follow-up
+            // needed, and any prior stash is now stale.
+            pendingScrollBackfill = new Map();
         }
 
         // Source-newer-than-renders auto-refresh. Replaces the old "Showing
@@ -4843,17 +5179,6 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             panel?.postMessage({ command: "minimalSavePendingClear" });
             void refresh(true, editorScope.file ?? undefined);
             break;
-        case "openModuleBuildFile":
-            // Minimal-mode "Apply plugin" link in the in-view banner.
-            // Opens the active module's build script so the user can add
-            // `id("ee.schimke.composeai.preview")` and reload into full
-            // mode. Routes through the same command the missing-plugin
-            // setup notification uses so the two surfaces stay aligned.
-            void vscode.commands.executeCommand(
-                "composePreview.openModuleBuildFile",
-                editorScope.file ?? undefined,
-            );
-            break;
         case "refreshHeavy": {
             // Click on a faded heavy card opts it into full-tier renders for
             // this editor focus scope. Future saves keep that preview fresh;
@@ -4975,24 +5300,32 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         }
         case "setA11yOverlay":
-            if (earlyFeaturesEnabled()) {
-                logInfo(
-                    `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
-                );
-                void handleSetA11yOverlay(msg.previewId, msg.enabled);
-            }
+            // a11y is the one bundle that's graduated past the early-features
+            // gate — the chip bar at `main.ts:2415` shows the a11y chip even
+            // when `composePreview.earlyFeatures.enabled` is false, so the
+            // matching host handler has to fire too. Other bundles' UIs stay
+            // hidden in basic mode (see `availableBundles`), so dropping the
+            // gate here doesn't widen the surface they post against.
+            logInfo(
+                `[panel] a11y overlay ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+            );
+            void handleSetA11yOverlay(msg.previewId, msg.enabled);
             break;
         case "setDataExtensionEnabled":
-            if (earlyFeaturesEnabled()) {
-                logInfo(
-                    `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
-                );
-                void handleSetDataExtensionEnabled(
-                    msg.previewId,
-                    msg.kinds,
-                    msg.enabled,
-                );
-            }
+            // Same reasoning as `setA11yOverlay`: a11y is reachable from the
+            // chip bar in basic mode, so a chip click must always dispatch.
+            // Other bundles' chips don't render without early features
+            // (`availableBundles` filter in `main.ts`), so this gate-drop
+            // doesn't surface non-a11y kinds when the user opted out of the
+            // experimental UI.
+            logInfo(
+                `[panel] extension ${msg.kinds.join(",")} ${msg.enabled ? "enabled" : "disabled"} for ${msg.previewId}`,
+            );
+            void handleSetDataExtensionEnabled(
+                msg.previewId,
+                msg.kinds,
+                msg.enabled,
+            );
             break;
         case "setRemoteComposeNamedValue":
             // Panel-side Remote Compose tab body edit. Merges the change
@@ -5007,6 +5340,17 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                     msg.previewId,
                     msg.change,
                 );
+            }
+            break;
+        case "setPermissionsOverride":
+            // Panel-side permissions tab body edit (Grant / Deny / Clear button
+            // or "Add permission" / "Clear overrides" action). Merges into the
+            // per-preview override bag and dispatches `renderNow.overrides.permissions`
+            // so the daemon's `PermissionsOverrideExtension` re-seeds Robolectric's
+            // grant state for the next composition. Gated on early features for the
+            // same reason as the Remote Compose edit path.
+            if (earlyFeaturesEnabled()) {
+                void handleSetPermissionsOverride(msg.previewId, msg.change);
             }
             break;
         case "openResourceFile":
@@ -5180,8 +5524,19 @@ async function handleSetDataExtensionEnabled(
             moduleId.modulePath,
             filteredKinds,
         );
+        // Drop the per-card spinner overlay onto the focused preview so the
+        // user gets immediate visual feedback for the in-flight subscribe.
+        // The slim panel-wide progress bar at the top is too subtle for a
+        // single-card toggle (and has a 200 ms paint delay that swallows
+        // fast-cache round-trips entirely). Cleared on resolve, on the
+        // tracker's safety timeout, and on the disable branch below.
+        extensionPendingPreviews.add(previewId);
+        panel?.postMessage({ command: "setLoading", previewId });
     } else {
         dataExtensionTracker?.resolve(previewId, filteredKinds);
+        if (extensionPendingPreviews.delete(previewId)) {
+            panel?.postMessage({ command: "clearLoading", previewId });
+        }
     }
     // Single subscription call so the wire sees `data/subscribe` per
     // kind followed by exactly one `renderNow`. Per-kind dispatch
@@ -5191,19 +5546,26 @@ async function handleSetDataExtensionEnabled(
     // module's a11y subscription aggregate (derived from its
     // `subscribedPairs`) and reports the first-on / last-off transition
     // here so the panel can decide whether to repaint.
-    const { a11yTransition } = await daemonScheduler.setDataProductSubscription(
+    // Single subscription call so the wire sees `data/subscribe` per kind followed by exactly
+    // one `renderNow`. The daemon owns the follow-through: the renderNow inside
+    // `setDataProductSubscription` runs with `mode=a11y` (per the
+    // `subscriptionDrivenRenderMode` machinery) and the resulting `renderFinished` carries the
+    // attachments to `onDataProductsAttached`, which paints the overlay via `applyA11yUpdate`.
+    // No extension-side refresh is needed.
+    //
+    // Earlier code fired `refresh(true, undefined, "fast")` here to "kick the panel to repaint
+    // with the freshly-arrived data products" — but a11y is daemon-only (the standalone Gradle
+    // render doesn't produce a11y artefacts), and `refresh(true)` posts `markAllLoading` against
+    // every card. When the daemon's subscribe-driven render comes back with `unchanged=true`
+    // (typical: image bytes don't change, only the attachments do), `paintCardCapture` never
+    // runs and the loading overlay sticks. Dropping the call lets the daemon's own pipeline
+    // drive the repaint, which it does end-to-end via `onDataProductsAttached` → `updateA11y`.
+    await daemonScheduler.setDataProductSubscription(
         moduleId,
         previewId,
         filteredKinds,
         enabled,
     );
-    if (a11yTransition !== "unchanged") {
-        // The daemon's `setDataProductSubscription` already changed which post-capture
-        // products attach on the next render — that's the actual a11y enablement now (a11y is
-        // daemon-only; the standalone Gradle task doesn't run ATF). The follow-up `refresh()`
-        // just kicks the panel to repaint with the freshly-arrived data products.
-        void refresh(true, undefined, "fast");
-    }
     if (!enabled) {
         // Mirror the toolbar A11y button's teardown — once the chip is unchecked, tear
         // down the cached overlay/legend immediately so the visual layer clears without
@@ -5326,6 +5688,63 @@ async function handleSetRemoteComposeNamedValue(
         "remotecompose-edit",
         { remoteCompose: next },
     );
+}
+
+/**
+ * Apply one edit from the panel's permissions tab body. Merges the change into
+ * [permissionsOverridesByPreview] and dispatches `renderNow.overrides.permissions`
+ * so the daemon's `PermissionsOverrideExtension` re-seeds Robolectric's grant
+ * state on the next composition.
+ *
+ * No-op when the daemon scheduler isn't wired (Gradle-only mode) or the preview's
+ * owning module isn't yet known (panel rebuild race) — the webview keeps its
+ * optimistic button state; the next `updateDataProducts` payload reconciles.
+ *
+ * No live-session fast-path: unlike Remote Compose, permission changes propagate
+ * through Robolectric's `ShadowApplication` grant map, which is consulted on every
+ * `ContextWrapper.checkPermission` call as part of normal composition. A
+ * `renderNow` is the canonical way to surface the new value because the screen's
+ * `ContextCompat.checkSelfPermission(...)` read only re-fires on recomposition;
+ * mutating the controller without re-rendering would leave the visible UI on the
+ * pre-edit branch.
+ */
+async function handleSetPermissionsOverride(
+    previewId: string,
+    change: import("./types").PermissionsChangeDetail,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleInfo = previewModuleIndex.get(previewId);
+    if (!moduleInfo) {
+        return;
+    }
+    const prior = permissionsOverridesByPreview.get(previewId);
+    const next = mergePermissionsChange(prior, change);
+    permissionsOverridesByPreview.set(previewId, next);
+    logInfo(
+        `[panel] permissions ${describePermissionsChange(change)} for ${previewId} via renderNow (bag size=${Object.keys(next.grants).length})`,
+    );
+    void daemonScheduler.renderNow(
+        moduleInfo,
+        [previewId],
+        "fast",
+        "permissions-edit",
+        { permissions: next },
+    );
+}
+
+function describePermissionsChange(
+    change: import("./types").PermissionsChangeDetail,
+): string {
+    switch (change.field) {
+        case "setGrant":
+            return `${change.permission}=${change.grant}`;
+        case "clearGrant":
+            return `clear ${change.permission}`;
+        case "clearAll":
+            return "clearAll";
+    }
 }
 
 /**
@@ -6815,178 +7234,115 @@ async function notifyDaemonViewport(
             predictedByModule.get(modulePath) ?? [],
         );
     }
+    // Demand-driven `@ScrollingPreview` backfill. Cheap when `pendingScrollBackfill`
+    // is empty (the common case for projects without scroll/animation previews);
+    // the intersection check only matters when refresh() stashed missing entries
+    // AND a visible-or-predicted preview is one of them.
+    triggerViewportScrollBackfill(visible, predicted);
+}
+
+function triggerViewportScrollBackfill(
+    visible: readonly string[],
+    predicted: readonly string[],
+): void {
+    if (inMinimalMode()) return;
+    const candidates = modulesNeedingViewportBackfill(
+        pendingScrollBackfill,
+        visible,
+        predicted,
+        // Module-wide Gradle dedup intentionally NOT passed here — the per-
+        // `(module, previewId, kind)` dedup below replaces it (issue #1528).
+        // Keeping the module-level set as a separate Gradle-fallback gate.
+        new Set<string>(),
+    );
+    for (const candidate of candidates) {
+        const owningModule = previewModuleIndex.get(
+            candidate.missing[0].previewId,
+        );
+        if (!owningModule) continue;
+        // Issue #1528 — per-(module, previewId, kind) dedup. The daemon's
+        // `data/fetch` path takes one preview at a time (vs. Gradle's
+        // module-wide rebuild), so dedup needs to be at the same granularity
+        // or we'd re-issue the same fetch on every viewport tick.
+        const freshlyRequested: MissingImageDataProduct[] = [];
+        for (const m of candidate.missing) {
+            const kind = m.renderOutput.toLowerCase().endsWith(".gif")
+                ? "render/scroll/gif"
+                : "render/scroll/long";
+            const dedupKey = `${candidate.modulePath}::${m.previewId}::${kind}`;
+            if (scrollBackfillRequested.has(dedupKey)) continue;
+            scrollBackfillRequested.add(dedupKey);
+            freshlyRequested.push(m);
+        }
+        if (freshlyRequested.length === 0) continue;
+        logLine(
+            `scroll backfill: ${candidate.modulePath} has ${freshlyRequested.length} missing image data product(s) in viewport; trying daemon data/fetch per preview`,
+        );
+        for (const m of freshlyRequested) {
+            // Fire-and-forget. Daemon path returns the on-disk path the
+            // dispatcher's `RenderEngine.runScrollScenario` wrote (same file
+            // Gradle would write to). On any daemon-side failure the per-kind
+            // dedup is rolled back and the module-wide Gradle path takes over.
+            void (async () => {
+                if (!daemonScheduler) return;
+                const path = await daemonScheduler.fetchScrollDataProduct(
+                    owningModule,
+                    m,
+                );
+                if (path && gradleService) {
+                    const imageData = await gradleService.readPreviewImage(
+                        owningModule,
+                        m.renderOutput,
+                    );
+                    if (imageData && panel) {
+                        panel.postMessage({
+                            command: "updateImage",
+                            previewId: m.previewId,
+                            captureIndex: m.captureIndex,
+                            imageData,
+                        });
+                    }
+                    return;
+                }
+                // Daemon path failed — fall back to the historical Gradle
+                // round-trip for this module. Drop the per-kind dedup entries
+                // we just added so a subsequent viewport tick can retry
+                // through the daemon once it advertises the kinds.
+                const kind = m.renderOutput.toLowerCase().endsWith(".gif")
+                    ? "render/scroll/gif"
+                    : "render/scroll/long";
+                scrollBackfillRequested.delete(
+                    `${candidate.modulePath}::${m.previewId}::${kind}`,
+                );
+                if (scrollBackfillRequested.has(candidate.modulePath)) return;
+                scrollBackfillRequested.add(candidate.modulePath);
+                logLine(
+                    `scroll backfill: daemon data/fetch failed for ${m.previewId}; falling back to composePreviewRender('full') for ${candidate.modulePath}`,
+                );
+                void backfillScrollDataProducts(
+                    owningModule,
+                    candidate.missing,
+                );
+            })();
+        }
+    }
 }
 
 /**
- * Picks the right empty-state message for the webview based on why the panel
- * couldn't resolve a preview-enabled module for the active file:
- *
- *   - No Kotlin file active / build script in focus: generic hint.
- *   - Plugin isn't applied in any module in the workspace: call that out
- *     explicitly. Users who've just installed the extension hit this one and
- *     the generic "open a Kotlin file" message is misleading there.
- *   - Plugin is applied somewhere, but not in this file's module, AND the
- *     file contains `@Preview` annotations: the user almost certainly wants
- *     previews here — nudge them toward adding the plugin to this module.
- *   - Plugin is applied somewhere, but this file has no `@Preview` usage:
- *     stay quiet. The file probably just isn't a preview file (false alarm
- *     for case C).
+ * Picks the empty-state message for the webview when no preview-enabled
+ * module resolved for the active file. Auto-inject handles the "plugin not
+ * applied" cases transparently, so the message stays neutral: either point
+ * the user at a Kotlin file, or note that the current file has no
+ * `@Preview` functions yet.
  */
 function emptyStateMessage(activeFile: string | undefined): string {
     if (!gradleService) {
         return "";
     }
     if (!activeFile || !isPreviewSourceFile(activeFile)) {
-        return "Open a Kotlin source file in a module that applies ee.schimke.composeai.preview.";
+        return "Open a Kotlin source file with @Preview functions.";
     }
-    const previewModules = gradleService.findPreviewModules();
-    if (previewModules.length === 0) {
-        return (
-            "The Compose Preview Gradle plugin isn't applied in this workspace. " +
-            'Add id("ee.schimke.composeai.preview") to a module\'s build script (build.gradle.kts or build.gradle) to enable previews.'
-        );
-    }
-    if (fileHasPreviewAnnotation(activeFile)) {
-        // File is inside a preview-enabled module, but outside this Gradle
-        // project — typical for a file in a git worktree opened from the main
-        // checkout's workspace. Nothing the user needs to "fix" in the build
-        // script; steer them toward opening the right root instead.
-        if (findPluginAppliedAncestor(activeFile)) {
-            return (
-                "This file is in a preview-enabled module, but outside this VS Code " +
-                "workspace root (e.g. a git worktree). Open that project root in VS Code " +
-                "to see its previews."
-            );
-        }
-        const topDir = topLevelDirOf(activeFile) ?? "(this module)";
-        return (
-            `'${topDir}' doesn't apply ee.schimke.composeai.preview. ` +
-            `Modules with previews in this workspace: ${previewModules.join(", ")}.`
-        );
-    }
-    // No @Preview references in the active file — stay out of the way.
     return "No @Preview functions in this file.";
-}
-
-/**
- * Show a one-shot VS Code notification with remediation actions for the
- * "plugin not applied" cases. De-duped per session and dismissable per
- * workspace. Skips the nudge entirely when the file has no `@Preview` usage
- * and the workspace already has other preview-enabled modules (case C'),
- * because that's almost certainly a false alarm.
- */
-function maybeShowSetupPrompt(activeFile: string): void {
-    if (warnedMissingPluginThisSession || !gradleService || !extensionContext) {
-        return;
-    }
-    if (extensionContext.workspaceState.get<boolean>(DISMISS_KEY)) {
-        return;
-    }
-
-    const previewModules = gradleService.findPreviewModules();
-    const missingAnywhere = previewModules.length === 0;
-    const missingForThisModule =
-        !missingAnywhere && fileHasPreviewAnnotation(activeFile);
-    if (!missingAnywhere && !missingForThisModule) {
-        return;
-    }
-    // The file is already inside a plugin-applied module somewhere up its own
-    // path — it just isn't part of *this* Gradle project (e.g. a git worktree
-    // nested under the workspace root). No build-script fix is needed; skip
-    // the nudge rather than point at a module they'd have to invent.
-    if (findPluginAppliedAncestor(activeFile)) {
-        return;
-    }
-
-    warnedMissingPluginThisSession = true;
-    const message = missingAnywhere
-        ? "Compose Preview: the Gradle plugin isn't applied in this workspace yet."
-        : "Compose Preview: this module doesn't apply the Gradle plugin, but the file uses @Preview.";
-    const OPEN = "Open build script";
-    const DOCS = "View setup docs";
-    const NEVER = "Don't show again";
-    void vscode.window
-        .showInformationMessage(message, OPEN, DOCS, NEVER)
-        .then((action) => {
-            if (action === OPEN) {
-                void vscode.commands.executeCommand(
-                    "composePreview.openModuleBuildFile",
-                    activeFile,
-                );
-            } else if (action === DOCS) {
-                void vscode.env.openExternal(vscode.Uri.parse(SETUP_DOCS_URL));
-            } else if (action === NEVER) {
-                void extensionContext?.workspaceState.update(DISMISS_KEY, true);
-            }
-        });
-}
-
-/**
- * Opens the nearest ancestor module build script (`build.gradle.kts` or
- * `build.gradle`) of the given file — the likely target for adding
- * `id("ee.schimke.composeai.preview")`. Walks up from the file's directory;
- * if nothing is found before the workspace root, falls back to the root's
- * own build script. This handles both top-level modules (the only kind
- * findPreviewModules scans for) and nested layouts, and both DSLs.
- */
-async function openModuleBuildFile(
-    workspaceRoot: string,
-    filePath?: string,
-): Promise<void> {
-    const target =
-        filePath ??
-        editorScope.file ??
-        vscode.window.activeTextEditor?.document.uri.fsPath ??
-        workspaceRoot;
-
-    let dir = target === workspaceRoot ? workspaceRoot : path.dirname(target);
-    const root = path.resolve(workspaceRoot);
-    while (path.resolve(dir).startsWith(root)) {
-        for (const name of BUILD_SCRIPT_NAMES) {
-            const candidate = path.join(dir, name);
-            if (fs.existsSync(candidate)) {
-                const doc = await vscode.workspace.openTextDocument(candidate);
-                await vscode.window.showTextDocument(doc);
-                return;
-            }
-        }
-        const parent = path.dirname(dir);
-        if (parent === dir) {
-            break;
-        }
-        dir = parent;
-    }
-    vscode.window.showWarningMessage(
-        "No build.gradle.kts or build.gradle found for this file.",
-    );
-}
-
-function fileHasPreviewAnnotation(filePath: string): boolean {
-    // Prefer the already-loaded editor buffer over a disk read so unsaved
-    // edits (the user just typed `@Preview`) are picked up.
-    const doc = vscode.workspace.textDocuments.find(
-        (d) => d.uri.fsPath === filePath,
-    );
-    const text = doc
-        ? doc.getText()
-        : (() => {
-              try {
-                  return fs.readFileSync(filePath, "utf-8");
-              } catch {
-                  return "";
-              }
-          })();
-    return text.includes("Preview") && text.includes("@Composable");
-}
-
-function topLevelDirOf(filePath: string): string | null {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders || folders.length === 0) {
-        return null;
-    }
-    const rel = path.relative(folders[0].uri.fsPath, filePath);
-    const first = rel.split(path.sep)[0];
-    return first && first !== ".." ? first : null;
 }
 
 async function openPreviewSource(className: string, functionName: string) {

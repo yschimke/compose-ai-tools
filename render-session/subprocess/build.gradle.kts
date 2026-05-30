@@ -10,6 +10,7 @@
 // the public render-session API is the supported surface for third-party tooling.
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.maven-publishing")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.kotlin.serialization)

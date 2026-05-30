@@ -834,6 +834,93 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_preview rejects an override-extension field the daemon does not support`() {
+    // #1606: the override-extension fields (permissions / focus / keyboard / …) are validated
+    // against supportedOverrides too, not just the primitive overrides. A desktop-shaped daemon
+    // that advertises only the primitives must reject a `permissions` override rather than letting
+    // it round-trip and silently drop.
+    factory.daemonConfigurer = { d -> d.advertisedSupportedOverrides = listOf("widthPx", "uiMode") }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("overrides") {
+            putJsonObject("permissions") {
+              putJsonObject("grants") { put("android.permission.CAMERA", "granted") }
+            }
+          }
+        },
+      )
+    assertThat(resp.isError()).isTrue()
+    assertThat(resp.firstTextContent()).contains("does not apply 'permissions'")
+    assertThat(daemon.renderRequests).isEmpty()
+  }
+
+  @Test
+  fun `render_preview decodes and forwards override-extension fields to the daemon`() {
+    // #1606: render_preview now accepts the connector-driven extension overrides and forwards them
+    // through renderNow.overrides. A backend that advertises them (Android-shaped) accepts the
+    // call and the daemon observes the typed fields.
+    factory.daemonConfigurer = { d ->
+      d.advertisedSupportedOverrides = listOf("focus", "keyboard", "permissions", "touchOverlay")
+      d.autoRenderPngPath = { _ ->
+        java.io.File.createTempFile("preview", ".png").also { it.deleteOnExit() }.absolutePath
+      }
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    client.callTool(
+      "render_preview",
+      buildJsonObject {
+        put("uri", uri)
+        putJsonObject("overrides") {
+          putJsonObject("focus") {
+            put("tabIndex", 2)
+            put("overlay", true)
+          }
+          putJsonObject("keyboard") { put("visible", true) }
+          put("touchOverlay", true)
+          putJsonObject("permissions") {
+            putJsonObject("grants") { put("android.permission.CAMERA", "granted") }
+          }
+        }
+      },
+      timeoutMs = 10_000,
+    )
+    assertThat(daemon.renderOverrides).hasSize(1)
+    val observed = daemon.renderOverrides[0]
+    assertThat(observed).isNotNull()
+    assertThat(observed!!.focus?.tabIndex).isEqualTo(2)
+    assertThat(observed.focus?.overlay).isTrue()
+    assertThat(observed.keyboard?.visible).isTrue()
+    assertThat(observed.touchOverlay).isTrue()
+    assertThat(observed.permissions?.grants)
+      .containsEntry(
+        "android.permission.CAMERA",
+        ee.schimke.composeai.daemon.protocol.PermissionGrantStateOverride.GRANTED,
+      )
+  }
+
+  @Test
   fun `render_preview falls open when daemon advertises empty supportedOverrides`() {
     // Pre-feature daemon: empty supportedOverrides means we can't tell which fields work.
     // Validation must fall open — same behaviour as before #441 landed. The renderNow goes
@@ -1415,6 +1502,51 @@ class DaemonMcpServerTest {
 
     assertThat(resp.isError()).isTrue()
     assertThat(resp.firstTextContent()).contains("not advertised by this daemon")
+    assertThat(daemon.recordingStarts).isEmpty()
+  }
+
+  @Test
+  fun `record_preview rejection hints at the namespaced id when the unprefixed name was sent`() {
+    // Issue #1550 — older docs (and the InteractiveInputKind enum) list bare names like `click`,
+    // `pointerDown`. The record_preview event ids are namespaced: `input.click`, etc. When an
+    // agent sends the unprefixed form, point them at the namespaced id so they don't have to
+    // round-trip through `list_data_products`.
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataExtensions =
+        listOf(ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor)
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "click")
+                put("pixelX", 10)
+                put("pixelY", 10)
+              }
+            )
+          }
+        },
+      )
+
+    assertThat(resp.isError()).isTrue()
+    val msg = resp.firstTextContent()
+    assertThat(msg).contains("kind 'click' is not advertised by this daemon")
+    assertThat(msg).contains("Did you mean 'input.click'?")
     assertThat(daemon.recordingStarts).isEmpty()
   }
 
