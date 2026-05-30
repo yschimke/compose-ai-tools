@@ -184,6 +184,24 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const sysProps = Object.entries(descriptor.systemProperties).map(
         ([k, v]) => `-D${k}=${v}`,
     );
+    // The daemon classpath is owned by `descriptor.classpath` and applied via
+    // the `@argfile` below; `jvmArgs` is only meant to carry tuning flags
+    // (`--add-opens`, `-Xmx`, …). A classpath option or an argfile-disabling
+    // flag smuggled into `jvmArgs` — only reachable through a hand-written
+    // descriptor or the public daemon-launch-builder `--jvm-arg` CLI — would
+    // sabotage the launch: a later `-cp`/`-classpath`/`--class-path` shadows
+    // the daemon classpath (last one wins), and `--disable-@files` stops Java
+    // expanding the argfile so `@…argfile` is taken as the main class. Strip
+    // them so neither argv order nor caller misuse can detach the daemon
+    // classpath; the warning surfaces the dropped flag instead of failing
+    // mysteriously at class-load time.
+    const jvmArgs = sanitizeJvmArgs(descriptor.jvmArgs, (dropped) => {
+        logger?.appendLine(
+            `[daemon] ignoring classpath/argfile-control option in jvmArgs ` +
+                `for ${descriptor.modulePath}: ${dropped} ` +
+                `(the daemon classpath is fixed by the launch descriptor)`,
+        );
+    });
     // A large module classpath joined into a single `-cp` argument overflows
     // the OS argument limits — Linux caps a single argv entry at
     // MAX_ARG_STRLEN (128 KB) — so `spawn` fails with E2BIG before the JVM
@@ -192,16 +210,16 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // how many jars the consumer's classpath carries. Supported since Java 9,
     // which the daemon already requires.
     //
-    // The argfile reference goes first, ahead of `descriptor.jvmArgs`: Java
-    // honours `--disable-@files` from the point it appears onward, so a user
-    // JVM arg carrying that flag would otherwise leave
-    // `@…/daemon-classpath.argfile` unexpanded and treated as the main class.
-    // Expanding it before any user-supplied arg keeps `-cp` applied regardless
-    // of later launcher flags.
+    // The argfile reference goes first, ahead of `jvmArgs`: Java honours
+    // `--disable-@files` from the point it appears onward, so a stray copy
+    // would otherwise leave `@…/daemon-classpath.argfile` unexpanded and
+    // treated as the main class. Expanding it before any user-supplied arg
+    // keeps `-cp` applied regardless of later launcher flags (and the sanitise
+    // pass above already removed any such flag).
     const argfilePath = writeClasspathArgfile(descriptor.classpath);
     const args = [
         `@${argfilePath}`,
-        ...descriptor.jvmArgs,
+        ...jvmArgs,
         ...sysProps,
         descriptor.mainClass,
     ];
@@ -387,6 +405,53 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     }
 
     return { client, process: child, initializeResult, exited };
+}
+
+/**
+ * Java classpath options. Any of these in `jvmArgs` would override the daemon
+ * classpath the launch descriptor owns (the JVM applies the last `-cp` it
+ * sees), so they're stripped before launch. Both the `-cp value` /
+ * `--class-path value` two-token forms and the `--class-path=value` glued form
+ * are covered.
+ */
+const CLASSPATH_OPTION_NAMES = new Set(["-cp", "-classpath", "--class-path"]);
+
+/**
+ * Drops classpath options and `--disable-@files` from `jvmArgs` so neither the
+ * daemon classpath nor the classpath `@argfile` can be detached by a flag
+ * smuggled into the descriptor's `jvmArgs`. `onDropped` is invoked once per
+ * removed token (including the consumed value of a two-token classpath option)
+ * so the caller can log it. Exported for unit coverage; callers go through
+ * [spawnDaemon].
+ */
+export function sanitizeJvmArgs(
+    jvmArgs: readonly string[],
+    onDropped?: (arg: string) => void,
+): string[] {
+    const out: string[] = [];
+    for (let i = 0; i < jvmArgs.length; i++) {
+        const arg = jvmArgs[i];
+        // `--disable-@files` would stop Java expanding the classpath argfile.
+        if (arg === "--disable-@files") {
+            onDropped?.(arg);
+            continue;
+        }
+        // Glued form, e.g. `-cp=…` / `--class-path=…`.
+        const eq = arg.indexOf("=");
+        const head = eq === -1 ? arg : arg.slice(0, eq);
+        if (CLASSPATH_OPTION_NAMES.has(head)) {
+            onDropped?.(arg);
+            // Two-token form (`-cp <value>`): also swallow the value so it
+            // can't be left behind as a stray positional / main class.
+            if (eq === -1 && i + 1 < jvmArgs.length) {
+                i++;
+                onDropped?.(jvmArgs[i]);
+            }
+            continue;
+        }
+        out.push(arg);
+    }
+    return out;
 }
 
 /**
