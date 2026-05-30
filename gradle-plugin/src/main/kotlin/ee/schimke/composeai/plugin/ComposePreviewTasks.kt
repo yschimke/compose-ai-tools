@@ -494,6 +494,12 @@ internal object ComposePreviewTasks {
 
       workingDirectory.set(project.projectDir.absolutePath)
       manifestPath.set(previewsJsonProvider)
+      // @Optional @InputFile — see kdoc on `DaemonBootstrapTask.previewsManifest`. Matches the
+      // Android registration's wire-up so descriptor invalidation is consistent across backends.
+      previewsManifest.set(previewOutputDir.map { it.file("previews.json") })
+      // Soft ordering so the cold-start bundle's discover writes `previews.json` before this
+      // task evaluates its @InputFile fingerprint. See AndroidPreviewSupport.kt for the rationale.
+      mustRunAfter("composePreviewDiscover")
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
       group = "compose preview"

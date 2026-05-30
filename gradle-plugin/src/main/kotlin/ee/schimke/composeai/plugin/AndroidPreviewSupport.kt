@@ -1892,6 +1892,17 @@ internal object AndroidPreviewSupport {
       this.systemProperties.put("composeai.daemon.workspaceRoot", project.rootDir.absolutePath)
       this.workingDirectory.set(project.projectDir.absolutePath)
       this.manifestPath.set(manifestFile)
+      // @Optional @InputFile — present when composePreviewDiscover has populated previews.json,
+      // missing on the very first warm. Drives Gradle to invalidate the launch descriptor (and
+      // therefore re-trigger VS Code's descriptor-watcher respawn path) when the manifest first
+      // appears or its content changes.
+      this.previewsManifest.set(previewOutputDir.map { it.file("previews.json") })
+      // When `composePreviewDiscover` is scheduled in the same Gradle invocation (the cold-start
+      // bundle in `gradleService.coldStartBundle(includeDiscover = true)`), run it first so the
+      // manifest file the @InputFile above sees is the freshly-written one. `mustRunAfter` is a
+      // soft ordering — Gradle ignores it when discover isn't in the graph, so the warm-only path
+      // (`runDaemonBootstrap` → `includeDiscover = false`) keeps its single-task latency.
+      this.mustRunAfter("composePreviewDiscover")
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
   }
