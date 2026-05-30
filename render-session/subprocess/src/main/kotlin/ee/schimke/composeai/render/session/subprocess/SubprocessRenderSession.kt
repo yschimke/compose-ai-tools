@@ -13,6 +13,8 @@ import ee.schimke.composeai.render.session.RenderSessionConfig
 import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import java.io.File
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * [RenderSessionFactory] singleton for the daemon-subprocess backend. Open a session via
@@ -56,17 +58,94 @@ object SubprocessRenderSessions : RenderSessionFactory {
     val workspaceRoot = config.workspaceRoot
     val canonicalRoot =
       runCatching { workspaceRoot.canonicalFile }.getOrDefault(workspaceRoot.absoluteFile)
+    return spawnAndInitialize(
+      descriptor = effectiveDescriptor,
+      workspaceName = config.workspaceName,
+      canonicalRoot = canonicalRoot,
+      initializeTimeout = config.initializeTimeout,
+      factory = factory,
+    )
+  }
+
+  /**
+   * Open a session against a self-contained preview bundle — no Gradle project on disk.
+   *
+   * Where [open] reads a `daemon-launch.json` the gradle plugin wrote into a module's `build/`
+   * directory, this overload synthesizes the [DaemonLaunchDescriptor] in-process from the inputs a
+   * bundle already carries: the desktop daemon main class, a [daemonClasspath] assembled from the
+   * shipped sidecar jars (`lib-daemon-desktop/jars` + `lib-renderer/jars`), and the bundle's
+   * extracted user classes ([classesDir]) + discovery manifest ([previewsJson]). The daemon reads
+   * those two via the same `composeai.daemon.userClassDirs` / `composeai.daemon.previewsJsonPath`
+   * system properties the `compose-preview bundle daemon` CLI command uses, so the spawn +
+   * initialize + notification wiring is identical to [open] from there on.
+   *
+   * Keeping descriptor construction here (rather than in a consumer like `:tui-cli`) means the
+   * schema version and field names stay owned by the module that owns [DaemonLaunchDescriptor].
+   *
+   * @param daemonClasspath absolute paths of every jar on the daemon subprocess classpath.
+   * @param classesDir directory holding the bundle's extracted `classes/app.jar` contents.
+   * @param previewsJson the bundle's extracted `previews.json` discovery manifest.
+   * @param workspaceRoot a scratch directory used as the daemon's working directory + workspace id.
+   * @param modulePath informational module label surfaced in diagnostics (defaults to the bundle).
+   */
+  fun openBundleDaemon(
+    daemonClasspath: List<String>,
+    classesDir: File,
+    previewsJson: File,
+    workspaceRoot: File,
+    modulePath: String = ":bundle",
+    initializeTimeout: Duration = 60.seconds,
+    factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
+  ): RenderSession {
+    require(daemonClasspath.isNotEmpty()) { "daemonClasspath must not be empty" }
+    val canonicalRoot =
+      runCatching { workspaceRoot.canonicalFile }.getOrDefault(workspaceRoot.absoluteFile)
+    val descriptor =
+      DaemonLaunchDescriptor(
+        schemaVersion = DAEMON_DESCRIPTOR_SCHEMA_VERSION,
+        modulePath = modulePath,
+        variant = "",
+        enabled = true,
+        mainClass = DESKTOP_DAEMON_MAIN_CLASS,
+        javaLauncher = null,
+        classpath = daemonClasspath,
+        jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+        systemProperties =
+          mapOf(
+            "composeai.daemon.userClassDirs" to classesDir.absolutePath,
+            "composeai.daemon.previewsJsonPath" to previewsJson.absolutePath,
+          ),
+        workingDirectory = canonicalRoot.absolutePath,
+        manifestPath = previewsJson.absolutePath,
+      )
+    return spawnAndInitialize(
+      descriptor = descriptor,
+      workspaceName = canonicalRoot.name.ifBlank { "bundle" },
+      canonicalRoot = canonicalRoot,
+      initializeTimeout = initializeTimeout,
+      factory = factory,
+    )
+  }
+
+  /** Shared spawn + JSON-RPC initialize + session-wrap path for [open] and [openBundleDaemon]. */
+  private fun spawnAndInitialize(
+    descriptor: DaemonLaunchDescriptor,
+    workspaceName: String,
+    canonicalRoot: File,
+    initializeTimeout: Duration,
+    factory: DaemonClientFactory,
+  ): RenderSession {
     val project =
       RegisteredProject(
-        workspaceId = WorkspaceId.derive(config.workspaceName, canonicalRoot),
-        rootProjectName = config.workspaceName,
+        workspaceId = WorkspaceId.derive(workspaceName, canonicalRoot),
+        rootProjectName = workspaceName,
         path = canonicalRoot,
         knownModules = mutableListOf(),
       )
 
     val spawn =
       try {
-        factory.spawn(project, effectiveDescriptor)
+        factory.spawn(project, descriptor)
       } catch (e: Exception) {
         throw RenderSessionException(
           "Failed to spawn daemon subprocess for ${descriptor.modulePath}: " +
@@ -86,9 +165,9 @@ object SubprocessRenderSessions : RenderSessionFactory {
       try {
         client.initialize(
           workspaceRoot = canonicalRoot.absolutePath,
-          moduleId = effectiveDescriptor.modulePath,
-          moduleProjectDir = effectiveDescriptor.workingDirectory,
-          timeout = config.initializeTimeout,
+          moduleId = descriptor.modulePath,
+          moduleProjectDir = descriptor.workingDirectory,
+          timeout = initializeTimeout,
         )
       } catch (e: Exception) {
         runCatching { spawn.shutdown() }
@@ -101,7 +180,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
 
     return DaemonClientRenderSession(
       workspaceRoot = canonicalRoot.absolutePath,
-      modulePath = effectiveDescriptor.modulePath,
+      modulePath = descriptor.modulePath,
       initializeResult = initializeResult,
       backendKind = RenderSessionBackend.Subprocess,
       client = client,
@@ -112,6 +191,14 @@ object SubprocessRenderSessions : RenderSessionFactory {
       },
     )
   }
+
+  /** `ee.schimke.composeai.daemon.DaemonMain` — the desktop daemon entrypoint a bundle spawns. */
+  private const val DESKTOP_DAEMON_MAIN_CLASS = "ee.schimke.composeai.daemon.DaemonMain"
+
+  /**
+   * Descriptor schema version the daemon launch path speaks; mirrors the gradle plugin's writer.
+   */
+  private const val DAEMON_DESCRIPTOR_SCHEMA_VERSION = 2
 
   /**
    * Resolve a module's daemon launch descriptor under [projectDir] / [modulePath] using the
