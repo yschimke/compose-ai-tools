@@ -30,7 +30,7 @@ fun main(argv: Array<String>) {
       System.err.println("error: --dump requires a bundle PNG argument")
       exitProcess(2)
     }
-    dumpBundle(bundlePng)
+    dumpBundle(bundlePng, exactId = args.exactId, filter = args.filter)
     return
   }
 

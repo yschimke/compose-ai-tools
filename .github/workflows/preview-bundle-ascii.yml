@@ -78,13 +78,14 @@ jobs:
         run: ./gradlew :tui-cli:installDist :tui-cli:test --stacktrace
 
       # Headless dump: no PTY, fixed terminal geometry via COLUMNS/LINES so the
-      # output is deterministic. `--dump` renders each baked preview through
-      # Mosaic's one-shot renderMosaic + Image (ASCII / half-block fallback) and
+      # output is deterministic. `--dump` renders the cover preview (default; --id /
+      # --filter pick others) through Mosaic's one-shot renderMosaic + Image
+      # (ASCII / half-block fallback) and
       # exits — no daemon, no raw-mode terminal I/O. We capture stdout and stderr
       # separately and echo both (plus the exit code) into the step log so any
       # failure — a render exception, a missing native lib, an empty dump — is
       # diagnosable inline instead of needing the raw run log.
-      - name: Dump each preview to the terminal (ASCII fallback)
+      - name: Dump the cover preview to the terminal (ASCII fallback)
         env:
           TERM: dumb
           COLUMNS: '100'

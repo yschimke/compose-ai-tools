@@ -10,7 +10,12 @@ import ee.schimke.composeai.tui.terminal.TerminalSize
 import java.io.File
 
 /**
- * Non-interactive bundle dump: render every baked preview in [png] to stdout as text and return.
+ * Non-interactive bundle dump: render a baked preview in [png] to stdout as text and return.
+ *
+ * By default this dumps a **single** preview — the cover ([BundleContents.previews] is ordered
+ * cover-first), since a bundle is usually viewed one preview at a time. Pass [exactId] to pin a
+ * specific preview, or [filter] to dump a slice (every preview whose id contains the substring,
+ * case-insensitively).
  *
  * This is the headless counterpart of [runBundle]. Where the interactive view takes over the
  * terminal (raw mode, alternate screen, a render loop), the dump uses Mosaic's one-shot
@@ -21,9 +26,16 @@ import java.io.File
  *
  * Reads the bundle's baked `previews/<id>.png` entries (schema v2+), so it works fully detached from
  * the originating project. Prints a short notice and returns cleanly when the file carries no baked
- * previews (e.g. an older v1 bundle, or one packed with `--no-render`).
+ * previews (e.g. an older v1 bundle, or one packed with `--no-render`) or when the id/filter matches
+ * nothing.
  */
-fun dumpBundle(png: File, cols: Int? = null, rowsPerPreview: Int = DEFAULT_DUMP_ROWS) {
+fun dumpBundle(
+  png: File,
+  exactId: String? = null,
+  filter: String? = null,
+  cols: Int? = null,
+  rowsPerPreview: Int = DEFAULT_DUMP_ROWS,
+) {
   val contents = BundlePngMetadata.readContents(png)
   val width = (cols ?: TerminalSize.probe().cols).coerceIn(MIN_DUMP_COLS, MAX_DUMP_COLS)
 
@@ -32,9 +44,24 @@ fun dumpBundle(png: File, cols: Int? = null, rowsPerPreview: Int = DEFAULT_DUMP_
     return
   }
 
-  val total = contents.previews.size
-  println("${png.name}: $total preview(s)")
-  contents.previews.forEachIndexed { index, preview ->
+  // Default to the single cover preview; `--id` pins one exactly, `--filter` selects a slice.
+  val selected =
+    when {
+      exactId != null -> contents.previews.filter { it.id == exactId }
+      filter != null -> contents.previews.filter { it.id.contains(filter, ignoreCase = true) }
+      else -> listOf(contents.previews.first())
+    }
+
+  if (selected.isEmpty()) {
+    val which = exactId?.let { "id '$it'" } ?: "filter '$filter'"
+    println("${png.name}: no baked preview matches $which (${contents.previews.size} available).")
+    return
+  }
+
+  val total = selected.size
+  val suffix = if (total < contents.previews.size) " of ${contents.previews.size}" else ""
+  println("${png.name}: $total preview(s)$suffix")
+  selected.forEachIndexed { index, preview ->
     println()
     println("=== ${preview.id} (${index + 1}/$total) ===")
     val bitmap = Bitmaps.decode(preview.pngBytes)

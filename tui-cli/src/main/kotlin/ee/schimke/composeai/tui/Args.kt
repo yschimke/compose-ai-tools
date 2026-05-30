@@ -29,10 +29,11 @@ data class TuiArgs(
    */
   val bundlePng: File? = null,
   /**
-   * Non-interactive dump mode (`--dump` / `--ascii`). Requires a bundle PNG positional: render every
+   * Non-interactive dump mode (`--dump` / `--ascii`). Requires a bundle PNG positional: render a
    * baked preview to stdout as text (half-block / ASCII fallback via Mosaic's one-shot
-   * [com.jakewharton.mosaic.renderMosaic]) and exit, instead of taking over the terminal. Built for
-   * CI / piped stdout where there's no PTY.
+   * [com.jakewharton.mosaic.renderMosaic]) and exit, instead of taking over the terminal. Dumps the
+   * cover preview by default; `--id` pins an exact preview and `--filter` dumps a matching slice.
+   * Built for CI / piped stdout where there's no PTY.
    */
   val dump: Boolean = false,
   val verbose: Boolean = false,
@@ -136,13 +137,15 @@ data class TuiArgs(
           compose-preview-tui <bundle.png>       Open a bundle PNG full-screen (image only,
                                                  live if the PNG carries provenance)
           compose-preview-tui --dump <bundle.png>
-                                                 Print every baked preview to stdout as text
-                                                 (half-block / ASCII) and exit. No PTY needed —
-                                                 for CI / piped output.
+                                                 Print a baked preview to stdout as text
+                                                 (half-block / ASCII) and exit — the cover by
+                                                 default, or pick with --id / --filter. No PTY
+                                                 needed — for CI / piped output.
 
         Options:
-          --dump, --ascii        Non-interactive: dump each baked preview in a bundle to
-                                 stdout (ASCII fallback) and exit. Requires a bundle PNG.
+          --dump, --ascii        Non-interactive: dump a baked preview in a bundle to stdout
+                                 (ASCII fallback) and exit. The cover preview by default;
+                                 use --id / --filter to choose. Requires a bundle PNG.
           --module <path>        Gradle path (e.g. :samples:android). Default: prompt
                                  / pick first discovered.
           --filter <pattern>     Case-insensitive substring filter on preview id.
