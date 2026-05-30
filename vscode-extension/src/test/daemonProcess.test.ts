@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import {
     ChunkLineSplitter,
+    formatClasspathArgfileContent,
     formatDaemonSpawnFailure,
     readLaunchDescriptor,
     spawnDaemon,
@@ -373,5 +374,44 @@ describe("formatDaemonSpawnFailure (issue #1326)", () => {
         assert.strictEqual(split[1], "[daemon stderr tail for :samples:wear]");
         assert.strictEqual(split[2], "line-150");
         assert.strictEqual(split[51], "line-199");
+    });
+});
+
+describe("formatClasspathArgfileContent", () => {
+    it("emits a single -cp option with the entries quoted", () => {
+        const content = formatClasspathArgfileContent([
+            "/a/one.jar",
+            "/a/two.jar",
+        ]);
+        assert.strictEqual(
+            content,
+            `-cp "/a/one.jar${path.delimiter}/a/two.jar"\n`,
+        );
+    });
+
+    it("keeps the whole classpath in one argv token regardless of size", () => {
+        // The E2BIG regression: a huge classpath used to become one giant
+        // `-cp` argv entry. Routed through the argfile it never reaches argv,
+        // so the only argv token the caller adds is the small `@file` ref.
+        const entries = Array.from(
+            { length: 5000 },
+            (_, i) => `/very/long/gradle/cache/path/to/dependency-${i}.jar`,
+        );
+        const content = formatClasspathArgfileContent(entries);
+        assert.ok(content.length > 128 * 1024, "fixture should exceed 128 KB");
+        // Exactly one option (`-cp`) and one value token on a single line.
+        assert.strictEqual(content.split("\n").filter(Boolean).length, 1);
+        assert.ok(content.startsWith('-cp "'));
+        assert.ok(content.includes("dependency-4999.jar"));
+    });
+
+    it("rewrites Windows backslashes to forward slashes", () => {
+        const content = formatClasspathArgfileContent([
+            "C:\\Program Files\\app\\lib.jar",
+        ]);
+        // No backslashes survive (the JDK argfile tokenizer would eat them),
+        // and the space-bearing path stays inside the quotes.
+        assert.ok(!content.includes("\\"));
+        assert.strictEqual(content, '-cp "C:/Program Files/app/lib.jar"\n');
     });
 });
