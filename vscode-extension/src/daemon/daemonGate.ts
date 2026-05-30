@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { GradleService, ModuleInfo } from "../gradleService";
 import { LogFilter } from "../logFilter";
 import {
@@ -11,6 +13,31 @@ import {
     SpawnedDaemon,
 } from "./daemonProcess";
 import { DaemonLaunchDescriptor } from "./daemonProtocol";
+
+/**
+ * Returns `daemon-launch.json`'s mtime in milliseconds for [module], or `null` when the file is
+ * missing/unstatable. Used by `LiveDaemonGate` to detect when Gradle has re-written the launch
+ * descriptor under a still-alive daemon — see the `descriptorMtimeMs` field's kdoc on
+ * `ManagedDaemon`. Path mirrors `readLaunchDescriptor`'s. Exported for unit coverage; callers
+ * outside this file should not depend on it.
+ */
+export function descriptorMtimeMs(
+    workspaceRoot: string,
+    module: ModuleInfo,
+): number | null {
+    const file = path.join(
+        workspaceRoot,
+        module.projectDir,
+        "build",
+        "compose-previews",
+        "daemon-launch.json",
+    );
+    try {
+        return fs.statSync(file).mtimeMs;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Snapshot of the daemon's advertised data-product / data-extension capabilities
@@ -125,7 +152,32 @@ export class LiveDaemonGate implements DaemonGate {
         const key = module.modulePath;
         const existing = this.daemons.get(key);
         if (existing && !existing.client.isClosed()) {
-            return existing.client;
+            // Detect descriptor changes on disk (`composePreviewDaemonStart` re-ran because its
+            // `@Optional @InputFile previewsManifest` saw a new `previews.json` content/presence,
+            // or the user bumped the JVM/classpath in Gradle) and re-spawn so the alive daemon
+            // doesn't keep serving against a stale launch shape. Closes the fresh-module gap left
+            // by the `manifestFile.isFile` fallback in `DaemonMain.kt` — without this the daemon
+            // would stay in the no-router branch for the rest of the session.
+            const currentMtime = descriptorMtimeMs(this.workspaceRoot, module);
+            if (
+                currentMtime !== null &&
+                existing.descriptorMtimeMs !== 0 &&
+                currentMtime > existing.descriptorMtimeMs
+            ) {
+                this.logger.appendLine(
+                    `[daemon] launch descriptor changed for ${module.modulePath} ` +
+                        `(mtime ${existing.descriptorMtimeMs} → ${currentMtime}); ` +
+                        "disposing alive daemon and re-spawning",
+                );
+                this.daemons.delete(key);
+                try {
+                    existing.spawned.process.kill("SIGTERM");
+                } catch {
+                    /* already gone — fall through to the spawn below */
+                }
+            } else {
+                return existing.client;
+            }
         }
         if (existing && existing.client.isClosed()) {
             this.daemons.delete(key);
@@ -203,11 +255,20 @@ export class LiveDaemonGate implements DaemonGate {
         events: DaemonClientEvents,
     ): Promise<DaemonClient> {
         const key = module.modulePath;
+        // Identity-guarded eviction: a stale daemon's close event can land *after* a respawn
+        // (descriptor-change branch in `getOrSpawn` kills the old JVM synchronously and falls
+        // through to register a replacement, but `child_process` channel-close timing is
+        // asynchronous and unbounded). An unconditional `daemons.delete(key)` from the old
+        // handler would evict the replacement, leaving `isDaemonReady` returning false while a
+        // healthy daemon is still alive — and the next caller would spawn a duplicate JVM that
+        // `dispose()` no longer tracks. Match on the captured `spawned` reference so a stale
+        // close is a no-op once the entry has rolled to a newer daemon.
+        let mySpawned: SpawnedDaemon | null = null;
         const composed = composeEvents(events, () => {
-            // On channel close drop the entry so the next caller spawns a
-            // fresh JVM. Avoid awaiting `exited` here — events fires as
-            // soon as the stream ends, exit code may lag by a tick.
-            this.daemons.delete(key);
+            const current = this.daemons.get(key);
+            if (current && current.spawned === mySpawned) {
+                this.daemons.delete(key);
+            }
         });
         const spawned = await spawnDaemon({
             workspaceRoot: this.workspaceRoot,
@@ -217,7 +278,17 @@ export class LiveDaemonGate implements DaemonGate {
             logger: this.logger,
             logFilter: this.logFilter,
         });
-        this.daemons.set(key, { spawned, client: spawned.client });
+        mySpawned = spawned;
+        // Snapshot the descriptor mtime *after* the JVM is up so subsequent re-entries on this
+        // module compare against the file the daemon was actually launched with. See the
+        // `descriptorMtimeMs` field's kdoc on `ManagedDaemon` for the respawn rationale.
+        const descriptorMtimeMs_ =
+            descriptorMtimeMs(this.workspaceRoot, module) ?? 0;
+        this.daemons.set(key, {
+            spawned,
+            client: spawned.client,
+            descriptorMtimeMs: descriptorMtimeMs_,
+        });
         const readyLine =
             `[daemon] ready for ${module.modulePath} ` +
             `(daemonVersion=${spawned.initializeResult.daemonVersion}, ` +
@@ -436,6 +507,17 @@ export class GradleOnlyDaemonGate implements DaemonGate {
 interface ManagedDaemon {
     spawned: SpawnedDaemon;
     client: DaemonClient;
+    /**
+     * `daemon-launch.json` mtime captured at spawn time. `LiveDaemonGate.getOrSpawn` compares the
+     * current mtime against this on every re-entry; when Gradle has re-written the descriptor (the
+     * `composePreviewDaemonStart` task got invalidated by its `@Optional @InputFile previewsManifest`
+     * — typically because `composePreviewDiscover` just wrote a fresh `previews.json` — the alive
+     * daemon was launched against a stale manifest and we dispose + respawn it. Without this the
+     * daemon stays stuck in the no-router fallback the `DaemonMain.kt` `manifestFile.isFile` check
+     * dropped it into on first warm. Set to `0` when the descriptor file wasn't statable at spawn
+     * time (treated as "never refresh"; the JVM would have failed to spawn already in that case).
+     */
+    descriptorMtimeMs: number;
 }
 
 /**

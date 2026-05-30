@@ -10,9 +10,12 @@ import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
@@ -120,6 +123,22 @@ abstract class DaemonBootstrapTask : DefaultTask() {
 
   /** Absolute path to `previews.json`. */
   @get:Input abstract val manifestPath: Property<String>
+
+  /**
+   * The `previews.json` file itself, tracked as an `@Optional @InputFile` so Gradle invalidates the
+   * launch descriptor when `composePreviewDiscover` writes (or rewrites) the manifest. The
+   * descriptor's [outputFile] gets a new mtime on each invalidation, which the VS Code extension
+   * observes to dispose + re-spawn an alive daemon — closing the "fresh module, daemon warmed
+   * before first discover" gap where the daemon was stuck in the no-router fallback for the rest of
+   * the session (see DaemonMain's `manifestFile.isFile` check). `@Optional` because the file does
+   * not exist on the very first warm; `RELATIVE` path sensitivity because the absolute path is
+   * already encoded in [manifestPath], so only the *content* of the manifest matters for
+   * invalidation here.
+   */
+  @get:InputFile
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.NAME_ONLY)
+  abstract val previewsManifest: RegularFileProperty
 
   // --- Stage-2 in-process compile (COMPILE-IN-PROCESS.md) -----------------------------------
   //
