@@ -2,6 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import {
     ChunkLineSplitter,
     formatClasspathArgfileContent,
@@ -291,7 +292,17 @@ describe("formatDaemonSpawnFailure (issue #1326)", () => {
         // for issue #1326 must wrap the resulting "Daemon channel closed"
         // with the stderr tail and exit code; without the wrapping the test
         // runner would see only the bare phrase, hiding the actual cause.
+        // `spawnDaemon` puts the classpath `@argfile` first (so Java expands
+        // it before any `--disable-@files` in jvmArgs), which rules out the
+        // old "borrow node, pass the script as jvmArgs[0]" trick — node would
+        // try to run the leading `@argfile` token as its entry module. Instead
+        // borrow node as the fake JVM but inject the crash via
+        // `NODE_OPTIONS=--import <script>`: the imported module runs and exits
+        // before node resolves the (bogus) positional entry, so the test no
+        // longer depends on argument order. classpath / jvmArgs below are
+        // deliberately bogus to prove they don't affect the launch.
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "daemon-spawn-"));
+        const savedNodeOptions = process.env.NODE_OPTIONS;
         try {
             const scriptPath = path.join(dir, "fake-daemon.mjs");
             fs.writeFileSync(
@@ -306,20 +317,24 @@ describe("formatDaemonSpawnFailure (issue #1326)", () => {
                     "process.exit(2);",
                 ].join("\n"),
             );
+            // spawnDaemon inherits process.env, so route the crash in via
+            // --import (node's ESM-friendly preload; --require would warn and
+            // bail under an ESM entry). It takes a file:// URL. Restore the
+            // prior value in `finally`.
+            process.env.NODE_OPTIONS =
+                `${savedNodeOptions ? savedNodeOptions + " " : ""}` +
+                `--import ${pathToFileURL(scriptPath).href}`;
             const descriptor: DaemonLaunchDescriptor = {
                 schemaVersion: DAEMON_DESCRIPTOR_SCHEMA_VERSION,
                 modulePath: ":samples:wear",
                 variant: "debug",
                 enabled: true,
                 mainClass: "ignored",
-                // Borrow the active Node binary as the fake JVM and pass the
-                // script via systemProperties → -D entries, which `spawnDaemon`
-                // forwards verbatim. Node ignores -D flags, so we instead use
-                // jvmArgs to inject the script path before -cp, which Node
-                // accepts as its own first positional arg.
+                // node is the fake JVM; the --require script crashes it before
+                // it ever looks at these args, regardless of their order.
                 javaLauncher: process.execPath,
                 classpath: ["ignored"],
-                jvmArgs: [scriptPath],
+                jvmArgs: ["--disable-@files"],
                 systemProperties: {},
                 workingDirectory: dir,
                 manifestPath: path.join(dir, "previews.json"),
@@ -351,6 +366,11 @@ describe("formatDaemonSpawnFailure (issue #1326)", () => {
                 `expected exit-code suffix in message, got: ${message}`,
             );
         } finally {
+            if (savedNodeOptions === undefined) {
+                delete process.env.NODE_OPTIONS;
+            } else {
+                process.env.NODE_OPTIONS = savedNodeOptions;
+            }
             fs.rmSync(dir, { recursive: true });
         }
     });
