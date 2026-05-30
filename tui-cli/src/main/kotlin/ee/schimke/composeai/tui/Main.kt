@@ -16,11 +16,11 @@ import kotlin.system.exitProcess
 fun main(argv: Array<String>) {
   val args = TuiArgs.parse(argv)
 
-  // Bundle-PNG mode: skip discovery and the browser entirely and open straight into the
-  // image-only live view. Live re-render needs the source project, so resolve a project root the
-  // same way normal mode does (override, else walk up for gradlew) — but unlike normal mode its
-  // absence isn't fatal: with no project we just show the bundle's baked-in image statically. The
-  // log lives under the project root (or next to the PNG) so daemon stderr can't corrupt the screen.
+  // Bundle-PNG mode: skip discovery and the browser entirely and open straight into the image-only
+  // live view. A bundle is self-contained, so this path assumes NO project context — it spawns the
+  // bundle's own daemon from its embedded classes (see `runBundle`). The stderr log lands next to
+  // the PNG (or under a project root if we happen to be in one) so daemon stderr can't corrupt the
+  // live screen.
   val bundlePng = args.bundlePng
 
   // Dump mode is headless: print each baked preview to stdout and exit. No terminal takeover, no
@@ -35,9 +35,11 @@ fun main(argv: Array<String>) {
   }
 
   if (bundlePng != null) {
-    val projectRoot = args.projectRoot?.absoluteFile ?: findProjectRoot()
-    redirectStderrToLogFile(projectRoot ?: bundlePng.absoluteFile.parentFile ?: File("."))
-    runBundle(bundlePng, projectRoot, args)
+    val logRoot =
+      args.projectRoot?.absoluteFile ?: findProjectRoot() ?: bundlePng.absoluteFile.parentFile
+        ?: File(".")
+    redirectStderrToLogFile(logRoot)
+    runBundle(bundlePng, args)
     return
   }
 

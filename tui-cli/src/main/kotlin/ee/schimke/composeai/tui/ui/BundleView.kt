@@ -17,8 +17,11 @@ import com.jakewharton.mosaic.ui.Column
 import com.jakewharton.mosaic.ui.Image
 import com.jakewharton.mosaic.ui.Text
 import com.jakewharton.mosaic.ui.TextStyle
-import ee.schimke.composeai.cli.PreviewModule
+import ee.schimke.composeai.render.session.RenderSession
+import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import ee.schimke.composeai.tui.BundleExtractor
 import ee.schimke.composeai.tui.BundlePngMetadata
+import ee.schimke.composeai.tui.BundleSidecars
 import ee.schimke.composeai.tui.LiveSession
 import ee.schimke.composeai.tui.TuiArgs
 import ee.schimke.composeai.tui.image.Bitmaps
@@ -31,20 +34,27 @@ private data class BundlePage(val id: String?, val bitmap: Bitmap?)
 
 /**
  * Bundle-PNG entry point. Renders the bundle's previews full-screen with minimal chrome (the image
- * plus a one-line footer when there's more than one preview).
+ * plus a one-line footer when there's more than one preview), and **assumes no project context**: a
+ * bundle is self-contained, so showing it must not depend on a surrounding Gradle checkout.
  *
  * Since bundle schema v2 the zip carries a baked PNG per preview under `previews/<id>.png`, so this
  * works **fully detached from the originating project** — opening a bundle from `~/Downloads` lets
- * you page through every preview with the arrow keys, no Gradle checkout required. When the bundle
- * does name a module and we're inside its project on disk, the daemon is additionally attached and
- * later renders of the *current* preview replace the baked image live as the source is edited. An
- * older v1 bundle (or a `--no-render` pack) falls back to the single cover image decoded from the
- * polyglot's leading bytes.
+ * you page through every preview with the arrow keys, no Gradle checkout required. An older v1 bundle
+ * (or a `--no-render` pack) falls back to the single cover image decoded from the polyglot's leading
+ * bytes.
+ *
+ * If this is a real bundle (carries `classes/app.jar` + `previews.json`) and the daemon/renderer
+ * sidecars ship in this install, the bundle's **own daemon** is spawned from those embedded classes;
+ * the daemon's freshest render of the current preview then replaces its baked image live (read from
+ * the path the daemon reports, never an assumed project layout), and `r` forces a re-render
+ * (paused-clock animations step, deterministic re-render). Falls back to the static baked images
+ * when the file is a plain PNG (no provenance), the sidecars aren't present (e.g. run from source
+ * without `installDist`), or the daemon fails to start.
  *
  * `q` / `Esc` quits; `←/→` (also `h/l`, `p/n`, `↑/↓`, `j/k`) page between previews; `r` forces a
  * re-render of the current preview (no-op without a live session).
  */
-fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
+fun runBundle(png: File, args: TuiArgs) {
   val contents = BundlePngMetadata.readContents(png)
   val metadata = contents.metadata
 
@@ -57,34 +67,56 @@ fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
       listOf(BundlePage(id = metadata?.coverPreviewId, bitmap = Bitmaps.readPng(png)))
     }
 
-  // `bundle.json` tells us which module produced this PNG. Live re-render also needs the source
-  // project on disk: without a project root (we're not inside a Gradle checkout) there's no daemon
-  // to attach, so we just page through the baked images statically.
-  val module =
-    if (projectRoot != null && metadata != null && metadata.modulePath.isNotEmpty()) {
-      // Mirror the synthetic module Main builds for `--no-discovery`: <projectRoot>/<path-as-dirs>.
-      val relative = metadata.modulePath.trimStart(':').replace(':', '/').ifEmpty { "." }
-      PreviewModule(gradlePath = metadata.modulePath, projectDir = File(projectRoot, relative))
+  val modulePath = metadata?.modulePath?.takeIf { it.isNotEmpty() } ?: ":bundle"
+
+  // Build a project-less opener iff this is a real bundle AND the sidecars are on disk. Extraction
+  // happens here (once) so the temp dir's lifetime spans the whole session; a shutdown hook cleans
+  // it up. `opener` is null → static baked images only.
+  val extracted = BundleExtractor.extract(png)
+  val sidecars = BundleSidecars.locate()
+  val opener: (() -> RenderSession)? =
+    if (extracted != null && sidecars != null && metadata?.coverPreviewId != null) {
+      Runtime.getRuntime()
+        .addShutdownHook(Thread { runCatching { extracted.workDir.deleteRecursively() } })
+      val open: () -> RenderSession = {
+        SubprocessRenderSessions.openBundleDaemon(
+          daemonClasspath = sidecars.classpath(),
+          classesDir = extracted.classesDir,
+          previewsJson = extracted.previewsJson,
+          workspaceRoot = extracted.workDir,
+          modulePath = modulePath,
+        )
+      }
+      open
     } else {
+      extracted?.workDir?.deleteRecursively()
       null
     }
 
   runMosaicMain {
-    BundleApp(pages = pages, pngName = png.name, module = module, extensions = args.extensions)
+    BundleApp(
+      pages = pages,
+      pngName = png.name,
+      modulePath = modulePath,
+      extensions = args.extensions,
+      opener = opener,
+    )
   }
 }
 
 /**
- * The whole bundle-mode UI: a single full-terminal image with an optional one-line footer. Holds an
- * optional [LiveSession] and swaps the current page's baked image for the daemon's freshest render
- * of the selected preview whenever a notification ticks.
+ * The whole bundle-mode UI: a single full-terminal image with an optional one-line footer. When
+ * [opener] is non-null it attaches the bundle's own daemon via [LiveSession.enableBundle] and swaps
+ * the current page's baked image for the daemon's freshest render of the selected preview (read from
+ * the path the daemon reports, never an assumed project layout) whenever a notification ticks.
  */
 @Composable
 private fun BundleApp(
   pages: List<BundlePage>,
   pngName: String,
-  module: PreviewModule?,
+  modulePath: String,
   extensions: Set<String>,
+  opener: (() -> RenderSession)?,
 ) {
   val initialSize = remember { TerminalSize.probe() }
   val terminalState = LocalTerminalState.current
@@ -100,12 +132,16 @@ private fun BundleApp(
   val current = pages.getOrElse(index) { pages.first() }
   val currentId = current.id
 
-  // Attach the daemon once, if the bundle named a module. The session is sticky for the run.
-  LaunchedEffect(module) { if (module != null) liveSession.enable(module, extensions) }
-  // Mark the current preview visible once the session is READY so the daemon pushes its re-renders.
+  // Attach the bundle's own daemon once, if we have an opener. Sticky for the run.
+  LaunchedEffect(opener) {
+    if (opener != null) liveSession.enableBundle(modulePath, extensions, opener)
+  }
+  // Once READY (and on each page change), mark the current preview visible and kick one render so
+  // the daemon frame replaces the baked image without the user pressing `r`.
   LaunchedEffect(liveState.status, currentId) {
     if (currentId != null && liveState.status == LiveSession.Status.READY) {
       liveSession.setVisible(currentId)
+      liveSession.forceRender(currentId)
     }
   }
 
@@ -114,16 +150,11 @@ private fun BundleApp(
     return
   }
 
-  // Prefer the daemon's freshest render of the current preview; fall back to the baked image until
-  // (or unless) one exists. Re-resolved on every daemon tick / page change.
-  val liveFrame: Bitmap? =
-    if (module != null && currentId != null) {
-      remember(liveState.tick, currentId) {
-        resolveRenderedPng(module, currentId)?.let(Bitmaps::readPng)
-      }
-    } else {
-      null
-    }
+  // Prefer the daemon's freshest render of the current preview, read from the path it reported on
+  // the last `renderFinished`; fall back to the baked image until one exists. Re-decoded only when
+  // the path changes.
+  val livePngPath = currentId?.let { liveState.lastPng[it] }
+  val liveFrame: Bitmap? = remember(livePngPath) { livePngPath?.let { Bitmaps.readPng(File(it)) } }
   val bitmap = liveFrame ?: current.bitmap
 
   val multi = pages.size > 1
@@ -176,19 +207,4 @@ private fun BundleApp(
       Text(footer.take(cols).padEnd(cols), textStyle = TextStyle.Dim)
     }
   }
-}
-
-/**
- * The daemon's most recent render of [previewId] for [module], or null if it hasn't rendered yet.
- * Mirrors `PreviewRow.resolvePng` — the renderer writes `build/compose-previews/<id>.png`, with
- * multi-capture previews landing as `<id>--<dimension>.png` (we take the first sibling).
- */
-private fun resolveRenderedPng(module: PreviewModule, previewId: String): File? {
-  val direct = module.projectDir.resolve("build/compose-previews/$previewId.png")
-  if (direct.isFile) return direct
-  val dir = direct.parentFile?.takeIf { it.isDirectory } ?: return null
-  val prefix = "$previewId--"
-  return dir
-    .listFiles { f -> f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".png") }
-    ?.minByOrNull { it.name }
 }
