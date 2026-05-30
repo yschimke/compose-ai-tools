@@ -338,6 +338,43 @@ class DaemonBootstrapTaskTest {
   }
 
   @Test
+  fun `previewsManifest is an Optional InputFile so missing previews dot json is tolerated`() {
+    // The launch descriptor is written before composePreviewDiscover runs for the first time, so
+    // the @Optional annotation is load-bearing — without it, Gradle fails the task with
+    // "specifies file '…/previews.json' which doesn't exist" on every cold warm. Reflect on the
+    // property accessor so a stray @InputFile-without-@Optional regression is caught at unit test
+    // time rather than only by the e2e against a fresh module (which was issue #1629).
+    val getter = DaemonBootstrapTask::class.java.getMethod("getPreviewsManifest")
+    assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.InputFile::class.java)).isTrue()
+    assertThat(getter.isAnnotationPresent(org.gradle.api.tasks.Optional::class.java)).isTrue()
+  }
+
+  @Test
+  fun `descriptor is rewritten when previewsManifest content changes`() {
+    // Locks in the @InputFile invalidation that makes daemon-launch.json's mtime advance after
+    // composePreviewDiscover writes a fresh previews.json — the signal LiveDaemonGate.getOrSpawn
+    // uses to dispose and re-spawn an alive daemon that came up in the fallback no-router branch.
+    val project = newProject()
+    val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
+    val manifestFile = File(tempDir.root, "previews.json").apply { writeText("{\"previews\":[]}") }
+    val task =
+      project.tasks.register("bootstrapManifest", DaemonBootstrapTask::class.java) {
+        baseInputs(outFile)
+        previewsManifest.set(manifestFile)
+      }
+    task.get().emit()
+    val first = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    manifestFile.writeText("{\"previews\":[{\"id\":\"app.Foo\"}]}")
+    task.get().emit()
+    val second = json.decodeFromString<DaemonClasspathDescriptor>(outFile.readText())
+    // The descriptor's `manifestPath` is a path string and stays identical — content equality is
+    // expected. What matters for the respawn path is that `emit()` ran a second time at all (which
+    // updates daemon-launch.json's mtime). Both halves of the fix are needed: this @InputFile
+    // wiring makes Gradle invalidate the task; the extension-side mtime watcher acts on it.
+    assertThat(second.manifestPath).isEqualTo(first.manifestPath)
+  }
+
+  @Test
   fun `btaCompile carries ineligibilityReason verbatim when the predicate trips`() {
     val project = newProject()
     val outFile = File(tempDir.root, "build/compose-previews/daemon-launch.json")
