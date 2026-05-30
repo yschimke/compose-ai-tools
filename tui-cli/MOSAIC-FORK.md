@@ -38,7 +38,13 @@ That branch adds two composables we describe in the RFCs alongside this doc:
 
 ## Workflow
 
-### One-time fork setup
+**You normally don't need any of this.** The fork's `snapshot.yaml` workflow publishes the
+artefacts (native libs included — see [Runtime](#runtime)) to Sonatype Central snapshots on
+every push to `compose-ai-tools`, so a `tui.enabled=true` build just resolves them. The
+publish-to-mavenLocal dance below is **only** for iterating on the fork's own source locally
+before a snapshot is published.
+
+### One-time fork setup (only when modifying the fork)
 
 ```bash
 # Sibling to compose-ai-tools/
@@ -113,7 +119,11 @@ The catalog entry is always declared but inert unless `:tui-cli` is included (i.
 `tui.enabled=true`). When stable 0.19.0 lands on Maven Central, this file is what we bump to
 consume it.
 
-## Sandbox vs. real-machine differences
+## Sandbox vs. real-machine differences (local publish only)
+
+This section applies **only** to the local `publishToMavenLocal` path above — the published
+Sonatype snapshot is built on a CI `macos-15` runner with full network access and needs none
+of these workarounds.
 
 Mosaic's `publishToMavenLocal` reaches three hosts during build setup:
 
@@ -168,19 +178,31 @@ Both patches are sandbox-only and **must be reverted before pushing any further 
 upstream** — they're not part of yschimke/mosaic#1. `git diff` against the fork's
 `compose-ai-tools` branch will show them.
 
-## Runtime caveat
+## Runtime
 
-Skipping the JNI native compilation means the published `mosaic-tty-jvm-0.19.0-SNAPSHOT.jar`
-has no platform `.so` / `.dylib` / `.dll` resources. If you actually run the TUI
-(`compose-preview-tui`) against this artefact and it tries to engage raw-mode terminal
-I/O, expect an `UnsatisfiedLinkError`. The build sandbox where these local patches were
-authored is for **build verification only** — the e2e harness at
+The **published Sonatype snapshot ships the JNI native libraries**, so running the TUI
+(`compose-preview-tui`) against it engages raw-mode terminal I/O without an
+`UnsatisfiedLinkError`. Verified contents of `mosaic-tty-jvm-0.19.0-SNAPSHOT.jar`:
+
+| Platform | Resource |
+| --- | --- |
+| Linux amd64 / aarch64 / riscv64 | `com/jakewharton/mosaic/tty/jni/{amd64,aarch64,riscv64}/libmosaic.so` |
+| macOS x86_64 / arm64 | `…/{x86_64,aarch64}/libmosaic.dylib` |
+| Windows | `…/{amd64,aarch64}/mosaic.dll` |
+
+So the e2e harness at
 [`src/test/kotlin/.../e2e/KittyE2ETest.kt`](src/test/kotlin/ee/schimke/composeai/tui/e2e/KittyE2ETest.kt)
-needs to run on a machine where Mosaic was published with its native libs intact.
+and any real TUI run resolve the native lib straight from the snapshot — no manual
+`~/.m2` copy needed.
 
-In practice that means: build Mosaic on your dev machine with full network access; copy
-the resulting `~/.m2/repository/ee/schimke/composeai/mosaic/...` tree to the sandbox if you
-need to exercise the TUI there; or simply do TUI runtime testing on the dev machine.
+### Caveat: the local `publishToMavenLocal` path
+
+If you instead publish the fork yourself with the **sandbox patches** above (which comment
+out the cklib / Zig / jextract native steps), the resulting local
+`mosaic-tty-jvm-0.19.0-SNAPSHOT.jar` has **no** `.so` / `.dylib` / `.dll` resources, and a
+TUI run against it fails with `UnsatisfiedLinkError`. That path is for **build verification
+only**. To exercise the TUI from a sandboxed local publish, either run on the published
+snapshot (the default) or build Mosaic unpatched on a machine with full network access.
 
 ## Falling back to upstream
 
