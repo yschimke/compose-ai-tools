@@ -76,6 +76,9 @@ class BundleCommand(args: List<String>) : Command(args) {
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
         -o, --output <file> Output file path. Default: <module>/build/compose-previews/bundle.png.
         --no-render         Skip composePreviewRender — pack with a stub gray cover.
+        --embed-deps        Carry reachable third-party jars inside the bundle (libs/) instead of
+                            referencing Maven coordinates. Bigger file, but renders with no network
+                            and no build system on the other end (resolution=embedded).
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -89,6 +92,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val module: String? = args.flagValue("--module")
   private val output: String? = args.flagValue("--output") ?: args.flagValue("-o")
   private val noRender: Boolean = "--no-render" in args
+  private val embedDeps: Boolean = "--embed-deps" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val ids: List<String> =
     args
@@ -123,6 +127,7 @@ private class PackSubcommand(private val args: List<String>) {
 
             val gradleArgs = buildList {
               if (ids.isNotEmpty()) add("-PbundlePreviewIds=${ids.joinToString(",")}")
+              if (embedDeps) add("-PbundleEmbedDeps=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
             }
             val tasks =
