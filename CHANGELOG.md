@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.1](https://github.com/yschimke/compose-ai-tools/compare/v0.12.0...v0.12.1) (2026-05-30)
+
+
+### Features
+
+* **plugin:** make ValidatePreviewToolingPresent opt-in ([#1620](https://github.com/yschimke/compose-ai-tools/issues/1620)) ([8ffeb1e](https://github.com/yschimke/compose-ai-tools/commit/8ffeb1e465e80f2441a6440636ee087d0bc7d724))
+* **tui-cli:** interactive Mosaic-based preview browser ([#1518](https://github.com/yschimke/compose-ai-tools/issues/1518)) ([cc09f9e](https://github.com/yschimke/compose-ai-tools/commit/cc09f9eb1511c4f0e67f3e03697b16f1f1923c71))
+
+
+### Bug Fixes
+
+* **daemon:** pass classpath via [@argfile](https://github.com/argfile) to avoid spawn E2BIG ([#1621](https://github.com/yschimke/compose-ai-tools/issues/1621)) ([20333b4](https://github.com/yschimke/compose-ai-tools/commit/20333b428071b0416e956f6616b325e51b3fd8bc))
+* discover preview modules without realizing the whole task graph ([#1617](https://github.com/yschimke/compose-ai-tools/issues/1617)) ([a72b0d9](https://github.com/yschimke/compose-ai-tools/commit/a72b0d9592659bf4de0d63b6bb66cffa1b999d7b))
+
 ## [0.12.0](https://github.com/yschimke/compose-ai-tools/compare/v0.11.16...v0.12.0) (2026-05-29)
 
 
