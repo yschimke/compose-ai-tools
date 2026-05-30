@@ -127,10 +127,25 @@ fun main(args: Array<String>) {
   // a few hundred lines down so `data/subscribe` / `attachmentsFor` reach the same bookkeeping.
   val recompositionRegistry = AndroidRecompositionDataProductRegistry()
 
+  // `composeai.harness.previewsManifest` is set unconditionally by the gradle plugin for production
+  // Android daemons (the "harness" prefix is historical) — see AndroidPreviewSupport.kt wire-up.
+  // The file may not exist on the very first warm: VS Code runs `composePreviewDaemonStart` (which
+  // writes only the launch descriptor) and spawns this JVM *before* `composePreviewDiscover` writes
+  // `previews.json`. Treat a missing file as "no router yet" and fall through to the same
+  // previewIndex-backed RobolectricHost the no-sysprop path uses; the next warm after discover
+  // lands picks up the populated manifest and re-enters the router branch.
   val manifestPath = System.getProperty("composeai.harness.previewsManifest")
+  val manifestFile = manifestPath?.takeIf { it.isNotBlank() }?.let(::File)
+  if (manifestFile != null && !manifestFile.isFile) {
+    System.err.println(
+      "compose-ai-tools daemon: composeai.harness.previewsManifest set to '$manifestPath' but " +
+        "file does not exist; falling back to PreviewIndex-backed RobolectricHost until " +
+        "composePreviewDiscover writes the manifest"
+    )
+  }
   val host: RenderHost =
-    if (manifestPath != null && manifestPath.isNotBlank()) {
-      val manifest = PreviewManifestRouter.loadManifest(File(manifestPath))
+    if (manifestFile != null && manifestFile.isFile) {
+      val manifest = PreviewManifestRouter.loadManifest(manifestFile)
       System.err.println(
         "compose-ai-tools daemon: PreviewManifestRouter active " +
           "(manifest=$manifestPath, previews=${manifest.previews.map { it.id }})"
