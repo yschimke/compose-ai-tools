@@ -140,6 +140,15 @@ material-kolor = "4.0.5"
 # building under JDK 17. Kotlin 2.3.21 is supported per Metro's
 # compatibility table (`docs/compatibility.md` upstream).
 metro = "1.1.1"
+# Jake Wharton's Mosaic — Compose-based TUI library, used by the opt-in `:tui-cli` module.
+# 0.19.0-SNAPSHOT is published by the fork at `yschimke/mosaic@compose-ai-tools` under the
+# `ee.schimke.composeai.mosaic` group (see its `snapshot.yaml` workflow), which adds the
+# `RawText` + `Image` composables proposed in `tui-cli/MOSAIC-IMAGE-RFC.md`. The snapshot is
+# resolved from the Sonatype Central snapshots repo — but only when `tui.enabled=true` is set
+# in `local.properties`, which is what adds that repo and includes `:tui-cli` (see
+# `settings.gradle.kts`). The Kotlin compose-compiler plugin pulled in via our toolchain is
+# what compiles the @Composable functions, so no separate Mosaic gradle plugin is needed.
+mosaic = "0.19.0-SNAPSHOT"
 
 [libraries]
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
@@ -207,6 +216,7 @@ material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "m
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
 metro-viewmodel-compose = { module = "dev.zacsweers.metro:metrox-viewmodel-compose", version.ref = "metro" }
+mosaic-runtime = { module = "ee.schimke.composeai.mosaic:mosaic-runtime", version.ref = "mosaic" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
