@@ -28,6 +28,13 @@ data class TuiArgs(
    * Captured from a lone existing `*.png` positional argument.
    */
   val bundlePng: File? = null,
+  /**
+   * Non-interactive dump mode (`--dump` / `--ascii`). Requires a bundle PNG positional: render every
+   * baked preview to stdout as text (half-block / ASCII fallback via Mosaic's one-shot
+   * [com.jakewharton.mosaic.renderMosaic]) and exit, instead of taking over the terminal. Built for
+   * CI / piped stdout where there's no PTY.
+   */
+  val dump: Boolean = false,
   val verbose: Boolean = false,
   val timeoutSeconds: Long = 300,
   /**
@@ -50,6 +57,7 @@ data class TuiArgs(
       var projectRoot: File? = null
       var timeoutSeconds = 300L
       var noDiscovery = false
+      var dump = false
       val positionals = mutableListOf<String>()
 
       val valuedFlags =
@@ -77,6 +85,8 @@ data class TuiArgs(
           "--project-root" -> projectRoot = nextValue()?.let(::File)
           "--live" -> live = true
           "--no-discovery" -> noDiscovery = true
+          "--dump",
+          "--ascii" -> dump = true
           "--verbose",
           "-v" -> verbose = true
           "--help",
@@ -109,6 +119,7 @@ data class TuiArgs(
         liveOnStart = live,
         projectRoot = projectRoot,
         bundlePng = bundlePng,
+        dump = dump,
         verbose = verbose,
         timeoutSeconds = timeoutSeconds,
         noDiscovery = noDiscovery,
@@ -124,8 +135,14 @@ data class TuiArgs(
           compose-preview-tui [options]          Browse a project's previews
           compose-preview-tui <bundle.png>       Open a bundle PNG full-screen (image only,
                                                  live if the PNG carries provenance)
+          compose-preview-tui --dump <bundle.png>
+                                                 Print every baked preview to stdout as text
+                                                 (half-block / ASCII) and exit. No PTY needed —
+                                                 for CI / piped output.
 
         Options:
+          --dump, --ascii        Non-interactive: dump each baked preview in a bundle to
+                                 stdout (ASCII fallback) and exit. Requires a bundle PNG.
           --module <path>        Gradle path (e.g. :samples:android). Default: prompt
                                  / pick first discovered.
           --filter <pattern>     Case-insensitive substring filter on preview id.

@@ -26,28 +26,42 @@ import ee.schimke.composeai.tui.terminal.TerminalSize
 import java.io.File
 import kotlinx.coroutines.launch
 
+/** One paged preview in the bundle view: its id (may be null for a bare PNG) and decoded image. */
+private data class BundlePage(val id: String?, val bitmap: Bitmap?)
+
 /**
- * Bundle-PNG entry point. Renders ONE preview full-screen with no list / tab / status chrome — just
- * the image. The PNG handed on the command line is decoded and shown immediately as the first frame
- * (ImageIO reads the leading PNG of a PNG+ZIP polyglot bundle, ignoring the appended zip); then, if
- * the bundle names a module and we're inside its project on disk, the daemon is attached and later
- * renders replace the seed live as the source is edited. A plain PNG (or a bundle opened outside its
- * project) is shown as a static image.
+ * Bundle-PNG entry point. Renders the bundle's previews full-screen with minimal chrome (the image
+ * plus a one-line footer when there's more than one preview).
  *
- * `q` / `Esc` quits; `r` forces a re-render (no-op without a live session).
+ * Since bundle schema v2 the zip carries a baked PNG per preview under `previews/<id>.png`, so this
+ * works **fully detached from the originating project** — opening a bundle from `~/Downloads` lets
+ * you page through every preview with the arrow keys, no Gradle checkout required. When the bundle
+ * does name a module and we're inside its project on disk, the daemon is additionally attached and
+ * later renders of the *current* preview replace the baked image live as the source is edited. An
+ * older v1 bundle (or a `--no-render` pack) falls back to the single cover image decoded from the
+ * polyglot's leading bytes.
+ *
+ * `q` / `Esc` quits; `←/→` (also `h/l`, `p/n`, `↑/↓`, `j/k`) page between previews; `r` forces a
+ * re-render of the current preview (no-op without a live session).
  */
 fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
-  // Decode the bundle's own image up front so the very first composed frame already shows it — no
-  // "rendering…" flash before the daemon attaches.
-  val seed = Bitmaps.readPng(png)
+  val contents = BundlePngMetadata.readContents(png)
+  val metadata = contents.metadata
 
-  // `bundle.json` tells us which module + cover preview produced this PNG. Live re-render also needs
-  // the source project on disk: without a project root (we're not inside a Gradle checkout) there's
-  // no daemon to attach, so we fall back to the static seed.
-  val metadata = BundlePngMetadata.readOrNull(png)
-  val previewId = metadata?.coverPreviewId
+  // Prefer the baked per-preview PNGs (v2). Fall back to the single cover image decoded from the
+  // polyglot's leading bytes for v1 bundles / bare PNGs so old artefacts still open.
+  val pages =
+    if (contents.previews.isNotEmpty()) {
+      contents.previews.map { BundlePage(id = it.id, bitmap = Bitmaps.decode(it.pngBytes)) }
+    } else {
+      listOf(BundlePage(id = metadata?.coverPreviewId, bitmap = Bitmaps.readPng(png)))
+    }
+
+  // `bundle.json` tells us which module produced this PNG. Live re-render also needs the source
+  // project on disk: without a project root (we're not inside a Gradle checkout) there's no daemon
+  // to attach, so we just page through the baked images statically.
   val module =
-    if (projectRoot != null && metadata != null) {
+    if (projectRoot != null && metadata != null && metadata.modulePath.isNotEmpty()) {
       // Mirror the synthetic module Main builds for `--no-discovery`: <projectRoot>/<path-as-dirs>.
       val relative = metadata.modulePath.trimStart(':').replace(':', '/').ifEmpty { "." }
       PreviewModule(gradlePath = metadata.modulePath, projectDir = File(projectRoot, relative))
@@ -56,26 +70,20 @@ fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
     }
 
   runMosaicMain {
-    BundleApp(
-      seed = seed,
-      pngName = png.name,
-      module = module,
-      previewId = previewId,
-      extensions = args.extensions,
-    )
+    BundleApp(pages = pages, pngName = png.name, module = module, extensions = args.extensions)
   }
 }
 
 /**
- * The whole bundle-mode UI: a single full-terminal image. Holds an optional [LiveSession] and swaps
- * the seed for the daemon's freshest render of [previewId] whenever a notification ticks.
+ * The whole bundle-mode UI: a single full-terminal image with an optional one-line footer. Holds an
+ * optional [LiveSession] and swaps the current page's baked image for the daemon's freshest render
+ * of the selected preview whenever a notification ticks.
  */
 @Composable
 private fun BundleApp(
-  seed: Bitmap?,
+  pages: List<BundlePage>,
   pngName: String,
   module: PreviewModule?,
-  previewId: String?,
   extensions: Set<String>,
 ) {
   val initialSize = remember { TerminalSize.probe() }
@@ -87,13 +95,17 @@ private fun BundleApp(
   val liveSession = remember { LiveSession(scope) }
   val liveState by liveSession.state.collectAsState()
   var exitRequested by remember { mutableStateOf(false) }
+  var index by remember { mutableStateOf(0) }
+
+  val current = pages.getOrElse(index) { pages.first() }
+  val currentId = current.id
 
   // Attach the daemon once, if the bundle named a module. The session is sticky for the run.
   LaunchedEffect(module) { if (module != null) liveSession.enable(module, extensions) }
-  // Mark the preview visible once the session is READY so the daemon pushes its re-renders.
-  LaunchedEffect(liveState.status, previewId) {
-    if (previewId != null && liveState.status == LiveSession.Status.READY) {
-      liveSession.setVisible(previewId)
+  // Mark the current preview visible once the session is READY so the daemon pushes its re-renders.
+  LaunchedEffect(liveState.status, currentId) {
+    if (currentId != null && liveState.status == LiveSession.Status.READY) {
+      liveSession.setVisible(currentId)
     }
   }
 
@@ -102,15 +114,20 @@ private fun BundleApp(
     return
   }
 
-  // Prefer the daemon's freshest render of this preview; fall back to the seed PNG until (or unless)
-  // one exists. Re-resolved on every daemon tick.
+  // Prefer the daemon's freshest render of the current preview; fall back to the baked image until
+  // (or unless) one exists. Re-resolved on every daemon tick / page change.
   val liveFrame: Bitmap? =
-    if (module != null && previewId != null) {
-      remember(liveState.tick) { resolveRenderedPng(module, previewId)?.let(Bitmaps::readPng) }
+    if (module != null && currentId != null) {
+      remember(liveState.tick, currentId) {
+        resolveRenderedPng(module, currentId)?.let(Bitmaps::readPng)
+      }
     } else {
       null
     }
-  val bitmap = liveFrame ?: seed
+  val bitmap = liveFrame ?: current.bitmap
+
+  val multi = pages.size > 1
+  val imageRows = if (multi) (rows - 1).coerceAtLeast(1) else rows
 
   Column(
     modifier =
@@ -124,7 +141,23 @@ private fun BundleApp(
             true
           }
           "r" -> {
-            if (previewId != null) scope.launch { liveSession.forceRender(previewId) }
+            if (currentId != null) scope.launch { liveSession.forceRender(currentId) }
+            true
+          }
+          "Right",
+          "l",
+          "n",
+          "Down",
+          "j" -> {
+            if (multi) index = (index + 1) % pages.size
+            true
+          }
+          "Left",
+          "h",
+          "p",
+          "Up",
+          "k" -> {
+            if (multi) index = (index - 1 + pages.size) % pages.size
             true
           }
           else -> false
@@ -132,9 +165,15 @@ private fun BundleApp(
       }
   ) {
     if (bitmap == null) {
-      Text("(failed to decode $pngName)".take(cols), textStyle = TextStyle.Dim)
+      val label = currentId ?: pngName
+      Text("(failed to decode $label)".take(cols), textStyle = TextStyle.Dim)
     } else {
-      Image(bitmap = bitmap, cellWidth = cols, cellHeight = rows)
+      Image(bitmap = bitmap, cellWidth = cols, cellHeight = imageRows)
+    }
+    if (multi) {
+      val name = currentId ?: pngName
+      val footer = "  $name  (${index + 1}/${pages.size})   ←/→ page · q quit"
+      Text(footer.take(cols).padEnd(cols), textStyle = TextStyle.Dim)
     }
   }
 }

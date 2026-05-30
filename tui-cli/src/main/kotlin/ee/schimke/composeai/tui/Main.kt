@@ -5,6 +5,7 @@ import ee.schimke.composeai.cli.DriverOptions
 import ee.schimke.composeai.cli.GradlePreviewDriver
 import ee.schimke.composeai.cli.PreviewModule
 import ee.schimke.composeai.tui.ui.App
+import ee.schimke.composeai.tui.ui.dumpBundle
 import ee.schimke.composeai.tui.ui.runBundle
 import java.io.File
 import java.io.FileOutputStream
@@ -21,6 +22,18 @@ fun main(argv: Array<String>) {
   // absence isn't fatal: with no project we just show the bundle's baked-in image statically. The
   // log lives under the project root (or next to the PNG) so daemon stderr can't corrupt the screen.
   val bundlePng = args.bundlePng
+
+  // Dump mode is headless: print each baked preview to stdout and exit. No terminal takeover, no
+  // daemon — safe under a piped stdout (CI). Requires a bundle PNG positional.
+  if (args.dump) {
+    if (bundlePng == null) {
+      System.err.println("error: --dump requires a bundle PNG argument")
+      exitProcess(2)
+    }
+    dumpBundle(bundlePng)
+    return
+  }
+
   if (bundlePng != null) {
     val projectRoot = args.projectRoot?.absoluteFile ?: findProjectRoot()
     redirectStderrToLogFile(projectRoot ?: bundlePng.absoluteFile.parentFile ?: File("."))
