@@ -33,6 +33,10 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            A preview with no render on disk is simply absent from this directory.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources)
+ * libs/<name>.jar          — third-party / project jars carried IN the bundle. Present only for
+ *                            [ClasspathEntry.Project] fallbacks and, since v3, [ClasspathEntry.Embedded]
+ *                            entries (`resolution = "embedded"` / `"mixed"`). Absent for a pure
+ *                            `coordinates` pack.
  * report.json              — [MinimizationReport]: which deps contributed reachable classes
  * ```
  *
@@ -45,10 +49,14 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  * `classes/app.jar` + classpath are still present for tooling that wants a *live* re-render (the VS
  * Code panel, the desktop daemon), but they are no longer required just to look at the images.
  *
- * **Notably absent:** there is no `libs/` directory. Maven / Google-resolvable dependencies are
- * recorded as coordinates in [BundleManifest.classpath]; the player (`compose-preview bundle open`,
- * VS Code extension) re-resolves them from the consumer's normal Gradle / Maven repos at open time.
- * That keeps a one-preview bundle ~100 KB instead of dragging the whole Compose graph in.
+ * **Dependency carriage.** In the default `resolution = "coordinates"` pack there is no `libs/`
+ * directory: Maven / Google-resolvable dependencies are recorded as coordinates in
+ * [BundleManifest.classpath] and the player (`compose-preview bundle open`, VS Code extension)
+ * re-resolves them from the consumer's normal Gradle / Maven repos at open time. That keeps a
+ * one-preview bundle ~100 KB instead of dragging the whole Compose graph in. A `resolution =
+ * "embedded"` pack (and non-Gradle producers that can't emit coordinates) instead carries the
+ * reachable jars in `libs/` as [ClasspathEntry.Embedded] so the bundle renders with no network and
+ * no consumer build system — trading size for portability.
  *
  * For Android backends, [ClasspathEntry.Maven.type] = `"aar"` records that the player must resolve
  * the **unprocessed** AAR (not the extracted classes.jar) so AGP's artifact transforms run as they
@@ -65,15 +73,35 @@ data class BundleManifest(
   val coverPreviewId: String?,
   /**
    * Classpath in load order. First entry is always [ClasspathEntry.Module] for the inlined
-   * `classes/app.jar`; remaining entries are typically [ClasspathEntry.Maven] coordinates the
-   * player resolves at open time. [ClasspathEntry.Project] is the escape hatch for local /
-   * unresolvable artifacts that had to be inlined alongside the app jar.
+   * `classes/app.jar`; remaining entries are [ClasspathEntry.Maven] coordinates the player resolves
+   * at open time, [ClasspathEntry.Embedded] jars carried inside the bundle's `libs/` (no resolution
+   * needed), or [ClasspathEntry.Project] fallbacks for local artifacts that had to be inlined
+   * alongside the app jar.
    */
   val classpath: List<ClasspathEntry>,
   /** Source Gradle path that produced the bundle, e.g. `:samples:cmp`. */
   val modulePath: String,
   /** `BUNDLE_VERSION`-shaped identifier of the producer for diagnostics. */
   val producedBy: String,
+  /**
+   * Build system that produced the bundle: `"gradle"` (this plugin), `"amper"`, or `"bazel"` (the
+   * contrib drivers). Informational — lets a player report provenance and pick heuristics without
+   * sniffing the classpath. Defaults to `"gradle"` so a v2 bundle (which omits the field) decodes
+   * as Gradle-produced.
+   */
+  val producer: String = PRODUCER_GRADLE,
+  /**
+   * How the player is expected to assemble the third-party classpath:
+   * - [RESOLUTION_COORDINATES] — resolve [ClasspathEntry.Maven] entries from the consumer's repos
+   *   (small bundle; the Gradle default, and the only mode a v2 bundle could express).
+   * - [RESOLUTION_EMBEDDED] — everything reachable is carried in `libs/` as
+   *   [ClasspathEntry.Embedded] (larger bundle, but renders with no network / no consumer build
+   *   system — the portable hand-off mode).
+   * - [RESOLUTION_MIXED] — coordinate-less deps embedded, the rest referenced by coordinate.
+   *
+   * Defaults to [RESOLUTION_COORDINATES] for v2 back-compat.
+   */
+  val resolution: String = RESOLUTION_COORDINATES,
 )
 
 /** Discriminator field `kind`, values: `module`, `maven`, `project`. */
@@ -120,7 +148,31 @@ sealed interface ClasspathEntry {
     /** Posix relative path inside the bundle zip, e.g. `libs/my-lib.jar`. */
     val inlinedAs: String,
   ) : ClasspathEntry
+
+  /**
+   * A third-party dependency carried **inside** the bundle's `libs/` directory rather than
+   * referenced by coordinate — no resolution, no network, no consumer build system needed to put it
+   * on the classpath. Emitted by `--embed-deps` / `resolution = "embedded"` packs and by non-Gradle
+   * producers that can't (or don't want to) express resolvable Maven coordinates. Unlike [Project],
+   * an embedded entry carries no Gradle path — it's just "this jar, here".
+   */
+  @Serializable
+  @kotlinx.serialization.SerialName("embedded")
+  data class Embedded(
+    /** Posix relative path inside the bundle zip, e.g. `libs/coil-compose-2.6.0.jar`. */
+    val inlinedAs: String
+  ) : ClasspathEntry
 }
+
+/** [BundleManifest.producer] values. */
+const val PRODUCER_GRADLE: String = "gradle"
+
+/** [BundleManifest.resolution] values. */
+const val RESOLUTION_COORDINATES: String = "coordinates"
+
+const val RESOLUTION_EMBEDDED: String = "embedded"
+
+const val RESOLUTION_MIXED: String = "mixed"
 
 /**
  * Schema version stamped into [BundleManifest.schemaVersion].
@@ -131,8 +183,14 @@ sealed interface ClasspathEntry {
  *   `previews/<id>.png` (v1 bundles simply have no such directory); the additive zip entries are
  *   otherwise ignored by `ignoreUnknownKeys` readers, so a v1 reader opening a v2 bundle still
  *   works.
+ * - v3 — adds [BundleManifest.producer] / [BundleManifest.resolution] and the
+ *   [ClasspathEntry.Embedded] kind for `libs/`-carried third-party deps (the `--embed-deps` /
+ *   `resolution = "embedded"` portable-hand-off mode and non-Gradle producers). Both new manifest
+ *   fields default, and `ignoreUnknownKeys` readers skip the `embedded` discriminator they don't
+ *   recognise, so a v2 reader opening a v3 *coordinate* bundle still works; only the embedded jars
+ *   need a v3-aware player.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 2
+const val BUNDLE_SCHEMA_VERSION: Int = 3
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

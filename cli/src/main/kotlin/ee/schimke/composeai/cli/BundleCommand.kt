@@ -162,14 +162,19 @@ private class PackSubcommand(private val args: List<String>) {
 
   private fun printPackSummary(file: File, meta: BundleReader.Metadata) {
     println("wrote ${file.path} (${file.length()} bytes)")
-    println("  schema:        v${meta.manifest.schemaVersion}, backend=${meta.manifest.backend}")
+    println(
+      "  schema:        v${meta.manifest.schemaVersion}, backend=${meta.manifest.backend}, " +
+        "producer=${meta.manifest.producer}, resolution=${meta.manifest.resolution}"
+    )
     println(
       "  previews:      ${meta.manifest.previewIds.size} (cover=${meta.manifest.coverPreviewId})"
     )
     val mavenCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Maven }
     val projectCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Project }
+    val embeddedCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Embedded }
     println(
-      "  classpath:     ${meta.manifest.classpath.size} entries (Maven=$mavenCount, inlined=$projectCount)"
+      "  classpath:     ${meta.manifest.classpath.size} entries " +
+        "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)"
     )
     val r = meta.report
     if (r != null) {
@@ -336,6 +341,10 @@ internal object BundleReader {
     val classpath: List<ClasspathEntry>,
     val modulePath: String,
     val producedBy: String,
+    /** v3+: producing build system (`gradle`|`amper`|`bazel`). Defaults for v2 bundles. */
+    val producer: String = "gradle",
+    /** v3+: classpath assembly strategy (`coordinates`|`embedded`|`mixed`). Defaults for v2. */
+    val resolution: String = "coordinates",
   )
 
   @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -358,6 +367,13 @@ internal object BundleReader {
     @Serializable
     @kotlinx.serialization.SerialName("project")
     data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
+
+    /**
+     * v3+: a third-party jar carried inside the bundle's `libs/` — no coordinate, no resolution.
+     */
+    @Serializable
+    @kotlinx.serialization.SerialName("embedded")
+    data class Embedded(val inlinedAs: String) : ClasspathEntry
   }
 
   @Serializable
