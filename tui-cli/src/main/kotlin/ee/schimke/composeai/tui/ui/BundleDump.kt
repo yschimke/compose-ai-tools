@@ -3,7 +3,6 @@ package ee.schimke.composeai.tui.ui
 import com.jakewharton.mosaic.renderMosaic
 import com.jakewharton.mosaic.ui.Column
 import com.jakewharton.mosaic.ui.Image
-import com.jakewharton.mosaic.ui.Text
 import ee.schimke.composeai.tui.BundlePngMetadata
 import ee.schimke.composeai.tui.image.Bitmaps
 import ee.schimke.composeai.tui.terminal.TerminalSize

@@ -74,8 +74,13 @@ jobs:
       # Build the launcher FIRST (so the dump can run even if a unit test is flaky),
       # then run the TUI unit suite (BundleContentsTest et al). The kitty-under-Xvfb
       # e2e self-skips without its binaries.
+      #
+      # --refresh-dependencies: `:tui-cli` depends on the Mosaic fork's 0.19.0-SNAPSHOT.
+      # Because the snapshot version string is fixed, Gradle's cached copy (restored by
+      # setup-gradle) would otherwise mask a republished snapshot — force a re-resolve so a
+      # freshly published fork (e.g. a new renderMosaic) is actually picked up.
       - name: Build + unit-test the TUI
-        run: ./gradlew :tui-cli:installDist :tui-cli:test --stacktrace
+        run: ./gradlew :tui-cli:installDist :tui-cli:test --refresh-dependencies --stacktrace
 
       # Headless dump: no PTY, fixed terminal geometry via COLUMNS/LINES so the
       # output is deterministic. `--dump` renders the cover preview (default; --id /
