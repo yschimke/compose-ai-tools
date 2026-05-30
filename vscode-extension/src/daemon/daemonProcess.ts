@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import {
     DaemonClient,
@@ -183,11 +184,18 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     const sysProps = Object.entries(descriptor.systemProperties).map(
         ([k, v]) => `-D${k}=${v}`,
     );
+    // A large module classpath joined into a single `-cp` argument overflows
+    // the OS argument limits — Linux caps a single argv entry at
+    // MAX_ARG_STRLEN (128 KB) — so `spawn` fails with E2BIG before the JVM
+    // even starts. Hand the classpath to `java` through an `@argfile` instead:
+    // the launcher reads it from disk, so the argv stays tiny regardless of
+    // how many jars the consumer's classpath carries. Supported since Java 9,
+    // which the daemon already requires.
+    const argfilePath = writeClasspathArgfile(descriptor.classpath);
     const args = [
         ...descriptor.jvmArgs,
         ...sysProps,
-        "-cp",
-        descriptor.classpath.join(path.delimiter),
+        `@${argfilePath}`,
         descriptor.mainClass,
     ];
 
@@ -272,6 +280,20 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
             logger?.appendLine(`[daemon] process exited with code=${code}`);
             resolve(code);
         });
+    });
+    // `java` reads the @argfile during launch, so it's safe to remove once the
+    // process exits — whether that's a clean shutdown, a crash, or the SIGTERM
+    // from a failed initialize handshake below. Best-effort: a leaked temp file
+    // is harmless and the OS reclaims it eventually.
+    void exited.then(() => {
+        try {
+            fs.rmSync(path.dirname(argfilePath), {
+                recursive: true,
+                force: true,
+            });
+        } catch {
+            /* best-effort cleanup */
+        }
     });
 
     const client = new DaemonClient(child.stdin, child.stdout, events, logger);
@@ -358,6 +380,33 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     }
 
     return { client, process: child, initializeResult, exited };
+}
+
+/**
+ * Builds the contents of a Java `@argfile` carrying the daemon classpath.
+ * Exported for unit coverage; callers go through [spawnDaemon].
+ *
+ * The joined classpath is wrapped in double quotes so entries containing
+ * spaces (e.g. `C:\Program Files\...`) survive the JDK argfile tokenizer, and
+ * backslashes are rewritten to forward slashes: the tokenizer treats `\` as an
+ * escape character, so a raw Windows path would be silently mangled, while
+ * `java` accepts `/` separators in classpath entries on every platform.
+ */
+export function formatClasspathArgfileContent(classpath: string[]): string {
+    const joined = classpath.join(path.delimiter).replace(/\\/g, "/");
+    return `-cp "${joined}"\n`;
+}
+
+/**
+ * Writes the classpath `@argfile` to a private temp directory and returns its
+ * path. The directory (not just the file) is removed once the daemon exits;
+ * see the cleanup hook in [spawnDaemon].
+ */
+function writeClasspathArgfile(classpath: string[]): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compose-preview-cp-"));
+    const file = path.join(dir, "daemon-classpath.argfile");
+    fs.writeFileSync(file, formatClasspathArgfileContent(classpath), "utf-8");
+    return file;
 }
 
 /**
