@@ -603,10 +603,17 @@ internal object AndroidPreviewSupport {
     // with a remediation-oriented error instead of hitting Robolectric with a missing-class
     // explosion. When the direct check already passed we know the coord is on the classpath and
     // skip registering the validator entirely — saves a resolution at execution time.
+    //
+    // Opt-in by default: gated on `composePreview.failOnMissingPreviewTooling`. The hard fail is
+    // useful for CI fast-fail but actively hurts multi-module apps that have an aggregator module
+    // (e.g. a `:demo-app` that pulls together cards from sibling modules without hosting any
+    // `@Preview` itself). Those modules pass the tier-2 over-approximation but legitimately don't
+    // host previews — letting `composePreviewDiscover` find zero and silently no-op is the right
+    // outcome for them.
     val validatePreviewToolingPresentTask =
       if (
         !previewToolingDeclaredAtRegistration &&
-          extension.enforcePreviewToolingDependency.get() &&
+          extension.failOnMissingPreviewTooling.get() &&
           mainRuntimeRoot != null
       ) {
         project.tasks.register(

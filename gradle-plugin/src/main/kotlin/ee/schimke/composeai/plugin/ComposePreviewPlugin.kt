@@ -42,6 +42,18 @@ constructor(
         .orElse(true)
     )
 
+    // `-PcomposePreview.failOnMissingPreviewTooling=true` opts a single CLI run into the
+    // task-time validator that hard-fails `composePreviewRender` when the resolved runtime
+    // classpath has no preview-tooling coord. Default `false` — aggregator modules that pass
+    // the tier-2 over-approximation but legitimately host no `@Preview` shouldn't fail the
+    // build; let `composePreviewDiscover` find zero and no-op instead.
+    extension.failOnMissingPreviewTooling.convention(
+      project.providers
+        .gradleProperty("composePreview.failOnMissingPreviewTooling")
+        .map { it.toBooleanStrictOrNull() ?: false }
+        .orElse(false)
+    )
+
     // ToolingModelBuilderRegistry is a build-scoped service — registering
     // from any applying project makes the model available on every
     // Tooling-API connection for the build. `register` accepts multiple
