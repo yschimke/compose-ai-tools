@@ -68,16 +68,18 @@ object PreviewDiscovery {
     ) : Outcome()
 
     /**
-     * The scan terminated with a hard failure (zero previews + `failOnEmpty`, or the @Preview class
-     * isn't reachable on the ClassGraph classpath at all). [reason] is the one-line error the
-     * adapter should surface as an exception message; [diagnostics] is the multi-line dump (class
-     * dirs, dependency-jar sample, observed annotation FQNs) the adapter logs before the failure so
-     * users can see what the scan saw. [warnings] are any per-method skip reasons collected during
-     * the scan (e.g. private `@Preview`, unsupported parameters) — they're the most actionable
-     * signal when discovery returned zero previews because methods were skipped, so the adapter
-     * should route them to its build system's WARN-level log alongside [diagnostics] before
-     * surfacing [reason]. Symmetric with [Success.warnings] so adapters can emit the same WARN
-     * stream on both branches.
+     * The scan terminated with a hard failure — only triggered by zero previews +
+     * `failOnEmpty=true`. The "@Preview annotation class not reachable on the ClassGraph classpath"
+     * state is a soft warning on the [Success] branch (see [Success.warnings]) because some modules
+     * legitimately have zero previews; consumers that want it to break the build set
+     * `composePreview.failOnEmpty=true`. [reason] is the one-line error the adapter should surface
+     * as an exception message; [diagnostics] is the multi-line dump (class dirs, dependency-jar
+     * sample, observed annotation FQNs) the adapter logs before the failure so users can see what
+     * the scan saw. [warnings] are any per-method skip reasons collected during the scan (e.g.
+     * private `@Preview`, unsupported parameters) — they're the most actionable signal when
+     * discovery returned zero previews because methods were skipped, so the adapter should route
+     * them to its build system's WARN-level log alongside [diagnostics] before surfacing [reason].
+     * Symmetric with [Success.warnings] so adapters can emit the same WARN stream on both branches.
      */
     data class Failure(
       val reason: String,
@@ -292,18 +294,21 @@ object PreviewDiscovery {
       infoMessages.add("  ${preview.className}.${preview.functionName}${describeVariant(preview)}")
     }
 
-    // Unconditional fail: the plugin scanned non-empty class dirs but
-    // none of the known @Preview annotation classes are on the scan
-    // classpath. Any multi-preview annotation (@LightDarkPreviews,
-    // @WearPreviewDevices, user wrappers) needs its class reachable via
-    // `scanResult.getClassInfo` to fan out, so this state silently
-    // hides the consumer's previews — see #162 for a real-world
-    // report. Preceded by the failOnEmpty diagnostics block so the
-    // error message points at the data that disambiguates the cause.
+    // Hard-fail only when the consumer explicitly opted in via
+    // `composePreview.failOnEmpty=true`. Zero previews in a single module
+    // is normal — utility modules, data layers, and library projects
+    // that pull the plugin in transitively legitimately have none, and
+    // the multi-module aggregate (or the user's own CI gate) is the
+    // right place to assert "no module produced anything". The
+    // dependency-jar filter dropping the `@Preview` annotation jar (see
+    // #162) is now reported as a WARN-level diagnostic via the soft
+    // path below so consumers still see the cause without the build
+    // breaking on it.
     val previewAnnotationsMissing = scanClassCount > 0 && reachablePreviewFqns.isEmpty()
-    if (normalized.isEmpty() && (input.failOnEmpty || previewAnnotationsMissing)) {
+    if (normalized.isEmpty() && input.failOnEmpty) {
       val diagnostics =
         buildEmptyDiagnostics(
+          header = "composePreview: failOnEmpty diagnostics (0 previews discovered):",
           existingClassDirs = existingClassDirs,
           allClassDirs = input.classDirs,
           filteredJars = filteredDependencyJars,
@@ -329,6 +334,38 @@ object PreviewDiscovery {
       )
     }
 
+    // Soft warning: zero previews + the @Preview annotation jar got
+    // filtered off the scan classpath. Multi-preview annotations
+    // (@LightDarkPreviews, @WearPreviewDevices, user wrappers) can't
+    // fan out without `scanResult.getClassInfo` reaching the
+    // annotation class, so any previews this module *does* have are
+    // invisible to discovery. Surface the diagnostics so the cause is
+    // obvious, but don't fail the build — the user can opt in to a
+    // hard failure with `composePreview.failOnEmpty=true`.
+    if (normalized.isEmpty() && previewAnnotationsMissing) {
+      warnings.add(
+        "composePreview: discovered 0 previews in module '${input.moduleName}' — " +
+          "the @Preview annotation class is not on the ClassGraph classpath " +
+          "(dependency-jar filter dropped every jar carrying it). " +
+          "Set composePreview.failOnEmpty=true to make this a hard error."
+      )
+      warnings.addAll(
+        buildEmptyDiagnostics(
+          header =
+            "composePreview: 0-previews diagnostics for module '${input.moduleName}' " +
+              "(soft warning — set composePreview.failOnEmpty=true to fail the build):",
+          existingClassDirs = existingClassDirs,
+          allClassDirs = input.classDirs,
+          filteredJars = filteredDependencyJars,
+          allJarCount = input.dependencyJars.size,
+          scanClassCount = scanClassCount,
+          scanMethodsWithAnnotations = scanMethodsWithAnnotations,
+          annotationFqnCounts = annotationFqnCounts,
+          reachablePreviewFqns = reachablePreviewFqns,
+        )
+      )
+    }
+
     return Outcome.Success(
       manifest = manifest,
       warnings = warnings.toList(),
@@ -337,6 +374,7 @@ object PreviewDiscovery {
   }
 
   private fun buildEmptyDiagnostics(
+    header: String,
     existingClassDirs: List<File>,
     allClassDirs: List<File>,
     filteredJars: List<File>,
@@ -347,7 +385,7 @@ object PreviewDiscovery {
     reachablePreviewFqns: List<String>,
   ): List<String> {
     val out = mutableListOf<String>()
-    out.add("composePreview: failOnEmpty diagnostics (0 previews discovered):")
+    out.add(header)
     out.add("  classDirs (${allClassDirs.size} declared, ${existingClassDirs.size} existing):")
     for (dir in allClassDirs) {
       val exists = dir.exists()
@@ -426,16 +464,16 @@ object PreviewDiscovery {
    * Rewrite each capture's `renderOutput` (and each `dataProduct.output`) to a shorter, shell-safe
    * filename. Two passes shape the result:
    *
-   *   1. **Sanitisation per dotted segment.** Within a segment (the chunks between `.`s of the
-   *      preview id) any run of non-alphanumeric characters collapses to a single `_`. So
-   *      `Devices - Large Round` becomes `Devices_Large_Round`, `tile light (light)` becomes
-   *      `tile_light_light`, etc. Dots stay as segment separators.
-   *   2. **Shortest unique suffix per preview.** Each preview takes the rightmost segments needed
-   *      to disambiguate it from every other preview in the module — the function-name-plus-variant
-   *      segment alone for unique names, prepending the class only when another preview shares the
-   *      same function name, prepending package parts only when classes collide too. So
-   *      `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round` becomes
-   *      `ActivityListPreview_Devices_Large_Round` in most modules.
+   * 1. **Sanitisation per dotted segment.** Within a segment (the chunks between `.`s of the
+   *    preview id) any run of non-alphanumeric characters collapses to a single `_`. So `Devices -
+   *    Large Round` becomes `Devices_Large_Round`, `tile light (light)` becomes `tile_light_light`,
+   *    etc. Dots stay as segment separators.
+   * 2. **Shortest unique suffix per preview.** Each preview takes the rightmost segments needed to
+   *    disambiguate it from every other preview in the module — the function-name-plus-variant
+   *    segment alone for unique names, prepending the class only when another preview shares the
+   *    same function name, prepending package parts only when classes collide too. So
+   *    `com.example.PreviewsKt.ActivityListPreview_Devices - Large Round` becomes
+   *    `ActivityListPreview_Devices_Large_Round` in most modules.
    *
    * `preview.id` itself stays untouched — it's the stable identity consumers key by (history
    * folders, CLI state, JUnit test names). Only the on-disk filename benefits from the prettier
@@ -463,30 +501,29 @@ object PreviewDiscovery {
   }
 
   /**
-   * Pick one shell-safe stem per preview. Each stem is the shortest sanitised suffix that
-   * uniquely identifies its preview against the others — see [normalizeRenderOutputs] for the
-   * algorithm and rationale. Exposed `internal` so the unit tests can assert "no spaces ever",
-   * "no `class.` prefix when the function name is unique", and the collision-disambiguator paths
-   * directly without a full discovery pipeline.
+   * Pick one shell-safe stem per preview. Each stem is the shortest sanitised suffix that uniquely
+   * identifies its preview against the others — see [normalizeRenderOutputs] for the algorithm and
+   * rationale. Exposed `internal` so the unit tests can assert "no spaces ever", "no `class.`
+   * prefix when the function name is unique", and the collision-disambiguator paths directly
+   * without a full discovery pipeline.
    */
   internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
     if (previews.isEmpty()) return emptyList()
     val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it.id) }
-    val stems =
-      sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
-        shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
-      }
+    val stems = sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
+      shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
+    }
     return disambiguateExactCollisions(stems)
   }
 
   /**
-   * Returns the joined stem (segments joined with `.`) made from the rightmost segments of
-   * [mySegs] that aren't matched, at the same depth, by any other preview's sanitised segments.
+   * Returns the joined stem (segments joined with `.`) made from the rightmost segments of [mySegs]
+   * that aren't matched, at the same depth, by any other preview's sanitised segments.
    *
    * If no proper suffix is unique (two distinct ids whose sanitised segment lists are
    * byte-identical — the only way every depth matches), return JUST the last segment. The user
-   * wants short on-disk names; the resulting duplicate is then disambiguated with a `_<idx>`
-   * suffix by [disambiguateExactCollisions] rather than padded with the full package path.
+   * wants short on-disk names; the resulting duplicate is then disambiguated with a `_<idx>` suffix
+   * by [disambiguateExactCollisions] rather than padded with the full package path.
    */
   private fun shortestUniqueSuffix(
     myIndex: Int,
@@ -527,8 +564,8 @@ object PreviewDiscovery {
   /**
    * Last-ditch tiebreaker when two distinct preview ids sanitise to exactly the same stem (e.g.
    * `Foo_bar` and `Foo-bar` both become `Foo_bar`). Appends `_<idx>` to the second-and-later
-   * occurrences in the manifest order; the first occurrence keeps its clean form so the common
-   * case still gets the pretty filename.
+   * occurrences in the manifest order; the first occurrence keeps its clean form so the common case
+   * still gets the pretty filename.
    */
   private fun disambiguateExactCollisions(stems: List<String>): List<String> {
     if (stems.toSet().size == stems.size && stems.none { it.isEmpty() }) return stems

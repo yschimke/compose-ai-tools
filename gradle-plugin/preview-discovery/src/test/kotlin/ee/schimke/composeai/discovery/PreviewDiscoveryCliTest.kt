@@ -69,16 +69,7 @@ class PreviewDiscoveryCliTest {
   fun `--fail-on-empty defaults to false when absent`() {
     val parsed =
       PreviewDiscoveryCli.parse(
-        arrayOf(
-          "--module",
-          "m",
-          "--variant",
-          "v",
-          "--project-directory",
-          "/proj",
-          "--out",
-          "/out",
-        )
+        arrayOf("--module", "m", "--variant", "v", "--project-directory", "/proj", "--out", "/out")
       )
     assertThat(parsed.input.failOnEmpty).isFalse()
   }

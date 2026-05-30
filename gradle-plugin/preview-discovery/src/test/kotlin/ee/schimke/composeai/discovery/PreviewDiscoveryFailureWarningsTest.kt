@@ -58,6 +58,65 @@ class PreviewDiscoveryFailureWarningsTest {
   }
 
   @Test
+  fun `missing @Preview annotation classpath is a soft warning when failOnEmpty is false`() {
+    // Reproduces the strictness bug: a non-empty module whose dependency-jar filter dropped
+    // the @Preview annotation class. Without `failOnEmpty=true` this used to hard-fail
+    // discovery; that broke real consumers (e.g. homeassistant-remotecompose `:demo-app`)
+    // where zero previews in one module is perfectly normal. The fix downgrades this to a
+    // WARN-level message + diagnostic dump on the Success branch — the build keeps going,
+    // the user sees the cause, and `composePreview.failOnEmpty=true` is still the opt-in
+    // for the hard-error behaviour.
+    val classDir = tempDir.newFolder("classes")
+    writeEmptyClass(classDir, internalName = "test/Empty")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classDir),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":demo-app",
+          variantName = "debug",
+          projectDirectory = classDir,
+          failOnEmpty = false,
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Success::class.java)
+    val success = outcome as PreviewDiscovery.Outcome.Success
+    assertThat(success.manifest.previews).isEmpty()
+    val joined = success.warnings.joinToString("\n")
+    assertThat(joined).contains("discovered 0 previews in module ':demo-app'")
+    assertThat(joined).contains("@Preview annotation class is not on the ClassGraph classpath")
+    assertThat(joined).contains("composePreview.failOnEmpty=true")
+  }
+
+  @Test
+  fun `missing @Preview annotation classpath still hard-fails when failOnEmpty is true`() {
+    // Symmetric to the soft-warning test: `failOnEmpty=true` keeps the historical hard-fail
+    // behaviour for consumers that explicitly opted in.
+    val classDir = tempDir.newFolder("classes")
+    writeEmptyClass(classDir, internalName = "test/Empty")
+
+    val outcome =
+      PreviewDiscovery.discover(
+        PreviewDiscovery.Input(
+          classDirs = listOf(classDir),
+          dependencyJars = emptyList(),
+          sourceFiles = emptyList(),
+          moduleName = ":demo-app",
+          variantName = "debug",
+          projectDirectory = classDir,
+          failOnEmpty = true,
+        )
+      )
+
+    assertThat(outcome).isInstanceOf(PreviewDiscovery.Outcome.Failure::class.java)
+    val failure = outcome as PreviewDiscovery.Outcome.Failure
+    assertThat(failure.reason).contains("@Preview annotation class is not on the ClassGraph")
+  }
+
+  @Test
   fun `Failure warnings default to empty for source-compatibility`() {
     // Existing callers constructing Failure positionally (reason, diagnostics) must keep
     // working — `warnings` is a new optional field with an empty default.
@@ -88,13 +147,7 @@ class PreviewDiscoveryFailureWarningsTest {
       null,
     )
     val mv =
-      cw.visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        methodName,
-        "(I)V",
-        null,
-        null,
-      )
+      cw.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, methodName, "(I)V", null, null)
     val av: AnnotationVisitor =
       mv.visitAnnotation("Landroidx/compose/ui/tooling/preview/Preview;", true)
     av.visitEnd()
@@ -104,6 +157,27 @@ class PreviewDiscoveryFailureWarningsTest {
     mv.visitEnd()
     cw.visitEnd()
 
+    val classFile = File(outDir, "$internalName.class")
+    classFile.parentFile.mkdirs()
+    classFile.writeBytes(cw.toByteArray())
+  }
+
+  /**
+   * Writes a minimal empty `.class` file (no methods, no annotations). Used by the soft-warning
+   * tests where we want `scanClassCount > 0` but no preview-able methods so discovery returns zero
+   * previews and falls into the `previewAnnotationsMissing` diagnostic branch.
+   */
+  private fun writeEmptyClass(outDir: File, internalName: String) {
+    val cw = ClassWriter(0)
+    cw.visit(
+      Opcodes.V17,
+      Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+      internalName,
+      null,
+      "java/lang/Object",
+      null,
+    )
+    cw.visitEnd()
     val classFile = File(outDir, "$internalName.class")
     classFile.parentFile.mkdirs()
     classFile.writeBytes(cw.toByteArray())

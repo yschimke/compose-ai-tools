@@ -133,10 +133,9 @@ data class FocusCapture(
   val overlay: Boolean = false,
   /**
    * When `true`, the connector's focus walk skips the historical `+1 Next` compensation after
-   * `moveFocus(Enter)` — used by previews whose root carries
-   * `focusProperties { onEnter = { initialFocus.requestFocus() } }.focusGroup()`, where Enter
-   * already lands focus on the chosen child. See `@FocusedPreview.enterPlacesFocus` for the full
-   * rationale.
+   * `moveFocus(Enter)` — used by previews whose root carries `focusProperties { onEnter = {
+   * initialFocus.requestFocus() } }.focusGroup()`, where Enter already lands focus on the chosen
+   * child. See `@FocusedPreview.enterPlacesFocus` for the full rationale.
    */
   val enterPlacesFocus: Boolean = false,
   /**

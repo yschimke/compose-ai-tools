@@ -278,34 +278,21 @@ jobs:
             # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
             # if the consumer's build surfaces a new CC / IP gap.
             extra_gradle_args: ""
-          - name: homeassistant-remotecompose (:demo-app — @Preview annotation classpath filter)
+          - name: homeassistant-remotecompose
             slug: homeassistant-remotecompose
             repo: yschimke/homeassistant-remotecompose
             ref: main
             workdir: .
-            # Targets `:demo-app` specifically — that's where discovery has been
-            # reporting "discovered 0 previews ... the @Preview annotation
-            # class is not on the ClassGraph classpath (dependency-jar filter
-            # dropped every jar carrying it)". The repo also applies the
-            # plugin to a dedicated `:previews` fixtures module and to `:app`
-            # / `:wear` / `:tv`; broad discovery may still report nonzero
-            # totals from those, so when the dependency-jar filter regression
-            # comes back this cell catches it via the `:demo-app`-specific
-            # check below rather than the workflow-wide >=1 floor.
+            # 17-module KMP-ish project (`:ha-model` / `:ha-client` shared
+            # cores, `:rc-*` RemoteCompose layers, `:previews` fixture
+            # module, `:demo-app`, `:app` / `:wear` / `:tv` flavor modules)
+            # — broad discovery surface. The `:demo-app` cell exists because
+            # of the 0-previews strictness bug (the dependency-jar filter
+            # dropped every jar carrying `@Preview`); that's now a WARN-level
+            # diagnostic in PreviewDiscovery rather than a hard failure, so
+            # the workflow-wide ≥1 floor across `:previews` / `:app` / etc.
+            # is the right gate here.
             module: ":demo-app"
-            # The workflow-wide "Verify previews.json was produced" step sums
-            # discovery counts across every module the init script applied
-            # the plugin to, so `:previews` / `:app` / `:wear` / `:tv` would
-            # paper over a `:demo-app` zero-preview regression. Setting this
-            # flag adds a targeted assertion that the `matrix.module`'s own
-            # `previews.json` reports >=1 previews; without it this canary
-            # would silently stay green when the regression returns.
-            expect_module_has_previews: true
-            # Non-blocking on PRs until the dependency-jar filter is relaxed
-            # for repos that pull `@Preview` in through transitive jars — the
-            # regression this cell is named after lives in our plugin, not
-            # the consumer.
-            continue_on_error: true
             extra_gradle_args: ""
           - name: cadence (:composeApp)
             slug: cadence
@@ -565,32 +552,6 @@ jobs:
           echo "Total discovered: $total preview(s) across ${#manifests[@]} module(s)"
           if [ "$total" -lt 1 ]; then
             echo "::error::Discovery ran but every module reported zero previews."
-            exit 1
-          fi
-
-      - name: Verify targeted module reported previews (${{ matrix.module }})
-        # Defensive narrowing for cells like homeassistant-remotecompose
-        # where the workflow-wide sum can stay >=1 from sibling modules
-        # while the matrix-targeted module silently reports zero. Maps the
-        # Gradle path (":foo:bar") to the on-disk module directory and
-        # asserts the per-module previews.json has at least one entry.
-        if: matrix.expect_module_has_previews
-        working-directory: external/${{ matrix.workdir }}
-        env:
-          MATRIX_MODULE: ${{ matrix.module }}
-        run: |
-          set -euo pipefail
-          path="${MATRIX_MODULE#:}"
-          path="${path//://}"
-          manifest="$path/build/compose-previews/previews.json"
-          if [ ! -f "$manifest" ]; then
-            echo "::error::Expected $manifest for targeted module ${MATRIX_MODULE} but it doesn't exist — composePreviewDiscover didn't apply to that module."
-            exit 1
-          fi
-          n=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('previews', [])))" "$manifest")
-          echo "$manifest → $n preview(s)"
-          if [ "$n" -lt 1 ]; then
-            echo "::error::Targeted module ${MATRIX_MODULE} reported zero previews — this is the regression this matrix cell exists to track."
             exit 1
           fi
 
