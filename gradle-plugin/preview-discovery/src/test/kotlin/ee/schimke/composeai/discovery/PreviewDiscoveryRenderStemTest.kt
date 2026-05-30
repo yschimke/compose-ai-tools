@@ -6,10 +6,10 @@ import org.junit.Test
 class PreviewDiscoveryRenderStemTest {
 
   /**
-   * Headline invariant: every stem is composed only of `[A-Za-z0-9._]` (no spaces, dashes,
-   * parens, quotes, or anything else a shell would have to quote). Spaces in
-   * `@Preview(name = "Devices - Large Round")` make it into the `preview.id`, but the rewrite
-   * strips them at the per-segment sanitisation step.
+   * Headline invariant: every stem is composed only of `[A-Za-z0-9._]` (no spaces, dashes, parens,
+   * quotes, or anything else a shell would have to quote). Spaces in `@Preview(name = "Devices -
+   * Large Round")` make it into the `preview.id`, but the rewrite strips them at the per-segment
+   * sanitisation step.
    */
   @Test
   fun `every resolved stem is shell-safe — only letters, digits, underscores, and dots`() {
@@ -59,16 +59,14 @@ class PreviewDiscoveryRenderStemTest {
   fun `collapses runs of separator-like characters into a single underscore`() {
     // ` - ` (space-dash-space) is a run of three "separator" characters in the source name;
     // every old stem ended up with `Devices_-_Large_Round`. New stems collapse the run.
-    val previews =
-      listOf(preview("com.example.PreviewsKt.Foo_Devices - Large Round"))
+    val previews = listOf(preview("com.example.PreviewsKt.Foo_Devices - Large Round"))
     val stems = PreviewDiscovery.resolveRenderStems(previews)
     assertThat(stems).containsExactly("Foo_Devices_Large_Round")
   }
 
   @Test
   fun `parens, quotes, and other shell-awkward characters all collapse with adjacent runs`() {
-    val previews =
-      listOf(preview("com.example.PreviewsKt.Foo_tile light (light)"))
+    val previews = listOf(preview("com.example.PreviewsKt.Foo_tile light (light)"))
     val stems = PreviewDiscovery.resolveRenderStems(previews)
     assertThat(stems).containsExactly("Foo_tile_light_light")
   }

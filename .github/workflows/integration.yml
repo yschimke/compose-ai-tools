@@ -278,6 +278,82 @@ jobs:
             # follow-up). Re-add specific flags here (with a fresh comment naming the regression)
             # if the consumer's build surfaces a new CC / IP gap.
             extra_gradle_args: ""
+          - name: homeassistant-remotecompose
+            slug: homeassistant-remotecompose
+            repo: yschimke/homeassistant-remotecompose
+            ref: main
+            workdir: .
+            # 17-module KMP-ish project (`:ha-model` / `:ha-client` shared
+            # cores, `:rc-*` RemoteCompose layers, `:previews` fixture
+            # module, `:demo-app`, `:app` / `:wear` / `:tv` flavor modules)
+            # — broad discovery surface. The `:demo-app` cell exists because
+            # of the 0-previews strictness bug (the dependency-jar filter
+            # dropped every jar carrying `@Preview`); that's now a WARN-level
+            # diagnostic in PreviewDiscovery rather than a hard failure, so
+            # the workflow-wide ≥1 floor across `:previews` / `:app` / etc.
+            # is the right gate here.
+            module: ":demo-app"
+            extra_gradle_args: ""
+          - name: cadence (:composeApp)
+            slug: cadence
+            repo: yschimke/cadence
+            ref: main
+            workdir: .
+            # `:composeApp` is `com.android.application` with the CMP plugins
+            # also applied. Discovery-only — adds coverage of an external
+            # consumer that already uses our plugin in anger.
+            module: ":composeApp"
+            # The build script applies `play.publisher` and a Play signing
+            # config; both need credentials we don't ship. Comment them out
+            # before Gradle reads the script.
+            pre_gradle_script: |
+              python3 - <<'PY'
+              import re
+              from pathlib import Path
+              p = Path("composeApp/build.gradle.kts")
+              if not p.exists():
+                  raise SystemExit(f"expected build script not found: {p}")
+              t = p.read_text()
+              for line in (
+                  "alias(libs.plugins.playPublisher)",
+                  # `ReleaseStatus` is referenced only from the stripped
+                  # `play { ... }` block below; leaving the import in place
+                  # makes the Kotlin script fail to compile with an
+                  # unresolved reference before discovery runs.
+                  "import com.github.triplet.gradle.androidpublisher.ReleaseStatus",
+              ):
+                  t = t.replace(line, f"// {line} // disabled for integration CI")
+              # `play { ... }` configure block has no creds in CI. Strip it
+              # rather than try to materialise a service-account JSON.
+              t = re.sub(
+                  r"[ \t]*play\s*\{[^}]*\}\s*\n",
+                  "\n",
+                  t,
+              )
+              p.write_text(t)
+              print(f"patched {p}")
+              PY
+            # Non-blocking initially: this is a freshly-added external
+            # consumer and we want a turn or two of green/red signal before
+            # flipping it to a hard gate.
+            continue_on_error: true
+            extra_gradle_args: ""
+          - name: meshcore-mobile (:app)
+            slug: meshcore-mobile
+            repo: yschimke/meshcore-mobile
+            ref: main
+            workdir: .
+            # KMP project with a dedicated Android `:app` module — most
+            # `@Preview` functions live under `app/src/main/kotlin/.../ui/`
+            # and `app/src/main/kotlin/.../widget/` (with a `@PreviewWrapper`
+            # extension for the widget rendering path, which is what makes
+            # this cell more than a duplicate of the other Android matrix
+            # entries).
+            module: ":app"
+            # Non-blocking initially while we shake out any KMP-shape gotchas
+            # the existing matrix entries don't already cover.
+            continue_on_error: true
+            extra_gradle_args: ""
           # PeopleInSpace is a KMP project — the :app module is a thin Android
           # wrapper with no @Preview functions; all Compose UI lives in the
           # :common KMP module. Targeting :common needs KMP-Android-target
