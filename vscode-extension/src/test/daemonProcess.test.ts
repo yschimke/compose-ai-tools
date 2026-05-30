@@ -8,6 +8,7 @@ import {
     formatClasspathArgfileContent,
     formatDaemonSpawnFailure,
     readLaunchDescriptor,
+    sanitizeJvmArgs,
     spawnDaemon,
 } from "../daemon/daemonProcess";
 import {
@@ -433,5 +434,57 @@ describe("formatClasspathArgfileContent", () => {
         // and the space-bearing path stays inside the quotes.
         assert.ok(!content.includes("\\"));
         assert.strictEqual(content, '-cp "C:/Program Files/app/lib.jar"\n');
+    });
+});
+
+describe("sanitizeJvmArgs", () => {
+    it("passes through tuning flags untouched", () => {
+        const args = [
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "-Xmx512m",
+        ];
+        assert.deepStrictEqual(sanitizeJvmArgs(args), args);
+    });
+
+    it("drops a two-token classpath option and its value", () => {
+        const dropped: string[] = [];
+        const out = sanitizeJvmArgs(
+            ["-Xmx512m", "-cp", "/evil.jar", "-Dfoo=bar"],
+            (a) => dropped.push(a),
+        );
+        // The descriptor classpath must survive — neither the flag nor its
+        // value may leak through as a stray positional / main class.
+        assert.deepStrictEqual(out, ["-Xmx512m", "-Dfoo=bar"]);
+        assert.deepStrictEqual(dropped, ["-cp", "/evil.jar"]);
+    });
+
+    it("drops every classpath option spelling, glued and split", () => {
+        for (const head of ["-cp", "-classpath", "--class-path"]) {
+            assert.deepStrictEqual(sanitizeJvmArgs([head, "/x.jar"]), []);
+            assert.deepStrictEqual(sanitizeJvmArgs([`${head}=/x.jar`]), []);
+        }
+    });
+
+    it("drops --disable-@files so the classpath argfile still expands", () => {
+        const dropped: string[] = [];
+        const out = sanitizeJvmArgs(["--disable-@files", "-Xmx512m"], (a) =>
+            dropped.push(a),
+        );
+        assert.deepStrictEqual(out, ["-Xmx512m"]);
+        assert.deepStrictEqual(dropped, ["--disable-@files"]);
+    });
+
+    it("tolerates a trailing classpath flag with no value", () => {
+        // A malformed `-cp` at the end has no value to consume; drop just the
+        // flag rather than reading past the end of the array.
+        assert.deepStrictEqual(sanitizeJvmArgs(["-Xmx512m", "-cp"]), [
+            "-Xmx512m",
+        ]);
+    });
+
+    it("does not touch a -classpath-like substring that isn't the option", () => {
+        // `-Dfoo=-classpath` is a system property, not the launcher option.
+        const args = ["-Dfoo=-classpath"];
+        assert.deepStrictEqual(sanitizeJvmArgs(args), args);
     });
 });
