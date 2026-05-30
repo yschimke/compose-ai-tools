@@ -63,10 +63,9 @@ class BundleContentsTest {
     val coverPng = previewPngs[cover] ?: png(0x808080)
     val zip = ByteArrayOutputStream()
     ZipOutputStream(zip).use { zos ->
+      val previewIds = previewPngs.keys.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
       val bundleJson =
-        """{"schemaVersion":2,"backend":"desktop","previewIds":${
-          previewPngs.keys.joinToString(prefix = "[", postfix = "]") { "\"$it\"" }
-        },"coverPreviewId":"$cover","classpath":[],"modulePath":"$modulePath","producedBy":"test"}"""
+        "{\"schemaVersion\":2,\"backend\":\"desktop\",\"previewIds\":$previewIds,\"coverPreviewId\":\"$cover\",\"classpath\":[],\"modulePath\":\"$modulePath\",\"producedBy\":\"test\"}"
       zos.putNextEntry(ZipEntry("bundle.json"))
       zos.write(bundleJson.toByteArray())
       zos.closeEntry()
