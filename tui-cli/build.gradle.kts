@@ -1,3 +1,6 @@
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+
 plugins {
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
@@ -40,6 +43,24 @@ tasks.named<Tar>("distTar") {
   compression = Compression.GZIP
 }
 
+// Sidecar configurations carrying the desktop renderer + daemon and their Compose Multiplatform
+// runtime. Project-less bundle mode (`compose-preview-tui <bundle.png>` outside a Gradle checkout)
+// spawns the desktop daemon straight from the bundle's embedded classes, and the daemon needs these
+// jars on its subprocess classpath. Same isolation story as `:cli`'s sidecars: never on the
+// launcher's own classpath — only loaded by the spawned daemon JVM — so there's no version-skew
+// risk against anything the launcher links. Resolved into `lib-renderer/` and `lib-daemon-desktop/`
+// in the dist and located at runtime via `APP_HOME` (see `BundleSidecars`).
+val composePreviewRenderer =
+  configurations.create("composePreviewRenderer") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+val composePreviewDaemonDesktop =
+  configurations.create("composePreviewDaemonDesktop") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+  }
+
 dependencies {
   implementation(project(":preview-data-api"))
   implementation(project(":gradle-preview-driver"))
@@ -50,6 +71,13 @@ dependencies {
 
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
+
+  // Subprocess-only sidecars shipped in the dist for project-less bundle mode. The daemon's
+  // subprocess classpath joins `lib-daemon-desktop/jars` + `lib-renderer/jars` at launch; the renderer
+  // sidecar carries the per-OS Compose Multiplatform stack (incl. Skiko) so it isn't duplicated
+  // in the daemon sidecar. Mirrors `:cli`'s `bundle daemon` / `bundle render` wiring.
+  add("composePreviewRenderer", project(":renderer-desktop"))
+  add("composePreviewDaemonDesktop", project(":daemon:desktop"))
 
   testImplementation(kotlin("test"))
   // JUnit 5 — used directly for `@TempDir`, `Assumptions.assumeTrue`, `@DisplayName`
@@ -73,4 +101,43 @@ tasks.withType<Test>().configureEach {
   // The e2e test is gated on `Xvfb`/`kitty`/`xdotool`/`import` being on PATH (it self-skips
   // when any of them is missing). On a CI runner without those binaries the test is a fast
   // no-op; locally with `apt install kitty xdotool imagemagick xvfb` it runs end-to-end.
+}
+
+// Multiple JetBrains Compose Multiplatform `components-*-desktop` artifacts ship as
+// `library-desktop-<version>.jar`, so a flat copy into `lib-daemon-desktop/` collides on filename.
+// Stage the resolved artifacts first, disambiguating colliding filenames by `module-version.jar`,
+// so both end up on the daemon's classpath. Copied verbatim from `:cli`'s `stageDaemonDesktopLibs`.
+val stageDaemonDesktopLibs =
+  tasks.register<Sync>("stageDaemonDesktopLibs") {
+    description = "Stages :daemon:desktop runtime artifacts, renaming filename collisions."
+    destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
+    val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
+    from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
+    val nameByPath =
+      artifactsProvider.map { resolved ->
+        val counts = resolved.groupingBy { it.file.name }.eachCount()
+        resolved.associate { artifact ->
+          val original = artifact.file.name
+          val mapped =
+            if (counts.getValue(original) > 1) {
+              val id = artifact.id.componentIdentifier
+              if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+            } else original
+          artifact.file.absolutePath to mapped
+        }
+      }
+    inputs.property("nameByPath", nameByPath)
+    eachFile {
+      val mapped = nameByPath.get()[file.absolutePath]
+      if (mapped != null) name = mapped
+    }
+  }
+
+distributions {
+  named("main") {
+    contents {
+      into("lib-renderer") { from(composePreviewRenderer) }
+      into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
+    }
+  }
 }

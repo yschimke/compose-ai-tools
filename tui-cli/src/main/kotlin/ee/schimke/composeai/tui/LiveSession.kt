@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * Live-mode controller. Owns the optional [RenderSession] subscription that turns external file
@@ -49,6 +51,13 @@ class LiveSession(private val scope: CoroutineScope) {
     val lastError: String? = null,
     /** Monotonic counter incremented on every daemon notification — drives recompose tick. */
     val tick: Long = 0,
+    /**
+     * Latest rendered PNG path per preview id, harvested from `renderFinished` notifications. This
+     * is how a consumer finds the freshest frame **without assuming any on-disk project layout** —
+     * the daemon reports exactly where it wrote each render (project mode and project-less bundle
+     * mode alike).
+     */
+    val lastPng: Map<String, String> = emptyMap(),
   )
 
   private val _state = MutableStateFlow(State())
@@ -115,45 +124,111 @@ class LiveSession(private val scope: CoroutineScope) {
             return@launch
           }
 
-        sessionRef.set(session)
-
-        if (extensions.isNotEmpty()) {
-          try {
-            session.enableExtensions(extensions.toList())
-          } catch (_: RenderSessionException) {
-            // Best-effort — a missing extension shouldn't kill live mode; the UI will show
-            // a "no findings" state for that pane.
-          }
-        }
-
-        // Tick on every notification so Compose recomposes and the UI re-reads disk. We don't
-        // care about the params payload — the daemon already wrote the PNG / sidecar before
-        // the notification went out.
-        val ticker = session.onNotification { _, _ ->
-          _state.update { it.copy(tick = it.tick + 1) }
-        }
-
-        // Start a filesystem watcher rooted at the module's project directory. When source
-        // edits land, forward them as `fileChanged` so the daemon invalidates and re-renders.
-        val watcher = FileWatcher(module.projectDir.resolve("src"))
-        watcherRef.set(watcher)
-        watcher.start { changedPath ->
-          val s = sessionRef.get() ?: return@start
-          try {
-            s.fileChanged(changedPath.toAbsolutePath().toString(), kind = FileKind.SOURCE)
-          } catch (_: RenderSessionException) {
-            // Transport went away (daemon died, etc.); the next user action will surface
-            // the FAILED status when the listener's next call throws.
-          }
-        }
-
-        _state.value =
-          State(status = Status.READY, modulePath = module.gradlePath, tick = current.tick + 1)
-
-        // Keep the listener registered for the lifetime of the session. `ticker` is closed in
-        // [closeQuietly]; the AutoCloseable is parked here.
-        sessionListenerHandle.set(ticker)
+        // Project mode: a filesystem watcher rooted at the module's `src/` forwards edits as
+        // `fileChanged` so the daemon invalidates and re-renders.
+        attachSession(
+          session = session,
+          modulePath = module.gradlePath,
+          extensions = extensions,
+          watchDir = module.projectDir.resolve("src"),
+          priorTick = current.tick,
+        )
       }
+  }
+
+  /**
+   * Project-less live mode for a self-contained bundle. [opener] spawns a daemon straight from the
+   * bundle (no `daemon-launch.json`, no source tree); the returned session is wired identically to
+   * [enable] **except there is no file watcher** — there is no source to watch, so "live" here means
+   * the daemon is held open for `r`-driven re-renders. [modulePath] is informational only.
+   */
+  fun enableBundle(modulePath: String, extensions: Set<String>, opener: () -> RenderSession) {
+    closeQuietly()
+    val priorTick = _state.value.tick
+    _state.value = State(status = Status.OPENING, modulePath = modulePath, lastError = null)
+
+    openJob =
+      scope.launch(Dispatchers.IO) {
+        val session: RenderSession =
+          try {
+            opener()
+          } catch (e: Exception) {
+            _state.value =
+              State(
+                status = Status.FAILED,
+                modulePath = modulePath,
+                lastError = e.message ?: e.javaClass.simpleName,
+              )
+            return@launch
+          }
+        attachSession(
+          session = session,
+          modulePath = modulePath,
+          extensions = extensions,
+          watchDir = null,
+          priorTick = priorTick,
+        )
+      }
+  }
+
+  /**
+   * Shared post-open wiring for [enable] and [enableBundle]: register the session, enable
+   * extensions, install the notification listener (which harvests `renderFinished.pngPath` into
+   * [State.lastPng]), optionally start a [FileWatcher] over [watchDir], and flip the state to READY.
+   */
+  private fun attachSession(
+    session: RenderSession,
+    modulePath: String,
+    extensions: Set<String>,
+    watchDir: File?,
+    priorTick: Long,
+  ) {
+    sessionRef.set(session)
+
+    if (extensions.isNotEmpty()) {
+      try {
+        session.enableExtensions(extensions.toList())
+      } catch (_: RenderSessionException) {
+        // Best-effort — a missing extension shouldn't kill live mode; the UI will show
+        // a "no findings" state for that pane.
+      }
+    }
+
+    // Tick on every notification so Compose recomposes. `renderFinished` additionally carries the
+    // path the daemon wrote the frame to (`id` + `pngPath`); record it so consumers read the
+    // freshest frame from the daemon's own report rather than guessing an on-disk project layout.
+    val ticker =
+      session.onNotification { method, params ->
+        if (method == "renderFinished" && params != null) {
+          val id = (params["id"] as? JsonPrimitive)?.contentOrNull
+          val png = (params["pngPath"] as? JsonPrimitive)?.contentOrNull
+          if (id != null && png != null) {
+            _state.update { it.copy(tick = it.tick + 1, lastPng = it.lastPng + (id to png)) }
+            return@onNotification
+          }
+        }
+        _state.update { it.copy(tick = it.tick + 1) }
+      }
+
+    if (watchDir != null) {
+      val watcher = FileWatcher(watchDir)
+      watcherRef.set(watcher)
+      watcher.start { changedPath ->
+        val s = sessionRef.get() ?: return@start
+        try {
+          s.fileChanged(changedPath.toAbsolutePath().toString(), kind = FileKind.SOURCE)
+        } catch (_: RenderSessionException) {
+          // Transport went away (daemon died, etc.); the next user action will surface
+          // the FAILED status when the listener's next call throws.
+        }
+      }
+    }
+
+    _state.value = State(status = Status.READY, modulePath = modulePath, tick = priorTick + 1)
+
+    // Keep the listener registered for the lifetime of the session. `ticker` is closed in
+    // [closeQuietly]; the AutoCloseable is parked here.
+    sessionListenerHandle.set(ticker)
   }
 
   /** Drop the session and the file watcher. Idempotent. */
