@@ -27,15 +27,36 @@ pluginManagement {
 val matrixRobolectricVersion: String? =
   providers.gradleProperty("composeai.matrix.robolectricVersion").orNull
 
+// The Mosaic-based interactive TUI (`:tui-cli`) is opt-in. It depends on a snapshot of the
+// Mosaic fork (yschimke/mosaic@compose-ai-tools) published under the `ee.schimke.composeai.mosaic`
+// group to the Sonatype Central snapshots repo. We don't want every contributor / CI build to
+// resolve an unstable snapshot, so the whole TUI wiring — the snapshot repository, the `:tui-cli`
+// module, and therefore the Mosaic dependency — is gated behind `tui.enabled=true` in
+// `local.properties` (gitignored). When the flag is unset none of it is added to the build.
+val tuiEnabled: Boolean =
+  java.util.Properties()
+    .apply {
+      val localProperties = rootDir.resolve("local.properties")
+      if (localProperties.exists()) localProperties.inputStream().use { load(it) }
+    }
+    .getProperty("tui.enabled")
+    .toBoolean()
+
 dependencyResolutionManagement {
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
-    // Local Mosaic fork, scoped to the `com.jakewharton.mosaic` group so it can't shadow any
-    // other dependency. Populated by `cd ../mosaic && ./gradlew publishToMavenLocal` against
-    // the `compose-ai-tools` branch (PR yschimke/mosaic#1). When the publication is absent the
-    // version pin in `gradle/libs.versions.toml` falls through to upstream stable on
-    // mavenCentral. See `tui-cli/MOSAIC-FORK.md` for the full workflow + rationale.
-    mavenLocal { content { includeGroup("com.jakewharton.mosaic") } }
+    // Mosaic fork snapshot, only when the opt-in TUI build is enabled (see `tuiEnabled` above).
+    // Published under the `ee.schimke.composeai.mosaic` group to the Sonatype Central snapshots
+    // repo by yschimke/mosaic@compose-ai-tools; `mavenLocal()` is kept alongside it for iterating
+    // on the fork locally (`cd ../mosaic && ./gradlew publishToMavenLocal`). Both are scoped to
+    // the fork's group so they can't shadow any other dependency. See `tui-cli/MOSAIC-FORK.md`.
+    if (tuiEnabled) {
+      maven("https://central.sonatype.com/repository/maven-snapshots/") {
+        name = "mosaic-snapshots-central"
+        content { includeGroup("ee.schimke.composeai.mosaic") }
+      }
+      mavenLocal { content { includeGroup("ee.schimke.composeai.mosaic") } }
+    }
     google()
     mavenCentral()
     maven("https://repo.gradle.org/gradle/libs-releases")
@@ -56,27 +77,23 @@ rootProject.name = "compose-ai-tools"
 
 includeBuild("gradle-plugin")
 
-// Local fork of Mosaic carrying the four-commit `compose-ai-tools` branch from
-// https://github.com/yschimke/mosaic/pull/1 — adds `RawText` and an `Image` composable
-// (Kitty Graphics + half-block fallback) that this module's RFCs propose upstream. We don't
-// use `includeBuild("../mosaic")` here because Mosaic's `build-support` plugin uses
-// `java.net.http.HttpClient.use { }` (JDK 21+) while our Gradle daemon is pinned to JDK 17
-// in `gradle/gradle-daemon-jvm.properties`. The two builds have incompatible toolchain
-// floors. Instead, see `tui-cli/MOSAIC-FORK.md` for the publish-to-mavenLocal workflow that
-// builds Mosaic on JDK 21 once, then lets this build consume the artefacts via
-// `mavenLocal()` (added to `dependencyResolutionManagement.repositories` below).
-
 include(":cli")
 
 // Alternative interactive CLI built on Jake Wharton's Mosaic. Renders a navigable preview
 // browser (list + image + a11y panel) to the terminal, with sticky live-mode that re-renders
 // on external file edits (vim in another terminal, VS Code, etc.). Separate module so the
 // classic `:cli` stays a thin batch driver and consumers who don't want a TUI dependency
-// don't pull Mosaic / Compose runtime onto their classpath. See `tui-cli/LIMITATIONS.md` for
-// the Mosaic API gaps we work around today.
-include(":tui-cli")
-
-project(":tui-cli").projectDir = file("tui-cli")
+// don't pull Mosaic / Compose runtime onto their classpath.
+//
+// Opt-in: only included when `tui.enabled=true` is set in `local.properties` (see `tuiEnabled`
+// above). The module consumes a snapshot of the Mosaic fork (yschimke/mosaic@compose-ai-tools,
+// group `ee.schimke.composeai.mosaic`) carrying the `RawText` + `Image` composables this
+// module's RFCs propose upstream. See `tui-cli/MOSAIC-FORK.md` for the fork workflow and
+// `tui-cli/LIMITATIONS.md` for the Mosaic API gaps we work around today.
+if (tuiEnabled) {
+  include(":tui-cli")
+  project(":tui-cli").projectDir = file("tui-cli")
+}
 
 // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types, …).
 // Lives outside `:cli` so external consumers (contrib scripting, future MCP integrations,

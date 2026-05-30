@@ -1,11 +1,34 @@
-# Using a local Mosaic fork
+# Using the Mosaic fork
 
-`:tui-cli` is wired to consume **`com.jakewharton.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`**
+`:tui-cli` consumes **`ee.schimke.composeai.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`**
 (plus the matching `mosaic-terminal` / `mosaic-tty` / `mosaic-tty-terminal` siblings) from
-the local Maven cache so we can develop against the fork at
+the fork at
 [**`yschimke/mosaic@compose-ai-tools`**](https://github.com/yschimke/mosaic/tree/compose-ai-tools)
-without waiting for upstream PRs to merge. That branch adds two composables we describe
-in the RFCs alongside this doc:
+so we can develop against it without waiting for upstream PRs to merge. The fork republishes
+Mosaic under the `ee.schimke.composeai.mosaic` group (the Kotlin package names are unchanged —
+imports stay `com.jakewharton.mosaic.*`) and its `snapshot.yaml` workflow publishes a
+`-SNAPSHOT` build to the Sonatype Central snapshots repo on every push to the branch.
+
+## Opt-in flag
+
+**The TUI build is off by default.** It is only wired into the build when `local.properties`
+contains:
+
+```properties
+tui.enabled=true
+```
+
+`settings.gradle.kts` reads that flag at configuration time. When it is unset:
+
+- the Sonatype Central snapshots repository is **not** added,
+- the `:tui-cli` module is **not** included, and
+- nothing references the Mosaic snapshot dependency.
+
+So a default `./gradlew` checkout (and CI) never resolves the unstable snapshot. To work on
+the TUI, set the flag, then build `:tui-cli` as usual. The version catalog still *declares*
+`libs.mosaic.runtime` either way — the declaration is inert until `:tui-cli` is included.
+
+That branch adds two composables we describe in the RFCs alongside this doc:
 
 - `RawText(text)` — verbatim escape-sequence passthrough with consumer-declared display
   width. Resolves layout-engine width-tracking desync (see
@@ -40,7 +63,7 @@ JAVA_HOME=/path/to/jdk-21 ./gradlew \
 The `publishKotlinMultiplatformPublicationToMavenLocal` half writes the root metadata
 module that links the per-target jars; without it Gradle resolves the JVM jar but can't
 find a `*.module` to read transitive deps from and the build fails with `Could not find
-com.jakewharton.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`. Both halves are required.
+ee.schimke.composeai.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`. Both halves are required.
 
 ### Iterating on Mosaic-side changes
 
@@ -64,26 +87,31 @@ metadata — most edits are picked up within seconds; if you hit a stale-resolut
 
 ### `settings.gradle.kts`
 
-Adds `mavenLocal()` to the project's `dependencyResolutionManagement.repositories`,
-**scoped to the `com.jakewharton.mosaic` group** via `content { includeGroup(...) }`.
-Scoping matters: an unscoped `mavenLocal()` would let any stale snapshot in `~/.m2`
-shadow whatever's in Maven Central, and that's a well-known way to make CI builds
-non-reproducible.
+Reads `tui.enabled` from `local.properties` into a `tuiEnabled` flag. When the flag is set,
+it adds **both** the Sonatype Central snapshots repo
+(`https://central.sonatype.com/repository/maven-snapshots/`) and `mavenLocal()` to
+`dependencyResolutionManagement.repositories`, each **scoped to the `ee.schimke.composeai.mosaic`
+group** via `content { includeGroup(...) }`. The snapshot repo is the normal source; `mavenLocal()`
+is kept for iterating on the fork locally (`publishToMavenLocal`) and wins when a local
+publication is present. Scoping matters: an unscoped repo would let a stale snapshot in `~/.m2`
+or on Sonatype shadow whatever's in Maven Central, a well-known way to make builds
+non-reproducible. The same flag also guards `include(":tui-cli")`, so when it's unset the module
+isn't part of the build and nothing resolves the snapshot.
 
 The earlier draft of this wiring used `includeBuild("../mosaic")` for composite-build
 substitution instead. That doesn't work today because Mosaic's `build-support` Kotlin
 module compiles `java.net.http.HttpClient.use { … }` which requires JDK 21+ source
 compatibility, and the compose-ai-tools Gradle daemon is pinned to JDK 17 via
 `gradle/gradle-daemon-jvm.properties`. The two builds can't share a daemon JVM, so we
-isolate them via `publishToMavenLocal`.
+isolate them by consuming the published snapshot artefact instead.
 
 ### `gradle/libs.versions.toml`
 
-`mosaic = "0.19.0-SNAPSHOT"` matches the fork's `gradle.properties` VERSION_NAME. When
-the local publication is missing this resolves to whatever 0.19.0 line ships upstream
-(currently nothing — so the build will fail cleanly with a "not found" message rather
-than silently picking up stable 0.18.0). When stable 0.19.0 lands on Maven Central, this
-file is what we bump to consume it.
+`mosaic = "0.19.0-SNAPSHOT"` matches the fork's `gradle.properties` VERSION_NAME, and
+`mosaic-runtime` points at the `ee.schimke.composeai.mosaic` group the fork publishes under.
+The catalog entry is always declared but inert unless `:tui-cli` is included (i.e. unless
+`tui.enabled=true`). When stable 0.19.0 lands on Maven Central, this file is what we bump to
+consume it.
 
 ## Sandbox vs. real-machine differences
 
@@ -151,20 +179,17 @@ authored is for **build verification only** — the e2e harness at
 needs to run on a machine where Mosaic was published with its native libs intact.
 
 In practice that means: build Mosaic on your dev machine with full network access; copy
-the resulting `~/.m2/repository/com/jakewharton/mosaic/...` tree to the sandbox if you
+the resulting `~/.m2/repository/ee/schimke/composeai/mosaic/...` tree to the sandbox if you
 need to exercise the TUI there; or simply do TUI runtime testing on the dev machine.
 
 ## Falling back to upstream
 
-To revert to upstream stable Mosaic without removing this wiring:
+To consume upstream stable Mosaic instead of the fork snapshot:
 
-1. Edit `gradle/libs.versions.toml` and set `mosaic = "0.18.0"` (or whatever upstream
-   stable is current).
-2. Leave the `mavenLocal()` block in `settings.gradle.kts` in place — it's already scoped
-   to the mosaic group, so absence of a local publication just falls through to Maven
-   Central.
+1. Edit `gradle/libs.versions.toml`, set `mosaic` to the stable release, and repoint
+   `mosaic-runtime` at the `com.jakewharton.mosaic` group.
+2. Swap the Sonatype snapshots repo in `settings.gradle.kts` for `mavenCentral()` scoping
+   (or drop the scoped repos entirely once the artefact is on Maven Central).
 
-No other code changes are required. `:tui-cli`'s current source doesn't yet adopt the
-fork's `RawText` / `Image` composables; the upgrade only widens the dependency surface.
-The fork is plumbed in so we can land the adoption commit next, not because anything
-imports from the fork today.
+Note that with `tui.enabled` unset none of this is on the build path at all, so a default
+checkout already builds without ever touching the fork.
