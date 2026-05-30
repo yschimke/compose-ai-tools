@@ -63,15 +63,13 @@ jobs:
       - name: Render the CMP sample previews
         run: ./gradlew :samples:cmp:composePreviewRenderAll --stacktrace
 
-      # --rerun-tasks forces a fresh pack: composePreviewBundle's renders dir is an
-      # @Internal input (not tracked for up-to-date / cache keying), so a build-cache
-      # hit from a previous run could otherwise restore a bundle packed before the
-      # renders above existed. The render outputs are on disk either way (a cache hit
-      # restores them), so the fresh pack always sees them.
+      # composePreviewBundle tracks the render PNGs as inputs (renderFiles), so a
+      # cached render-less bundle won't be restored over the fresh renders above —
+      # no --rerun-tasks needed.
       - name: Pack the bundle (all previews, schema v2)
         run: |
           ./gradlew :samples:cmp:composePreviewBundle \
-            -PbundleOutput="$PWD/build/preview-bundle.png" --rerun-tasks --stacktrace
+            -PbundleOutput="$PWD/build/preview-bundle.png" --stacktrace
 
       # Compiles main + test and runs the TUI unit suite (BundleContentsTest et al).
       # The kitty-under-Xvfb e2e self-skips without its binaries. `:tui-cli:test`

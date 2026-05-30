@@ -242,6 +242,47 @@ class BundleFunctionalTest {
     assertThat(leadingPng.toList()).isEqualTo(coverEntry.toList())
   }
 
+  @Test
+  fun `composePreviewBundle re-packs when renders appear after a render-less pack`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    fun pack(): TaskOutcome? =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--build-cache")
+        .withPluginClasspath()
+        .build()
+        .task(":composePreviewBundle")
+        ?.outcome
+
+    // Pack once with no renders on disk: bundle is well-formed but bakes nothing.
+    assertThat(pack()).isEqualTo(TaskOutcome.SUCCESS)
+    var bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle).none { it.startsWith("previews/") }).isTrue()
+
+    // Discover (for the renderOutput path), then seed a render and re-pack. Because the render PNGs
+    // are tracked inputs (renderFiles), the task must NOT be UP-TO-DATE — it re-packs and bakes the
+    // now-present PNG, rather than restoring the stale render-less bundle.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+    val manifest =
+      json.decodeFromString(
+        PreviewManifest.serializer(),
+        File(projectDir, "build/compose-previews/previews.json").readText(),
+      )
+    val redOutput = manifest.previews.first { it.id == redId }.captures.first().renderOutput
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    File(rendersDir, redOutput.substringAfterLast('/')).writeBytes(solidPng(0x336699))
+
+    assertThat(pack()).isEqualTo(TaskOutcome.SUCCESS)
+    bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).contains("previews/$redId.png")
+  }
+
   /** A tiny solid-colour PNG, distinct per [rgb], for seeding fake renders. */
   private fun solidPng(rgb: Int): ByteArray {
     val img = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB)

@@ -280,8 +280,13 @@ internal object ComposePreviewTasks {
       depJarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(coordMapProvider)
       // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
-      // contains PNGs. Use orNull semantics: missing dir = stub cover.
+      // contains PNGs. Use orNull semantics: missing dir = stub cover. `rendersDir` is the
+      // @Internal
+      // resolution root; `renderFiles` tracks the PNG contents as a real input so the task re-packs
+      // (and the cache key changes) when renders appear/change rather than restoring a stale
+      // bundle.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
+      renderFiles.from(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       modulePath.set(project.path)
       backend.set("desktop")

@@ -21,6 +21,7 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
@@ -102,16 +103,34 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
 
   /**
-   * Renders directory from the preceding `composePreviewRender` task. The cover preview's PNG is
-   * read from here and prepended to the polyglot; when missing or empty, the task emits a stub gray
-   * PNG so the bundle is still well-formed (and `file(1)` still reports PNG).
+   * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
+   * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
+   * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
+   * bundle is still well-formed (and `file(1)` still reports PNG).
    *
-   * Marked `@Internal` because the dir may legitimately not exist (bundling without a prior render
-   * is a supported v1 flow). Tracking it as an `@InputDirectory @Optional` errors out when Gradle
-   * resolves the property to a path on disk that doesn't yet exist. The bundle is still re-packed
-   * whenever the upstream `composePreviewDiscover` output or the classpath change.
+   * Marked `@Internal` because this is the *root* used for path resolution in the action, and the
+   * dir may legitimately not exist (bundling without a prior render is a supported flow); tracking
+   * it as an `@InputDirectory @Optional` errors out when Gradle resolves the property to a path on
+   * disk that doesn't yet exist. The render *contents* are tracked separately via [renderFiles] so
+   * the task's up-to-date / cache keys do change when the PNGs appear or change.
    */
   @get:Internal abstract val rendersDir: DirectoryProperty
+
+  /**
+   * The render PNGs under [rendersDir], tracked as a proper input so up-to-date checks and the
+   * build cache key reflect them. Without this, the bundle could be skipped/restored stale: someone
+   * packs before rendering (or restores such a cached bundle), then renders and re-packs with the
+   * same manifest/classes, and `composePreviewBundle` would otherwise see unchanged inputs and keep
+   * the render-less bundle despite fresh PNGs on disk (Codex review, PR #1627).
+   *
+   * Modelled as an `@InputFiles` collection rather than `@InputDirectory` precisely so an absent
+   * `renders/` dir snapshots as empty instead of failing the build — the reason [rendersDir] itself
+   * had to stay `@Internal`.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val renderFiles: ConfigurableFileCollection
 
   /**
    * Preview ids to include. First entry is the cover. Empty means "all previews in the manifest";
