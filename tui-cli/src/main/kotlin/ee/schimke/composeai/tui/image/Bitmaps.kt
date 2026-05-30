@@ -1,6 +1,8 @@
 package ee.schimke.composeai.tui.image
 
 import com.jakewharton.mosaic.ui.Bitmap
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 
@@ -14,13 +16,23 @@ import javax.imageio.ImageIO
  * a try/catch.
  */
 object Bitmaps {
-  fun readPng(file: File): Bitmap? {
-    val img =
-      try {
-        ImageIO.read(file) ?: return null
-      } catch (_: Throwable) {
-        return null
-      }
+  fun readPng(file: File): Bitmap? =
+    try {
+      toBitmap(ImageIO.read(file))
+    } catch (_: Throwable) {
+      null
+    }
+
+  /** Decode raw PNG/JPEG/etc. bytes (e.g. a baked `previews/<id>.png` bundle entry) into a Bitmap. */
+  fun decode(bytes: ByteArray): Bitmap? =
+    try {
+      toBitmap(ByteArrayInputStream(bytes).use { ImageIO.read(it) })
+    } catch (_: Throwable) {
+      null
+    }
+
+  private fun toBitmap(img: BufferedImage?): Bitmap? {
+    if (img == null) return null
     val w = img.width
     val h = img.height
     if (w <= 0 || h <= 0) return null

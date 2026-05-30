@@ -1,0 +1,127 @@
+name: Preview Bundle ASCII
+
+# Smoke-tests the detached preview-bundle path end to end:
+#   1. render a single sample's previews,
+#   2. pack them into ONE portable bundle (PNG + ZIP polyglot, schema v2 — every
+#      preview baked under previews/<id>.png so the bundle stands alone),
+#   3. drive the Mosaic TUI in its headless --dump mode to print each baked
+#      preview to the terminal as ASCII / half-block text.
+#
+# The dump runs with a plain piped stdout (no PTY), so it leans on the Image
+# composable's lowest-fidelity fallback tier — it won't look great in the log,
+# but it proves the whole "open a bundle with no project, see every preview"
+# pipeline works. The TUI is opt-in (Mosaic fork snapshot), so this is the only
+# workflow that sets `tui.enabled=true`; the rest of CI never resolves it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gradle-plugin/**'
+      - 'tui-cli/**'
+      - 'samples/cmp/**'
+      - '.github/workflows/preview-bundle-ascii.yml'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'gradle-plugin/**'
+      - 'tui-cli/**'
+      - 'samples/cmp/**'
+      - '.github/workflows/preview-bundle-ascii.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-bundle-ascii-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dump:
+    name: Pack + dump sample bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # The TUI module and its Mosaic fork snapshot are gated behind this flag
+      # (settings.gradle.kts). local.properties is gitignored, so writing it here
+      # is local to the runner.
+      - name: Enable the TUI build
+        run: echo "tui.enabled=true" >> local.properties
+
+      # Render FIRST, in its own invocation. composePreviewBundle deliberately
+      # doesn't depend on composePreviewRender (packing without a render is a
+      # valid flow), and its renders dir is an @Internal input — so the renders
+      # have to already exist on disk before the bundle task's first execution
+      # for them to be baked in. A clean CI checkout packs exactly once, after
+      # this step, so every preview lands in previews/<id>.png.
+      - name: Render the CMP sample previews
+        run: ./gradlew :samples:cmp:composePreviewRenderAll --stacktrace
+
+      # composePreviewBundle tracks the render PNGs as inputs (renderFiles), so a
+      # cached render-less bundle won't be restored over the fresh renders above —
+      # no --rerun-tasks needed.
+      - name: Pack the bundle (all previews, schema v2)
+        run: |
+          ./gradlew :samples:cmp:composePreviewBundle \
+            -PbundleOutput="$PWD/build/preview-bundle.png" --stacktrace
+
+      # Build the launcher FIRST (so the dump can run even if a unit test is flaky),
+      # then run the TUI unit suite (BundleContentsTest et al). The kitty-under-Xvfb
+      # e2e self-skips without its binaries.
+      #
+      # --refresh-dependencies: `:tui-cli` depends on the Mosaic fork's 0.19.0-SNAPSHOT.
+      # Because the snapshot version string is fixed, Gradle's cached copy (restored by
+      # setup-gradle) would otherwise mask a republished snapshot — force a re-resolve so a
+      # freshly published fork (e.g. a new renderMosaic) is actually picked up.
+      - name: Build + unit-test the TUI
+        run: ./gradlew :tui-cli:installDist :tui-cli:test --refresh-dependencies --stacktrace
+
+      # Headless dump: no PTY, fixed terminal geometry via COLUMNS/LINES so the
+      # output is deterministic. `--dump` renders the cover preview (default; --id /
+      # --filter pick others) through Mosaic's one-shot renderMosaic + Image
+      # (ASCII / half-block fallback) and
+      # exits — no daemon, no raw-mode terminal I/O. We capture stdout and stderr
+      # separately and echo both (plus the exit code) into the step log so any
+      # failure — a render exception, a missing native lib, an empty dump — is
+      # diagnosable inline instead of needing the raw run log.
+      - name: Dump the cover preview to the terminal (ASCII fallback)
+        env:
+          TERM: dumb
+          COLUMNS: '100'
+          LINES: '40'
+        run: |
+          BUNDLE="$PWD/build/preview-bundle.png"
+          TUI=tui-cli/build/install/compose-preview-tui/bin/compose-preview-tui
+          set +e
+          "$TUI" --dump "$BUNDLE" >build/preview-ascii.txt 2>build/preview-dump-stderr.txt
+          code=$?
+          set -e
+          echo "::group::compose-preview-tui --dump (exit=$code)"
+          cat build/preview-ascii.txt
+          echo "::endgroup::"
+          if [ -s build/preview-dump-stderr.txt ]; then
+            echo "::group::compose-preview-tui --dump stderr"
+            cat build/preview-dump-stderr.txt
+            echo "::endgroup::"
+          fi
+          # The dump must exit cleanly AND print something — an empty stdout means
+          # the bundle had no baked previews (schema/render regression) or the TUI
+          # crashed before printing.
+          test "$code" -eq 0
+          test -s build/preview-ascii.txt
+
+      - name: Upload bundle + ASCII dump
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preview-bundle
+          path: |
+            build/preview-bundle.png
+            build/preview-ascii.txt
+            build/preview-dump-stderr.txt
