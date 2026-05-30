@@ -191,11 +191,18 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
     // the launcher reads it from disk, so the argv stays tiny regardless of
     // how many jars the consumer's classpath carries. Supported since Java 9,
     // which the daemon already requires.
+    //
+    // The argfile reference goes first, ahead of `descriptor.jvmArgs`: Java
+    // honours `--disable-@files` from the point it appears onward, so a user
+    // JVM arg carrying that flag would otherwise leave
+    // `@…/daemon-classpath.argfile` unexpanded and treated as the main class.
+    // Expanding it before any user-supplied arg keeps `-cp` applied regardless
+    // of later launcher flags.
     const argfilePath = writeClasspathArgfile(descriptor.classpath);
     const args = [
+        `@${argfilePath}`,
         ...descriptor.jvmArgs,
         ...sysProps,
-        `@${argfilePath}`,
         descriptor.mainClass,
     ];
 
