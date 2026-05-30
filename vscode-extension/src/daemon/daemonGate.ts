@@ -255,11 +255,20 @@ export class LiveDaemonGate implements DaemonGate {
         events: DaemonClientEvents,
     ): Promise<DaemonClient> {
         const key = module.modulePath;
+        // Identity-guarded eviction: a stale daemon's close event can land *after* a respawn
+        // (descriptor-change branch in `getOrSpawn` kills the old JVM synchronously and falls
+        // through to register a replacement, but `child_process` channel-close timing is
+        // asynchronous and unbounded). An unconditional `daemons.delete(key)` from the old
+        // handler would evict the replacement, leaving `isDaemonReady` returning false while a
+        // healthy daemon is still alive — and the next caller would spawn a duplicate JVM that
+        // `dispose()` no longer tracks. Match on the captured `spawned` reference so a stale
+        // close is a no-op once the entry has rolled to a newer daemon.
+        let mySpawned: SpawnedDaemon | null = null;
         const composed = composeEvents(events, () => {
-            // On channel close drop the entry so the next caller spawns a
-            // fresh JVM. Avoid awaiting `exited` here — events fires as
-            // soon as the stream ends, exit code may lag by a tick.
-            this.daemons.delete(key);
+            const current = this.daemons.get(key);
+            if (current && current.spawned === mySpawned) {
+                this.daemons.delete(key);
+            }
         });
         const spawned = await spawnDaemon({
             workspaceRoot: this.workspaceRoot,
@@ -269,6 +278,7 @@ export class LiveDaemonGate implements DaemonGate {
             logger: this.logger,
             logFilter: this.logFilter,
         });
+        mySpawned = spawned;
         // Snapshot the descriptor mtime *after* the JVM is up so subsequent re-entries on this
         // module compare against the file the daemon was actually launched with. See the
         // `descriptorMtimeMs` field's kdoc on `ManagedDaemon` for the respawn rationale.

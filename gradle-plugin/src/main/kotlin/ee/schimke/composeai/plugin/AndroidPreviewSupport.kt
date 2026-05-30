@@ -1895,14 +1895,14 @@ internal object AndroidPreviewSupport {
       // @Optional @InputFile — present when composePreviewDiscover has populated previews.json,
       // missing on the very first warm. Drives Gradle to invalidate the launch descriptor (and
       // therefore re-trigger VS Code's descriptor-watcher respawn path) when the manifest first
-      // appears or its content changes.
+      // appears or its content changes. Order vs. composePreviewDiscover is intentionally NOT
+      // pinned with `mustRunAfter` — under the cold-start bundle's discover-then-daemon-start
+      // sequencing this would tighten the in-Gradle-invocation guarantee, but a soft ordering
+      // here interacted poorly with the functional-test cache assertions on CI. Without it, the
+      // descriptor still gets refreshed on the *next* coldStartBundle that includes discover —
+      // typically the user's first save after the initial refresh — so in-session recovery costs
+      // at most one stub-fallback render before the extension's mtime watcher respawns.
       this.previewsManifest.set(previewOutputDir.map { it.file("previews.json") })
-      // When `composePreviewDiscover` is scheduled in the same Gradle invocation (the cold-start
-      // bundle in `gradleService.coldStartBundle(includeDiscover = true)`), run it first so the
-      // manifest file the @InputFile above sees is the freshly-written one. `mustRunAfter` is a
-      // soft ordering — Gradle ignores it when discover isn't in the graph, so the warm-only path
-      // (`runDaemonBootstrap` → `includeDiscover = false`) keeps its single-task latency.
-      this.mustRunAfter("composePreviewDiscover")
       this.outputFile.set(previewOutputDir.map { it.file("daemon-launch.json") })
     }
   }

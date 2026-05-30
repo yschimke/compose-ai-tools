@@ -137,7 +137,7 @@ abstract class DaemonBootstrapTask : DefaultTask() {
    */
   @get:InputFile
   @get:Optional
-  @get:PathSensitive(PathSensitivity.RELATIVE)
+  @get:PathSensitive(PathSensitivity.NAME_ONLY)
   abstract val previewsManifest: RegularFileProperty
 
   // --- Stage-2 in-process compile (COMPILE-IN-PROCESS.md) -----------------------------------
