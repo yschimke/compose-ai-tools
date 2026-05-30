@@ -17,8 +17,11 @@ import com.jakewharton.mosaic.ui.Column
 import com.jakewharton.mosaic.ui.Image
 import com.jakewharton.mosaic.ui.Text
 import com.jakewharton.mosaic.ui.TextStyle
-import ee.schimke.composeai.cli.PreviewModule
+import ee.schimke.composeai.render.session.RenderSession
+import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
+import ee.schimke.composeai.tui.BundleExtractor
 import ee.schimke.composeai.tui.BundlePngMetadata
+import ee.schimke.composeai.tui.BundleSidecars
 import ee.schimke.composeai.tui.LiveSession
 import ee.schimke.composeai.tui.TuiArgs
 import ee.schimke.composeai.tui.image.Bitmaps
@@ -28,30 +31,50 @@ import kotlinx.coroutines.launch
 
 /**
  * Bundle-PNG entry point. Renders ONE preview full-screen with no list / tab / status chrome — just
- * the image. The PNG handed on the command line is decoded and shown immediately as the first frame
- * (ImageIO reads the leading PNG of a PNG+ZIP polyglot bundle, ignoring the appended zip); then, if
- * the bundle names a module and we're inside its project on disk, the daemon is attached and later
- * renders replace the seed live as the source is edited. A plain PNG (or a bundle opened outside its
- * project) is shown as a static image.
+ * the image — and **assumes no project context**: a bundle is self-contained, so showing it must not
+ * depend on a surrounding Gradle checkout.
+ *
+ * The PNG handed on the command line is decoded and shown immediately as the first frame (ImageIO
+ * reads the leading PNG of the PNG+ZIP polyglot, ignoring the appended zip). Then, if this is a real
+ * bundle (carries `classes/app.jar` + `previews.json`) and the daemon/renderer sidecars ship in this
+ * install, the bundle's **own daemon** is spawned from those embedded classes and the live frame
+ * replaces the seed. There is no source tree to watch project-less, so "live" here means the daemon
+ * is held open for `r`-driven re-renders (paused-clock animations step, deterministic re-render).
+ *
+ * Falls back to the static seed image when: the file is a plain PNG (no provenance), the sidecars
+ * aren't present (e.g. run from source without `installDist`), or the daemon fails to start.
  *
  * `q` / `Esc` quits; `r` forces a re-render (no-op without a live session).
  */
-fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
+fun runBundle(png: File, args: TuiArgs) {
   // Decode the bundle's own image up front so the very first composed frame already shows it — no
   // "rendering…" flash before the daemon attaches.
   val seed = Bitmaps.readPng(png)
 
-  // `bundle.json` tells us which module + cover preview produced this PNG. Live re-render also needs
-  // the source project on disk: without a project root (we're not inside a Gradle checkout) there's
-  // no daemon to attach, so we fall back to the static seed.
-  val metadata = BundlePngMetadata.readOrNull(png)
-  val previewId = metadata?.coverPreviewId
-  val module =
-    if (projectRoot != null && metadata != null) {
-      // Mirror the synthetic module Main builds for `--no-discovery`: <projectRoot>/<path-as-dirs>.
-      val relative = metadata.modulePath.trimStart(':').replace(':', '/').ifEmpty { "." }
-      PreviewModule(gradlePath = metadata.modulePath, projectDir = File(projectRoot, relative))
+  val coverPreviewId = BundlePngMetadata.readOrNull(png)?.coverPreviewId
+  val modulePath = BundlePngMetadata.readOrNull(png)?.modulePath ?: ":bundle"
+
+  // Build a project-less opener iff this is a real bundle AND the sidecars are on disk. Extraction
+  // happens here (once) so the temp dir's lifetime spans the whole session; a shutdown hook cleans
+  // it up. `opener` is null → static seed only.
+  val extracted = BundleExtractor.extract(png)
+  val sidecars = BundleSidecars.locate()
+  val opener: (() -> RenderSession)? =
+    if (extracted != null && sidecars != null && coverPreviewId != null) {
+      Runtime.getRuntime()
+        .addShutdownHook(Thread { runCatching { extracted.workDir.deleteRecursively() } })
+      val open: () -> RenderSession = {
+        SubprocessRenderSessions.openBundleDaemon(
+          daemonClasspath = sidecars.classpath(),
+          classesDir = extracted.classesDir,
+          previewsJson = extracted.previewsJson,
+          workspaceRoot = extracted.workDir,
+          modulePath = modulePath,
+        )
+      }
+      open
     } else {
+      extracted?.workDir?.deleteRecursively()
       null
     }
 
@@ -59,24 +82,28 @@ fun runBundle(png: File, projectRoot: File?, args: TuiArgs) {
     BundleApp(
       seed = seed,
       pngName = png.name,
-      module = module,
-      previewId = previewId,
+      previewId = coverPreviewId,
+      modulePath = modulePath,
       extensions = args.extensions,
+      opener = opener,
     )
   }
 }
 
 /**
- * The whole bundle-mode UI: a single full-terminal image. Holds an optional [LiveSession] and swaps
- * the seed for the daemon's freshest render of [previewId] whenever a notification ticks.
+ * The whole bundle-mode UI: a single full-terminal image. When [opener] is non-null it attaches the
+ * bundle's daemon via [LiveSession.enableBundle] and shows the daemon's freshest render of
+ * [previewId] (read from the path the daemon reports, never an assumed project layout); otherwise it
+ * shows the static [seed].
  */
 @Composable
 private fun BundleApp(
   seed: Bitmap?,
   pngName: String,
-  module: PreviewModule?,
   previewId: String?,
+  modulePath: String,
   extensions: Set<String>,
+  opener: (() -> RenderSession)?,
 ) {
   val initialSize = remember { TerminalSize.probe() }
   val terminalState = LocalTerminalState.current
@@ -88,12 +115,16 @@ private fun BundleApp(
   val liveState by liveSession.state.collectAsState()
   var exitRequested by remember { mutableStateOf(false) }
 
-  // Attach the daemon once, if the bundle named a module. The session is sticky for the run.
-  LaunchedEffect(module) { if (module != null) liveSession.enable(module, extensions) }
-  // Mark the preview visible once the session is READY so the daemon pushes its re-renders.
+  // Attach the bundle's own daemon once, if we have an opener. Sticky for the run.
+  LaunchedEffect(opener) {
+    if (opener != null) liveSession.enableBundle(modulePath, extensions, opener)
+  }
+  // Once READY, mark the preview visible and kick one render so the daemon frame replaces the seed
+  // without the user pressing `r`.
   LaunchedEffect(liveState.status, previewId) {
     if (previewId != null && liveState.status == LiveSession.Status.READY) {
       liveSession.setVisible(previewId)
+      liveSession.forceRender(previewId)
     }
   }
 
@@ -102,14 +133,11 @@ private fun BundleApp(
     return
   }
 
-  // Prefer the daemon's freshest render of this preview; fall back to the seed PNG until (or unless)
-  // one exists. Re-resolved on every daemon tick.
-  val liveFrame: Bitmap? =
-    if (module != null && previewId != null) {
-      remember(liveState.tick) { resolveRenderedPng(module, previewId)?.let(Bitmaps::readPng) }
-    } else {
-      null
-    }
+  // Prefer the daemon's freshest render of this preview, read from the path it reported on the last
+  // `renderFinished`; fall back to the seed PNG until one exists. Re-decoded only when the path
+  // changes.
+  val livePngPath = previewId?.let { liveState.lastPng[it] }
+  val liveFrame: Bitmap? = remember(livePngPath) { livePngPath?.let { Bitmaps.readPng(File(it)) } }
   val bitmap = liveFrame ?: seed
 
   Column(
@@ -137,19 +165,4 @@ private fun BundleApp(
       Image(bitmap = bitmap, cellWidth = cols, cellHeight = rows)
     }
   }
-}
-
-/**
- * The daemon's most recent render of [previewId] for [module], or null if it hasn't rendered yet.
- * Mirrors `PreviewRow.resolvePng` — the renderer writes `build/compose-previews/<id>.png`, with
- * multi-capture previews landing as `<id>--<dimension>.png` (we take the first sibling).
- */
-private fun resolveRenderedPng(module: PreviewModule, previewId: String): File? {
-  val direct = module.projectDir.resolve("build/compose-previews/$previewId.png")
-  if (direct.isFile) return direct
-  val dir = direct.parentFile?.takeIf { it.isDirectory } ?: return null
-  val prefix = "$previewId--"
-  return dir
-    .listFiles { f -> f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".png") }
-    ?.minByOrNull { it.name }
 }
