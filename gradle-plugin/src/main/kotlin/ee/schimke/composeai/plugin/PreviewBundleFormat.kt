@@ -13,7 +13,8 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  * The bundle is a **PNG + ZIP polyglot**:
  * 1. Bytes `0..n` are a valid PNG (the cover image — the first selected preview's rendered output,
  *    or a stub gray placeholder). Finder, Preview.app, browsers, GitHub, Slack — every PNG viewer
- *    renders the leading image.
+ *    renders the leading image. This is the bundle's **default** preview: the one thing every plain
+ *    image viewer shows.
  * 2. Bytes `n+1..EOF` are a standard ZIP archive. ZIP parsers scan backwards from EOF for the
  *    End-Of-Central-Directory signature (`PK\x05\x06`), so the leading PNG bytes are invisible to
  *    them. `unzip foo.png` works.
@@ -26,10 +27,23 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  * ```
  * bundle.json              — manifest (this file's [BundleManifest])
  * previews.json            — filtered to selected preview ids; same shape as the original
+ * previews/<id>.png        — the rendered PNG for EACH selected preview (see [BUNDLE_PREVIEWS_DIR]).
+ *                            The cover's leading-bytes PNG is mirrored here under its own id so
+ *                            iterating the well-known directory yields every preview uniformly.
+ *                            A preview with no render on disk is simply absent from this directory.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
  *                            selected previews (plus all module resources)
  * report.json              — [MinimizationReport]: which deps contributed reachable classes
  * ```
+ *
+ * # Multiple previews, detached from a project
+ *
+ * The leading PNG is a *single* default image, but a bundle can carry many previews. Their rendered
+ * PNGs are baked into the well-known [BUNDLE_PREVIEWS_DIR] directory so a reader can show every
+ * preview **without re-rendering and without the originating Gradle project on disk** — the bundle
+ * is fully self-describing when opened from `~/Downloads`, a chat attachment, or a gist. The
+ * `classes/app.jar` + classpath are still present for tooling that wants a *live* re-render (the VS
+ * Code panel, the desktop daemon), but they are no longer required just to look at the images.
  *
  * **Notably absent:** there is no `libs/` directory. Maven / Google-resolvable dependencies are
  * recorded as coordinates in [BundleManifest.classpath]; the player (`compose-preview bundle open`,
@@ -108,7 +122,24 @@ sealed interface ClasspathEntry {
   ) : ClasspathEntry
 }
 
-const val BUNDLE_SCHEMA_VERSION: Int = 1
+/**
+ * Schema version stamped into [BundleManifest.schemaVersion].
+ * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
+ *   polyglot's leading bytes only.
+ * - v2 — adds the [BUNDLE_PREVIEWS_DIR] directory: a baked PNG per selected preview so the bundle
+ *   renders detached from its project. Readers gate on `>= 2` before looking for
+ *   `previews/<id>.png` (v1 bundles simply have no such directory); the additive zip entries are
+ *   otherwise ignored by `ignoreUnknownKeys` readers, so a v1 reader opening a v2 bundle still
+ *   works.
+ */
+const val BUNDLE_SCHEMA_VERSION: Int = 2
+
+/**
+ * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed
+ * by preview id: `previews/<previewId>.png`. The cover (the polyglot's leading bytes) is mirrored
+ * here under its own id so a reader can iterate this single directory to enumerate every preview.
+ */
+const val BUNDLE_PREVIEWS_DIR: String = "previews"
 
 /**
  * Diagnostic record describing how aggressive the minimization was. Always written into the bundle

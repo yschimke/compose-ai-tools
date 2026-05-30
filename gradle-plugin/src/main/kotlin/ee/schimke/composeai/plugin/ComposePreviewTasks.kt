@@ -280,8 +280,13 @@ internal object ComposePreviewTasks {
       depJarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(coordMapProvider)
       // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
-      // contains PNGs. Use orNull semantics: missing dir = stub cover.
+      // contains PNGs. Use orNull semantics: missing dir = stub cover. `rendersDir` is the
+      // @Internal
+      // resolution root; `renderFiles` tracks the PNG contents as a real input so the task re-packs
+      // (and the cache key changes) when renders appear/change rather than restoring a stale
+      // bundle.
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
+      renderFiles.from(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       modulePath.set(project.path)
       backend.set("desktop")
@@ -289,9 +294,13 @@ internal object ComposePreviewTasks {
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
       description = "Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot."
-      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). Callers
-      // wire
-      // explicitly when they want a real cover.
+      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). But
+      // `renderFiles` declares the renders dir (composePreviewRender's output) as an input, so when
+      // BOTH tasks are in the graph (the common `composePreviewRender composePreviewBundle` pack
+      // flow, e.g. `compose-preview bundle pack`) Gradle requires a declared ordering to avoid the
+      // implicit-dependency validation error. `mustRunAfter` supplies it WITHOUT pulling render in
+      // when only bundle is requested — render still doesn't run unless the caller asks for it.
+      mustRunAfter("composePreviewRender")
       dependsOn(discoverTaskName)
     }
   }

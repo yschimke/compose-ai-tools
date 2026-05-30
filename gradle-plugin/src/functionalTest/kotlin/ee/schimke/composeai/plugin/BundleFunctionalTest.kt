@@ -182,6 +182,121 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `composePreviewBundle bakes a PNG per selected preview into previews dir`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+    val blueId = "test.BlueKt.BlueBoxPreview"
+
+    // Phase 1 — discover so previews.json exists; that's where each capture's module-relative
+    // renderOutput path comes from.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewsJson = File(projectDir, "build/compose-previews/previews.json")
+    assertThat(previewsJson.exists()).isTrue()
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+
+    // Phase 2 — seed a distinct dummy rendered PNG for each preview's primary capture, mimicking a
+    // prior composePreviewRender. This exercises the baking path without needing the published
+    // renderer-desktop artifact (composePreviewRender resolves it from Maven; unavailable here).
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    val seeded = mutableMapOf<String, ByteArray>()
+    var tint = 0
+    for (preview in manifest.previews) {
+      val name =
+        preview.captures.first().renderOutput.substringAfterLast('/').ifEmpty {
+          "${preview.id}.png"
+        }
+      val bytes = solidPng(0x202020 + (tint++ * 0x303030))
+      File(rendersDir, name).writeBytes(bytes)
+      seeded[preview.id] = bytes
+    }
+
+    // Phase 3 — pack both previews (red is the cover).
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId,$blueId", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val entries = listEntries(bundle)
+    // Every selected preview is baked under the well-known previews/ directory, keyed by id.
+    assertThat(entries).containsAtLeast("previews/$redId.png", "previews/$blueId.png")
+
+    val coverEntry = readZipEntry(bundle, "previews/$redId.png")
+    assertThat(coverEntry).isNotNull()
+    assertThat(coverEntry!!.toList()).isEqualTo(seeded[redId]!!.toList())
+    assertThat(readZipEntry(bundle, "previews/$blueId.png")!!.toList())
+      .isEqualTo(seeded[blueId]!!.toList())
+
+    // The polyglot's leading PNG (everything before the appended zip) is byte-identical to the
+    // cover preview's baked entry — the front image is just a mirror of previews/<coverId>.png.
+    val allBytes = bundle.readBytes()
+    val leadingPng = allBytes.copyOfRange(0, allBytes.size - extractZipBytes(bundle).size)
+    assertThat(leadingPng.toList()).isEqualTo(coverEntry.toList())
+  }
+
+  @Test
+  fun `composePreviewBundle re-packs when renders appear after a render-less pack`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    // `--build-cache` so the test asserts the *cache-correctness* property the renderFiles input
+    // exists for, not just up-to-date checks. We assert on bundle CONTENT rather than task outcome:
+    // outcome flips between SUCCESS / FROM_CACHE depending on whether a prior suite run warmed the
+    // cache, but the regression (renders untracked) would leave the second pack UP_TO_DATE and the
+    // bundle render-less — which the content assertions below catch deterministically either way.
+    fun pack() {
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--build-cache")
+        .withPluginClasspath()
+        .build()
+    }
+
+    // Pack once with no renders on disk: bundle is well-formed but bakes nothing.
+    pack()
+    var bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle).none { it.startsWith("previews/") }).isTrue()
+
+    // Discover (for the renderOutput path), then seed a render and re-pack. Because the render PNGs
+    // are tracked inputs (renderFiles), the task must NOT be UP-TO-DATE — it re-packs and bakes the
+    // now-present PNG, rather than restoring the stale render-less bundle.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+    val manifest =
+      json.decodeFromString(
+        PreviewManifest.serializer(),
+        File(projectDir, "build/compose-previews/previews.json").readText(),
+      )
+    val redOutput = manifest.previews.first { it.id == redId }.captures.first().renderOutput
+    val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
+    File(rendersDir, redOutput.substringAfterLast('/')).writeBytes(solidPng(0x336699))
+
+    pack()
+    bundle = File(projectDir, "build/compose-previews/bundle.png")
+    assertThat(listEntries(bundle)).contains("previews/$redId.png")
+  }
+
+  /** A tiny solid-colour PNG, distinct per [rgb], for seeding fake renders. */
+  private fun solidPng(rgb: Int): ByteArray {
+    val img = java.awt.image.BufferedImage(2, 2, java.awt.image.BufferedImage.TYPE_INT_RGB)
+    for (y in 0 until 2) for (x in 0 until 2) img.setRGB(x, y, rgb and 0xFFFFFF)
+    val baos = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(img, "png", baos)
+    return baos.toByteArray()
+  }
+
+  @Test
   fun `composePreviewBundle filters previews_json to selected ids`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

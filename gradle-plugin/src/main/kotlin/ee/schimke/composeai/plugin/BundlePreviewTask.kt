@@ -21,6 +21,7 @@ import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
@@ -102,16 +103,34 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
 
   /**
-   * Renders directory from the preceding `composePreviewRender` task. The cover preview's PNG is
-   * read from here and prepended to the polyglot; when missing or empty, the task emits a stub gray
-   * PNG so the bundle is still well-formed (and `file(1)` still reports PNG).
+   * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
+   * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
+   * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
+   * bundle is still well-formed (and `file(1)` still reports PNG).
    *
-   * Marked `@Internal` because the dir may legitimately not exist (bundling without a prior render
-   * is a supported v1 flow). Tracking it as an `@InputDirectory @Optional` errors out when Gradle
-   * resolves the property to a path on disk that doesn't yet exist. The bundle is still re-packed
-   * whenever the upstream `composePreviewDiscover` output or the classpath change.
+   * Marked `@Internal` because this is the *root* used for path resolution in the action, and the
+   * dir may legitimately not exist (bundling without a prior render is a supported flow); tracking
+   * it as an `@InputDirectory @Optional` errors out when Gradle resolves the property to a path on
+   * disk that doesn't yet exist. The render *contents* are tracked separately via [renderFiles] so
+   * the task's up-to-date / cache keys do change when the PNGs appear or change.
    */
   @get:Internal abstract val rendersDir: DirectoryProperty
+
+  /**
+   * The render PNGs under [rendersDir], tracked as a proper input so up-to-date checks and the
+   * build cache key reflect them. Without this, the bundle could be skipped/restored stale: someone
+   * packs before rendering (or restores such a cached bundle), then renders and re-packs with the
+   * same manifest/classes, and `composePreviewBundle` would otherwise see unchanged inputs and keep
+   * the render-less bundle despite fresh PNGs on disk (Codex review, PR #1627).
+   *
+   * Modelled as an `@InputFiles` collection rather than `@InputDirectory` precisely so an absent
+   * `renders/` dir snapshots as empty instead of failing the build — the reason [rendersDir] itself
+   * had to stay `@Internal`.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val renderFiles: ConfigurableFileCollection
 
   /**
    * Preview ids to include. First entry is the cover. Empty means "all previews in the manifest";
@@ -180,6 +199,14 @@ abstract class BundlePreviewTask : DefaultTask() {
         producedBy = producedBy.get(),
       )
 
+    // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
+    // from its project (see [PreviewBundleFormat]). Previews whose render is missing on disk are
+    // simply omitted — the reader treats an absent entry as "not rendered yet".
+    val previewPngs = LinkedHashMap<String, ByteArray>()
+    for (preview in selected) {
+      resolvePreviewPng(preview)?.let { previewPngs[preview.id] = it }
+    }
+
     val filteredManifest = manifest.copy(previews = selected)
     val zipBytes =
       buildZip(
@@ -188,9 +215,13 @@ abstract class BundlePreviewTask : DefaultTask() {
         appJar = appJarBytes,
         inlinedProjectJars = inlinedProjectJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
+        previewPngs = previewPngs,
       )
 
-    val coverPng = resolveCoverPng(selected.first())
+    // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
+    // when present so the front image and `previews/<coverId>.png` are byte-identical; otherwise a
+    // stub gray placeholder keeps the file a well-formed PNG.
+    val coverPng = previewPngs[coverId] ?: STUB_GRAY_PNG
     val outFile = output.get().asFile
     writePngZipPolyglot(coverPng, zipBytes, outFile)
 
@@ -199,6 +230,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     val depsDropped = depDecisions.count { !it.kept }
     logger.lifecycle(
       "composePreviewBundle — wrote ${outFile.name} (${outFile.length()} bytes)\n" +
+        "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
@@ -227,21 +259,38 @@ abstract class BundlePreviewTask : DefaultTask() {
     return resolved
   }
 
-  private fun resolveCoverPng(cover: PreviewInfo): ByteArray {
-    val rendersRoot = rendersDir.orNull?.asFile
-    if (rendersRoot != null) {
-      val candidate =
-        cover.captures.firstOrNull()?.renderOutput?.let { rel ->
-          // `renderOutput` is module-relative under `build/compose-previews/`, e.g.
-          // `renders/<id>.png`. The rendersDir input points at the `renders/` dir itself.
-          val name = rel.substringAfterLast('/')
-          File(rendersRoot, name)
-        }
-      if (candidate != null && candidate.isFile && candidate.length() > 0) {
-        return candidate.readBytes()
+  /**
+   * The rendered PNG bytes for [preview]'s primary capture, or null when no render exists on disk
+   * (bundling without a prior `composePreviewRender`, or a preview that failed to render). Used
+   * both for the cover (first selected) and to bake every selected preview into
+   * `previews/<id>.png`.
+   */
+  private fun resolvePreviewPng(preview: PreviewInfo): ByteArray? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    // `renderOutput` is module-relative under `build/compose-previews/`, e.g. `renders/<id>.png`.
+    // The rendersDir input points at the `renders/` dir itself.
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    val name = rel.substringAfterLast('/')
+
+    val exact = File(rendersRoot, name)
+    if (exact.isFile && exact.length() > 0) return exact.readBytes()
+
+    // No file at the primary capture's exact path: @PreviewParameter / multi-variant previews fan
+    // out into siblings (`<base>_<param>.png`, `<base>--<dimension>.png`). Bake the first sibling
+    // as
+    // a representative cover so the preview isn't silently dropped from the bundle.
+    if (!rendersRoot.isDirectory) return null
+    val base = name.removeSuffix(".png")
+    return rendersRoot
+      .listFiles { f ->
+        f.isFile &&
+          f.length() > 0 &&
+          f.name.endsWith(".png") &&
+          (f.name.startsWith("${base}_") || f.name.startsWith("$base--"))
       }
-    }
-    return STUB_GRAY_PNG
+      ?.minByOrNull { it.name }
+      ?.readBytes()
   }
 
   private fun packModuleClasses(
@@ -372,11 +421,14 @@ abstract class BundlePreviewTask : DefaultTask() {
     appJar: ByteArray,
     inlinedProjectJars: Map<String, File>,
     report: String,
+    previewPngs: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
       zip.writeFile("bundle.json", bundleJson.toByteArray(Charsets.UTF_8))
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
+      // One baked PNG per selected preview under the well-known `previews/` directory.
+      previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       zip.writeFile("classes/app.jar", appJar)
       inlinedProjectJars.forEach { (path, file) -> zip.writeFile(path, file.readBytes()) }
       zip.writeFile("report.json", report.toByteArray(Charsets.UTF_8))
