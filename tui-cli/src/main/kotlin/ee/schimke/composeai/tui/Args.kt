@@ -21,6 +21,13 @@ data class TuiArgs(
   val liveOnStart: Boolean = false,
   /** Project root override. Defaults to walking up from cwd looking for `gradlew`. */
   val projectRoot: File? = null,
+  /**
+   * A bundle PNG to open directly. When set, the TUI skips Gradle discovery and the browser UI
+   * entirely and renders just this preview's image — full-screen, no chrome — seeding the first
+   * frame from the PNG and (if it carries provenance) attaching the daemon for live re-renders.
+   * Captured from a lone existing `*.png` positional argument.
+   */
+  val bundlePng: File? = null,
   val verbose: Boolean = false,
   val timeoutSeconds: Long = 300,
   /**
@@ -43,6 +50,7 @@ data class TuiArgs(
       var projectRoot: File? = null
       var timeoutSeconds = 300L
       var noDiscovery = false
+      val positionals = mutableListOf<String>()
 
       val valuedFlags =
         setOf("--module", "--filter", "--id", "--timeout", "--project-root", "--with-extension")
@@ -79,10 +87,19 @@ data class TuiArgs(
           else ->
             if (name.startsWith("-")) {
               System.err.println("warning: ignoring unknown flag '$name'")
+            } else {
+              positionals += arg
             }
         }
         i += 1
       }
+
+      // A lone existing `*.png` positional opens straight into the image-only bundle view.
+      val bundlePng =
+        positionals
+          .firstOrNull()
+          ?.let(::File)
+          ?.takeIf { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
 
       return TuiArgs(
         module = module,
@@ -91,6 +108,7 @@ data class TuiArgs(
         extensions = extensions,
         liveOnStart = live,
         projectRoot = projectRoot,
+        bundlePng = bundlePng,
         verbose = verbose,
         timeoutSeconds = timeoutSeconds,
         noDiscovery = noDiscovery,
@@ -102,7 +120,10 @@ data class TuiArgs(
         """
         compose-preview-tui — interactive Mosaic-based Compose Preview browser
 
-        Usage: compose-preview-tui [options]
+        Usage:
+          compose-preview-tui [options]          Browse a project's previews
+          compose-preview-tui <bundle.png>       Open a bundle PNG full-screen (image only,
+                                                 live if the PNG carries provenance)
 
         Options:
           --module <path>        Gradle path (e.g. :samples:android). Default: prompt
