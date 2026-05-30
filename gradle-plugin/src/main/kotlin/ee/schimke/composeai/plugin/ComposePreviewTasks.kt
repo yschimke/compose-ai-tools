@@ -294,9 +294,13 @@ internal object ComposePreviewTasks {
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
       description = "Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot."
-      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). Callers
-      // wire
-      // explicitly when they want a real cover.
+      // No dependsOn composePreviewRender — bundle without a render is valid (stub cover). But
+      // `renderFiles` declares the renders dir (composePreviewRender's output) as an input, so when
+      // BOTH tasks are in the graph (the common `composePreviewRender composePreviewBundle` pack
+      // flow, e.g. `compose-preview bundle pack`) Gradle requires a declared ordering to avoid the
+      // implicit-dependency validation error. `mustRunAfter` supplies it WITHOUT pulling render in
+      // when only bundle is requested — render still doesn't run unless the caller asks for it.
+      mustRunAfter("composePreviewRender")
       dependsOn(discoverTaskName)
     }
   }

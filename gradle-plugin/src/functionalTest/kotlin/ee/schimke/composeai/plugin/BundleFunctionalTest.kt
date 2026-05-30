@@ -247,17 +247,21 @@ class BundleFunctionalTest {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
-    fun pack(): TaskOutcome? =
+    // `--build-cache` so the test asserts the *cache-correctness* property the renderFiles input
+    // exists for, not just up-to-date checks. We assert on bundle CONTENT rather than task outcome:
+    // outcome flips between SUCCESS / FROM_CACHE depending on whether a prior suite run warmed the
+    // cache, but the regression (renders untracked) would leave the second pack UP_TO_DATE and the
+    // bundle render-less — which the content assertions below catch deterministically either way.
+    fun pack() {
       GradleRunner.create()
         .withProjectDir(projectDir)
         .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "--build-cache")
         .withPluginClasspath()
         .build()
-        .task(":composePreviewBundle")
-        ?.outcome
+    }
 
     // Pack once with no renders on disk: bundle is well-formed but bakes nothing.
-    assertThat(pack()).isEqualTo(TaskOutcome.SUCCESS)
+    pack()
     var bundle = File(projectDir, "build/compose-previews/bundle.png")
     assertThat(listEntries(bundle).none { it.startsWith("previews/") }).isTrue()
 
@@ -278,7 +282,7 @@ class BundleFunctionalTest {
     val rendersDir = File(projectDir, "build/compose-previews/renders").apply { mkdirs() }
     File(rendersDir, redOutput.substringAfterLast('/')).writeBytes(solidPng(0x336699))
 
-    assertThat(pack()).isEqualTo(TaskOutcome.SUCCESS)
+    pack()
     bundle = File(projectDir, "build/compose-previews/bundle.png")
     assertThat(listEntries(bundle)).contains("previews/$redId.png")
   }
