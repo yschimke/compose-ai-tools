@@ -71,16 +71,19 @@ jobs:
           ./gradlew :samples:cmp:composePreviewBundle \
             -PbundleOutput="$PWD/build/preview-bundle.png" --stacktrace
 
-      # Compiles main + test and runs the TUI unit suite (BundleContentsTest et al).
-      # The kitty-under-Xvfb e2e self-skips without its binaries. `:tui-cli:test`
-      # depends on installDist, so this also builds the launcher the dump uses.
+      # Build the launcher FIRST (so the dump can run even if a unit test is flaky),
+      # then run the TUI unit suite (BundleContentsTest et al). The kitty-under-Xvfb
+      # e2e self-skips without its binaries.
       - name: Build + unit-test the TUI
-        run: ./gradlew :tui-cli:test :tui-cli:installDist --stacktrace
+        run: ./gradlew :tui-cli:installDist :tui-cli:test --stacktrace
 
       # Headless dump: no PTY, fixed terminal geometry via COLUMNS/LINES so the
       # output is deterministic. `--dump` renders each baked preview through
       # Mosaic's one-shot renderMosaic + Image (ASCII / half-block fallback) and
-      # exits — no daemon, no raw-mode terminal I/O.
+      # exits — no daemon, no raw-mode terminal I/O. We capture stdout and stderr
+      # separately and echo both (plus the exit code) into the step log so any
+      # failure — a render exception, a missing native lib, an empty dump — is
+      # diagnosable inline instead of needing the raw run log.
       - name: Dump each preview to the terminal (ASCII fallback)
         env:
           TERM: dumb
@@ -89,11 +92,22 @@ jobs:
         run: |
           BUNDLE="$PWD/build/preview-bundle.png"
           TUI=tui-cli/build/install/compose-preview-tui/bin/compose-preview-tui
-          echo "::group::compose-preview-tui --dump $BUNDLE"
-          "$TUI" --dump "$BUNDLE" | tee build/preview-ascii.txt
+          set +e
+          "$TUI" --dump "$BUNDLE" >build/preview-ascii.txt 2>build/preview-dump-stderr.txt
+          code=$?
+          set -e
+          echo "::group::compose-preview-tui --dump (exit=$code)"
+          cat build/preview-ascii.txt
           echo "::endgroup::"
-          # Fail loudly if the dump produced nothing — that means the bundle had
-          # no baked previews (schema/render regression) rather than a layout nit.
+          if [ -s build/preview-dump-stderr.txt ]; then
+            echo "::group::compose-preview-tui --dump stderr"
+            cat build/preview-dump-stderr.txt
+            echo "::endgroup::"
+          fi
+          # The dump must exit cleanly AND print something — an empty stdout means
+          # the bundle had no baked previews (schema/render regression) or the TUI
+          # crashed before printing.
+          test "$code" -eq 0
           test -s build/preview-ascii.txt
 
       - name: Upload bundle + ASCII dump
@@ -104,3 +118,4 @@ jobs:
           path: |
             build/preview-bundle.png
             build/preview-ascii.txt
+            build/preview-dump-stderr.txt
