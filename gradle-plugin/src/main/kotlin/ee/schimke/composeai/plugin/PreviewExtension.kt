@@ -112,6 +112,26 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(true)
 
   /**
+   * When `true`, `composePreviewRender` depends on [ValidatePreviewToolingPresentTask], which walks
+   * the resolved `${variant}RuntimeClasspath` and fails the build (with a remediation message) if
+   * no known `@Preview` tooling coord is reachable. Only meaningful on modules that passed the
+   * config-time gate via the tier-2 over-approximation (Compose plugin + `project(":...")` deps but
+   * no directly-declared tooling coord) — when the consumer declared a tooling coord directly, the
+   * validator isn't registered regardless.
+   *
+   * Default: `false` — render proceeds and surfaces whatever the actual failure mode is (often
+   * "discovery found zero previews", since the discovery task walks the classpath for
+   * annotation-bearing classes). Flip to `true` for fast-fail in CI when a missing-tooling
+   * regression on a multi-module app should stop the build at the gate with a coordinate to add,
+   * rather than at render time with a less-direct error.
+   *
+   * Override at the command line with `-PcomposePreview.failOnMissingPreviewTooling=true` for a
+   * single CLI invocation without editing `build.gradle.kts`.
+   */
+  val failOnMissingPreviewTooling: Property<Boolean> =
+    objects.property(Boolean::class.java).convention(false)
+
+  /**
    * When `true`, the plugin wires the AGP `testDebugUnitTest` / `testReleaseUnitTest` tasks to
    * depend on `composePreviewRenderAll`, so a consumer's pixel-test class (e.g. one that reads the
    * PNGs under `build/compose-previews/renders/`) sees a fully-rendered output directory by the

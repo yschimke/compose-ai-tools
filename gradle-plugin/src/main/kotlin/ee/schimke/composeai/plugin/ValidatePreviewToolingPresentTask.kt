@@ -12,11 +12,17 @@ import org.gradle.work.DisableCachingByDefault
 
 /**
  * Fails the render path when a module's runtime classpath doesn't transitively reach any of the
- * supported `@Preview` tooling coords. Used as a fast-fail gate registered as a `dependsOn` of
- * `composePreviewRender` for AGP modules where the **direct** declared-deps scan didn't find
- * preview tooling but the module still applies the plugin (typically because a sibling
- * `project(":...")` dep is expected to contribute it — the CMP-Android `:composeApp -> :shared`
- * shape from issue #241 / #1549).
+ * supported `@Preview` tooling coords. Registered as a `dependsOn` of `composePreviewRender` only
+ * when the consumer opts in via `composePreview.failOnMissingPreviewTooling = true` AND the
+ * **direct** declared-deps scan didn't find preview tooling on this module (typically because a
+ * sibling `project(":...")` dep is expected to contribute it — the CMP-Android `:composeApp ->
+ * :shared` shape from issue #241 / #1549).
+ *
+ * **Opt-in by default.** Aggregator modules that pass the tier-2 over-approximation (Compose
+ * plugin + project deps) without actually hosting `@Preview` functions don't need the hard fail;
+ * `composePreviewDiscover` finding zero previews on them is the correct outcome. CI pipelines that
+ * want fast-fail when a missing-tooling regression slips in on a multi-module app turn this on
+ * explicitly via the DSL or `-PcomposePreview.failOnMissingPreviewTooling=true`.
  *
  * **Why a task-time check.** Resolving `${variant}RuntimeClasspath` at *configuration time* trips
  * the "Configuration was resolved during configuration time" CC warning (and the older
@@ -27,11 +33,13 @@ import org.gradle.work.DisableCachingByDefault
  * task runs, and the configuration-cache-stored task graph references the Provider, not the
  * resolved snapshot itself.
  *
- * On no-tooling, throws with a remediation message pointing at the two ways out:
+ * On no-tooling, throws with a remediation message pointing at the ways out:
  * 1. declare a preview-tooling coord directly on this module's `*Implementation` / `*Api` /
- *    `*RuntimeOnly` buckets, or
- * 2. set `composePreview.enforcePreviewToolingDependency = false` (the manual escape hatch) and
- *    rely on the sibling's transitive contribution at runtime.
+ *    `*RuntimeOnly` buckets,
+ * 2. drop `composePreview.failOnMissingPreviewTooling` (or set it back to `false`) to let the
+ *    render task proceed and surface whatever the actual failure mode is, or
+ * 3. set `composePreview.enforcePreviewToolingDependency = false` to bypass the per-module tooling
+ *    gate entirely (the issue #241 / #1549 escape hatch).
  */
 @DisableCachingByDefault(
   because =
@@ -79,11 +87,15 @@ abstract class ValidatePreviewToolingPresentTask : DefaultTask() {
           "      // implementation(\"org.jetbrains.compose.components:components-ui-tooling-preview\")"
         )
         appendLine(
-          "  - or setting `composePreview { enforcePreviewToolingDependency = false }` to bypass"
+          "  - dropping `composePreview { failOnMissingPreviewTooling = true }` so render no"
         )
         appendLine(
-          "    this check (issue #241 / #1549 escape hatch — leans on a sibling module's tooling)."
+          "    longer hard-fails when this module's classpath lacks tooling (the default)."
         )
+        appendLine(
+          "  - or setting `composePreview { enforcePreviewToolingDependency = false }` to bypass"
+        )
+        appendLine("    the per-module gate entirely (issue #241 / #1549 escape hatch).")
       }
     )
   }
