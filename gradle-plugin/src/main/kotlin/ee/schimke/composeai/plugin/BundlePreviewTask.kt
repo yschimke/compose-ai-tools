@@ -261,6 +261,21 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  Project deps inlined: $projectInlined\n" +
         "  deps dropped:         $depsDropped (no reachable classes)"
     )
+
+    // Bundles are meant to be small and shareable — a detached `coordinates` pack is typically
+    // ~100 KB. Embedding (`--embed-deps`) trades that for offline self-containment, but a fat
+    // bundle
+    // defeats the "paste it into a chat" point. Warn past a soft threshold so embedding stays a
+    // deliberate, rare choice rather than an accidental 50 MB artefact.
+    val sizeBytes = outFile.length()
+    if (sizeBytes > EMBED_SIZE_WARN_BYTES && embeddedKept > 0) {
+      logger.warn(
+        "composePreviewBundle: ${outFile.name} is ${sizeBytes / 1_000_000}MB with $embeddedKept " +
+          "embedded dep(s). Embedding is an offline fallback — prefer the default detached " +
+          "`coordinates` pack (drop `--embed-deps` / `-PbundleEmbedDeps`) so the bundle stays small " +
+          "and resolves its deps at open time."
+      )
+    }
   }
 
   private fun resolveSelection(manifest: PreviewManifest, ids: List<String>): List<PreviewInfo> {
@@ -609,6 +624,13 @@ abstract class BundlePreviewTask : DefaultTask() {
       encodeDefaults = true
       classDiscriminator = "kind"
     }
+
+    /**
+     * Soft size ceiling above which an embed-deps pack warns. 25 MB is comfortably above a normal
+     * embedded Compose graph (a few MB) but well under the "nobody pastes this into a chat" range —
+     * enough to flag an accidental fat bundle without failing the build.
+     */
+    const val EMBED_SIZE_WARN_BYTES: Long = 25_000_000L
 
     /**
      * Fixed timestamp stamped onto every ZIP entry produced by [writeFile]. 1980-01-01T00:00:00
