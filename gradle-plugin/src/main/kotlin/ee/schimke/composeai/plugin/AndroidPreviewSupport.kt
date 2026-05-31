@@ -6,6 +6,7 @@ import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
+import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
@@ -107,6 +108,10 @@ internal object AndroidPreviewSupport {
     task.sdkOverride.set(extensionOverride)
     task.consumerCompileSdk.set(consumerCompileSdk)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    // `buildJavaMajor` is wired separately (below, in registerAndroidTasks) from the
+    // `composePreviewRender` Test task's resolved `javaLauncher` — that's the JVM Robolectric
+    // actually bootstraps under, which can differ from the Gradle build JVM when the consumer (or
+    // the SDK matrix) forks tests into a toolchain.
   }
 
   fun configure(project: Project, extension: PreviewExtension) {
@@ -1612,6 +1617,21 @@ internal object AndroidPreviewSupport {
           dependsOn(compileShardsTask)
         }
       }
+
+    // Feed the JDK-aware Robolectric SDK ceiling from the JVM the render actually forks into. The
+    // `composePreviewRender` task's `javaLauncher` resolves to the consumer's test toolchain (or the
+    // SDK matrix's `composeai.matrix.jvmToolchain`, or the Gradle build JVM when none is set) — the
+    // exact JVM `DefaultSdkProvider.verifySupportedSdk` runs under. Reading the launcher value adds
+    // no task dependency (it's a configuration-time property, not a task output). Falls back to the
+    // current JVM if the launcher has no value. See [GenerateRobolectricPropertiesTask.buildJavaMajor].
+    generateRobolectricPropertiesTask.configure {
+      buildJavaMajor.set(
+        renderTask
+          .flatMap { it.javaLauncher }
+          .map { it.metadata.languageVersion.asInt() }
+          .orElse(JavaVersion.current().majorVersion.toInt())
+      )
+    }
 
     if (extension.resourcePreviews.enabled.get()) {
       // Resource render task — same Robolectric harness as `composePreviewRender`, different test

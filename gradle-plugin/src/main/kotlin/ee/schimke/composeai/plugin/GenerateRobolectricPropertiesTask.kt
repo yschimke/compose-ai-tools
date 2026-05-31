@@ -79,6 +79,23 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val maxSupportedSdkOverride: Property<Int>
 
+  /**
+   * Major version of the JVM that will run the `composePreviewRender` test (where Robolectric
+   * actually bootstraps the sandbox). Wired by [AndroidPreviewSupport] from that Test task's
+   * resolved `javaLauncher` — the consumer's test toolchain, the SDK matrix's
+   * `composeai.matrix.jvmToolchain`, or the Gradle build JVM when none is set. Left unset only by
+   * unit tests that drive [resolveSdk] directly, in which case it defaults to the running JVM.
+   *
+   * Robolectric 4.16.1 refuses to bootstrap an SDK [SDK_REQUIRING_JAVA_21] (Baklava) sandbox unless
+   * the test JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws an
+   * opaque `UnsupportedOperationException`, which fails *every* preview render rather than surfacing
+   * a clear message. When the build runs on an older JDK we lower the effective ceiling one level
+   * (to [MAX_SUPPORTED_SDK_BELOW_JAVA_21]) so a consumer on `compileSdk = 36` still renders at 35
+   * instead of producing zero PNGs. The daemon path pins the same level for the same reason — see
+   * `RobolectricHost.ANDROID_SDK`.
+   */
+  @get:Input @get:Optional abstract val buildJavaMajor: Property<Int>
+
   @get:OutputDirectory abstract val outputDir: DirectoryProperty
 
   @TaskAction
@@ -131,15 +148,21 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
    * [defaultSdk]. Internal so the test can drive it directly.
    */
   internal fun resolveSdk(): Int {
-    val ceiling = maxSupportedSdkOverride.orNull ?: MAX_SUPPORTED_SDK
+    val javaMajor = buildJavaMajor.orNull ?: Runtime.version().feature()
+    // Robolectric's max SDK for *this build* — the static/overridden jar ceiling, then lowered when
+    // the test JVM is too old to bootstrap the top level (see [buildJavaMajor]).
+    val jarCeiling = maxSupportedSdkOverride.orNull ?: MAX_SUPPORTED_SDK
+    val ceiling =
+      if (javaMajor < MIN_JAVA_FOR_SDK_36) minOf(jarCeiling, MAX_SUPPORTED_SDK_BELOW_JAVA_21)
+      else jarCeiling
     if (sdkOverride.isPresent) {
       val v = sdkOverride.get()
       if (v !in MIN_SUPPORTED_SDK..ceiling) {
         throw GradleException(
           "compose-preview: composePreview.sdkVersion = $v is outside the supported range " +
-            "($MIN_SUPPORTED_SDK..$ceiling for this Robolectric build). Pick a value " +
-            "inside that range or remove the override to let the plugin auto-detect from " +
-            "android.compileSdk."
+            "($MIN_SUPPORTED_SDK..$ceiling for this Robolectric build${jdkCeilingSuffix(javaMajor, ceiling, jarCeiling)}). " +
+            "Pick a value inside that range or remove the override to let the plugin auto-detect " +
+            "from android.compileSdk."
         )
       }
       return v
@@ -154,11 +177,20 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
         )
       }
       if (raw > ceiling) {
+        val jdkClamped = ceiling < jarCeiling && raw <= jarCeiling
         logger.warn(
-          "compose-preview: consumer compileSdk = $raw exceeds Robolectric's max supported SDK " +
-            "($ceiling for this Robolectric build); clamping the Robolectric sandbox " +
-            "to $ceiling. Rendering may still fail if your APK's <uses-sdk> requires a " +
-            "newer framework. Set composePreview.sdkVersion = N to silence this warning."
+          if (jdkClamped) {
+            "compose-preview: consumer compileSdk = $raw needs JDK $MIN_JAVA_FOR_SDK_36+ to render " +
+              "(Robolectric refuses an SDK > $MAX_SUPPORTED_SDK_BELOW_JAVA_21 sandbox on JDK " +
+              "$javaMajor); clamping the Robolectric sandbox to $ceiling. Run the render on JDK " +
+              "$MIN_JAVA_FOR_SDK_36+ to render at $raw, or set composePreview.sdkVersion = N to " +
+              "silence this warning."
+          } else {
+            "compose-preview: consumer compileSdk = $raw exceeds Robolectric's max supported SDK " +
+              "($ceiling for this Robolectric build); clamping the Robolectric sandbox " +
+              "to $ceiling. Rendering may still fail if your APK's <uses-sdk> requires a " +
+              "newer framework. Set composePreview.sdkVersion = N to silence this warning."
+          }
         )
         return ceiling
       }
@@ -166,6 +198,16 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
     }
     return defaultSdk.get()
   }
+
+  /**
+   * Tail clause for the strict-override error message, naming the JDK gate when the effective
+   * ceiling was lowered below the jar ceiling because the build JVM is older than
+   * [MIN_JAVA_FOR_SDK_36]. Empty otherwise so the JDK-21+ path reads unchanged.
+   */
+  private fun jdkCeilingSuffix(javaMajor: Int, ceiling: Int, jarCeiling: Int): String =
+    if (ceiling < jarCeiling)
+      "; SDK > $ceiling needs JDK $MIN_JAVA_FOR_SDK_36+, this build is on JDK $javaMajor"
+    else ""
 
   companion object {
     /**
@@ -188,11 +230,33 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
      * [maxSupportedSdkOverride] escape hatch when paired with a Robolectric snapshot that actually
      * ships the higher API; production consumers shouldn't reach for that knob.
      *
-     * Robolectric additionally refuses to bootstrap an SDK 36 sandbox unless the test JVM is JDK
-     * 21+ (`DefaultSdkProvider.verifySupportedSdk`). Consumers on JDK 17 will get a clear `Android
-     * SDK 36 requires Java 21` error if their `compileSdk` lands on 36.
+     * This is the *jar* ceiling. Robolectric additionally refuses to bootstrap an SDK 36 sandbox
+     * unless the test JVM is JDK 21+ (`DefaultSdkProvider.verifySupportedSdk` throws a bare
+     * `UnsupportedOperationException`, not the clear message you'd hope for). On older JDKs the
+     * effective ceiling drops to [MAX_SUPPORTED_SDK_BELOW_JAVA_21] — see [buildJavaMajor] and
+     * [resolveSdk] — so a `compileSdk = 36` consumer on JDK 17 renders at 35 instead of failing
+     * every preview.
      */
     internal const val MAX_SUPPORTED_SDK: Int = 36
+
+    /**
+     * First Android SDK level Robolectric gates behind the test JVM's Java version. Robolectric
+     * 4.16.1 refuses to bootstrap a sandbox for [SDK_REQUIRING_JAVA_21] (API 36, Baklava) unless the
+     * JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws a bare
+     * `UnsupportedOperationException`, failing every preview render instead of surfacing a clear
+     * message.
+     */
+    internal const val SDK_REQUIRING_JAVA_21: Int = 36
+
+    /** JDK major version Robolectric requires before it will bootstrap an [SDK_REQUIRING_JAVA_21] sandbox. */
+    internal const val MIN_JAVA_FOR_SDK_36: Int = 21
+
+    /**
+     * Effective Robolectric SDK ceiling when the render JVM is older than [MIN_JAVA_FOR_SDK_36]. One
+     * level below [SDK_REQUIRING_JAVA_21] so a consumer on `compileSdk = 36` still renders (at 35)
+     * under JDK 17 rather than failing every preview. Mirrors `RobolectricHost.ANDROID_SDK`.
+     */
+    internal const val MAX_SUPPORTED_SDK_BELOW_JAVA_21: Int = 35
 
     /**
      * Default Robolectric SDK when neither the consumer's `android.compileSdk` nor

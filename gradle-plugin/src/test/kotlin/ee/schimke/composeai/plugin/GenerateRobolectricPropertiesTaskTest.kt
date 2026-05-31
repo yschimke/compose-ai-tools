@@ -118,11 +118,71 @@ class GenerateRobolectricPropertiesTaskTest {
     assertThat(body).contains("sdk=${GenerateRobolectricPropertiesTask.DEFAULT_SDK}")
   }
 
+  @Test
+  fun `compileSdk 36 clamps to 35 when the build JVM is older than Java 21`() {
+    // The Robolectric DefaultSdkProvider.verifySupportedSdk gate: SDK 36 (Baklava) needs JDK 21+.
+    // On JDK 17 a consumer on compileSdk = 36 must still render — at 35 — not fail every preview.
+    val body =
+      generate(
+        useConsumerApplication = false,
+        override = null,
+        compileSdk = 36,
+        buildJavaMajor = 17,
+      )
+    assertThat(body)
+      .contains("sdk=${GenerateRobolectricPropertiesTask.MAX_SUPPORTED_SDK_BELOW_JAVA_21}")
+    assertThat(body).contains("sdk=35")
+  }
+
+  @Test
+  fun `compileSdk 36 renders at 36 when the build JVM is Java 21+`() {
+    val body =
+      generate(
+        useConsumerApplication = false,
+        override = null,
+        compileSdk = 36,
+        buildJavaMajor = 21,
+      )
+    assertThat(body).contains("sdk=36")
+  }
+
+  @Test
+  fun `compileSdk 35 is unaffected by the Java 17 ceiling`() {
+    val body =
+      generate(
+        useConsumerApplication = false,
+        override = null,
+        compileSdk = 35,
+        buildJavaMajor = 17,
+      )
+    assertThat(body).contains("sdk=35")
+  }
+
+  @Test
+  fun `explicit sdkVersion 36 fails strictly on Java 17`() {
+    // On a JDK that can't bootstrap SDK 36, an explicit pick is a configuration error — fail fast
+    // with the JDK reason rather than the opaque Robolectric UnsupportedOperationException.
+    val exception =
+      assertThrows(GradleException::class.java) {
+        generate(
+          useConsumerApplication = false,
+          override = 36,
+          compileSdk = 36,
+          buildJavaMajor = 17,
+        )
+      }
+    assertThat(exception.message).contains("composePreview.sdkVersion = 36")
+    assertThat(exception.message).contains("JDK 21")
+  }
+
   private fun generate(
     useConsumerApplication: Boolean,
     override: Int?,
     compileSdk: Int?,
     maxSupportedSdkOverride: Int? = null,
+    // Default to a JDK-21+ build so the SDK-36 assertions exercise the jar ceiling, not the
+    // JDK gate. Tests that target the gate pass `buildJavaMajor = 17` explicitly.
+    buildJavaMajor: Int = 21,
   ): String {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val task =
@@ -137,8 +197,11 @@ class GenerateRobolectricPropertiesTaskTest {
     if (compileSdk != null) task.consumerCompileSdk.set(compileSdk)
     if (maxSupportedSdkOverride != null) task.maxSupportedSdkOverride.set(maxSupportedSdkOverride)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.buildJavaMajor.set(buildJavaMajor)
     task.outputDir.set(
-      tmp.newFolder("out-$override-$compileSdk-$useConsumerApplication-$maxSupportedSdkOverride")
+      tmp.newFolder(
+        "out-$override-$compileSdk-$useConsumerApplication-$maxSupportedSdkOverride-$buildJavaMajor"
+      )
     )
     task.generate()
     val file =
