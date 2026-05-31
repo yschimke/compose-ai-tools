@@ -227,6 +227,51 @@ class CoordinateResolverTest {
     assertTrue(warnings.isEmpty(), "a local hash-match must not warn or hit the network: $warnings")
   }
 
+  @Test
+  fun `aar coordinate resolves by its type extension, not jar`() {
+    // An Android coordinate (type=aar) must be looked up / downloaded as
+    // `<artifact>-<version>.aar`.
+    val bytes = byteArrayOf(5, 0, 5)
+    val aar = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
+    aar.parentFile.mkdirs()
+    aar.writeBytes(bytes)
+
+    val coord =
+      BundleReader.ClasspathEntry.Maven(
+        group = "com.example.foo",
+        artifact = "widgets",
+        version = "1.2.3",
+        type = "aar",
+        sha256 = sha256(bytes),
+      )
+    val r = resolver.resolve(coord)
+
+    assertEquals(aar.canonicalFile, r.file?.canonicalFile)
+    assertTrue(r.verified)
+  }
+
+  @Test
+  fun `aar coordinate downloads with the aar extension`() {
+    val bytes = byteArrayOf(1, 0, 0, 1)
+    val base = startRepo(body = bytes)
+
+    val coord =
+      BundleReader.ClasspathEntry.Maven(
+        group = "com.example.foo",
+        artifact = "widgets",
+        version = "1.2.3",
+        type = "aar",
+        sha256 = sha256(bytes),
+      )
+    val r = networkResolver(base).resolve(coord)
+
+    assertNotNullFile(r.file)
+    assertTrue(r.downloaded)
+    // Cached under the aar filename, not jar.
+    val cached = File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
+    assertTrue(cached.isFile)
+  }
+
   private fun assertNotNullFile(f: File?) =
     assertTrue(f != null && f.isFile, "expected a resolved jar")
 }

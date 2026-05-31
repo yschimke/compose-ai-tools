@@ -142,7 +142,7 @@ internal class CoordinateResolver(
    * several caches or Gradle hash dirs — [resolve] uses the hash to pick among them.
    */
   private fun locate(coord: BundleReader.ClasspathEntry.Maven): List<File> {
-    val jarName = "${coord.artifact}-${coord.version}.jar"
+    val jarName = artifactFileName(coord)
     val found = mutableListOf<File>()
     for (root in repositoryRoots) {
       if (!root.isDirectory) continue
@@ -228,10 +228,14 @@ internal class CoordinateResolver(
     val DEFAULT_REMOTE_REPOSITORIES: List<String> =
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
-    /** `<group as path>/<artifact>/<version>/<artifact>-<version>.jar`. */
+    /** `<artifact>-<version>.<type>` — `type` is `jar` (desktop) or `aar` (Android). */
+    private fun artifactFileName(coord: BundleReader.ClasspathEntry.Maven): String =
+      "${coord.artifact}-${coord.version}.${coord.type.ifBlank { "jar" }}"
+
+    /** `<group as path>/<artifact>/<version>/<artifact>-<version>.<type>`. */
     private fun mavenRelativePath(coord: BundleReader.ClasspathEntry.Maven): String =
       coord.group.replace('.', '/') +
-        "/${coord.artifact}/${coord.version}/${coord.artifact}-${coord.version}.jar"
+        "/${coord.artifact}/${coord.version}/${artifactFileName(coord)}"
 
     /**
      * Default local repositories searched when a caller doesn't pass its own. Honours the standard
