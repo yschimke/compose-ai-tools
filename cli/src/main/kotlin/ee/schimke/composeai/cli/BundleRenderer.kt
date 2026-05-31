@@ -22,17 +22,18 @@ import kotlinx.serialization.json.Json
  *
  * # Classpath
  *
- * The subprocess JVM's classpath = extracted `classes/app.jar` directory + any embedded `libs/`
- * jars
- * + every jar in `<APP_HOME>/lib-renderer/`, in that order. Embedded-mode bundles (schema-v3
- *   `resolution = "embedded"`) carry their reachable third-party deps under `libs/`, so a preview's
- *   own deps resolve from there; the bundled renderer's transitive Compose Multiplatform graph
- *   still supplies the Compose API surface and wins on shared symbols (it sits after the consumer
- *   classes). For coordinate-mode bundles there are no `libs/` jars and the recorded Maven
- *   coordinates are NOT downloaded for v1 — the renderer's own Compose version wins, relying on
- *   Compose's binary-compatibility story across point releases. A bundle compiled against compose
- *   1.10.x renders fine against the CLI's bundled 1.10.x; full coordinate resolution is a later
- *   milestone (#1632, Tier 3).
+ * The subprocess JVM's classpath, in order: extracted `classes/app.jar` directory, any embedded
+ * `libs/` jars, any `maven` coordinates resolved from local repositories ([CoordinateResolver]),
+ * then every jar in `<APP_HOME>/lib-renderer/`. The consumer's deps sit ahead of the renderer's own
+ * Compose Multiplatform graph, so a preview's own deps resolve while the bundled Compose still wins
+ * on shared symbols (same layering the desktop viewer's URLClassLoader uses).
+ *
+ * Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps in
+ * `libs/`. Coordinate-mode bundles (the default) carry only references; [CoordinateResolver]
+ * re-attaches them from the machine's local Maven / Gradle caches (Tier 3) and hash-checks against
+ * the v4 `sha256` — a miss or mismatch warns but never fails, since the renderer's bundled Compose
+ * covers the common surface and an almost-compatible jar still renders. Network resolution is a
+ * later increment behind the same seam.
  *
  * # Renderer / Java location
  *
@@ -89,12 +90,20 @@ class BundleRenderer(
           "either build the CLI via `./gradlew :cli:installDist` or set `-Dcomposeai.cli.appHome=<install-root>`."
       )
     }
-    // Embedded `libs/` jars go between the consumer classes and the renderer's own Compose stack so
-    // a preview's own deps resolve while the renderer's bundled Compose still wins on shared
-    // symbols
-    // (same layering the desktop viewer's URLClassLoader uses). Empty for coordinate bundles.
+    // Resolve the bundle's detached `maven` coordinates from local repositories (Tier 3). Misses
+    // and hash mismatches warn but never fail — see CoordinateResolver. Embedded `libs/` jars and
+    // resolved coordinate jars both sit between the consumer classes and the renderer's own Compose
+    // stack, so a preview's own deps resolve while the renderer's bundled Compose still wins on
+    // shared symbols (same layering the desktop viewer's URLClassLoader uses).
+    val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+    val resolvedJars =
+      CoordinateResolver(warn = { logSink("compose-preview: $it") })
+        .resolveAll(mavenCoords)
+        .mapNotNull { it.file }
     val classpathString =
-      (listOf(classesDir) + libJars + rendererJars).joinToString(File.pathSeparator) {
+      (listOf(classesDir) + libJars + resolvedJars + rendererJars).joinToString(
+        File.pathSeparator
+      ) {
         it.absolutePath
       }
 
