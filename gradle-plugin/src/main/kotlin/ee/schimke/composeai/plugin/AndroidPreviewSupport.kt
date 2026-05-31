@@ -1688,10 +1688,12 @@ internal object AndroidPreviewSupport {
     // sees real bytecode. `backendId = "android"` is recorded in bundle.json so players know the
     // bundle was packed for the Robolectric/Android renderer.
     //
-    // Limitations carried for now (desktop parity / future work): Maven coordinates are recorded
-    // with type `jar` even for AAR-backed deps, and Android-merged resources aren't packed — both
-    // only matter for coordinate-mode re-rendering on an Android player, which isn't built yet.
-    // `--embed-deps` sidesteps the coordinate-type concern entirely by inlining the resolved jars.
+    // AAR-backed Maven deps are recorded as real `ClasspathEntry.Maven` coordinates (not inlined):
+    // registerBundleTask keys the coordinate map off the same `artifactType=jar` view, so the
+    // transformed classes.jar paths match what the closure walk sees. Limitation carried for now
+    // (only matters for coordinate-mode re-rendering on an Android player, which isn't built yet):
+    // the coordinate type is recorded as `jar` even for AAR-published deps, and Android-merged
+    // resources aren't packed. `--embed-deps` sidesteps the type concern by inlining resolved jars.
     ComposePreviewTasks.registerBundleTask(
       project = project,
       extension = extension,
