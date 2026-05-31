@@ -107,6 +107,22 @@ class CoordinateResolverTest {
   }
 
   @Test
+  fun `prefers a hash-matching candidate over an earlier mismatch`() {
+    // A stale Maven-layout copy (wrong bytes) plus a Gradle-cache copy with the bundle's exact
+    // bytes. The resolver must skip the first-found mismatch and pick the matching one.
+    val wanted = byteArrayOf(4, 4, 4, 4)
+    writeMavenJar(byteArrayOf(0, 0, 0)) // stale, found first
+    val good = writeGradleJar(wanted) // exact match, found later
+
+    val r = resolver.resolve(maven(sha = sha256(wanted)))
+
+    assertEquals(good.canonicalFile, r.file?.canonicalFile)
+    assertTrue(r.verified)
+    assertFalse(r.mismatch)
+    assertTrue(warnings.isEmpty(), "picking the matching candidate must not warn: $warnings")
+  }
+
+  @Test
   fun `null hash resolves as unverifiable without warning`() {
     writeMavenJar(byteArrayOf(5, 5, 5))
 

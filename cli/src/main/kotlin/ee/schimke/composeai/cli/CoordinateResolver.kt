@@ -57,8 +57,8 @@ internal class CoordinateResolver(
   }
 
   fun resolve(coord: BundleReader.ClasspathEntry.Maven): Resolution {
-    val jar = locate(coord)
-    if (jar == null) {
+    val candidates = locate(coord)
+    if (candidates.isEmpty()) {
       warn(
         "could not resolve ${coord.group}:${coord.artifact}:${coord.version} from any local " +
           "repository (looked in ${repositoryRoots.joinToString { it.path }}); the preview may " +
@@ -68,34 +68,45 @@ internal class CoordinateResolver(
     }
     val expected = coord.sha256
     if (expected == null) {
-      return Resolution(coord, file = jar, verified = false, mismatch = false)
+      // No hash to disambiguate with — first candidate, unverifiable.
+      return Resolution(coord, file = candidates.first(), verified = false, mismatch = false)
     }
-    val actual = sha256Hex(jar)
-    if (!actual.equals(expected, ignoreCase = true)) {
-      // Warn, do NOT fail — the bytes are probably almost compatible. See the verification
-      // contract.
-      warn(
-        "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — bundle expected " +
-          "$expected but ${jar.name} hashes to $actual. Rendering with the local copy anyway; the " +
-          "preview may differ slightly from the original."
-      )
-      return Resolution(coord, file = jar, verified = false, mismatch = true)
-    }
-    return Resolution(coord, file = jar, verified = true, mismatch = false)
+    // The hash exists precisely to pick the *right* copy when a GAV resolves to several local files
+    // (a stale ~/.m2 copy + a Gradle cache entry, multiple Gradle hash dirs for a republished
+    // module, …). Prefer a candidate whose bytes match before settling for a mismatch.
+    candidates
+      .firstOrNull { sha256Hex(it).equals(expected, ignoreCase = true) }
+      ?.let {
+        return Resolution(coord, file = it, verified = true, mismatch = false)
+      }
+    // Nothing matched. Warn, do NOT fail — the bytes are probably almost compatible (see the
+    // verification contract). Fall back to the first candidate so the preview still renders.
+    val fallback = candidates.first()
+    warn(
+      "hash mismatch for ${coord.group}:${coord.artifact}:${coord.version} — bundle expected " +
+        "$expected but none of ${candidates.size} local copy(ies) matched (using ${fallback.name}, " +
+        "${sha256Hex(fallback)}). Rendering with the local copy anyway; the preview may differ " +
+        "slightly from the original."
+    )
+    return Resolution(coord, file = fallback, verified = false, mismatch = true)
   }
 
-  /** First matching jar across [repositoryRoots], or null. */
-  private fun locate(coord: BundleReader.ClasspathEntry.Maven): File? {
+  /**
+   * All candidate jars for [coord] across [repositoryRoots], in search order (Maven layout before
+   * Gradle layout, roots in declared order). May hold more than one when the same GAV is present in
+   * several caches or Gradle hash dirs — [resolve] uses the hash to pick among them.
+   */
+  private fun locate(coord: BundleReader.ClasspathEntry.Maven): List<File> {
     val jarName = "${coord.artifact}-${coord.version}.jar"
+    val found = mutableListOf<File>()
     for (root in repositoryRoots) {
       if (!root.isDirectory) continue
       // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.jar
       val mavenPath =
         File(root, coord.group.replace('.', '/') + "/${coord.artifact}/${coord.version}/$jarName")
-      if (mavenPath.isFile) return mavenPath
-      // Gradle modules-2 layout fans the jar under a per-hash dir; glob for it by exact name under
-      // <root>/<group>/<artifact>/<version>/<hash>/<jarName>. Bounded walk (depth-limited) so a
-      // huge
+      if (mavenPath.isFile) found += mavenPath
+      // Gradle modules-2 layout fans the jar under per-hash dirs; collect every match under
+      // <root>/<group>/<artifact>/<version>/<hash>/<jarName>. One directory level only, so a huge
       // cache root doesn't turn this into a full filesystem scan.
       val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
       if (gradleVersionDir.isDirectory) {
@@ -104,13 +115,10 @@ internal class CoordinateResolver(
           ?.asSequence()
           ?.filter { it.isDirectory }
           ?.mapNotNull { hashDir -> File(hashDir, jarName).takeIf { it.isFile } }
-          ?.firstOrNull()
-          ?.let {
-            return it
-          }
+          ?.let { found += it }
       }
     }
-    return null
+    return found
   }
 
   private fun sha256Hex(file: File): String {
