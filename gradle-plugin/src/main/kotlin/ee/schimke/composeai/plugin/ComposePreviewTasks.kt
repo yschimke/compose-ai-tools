@@ -206,13 +206,17 @@ internal object ComposePreviewTasks {
    * `composePreviewRender` first (the CLI shells through `composePreviewRender
    * composePreviewBundle` as a single Gradle invocation).
    */
-  private fun registerBundleTask(
+  internal fun registerBundleTask(
     project: Project,
     extension: PreviewExtension,
     previewOutputDir: Provider<Directory>,
     sourceClassDirs: FileCollection,
     resolveDependencyConfigName: () -> String,
     discoverTaskName: String,
+    // Recorded into `bundle.json`'s `backend` field. "desktop" for the CMP/JVM path; the Android
+    // path (AndroidPreviewSupport) passes "android" so players know which renderer the bundle was
+    // packed for. Packing itself is backend-agnostic — the closure walk only sees JVM bytecode.
+    backendId: String = "desktop",
   ) {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
@@ -228,11 +232,18 @@ internal object ComposePreviewTasks {
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
     val depConfig = project.configurations.findByName(resolveDependencyConfigName())
-    val depJarFiles = depConfig?.let { config ->
-      // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM
-      // consumers pass through. Either way we get real jars on the closure walk.
-      config.incoming.artifactView { attributes.attribute(artifactTypeAttr, "jar") }.files
-    }
+    // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM consumers
+    // pass through. Either way we get real jars on the closure walk. The coordinate map below MUST
+    // be built from THIS SAME view's resolvedArtifacts, not the configuration's untransformed
+    // artifacts — otherwise an AAR dep's transformed classes.jar path (what `dependencyJars` and
+    // the
+    // closure walk see) wouldn't match the coordinate-map key (the untransformed `.aar` path), so
+    // the task would treat the Maven dep as an anonymous/project jar and inline it instead of
+    // recording a `ClasspathEntry.Maven`. On JVM this view is a passthrough, so desktop is
+    // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
+    val depJarView =
+      depConfig?.incoming?.artifactView { attributes.attribute(artifactTypeAttr, "jar") }
+    val depJarFiles = depJarView?.files
     // Map each resolved dependency jar to a coordinate string the task action can fold into
     // `bundle.json`'s `classpath`:
     // - `maven:<group>:<artifact>:<version>:jar` for Maven-resolved deps (the player resolves at
@@ -240,9 +251,11 @@ internal object ComposePreviewTasks {
     // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
     //   since they can't be re-resolved from Maven).
     //
-    // Resolution happens via `Provider` transformations, so this stays config-cache-safe.
+    // Resolution happens via `Provider` transformations, so this stays config-cache-safe. The
+    // transformed artifact keeps its original `componentIdentifier` (the Maven module / project),
+    // so coordinates resolve correctly even though `.file` points at the extracted classes.jar.
     val coordMapProvider: Provider<Map<String, String>> =
-      depConfig?.incoming?.artifacts?.resolvedArtifacts?.map { artifacts ->
+      depJarView?.artifacts?.resolvedArtifacts?.map { artifacts ->
         artifacts.associate { artifact ->
           val id = artifact.id.componentIdentifier
           val value =
@@ -295,7 +308,7 @@ internal object ComposePreviewTasks {
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       modulePath.set(project.path)
-      backend.set("desktop")
+      backend.set(backendId)
       producedBy.set("compose-preview $pluginVersionProperty")
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
