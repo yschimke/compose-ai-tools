@@ -144,7 +144,10 @@ internal class CoordinateResolver(
   private fun locate(coord: BundleReader.ClasspathEntry.Maven): List<File> {
     val jarName = artifactFileName(coord)
     val found = mutableListOf<File>()
-    for (root in repositoryRoots) {
+    // Search the user's local repos AND our own download cache — a jar fetched during an earlier
+    // online run lives in [downloadCacheDir] (Maven layout) and must resolve offline too, since the
+    // network gate only governs *new* fetches, not reading what we already have.
+    for (root in repositoryRoots + downloadCacheDir) {
       if (!root.isDirectory) continue
       // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.jar
       val mavenPath = File(root, mavenRelativePath(coord))
@@ -166,18 +169,20 @@ internal class CoordinateResolver(
   }
 
   /**
-   * Download [coord]'s jar from the first [remoteRepositories] base URL that serves it, into
+   * Download [coord]'s artifact from the first [remoteRepositories] base URL that serves it, into
    * [downloadCacheDir] (Maven layout), and return the cached file. Returns null — never throws — on
-   * a total miss or any transport error, so resolution degrades to a warning. If the cache already
-   * holds the file (a prior download), it's returned without a network hit.
+   * a total miss or any transport error, so resolution degrades to a warning.
+   *
+   * A previously-cached download is *not* short-circuited here: [locate] already searches
+   * [downloadCacheDir], so reaching this method means either nothing was cached, or the cached
+   * bytes didn't match the bundle's hash and we want fresh bytes (which overwrite the stale copy).
    */
   private fun download(coord: BundleReader.ClasspathEntry.Maven): File? {
     val rel = mavenRelativePath(coord)
-    val cached = File(downloadCacheDir, rel)
-    if (cached.isFile && cached.length() > 0) return cached
+    val dest = File(downloadCacheDir, rel)
     for (base in remoteRepositories) {
       val url = base.trimEnd('/') + "/" + rel
-      if (fetchTo(url, cached)) return cached
+      if (fetchTo(url, dest)) return dest
     }
     return null
   }

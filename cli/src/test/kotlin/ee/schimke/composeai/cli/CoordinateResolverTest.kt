@@ -203,6 +203,31 @@ class CoordinateResolverTest {
   }
 
   @Test
+  fun `a prior download is read offline from the cache`() {
+    // Simulates a later offline run: a jar cached by an earlier online fetch must resolve even with
+    // the network disabled, since the cache is read independently of the network gate.
+    val bytes = byteArrayOf(8, 8, 8)
+    File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar").apply {
+      parentFile.mkdirs()
+      writeBytes(bytes)
+    }
+    val offline =
+      CoordinateResolver(
+        repositoryRoots = listOf(root),
+        warn = { warnings += it },
+        networkEnabled = false,
+        downloadCacheDir = cacheDir,
+      )
+
+    val r = offline.resolve(maven(sha = sha256(bytes)))
+
+    assertNotNullFile(r.file)
+    assertTrue(r.verified)
+    assertFalse(r.downloaded, "came from the cache, not a fresh download")
+    assertTrue(warnings.isEmpty(), "a cached offline hit must not warn: $warnings")
+  }
+
+  @Test
   fun `remote 404 returns null and warns, never throws`() {
     val base = startRepo(status = 404)
 
