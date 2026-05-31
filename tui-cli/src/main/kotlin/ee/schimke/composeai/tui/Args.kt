@@ -105,12 +105,9 @@ data class TuiArgs(
         i += 1
       }
 
-      // A lone existing `*.png` positional opens straight into the image-only bundle view.
-      val bundlePng =
-        positionals
-          .firstOrNull()
-          ?.let(::File)
-          ?.takeIf { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
+      // A lone `*.png` positional — a local path OR an http(s)/file URL — opens straight into the
+      // image-only bundle view. URLs are downloaded to a temp file first.
+      val bundlePng = positionals.firstOrNull()?.let(::resolveBundleArg)
 
       return TuiArgs(
         module = module,
@@ -134,9 +131,9 @@ data class TuiArgs(
 
         Usage:
           compose-preview-tui [options]          Browse a project's previews
-          compose-preview-tui <bundle.png>       Open a bundle PNG full-screen (image only,
-                                                 live if the PNG carries provenance)
-          compose-preview-tui --dump <bundle.png>
+          compose-preview-tui <bundle.png | URL>  Open a bundle full-screen (image only, live if it
+                                                 carries provenance). A URL is downloaded first.
+          compose-preview-tui --dump <bundle.png | URL>
                                                  Print a baked preview to stdout as text
                                                  (half-block / ASCII) and exit — the cover by
                                                  default, or pick with --id / --filter. No PTY
@@ -178,5 +175,43 @@ data class TuiArgs(
           .trimIndent()
       )
     }
+  }
+}
+
+/**
+ * Resolve a bundle positional — a local `*.png` path or an http(s)/file URL — to a readable local
+ * file, or null when it isn't an openable bundle (missing path, non-png, failed download). URLs are
+ * downloaded to a temp file (delete-on-exit). Self-contained here rather than depending on `:cli` so
+ * the opt-in TUI module's graph stays minimal.
+ */
+private fun resolveBundleArg(arg: String): File? {
+  val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()
+  val isUrl = scheme == "http" || scheme == "https" || scheme == "file"
+  if (!isUrl) {
+    return File(arg).takeIf { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
+  }
+  return try {
+    val uri = java.net.URI(arg)
+    if (uri.scheme.equals("file", ignoreCase = true)) {
+      return File(uri).takeIf { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
+    }
+    val temp = java.nio.file.Files.createTempFile("compose-preview-tui-bundle-", ".png").toFile()
+    temp.deleteOnExit()
+    val client =
+      java.net.http.HttpClient.newBuilder()
+        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+        .build()
+    val response =
+      client.send(
+        java.net.http.HttpRequest.newBuilder(uri).GET().build(),
+        java.net.http.HttpResponse.BodyHandlers.ofFile(temp.toPath()),
+      )
+    if (response.statusCode() in 200..299 && temp.length() > 0) temp
+    else {
+      temp.delete()
+      null
+    }
+  } catch (_: Exception) {
+    null
   }
 }

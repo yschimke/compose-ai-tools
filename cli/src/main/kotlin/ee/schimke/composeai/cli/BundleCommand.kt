@@ -65,12 +65,14 @@ class BundleCommand(args: List<String>) : Command(args) {
       """
       compose-preview bundle — portable preview bundles (PNG+ZIP polyglot)
 
+      A <bundle> below is a local path OR an http(s)/file URL — URLs are downloaded first.
+
       Usage:
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render]
-        compose-preview bundle inspect <bundle.png>
-        compose-preview bundle extract <bundle.png> [-o <dir>]
-        compose-preview bundle render  <bundle.png> [-o <dir>]   (v1: stub — prints what would render)
-        compose-preview bundle daemon  <bundle.png> [-v]         (spawn the desktop daemon over stdio)
+        compose-preview bundle inspect <bundle.png | URL>
+        compose-preview bundle extract <bundle.png | URL> [-o <dir>]
+        compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
+        compose-preview bundle daemon  <bundle.png | URL> [-v]         (spawn the desktop daemon over stdio)
 
       Pack flags:
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
@@ -200,14 +202,16 @@ private class InspectSubcommand(private val args: List<String>) {
   fun run() {
     val path = args.firstOrNull { !it.startsWith("-") }
     if (path == null) {
-      System.err.println("Usage: compose-preview bundle inspect <bundle.png>")
+      System.err.println("Usage: compose-preview bundle inspect <bundle.png | URL>")
       exitProcess(64)
     }
-    val file = File(path)
-    if (!file.isFile) {
-      System.err.println("Not a file: $path")
-      exitProcess(1)
-    }
+    val file =
+      try {
+        BundleSource.resolveToFile(path)
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
     val meta = BundleReader.readMetadata(file)
     val pretty = Json {
       prettyPrint = true
@@ -229,14 +233,16 @@ private class ExtractSubcommand(private val args: List<String>) {
     val path = args.firstOrNull { !it.startsWith("-") }
     val outDir = args.flagValue("--output") ?: args.flagValue("-o")
     if (path == null) {
-      System.err.println("Usage: compose-preview bundle extract <bundle.png> [-o <dir>]")
+      System.err.println("Usage: compose-preview bundle extract <bundle.png | URL> [-o <dir>]")
       exitProcess(64)
     }
-    val file = File(path)
-    if (!file.isFile) {
-      System.err.println("Not a file: $path")
-      exitProcess(1)
-    }
+    val file =
+      try {
+        BundleSource.resolveToFile(path)
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
     val target =
       File(
           outDir
@@ -257,14 +263,16 @@ private class RenderSubcommand(private val args: List<String>) {
     val path = args.firstOrNull { !it.startsWith("-") }
     val outDir = args.flagValue("--output") ?: args.flagValue("-o")
     if (path == null) {
-      System.err.println("Usage: compose-preview bundle render <bundle.png> [-o <dir>]")
+      System.err.println("Usage: compose-preview bundle render <bundle.png | URL> [-o <dir>]")
       exitProcess(64)
     }
-    val file = File(path)
-    if (!file.isFile) {
-      System.err.println("Not a file: $path")
-      exitProcess(1)
-    }
+    val file =
+      try {
+        BundleSource.resolveToFile(path)
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
     val target =
       File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-render"))
         .absoluteFile
