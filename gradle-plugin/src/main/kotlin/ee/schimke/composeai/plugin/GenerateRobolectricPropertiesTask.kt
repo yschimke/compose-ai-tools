@@ -81,18 +81,19 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
 
   /**
    * Major version of the JVM that will run the `composePreviewRender` test (where Robolectric
-   * actually bootstraps the sandbox). Wired by [AndroidPreviewSupport] from that Test task's
-   * resolved `javaLauncher` — the consumer's test toolchain, the SDK matrix's
-   * `composeai.matrix.jvmToolchain`, or the Gradle build JVM when none is set. Left unset only by
-   * unit tests that drive [resolveSdk] directly, in which case it defaults to the running JVM.
+   * actually bootstraps the sandbox). Wired by [AndroidPreviewSupport] to the Gradle build JVM —
+   * the JVM the render Test forks into when the consumer configures no toolchain (e.g. Confetti).
+   * The SDK matrix forks tests into `composeai.matrix.jvmToolchain` and overrides this input
+   * directly. Left unset only by unit tests that drive [resolveSdk] directly, in which case it
+   * defaults to the running JVM.
    *
    * Robolectric 4.16.1 refuses to bootstrap an SDK [SDK_REQUIRING_JAVA_21] (Baklava) sandbox unless
    * the test JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws an
-   * opaque `UnsupportedOperationException`, which fails *every* preview render rather than surfacing
-   * a clear message. When the build runs on an older JDK we lower the effective ceiling one level
-   * (to [MAX_SUPPORTED_SDK_BELOW_JAVA_21]) so a consumer on `compileSdk = 36` still renders at 35
-   * instead of producing zero PNGs. The daemon path pins the same level for the same reason — see
-   * `RobolectricHost.ANDROID_SDK`.
+   * opaque `UnsupportedOperationException`, which fails *every* preview render rather than
+   * surfacing a clear message. When the build runs on an older JDK we lower the effective ceiling
+   * one level (to [MAX_SUPPORTED_SDK_BELOW_JAVA_21]) so a consumer on `compileSdk = 36` still
+   * renders at 35 instead of producing zero PNGs. The daemon path pins the same level for the same
+   * reason — see `RobolectricHost.ANDROID_SDK`.
    */
   @get:Input @get:Optional abstract val buildJavaMajor: Property<Int>
 
@@ -241,20 +242,24 @@ abstract class GenerateRobolectricPropertiesTask : DefaultTask() {
 
     /**
      * First Android SDK level Robolectric gates behind the test JVM's Java version. Robolectric
-     * 4.16.1 refuses to bootstrap a sandbox for [SDK_REQUIRING_JAVA_21] (API 36, Baklava) unless the
-     * JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws a bare
+     * 4.16.1 refuses to bootstrap a sandbox for [SDK_REQUIRING_JAVA_21] (API 36, Baklava) unless
+     * the JVM is JDK [MIN_JAVA_FOR_SDK_36]+ — `DefaultSdkProvider.verifySupportedSdk` throws a bare
      * `UnsupportedOperationException`, failing every preview render instead of surfacing a clear
      * message.
      */
     internal const val SDK_REQUIRING_JAVA_21: Int = 36
 
-    /** JDK major version Robolectric requires before it will bootstrap an [SDK_REQUIRING_JAVA_21] sandbox. */
+    /**
+     * JDK major version Robolectric requires before it will bootstrap an [SDK_REQUIRING_JAVA_21]
+     * sandbox.
+     */
     internal const val MIN_JAVA_FOR_SDK_36: Int = 21
 
     /**
-     * Effective Robolectric SDK ceiling when the render JVM is older than [MIN_JAVA_FOR_SDK_36]. One
-     * level below [SDK_REQUIRING_JAVA_21] so a consumer on `compileSdk = 36` still renders (at 35)
-     * under JDK 17 rather than failing every preview. Mirrors `RobolectricHost.ANDROID_SDK`.
+     * Effective Robolectric SDK ceiling when the render JVM is older than [MIN_JAVA_FOR_SDK_36].
+     * One level below [SDK_REQUIRING_JAVA_21] so a consumer on `compileSdk = 36` still renders
+     * (at 35) under JDK 17 rather than failing every preview. Mirrors
+     * `RobolectricHost.ANDROID_SDK`.
      */
     internal const val MAX_SUPPORTED_SDK_BELOW_JAVA_21: Int = 35
 

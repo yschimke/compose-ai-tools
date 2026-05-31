@@ -108,10 +108,8 @@ internal object AndroidPreviewSupport {
     task.sdkOverride.set(extensionOverride)
     task.consumerCompileSdk.set(consumerCompileSdk)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
-    // `buildJavaMajor` is wired separately (below, in registerAndroidTasks) from the
-    // `composePreviewRender` Test task's resolved `javaLauncher` — that's the JVM Robolectric
-    // actually bootstraps under, which can differ from the Gradle build JVM when the consumer (or
-    // the SDK matrix) forks tests into a toolchain.
+    // `buildJavaMajor` is wired separately (below, in registerAndroidTasks) to the Gradle build
+    // JVM, with the SDK matrix overriding it to its forked test toolchain.
   }
 
   fun configure(project: Project, extension: PreviewExtension) {
@@ -1618,19 +1616,18 @@ internal object AndroidPreviewSupport {
         }
       }
 
-    // Feed the JDK-aware Robolectric SDK ceiling from the JVM the render actually forks into. The
-    // `composePreviewRender` task's `javaLauncher` resolves to the consumer's test toolchain (or the
-    // SDK matrix's `composeai.matrix.jvmToolchain`, or the Gradle build JVM when none is set) — the
-    // exact JVM `DefaultSdkProvider.verifySupportedSdk` runs under. Reading the launcher value adds
-    // no task dependency (it's a configuration-time property, not a task output). Falls back to the
-    // current JVM if the launcher has no value. See [GenerateRobolectricPropertiesTask.buildJavaMajor].
+    // Feed the JDK-aware Robolectric SDK ceiling with the JVM the render forks into. Default to the
+    // Gradle build JVM: the `composePreviewRender` Test task inherits AGP's unit-test
+    // `javaLauncher`, which — absent a consumer toolchain — is the build JVM, so this is the JVM
+    // `DefaultSdkProvider.verifySupportedSdk` actually runs under (the Confetti case the fix
+    // targets). Deliberately a plain value, NOT a provider derived from `renderTask` — mapping a
+    // `TaskProvider` carries that task as a dependency, and `renderTask` already dependsOn this
+    // generator (via the generated-resources classpath), so that would be a circular dependency.
+    // The SDK matrix forks tests into `composeai.matrix.jvmToolchain` and overrides this input
+    // directly (see `samples/sdk-matrix/build.gradle.kts`). See
+    // [GenerateRobolectricPropertiesTask.buildJavaMajor].
     generateRobolectricPropertiesTask.configure {
-      buildJavaMajor.set(
-        renderTask
-          .flatMap { it.javaLauncher }
-          .map { it.metadata.languageVersion.asInt() }
-          .orElse(JavaVersion.current().majorVersion.toInt())
-      )
+      buildJavaMajor.set(JavaVersion.current().majorVersion.toInt())
     }
 
     if (extension.resourcePreviews.enabled.get()) {
@@ -2041,7 +2038,6 @@ internal object AndroidPreviewSupport {
 
   /**
    * Resolves the effective shard count from [PreviewExtension.shards]:
-   *
    * - `≥1`: use the value as-is.
    * - `0` (auto): read [previewsJson] if it exists from a previous discover run and hand the count
    *   to [ShardTuning.autoShards]. If the file is missing (very first build), fall back to 1 — the

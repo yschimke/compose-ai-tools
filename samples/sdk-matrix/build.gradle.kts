@@ -73,12 +73,17 @@ if (matrixRobolectricVersion != null) {
   }
 }
 
-if (matrixMaxSupportedSdk != null) {
-  afterEvaluate {
-    tasks.named(
-      "composePreviewGenerateRobolectricProperties",
-      ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
-    ) {
+afterEvaluate {
+  tasks.named(
+    "composePreviewGenerateRobolectricProperties",
+    ee.schimke.composeai.plugin.GenerateRobolectricPropertiesTask::class.java,
+  ) {
+    // The matrix forks the render Test into `matrixJvmToolchain` (configured below), so the
+    // plugin's JDK-aware SDK ceiling must key off that JVM rather than the Gradle build JVM it
+    // defaults to. Without this, a `jvmToolchain = 21` cell probing SDK 36 would be clamped to 35
+    // as if it were on JDK 17.
+    buildJavaMajor.set(matrixJvmToolchain)
+    if (matrixMaxSupportedSdk != null) {
       maxSupportedSdkOverride.set(matrixMaxSupportedSdk)
     }
   }
