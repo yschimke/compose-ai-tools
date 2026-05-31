@@ -57,12 +57,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val libsDir = workDir.resolve("libs").apply { mkdirs() }
     val previewsJson = workDir.resolve("previews.json")
     val zipBytes = BundleReader.extractZipBytes(file)
-    expandAppJarAndManifest(zipBytes, classesDir, libsDir, previewsJson, file)
-    // Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry the preview's reachable
-    // third-party deps under `libs/`. They're consumer classes, so they ride the daemon's
-    // `userClassDirs` holder (dirs-before-jars ordered, see UserClassLoaderHolder) alongside the
-    // extracted app classes — NOT the daemon/renderer `-cp`. Empty for coordinate bundles.
-    val libJars = libsDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sorted().orEmpty()
+    expandAppJarAndManifest(zipBytes, classesDir, previewsJson, file)
+    // Embedded `libs/` jars are consumer classes, so they ride the daemon's `userClassDirs` holder
+    // (dirs-before-jars ordered, see UserClassLoaderHolder) alongside the extracted app classes —
+    // NOT the daemon/renderer `-cp`. Empty for coordinate bundles.
+    val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
     val userClassPath =
       (listOf(classesDir) + libJars).joinToString(File.pathSeparator) { it.absolutePath }
 
@@ -159,41 +158,30 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   }
 
   /**
-   * Extract `classes/app.jar` into [classesDir], any embedded jars under `libs/` into [libsDir],
-   * and `previews.json` into [previewsJson]. Throws if app.jar or previews.json is missing — both
-   * are required for the daemon to come up against a usable preview index. The `libs/` directory is
-   * optional (only embedded-mode bundles carry it).
+   * Extract `classes/app.jar` into [classesDir] and `previews.json` into [previewsJson]. Throws if
+   * either is missing — both are required for the daemon to come up against a usable preview index.
+   * Embedded `libs/` jars are extracted separately via [BundleReader.extractEmbeddedLibs].
    */
   private fun expandAppJarAndManifest(
     zipBytes: ByteArray,
     classesDir: File,
-    libsDir: File,
     previewsJson: File,
     bundleFile: File,
   ) {
     var sawAppJar = false
     var sawPreviewsJson = false
-    val canonicalLibs = libsDir.canonicalFile
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
-        val name = entry.name
-        when {
-          name == "previews.json" -> {
+        when (entry.name) {
+          "previews.json" -> {
             previewsJson.writeBytes(zin.readBytes())
             sawPreviewsJson = true
           }
-          name == "classes/app.jar" -> {
+          "classes/app.jar" -> {
             val appJarBytes = zin.readBytes()
             expandJarBytesSafely(appJarBytes, classesDir)
             sawAppJar = true
-          }
-          !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
-            // Flatten to a safe basename under libsDir; guard against Zip Slip on a hostile bundle.
-            val dest = File(libsDir, File(name).name).canonicalFile
-            if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
-              dest.writeBytes(zin.readBytes())
-            }
           }
         }
         zin.closeEntry()

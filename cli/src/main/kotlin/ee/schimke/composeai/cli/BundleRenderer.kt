@@ -70,8 +70,8 @@ class BundleRenderer(
     val classesDir = workDir.resolve("classes").apply { mkdirs() }
     val libsDir = workDir.resolve("libs").apply { mkdirs() }
     val zipBytes = BundleReader.extractZipBytes(bundleFile)
-    val (bundleJsonBytes, previewsJsonBytes) =
-      expandAppJarAndReadManifests(zipBytes, classesDir, libsDir)
+    val (bundleJsonBytes, previewsJsonBytes) = expandAppJarAndReadManifests(zipBytes, classesDir)
+    val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
 
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
@@ -89,13 +89,10 @@ class BundleRenderer(
           "either build the CLI via `./gradlew :cli:installDist` or set `-Dcomposeai.cli.appHome=<install-root>`."
       )
     }
-    // Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable third-party
-    // deps under `libs/`; put them between the consumer classes and the renderer's own Compose
-    // stack
-    // so a preview's own deps resolve while the renderer's bundled Compose still wins on shared
-    // symbols (same layering the desktop viewer's URLClassLoader uses). Coordinate bundles have no
-    // `libs/`, so this is empty and the classpath is unchanged.
-    val libJars = libsDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sorted().orEmpty()
+    // Embedded `libs/` jars go between the consumer classes and the renderer's own Compose stack so
+    // a preview's own deps resolve while the renderer's bundled Compose still wins on shared
+    // symbols
+    // (same layering the desktop viewer's URLClassLoader uses). Empty for coordinate bundles.
     val classpathString =
       (listOf(classesDir) + libJars + rendererJars).joinToString(File.pathSeparator) {
         it.absolutePath
@@ -122,27 +119,17 @@ class BundleRenderer(
   private fun expandAppJarAndReadManifests(
     zipBytes: ByteArray,
     classesDir: File,
-    libsDir: File,
   ): Pair<String, String> {
     var bundleJson: String? = null
     var previewsJson: String? = null
     var appJarBytes: ByteArray? = null
-    val canonicalLibs = libsDir.canonicalFile
     ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
       while (true) {
         val entry = zin.nextEntry ?: break
-        val name = entry.name
-        when {
-          name == "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
-          name == "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
-          name == "classes/app.jar" -> appJarBytes = zin.readBytes()
-          !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
-            // Flatten to a safe basename under libsDir; guard against Zip Slip on a hostile bundle.
-            val dest = File(libsDir, File(name).name).canonicalFile
-            if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
-              dest.outputStream().use { sink -> zin.copyTo(sink) }
-            }
-          }
+        when (entry.name) {
+          "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
+          "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
+          "classes/app.jar" -> appJarBytes = zin.readBytes()
         }
         zin.closeEntry()
       }

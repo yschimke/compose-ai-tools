@@ -473,4 +473,36 @@ internal object BundleReader {
     }
     throw IllegalArgumentException("truncated PNG: IEND not found before EOF")
   }
+
+  /**
+   * Extract every embedded jar under `libs/` from a bundle's [zipBytes] into [libsDir], returning
+   * the written jar files sorted by name (stable classpath order). Embedded-mode bundles (schema-v3
+   * `resolution = "embedded"`) carry their reachable third-party deps here; coordinate bundles
+   * carry none, so this returns an empty list.
+   *
+   * Each entry is flattened to its basename under [libsDir] and the resolved path is verified to
+   * live inside [libsDir] — defeats Zip Slip (`../` traversal) on a hostile bundle. Nested paths
+   * and directory entries are ignored. Shared by [BundleRenderer] and [BundleDaemonCommand] so the
+   * two player paths extract identically.
+   */
+  fun extractEmbeddedLibs(zipBytes: ByteArray, libsDir: File): List<File> {
+    libsDir.mkdirs()
+    val canonicalLibs = libsDir.canonicalFile
+    val written = mutableListOf<File>()
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        if (!entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar")) {
+          val dest = File(libsDir, File(name).name).canonicalFile
+          if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
+            dest.outputStream().use { sink -> zin.copyTo(sink) }
+            written += dest
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+    return written.sortedBy { it.name }
+  }
 }
