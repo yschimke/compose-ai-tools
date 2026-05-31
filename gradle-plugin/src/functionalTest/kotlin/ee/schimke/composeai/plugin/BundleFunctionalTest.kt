@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -406,6 +407,10 @@ class BundleFunctionalTest {
     assertThat(first["artifact"]!!.jsonPrimitive.content).isNotEmpty()
     assertThat(first["version"]!!.jsonPrimitive.content).isNotEmpty()
     assertThat(first["type"]!!.jsonPrimitive.content).isEqualTo("jar")
+    // v4: every referenced (detached) coordinate carries a content hash so a player can verify the
+    // bytes after re-resolving from any source. 64 lowercase hex chars = SHA-256.
+    val sha = first["sha256"]!!.jsonPrimitive.content
+    assertThat(sha).matches("[0-9a-f]{64}")
   }
 
   @Test
@@ -429,7 +434,10 @@ class BundleFunctionalTest {
       json
         .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
         .jsonObject
-    assertThat(manifest["schemaVersion"]!!.jsonPrimitive.content).isEqualTo("3")
+    // Assert against the current schema constant rather than a hardcoded number so a future bump
+    // doesn't make this stale (it did when v3 → v4 landed sha256). The embedded carriage + manifest
+    // fields below are the behaviour this test actually pins.
+    assertThat(manifest["schemaVersion"]!!.jsonPrimitive.int).isEqualTo(BUNDLE_SCHEMA_VERSION)
     assertThat(manifest["resolution"]!!.jsonPrimitive.content).isEqualTo("embedded")
     assertThat(manifest["producer"]!!.jsonPrimitive.content).isEqualTo("gradle")
 
