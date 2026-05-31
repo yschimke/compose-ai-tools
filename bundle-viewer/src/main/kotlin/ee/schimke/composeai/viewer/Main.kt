@@ -30,6 +30,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.isSuccess
+import io.ktor.utils.io.jvm.javaio.copyTo
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
@@ -260,16 +264,22 @@ private fun resolveBundleArg(arg: String): File? {
     if (uri.scheme.equals("file", ignoreCase = true)) return File(uri).takeIf { it.isFile }
     val temp = java.nio.file.Files.createTempFile("compose-preview-bundle-", ".png").toFile()
     temp.deleteOnExit()
-    val client =
-      java.net.http.HttpClient.newBuilder()
-        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
-        .build()
-    val response =
-      client.send(
-        java.net.http.HttpRequest.newBuilder(uri).GET().build(),
-        java.net.http.HttpResponse.BodyHandlers.ofFile(temp.toPath()),
-      )
-    if (response.statusCode() in 200..299 && temp.length() > 0) temp
+    // Ktor client over the OkHttp engine; stream the body to disk on a 2xx. runBlocking is fine at
+    // this one-shot startup call.
+    val ok =
+      io.ktor.client.HttpClient(io.ktor.client.engine.okhttp.OkHttp).use { client ->
+        kotlinx.coroutines.runBlocking {
+          client.prepareGet(uri.toString()).execute { response ->
+            if (response.status.isSuccess()) {
+              temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+              true
+            } else {
+              false
+            }
+          }
+        }
+      }
+    if (ok && temp.length() > 0) temp
     else {
       temp.delete()
       null

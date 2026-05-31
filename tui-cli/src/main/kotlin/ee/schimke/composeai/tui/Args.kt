@@ -1,5 +1,9 @@
 package ee.schimke.composeai.tui
 
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.isSuccess
+import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 
 /**
@@ -197,16 +201,22 @@ private fun resolveBundleArg(arg: String): File? {
     }
     val temp = java.nio.file.Files.createTempFile("compose-preview-tui-bundle-", ".png").toFile()
     temp.deleteOnExit()
-    val client =
-      java.net.http.HttpClient.newBuilder()
-        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
-        .build()
-    val response =
-      client.send(
-        java.net.http.HttpRequest.newBuilder(uri).GET().build(),
-        java.net.http.HttpResponse.BodyHandlers.ofFile(temp.toPath()),
-      )
-    if (response.statusCode() in 200..299 && temp.length() > 0) temp
+    // Ktor client over the OkHttp engine; stream the body to disk on a 2xx. runBlocking is fine at
+    // this one-shot startup parse.
+    val ok =
+      io.ktor.client.HttpClient(io.ktor.client.engine.okhttp.OkHttp).use { client ->
+        kotlinx.coroutines.runBlocking {
+          client.prepareGet(uri.toString()).execute { response ->
+            if (response.status.isSuccess()) {
+              temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+              true
+            } else {
+              false
+            }
+          }
+        }
+      }
+    if (ok && temp.length() > 0) temp
     else {
       temp.delete()
       null

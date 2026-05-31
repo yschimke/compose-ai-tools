@@ -64,6 +64,10 @@ dependencies {
 
   implementation(libs.kotlinx.serialization.json)
 
+  // Ktor client (OkHttp engine) for opening a bundle from a URL.
+  implementation(libs.ktor.client.core)
+  implementation(libs.ktor.client.okhttp)
+
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }
