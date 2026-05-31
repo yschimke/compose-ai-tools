@@ -30,10 +30,10 @@ import kotlinx.serialization.json.Json
  *
  * Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps in
  * `libs/`. Coordinate-mode bundles (the default) carry only references; [CoordinateResolver]
- * re-attaches them from the machine's local Maven / Gradle caches (Tier 3) and hash-checks against
- * the v4 `sha256` — a miss or mismatch warns but never fails, since the renderer's bundled Compose
- * covers the common surface and an almost-compatible jar still renders. Network resolution is a
- * later increment behind the same seam.
+ * re-attaches them from the machine's local Maven / Gradle caches and, on a miss, downloads from
+ * Maven Central / Google Maven (Tier 3), hash-checking against the v4 `sha256` — a miss or mismatch
+ * warns but never fails, since the renderer's bundled Compose covers the common surface and an
+ * almost-compatible jar still renders.
  *
  * # Renderer / Java location
  *
@@ -90,8 +90,9 @@ class BundleRenderer(
           "either build the CLI via `./gradlew :cli:installDist` or set `-Dcomposeai.cli.appHome=<install-root>`."
       )
     }
-    // Resolve the bundle's detached `maven` coordinates from local repositories (Tier 3). Misses
-    // and hash mismatches warn but never fail — see CoordinateResolver. Embedded `libs/` jars and
+    // Resolve the bundle's detached `maven` coordinates from local repos, downloading on a miss
+    // (Tier 3). Misses and hash mismatches warn but never fail — see CoordinateResolver. Embedded
+    // `libs/` jars and
     // resolved coordinate jars both sit between the consumer classes and the renderer's own Compose
     // stack, so a preview's own deps resolve while the renderer's bundled Compose still wins on
     // shared symbols (same layering the desktop viewer's URLClassLoader uses).

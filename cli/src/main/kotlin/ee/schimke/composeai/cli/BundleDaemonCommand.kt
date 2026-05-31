@@ -34,9 +34,10 @@ import kotlin.system.exitProcess
  * - Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps under
  *   `libs/`; those are extracted and added directly.
  * - Default coordinate bundles record `ClasspathEntry.Maven` entries; [CoordinateResolver] resolves
- *   each from the machine's local Maven / Gradle caches and hash-checks against the v4 `sha256`. A
- *   miss or mismatch warns but never fails — the renderer's bundled Compose still covers the common
- *   API surface, and an almost-compatible jar renders. A network source is a later increment.
+ *   each from the machine's local Maven / Gradle caches and, on a miss, downloads from Maven
+ *   Central / Google Maven, hash-checking against the v4 `sha256`. A miss or mismatch warns but
+ *   never fails — the renderer's bundled Compose still covers the common API surface, and an
+ *   almost-compatible jar renders.
  */
 class BundleDaemonCommand(args: List<String>) : Command(args) {
 
