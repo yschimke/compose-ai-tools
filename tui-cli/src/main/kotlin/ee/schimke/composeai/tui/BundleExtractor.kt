@@ -6,8 +6,8 @@ import java.util.zip.ZipInputStream
 
 /**
  * Extracts the two products a self-contained preview bundle needs to drive its own daemon — the
- * user `classes/app.jar` (unpacked into a `classes/` dir) and the `previews.json` discovery manifest
- * — out of the PNG+ZIP polyglot, with no Gradle project involved.
+ * user `classes/app.jar` (unpacked into a `classes/` dir) and the `previews.json` discovery
+ * manifest — out of the PNG+ZIP polyglot, with no Gradle project involved.
  *
  * The polyglot zip-slice routine is shared with [BundlePngMetadata.extractZipBytes] rather than
  * re-implemented; the per-entry unpack mirrors `cli`'s `BundleDaemonCommand.expandJarBytesSafely`,
@@ -28,11 +28,12 @@ object BundleExtractor {
   fun extract(bundle: File): Extracted? {
     val zipBytes = BundlePngMetadata.extractZipBytes(bundle) ?: return null
 
-    val workDir = File.createTempFile("compose-preview-tui-bundle-", "").let { tmp ->
-      tmp.delete()
-      tmp.mkdirs()
-      tmp
-    }
+    val workDir =
+      File.createTempFile("compose-preview-tui-bundle-", "").let { tmp ->
+        tmp.delete()
+        tmp.mkdirs()
+        tmp
+      }
     val classesDir = File(workDir, "classes").apply { mkdirs() }
     val previewsJson = File(workDir, "previews.json")
 

@@ -23,7 +23,9 @@ object Bitmaps {
       null
     }
 
-  /** Decode raw PNG/JPEG/etc. bytes (e.g. a baked `previews/<id>.png` bundle entry) into a Bitmap. */
+  /**
+   * Decode raw PNG/JPEG/etc. bytes (e.g. a baked `previews/<id>.png` bundle entry) into a Bitmap.
+   */
   fun decode(bytes: ByteArray): Bitmap? =
     try {
       toBitmap(ByteArrayInputStream(bytes).use { ImageIO.read(it) })

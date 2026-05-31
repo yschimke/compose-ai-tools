@@ -79,7 +79,8 @@ dependencies {
   implementation(libs.okhttp)
 
   // Subprocess-only sidecars shipped in the dist for project-less bundle mode. The daemon's
-  // subprocess classpath joins `lib-daemon-desktop/jars` + `lib-renderer/jars` at launch; the renderer
+  // subprocess classpath joins `lib-daemon-desktop/jars` + `lib-renderer/jars` at launch; the
+  // renderer
   // sidecar carries the per-OS Compose Multiplatform stack (incl. Skiko) so it isn't duplicated
   // in the daemon sidecar. Mirrors `:cli`'s `bundle daemon` / `bundle render` wiring.
   add("composePreviewRenderer", project(":renderer-desktop"))
@@ -119,19 +120,18 @@ val stageDaemonDesktopLibs =
     destinationDir = layout.buildDirectory.dir("staged-daemon-desktop-libs").get().asFile
     val artifactsProvider = composePreviewDaemonDesktop.incoming.artifacts.resolvedArtifacts
     from(artifactsProvider.map { it.map(ResolvedArtifactResult::getFile) })
-    val nameByPath =
-      artifactsProvider.map { resolved ->
-        val counts = resolved.groupingBy { it.file.name }.eachCount()
-        resolved.associate { artifact ->
-          val original = artifact.file.name
-          val mapped =
-            if (counts.getValue(original) > 1) {
-              val id = artifact.id.componentIdentifier
-              if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
-            } else original
-          artifact.file.absolutePath to mapped
-        }
+    val nameByPath = artifactsProvider.map { resolved ->
+      val counts = resolved.groupingBy { it.file.name }.eachCount()
+      resolved.associate { artifact ->
+        val original = artifact.file.name
+        val mapped =
+          if (counts.getValue(original) > 1) {
+            val id = artifact.id.componentIdentifier
+            if (id is ModuleComponentIdentifier) "${id.module}-${id.version}.jar" else original
+          } else original
+        artifact.file.absolutePath to mapped
       }
+    }
     inputs.property("nameByPath", nameByPath)
     eachFile {
       val mapped = nameByPath.get()[file.absolutePath]

@@ -23,10 +23,10 @@ import java.io.File
  * `Image` composable picks its lowest-fidelity tier (half-block / ASCII) when no Kitty-graphics
  * capability is advertised, so the result "won't look great but technically works" in a build log.
  *
- * Reads the bundle's baked `previews/<id>.png` entries (schema v2+), so it works fully detached from
- * the originating project. Prints a short notice and returns cleanly when the file carries no baked
- * previews (e.g. an older v1 bundle, or one packed with `--no-render`) or when the id/filter matches
- * nothing.
+ * Reads the bundle's baked `previews/<id>.png` entries (schema v2+), so it works fully detached
+ * from the originating project. Prints a short notice and returns cleanly when the file carries no
+ * baked previews (e.g. an older v1 bundle, or one packed with `--no-render`) or when the id/filter
+ * matches nothing.
  */
 fun dumpBundle(
   png: File,
@@ -39,7 +39,9 @@ fun dumpBundle(
   val width = (cols ?: TerminalSize.probe().cols).coerceIn(MIN_DUMP_COLS, MAX_DUMP_COLS)
 
   if (contents.previews.isEmpty()) {
-    println("${png.name}: no baked previews found (needs a schema v2 bundle packed after a render).")
+    println(
+      "${png.name}: no baked previews found (needs a schema v2 bundle packed after a render)."
+    )
     return
   }
 

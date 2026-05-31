@@ -36,7 +36,9 @@ fun main(argv: Array<String>) {
 
   if (bundlePng != null) {
     val logRoot =
-      args.projectRoot?.absoluteFile ?: findProjectRoot() ?: bundlePng.absoluteFile.parentFile
+      args.projectRoot?.absoluteFile
+        ?: findProjectRoot()
+        ?: bundlePng.absoluteFile.parentFile
         ?: File(".")
     redirectStderrToLogFile(logRoot)
     runBundle(bundlePng, args)

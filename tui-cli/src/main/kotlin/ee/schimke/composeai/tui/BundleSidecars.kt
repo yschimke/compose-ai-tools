@@ -46,7 +46,9 @@ object BundleSidecars {
     return candidates.firstOrNull { it.isDirectory }
   }
 
-  /** `<install-root>/<name>` inferred from the first jar on the launcher's own classpath (`lib/`). */
+  /**
+   * `<install-root>/<name>` inferred from the first jar on the launcher's own classpath (`lib/`).
+   */
   private fun inferFromClasspath(name: String): File? {
     val cp = System.getProperty("java.class.path") ?: return null
     val firstJar = cp.split(File.pathSeparator).firstOrNull { it.endsWith(".jar") } ?: return null
