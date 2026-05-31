@@ -2,6 +2,7 @@ import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 
 plugins {
+  id("composeai.base-conventions")
   id("composeai.jvm-conventions")
   alias(libs.plugins.kotlin.jvm)
   alias(libs.plugins.compose.compiler)
