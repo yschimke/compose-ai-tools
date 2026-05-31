@@ -46,11 +46,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       if (sub == null) exitProcess(64)
       return
     }
-    val file = File(sub)
-    if (!file.isFile) {
-      System.err.println("bundle daemon: not a file: ${file.path}")
-      exitProcess(1)
-    }
+    val file =
+      try {
+        BundleSource.resolveToFile(sub)
+      } catch (e: IllegalArgumentException) {
+        System.err.println("bundle daemon: ${e.message}")
+        exitProcess(1)
+      }
     val verbose = "--verbose" in args || "-v" in args
     val workDir = createTempWorkDir()
     val classesDir = workDir.resolve("classes").apply { mkdirs() }
@@ -143,7 +145,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       compose-preview bundle daemon — start the desktop daemon against a packed bundle
 
       Usage:
-        compose-preview bundle daemon <bundle.png> [-v]
+        compose-preview bundle daemon <bundle.png | URL> [-v]
+
+      <bundle> is a local path or an http(s)/file URL (downloaded first).
 
       Inherits stdio: the spawned daemon JVM speaks JSON-RPC over stdin/stdout and writes log
       lines to stderr, the same protocol `composePreviewDaemonStart` uses in a Gradle module.
