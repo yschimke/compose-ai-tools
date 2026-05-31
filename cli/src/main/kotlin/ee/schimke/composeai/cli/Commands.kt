@@ -854,15 +854,33 @@ class ListCommand(args: List<String>) : Command(args) {
 class RenderCommand(args: List<String>) : Command(args) {
   private val output: String? = args.flagValue("--output")
 
+  /**
+   * `--bundle` opt-in: after rendering, also pack each module's previews into a portable PNG+ZIP
+   * bundle (`<module>/build/compose-previews/bundle.png`) via the `composePreviewBundle` task — one
+   * bundle per module, containing all of that module's previews. Off by default: the bundle step
+   * adds a classpath closure walk + jar minimization on top of the render, which is wasted work on
+   * the fast iterate loop where you only want PNGs. Reach for it when you want a shareable artifact
+   * (see `compose-preview bundle` for inspect/extract/render of the result).
+   */
+  private val bundle: Boolean = "--bundle" in args
+
+  /**
+   * `--embed-deps` (only meaningful with `--bundle`): carry reachable third-party jars inside the
+   * bundle instead of referencing Maven coordinates. Bigger file, but renders offline with no build
+   * system on the other end. Forwarded as `-PbundleEmbedDeps=true`.
+   */
+  private val embedDeps: Boolean = "--embed-deps" in args
+
   override fun run() {
     withGradle { gradle ->
       val modules = resolveModules(gradle)
-      val tasks = modules.map { ":${it.gradlePath}:composePreviewRenderAll" }.toTypedArray()
-
-      if (!runGradle(gradle, *tasks, arguments = gradleArgsWithForce())) {
+      val tasks = previewTasksFor(modules.map { it.gradlePath }).toTypedArray()
+      if (!runGradle(gradle, *tasks, arguments = gradleArgsWithForce(bundleGradleArgs()))) {
         reportRenderFailures(gradle)
         exitProcess(2)
       }
+
+      if (bundle) reportBundles(modules)
 
       val manifests = readAllManifests(modules)
       val all = buildResults(manifests)
@@ -909,6 +927,52 @@ class RenderCommand(args: List<String>) : Command(args) {
           if (shouldFailOnMissingRenders()) exitProcess(2)
         }
       }
+    }
+  }
+
+  /**
+   * Gradle task list for this render run, one entry per module. With `--bundle` set, each module's
+   * `composePreviewBundle` is appended right after its `composePreviewRenderAll` so both run in a
+   * single Gradle invocation: `composePreviewRenderAll` depends on `composePreviewRender`, and the
+   * bundle task declares `mustRunAfter("composePreviewRender")`, so the bundle packs the PNGs this
+   * run just produced.
+   */
+  internal fun previewTasksFor(modulePaths: List<String>): List<String> = buildList {
+    for (path in modulePaths) {
+      add(":$path:composePreviewRenderAll")
+      if (bundle) add(":$path:composePreviewBundle")
+    }
+  }
+
+  /**
+   * Extra Gradle properties for the bundle step. Empty unless `--bundle` is set; `--embed-deps`
+   * (only meaningful alongside `--bundle`) adds `-PbundleEmbedDeps=true` so reachable third-party
+   * jars are carried inside the bundle rather than referenced by Maven coordinate.
+   */
+  internal fun bundleGradleArgs(): List<String> =
+    if (bundle && embedDeps) listOf("-PbundleEmbedDeps=true") else emptyList()
+
+  /**
+   * Print one line per module's freshly-packed bundle. Reuses [BundleReader] to read back the
+   * polyglot we just wrote so the summary reflects what actually landed on disk (preview count,
+   * resolution mode) rather than what we asked for. A missing file is a warning, not a hard fail —
+   * the render itself already succeeded by the time we get here.
+   */
+  private fun reportBundles(modules: List<PreviewModule>) {
+    for (m in modules) {
+      val file = m.projectDir.resolve("build/compose-previews/bundle.png")
+      if (!file.isFile) {
+        System.err.println("Bundle expected but missing for ${m.gradlePath}: ${file.path}")
+        continue
+      }
+      val summary =
+        try {
+          val meta = BundleReader.readMetadata(file)
+          "${meta.manifest.previewIds.size} preview(s), resolution=${meta.manifest.resolution}"
+        } catch (e: Exception) {
+          "unreadable: ${e.message}"
+        }
+      println("Bundled ${file.path} (${file.length()} bytes; $summary)")
     }
   }
 }
