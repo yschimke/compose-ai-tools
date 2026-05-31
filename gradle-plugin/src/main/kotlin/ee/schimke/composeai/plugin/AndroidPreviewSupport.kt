@@ -1680,6 +1680,30 @@ internal object AndroidPreviewSupport {
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
+    // Register the portable-bundle task on the Android path too. `composePreviewBundle` was
+    // previously desktop/JVM-only, so `compose-preview render --bundle` against a project with
+    // Android modules failed task-not-found before rendering anything. Wire it with the same
+    // variant class dirs and `${variant}RuntimeClasspath` the render path consumes — the bundle's
+    // `artifactType=jar` view already transforms AARs to extracted classes.jar, so the closure walk
+    // sees real bytecode. `backendId = "android"` is recorded in bundle.json so players know the
+    // bundle was packed for the Robolectric/Android renderer.
+    //
+    // AAR-backed Maven deps are recorded as real `ClasspathEntry.Maven` coordinates (not inlined):
+    // registerBundleTask keys the coordinate map off the same `artifactType=jar` view, so the
+    // transformed classes.jar paths match what the closure walk sees. Limitation carried for now
+    // (only matters for coordinate-mode re-rendering on an Android player, which isn't built yet):
+    // the coordinate type is recorded as `jar` even for AAR-published deps, and Android-merged
+    // resources aren't packed. `--embed-deps` sidesteps the type concern by inlining resolved jars.
+    ComposePreviewTasks.registerBundleTask(
+      project = project,
+      extension = extension,
+      previewOutputDir = previewOutputDir,
+      sourceClassDirs = sourceClassDirs,
+      resolveDependencyConfigName = { dependencyConfigName },
+      discoverTaskName = "composePreviewDiscover",
+      backendId = "android",
+    )
+
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
     // unconditionally so the VS Code extension can sniff the output file
     // even when `daemon.enabled = false` (it then refuses to
