@@ -141,12 +141,17 @@ sealed interface ClasspathEntry {
     val type: String,
     /**
      * Lowercase hex SHA-256 of the resolved artifact's bytes at pack time, or null when the
-     * producer couldn't compute it (older bundles, non-Gradle producers). This is what makes a
-     * *detached* dep safe to re-attach from **any** source: a player resolves the coordinate from
-     * whatever repository / cache it has, then verifies the fetched bytes hash to [sha256] before
-     * putting them on the classpath — so the source is interchangeable but the bytes are pinned. A
-     * coordinate without a hash is resolvable but unverifiable; players may warn or refuse in
-     * strict mode.
+     * producer couldn't compute it (older bundles, non-Gradle producers). Lets a player that
+     * re-attaches a *detached* dep from **any** source (Maven, a local cache, a mirror, a CAS)
+     * check the fetched bytes against the bytes the bundle was built with.
+     *
+     * **Mismatch policy: warn, never fail.** A player MUST NOT refuse to render on a hash mismatch.
+     * A different artifact for the same coordinate is usually *almost* compatible — a point-release
+     * skew, a repackaged-but-equivalent jar, a stripped vs. full variant — and a preview that
+     * renders slightly off is far more useful than no preview at all. So a mismatch (or a
+     * missing/unverifiable hash) is a **noisy warning**: surface it loudly (which coordinate,
+     * expected vs. actual hash) and proceed with the resolved bytes. There is no strict mode that
+     * hard-fails. Verification is a fidelity signal, not a gate.
      */
     val sha256: String? = null,
   ) : ClasspathEntry

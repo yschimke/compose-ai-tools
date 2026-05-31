@@ -233,14 +233,21 @@ The player already exists (`compose-preview-viewer`, §2b) — the work is small
 ### Tier 3 — the coordinate resolver (the default play path, not a fallback)
 
 Give the player an embedded resolver (e.g. **Coursier**) so `ClasspathEntry.Maven`
-entries can be fetched without a Gradle install, then **verify each fetched
-artifact against its v4 `sha256`** before putting it on the classpath. With this in
-place, detached coordinate bundles — the small default — render anywhere with
-network access (a Bazel/Amper user re-rendering a Gradle-produced bundle, a
-colleague who only has the `.png`). This is the "resolve from any source,
-hash-verify, layer on" pass; the hash plumbing now exists (v4), so this tier is
-just the resolver + verification, and it becomes the *primary* path with embedding
-reserved for offline.
+entries can be fetched without a Gradle install, then **check each fetched
+artifact against its v4 `sha256`**. With this in place, detached coordinate
+bundles — the small default — render anywhere with network access (a Bazel/Amper
+user re-rendering a Gradle-produced bundle, a colleague who only has the `.png`).
+This is the "resolve from any source, hash-check, layer on" pass; the hash
+plumbing now exists (v4), so this tier is just the resolver + check, and it becomes
+the *primary* path with embedding reserved for offline.
+
+**Mismatch policy: warn, never fail.** A hash mismatch (or a missing hash) is a
+loud warning — name the coordinate and expected-vs-actual hash — and the player
+renders anyway with the resolved bytes. A different artifact for the same
+coordinate is usually *almost* compatible (point-release skew, a
+repackaged-but-equivalent jar), and a slightly-off preview beats no preview. The
+hash is a fidelity signal, not a gate; there is no strict mode that refuses to
+render.
 
 ### Sequencing
 
