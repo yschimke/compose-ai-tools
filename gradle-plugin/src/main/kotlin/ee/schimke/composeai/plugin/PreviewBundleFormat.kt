@@ -118,9 +118,14 @@ sealed interface ClasspathEntry {
   ) : ClasspathEntry
 
   /**
-   * A Maven (or Google Maven, JitPack, …) coordinate the player resolves at open time. Encoded as
-   * separate fields rather than a `group:artifact:version` string so consumers can pick a subset
-   * (e.g. only allow certain groups) without re-parsing.
+   * A Maven (or Google Maven, JitPack, …) coordinate the player resolves at open time. This is the
+   * **canonical** way a bundle carries a third-party dependency: the bytes stay *detached* and the
+   * player re-attaches them from wherever they live (Maven Central, the colleague's local Gradle /
+   * Coursier cache, an internal mirror, a future content-addressable store). Embedding
+   * ([ClasspathEntry.Embedded]) is only an offline fallback.
+   *
+   * Encoded as separate fields rather than a `group:artifact:version` string so consumers can pick
+   * a subset (e.g. only allow certain groups) without re-parsing.
    */
   @Serializable
   @kotlinx.serialization.SerialName("maven")
@@ -134,6 +139,21 @@ sealed interface ClasspathEntry {
      * artifact-transform pipeline.
      */
     val type: String,
+    /**
+     * Lowercase hex SHA-256 of the resolved artifact's bytes at pack time, or null when the
+     * producer couldn't compute it (older bundles, non-Gradle producers). Lets a player that
+     * re-attaches a *detached* dep from **any** source (Maven, a local cache, a mirror, a CAS)
+     * check the fetched bytes against the bytes the bundle was built with.
+     *
+     * **Mismatch policy: warn, never fail.** A player MUST NOT refuse to render on a hash mismatch.
+     * A different artifact for the same coordinate is usually *almost* compatible — a point-release
+     * skew, a repackaged-but-equivalent jar, a stripped vs. full variant — and a preview that
+     * renders slightly off is far more useful than no preview at all. So a mismatch (or a
+     * missing/unverifiable hash) is a **noisy warning**: surface it loudly (which coordinate,
+     * expected vs. actual hash) and proceed with the resolved bytes. There is no strict mode that
+     * hard-fails. Verification is a fidelity signal, not a gate.
+     */
+    val sha256: String? = null,
   ) : ClasspathEntry
 
   /**
@@ -189,8 +209,13 @@ const val RESOLUTION_MIXED: String = "mixed"
  *   fields default, and `ignoreUnknownKeys` readers skip the `embedded` discriminator they don't
  *   recognise, so a v2 reader opening a v3 *coordinate* bundle still works; only the embedded jars
  *   need a v3-aware player.
+ * - v4 — adds [ClasspathEntry.Maven.sha256], the content hash that makes a *detached* coordinate
+ *   safe to re-attach from any source (Maven, a local cache, a mirror, a CAS): the player resolves
+ *   the coordinate however it can, then verifies the bytes against the hash. Purely additive —
+ *   `sha256` defaults to null, so a v3 reader opening a v4 bundle just ignores it and an older
+ *   bundle reads as "unverifiable coordinate".
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 3
+const val BUNDLE_SCHEMA_VERSION: Int = 4
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

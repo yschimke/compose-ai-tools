@@ -367,6 +367,8 @@ internal object BundleReader {
       val artifact: String,
       val version: String,
       val type: String,
+      /** v4+: hex SHA-256 of the artifact bytes; verify after re-resolving. Null = unverifiable. */
+      val sha256: String? = null,
     ) : ClasspathEntry
 
     @Serializable

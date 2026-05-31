@@ -261,6 +261,21 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  Project deps inlined: $projectInlined\n" +
         "  deps dropped:         $depsDropped (no reachable classes)"
     )
+
+    // Bundles are meant to be small and shareable — a detached `coordinates` pack is typically
+    // ~100 KB. Embedding (`--embed-deps`) trades that for offline self-containment, but a fat
+    // bundle
+    // defeats the "paste it into a chat" point. Warn past a soft threshold so embedding stays a
+    // deliberate, rare choice rather than an accidental 50 MB artefact.
+    val sizeBytes = outFile.length()
+    if (sizeBytes > EMBED_SIZE_WARN_BYTES && embeddedKept > 0) {
+      logger.warn(
+        "composePreviewBundle: ${outFile.name} is ${sizeBytes / 1_000_000}MB with $embeddedKept " +
+          "embedded dep(s). Embedding is an offline fallback — prefer the default detached " +
+          "`coordinates` pack (drop `--embed-deps` / `-PbundleEmbedDeps`) so the bundle stays small " +
+          "and resolves its deps at open time."
+      )
+    }
   }
 
   private fun resolveSelection(manifest: PreviewManifest, ids: List<String>): List<PreviewInfo> {
@@ -407,9 +422,10 @@ abstract class BundlePreviewTask : DefaultTask() {
       val coord = dep.coordinate
       val src = byPath[dep.sourcePath]
       when {
-        // Maven-resolved dep, default mode: reference by coordinate, carry nothing.
+        // Maven-resolved dep, default mode: reference by coordinate (with a content hash so the
+        // detached bytes can be re-attached and verified from any source).
         coord != null && !embed -> {
-          entries += parseMavenCoord(coord)
+          entries += parseMavenCoord(coord, src)
           mavenReferenced++
         }
         // Maven-resolved dep, embed mode: carry the jar in `libs/` (skip if its file is missing).
@@ -421,7 +437,7 @@ abstract class BundlePreviewTask : DefaultTask() {
             mavenEmbedded++
           } else {
             // No file to embed — fall back to a coordinate reference rather than dropping the dep.
-            entries += parseMavenCoord(coord)
+            entries += parseMavenCoord(coord, src = null)
             mavenReferenced++
           }
         }
@@ -447,9 +463,11 @@ abstract class BundlePreviewTask : DefaultTask() {
   /**
    * Parse `"<group>:<artifact>:<version>:<type>"` (the post-prefix shape produced by the plugin
    * registration's `ResolvedArtifactResult` → coord encoder). Falls back to `type = "jar"` when the
-   * coordinate omits the trailing packaging.
+   * coordinate omits the trailing packaging. When [src] (the resolved jar on disk) is provided, its
+   * SHA-256 is recorded so a player can verify the bytes after re-resolving the coordinate from any
+   * source; [src] = null leaves the entry resolvable-but-unverifiable.
    */
-  private fun parseMavenCoord(coord: String): ClasspathEntry.Maven {
+  private fun parseMavenCoord(coord: String, src: File?): ClasspathEntry.Maven {
     val parts = coord.split(':')
     require(parts.size >= 3) { "composePreviewBundle: malformed Maven coordinate: $coord" }
     return ClasspathEntry.Maven(
@@ -457,7 +475,24 @@ abstract class BundlePreviewTask : DefaultTask() {
       artifact = parts[1],
       version = parts[2],
       type = parts.getOrNull(3) ?: "jar",
+      sha256 = src?.let { sha256Hex(it) },
     )
+  }
+
+  /**
+   * Lowercase hex SHA-256 of [file]'s bytes, streamed so large jars don't load fully into memory.
+   */
+  private fun sha256Hex(file: File): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+      val buf = ByteArray(64 * 1024)
+      while (true) {
+        val n = input.read(buf)
+        if (n < 0) break
+        digest.update(buf, 0, n)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
   }
 
   private fun buildJar(classes: Map<String, ByteArray>, resourcesDir: File?): ByteArray {
@@ -589,6 +624,13 @@ abstract class BundlePreviewTask : DefaultTask() {
       encodeDefaults = true
       classDiscriminator = "kind"
     }
+
+    /**
+     * Soft size ceiling above which an embed-deps pack warns. 25 MB is comfortably above a normal
+     * embedded Compose graph (a few MB) but well under the "nobody pastes this into a chat" range —
+     * enough to flag an accidental fat bundle without failing the build.
+     */
+    const val EMBED_SIZE_WARN_BYTES: Long = 25_000_000L
 
     /**
      * Fixed timestamp stamped onto every ZIP entry produced by [writeFile]. 1980-01-01T00:00:00

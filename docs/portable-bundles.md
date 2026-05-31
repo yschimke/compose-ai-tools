@@ -181,22 +181,40 @@ extra work.
 > Note: live Compose-only re-render also already ships via `compose-preview-viewer`
 > (§2b) — but it breaks on third-party deps, which is what Tier 1 fixes.
 
-### Tier 1 — portable live re-render via embedded deps (the core fix)
+### Design principle — deps stay *detached*, embedding is the fallback
 
-Add an **`--embed-deps` pack mode** → `resolution = "embedded"`, available to
-the Gradle plugin *and* contrib producers:
+The load-bearing mechanism is **not** stuffing jars into the bundle. A bundle
+should stay small and *reference* its third-party deps, leaving the bytes
+detached; a player **re-attaches** them at play time from wherever they happen to
+live — Maven Central, the colleague's local Gradle/Coursier cache, an internal
+mirror, or a future content-addressable store. The source is interchangeable.
 
-1. Producer writes the *reachable* third-party jars (it already computes the set
-   via the ClassGraph closure — only `kept` deps) into `libs/`, recording each as
-   `ClasspathEntry.Embedded`.
-2. Player builds its classpath entirely from inside the zip: `classes/app.jar` +
-   every `libs/*.jar` + its own bundled renderer.
-3. No Maven resolution, no network, no consumer build system. **The file is the
-   environment** — exactly the "send it to a colleague" case.
+What makes that safe across interchangeable sources is **content addressing**:
+schema v4 records a `sha256` on every `ClasspathEntry.Maven`, so a player resolves
+the coordinate however it can and then verifies the fetched bytes hash to what the
+bundle was built against before trusting them. Coordinate + hash = "find it
+anywhere, but prove it's the right bytes."
 
-Trade-off: size (a one-preview Compose bundle goes ~100 KB → a few MB). Keep
-`coordinates` as the small-file default for Gradle→Gradle; `embedded` is the
-"portable hand-off" switch.
+Embedding (`--embed-deps` / `resolution = "embedded"`, `ClasspathEntry.Embedded`)
+is therefore an **offline fallback**, not the default — for air-gapped hand-off or
+non-Gradle producers that can't emit resolvable coordinates. Don't design players
+to assume the jars are in the zip.
+
+### Tier 1 — detached deps with verifiable hashes (the core)
+
+Default `resolution = "coordinates"`, available to the Gradle plugin *and* contrib
+producers:
+
+1. Producer records each *reachable* third-party dep (ClassGraph closure, `kept`
+   only) as a `ClasspathEntry.Maven` coordinate **plus its `sha256`** — no bytes in
+   the bundle. *(Done for Gradle: schema v4.)*
+2. Player resolves each coordinate from any source it has, verifies the bytes
+   against `sha256`, then puts them on the classpath (Tier 3 is the resolver
+   itself).
+3. **`--embed-deps` remains** as the offline fallback: writes the reachable jars
+   into `libs/` as `ClasspathEntry.Embedded` and a player builds its classpath
+   straight from the zip. Trade-off: size (~100 KB → a few MB). Use it only when
+   the recipient can't resolve coordinates.
 
 ### Tier 2 — teach the existing player to read `libs/`, ship it runnable
 
@@ -212,13 +230,24 @@ The player already exists (`compose-preview-viewer`, §2b) — the work is small
    `jpackage`/`jlink` native app per OS so a non-Java colleague needs nothing
    installed at all.
 
-### Tier 3 — coordinate resolver fallback (for small Gradle-shaped bundles)
+### Tier 3 — the coordinate resolver (the default play path, not a fallback)
 
 Give the player an embedded resolver (e.g. **Coursier**) so `ClasspathEntry.Maven`
-entries can be fetched without a Gradle install — letting a Bazel/Amper user
-re-render a small Gradle-produced bundle, given network. This is precisely the
-"download Maven, hash-verify, layer on" pass the code currently defers
-(`BundleDaemonCommand`).
+entries can be fetched without a Gradle install, then **check each fetched
+artifact against its v4 `sha256`**. With this in place, detached coordinate
+bundles — the small default — render anywhere with network access (a Bazel/Amper
+user re-rendering a Gradle-produced bundle, a colleague who only has the `.png`).
+This is the "resolve from any source, hash-check, layer on" pass; the hash
+plumbing now exists (v4), so this tier is just the resolver + check, and it becomes
+the *primary* path with embedding reserved for offline.
+
+**Mismatch policy: warn, never fail.** A hash mismatch (or a missing hash) is a
+loud warning — name the coordinate and expected-vs-actual hash — and the player
+renders anyway with the resolved bytes. A different artifact for the same
+coordinate is usually *almost* compatible (point-release skew, a
+repackaged-but-equivalent jar), and a slightly-off preview beats no preview. The
+hash is a fidelity signal, not a gate; there is no strict mode that refuses to
+render.
 
 ### Sequencing
 
