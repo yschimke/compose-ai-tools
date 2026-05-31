@@ -29,13 +29,14 @@ import kotlin.system.exitProcess
  *
  * # Dependency resolution
  *
- * Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable third-party
- * deps under `libs/`; those are extracted and joined onto the daemon's `userClassDirs` so a
- * preview's own deps resolve with no network. For coordinate-mode bundles, `bundle.json`'s
- * `ClasspathEntry.Maven` entries are still *not* resolved here — the renderer's bundled Compose
- * stack supplies the common API surface, and a full coordinate-resolver pass (download Maven,
- * hash-verify, layer-on) is its own milestone (#1632, Tier 3). Same trade-off `bundle render`
- * makes.
+ * The bundle's third-party deps are joined onto the daemon's `userClassDirs` from two sources, the
+ * same way `bundle render` builds its classpath:
+ * - Embedded-mode bundles (schema-v3 `resolution = "embedded"`) carry their reachable deps under
+ *   `libs/`; those are extracted and added directly.
+ * - Default coordinate bundles record `ClasspathEntry.Maven` entries; [CoordinateResolver] resolves
+ *   each from the machine's local Maven / Gradle caches and hash-checks against the v4 `sha256`. A
+ *   miss or mismatch warns but never fails — the renderer's bundled Compose still covers the common
+ *   API surface, and an almost-compatible jar renders. A network source is a later increment.
  */
 class BundleDaemonCommand(args: List<String>) : Command(args) {
 
@@ -60,12 +61,26 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val previewsJson = workDir.resolve("previews.json")
     val zipBytes = BundleReader.extractZipBytes(file)
     expandAppJarAndManifest(zipBytes, classesDir, previewsJson, file)
-    // Embedded `libs/` jars are consumer classes, so they ride the daemon's `userClassDirs` holder
-    // (dirs-before-jars ordered, see UserClassLoaderHolder) alongside the extracted app classes —
-    // NOT the daemon/renderer `-cp`. Empty for coordinate bundles.
+    // Consumer classpath for the daemon's `userClassDirs` holder (dirs-before-jars ordered, see
+    // UserClassLoaderHolder) — the extracted app classes plus the bundle's third-party deps. NOT
+    // the
+    // daemon/renderer `-cp`. Deps come from two sources: embedded `libs/` jars (embedded-mode
+    // bundles) and `maven` coordinates resolved from local repos (the default detached bundles). A
+    // resolver miss or hash mismatch warns but never fails — same contract as `bundle render`.
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
+    val mavenCoords =
+      BundleReader.readMetadata(file)
+        .manifest
+        .classpath
+        .filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+    val resolvedJars =
+      CoordinateResolver(warn = { System.err.println("[bundle-daemon] $it") })
+        .resolveAll(mavenCoords)
+        .mapNotNull { it.file }
     val userClassPath =
-      (listOf(classesDir) + libJars).joinToString(File.pathSeparator) { it.absolutePath }
+      (listOf(classesDir) + libJars + resolvedJars).joinToString(File.pathSeparator) {
+        it.absolutePath
+      }
 
     val daemonJars = locateSidecarJars("lib-daemon-desktop")
     if (daemonJars.isEmpty()) {
@@ -106,6 +121,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       System.err.println("[bundle-daemon] working dir: ${workDir.absolutePath}")
       System.err.println("[bundle-daemon] classes dir: ${classesDir.absolutePath}")
       System.err.println("[bundle-daemon] embedded lib jars: ${libJars.size}")
+      System.err.println(
+        "[bundle-daemon] resolved coordinate jars: ${resolvedJars.size} / ${mavenCoords.size}"
+      )
       System.err.println("[bundle-daemon] previews.json: ${previewsJson.absolutePath}")
       System.err.println("[bundle-daemon] daemon jars: ${daemonJars.size}")
       System.err.println("[bundle-daemon] renderer jars: ${rendererJars.size}")
