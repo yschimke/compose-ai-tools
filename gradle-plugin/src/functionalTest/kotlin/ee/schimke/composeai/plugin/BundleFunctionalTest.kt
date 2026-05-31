@@ -408,6 +408,69 @@ class BundleFunctionalTest {
     assertThat(first["type"]!!.jsonPrimitive.content).isEqualTo("jar")
   }
 
+  @Test
+  fun `embed-deps pack carries reachable jars in libs and marks resolution embedded`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId", "-PbundleEmbedDeps=true")
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val entries = listEntries(bundle)
+    // Embedded mode carries the reachable third-party jars inside the bundle's `libs/`.
+    val libsEntries = entries.filter { it.startsWith("libs/") && it.endsWith(".jar") }
+    assertThat(libsEntries).isNotEmpty()
+
+    val manifest =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    assertThat(manifest["schemaVersion"]!!.jsonPrimitive.content).isEqualTo("3")
+    assertThat(manifest["resolution"]!!.jsonPrimitive.content).isEqualTo("embedded")
+    assertThat(manifest["producer"]!!.jsonPrimitive.content).isEqualTo("gradle")
+
+    val kinds =
+      manifest["classpath"]!!.jsonArray.map { it.jsonObject["kind"]!!.jsonPrimitive.content }
+    // First entry is still the inlined consumer module; the third-party deps are now `embedded`,
+    // not `maven` — that's the whole point of the mode.
+    assertThat(kinds.first()).isEqualTo("module")
+    assertThat(kinds).contains("embedded")
+    assertThat(kinds).doesNotContain("maven")
+
+    // Every `embedded` entry's `inlinedAs` must point at a real `libs/` zip entry.
+    val embeddedPaths =
+      manifest["classpath"]!!
+        .jsonArray
+        .filter { it.jsonObject["kind"]!!.jsonPrimitive.content == "embedded" }
+        .map { it.jsonObject["inlinedAs"]!!.jsonPrimitive.content }
+    assertThat(embeddedPaths).isNotEmpty()
+    assertThat(entries).containsAtLeastElementsIn(embeddedPaths)
+  }
+
+  @Test
+  fun `default pack stays coordinates with no libs directory`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewBundle", "-PbundlePreviewIds=$redId")
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(projectDir, "build/compose-previews/bundle.png")
+    val manifest =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    assertThat(manifest["resolution"]!!.jsonPrimitive.content).isEqualTo("coordinates")
+    assertThat(listEntries(bundle).filter { it.startsWith("libs/") }).isEmpty()
+  }
+
   private fun listEntries(file: File): Set<String> = listEntries(extractZipBytes(file))
 
   private fun listEntries(zipBytes: ByteArray): Set<String> {

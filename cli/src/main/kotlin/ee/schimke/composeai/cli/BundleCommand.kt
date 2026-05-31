@@ -76,6 +76,9 @@ class BundleCommand(args: List<String>) : Command(args) {
         --id <preview-id>   Preview to include. Repeatable. First is the cover. Default: all.
         -o, --output <file> Output file path. Default: <module>/build/compose-previews/bundle.png.
         --no-render         Skip composePreviewRender — pack with a stub gray cover.
+        --embed-deps        Carry reachable third-party jars inside the bundle (libs/) instead of
+                            referencing Maven coordinates. Bigger file, but renders with no network
+                            and no build system on the other end (resolution=embedded).
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -89,6 +92,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val module: String? = args.flagValue("--module")
   private val output: String? = args.flagValue("--output") ?: args.flagValue("-o")
   private val noRender: Boolean = "--no-render" in args
+  private val embedDeps: Boolean = "--embed-deps" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val ids: List<String> =
     args
@@ -123,6 +127,7 @@ private class PackSubcommand(private val args: List<String>) {
 
             val gradleArgs = buildList {
               if (ids.isNotEmpty()) add("-PbundlePreviewIds=${ids.joinToString(",")}")
+              if (embedDeps) add("-PbundleEmbedDeps=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
             }
             val tasks =
@@ -162,14 +167,19 @@ private class PackSubcommand(private val args: List<String>) {
 
   private fun printPackSummary(file: File, meta: BundleReader.Metadata) {
     println("wrote ${file.path} (${file.length()} bytes)")
-    println("  schema:        v${meta.manifest.schemaVersion}, backend=${meta.manifest.backend}")
+    println(
+      "  schema:        v${meta.manifest.schemaVersion}, backend=${meta.manifest.backend}, " +
+        "producer=${meta.manifest.producer}, resolution=${meta.manifest.resolution}"
+    )
     println(
       "  previews:      ${meta.manifest.previewIds.size} (cover=${meta.manifest.coverPreviewId})"
     )
     val mavenCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Maven }
     val projectCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Project }
+    val embeddedCount = meta.manifest.classpath.count { it is BundleReader.ClasspathEntry.Embedded }
     println(
-      "  classpath:     ${meta.manifest.classpath.size} entries (Maven=$mavenCount, inlined=$projectCount)"
+      "  classpath:     ${meta.manifest.classpath.size} entries " +
+        "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)"
     )
     val r = meta.report
     if (r != null) {
@@ -336,6 +346,10 @@ internal object BundleReader {
     val classpath: List<ClasspathEntry>,
     val modulePath: String,
     val producedBy: String,
+    /** v3+: producing build system (`gradle`|`amper`|`bazel`). Defaults for v2 bundles. */
+    val producer: String = "gradle",
+    /** v3+: classpath assembly strategy (`coordinates`|`embedded`|`mixed`). Defaults for v2. */
+    val resolution: String = "coordinates",
   )
 
   @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -358,6 +372,13 @@ internal object BundleReader {
     @Serializable
     @kotlinx.serialization.SerialName("project")
     data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
+
+    /**
+     * v3+: a third-party jar carried inside the bundle's `libs/` — no coordinate, no resolution.
+     */
+    @Serializable
+    @kotlinx.serialization.SerialName("embedded")
+    data class Embedded(val inlinedAs: String) : ClasspathEntry
   }
 
   @Serializable
@@ -451,5 +472,37 @@ internal object BundleReader {
       if (type == "IEND") return offset
     }
     throw IllegalArgumentException("truncated PNG: IEND not found before EOF")
+  }
+
+  /**
+   * Extract every embedded jar under `libs/` from a bundle's [zipBytes] into [libsDir], returning
+   * the written jar files sorted by name (stable classpath order). Embedded-mode bundles (schema-v3
+   * `resolution = "embedded"`) carry their reachable third-party deps here; coordinate bundles
+   * carry none, so this returns an empty list.
+   *
+   * Each entry is flattened to its basename under [libsDir] and the resolved path is verified to
+   * live inside [libsDir] — defeats Zip Slip (`../` traversal) on a hostile bundle. Nested paths
+   * and directory entries are ignored. Shared by [BundleRenderer] and [BundleDaemonCommand] so the
+   * two player paths extract identically.
+   */
+  fun extractEmbeddedLibs(zipBytes: ByteArray, libsDir: File): List<File> {
+    libsDir.mkdirs()
+    val canonicalLibs = libsDir.canonicalFile
+    val written = mutableListOf<File>()
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        if (!entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar")) {
+          val dest = File(libsDir, File(name).name).canonicalFile
+          if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
+            dest.outputStream().use { sink -> zin.copyTo(sink) }
+            written += dest
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+    return written.sortedBy { it.name }
   }
 }

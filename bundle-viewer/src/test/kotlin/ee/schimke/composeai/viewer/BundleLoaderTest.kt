@@ -56,19 +56,107 @@ class BundleLoaderTest {
     assertThat(ex).isInstanceOf(IllegalArgumentException::class.java)
   }
 
+  @Test
+  fun `loadBundle puts embedded libs jars on the bundle classloader`() {
+    // A v3 embedded bundle: an extra jar under libs/ carrying a class that is NOT on the viewer's
+    // own classpath. The loader must extract it and add it to the child URLClassLoader so the
+    // preview's third-party deps resolve (the whole point of --embed-deps / resolution=embedded).
+    //
+    // The preview's owner class `test.PreviewsKt` is itself placed in classes/app.jar so that
+    // `loadBundle` resolves it via the bundle's URLClassLoader (rather than the placeholder it
+    // falls
+    // back to when the class is missing) — giving us a handle on the *actual* bundle loader to
+    // prove
+    // the embedded jar landed on the same classpath.
+    val embeddedClassFqn = "com.example.embedded.Widget"
+    val bundle =
+      writeMinimalBundle(
+        includeAppClass = true,
+        resolution = "embedded",
+        extraClasspath = listOf(ClasspathEntry.Embedded(inlinedAs = "libs/embedded.jar")),
+        libs = mapOf("libs/embedded.jar" to singleClassJar(embeddedClassFqn)),
+      )
+
+    val loaded = loadBundle(bundle)
+    try {
+      assertThat(loaded.bundleManifest.resolution).isEqualTo("embedded")
+      // `test.PreviewsKt` resolved → ownerClass is the real class loaded by the bundle's loader.
+      val bundleLoader = loaded.coverPreview.ownerClass.classLoader!!
+      assertThat(loaded.coverPreview.ownerClass.name).isEqualTo("test.PreviewsKt")
+      // The embedded class is absent from the viewer's own classloader…
+      assertThat(runCatching { Class.forName(embeddedClassFqn) }.isFailure).isTrue()
+      // …but loads via the bundle's loader because libs/embedded.jar is on its classpath.
+      val resolved = Class.forName(embeddedClassFqn, false, bundleLoader)
+      assertThat(resolved.name).isEqualTo(embeddedClassFqn)
+    } finally {
+      loaded.close()
+    }
+  }
+
+  /** A jar carrying a single trivial public class [fqn] (see [minimalClassBytes]). */
+  private fun singleClassJar(fqn: String): ByteArray {
+    val classBytes = minimalClassBytes(fqn)
+    val baos = ByteArrayOutputStream()
+    ZipOutputStream(baos).use { zip ->
+      zip.putNextEntry(ZipEntry(fqn.replace('.', '/') + ".class"))
+      zip.write(classBytes)
+      zip.closeEntry()
+    }
+    return baos.toByteArray()
+  }
+
+  /**
+   * Emit a minimal but verifiable `public class <fqn> extends Object` with no fields/methods/
+   * interfaces. Loadable via `Class.forName(fqn, initialize = false, loader)` — that path needs no
+   * constructor and doesn't run `<clinit>`, so an empty class body is enough to prove the embedded
+   * jar made it onto the classloader. Avoids pulling ASM onto the viewer's test classpath.
+   */
+  private fun minimalClassBytes(fqn: String): ByteArray {
+    val internalName = fqn.replace('.', '/')
+    val baos = ByteArrayOutputStream()
+    java.io.DataOutputStream(baos).use { out ->
+      out.writeInt(-0x35014542) // 0xCAFEBABE magic
+      out.writeShort(0) // minor version
+      out.writeShort(52) // major version = Java 8
+      // Constant pool: count = 5 (entries 1..4).
+      out.writeShort(5)
+      out.writeByte(1) // #1 Utf8
+      out.writeUTF(internalName)
+      out.writeByte(7) // #2 Class → #1
+      out.writeShort(1)
+      out.writeByte(1) // #3 Utf8
+      out.writeUTF("java/lang/Object")
+      out.writeByte(7) // #4 Class → #3
+      out.writeShort(3)
+      out.writeShort(0x0021) // access flags: ACC_PUBLIC | ACC_SUPER
+      out.writeShort(2) // this_class = #2
+      out.writeShort(4) // super_class = #4
+      out.writeShort(0) // interfaces_count
+      out.writeShort(0) // fields_count
+      out.writeShort(0) // methods_count
+      out.writeShort(0) // attributes_count
+    }
+    return baos.toByteArray()
+  }
+
   /**
    * Build a tiny but well-formed PNG+ZIP polyglot. The PNG is just a sanity 1×1 cover; the zip
    * carries the manifests + an empty `classes/app.jar` so resolution exercises the
    * "class-not-found" branch deterministically.
    */
-  private fun writeMinimalBundle(includeAppClass: Boolean): File {
+  private fun writeMinimalBundle(
+    includeAppClass: Boolean = false,
+    resolution: String = "coordinates",
+    extraClasspath: List<ClasspathEntry> = emptyList(),
+    libs: Map<String, ByteArray> = emptyMap(),
+  ): File {
     val zipBytes = ByteArrayOutputStream()
     ZipOutputStream(zipBytes).use { zip ->
       val bundleJson =
         Json.encodeToString(
           BundleManifest.serializer(),
           BundleManifest(
-            schemaVersion = 1,
+            schemaVersion = if (resolution == "coordinates") 1 else 3,
             backend = "desktop",
             previewIds = listOf("test.PreviewsKt.MissingPreview"),
             coverPreviewId = "test.PreviewsKt.MissingPreview",
@@ -81,9 +169,10 @@ class BundleLoaderTest {
                   version = "1.10.3",
                   type = "jar",
                 ),
-              ),
+              ) + extraClasspath,
             modulePath = ":test",
             producedBy = "test-suite",
+            resolution = resolution,
           ),
         )
       zip.putNextEntry(ZipEntry("bundle.json"))
@@ -110,12 +199,26 @@ class BundleLoaderTest {
       zip.write(previewsJson.toByteArray(Charsets.UTF_8))
       zip.closeEntry()
 
-      // Empty jar — just enough to satisfy the "classes/app.jar must be present" precondition.
-      val emptyJarBytes = ByteArrayOutputStream()
-      ZipOutputStream(emptyJarBytes).use { /* no entries */ }
+      // classes/app.jar: empty by default (exercises the class-not-found branch). When
+      // [includeAppClass] is set, carry the preview's owner class so resolution succeeds and the
+      // owner class is loaded by the bundle's own URLClassLoader.
+      val appJarBytes = ByteArrayOutputStream()
+      ZipOutputStream(appJarBytes).use { appJar ->
+        if (includeAppClass) {
+          appJar.putNextEntry(ZipEntry("test/PreviewsKt.class"))
+          appJar.write(minimalClassBytes("test.PreviewsKt"))
+          appJar.closeEntry()
+        }
+      }
       zip.putNextEntry(ZipEntry("classes/app.jar"))
-      zip.write(emptyJarBytes.toByteArray())
+      zip.write(appJarBytes.toByteArray())
       zip.closeEntry()
+
+      for ((path, bytes) in libs) {
+        zip.putNextEntry(ZipEntry(path))
+        zip.write(bytes)
+        zip.closeEntry()
+      }
     }
 
     // Synthesise a 1×1 PNG header so the polyglot is recognised by `extractZipBytes`. Same byte

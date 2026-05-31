@@ -219,6 +219,11 @@ internal object ComposePreviewTasks {
         BundlePreviewIds.parse(raw)
       }
     val outputProperty: Provider<String> = project.providers.gradleProperty("bundleOutput")
+    // `-PbundleEmbedDeps=true` → schema-v3 `resolution = "embedded"`: carry reachable third-party
+    // jars inside the bundle's `libs/` instead of referencing Maven coordinates. Larger file, but
+    // renders with no network / no consumer build system.
+    val embedDepsProperty: Provider<Boolean> =
+      project.providers.gradleProperty("bundleEmbedDeps").map { it.toBoolean() }
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
@@ -288,6 +293,7 @@ internal object ComposePreviewTasks {
       rendersDir.set(previewOutputDir.map { it.dir("renders") })
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
+      embedDeps.set(embedDepsProperty.orElse(false))
       modulePath.set(project.path)
       backend.set("desktop")
       producedBy.set("compose-preview $pluginVersionProperty")

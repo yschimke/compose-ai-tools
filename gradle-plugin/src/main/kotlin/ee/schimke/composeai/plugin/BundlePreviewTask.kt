@@ -38,12 +38,18 @@ import org.gradle.api.tasks.TaskAction
  * # Dependency strategy
  *
  * Only consumer-module bytecode is inlined into the bundle (`classes/app.jar`, minimized to classes
- * reachable from the selected previews). Every Maven-resolved runtime dependency is recorded as a
- * `ClasspathEntry.Maven` coordinate — not bundled — so the bundle stays small enough to share over
- * chat / paste into a gist. The player resolves the coordinates from the consumer's normal Gradle
- * repos at open time. Project deps that have no Maven coordinate (transitive `:my-lib` references
- * inside the consumer's build) fall back to being inlined as `ClasspathEntry.Project(inlinedAs =
- * "libs/<name>.jar")` so the bundle is still self-contained for offline use.
+ * reachable from the selected previews). In the default `resolution = "coordinates"` mode every
+ * Maven-resolved runtime dependency is recorded as a `ClasspathEntry.Maven` coordinate — not
+ * bundled — so the bundle stays small enough to share over chat / paste into a gist, and the player
+ * resolves the coordinates from the consumer's normal Gradle repos at open time. Project deps that
+ * have no Maven coordinate (transitive `:my-lib` references inside the consumer's build) fall back
+ * to being inlined as `ClasspathEntry.Project(inlinedAs = "libs/<name>.jar")` so the bundle is
+ * still self-contained for offline use.
+ *
+ * With [embedDeps] (`-PbundleEmbedDeps=true`, schema-v3 `resolution = "embedded"`) the kept
+ * Maven-resolved deps are instead carried inside the bundle's `libs/` as `ClasspathEntry.Embedded`,
+ * producing a larger but fully self-contained artefact that a player can render with no network and
+ * no consumer build system — the "pass it to a colleague" mode.
  *
  * # Closure walk
  *
@@ -147,6 +153,17 @@ abstract class BundlePreviewTask : DefaultTask() {
   /** Backend identifier. v1 = "desktop". */
   @get:Input abstract val backend: Property<String>
 
+  /**
+   * Embed-deps mode (`-PbundleEmbedDeps=true`, schema-v3 `resolution = "embedded"`). When true,
+   * every *kept* third-party dependency jar is carried **inside** the bundle under `libs/` as a
+   * [ClasspathEntry.Embedded] entry instead of being referenced by Maven coordinate. The result is
+   * a larger but fully self-contained bundle that a player can render with no network and no
+   * consumer build system — the "pass it to a colleague" mode. Project-local deps (no coordinate)
+   * are inlined regardless; this flag only changes how Maven-resolved deps are carried. Defaults to
+   * false so the normal pack stays small and `resolution = "coordinates"`.
+   */
+  @get:Input @get:Optional abstract val embedDeps: Property<Boolean>
+
   /** Output `.png` polyglot file. */
   @get:OutputFile abstract val output: RegularFileProperty
 
@@ -171,8 +188,9 @@ abstract class BundlePreviewTask : DefaultTask() {
 
     val coordMap = dependencyCoordinates.getOrElse(emptyMap())
     val depDecisions = buildDepDecisions(jarsList, closure.perElement, coordMap)
-    val classpathEntries = buildClasspathEntries(depDecisions)
-    val inlinedProjectJars = inlinedProjectJars(jarsList, depDecisions)
+    val classpath = assembleClasspath(jarsList, depDecisions, embed = embedDeps.getOrElse(false))
+    val classpathEntries = classpath.entries
+    val inlinedJars = classpath.inlinedJars
 
     val report =
       MinimizationReport(
@@ -197,6 +215,8 @@ abstract class BundlePreviewTask : DefaultTask() {
         classpath = classpathEntries,
         modulePath = modulePath.get(),
         producedBy = producedBy.get(),
+        producer = PRODUCER_GRADLE,
+        resolution = classpath.resolution,
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -213,7 +233,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
         previewsJson = JSON.encodeToString(PreviewManifest.serializer(), filteredManifest),
         appJar = appJarBytes,
-        inlinedProjectJars = inlinedProjectJars,
+        inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
         previewPngs = previewPngs,
       )
@@ -226,15 +246,18 @@ abstract class BundlePreviewTask : DefaultTask() {
     writePngZipPolyglot(coverPng, zipBytes, outFile)
 
     val mavenKept = classpathEntries.count { it is ClasspathEntry.Maven }
+    val embeddedKept = classpathEntries.count { it is ClasspathEntry.Embedded }
     val projectInlined = classpathEntries.count { it is ClasspathEntry.Project }
     val depsDropped = depDecisions.count { !it.kept }
     logger.lifecycle(
       "composePreviewBundle — wrote ${outFile.name} (${outFile.length()} bytes)\n" +
+        "  resolution:           ${classpath.resolution}\n" +
         "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
         "  Maven deps listed:    $mavenKept\n" +
+        "  Embedded deps:        $embeddedKept (carried in libs/)\n" +
         "  Project deps inlined: $projectInlined\n" +
         "  deps dropped:         $depsDropped (no reachable classes)"
     )
@@ -349,37 +372,76 @@ abstract class BundlePreviewTask : DefaultTask() {
     )
   }
 
-  private fun buildClasspathEntries(deps: List<DependencyDecision>): List<ClasspathEntry> {
-    val result = mutableListOf<ClasspathEntry>(ClasspathEntry.Module(path = "classes/app.jar"))
+  /** The classpath manifest entries, the jars to inline under `libs/`, and the resolution mode. */
+  private data class AssembledClasspath(
+    val entries: List<ClasspathEntry>,
+    val inlinedJars: Map<String, File>,
+    val resolution: String,
+  )
+
+  /**
+   * Build the manifest classpath from the kept dependency decisions.
+   * - Project-local deps (no Maven coordinate) are always inlined under `libs/` as
+   *   [ClasspathEntry.Project] — they can't be re-resolved.
+   * - Maven-resolved deps are referenced by [ClasspathEntry.Maven] coordinate (the small default),
+   *   OR, when [embed] is true, inlined under `libs/` as [ClasspathEntry.Embedded] so the bundle
+   *   needs no resolver at open time.
+   *
+   * `resolution` is derived honestly from the result: `embedded` when every kept Maven dep was
+   * carried in `libs/`, `mixed` when some Maven deps are embedded and others referenced (it isn't
+   * today, but the field stays accurate if that changes), else `coordinates`.
+   */
+  private fun assembleClasspath(
+    jars: List<File>,
+    deps: List<DependencyDecision>,
+    embed: Boolean,
+  ): AssembledClasspath {
+    val byPath = jars.associateBy { it.absolutePath }
+    val entries = mutableListOf<ClasspathEntry>(ClasspathEntry.Module(path = "classes/app.jar"))
+    val inlinedJars = LinkedHashMap<String, File>()
+    var mavenReferenced = 0
+    var mavenEmbedded = 0
+    seenJarNames.clear()
     for (dep in deps) {
       if (!dep.kept) continue
       val coord = dep.coordinate
-      if (coord != null) {
-        result += parseMavenCoord(coord)
-      } else {
-        val inlined = "libs/${dedupeJarName(File(dep.sourcePath).name)}"
-        result += ClasspathEntry.Project(path = dep.projectPath ?: ":anon", inlinedAs = inlined)
+      val src = byPath[dep.sourcePath]
+      when {
+        // Maven-resolved dep, default mode: reference by coordinate, carry nothing.
+        coord != null && !embed -> {
+          entries += parseMavenCoord(coord)
+          mavenReferenced++
+        }
+        // Maven-resolved dep, embed mode: carry the jar in `libs/` (skip if its file is missing).
+        coord != null -> {
+          if (src != null) {
+            val inlined = "libs/${dedupeJarName(src.name)}"
+            inlinedJars[inlined] = src
+            entries += ClasspathEntry.Embedded(inlinedAs = inlined)
+            mavenEmbedded++
+          } else {
+            // No file to embed — fall back to a coordinate reference rather than dropping the dep.
+            entries += parseMavenCoord(coord)
+            mavenReferenced++
+          }
+        }
+        // Project-local dep (no coordinate): always inline.
+        else -> {
+          val name = src?.name ?: File(dep.sourcePath).name
+          val inlined = "libs/${dedupeJarName(name)}"
+          if (src != null) inlinedJars[inlined] = src
+          entries += ClasspathEntry.Project(path = dep.projectPath ?: ":anon", inlinedAs = inlined)
+        }
       }
     }
-    return result
-  }
-
-  private fun inlinedProjectJars(
-    jars: List<File>,
-    deps: List<DependencyDecision>,
-  ): Map<String, File> {
-    val byPath = jars.associateBy { it.absolutePath }
-    val result = LinkedHashMap<String, File>()
     seenJarNames.clear()
-    for (dep in deps) {
-      if (!dep.kept) continue
-      if (dep.coordinate != null) continue
-      val src = byPath[dep.sourcePath] ?: continue
-      val inlined = "libs/${dedupeJarName(src.name)}"
-      result[inlined] = src
-    }
-    seenJarNames.clear()
-    return result
+    val resolution =
+      when {
+        mavenEmbedded > 0 && mavenReferenced > 0 -> RESOLUTION_MIXED
+        mavenEmbedded > 0 -> RESOLUTION_EMBEDDED
+        else -> RESOLUTION_COORDINATES
+      }
+    return AssembledClasspath(entries = entries, inlinedJars = inlinedJars, resolution = resolution)
   }
 
   /**
