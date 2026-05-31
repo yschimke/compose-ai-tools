@@ -206,13 +206,17 @@ internal object ComposePreviewTasks {
    * `composePreviewRender` first (the CLI shells through `composePreviewRender
    * composePreviewBundle` as a single Gradle invocation).
    */
-  private fun registerBundleTask(
+  internal fun registerBundleTask(
     project: Project,
     extension: PreviewExtension,
     previewOutputDir: Provider<Directory>,
     sourceClassDirs: FileCollection,
     resolveDependencyConfigName: () -> String,
     discoverTaskName: String,
+    // Recorded into `bundle.json`'s `backend` field. "desktop" for the CMP/JVM path; the Android
+    // path (AndroidPreviewSupport) passes "android" so players know which renderer the bundle was
+    // packed for. Packing itself is backend-agnostic — the closure walk only sees JVM bytecode.
+    backendId: String = "desktop",
   ) {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
@@ -295,7 +299,7 @@ internal object ComposePreviewTasks {
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       modulePath.set(project.path)
-      backend.set("desktop")
+      backend.set(backendId)
       producedBy.set("compose-preview $pluginVersionProperty")
       output.set(project.layout.file(resolvedOutput))
       group = "compose preview"
