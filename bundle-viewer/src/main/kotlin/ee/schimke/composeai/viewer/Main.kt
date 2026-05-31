@@ -59,7 +59,10 @@ import java.io.File
  * same shape `@Preview` viewers in Android Studio show.
  */
 fun main(args: Array<String>) {
-  val initial = args.firstOrNull()?.let { File(it) }?.takeIf { it.isFile }
+  // The bundle arg may be a local path or an http(s)/file URL — resolve (download) it to a local
+  // file before loading. Null when no arg, an unreadable path, or a failed download (the window
+  // still opens so the user can drop a bundle).
+  val initial = args.firstOrNull()?.let { resolveBundleArg(it) }
   application {
     var loadedBundle by remember { mutableStateOf<LoadedBundle?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -241,3 +244,37 @@ private fun previewSize(preview: LoadedPreview): DpSize {
 
 private val INITIAL_WIDTH = 480.dp
 private val INITIAL_HEIGHT = 720.dp
+
+/**
+ * Resolve a bundle CLI arg — a local path or an http(s)/file URL — to a readable local file, or
+ * null when it can't be opened (missing path, failed download). URLs are downloaded to a temp file
+ * (delete-on-exit). Kept self-contained here rather than depending on `:cli`'s BundleSource so the
+ * viewer's module graph stays minimal (same convention as the duplicated `extractZipBytes`).
+ */
+private fun resolveBundleArg(arg: String): File? {
+  val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()
+  val isUrl = scheme == "http" || scheme == "https" || scheme == "file"
+  if (!isUrl) return File(arg).takeIf { it.isFile }
+  return try {
+    val uri = java.net.URI(arg)
+    if (uri.scheme.equals("file", ignoreCase = true)) return File(uri).takeIf { it.isFile }
+    val temp = java.nio.file.Files.createTempFile("compose-preview-bundle-", ".png").toFile()
+    temp.deleteOnExit()
+    val client =
+      java.net.http.HttpClient.newBuilder()
+        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+        .build()
+    val response =
+      client.send(
+        java.net.http.HttpRequest.newBuilder(uri).GET().build(),
+        java.net.http.HttpResponse.BodyHandlers.ofFile(temp.toPath()),
+      )
+    if (response.statusCode() in 200..299 && temp.length() > 0) temp
+    else {
+      temp.delete()
+      null
+    }
+  } catch (_: Exception) {
+    null
+  }
+}
