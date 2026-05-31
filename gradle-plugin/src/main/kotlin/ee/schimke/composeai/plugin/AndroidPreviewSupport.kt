@@ -6,6 +6,7 @@ import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.Variant
 import ee.schimke.composeai.daemonlaunch.*
 import ee.schimke.composeai.discovery.*
+import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
@@ -107,6 +108,8 @@ internal object AndroidPreviewSupport {
     task.sdkOverride.set(extensionOverride)
     task.consumerCompileSdk.set(consumerCompileSdk)
     task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    // `buildJavaMajor` is wired separately (below, in registerAndroidTasks) to the Gradle build
+    // JVM, with the SDK matrix overriding it to its forked test toolchain.
   }
 
   fun configure(project: Project, extension: PreviewExtension) {
@@ -1613,6 +1616,20 @@ internal object AndroidPreviewSupport {
         }
       }
 
+    // Feed the JDK-aware Robolectric SDK ceiling with the JVM the render forks into. Default to the
+    // Gradle build JVM: the `composePreviewRender` Test task inherits AGP's unit-test
+    // `javaLauncher`, which — absent a consumer toolchain — is the build JVM, so this is the JVM
+    // `DefaultSdkProvider.verifySupportedSdk` actually runs under (the Confetti case the fix
+    // targets). Deliberately a plain value, NOT a provider derived from `renderTask` — mapping a
+    // `TaskProvider` carries that task as a dependency, and `renderTask` already dependsOn this
+    // generator (via the generated-resources classpath), so that would be a circular dependency.
+    // The SDK matrix forks tests into `composeai.matrix.jvmToolchain` and overrides this input
+    // directly (see `samples/sdk-matrix/build.gradle.kts`). See
+    // [GenerateRobolectricPropertiesTask.buildJavaMajor].
+    generateRobolectricPropertiesTask.configure {
+      buildJavaMajor.set(JavaVersion.current().majorVersion.toInt())
+    }
+
     if (extension.resourcePreviews.enabled.get()) {
       // Resource render task — same Robolectric harness as `composePreviewRender`, different test
       // class + manifest sysprops. Reuses the renderer/test/runtime classpaths computed above.
@@ -2045,7 +2062,6 @@ internal object AndroidPreviewSupport {
 
   /**
    * Resolves the effective shard count from [PreviewExtension.shards]:
-   *
    * - `≥1`: use the value as-is.
    * - `0` (auto): read [previewsJson] if it exists from a previous discover run and hand the count
    *   to [ShardTuning.autoShards]. If the file is missing (very first build), fall back to 1 — the
