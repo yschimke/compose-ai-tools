@@ -16,10 +16,19 @@ import kotlinx.serialization.json.Json
  * # Classloading
  *
  * The bundle's inlined `classes/app.jar` is written to a temp file (URLClassLoader needs a URL, and
- * a `file:` URL is simpler than a `jar:` polyglot URL). A child [URLClassLoader] loads it with the
- * viewer's own classloader as parent — every `androidx.compose.*` symbol the bundle's code
- * references resolves against the viewer's bundled Compose runtime, so the composer state is shared
- * and `@Composable` invocation works across the loader boundary.
+ * a `file:` URL is simpler than a `jar:` polyglot URL). Any jars the bundle carries under `libs/` —
+ * the schema-v3 `resolution = "embedded"` / `"mixed"` mode, where reachable third-party (and
+ * project-local) deps are packed inside the bundle rather than referenced by Maven coordinate — are
+ * extracted alongside it and added to the same child [URLClassLoader]. That loader uses the
+ * viewer's own classloader as parent, so every `androidx.compose.*` symbol still resolves against
+ * the viewer's bundled Compose runtime (shared composer state, cross-loader `@Composable`
+ * invocation), while a preview's *own* third-party dependencies (an icon pack, Coil, a
+ * `:design-system` jar, …) resolve from the embedded `libs/` jars instead of blowing up with
+ * `NoClassDefFoundError`.
+ *
+ * A `coordinates`-mode bundle carries no `libs/`; the loader simply finds none and behaves exactly
+ * as before (Compose-only previews work; previews needing un-bundled third-party deps still won't,
+ * which is what `--embed-deps` is for).
  *
  * # Lifecycle
  *
@@ -70,15 +79,27 @@ fun loadBundle(bundleFile: File): LoadedBundle {
   val zipBytes = extractZipBytes(bundleFile)
   val workDir = Files.createTempDirectory("compose-preview-viewer-").toFile()
   val appJarFile = File(workDir, "app.jar")
+  // Embedded dep jars, keyed by their posix `libs/<name>.jar` path so order is deterministic and
+  // dedupe-safe even if the zip lists them oddly. Extracted under workDir/libs/.
+  val libJarFiles = sortedMapOf<String, File>()
   var bundleJson: String? = null
   var previewsJson: String? = null
   ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
     while (true) {
       val entry = zin.nextEntry ?: break
-      when (entry.name) {
-        "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
-        "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
-        "classes/app.jar" -> appJarFile.outputStream().use { sink -> zin.copyTo(sink) }
+      val name = entry.name
+      when {
+        name == "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
+        name == "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
+        name == "classes/app.jar" -> appJarFile.outputStream().use { sink -> zin.copyTo(sink) }
+        !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
+          // Flatten to a safe basename under workDir/libs/; `libs/` paths in our own bundles never
+          // contain `..` or nested dirs, but guard against a hostile bundle escaping workDir.
+          val safe = File(workDir, "libs/" + File(name).name)
+          safe.parentFile?.mkdirs()
+          safe.outputStream().use { sink -> zin.copyTo(sink) }
+          libJarFiles[name] = safe
+        }
       }
       zin.closeEntry()
     }
@@ -96,7 +117,13 @@ fun loadBundle(bundleFile: File): LoadedBundle {
   }
 
   val parentLoader = LoadedBundle::class.java.classLoader
-  val classLoader = URLClassLoader(arrayOf(appJarFile.toURI().toURL()), parentLoader)
+  // app.jar first, then every embedded lib jar (path-sorted). The viewer's bundled Compose still
+  // wins
+  // on shared symbols because it sits on the parent loader; the embedded jars only supply classes
+  // the
+  // parent doesn't have (the preview's own third-party deps).
+  val classpathUrls = (listOf(appJarFile) + libJarFiles.values).map { it.toURI().toURL() }
+  val classLoader = URLClassLoader(classpathUrls.toTypedArray(), parentLoader)
 
   val loadedPreviews = previewManifest.previews.map { info -> resolvePreview(info, classLoader) }
   val cover =

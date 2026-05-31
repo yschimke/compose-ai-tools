@@ -20,6 +20,14 @@ data class BundleManifest(
   val classpath: List<ClasspathEntry>,
   val modulePath: String,
   val producedBy: String,
+  /**
+   * v3+: producing build system (`gradle`|`amper`|`bazel`). Defaults to `gradle` for v2 bundles.
+   */
+  val producer: String = "gradle",
+  /**
+   * v3+: classpath assembly strategy (`coordinates`|`embedded`|`mixed`). Defaults for v2 bundles.
+   */
+  val resolution: String = "coordinates",
 )
 
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
@@ -38,6 +46,11 @@ sealed interface ClasspathEntry {
   @Serializable
   @kotlinx.serialization.SerialName("project")
   data class Project(val path: String, val inlinedAs: String) : ClasspathEntry
+
+  /** v3+: a third-party jar carried inside the bundle's `libs/` — no coordinate, no resolution. */
+  @Serializable
+  @kotlinx.serialization.SerialName("embedded")
+  data class Embedded(val inlinedAs: String) : ClasspathEntry
 }
 
 @Serializable
