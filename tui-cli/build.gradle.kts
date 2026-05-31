@@ -72,9 +72,11 @@ dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
 
-  // Ktor client (OkHttp engine) for opening a bundle from a URL.
+  // Ktor client (OkHttp engine) for opening a bundle from a URL. Explicit okhttp dep pins the
+  // engine to OkHttp 5.x over ktor-client-okhttp's transitive 4.12.0.
   implementation(libs.ktor.client.core)
   implementation(libs.ktor.client.okhttp)
+  implementation(libs.okhttp)
 
   // Subprocess-only sidecars shipped in the dist for project-less bundle mode. The daemon's
   // subprocess classpath joins `lib-daemon-desktop/jars` + `lib-renderer/jars` at launch; the renderer

@@ -150,9 +150,9 @@ metro = "1.1.1"
 # what compiles the @Composable functions, so no separate Mosaic gradle plugin is needed.
 mosaic = "0.19.0-SNAPSHOT"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
-# compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 4.12 is the stable engine backing it.
+# compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
 ktor = "3.0.3"
-okhttp = "4.12.0"
+okhttp = "5.1.0"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
