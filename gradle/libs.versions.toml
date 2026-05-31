@@ -149,8 +149,15 @@ metro = "1.1.1"
 # `settings.gradle.kts`). The Kotlin compose-compiler plugin pulled in via our toolchain is
 # what compiles the @Composable functions, so no separate Mosaic gradle plugin is needed.
 mosaic = "0.19.0-SNAPSHOT"
+# Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
+# compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 4.12 is the stable engine backing it.
+ktor = "3.0.3"
+okhttp = "4.12.0"
 
 [libraries]
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 compose-bom-stable = { module = "androidx.compose:compose-bom", version.ref = "compose-bom-stable" }
