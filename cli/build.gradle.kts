@@ -93,6 +93,10 @@ dependencies {
 
   implementation(libs.kotlinx.serialization.json)
 
+  // Ktor client (OkHttp engine) for downloading a bundle when the open arg is a URL.
+  implementation(libs.ktor.client.core)
+  implementation(libs.ktor.client.okhttp)
+
   // Bundle the MCP server so `compose-preview mcp serve` can invoke it in-process —
   // the consumer install story stays a single tarball + a single launcher.
   implementation(project(":mcp"))

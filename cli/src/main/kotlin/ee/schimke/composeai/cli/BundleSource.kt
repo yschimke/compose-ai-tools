@@ -1,11 +1,15 @@
 package ee.schimke.composeai.cli
 
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.isSuccess
+import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
+import kotlinx.coroutines.runBlocking
 
 /**
  * Resolves a bundle argument — a local path **or** a URL — to a local [File] every bundle-open
@@ -62,20 +66,29 @@ object BundleSource {
     // name-derivation (`<name>-render`, the daemon's bundleSource tag) sensible.
     val temp = Files.createTempFile("compose-preview-bundle-", ".png").toFile()
     temp.deleteOnExit()
-    val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
-    val request = HttpRequest.newBuilder(uri).GET().build()
-    val response =
-      try {
-        client.send(request, HttpResponse.BodyHandlers.ofFile(temp.toPath()))
-      } catch (e: Exception) {
-        temp.delete()
-        throw IllegalArgumentException("could not download bundle from $arg: ${e.message}")
+    // Ktor client over the OkHttp engine. OkHttp follows redirects by default; we stream the body
+    // to
+    // disk and only keep the file on a 2xx. `runBlocking` is fine here — this is a one-shot CLI /
+    // startup call, not a hot path.
+    try {
+      HttpClient(OkHttp).use { client ->
+        runBlocking {
+          client.prepareGet(uri.toString()).execute { response ->
+            if (!response.status.isSuccess()) {
+              throw IllegalArgumentException(
+                "could not download bundle from $arg: HTTP ${response.status.value}"
+              )
+            }
+            temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+          }
+        }
       }
-    if (response.statusCode() !in 200..299) {
+    } catch (e: IllegalArgumentException) {
       temp.delete()
-      throw IllegalArgumentException(
-        "could not download bundle from $arg: HTTP ${response.statusCode()}"
-      )
+      throw e
+    } catch (e: Exception) {
+      temp.delete()
+      throw IllegalArgumentException("could not download bundle from $arg: ${e.message}")
     }
     require(temp.length() > 0) { "downloaded an empty bundle from $arg" }
     return temp

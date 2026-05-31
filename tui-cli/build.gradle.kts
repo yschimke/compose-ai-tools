@@ -72,6 +72,10 @@ dependencies {
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.serialization.json)
 
+  // Ktor client (OkHttp engine) for opening a bundle from a URL.
+  implementation(libs.ktor.client.core)
+  implementation(libs.ktor.client.okhttp)
+
   // Subprocess-only sidecars shipped in the dist for project-less bundle mode. The daemon's
   // subprocess classpath joins `lib-daemon-desktop/jars` + `lib-renderer/jars` at launch; the renderer
   // sidecar carries the per-OS Compose Multiplatform stack (incl. Skiko) so it isn't duplicated
