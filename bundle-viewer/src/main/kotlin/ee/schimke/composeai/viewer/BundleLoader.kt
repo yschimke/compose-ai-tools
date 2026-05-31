@@ -116,13 +116,19 @@ fun loadBundle(bundleFile: File): LoadedBundle {
     throw IllegalStateException("bundle has no previews: ${bundleFile.path}")
   }
 
+  // Default (coordinate-mode) bundles reference their deps by `maven` coordinate rather than
+  // carrying them; resolve those from the machine's local Maven / Gradle caches (warn-not-fail) so
+  // the preview's own third-party deps are available the same way embedded `libs/` jars are.
+  val resolvedCoordJars =
+    CoordinateResolver.resolve(bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>())
+
   val parentLoader = LoadedBundle::class.java.classLoader
-  // app.jar first, then every embedded lib jar (path-sorted). The viewer's bundled Compose still
-  // wins
-  // on shared symbols because it sits on the parent loader; the embedded jars only supply classes
-  // the
-  // parent doesn't have (the preview's own third-party deps).
-  val classpathUrls = (listOf(appJarFile) + libJarFiles.values).map { it.toURI().toURL() }
+  // app.jar first, then embedded lib jars (path-sorted), then resolved coordinate jars. The
+  // viewer's
+  // bundled Compose still wins on shared symbols because it sits on the parent loader; these jars
+  // only supply classes the parent doesn't have (the preview's own third-party deps).
+  val classpathUrls =
+    (listOf(appJarFile) + libJarFiles.values + resolvedCoordJars).map { it.toURI().toURL() }
   val classLoader = URLClassLoader(classpathUrls.toTypedArray(), parentLoader)
 
   val loadedPreviews = previewManifest.previews.map { info -> resolvePreview(info, classLoader) }
