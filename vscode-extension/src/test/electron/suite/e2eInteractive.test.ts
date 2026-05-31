@@ -144,13 +144,23 @@ function nonEmptyForModule(
         msg.previews.length > 0 && msg.moduleDir.includes(moduleDirNeedle);
 }
 
-function fullRenderPath(moduleDir: string, output: string): string {
+function fullRenderPath(
+    repoRoot: string,
+    moduleDir: string,
+    output: string,
+): string {
     if (path.isAbsolute(output)) return output;
-    // `moduleDir` for a single-module switch is the module's projectDir.
-    // For multi-module aggregations it's a comma-joined list; the test never
-    // hits that path because we trigger refreshes against a single file.
+    // `moduleDir` (the `setPreviews.moduleDir` field) is the module's
+    // `projectDir` — a path *relative to the workspace root*, e.g.
+    // `samples/cmp`. For multi-module aggregations it's a comma-joined list;
+    // the test never hits that path because we trigger refreshes against a
+    // single file.
     const first = moduleDir.split(",")[0] ?? moduleDir;
-    return path.join(first, output);
+    // `capture.renderOutput` is relative to the module's
+    // `build/compose-previews/` dir (e.g. `renders/Foo.png`). Resolve it the
+    // same way the extension does in `GradleService.readPreviewImage`:
+    // `<workspaceRoot>/<projectDir>/build/compose-previews/<renderOutput>`.
+    return path.join(repoRoot, first, "build", "compose-previews", output);
 }
 
 function dumpTranscript(
@@ -341,6 +351,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         for (const p of androidFirst.previews) {
             for (const c of p.captures ?? []) {
                 const resolved = fullRenderPath(
+                    repoRoot,
                     androidFirst.moduleDir,
                     c.renderOutput,
                 );
@@ -478,6 +489,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 );
                 for (const c of captures) {
                     const resolved = fullRenderPath(
+                        repoRoot,
                         afterAdd.moduleDir,
                         c.renderOutput,
                     );
@@ -566,6 +578,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         for (const p of settled.previews) {
             for (const c of p.captures ?? []) {
                 const resolved = fullRenderPath(
+                    repoRoot,
                     settled.moduleDir,
                     c.renderOutput,
                 );
@@ -617,6 +630,7 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         for (const p of settled.previews) {
             for (const c of p.captures ?? []) {
                 const resolved = fullRenderPath(
+                    repoRoot,
                     settled.moduleDir,
                     c.renderOutput,
                 );
