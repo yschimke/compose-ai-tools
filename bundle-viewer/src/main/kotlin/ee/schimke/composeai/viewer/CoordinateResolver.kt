@@ -7,6 +7,8 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 
@@ -134,15 +136,23 @@ internal object CoordinateResolver {
     return null
   }
 
-  private fun fetchTo(url: String, dest: File): Boolean =
-    try {
-      dest.parentFile?.mkdirs()
+  /**
+   * GET [url] into [dest] (parent dirs created); true only on a 2xx with a non-empty body. The
+   * bytes land in a sibling `.part` temp file first and are moved into [dest] only on success, so a
+   * failed or empty fetch never clobbers an existing cached copy — which may be the
+   * stale-but-usable jar that [resolveOne]'s warn-never-fail fallback then returns.
+   */
+  private fun fetchTo(url: String, dest: File): Boolean {
+    val parent = dest.parentFile
+    parent?.mkdirs()
+    val tmp = File.createTempFile(dest.name, ".part", parent)
+    return try {
       val ok =
         HttpClient(OkHttp).use { client ->
           runBlocking {
             client.prepareGet(url).execute { response ->
               if (response.status.isSuccess()) {
-                dest.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+                tmp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
                 true
               } else {
                 false
@@ -150,16 +160,18 @@ internal object CoordinateResolver {
             }
           }
         }
-      if (ok && dest.length() > 0) {
+      if (ok && tmp.length() > 0) {
+        Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
         true
       } else {
-        dest.delete()
         false
       }
     } catch (_: Exception) {
-      dest.delete()
       false
+    } finally {
+      tmp.delete()
     }
+  }
 
   private fun sha256Hex(file: File): String {
     val digest = MessageDigest.getInstance("SHA-256")

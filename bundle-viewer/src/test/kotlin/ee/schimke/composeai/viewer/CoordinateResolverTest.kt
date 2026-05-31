@@ -181,6 +181,24 @@ class CoordinateResolverTest {
   }
 
   @Test
+  fun `a failed download keeps a stale cached jar for the fallback`() {
+    // The cache holds a copy whose bytes don't match the bundle's hash, and the remote 404s. The
+    // failed fetch must not delete the cached file: warn-never-fail returns it as the best jar.
+    val cached =
+      File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar").apply {
+        parentFile.mkdirs()
+        writeBytes(byteArrayOf(9, 9, 9))
+      }
+    val base = startRepo(status = 404)
+
+    val out = resolveNetwork(base, maven(sha = "c".repeat(64)))
+
+    assertThat(out.map { it.canonicalFile }).containsExactly(cached.canonicalFile)
+    assertThat(cached.isFile).isTrue()
+    assertThat(warnings.any { it.contains("hash mismatch") }).isTrue()
+  }
+
+  @Test
   fun `remote 404 is dropped with a warning, never throws`() {
     val base = startRepo(status = 404)
 
