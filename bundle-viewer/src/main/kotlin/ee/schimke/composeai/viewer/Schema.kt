@@ -40,8 +40,14 @@ sealed interface ClasspathEntry {
 
   @Serializable
   @kotlinx.serialization.SerialName("maven")
-  data class Maven(val group: String, val artifact: String, val version: String, val type: String) :
-    ClasspathEntry
+  data class Maven(
+    val group: String,
+    val artifact: String,
+    val version: String,
+    val type: String,
+    /** v4+: hex SHA-256 of the artifact bytes; verify after re-resolving. Null = unverifiable. */
+    val sha256: String? = null,
+  ) : ClasspathEntry
 
   @Serializable
   @kotlinx.serialization.SerialName("project")

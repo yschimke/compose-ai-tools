@@ -406,6 +406,10 @@ class BundleFunctionalTest {
     assertThat(first["artifact"]!!.jsonPrimitive.content).isNotEmpty()
     assertThat(first["version"]!!.jsonPrimitive.content).isNotEmpty()
     assertThat(first["type"]!!.jsonPrimitive.content).isEqualTo("jar")
+    // v4: every referenced (detached) coordinate carries a content hash so a player can verify the
+    // bytes after re-resolving from any source. 64 lowercase hex chars = SHA-256.
+    val sha = first["sha256"]!!.jsonPrimitive.content
+    assertThat(sha).matches("[0-9a-f]{64}")
   }
 
   @Test

@@ -407,9 +407,10 @@ abstract class BundlePreviewTask : DefaultTask() {
       val coord = dep.coordinate
       val src = byPath[dep.sourcePath]
       when {
-        // Maven-resolved dep, default mode: reference by coordinate, carry nothing.
+        // Maven-resolved dep, default mode: reference by coordinate (with a content hash so the
+        // detached bytes can be re-attached and verified from any source).
         coord != null && !embed -> {
-          entries += parseMavenCoord(coord)
+          entries += parseMavenCoord(coord, src)
           mavenReferenced++
         }
         // Maven-resolved dep, embed mode: carry the jar in `libs/` (skip if its file is missing).
@@ -421,7 +422,7 @@ abstract class BundlePreviewTask : DefaultTask() {
             mavenEmbedded++
           } else {
             // No file to embed — fall back to a coordinate reference rather than dropping the dep.
-            entries += parseMavenCoord(coord)
+            entries += parseMavenCoord(coord, src = null)
             mavenReferenced++
           }
         }
@@ -447,9 +448,11 @@ abstract class BundlePreviewTask : DefaultTask() {
   /**
    * Parse `"<group>:<artifact>:<version>:<type>"` (the post-prefix shape produced by the plugin
    * registration's `ResolvedArtifactResult` → coord encoder). Falls back to `type = "jar"` when the
-   * coordinate omits the trailing packaging.
+   * coordinate omits the trailing packaging. When [src] (the resolved jar on disk) is provided, its
+   * SHA-256 is recorded so a player can verify the bytes after re-resolving the coordinate from any
+   * source; [src] = null leaves the entry resolvable-but-unverifiable.
    */
-  private fun parseMavenCoord(coord: String): ClasspathEntry.Maven {
+  private fun parseMavenCoord(coord: String, src: File?): ClasspathEntry.Maven {
     val parts = coord.split(':')
     require(parts.size >= 3) { "composePreviewBundle: malformed Maven coordinate: $coord" }
     return ClasspathEntry.Maven(
@@ -457,7 +460,24 @@ abstract class BundlePreviewTask : DefaultTask() {
       artifact = parts[1],
       version = parts[2],
       type = parts.getOrNull(3) ?: "jar",
+      sha256 = src?.let { sha256Hex(it) },
     )
+  }
+
+  /**
+   * Lowercase hex SHA-256 of [file]'s bytes, streamed so large jars don't load fully into memory.
+   */
+  private fun sha256Hex(file: File): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+      val buf = ByteArray(64 * 1024)
+      while (true) {
+        val n = input.read(buf)
+        if (n < 0) break
+        digest.update(buf, 0, n)
+      }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
   }
 
   private fun buildJar(classes: Map<String, ByteArray>, resourcesDir: File?): ByteArray {

@@ -22,8 +22,8 @@ class PreviewBundleFormatTest {
   }
 
   @Test
-  fun `current schema version is 3`() {
-    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(3)
+  fun `current schema version is 4`() {
+    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(4)
   }
 
   @Test
@@ -37,7 +37,7 @@ class PreviewBundleFormatTest {
         classpath =
           listOf(
             ClasspathEntry.Module(path = "classes/app.jar"),
-            ClasspathEntry.Maven("g", "a", "1.0", "jar"),
+            ClasspathEntry.Maven("g", "a", "1.0", "jar", sha256 = "a".repeat(64)),
             ClasspathEntry.Embedded(inlinedAs = "libs/coil-2.6.0.jar"),
             ClasspathEntry.Project(path = ":lib", inlinedAs = "libs/lib.jar"),
           ),
@@ -56,6 +56,22 @@ class PreviewBundleFormatTest {
     assertThat(decoded).isEqualTo(original)
     val embedded = decoded.classpath.filterIsInstance<ClasspathEntry.Embedded>().single()
     assertThat(embedded.inlinedAs).isEqualTo("libs/coil-2.6.0.jar")
+  }
+
+  @Test
+  fun `maven sha256 round-trips and defaults to null for v3-shaped entries`() {
+    val withHash = ClasspathEntry.Maven("g", "a", "1.0", "jar", sha256 = "b".repeat(64))
+    val decoded =
+      json.decodeFromString(
+        ClasspathEntry.serializer(),
+        json.encodeToString(ClasspathEntry.serializer(), withHash),
+      ) as ClasspathEntry.Maven
+    assertThat(decoded.sha256).isEqualTo("b".repeat(64))
+
+    // A v3-shaped maven entry (no sha256 key) decodes with sha256 = null — unverifiable but valid.
+    val v3 = """{"kind":"maven","group":"g","artifact":"a","version":"1.0","type":"jar"}"""
+    val legacy = json.decodeFromString(ClasspathEntry.serializer(), v3) as ClasspathEntry.Maven
+    assertThat(legacy.sha256).isNull()
   }
 
   @Test
