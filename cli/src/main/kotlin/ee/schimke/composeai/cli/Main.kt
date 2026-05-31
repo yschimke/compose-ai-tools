@@ -106,7 +106,9 @@ private fun printUsage() {
                        command, separate from `show` because the workflows are disjoint —
                        see also `compose-preview-show-resources/v1` JSON envelope.
       list             List discovered previews
-      render           Render previews; with --output copies a single match to disk
+      render           Render previews; with --output copies a single match to disk.
+                       --bundle additionally packs each module's previews into a
+                       portable PNG+ZIP bundle (off by default).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       extensions       Introspect registered data extensions (`extensions list`)
@@ -141,6 +143,11 @@ private fun printUsage() {
       --brief              JSON only: drop functionName/className/sourceFile/params
       --changed-only       JSON only (show, a11y): drop previews with no changed capture
       --output <path>      Copy matched preview PNG to this path (render)
+      --bundle             render: after rendering, pack each module's previews into a portable
+                           PNG+ZIP bundle at <module>/build/compose-previews/bundle.png. Opt-in —
+                           adds a classpath closure walk + jar minimization on top of the render.
+      --embed-deps         render (with --bundle): embed reachable third-party jars in the bundle
+                           instead of referencing Maven coordinates. Bigger file, renders offline.
       --images[=<mode>]    show: emit rendered PNGs inline using the terminal's image protocol.
                            Default `auto` — on by default in an interactive TTY when a
                            kitty-graphics-capable terminal is detected (`KITTY_WINDOW_ID`,
