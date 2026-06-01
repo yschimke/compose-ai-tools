@@ -95,22 +95,53 @@ function firstNonEmptySetPreviews(
 }
 
 /**
+ * Per-attempt wait budget for a single prime render. A render runs through
+ * `gradleService`, which caps each Gradle task at 5 minutes
+ * (`TASK_TIMEOUT_MS`) and fires `cancelRunTask` on expiry. Budget the wait
+ * just past that cap so a render completing near the cap still posts its
+ * `setPreviews`, while a wedged one is observed as "no setPreviews"
+ * shortly after the cap kills it.
+ */
+const PRIME_ATTEMPT_BUDGET_MS = 6 * 60_000;
+/** Prime attempts per module (one retry on a freed build lock). */
+const PRIME_MAX_ATTEMPTS = 2;
+/** Modules primed by the before-hook: `:samples:cmp` + `:samples:wear`. */
+const PRIME_MODULE_COUNT = 2;
+/**
+ * Non-render before-hook work (extension activation, the 30s webviewReady
+ * wait, render-dir cleans) plus a safety margin, on top of the worst-case
+ * prime time below.
+ */
+const PRIME_OVERHEAD_MS = 4 * 60_000;
+/**
+ * Suite/hook timeout. Derived from the prime budget so it always outlasts
+ * the worst case — every attempt for both modules exhausting its budget —
+ * and `primeModule` reaches its attributable `throw lastErr` instead of
+ * degrading into a bare Mocha "hook timeout" with no Gradle context. With
+ * the values above this is 28 minutes, comfortably under the workflow's
+ * 60m job cap.
+ */
+const SUITE_TIMEOUT_MS =
+    PRIME_MODULE_COUNT * PRIME_MAX_ATTEMPTS * PRIME_ATTEMPT_BUDGET_MS +
+    PRIME_OVERHEAD_MS;
+
+/**
  * Force a full render of `file` and wait for the resulting non-empty
  * `setPreviews`, leaving ≥2 PNGs in `renderDir` for the module-switch test
  * to preload.
  *
- * Bounded + retried on purpose. Each render runs through `gradleService`,
- * which caps a Gradle task at 5 minutes (`TASK_TIMEOUT_MS`) and fires
- * `cancelRunTask` on expiry; `RealGradleApi` now honours that cancel by
- * killing the gradlew client, so a wedged render is terminated at ~5min
- * and its build lock released. We budget the wait just past that cap so a
- * hung render surfaces as a fast, attributable failure (not the 20-minute
- * hook cap), then retry once on the freed lock. A render that's genuinely
- * progressing always completes inside the 5-minute task cap, so the budget
- * never truncates a healthy-but-slow cold render. On failure we dump the
- * Compose Preview output channel — the underlying render rejection is
- * otherwise swallowed by the refresh scheduler, leaving only a bare
- * "timed out" with no Gradle context.
+ * Bounded + retried on purpose. Each render is killed by gradleService's
+ * 5-minute task cap on expiry, and `RealGradleApi` honours that cancel by
+ * terminating the gradlew client and releasing its build lock — so we
+ * budget the wait just past that cap (see `PRIME_ATTEMPT_BUDGET_MS`) and
+ * retry once on the freed lock. A render that's genuinely progressing
+ * always completes inside the 5-minute task cap, so the budget never
+ * truncates a healthy-but-slow cold render. The suite timeout
+ * (`SUITE_TIMEOUT_MS`) is sized to outlast every attempt for both modules
+ * so this throws an attributable error rather than tripping the hook cap.
+ * On failure we dump the Compose Preview output channel — the underlying
+ * render rejection is otherwise swallowed by the refresh scheduler,
+ * leaving only a bare "timed out" with no Gradle context.
  */
 async function primeModule(
     api: ComposePreviewTestApi,
@@ -118,19 +149,17 @@ async function primeModule(
     file: string,
     renderDir: string,
 ): Promise<void> {
-    const ATTEMPT_BUDGET_MS = 6 * 60_000;
-    const MAX_ATTEMPTS = 2;
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 1; attempt <= PRIME_MAX_ATTEMPTS; attempt++) {
         console.log(
-            `[preload-e2e] priming ${label} (attempt ${attempt}/${MAX_ATTEMPTS})`,
+            `[preload-e2e] priming ${label} (attempt ${attempt}/${PRIME_MAX_ATTEMPTS})`,
         );
         api.resetMessages();
         try {
             await api.triggerRefresh(file, /* force */ true, "full");
             await waitFor(
                 `non-empty setPreviews for ${label} prime`,
-                ATTEMPT_BUDGET_MS,
+                PRIME_ATTEMPT_BUDGET_MS,
                 500,
                 () => firstNonEmptySetPreviews(api),
             );
@@ -142,7 +171,7 @@ async function primeModule(
         } catch (err) {
             lastErr = err;
             console.log(
-                `[preload-e2e] ${label} prime attempt ${attempt}/${MAX_ATTEMPTS} failed: ${
+                `[preload-e2e] ${label} prime attempt ${attempt}/${PRIME_MAX_ATTEMPTS} failed: ${
                     (err as Error)?.message ?? String(err)
                 }`,
             );
@@ -155,15 +184,14 @@ async function primeModule(
 }
 
 describeE2E("Compose Preview cached preload on module switch", function () {
-    // Cold paths for `:samples:cmp` + `:samples:wear` both run inside
-    // this suite (sibling e2e* suites may share the Gradle cache but we
-    // can't rely on it — the wear cold daemon spawn alone is ~10s on a
-    // warm host, multi-minute on a fresh CI runner). 20 minutes matches
-    // the combined ceiling of the cmp + wear e2e suites and leaves head
-    // room under the workflow's 60m cap. `primeModule` bounds + retries
-    // each render well inside this cap, so a hung render fails fast with
-    // diagnostics rather than burning the whole budget on one stuck task.
-    this.timeout(20 * 60_000);
+    // Cold paths for `:samples:cmp` + `:samples:wear` both run inside this
+    // suite (sibling e2e* suites may share the Gradle cache but we can't
+    // rely on it — the wear cold daemon spawn alone is ~10s on a warm
+    // host, multi-minute on a fresh CI runner). The timeout is derived
+    // from the prime budget (`SUITE_TIMEOUT_MS`) so it always outlasts the
+    // worst-case retry path for both modules: a hung render then fails
+    // fast with diagnostics instead of degrading into a bare hook timeout.
+    this.timeout(SUITE_TIMEOUT_MS);
 
     let api: ComposePreviewTestApi;
     let repoRoot: string;
