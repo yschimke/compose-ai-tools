@@ -337,8 +337,14 @@ abstract class BundlePreviewTask : DefaultTask() {
   /**
    * The rendered PNG bytes for [preview]'s primary capture, or null when no render exists on disk
    * (bundling without a prior `composePreviewRender`, or a preview that failed to render). Used
-   * both for the cover (first selected) and to bake every selected preview into
-   * `previews/<id>.png`.
+   * both for the cover (first selected) and to bake every selected preview into `previews/<id>.png`.
+   *
+   * Only **PNG** bytes are ever returned: the result is used verbatim as the polyglot's leading
+   * cover and as `previews/<id>.png`, and [extractZipBytes] rejects a file whose leading signature
+   * is neither PNG nor ZIP. A preview whose primary capture is a GIF (`@AnimatedPreview`,
+   * `@FocusedPreview(gif = true)`) therefore must NOT have its `.gif` bytes read as the cover — that
+   * would produce an unreadable bundle. Such a preview falls through to the PNG-sibling search and,
+   * failing that, to the stub gray cover.
    */
   private fun resolvePreviewPng(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
@@ -347,16 +353,21 @@ abstract class BundlePreviewTask : DefaultTask() {
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
     val name = rel.substringAfterLast('/')
+    val base = name.substringBeforeLast('.')
 
-    val exact = File(rendersRoot, name)
-    if (exact.isFile && exact.length() > 0) return exact.readBytes()
+    // Only read the primary-capture file directly when it's a PNG. A GIF (or any non-PNG) primary
+    // capture is skipped here so its bytes never become the cover; the sibling search below is
+    // already PNG-filtered.
+    if (name.endsWith(".png")) {
+      val exact = File(rendersRoot, name)
+      if (exact.isFile && exact.length() > 0) return exact.readBytes()
+    }
 
-    // No file at the primary capture's exact path: @PreviewParameter / multi-variant previews fan
+    // No usable PNG at the primary capture's path: @PreviewParameter / multi-variant previews fan
     // out into siblings (`<base>_<param>.png`, `<base>--<dimension>.png`). Bake the first sibling
     // as
     // a representative cover so the preview isn't silently dropped from the bundle.
     if (!rendersRoot.isDirectory) return null
-    val base = name.removeSuffix(".png")
     return rendersRoot
       .listFiles { f ->
         f.isFile &&
