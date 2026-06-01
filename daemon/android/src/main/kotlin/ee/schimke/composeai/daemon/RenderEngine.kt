@@ -214,7 +214,16 @@ class RenderEngine(
     val isTile = spec.kind.equals(TILE_KIND, ignoreCase = true)
     val isNotification = spec.kind.equals(NOTIFICATION_KIND, ignoreCase = true)
     val isGlanceAppWidget = spec.kind.equals(GLANCE_APPWIDGET_KIND, ignoreCase = true)
-    val clazz = trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
+    // v5 IR replay: a bundle may carry this preview's intermediate representation, in which case its
+    // consumer class was dropped at pack time. We then inflate the IR via the matching runtime in
+    // the setContent body below instead of reflecting the (absent) class. This handles protolayout;
+    // a Remote Compose IR preview falls through to the normal path (its class is still absent, so it
+    // errors as it did before, until its replay path lands).
+    val irReplay = BundleIrReplayStore.lookup(spec.previewId)
+    val isProtolayoutIr = irReplay?.format == BundleIrReplayStore.FORMAT_PROTOLAYOUT
+    val clazz =
+      if (isProtolayoutIr) null
+      else trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
     // Tile / notification previews are non-composable top-level functions returning
     // `TilePreviewData` / `android.app.Notification`; routing them through
     // `getDeclaredComposableMethod` would throw `NoSuchMethodException` (the Compose-method
@@ -226,10 +235,10 @@ class RenderEngine(
     // body that fails the moment a Glance composable touches the GlanceComposition applier. The
     // dedicated branches skip top-level composable resolution and paint the result through the
     // matching renderer helper in the setContent body below.
-    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
+    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isProtolayoutIr
     val composableMethod: ComposableMethod? =
       if (nonComposableInvocation) null
-      else trace.section("compose:resolveComposable") { clazz.getDeclaredComposableMethod(spec.functionName) }
+      else trace.section("compose:resolveComposable") { clazz!!.getDeclaredComposableMethod(spec.functionName) }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
@@ -334,7 +343,18 @@ class RenderEngine(
                       sink = RecordingExtensionCompositionSink(),
                     ) {
                       Box(modifier = Modifier.fillMaxSize()) {
-                        if (isTile) {
+                        if (isProtolayoutIr) {
+                          // v5 IR replay — inflate the captured protolayout `Layout` + `Resources`
+                          // protos through `TileRenderer`, with no reference to the tile function
+                          // that produced them (its class was dropped at pack time). Same
+                          // AndroidView-hosted shape as the live tile branch, so captureRoboImage
+                          // walks an identical Compose tree.
+                          ee.schimke.composeai.renderer.TileIrReplayComposable(
+                            layoutBytes = irReplay!!.bytes,
+                            resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
+                            label = "IR replay ${spec.previewId ?: spec.outputBaseName}",
+                          )
+                        } else if (isTile) {
                           // Non-composable @Preview from `androidx.wear.tiles.tooling.preview` —
                           // mirrors the standalone renderer's `TilePreviewStrategy`. The
                           // inflated tile View lands inside the `Box` via `AndroidView`, so

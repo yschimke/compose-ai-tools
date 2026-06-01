@@ -12,6 +12,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.wear.protolayout.DeviceParametersBuilders
 import androidx.wear.protolayout.DeviceParametersBuilders.DeviceParameters
+import androidx.wear.protolayout.LayoutElementBuilders
+import androidx.wear.protolayout.ResourceBuilders
+import androidx.wear.protolayout.proto.LayoutElementProto
+import androidx.wear.protolayout.proto.ResourceProto
 import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.renderer.TileRenderer
@@ -121,6 +125,22 @@ private fun renderTileInto(
         )
     }
 
+    inflateLayoutInto(context, layout, resources, parent, "preview '$functionName'")
+}
+
+/**
+ * Inflate a protolayout [layout] + [resources] into [parent] via [TileRenderer]. Shared by the
+ * live tile path ([renderTileInto], which builds the protos by invoking the tile function) and the
+ * bundle IR-replay path ([TileIrReplayComposable], which deserializes them from bytes) so both
+ * drive the renderer identically. [label] only flavours the error message.
+ */
+private fun inflateLayoutInto(
+    context: Context,
+    layout: LayoutElementBuilders.Layout,
+    resources: ResourceBuilders.Resources,
+    parent: FrameLayout,
+    label: String,
+) {
     // Inline executor — Robolectric has the main looper paused, so posting
     // to a background thread and awaiting back on main would deadlock. Inflating
     // on the caller thread completes before the future leaves the method.
@@ -136,7 +156,7 @@ private fun renderTileInto(
     val renderer = TileRenderer(context, Runnable::run) { _ -> /* no-op loader */ }
     val view = renderer.inflateAsync(layout, resources, parent)
         .get(10, TimeUnit.SECONDS)
-        ?: error("TileRenderer returned no view for preview '$functionName'")
+        ?: error("TileRenderer returned no view for $label")
 
     // Tile inflation defaults to WRAP_CONTENT, which collapses against an
     // AndroidView that's still measuring. Mirror `TileServiceViewAdapter`:
@@ -146,6 +166,38 @@ private fun renderTileInto(
         height = ViewGroup.LayoutParams.MATCH_PARENT
         gravity = Gravity.CENTER
     }
+}
+
+/**
+ * Replays a Wear Tiles preview from a bundle's captured protolayout IR (schema v5): the serialized
+ * `Layout` ([layoutBytes]) and `Resources` ([resourcesBytes]) protos written by [TilePreviewComposable]'s
+ * capture path. Deserializes both and drives [TileRenderer] through the same [inflateLayoutInto]
+ * the live path uses — so a bundle renders the tile with **no** reference to the `fun foo():
+ * TilePreviewData` that produced it (its class was dropped at pack time). Bytes are the
+ * `toProto().toByteArray()` form the capture side emits; we reverse with `parseFrom` + `fromProto`.
+ */
+@Composable
+fun TileIrReplayComposable(layoutBytes: ByteArray, resourcesBytes: ByteArray, label: String) {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { ctx ->
+            val parent = FrameLayout(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                setBackgroundColor(Color.BLACK)
+            }
+            val layout = LayoutElementBuilders.Layout.fromProto(
+                LayoutElementProto.Layout.parseFrom(layoutBytes),
+            )
+            val resources = ResourceBuilders.Resources.fromProto(
+                ResourceProto.Resources.parseFrom(resourcesBytes),
+            )
+            inflateLayoutInto(ctx, layout, resources, parent, label)
+            parent
+        },
+    )
 }
 
 private fun invokeTilePreviewFunction(
