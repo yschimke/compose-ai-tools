@@ -2,10 +2,13 @@ package ee.schimke.composeai.viewer
 
 import com.google.common.truth.Truth.assertThat
 import com.sun.net.httpserver.HttpServer
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import org.junit.After
 import org.junit.Test
 
@@ -68,6 +71,17 @@ class CoordinateResolverTest {
 
   private fun sha256(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+  /** A minimal `.aar`: a zip carrying a single `classes.jar` entry with [classesJar] bytes. */
+  private fun makeAar(classesJar: ByteArray): ByteArray {
+    val baos = ByteArrayOutputStream()
+    ZipOutputStream(baos).use { zip ->
+      zip.putNextEntry(ZipEntry("classes.jar"))
+      zip.write(classesJar)
+      zip.closeEntry()
+    }
+    return baos.toByteArray()
+  }
 
   /** Local-only resolve: network off so a miss stays hermetic. */
   private fun resolve(vararg coords: ClasspathEntry.Maven): List<File> =
@@ -160,11 +174,13 @@ class CoordinateResolverTest {
   }
 
   @Test
-  fun `aar coordinate resolves by its type extension`() {
-    val bytes = byteArrayOf(5, 0, 5)
+  fun `aar coordinate is located as aar and its classes_jar extracted`() {
+    // type=aar is looked up as `<artifact>-<version>.aar`; the resolver returns the AAR's extracted
+    // `classes.jar` (the only loadable form), which is what the bundle's sha256 is computed over.
+    val classesBytes = byteArrayOf(5, 0, 5, 9)
     val aar = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
     aar.parentFile.mkdirs()
-    aar.writeBytes(bytes)
+    aar.writeBytes(makeAar(classesBytes))
 
     val coord =
       ClasspathEntry.Maven(
@@ -172,12 +188,29 @@ class CoordinateResolverTest {
         artifact = "widgets",
         version = "1.2.3",
         type = "aar",
-        sha256 = sha256(bytes),
+        sha256 = sha256(classesBytes),
       )
     val out = resolve(coord)
 
-    assertThat(out.map { it.canonicalFile }).containsExactly(aar.canonicalFile)
+    assertThat(out).hasSize(1)
+    assertThat(out.single().name).isEqualTo("classes.jar")
+    assertThat(out.single().readBytes().toList()).isEqualTo(classesBytes.toList())
     assertThat(warnings).isEmpty()
+  }
+
+  @Test
+  fun `aar published dep recorded as jar still resolves via the aar fallback`() {
+    // Older bundles recorded AARs as type=jar; the resolver must still find the `.aar` and extract.
+    val classesBytes = byteArrayOf(2, 2, 2, 2)
+    val aar = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
+    aar.parentFile.mkdirs()
+    aar.writeBytes(makeAar(classesBytes))
+
+    // maven() defaults to type=jar, and only the .aar exists on disk.
+    val out = resolve(maven(sha = sha256(classesBytes)))
+
+    assertThat(out).hasSize(1)
+    assertThat(out.single().name).isEqualTo("classes.jar")
   }
 
   @Test

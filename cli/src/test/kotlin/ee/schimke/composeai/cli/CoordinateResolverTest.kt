@@ -1,10 +1,13 @@
 package ee.schimke.composeai.cli
 
 import com.sun.net.httpserver.HttpServer
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +32,14 @@ class CoordinateResolverTest {
       repositoryRoots = listOf(root),
       warn = { warnings += it },
       networkEnabled = false,
+    )
+  // Offline resolver that materializes AARs into the test cache (not the real ~/.cache).
+  private val localCacheResolver =
+    CoordinateResolver(
+      repositoryRoots = listOf(root),
+      warn = { warnings += it },
+      networkEnabled = false,
+      downloadCacheDir = cacheDir,
     )
   private var server: HttpServer? = null
 
@@ -91,6 +102,17 @@ class CoordinateResolverTest {
 
   private fun sha256(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+  /** A minimal `.aar`: a zip carrying a single `classes.jar` entry with [classesJar] bytes. */
+  private fun makeAar(classesJar: ByteArray): ByteArray {
+    val baos = ByteArrayOutputStream()
+    ZipOutputStream(baos).use { zip ->
+      zip.putNextEntry(ZipEntry("classes.jar"))
+      zip.write(classesJar)
+      zip.closeEntry()
+    }
+    return baos.toByteArray()
+  }
 
   @Test
   fun `resolves from maven local layout and verifies a matching hash`() {
@@ -253,13 +275,14 @@ class CoordinateResolverTest {
   }
 
   @Test
-  fun `aar coordinate resolves by its type extension, not jar`() {
-    // An Android coordinate (type=aar) must be looked up / downloaded as
-    // `<artifact>-<version>.aar`.
-    val bytes = byteArrayOf(5, 0, 5)
+  fun `aar coordinate is located as aar and its classes_jar extracted`() {
+    // An Android coordinate (type=aar) is looked up as `<artifact>-<version>.aar`, then the
+    // resolver hands back the AAR's extracted `classes.jar` — the only classpath-loadable form. The
+    // bundle's sha256 is of that classes.jar (what the plugin hashes), so it still verifies.
+    val classesBytes = byteArrayOf(5, 0, 5, 9)
     val aar = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
     aar.parentFile.mkdirs()
-    aar.writeBytes(bytes)
+    aar.writeBytes(makeAar(classesBytes))
 
     val coord =
       BundleReader.ClasspathEntry.Maven(
@@ -267,18 +290,37 @@ class CoordinateResolverTest {
         artifact = "widgets",
         version = "1.2.3",
         type = "aar",
-        sha256 = sha256(bytes),
+        sha256 = sha256(classesBytes),
       )
-    val r = resolver.resolve(coord)
+    val r = localCacheResolver.resolve(coord)
 
-    assertEquals(aar.canonicalFile, r.file?.canonicalFile)
+    assertNotNullFile(r.file)
+    assertEquals("classes.jar", r.file?.name)
+    assertEquals(classesBytes.toList(), r.file?.readBytes()?.toList())
+    assertTrue(r.verified, "sha256 of the extracted classes.jar should verify: $warnings")
+  }
+
+  @Test
+  fun `aar published dep recorded as jar still resolves via the aar fallback`() {
+    // Older bundles (and the plugin before the type fix) recorded AARs as `type=jar`; the resolver
+    // must still find `<artifact>-<version>.aar` when no `.jar` exists and extract its classes.
+    val classesBytes = byteArrayOf(2, 2, 2, 2)
+    val aar = File(root, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
+    aar.parentFile.mkdirs()
+    aar.writeBytes(makeAar(classesBytes))
+
+    // maven() defaults to type=jar — and there is no widgets-1.2.3.jar on disk, only the .aar.
+    val r = localCacheResolver.resolve(maven(sha = sha256(classesBytes)))
+
+    assertNotNullFile(r.file)
+    assertEquals("classes.jar", r.file?.name)
     assertTrue(r.verified)
   }
 
   @Test
-  fun `aar coordinate downloads with the aar extension`() {
-    val bytes = byteArrayOf(1, 0, 0, 1)
-    val base = startRepo(body = bytes)
+  fun `aar coordinate downloads as aar and extracts classes_jar`() {
+    val classesBytes = byteArrayOf(1, 0, 0, 1, 7)
+    val base = startRepo(body = makeAar(classesBytes))
 
     val coord =
       BundleReader.ClasspathEntry.Maven(
@@ -286,15 +328,16 @@ class CoordinateResolverTest {
         artifact = "widgets",
         version = "1.2.3",
         type = "aar",
-        sha256 = sha256(bytes),
+        sha256 = sha256(classesBytes),
       )
     val r = networkResolver(base).resolve(coord)
 
     assertNotNullFile(r.file)
+    assertEquals("classes.jar", r.file?.name)
     assertTrue(r.downloaded)
-    // Cached under the aar filename, not jar.
-    val cached = File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar")
-    assertTrue(cached.isFile)
+    assertTrue(r.verified)
+    // The raw aar is cached under the aar filename; the extracted jar lives under extracted/.
+    assertTrue(File(cacheDir, "com/example/foo/widgets/1.2.3/widgets-1.2.3.aar").isFile)
   }
 
   private fun assertNotNullFile(f: File?) =

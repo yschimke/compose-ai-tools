@@ -142,30 +142,40 @@ internal class CoordinateResolver(
    * several caches or Gradle hash dirs — [resolve] uses the hash to pick among them.
    */
   private fun locate(coord: BundleReader.ClasspathEntry.Maven): List<File> {
-    val jarName = artifactFileName(coord)
     val found = mutableListOf<File>()
     // Search the user's local repos AND our own download cache — a jar fetched during an earlier
     // online run lives in [downloadCacheDir] (Maven layout) and must resolve offline too, since the
     // network gate only governs *new* fetches, not reading what we already have.
     for (root in repositoryRoots + downloadCacheDir) {
       if (!root.isDirectory) continue
-      // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.jar
-      val mavenPath = File(root, mavenRelativePath(coord))
-      if (mavenPath.isFile) found += mavenPath
-      // Gradle modules-2 layout fans the jar under per-hash dirs; collect every match under
-      // <root>/<group>/<artifact>/<version>/<hash>/<jarName>. One directory level only, so a huge
-      // cache root doesn't turn this into a full filesystem scan.
-      val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
-      if (gradleVersionDir.isDirectory) {
-        gradleVersionDir
-          .listFiles()
-          ?.asSequence()
-          ?.filter { it.isDirectory }
-          ?.mapNotNull { hashDir -> File(hashDir, jarName).takeIf { it.isFile } }
-          ?.let { found += it }
+      // Try each candidate filename: the coordinate's recorded type first, then `.aar` (an Android
+      // dep may be recorded as `jar` by an older bundle, or its `.jar` simply isn't published —
+      // AndroidX libs ship `.aar`). [materialize] turns any `.aar` hit into its `classes.jar`.
+      for (fileName in candidateFileNames(coord)) {
+        // Maven layout: <root>/<group as path>/<artifact>/<version>/<artifact>-<version>.<ext>
+        val mavenPath =
+          File(
+            root,
+            "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName",
+          )
+        if (mavenPath.isFile) found += mavenPath
+        // Gradle modules-2 layout fans the artifact under per-hash dirs; collect every match under
+        // <root>/<group>/<artifact>/<version>/<hash>/<fileName>. One directory level only, so a
+        // huge cache root doesn't turn this into a full filesystem scan.
+        val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
+        if (gradleVersionDir.isDirectory) {
+          gradleVersionDir
+            .listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { hashDir -> File(hashDir, fileName).takeIf { it.isFile } }
+            ?.let { found += it }
+        }
       }
     }
-    return found
+    // Materialize before returning so the hash check (and the caller's classpath) sees real jars:
+    // an `.aar` isn't loadable, and the bundle's `sha256` is of the extracted `classes.jar`.
+    return found.mapNotNull { materialize(it) }
   }
 
   /**
@@ -178,13 +188,44 @@ internal class CoordinateResolver(
    * bytes didn't match the bundle's hash and we want fresh bytes (which overwrite the stale copy).
    */
   private fun download(coord: BundleReader.ClasspathEntry.Maven): File? {
-    val rel = mavenRelativePath(coord)
-    val dest = File(downloadCacheDir, rel)
-    for (base in remoteRepositories) {
-      val url = base.trimEnd('/') + "/" + rel
-      if (fetchTo(url, dest)) return dest
+    // Try the recorded type, then `.aar` — same fallback as [locate], for the same reasons.
+    for (fileName in candidateFileNames(coord)) {
+      val rel = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
+      val dest = File(downloadCacheDir, rel)
+      for (base in remoteRepositories) {
+        val url = base.trimEnd('/') + "/" + rel
+        if (fetchTo(url, dest)) return materialize(dest)
+      }
     }
     return null
+  }
+
+  /**
+   * An `.aar` isn't classpath-loadable, so extract its `classes.jar` to a stable cache path and
+   * return that; a `.jar` (or anything else) passes through unchanged. Returns null for a
+   * resource-only `.aar` with no `classes.jar` (nothing to contribute) or on any extraction error —
+   * the resolver then treats it as a miss and warns, never throws.
+   */
+  private fun materialize(file: File): File? {
+    if (!file.name.endsWith(".aar", ignoreCase = true)) return file
+    // Key the extraction dir on the source path so distinct candidates (hash disambiguation) don't
+    // collide, and a re-resolve reuses the already-extracted jar.
+    val dest =
+      File(
+        downloadCacheDir,
+        "extracted/${file.absolutePath.hashCode().toUInt().toString(16)}/classes.jar",
+      )
+    if (dest.isFile && dest.length() > 0) return dest
+    return try {
+      java.util.zip.ZipFile(file).use { zip ->
+        val entry = zip.getEntry("classes.jar") ?: return null
+        dest.parentFile?.mkdirs()
+        zip.getInputStream(entry).use { input -> dest.outputStream().use { input.copyTo(it) } }
+      }
+      dest.takeIf { it.length() > 0 }
+    } catch (_: Exception) {
+      null
+    }
   }
 
   /** GET [url] → [dest] (parent dirs created); true only on a 2xx with a non-empty body. */
@@ -233,14 +274,17 @@ internal class CoordinateResolver(
     val DEFAULT_REMOTE_REPOSITORIES: List<String> =
       listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
-    /** `<artifact>-<version>.<type>` — `type` is `jar` (desktop) or `aar` (Android). */
-    private fun artifactFileName(coord: BundleReader.ClasspathEntry.Maven): String =
-      "${coord.artifact}-${coord.version}.${coord.type.ifBlank { "jar" }}"
-
-    /** `<group as path>/<artifact>/<version>/<artifact>-<version>.<type>`. */
-    private fun mavenRelativePath(coord: BundleReader.ClasspathEntry.Maven): String =
-      coord.group.replace('.', '/') +
-        "/${coord.artifact}/${coord.version}/${artifactFileName(coord)}"
+    /**
+     * Candidate `<artifact>-<version>.<ext>` filenames to look for, in order: the coordinate's
+     * recorded type (`jar` desktop / `aar` Android) first, then `.aar` as a fallback. The fallback
+     * covers Android deps that an older bundle recorded as `jar`, or whose `.jar` isn't published
+     * (AndroidX libs ship `.aar`). De-duplicated, so a `jar`/`aar` coordinate yields one or two
+     * names.
+     */
+    private fun candidateFileNames(coord: BundleReader.ClasspathEntry.Maven): List<String> =
+      listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
+        "${coord.artifact}-${coord.version}.$it"
+      }
 
     /**
      * Default local repositories searched when a caller doesn't pass its own. Honours the standard

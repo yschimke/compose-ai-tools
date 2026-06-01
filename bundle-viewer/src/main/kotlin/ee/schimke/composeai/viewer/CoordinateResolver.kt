@@ -54,7 +54,7 @@ internal object CoordinateResolver {
   ): File? {
     // Local repos AND our download cache — a jar fetched in an earlier online run must resolve
     // offline too (the network gate only governs *new* fetches, not reading what we already have).
-    val candidates = locate(coord, roots + downloadCacheDir)
+    val candidates = locate(coord, roots + downloadCacheDir, downloadCacheDir)
     val expected = coord.sha256
 
     if (expected != null) {
@@ -97,24 +97,63 @@ internal object CoordinateResolver {
     return null
   }
 
-  private fun locate(coord: ClasspathEntry.Maven, roots: List<File>): List<File> {
-    val jarName = artifactFileName(coord)
+  private fun locate(
+    coord: ClasspathEntry.Maven,
+    roots: List<File>,
+    downloadCacheDir: File,
+  ): List<File> {
     val found = mutableListOf<File>()
     for (root in roots) {
       if (!root.isDirectory) continue
-      val mavenPath = File(root, mavenRelativePath(coord))
-      if (mavenPath.isFile) found += mavenPath
-      val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
-      if (gradleVersionDir.isDirectory) {
-        gradleVersionDir
-          .listFiles()
-          ?.asSequence()
-          ?.filter { it.isDirectory }
-          ?.mapNotNull { hashDir -> File(hashDir, jarName).takeIf { it.isFile } }
-          ?.let { found += it }
+      // Coordinate's recorded type first, then `.aar` (Android deps recorded as `jar` by an older
+      // bundle, or whose `.jar` isn't published). [materialize] turns an `.aar` into its
+      // classes.jar.
+      for (fileName in candidateFileNames(coord)) {
+        val mavenPath =
+          File(
+            root,
+            "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName",
+          )
+        if (mavenPath.isFile) found += mavenPath
+        val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
+        if (gradleVersionDir.isDirectory) {
+          gradleVersionDir
+            .listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { hashDir -> File(hashDir, fileName).takeIf { it.isFile } }
+            ?.let { found += it }
+        }
       }
     }
-    return found
+    // Materialize before returning so the hash check (and the classpath) sees real jars — an `.aar`
+    // isn't loadable and the bundle's `sha256` is of the extracted `classes.jar`.
+    return found.mapNotNull { materialize(it, downloadCacheDir) }
+  }
+
+  /**
+   * An `.aar` isn't classpath-loadable, so extract its `classes.jar` to a stable cache path under
+   * [downloadCacheDir] and return that; a `.jar` passes through. Returns null for a resource-only
+   * `.aar` (no `classes.jar`) or any extraction error — the caller then treats it as a miss.
+   */
+  private fun materialize(file: File, downloadCacheDir: File): File? {
+    if (!file.name.endsWith(".aar", ignoreCase = true)) return file
+    val dest =
+      File(
+        downloadCacheDir,
+        "extracted/${file.absolutePath.hashCode().toUInt().toString(16)}/classes.jar",
+      )
+    if (dest.isFile && dest.length() > 0) return dest
+    return try {
+      java.util.zip.ZipFile(file).use { zip ->
+        val entry = zip.getEntry("classes.jar") ?: return null
+        dest.parentFile?.mkdirs()
+        zip.getInputStream(entry).use { input -> dest.outputStream().use { input.copyTo(it) } }
+      }
+      dest.takeIf { it.length() > 0 }
+    } catch (_: Exception) {
+      null
+    }
   }
 
   /**
@@ -128,10 +167,12 @@ internal object CoordinateResolver {
     remoteRepositories: List<String>,
     downloadCacheDir: File,
   ): File? {
-    val rel = mavenRelativePath(coord)
-    val dest = File(downloadCacheDir, rel)
-    for (base in remoteRepositories) {
-      if (fetchTo(base.trimEnd('/') + "/" + rel, dest)) return dest
+    for (fileName in candidateFileNames(coord)) {
+      val rel = "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
+      val dest = File(downloadCacheDir, rel)
+      for (base in remoteRepositories) {
+        if (fetchTo(base.trimEnd('/') + "/" + rel, dest)) return materialize(dest, downloadCacheDir)
+      }
     }
     return null
   }
@@ -190,13 +231,15 @@ internal object CoordinateResolver {
   val DEFAULT_REMOTE_REPOSITORIES: List<String> =
     listOf("https://repo1.maven.org/maven2", "https://dl.google.com/dl/android/maven2")
 
-  /** `<artifact>-<version>.<type>` — `type` is `jar` (desktop) or `aar` (Android). */
-  private fun artifactFileName(coord: ClasspathEntry.Maven): String =
-    "${coord.artifact}-${coord.version}.${coord.type.ifBlank { "jar" }}"
-
-  /** `<group as path>/<artifact>/<version>/<artifact>-<version>.<type>`. */
-  private fun mavenRelativePath(coord: ClasspathEntry.Maven): String =
-    coord.group.replace('.', '/') + "/${coord.artifact}/${coord.version}/${artifactFileName(coord)}"
+  /**
+   * Candidate `<artifact>-<version>.<ext>` filenames, in order: the coordinate's recorded type
+   * (`jar` desktop / `aar` Android) first, then `.aar` as a fallback for Android deps an older
+   * bundle recorded as `jar` or whose `.jar` isn't published. De-duplicated.
+   */
+  private fun candidateFileNames(coord: ClasspathEntry.Maven): List<String> =
+    listOf(coord.type.ifBlank { "jar" }, "aar").distinct().map {
+      "${coord.artifact}-${coord.version}.$it"
+    }
 
   private fun defaultRepositoryRoots(): List<File> {
     val home = System.getProperty("user.home")?.let(::File)
