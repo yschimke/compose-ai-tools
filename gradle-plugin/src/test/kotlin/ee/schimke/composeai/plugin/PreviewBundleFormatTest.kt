@@ -5,9 +5,10 @@ import kotlinx.serialization.json.Json
 import org.junit.Test
 
 /**
- * Schema v3 round-trip + back-compat coverage for [BundleManifest] / [ClasspathEntry]. v3 adds the
- * [ClasspathEntry.Embedded] kind and the [BundleManifest.producer] / [BundleManifest.resolution]
- * fields; both manifest fields default so a v2 `bundle.json` (which omits them) still decodes.
+ * Schema round-trip + back-compat coverage for [BundleManifest] / [ClasspathEntry] / [BundleIr].
+ * Covers the v3 [ClasspathEntry.Embedded] kind, the v4 [ClasspathEntry.Maven.sha256], and the v5
+ * [BundleManifest.intermediateRepresentations]; every added field defaults so an older `bundle.json`
+ * (which omits it) still decodes.
  */
 class PreviewBundleFormatTest {
 
@@ -22,8 +23,67 @@ class PreviewBundleFormatTest {
   }
 
   @Test
-  fun `current schema version is 4`() {
-    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(4)
+  fun `current schema version is 5`() {
+    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(5)
+  }
+
+  @Test
+  fun `intermediate representations round-trip`() {
+    val original =
+      BundleManifest(
+        schemaVersion = BUNDLE_SCHEMA_VERSION,
+        backend = "android",
+        previewIds = listOf("pkg.Rc", "pkg.Tile"),
+        coverPreviewId = "pkg.Rc",
+        classpath = listOf(ClasspathEntry.Module(path = "classes/app.jar")),
+        modulePath = ":sample",
+        producedBy = "test",
+        intermediateRepresentations =
+          listOf(
+            BundleIr(
+              previewId = "pkg.Rc",
+              format = IR_FORMAT_REMOTECOMPOSE,
+              path = "ir/pkg.Rc.rcdoc",
+            ),
+            BundleIr(
+              previewId = "pkg.Tile",
+              format = IR_FORMAT_PROTOLAYOUT,
+              path = "ir/pkg.Tile.tilelayout",
+              resourcesPath = "ir/pkg.Tile.tileresources",
+            ),
+          ),
+      )
+
+    val decoded =
+      json.decodeFromString(
+        BundleManifest.serializer(),
+        json.encodeToString(BundleManifest.serializer(), original),
+      )
+
+    assertThat(decoded).isEqualTo(original)
+    val tile = decoded.intermediateRepresentations.single { it.format == IR_FORMAT_PROTOLAYOUT }
+    assertThat(tile.resourcesPath).isEqualTo("ir/pkg.Tile.tileresources")
+  }
+
+  @Test
+  fun `v4 manifest without intermediateRepresentations decodes with an empty list`() {
+    val v4 =
+      """
+      {
+        "schemaVersion": 4,
+        "backend": "desktop",
+        "previewIds": ["pkg.Foo"],
+        "coverPreviewId": "pkg.Foo",
+        "classpath": [ { "kind": "module", "path": "classes/app.jar" } ],
+        "modulePath": ":sample",
+        "producedBy": "test"
+      }
+      """
+        .trimIndent()
+
+    val decoded = json.decodeFromString(BundleManifest.serializer(), v4)
+
+    assertThat(decoded.intermediateRepresentations).isEmpty()
   }
 
   @Test

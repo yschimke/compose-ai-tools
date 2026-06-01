@@ -358,6 +358,21 @@ internal object BundleReader {
     val producer: String = "gradle",
     /** v3+: classpath assembly strategy (`coordinates`|`embedded`|`mixed`). Defaults for v2. */
     val resolution: String = "coordinates",
+    /**
+     * v5+: previews replayed from a captured intermediate representation (`ir/<id>.<ext>`) rather
+     * than by re-running their consumer bytecode. Empty for a classic all-classes bundle.
+     */
+    val intermediateRepresentations: List<BundleIr> = emptyList(),
+  )
+
+  /** v5+ mirror of `BundleIr` in `PreviewBundleFormat.kt`. */
+  @Serializable
+  data class BundleIr(
+    val previewId: String,
+    /** `remotecompose` (RC doc) or `protolayout` (Wear tile Layout proto). */
+    val format: String,
+    val path: String,
+    val resourcesPath: String? = null,
   )
 
   @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)

@@ -173,7 +173,18 @@ abstract class BundlePreviewTask : DefaultTask() {
     val manifest = JSON.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
     val selected = resolveSelection(manifest, previewIds.get())
     val coverId = selected.first().id
-    val entryClassFqns = selected.map { it.className }.toSet()
+
+    // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
+    // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
+    // their composable. We therefore (a) carry the IR bytes in the bundle and (b) DROP their
+    // enclosing class from the closure seed below, so the consumer bytecode that produced them isn't
+    // packed at all — the whole point of the v5 format. A preview with no IR sidecar stays on the
+    // classic class-minimisation path.
+    val irByPreview: Map<String, ResolvedIr> =
+      selected.mapNotNull { p -> resolvePreviewIr(p)?.let { p.id to it } }.toMap()
+
+    // Seed the minimisation closure only from previews that still need their bytecode replayed.
+    val entryClassFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
 
     val classDirsList = moduleClassDirs.files.filter { it.exists() && it.isDirectory }
     val jarsList = dependencyJars.files.filter { it.isFile && it.name.endsWith(".jar") }
@@ -206,6 +217,29 @@ abstract class BundlePreviewTask : DefaultTask() {
         dependencies = depDecisions,
       )
 
+    // Lay out the IR artefacts under `ir/<id>.<ext>` and record a manifest entry per IR-backed
+    // preview. The companion resources proto (protolayout) lands beside the layout proto.
+    val irEntries = mutableListOf<BundleIr>()
+    val irZipFiles = LinkedHashMap<String, ByteArray>()
+    for (preview in selected) {
+      val ir = irByPreview[preview.id] ?: continue
+      val irPath = "$BUNDLE_IR_DIR/${preview.id}.${ir.ext}"
+      irZipFiles[irPath] = ir.bytes
+      val resourcesPath =
+        ir.resourcesBytes?.let { rb ->
+          val rp = "$BUNDLE_IR_DIR/${preview.id}.${ir.resourcesExt}"
+          irZipFiles[rp] = rb
+          rp
+        }
+      irEntries +=
+        BundleIr(
+          previewId = preview.id,
+          format = ir.format,
+          path = irPath,
+          resourcesPath = resourcesPath,
+        )
+    }
+
     val bundle =
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
@@ -217,6 +251,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         producedBy = producedBy.get(),
         producer = PRODUCER_GRADLE,
         resolution = classpath.resolution,
+        intermediateRepresentations = irEntries,
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -236,6 +271,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         inlinedProjectJars = inlinedJars,
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
         previewPngs = previewPngs,
+        irFiles = irZipFiles,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -253,6 +289,7 @@ abstract class BundlePreviewTask : DefaultTask() {
       "composePreviewBundle — wrote ${outFile.name} (${outFile.length()} bytes)\n" +
         "  resolution:           ${classpath.resolution}\n" +
         "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
+        "  IR-backed previews:   ${irEntries.size} (replayed from ir/, classes dropped)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
@@ -329,6 +366,53 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
       ?.minByOrNull { it.name }
       ?.readBytes()
+  }
+
+  /** A captured intermediate representation resolved off disk for one preview. */
+  private data class ResolvedIr(
+    val format: String,
+    val ext: String,
+    val bytes: ByteArray,
+    val resourcesExt: String? = null,
+    val resourcesBytes: ByteArray? = null,
+  )
+
+  /**
+   * Look for a captured IR sidecar emitted by the render step next to [preview]'s PNG. The render
+   * path writes the IR alongside the rendered image using the same stem: `<stem>.rcdoc` for a
+   * Remote Compose document, or `<stem>.tilelayout` (+ optional `<stem>.tileresources`) for a Wear
+   * protolayout proto. Returns `null` when the preview's flavour has no IR (the common case — every
+   * plain `@Composable @Preview`), in which case the preview stays on the class-minimisation path.
+   *
+   * Resolution mirrors [resolvePreviewPng]: the stem comes from the primary capture's
+   * `renderOutput`, and the file lives under [rendersDir]. IR sidecars are NOT fanned out across
+   * `@PreviewParameter` variants (a tile / remote document is a single artefact), so unlike the PNG
+   * path there's no sibling search.
+   */
+  private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
+    val rendersRoot = rendersDir.orNull?.asFile ?: return null
+    val rel =
+      preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null
+    val stem = rel.substringAfterLast('/').removeSuffix(".png")
+
+    fun read(ext: String): ByteArray? {
+      val f = File(rendersRoot, "$stem.$ext")
+      return if (f.isFile && f.length() > 0) f.readBytes() else null
+    }
+
+    read(IR_EXT_REMOTECOMPOSE)?.let {
+      return ResolvedIr(format = IR_FORMAT_REMOTECOMPOSE, ext = IR_EXT_REMOTECOMPOSE, bytes = it)
+    }
+    read(IR_EXT_PROTOLAYOUT_LAYOUT)?.let { layout ->
+      return ResolvedIr(
+        format = IR_FORMAT_PROTOLAYOUT,
+        ext = IR_EXT_PROTOLAYOUT_LAYOUT,
+        bytes = layout,
+        resourcesExt = IR_EXT_PROTOLAYOUT_RESOURCES,
+        resourcesBytes = read(IR_EXT_PROTOLAYOUT_RESOURCES),
+      )
+    }
+    return null
   }
 
   private fun packModuleClasses(
@@ -519,6 +603,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     inlinedProjectJars: Map<String, File>,
     report: String,
     previewPngs: Map<String, ByteArray>,
+    irFiles: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -526,6 +611,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       zip.writeFile("previews.json", previewsJson.toByteArray(Charsets.UTF_8))
       // One baked PNG per selected preview under the well-known `previews/` directory.
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
+      // Captured IR bytes (Remote Compose doc / protolayout proto) under `ir/`.
+      irFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       zip.writeFile("classes/app.jar", appJar)
       inlinedProjectJars.forEach { (path, file) -> zip.writeFile(path, file.readBytes()) }
       zip.writeFile("report.json", report.toByteArray(Charsets.UTF_8))
