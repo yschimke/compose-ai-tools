@@ -77,12 +77,23 @@ class BundleRenderer(
     val manifest = BUNDLE_JSON.decodeFromString(BundleReader.Manifest.serializer(), bundleJsonBytes)
     val previews = MANIFEST_JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonBytes)
 
-    if (manifest.backend != "desktop") {
-      throw UnsupportedOperationException(
-        "bundle render: backend '${manifest.backend}' not supported yet (v1 = desktop only)"
-      )
+    return when (manifest.backend) {
+      "desktop" -> renderDesktop(classesDir, libJars, manifest, previews)
+      "android" ->
+        renderAndroid(workDir, classesDir, libJars, manifest, previews, previewsJsonBytes)
+      else ->
+        throw UnsupportedOperationException(
+          "bundle render: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')"
+        )
     }
+  }
 
+  private fun renderDesktop(
+    classesDir: File,
+    libJars: List<File>,
+    manifest: BundleReader.Manifest,
+    previews: PreviewManifest,
+  ): Result {
     val rendererJars = locateRendererClasspath()
     if (rendererJars.isEmpty()) {
       throw IllegalStateException(
@@ -124,6 +135,138 @@ class BundleRenderer(
       }
     }
     return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
+  }
+
+  /**
+   * Re-render an `backend="android"` bundle by spawning the Android (Robolectric) renderer
+   * ([ee.schimke.composeai.renderer.AndroidRendererMain], which reads `composeai.render.manifest`
+   * and renders the whole `previews.json` into `composeai.render.outputDir` — one subprocess for
+   * the batch, vs the desktop per-preview spawn). Classpath/JVM-arg/property assembly lives in the
+   * unit-tested [AndroidBundleLaunch].
+   *
+   * Phase 1: the Android renderer sidecar (`lib-renderer-android/`) isn't packaged into the CLI
+   * distribution yet, so absent an override this surfaces an actionable diagnostic rather than the
+   * old blunt "backend not supported". The assembly + spawn path is real and exercisable today by
+   * pointing `-Dcomposeai.cli.libRendererAndroidDir=<dir>` at a built renderer; packaging + the
+   * end-to-end Robolectric validation land in Phase 2 (the SDK-gated Android CI chain).
+   */
+  private fun renderAndroid(
+    workDir: File,
+    classesDir: File,
+    libJars: List<File>,
+    manifest: BundleReader.Manifest,
+    previews: PreviewManifest,
+    previewsJsonRaw: String,
+  ): Result {
+    val rendererJars = locateAndroidRendererClasspath()
+    if (rendererJars.isEmpty()) {
+      throw IllegalStateException(
+        "bundle render: backend=android needs the Android renderer sidecar, which is not packaged " +
+          "in this CLI build yet (Phase 2). Point at a built one via " +
+          "`-Dcomposeai.cli.libRendererAndroidDir=<dir>`, or render a desktop bundle. Looked in " +
+          "`${androidRendererSearchDescription()}`."
+      )
+    }
+    val androidJar =
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
+        ?: throw IllegalStateException(
+          "bundle render: backend=android needs android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT " +
+            "to a local Android SDK (no platforms/android-*/android.jar found)."
+        )
+
+    val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
+    val configRoot =
+      launch.writeRobolectricConfig(workDir.resolve("robolectric-config").apply { mkdirs() })
+
+    val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+    val resolvedJars =
+      CoordinateResolver(warn = { logSink("compose-preview: $it") })
+        .resolveAll(mavenCoords)
+        .mapNotNull { it.file }
+
+    // previews.json drives the batch — write the bundle's copy verbatim where the renderer reads
+    // it.
+    val previewsJsonFile = workDir.resolve("previews.json").apply { writeText(previewsJsonRaw) }
+
+    // Synthesized robolectric.properties wins first; then consumer classes + deps; then the Android
+    // renderer's own runtime; android.jar last (discovery-only stub — Robolectric's android-all
+    // sandbox supplies the real framework).
+    val classpath =
+      (listOf(configRoot, classesDir) + libJars + resolvedJars + rendererJars + listOf(androidJar))
+        .joinToString(File.pathSeparator) { it.absolutePath }
+
+    outputDir.mkdirs()
+    val (exitCode, tail) = spawnAndroidRenderer(launch, classpath, previewsJsonFile, outputDir)
+
+    // AndroidRendererMain renders the whole manifest into outputDir. Reconcile per-preview by the
+    // same `<safeId>.png` convention the desktop path uses; exact id↔filename matching is finalized
+    // alongside the Phase 2 harness run in CI.
+    val succeeded = mutableListOf<RenderedPreview>()
+    val failed = mutableListOf<FailedPreview>()
+    for (preview in previews.previews) {
+      val outFile = outputDir.resolve(safeFilename(preview.id) + ".png")
+      if (outFile.isFile && outFile.length() > 0) {
+        succeeded += RenderedPreview(preview.id, outFile)
+        if (verbose) logSink("rendered ${preview.id} → ${outFile.path}")
+      } else {
+        failed += FailedPreview(preview.id, exitCode, tail)
+      }
+    }
+    if (failed.isNotEmpty()) {
+      logSink("bundle render (android): ${failed.size} preview(s) produced no PNG (exit=$exitCode)")
+      if (verbose) logSink(tail)
+    }
+    return Result(previewCount = previews.previews.size, succeeded = succeeded, failed = failed)
+  }
+
+  private fun spawnAndroidRenderer(
+    launch: AndroidBundleLaunch,
+    classpath: String,
+    previewsJsonFile: File,
+    outDir: File,
+  ): Pair<Int, String> {
+    val javaBin = locateJava()
+    val command = buildList {
+      add(javaBin)
+      addAll(launch.jvmArgs())
+      launch.systemProperties(previewsJsonFile.absolutePath, outDir.absolutePath).forEach { (k, v)
+        ->
+        add("-D$k=$v")
+      }
+      add("-cp")
+      add(classpath)
+      add("ee.schimke.composeai.renderer.AndroidRendererMainKt")
+    }
+    val pb = ProcessBuilder(command).redirectErrorStream(true)
+    val proc = pb.start()
+    val output = proc.inputStream.bufferedReader().readText()
+    val exitCode = proc.waitFor()
+    return exitCode to output.lines().takeLast(40).joinToString("\n")
+  }
+
+  /** Locate the Android renderer sidecar jars — Android twin of [locateRendererClasspath]. */
+  private fun locateAndroidRendererClasspath(): List<File> {
+    val override = System.getProperty("composeai.cli.libRendererAndroidDir")
+    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
+    val candidates =
+      listOfNotNull(override?.let { File(it) }, appHome?.let { File(it, "lib-renderer-android") })
+        .distinct()
+    val firstExistingDir = candidates.firstOrNull { it.isDirectory } ?: return emptyList()
+    return firstExistingDir
+      .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
+      ?.sortedBy { it.name }
+      .orEmpty()
+  }
+
+  private fun androidRendererSearchDescription(): String {
+    val override = System.getProperty("composeai.cli.libRendererAndroidDir")
+    val appHome = System.getProperty("composeai.cli.appHome") ?: System.getenv("APP_HOME")
+    return listOfNotNull(
+        override?.let { "-Dcomposeai.cli.libRendererAndroidDir=$it" },
+        appHome?.let { "$it/lib-renderer-android" },
+      )
+      .ifEmpty { listOf("<no APP_HOME / override set>") }
+      .joinToString(" or ")
   }
 
   private fun expandAppJarAndReadManifests(

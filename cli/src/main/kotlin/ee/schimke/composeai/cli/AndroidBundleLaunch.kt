@@ -1,0 +1,171 @@
+package ee.schimke.composeai.cli
+
+import java.io.File
+import java.util.Properties
+
+/**
+ * Pure-logic assembly of the inputs a standalone Android (Robolectric) preview render needs when
+ * replaying a packed `backend="android"` bundle outside Gradle — the Android counterpart of the
+ * desktop spawn in [BundleRenderer]. This is the **Phase 1 foundation**: the deterministic,
+ * unit-testable pieces (JVM `--add-opens` args Robolectric needs on JDK 17+, the Robolectric system
+ * properties, the synthesized package-level `robolectric.properties`, the SDK-level clamp, and
+ * `android.jar` discovery from the local SDK).
+ *
+ * What is intentionally NOT here yet (Phase 2, validated in the SDK-gated Android CI chain because
+ * none of it is runnable without an Android SDK + Robolectric runtime):
+ * - packaging `:renderer-android` / `:daemon:android` into the CLI distribution (today only the
+ *   desktop sidecars ship — see `cli/build.gradle.kts`), and
+ * - the bundle-side packing of Android-merged resources, and
+ * - recording the consumer's `compileSdk` in the bundle manifest (we default + allow an override
+ *   until then).
+ *
+ * The constants below MUST stay in lockstep with the Gradle plugin's
+ * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] (`buildJvmArgs`, `buildSystemProperties`)
+ * and `GenerateRobolectricPropertiesTask`, which the in-workspace Android render task uses. The CLI
+ * links a different module graph, so we re-declare them here — same pattern as [BundleReader]
+ * mirroring the on-disk bundle schema. Keep them in sync if the plugin side changes.
+ */
+class AndroidBundleLaunch(
+  sdkLevel: Int = DEFAULT_SDK,
+  /**
+   * When false (default) the synthesized `robolectric.properties` pins `application=
+   * android.app.Application` so the consumer's own `Application.onCreate()` is skipped — preview
+   * rendering must not run app bootstrap (Firebase, splash screens, etc.). Set true only when the
+   * consumer's Application is preview-safe.
+   */
+  private val useConsumerApplication: Boolean = false,
+) {
+
+  /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
+  val sdkLevel: Int = sdkLevel.coerceIn(MIN_SDK, MAX_SDK)
+
+  /**
+   * JVM args the spawned Robolectric process needs on JDK 17+. Mirrors
+   * `AndroidPreviewClasspath.buildJvmArgs()` plus `--enable-native-access` (which the desktop spawn
+   * also passes). Without the `--add-opens` set Robolectric's reflective access into `java.base`
+   * internals fails with `IllegalAccessException` on SDK 36 sandboxes (issue #1328).
+   */
+  fun jvmArgs(): List<String> =
+    listOf(
+      "--enable-native-access=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+    )
+
+  /**
+   * Robolectric / renderer system properties. Mirrors the static half of
+   * `AndroidPreviewClasspath.buildSystemProperties(...)`; the renderer reads `composeai.render.
+   * manifest` (the extracted `previews.json`) and `composeai.render.outputDir` to drive the batch.
+   */
+  fun systemProperties(manifestPath: String, outputDir: String): Map<String, String> =
+    linkedMapOf(
+      "robolectric.graphicsMode" to "NATIVE",
+      "robolectric.looperMode" to "PAUSED",
+      "robolectric.conscryptMode" to "OFF",
+      "robolectric.pixelCopyRenderMode" to "hardware",
+      "roborazzi.test.record" to "true",
+      "composeai.render.manifest" to manifestPath,
+      "composeai.render.outputDir" to outputDir,
+    )
+
+  /**
+   * The package-level `robolectric.properties` body Robolectric merges for
+   * `RobolectricRenderTest`'s package. Mirrors `GenerateRobolectricPropertiesTask`'s output:
+   * `sdk` + `graphicsMode` + the GoogleFont shadow registration, and (unless
+   * [useConsumerApplication]) the stub `application=`.
+   */
+  fun robolectricPropertiesBody(): String = buildString {
+    appendLine("sdk=$sdkLevel")
+    appendLine("graphicsMode=NATIVE")
+    if (!useConsumerApplication) appendLine("application=android.app.Application")
+    append("shadows=ee.schimke.composeai.renderer.ShadowFontsContractCompat")
+  }
+
+  /**
+   * Materialise [robolectricPropertiesBody] at the classpath path Robolectric looks it up by —
+   * `<root>/ee/schimke/composeai/renderer/robolectric.properties` (the renderer test's package).
+   * Returns [root], which the caller prepends to the subprocess classpath so this config wins over
+   * any copy baked into the shipped renderer jar. Creates parent dirs as needed.
+   */
+  fun writeRobolectricConfig(root: File): File {
+    val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
+    File(pkgDir, "robolectric.properties").writeText(robolectricPropertiesBody() + "\n")
+    return root
+  }
+
+  companion object {
+    /** Floor of Robolectric 4.16.x's `android-all-instrumented` range (API 21, LOLLIPOP). */
+    const val MIN_SDK: Int = 21
+    /** Ceiling of the bundled Robolectric's supported range (API 36). */
+    const val MAX_SDK: Int = 36
+    /**
+     * SDK level used when the bundle doesn't pin one. Bundles don't yet record the consumer's
+     * `compileSdk` (Phase 2), so default to a recent, widely-available level; override with
+     * `-Dcomposeai.bundle.androidSdk=<n>`.
+     */
+    const val DEFAULT_SDK: Int = 35
+
+    private const val RENDERER_PKG_PATH = "ee/schimke/composeai/renderer"
+
+    /** `-Dcomposeai.bundle.androidSdk=<n>` override for [DEFAULT_SDK]. */
+    fun sdkLevelFromSystemProperty(
+      prop: String? = System.getProperty("composeai.bundle.androidSdk")
+    ): Int = prop?.trim()?.toIntOrNull() ?: DEFAULT_SDK
+
+    /**
+     * Resolve `android.jar` from the local Android SDK, mirroring
+     * `AndroidPreviewClasspath.resolveBootClasspathFallback`: `sdk.dir` in [localPropertiesFile]
+     * first, then the `ANDROID_HOME` / `ANDROID_SDK_ROOT` env vars, then the highest-versioned
+     * `platforms/android-N/android.jar` under the resolved root. Returns null when no SDK is
+     * reachable — the caller turns that into an actionable diagnostic rather than a crash.
+     */
+    fun resolveAndroidJar(
+      localPropertiesFile: File?,
+      env: (String) -> String? = { System.getenv(it) },
+    ): File? {
+      val root = sdkRoot(localPropertiesFile, env) ?: return null
+      return highestPlatformAndroidJar(root)
+    }
+
+    private fun sdkRoot(localPropertiesFile: File?, env: (String) -> String?): File? {
+      localPropertiesFile
+        ?.takeIf { it.isFile }
+        ?.let { f ->
+          val props = Properties().apply { f.inputStream().use { load(it) } }
+          props
+            .getProperty("sdk.dir")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let {
+              return File(it)
+            }
+        }
+      for (name in listOf("ANDROID_HOME", "ANDROID_SDK_ROOT")) {
+        env(name)
+          ?.trim()
+          ?.takeIf { it.isNotEmpty() }
+          ?.let {
+            return File(it)
+          }
+      }
+      return null
+    }
+
+    private fun highestPlatformAndroidJar(sdkRoot: File): File? {
+      val platforms = File(sdkRoot, "platforms").takeIf { it.isDirectory } ?: return null
+      return platforms
+        .listFiles { f -> f.isDirectory && f.name.startsWith("android-") }
+        .orEmpty()
+        .mapNotNull { dir ->
+          val jar = File(dir, "android.jar").takeIf { it.isFile } ?: return@mapNotNull null
+          val level = dir.name.removePrefix("android-").toIntOrNull() ?: return@mapNotNull null
+          level to jar
+        }
+        .maxByOrNull { it.first }
+        ?.second
+    }
+  }
+}
