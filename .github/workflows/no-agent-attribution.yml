@@ -1,0 +1,113 @@
+name: No Agent Attribution
+
+# Hard gate against AI-agent *identity* leaking into the permanent git history.
+#
+# Scope (deliberately narrow): we reject only the two things that make the
+# history claim an agent authored the work —
+#   1. a `Co-authored-by:` trailer naming an agent (Claude, Codex, ChatGPT,
+#      Copilot, Gemini) or using an agent no-reply email, and
+#   2. a commit whose author or committer email is an agent
+#      (noreply@anthropic.com / noreply@openai.com).
+# Links to an agent session (e.g. claude.ai/code), "🤖 Generated with …"
+# footers, and ordinary PR comments are FINE and intentionally not matched.
+#
+# Why this lives at the PR layer (not just the local .githooks/commit-msg
+# hook): PRs are squash-merged, and GitHub builds the squash commit from the
+# **PR title + PR body**, NOT the branch commit messages. A `Co-authored-by:`
+# trailer at the start of a line in the PR description therefore becomes a real
+# trailer on `main`, bypassing every local hook. So we scan the PR title, the
+# PR body, and every commit message in the range — but only at trailer
+# position (start of line), so prose that merely *mentions* a trailer (like
+# this very PR) does not trip the gate.
+#
+# Untrusted text (title/body) is passed through env: and never interpolated
+# into the shell, per the repo zizmor policy.
+#
+# Keep AGENT_NAME / AGENT_EMAIL in sync with .githooks/commit-msg.
+# Make this a required status check on the "Protect Main" ruleset to block merges.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Reject agent attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan commit identities and Co-authored-by trailers
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+
+          # Shared agent definition — keep in sync with .githooks/commit-msg.
+          AGENT_NAME='(Claude|Codex|ChatGPT|Copilot|Gemini)'
+          AGENT_EMAIL='noreply@(anthropic|openai)\.com'
+
+          problems=""
+
+          # 1. Author / committer identity emails of every commit in the PR range.
+          ident_hits="$(git log --format='%H  author=%ae  committer=%ce' \
+                          "${BASE_SHA}..${HEAD_SHA}" \
+                        | grep -Ei "$AGENT_EMAIL" || true)"
+          if [ -n "$ident_hits" ]; then
+            problems="${problems}Commit author/committer email is an agent:
+          ${ident_hits}
+          "
+          fi
+
+          # 2. Co-authored-by trailers (start-of-line only) in commit messages,
+          #    PR title, and PR body — flagged when the name or email is an agent.
+          {
+            git log --format='%B' "${BASE_SHA}..${HEAD_SHA}"
+            printf '%s\n' "${PR_TITLE:-}"
+            printf '%s\n' "${PR_BODY:-}"
+          } > all_text.txt
+
+          coauthor_hits="$(grep -iE '^[[:space:]]*Co-authored-by:' all_text.txt \
+                           | grep -Ei "Co-authored-by:[[:space:]]*${AGENT_NAME}|${AGENT_EMAIL}" \
+                           || true)"
+          if [ -n "$coauthor_hits" ]; then
+            problems="${problems}Agent Co-authored-by trailer(s):
+          ${coauthor_hits}
+          "
+          fi
+
+          if [ -n "$problems" ]; then
+            printf '::error::Agent attribution found in this PR\n'
+            printf '%s\n' "$problems" >&2
+            cat >&2 <<'MSG'
+
+          ───────────────────────────────────────────────────────────────
+          This PR would attribute work to an AI agent in git history.
+          Commits are attributed solely to the human committer.
+
+          NOT allowed:
+            • a Co-authored-by: trailer naming an agent (Claude, Codex,
+              ChatGPT, Copilot, Gemini) or using an agent no-reply email
+            • a commit authored/committed with an agent email
+              (noreply@anthropic.com / noreply@openai.com)
+
+          Fine (left untouched): links to an agent session, "Generated
+          with …" footers, and ordinary PR comments.
+
+          Remember PRs squash-merge from the title + body, so remove the
+          trailer from the PR description too, not just the commits.
+          ───────────────────────────────────────────────────────────────
+          MSG
+            exit 1
+          fi
+
+          echo "No agent co-author trailers or agent commit emails found."
