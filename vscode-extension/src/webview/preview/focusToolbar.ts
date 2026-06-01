@@ -74,6 +74,11 @@ export interface InteractiveButtonState {
     /** Whether the focused module supports v2 live mode (vs the v1
      *  fallback where renders refresh but pointer state is lost). */
     interactiveSupported: boolean;
+    /** Whether the focused preview's KIND can be driven live at all. `false`
+     *  for non-interactive surfaces (notification / Glance) — see
+     *  `kindSupportsLiveMode`. Hard-disables the button regardless of daemon
+     *  capability, since there's no interactive Compose tree to stream. */
+    kindSupportsLive: boolean;
 }
 
 export interface RecordingButtonState {
@@ -174,6 +179,22 @@ export class FocusToolbarController {
             this.el.btnInteractive.setAttribute("aria-pressed", "false");
             this.el.btnInteractive.title =
                 "Daemon not ready — live mode unavailable";
+            this.el.btnInteractive.innerHTML =
+                '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
+            return;
+        }
+        // Kind gate — notification / Glance previews render an inflated View,
+        // not a live Compose tree, so there's nothing to stream or interact
+        // with. Hard-disable the LIVE button with an explanatory tooltip,
+        // ahead of the daemon-capability checks below. (Skipped when the card
+        // is somehow already live so the user can always toggle back off.)
+        if (!s.kindSupportsLive && !s.isLive) {
+            this.el.btnInteractive.disabled = true;
+            this.el.btnInteractive.setAttribute("aria-pressed", "false");
+            this.el.btnInteractive.classList.remove("live-on");
+            this.el.btnInteractive.title =
+                "Live mode isn't available for this preview — " +
+                "notification and Glance previews have no interactive surface to stream";
             this.el.btnInteractive.innerHTML =
                 '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
             return;

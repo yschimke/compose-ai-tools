@@ -24,6 +24,7 @@ import {
 import type { LiveStateController } from "./liveState";
 import type { FilterToolbar } from "./components/FilterToolbar";
 import { previewStore } from "./previewStore";
+import { kindSupportsLiveMode } from "./cardData";
 import type { PreviewGrid } from "./components/PreviewGrid";
 import type { DiffMode } from "../shared/diffModeBar";
 import type { VsCodeApi } from "../shared/vscode";
@@ -148,6 +149,11 @@ export class FocusController {
             : null;
         const previewId = card?.dataset.previewId ?? null;
         const isLive = !!previewId && this.config.liveState.isLive(previewId);
+        const focusedPreview = previewId
+            ? previewStore
+                  .getState()
+                  .allPreviews.find((p) => p.id === previewId)
+            : null;
         this.config.focusToolbar.applyInteractiveButtonState({
             inFocus,
             focusedPreviewId: previewId,
@@ -161,6 +167,7 @@ export class FocusController {
                 this.config.liveState.getModuleDaemonReady(),
                 this.config.liveState.getModuleInteractiveSupported(),
             ),
+            kindSupportsLive: kindSupportsLiveMode(focusedPreview),
         });
     }
 

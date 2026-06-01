@@ -21,6 +21,16 @@ export interface PreviewParams {
      */
     previewParameterProviderClassName?: string | null;
     previewParameterLimit?: number | null;
+    /**
+     * Preview flavour, mirroring the gradle plugin's `PreviewKind`
+     * (`"COMPOSE"` / `"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"`).
+     * Read straight off `previews.json`'s `params` block. `null`/absent ⇔
+     * `"COMPOSE"`. The webview uses this to gate the LIVE control — surfaces
+     * with no interactive Compose tree (notification / Glance) can't react to
+     * pointer input, so live mode is disabled for them (see
+     * `kindSupportsLiveMode` in `webview/preview/cardData.ts`).
+     */
+    kind?: string | null;
 }
 
 /**
