@@ -203,6 +203,14 @@ compose-ui-tooling-prerelease = { module = "androidx.compose.ui:ui-tooling", ver
 wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wear-protolayout" }
 wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wear-protolayout" }
 wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-expression", version.ref = "wear-protolayout" }
+# protolayout-proto carries the generated `androidx.wear.protolayout.proto.*` messages that
+# `Layout.toProto()` / `Resources.toProto()` return; protolayout-external-protobuf carries the
+# shaded `androidx.wear.protolayout.protobuf.*` runtime (GeneratedMessageLite, with the inherited
+# `toByteArray()` / `parseFrom(byte[])`). Both are `runtime`-scope transitives of `protolayout`, so
+# the renderer takes them `compileOnly` to serialise the tile IR for a bundle without dragging them
+# onto a consumer's classpath (the consumer already brings them at runtime via protolayout).
+wear-protolayout-proto = { module = "androidx.wear.protolayout:protolayout-proto", version.ref = "wear-protolayout" }
+wear-protolayout-external-protobuf = { module = "androidx.wear.protolayout:protolayout-external-protobuf", version.ref = "wear-protolayout" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }

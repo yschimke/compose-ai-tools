@@ -212,6 +212,12 @@ dependencies {
   compileOnly(libs.wear.tiles.tooling.preview)
   compileOnly(libs.wear.protolayout)
   compileOnly(libs.wear.protolayout.expression)
+  // Tile IR capture: `Layout.toProto()` / `Resources.toProto()` return generated messages from
+  // protolayout-proto, whose inherited `toByteArray()` lives in the shaded protobuf runtime
+  // (protolayout-external-protobuf). compileOnly so neither reaches a consumer's classpath — the
+  // consumer's own protolayout pulls them at runtime under Robolectric. See TilePreviewRenderer.
+  compileOnly(libs.wear.protolayout.proto)
+  compileOnly(libs.wear.protolayout.external.protobuf)
 }
 
 mavenPublishing {

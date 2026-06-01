@@ -16,6 +16,7 @@ import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.renderer.TileRenderer
 import androidx.wear.tiles.tooling.preview.TilePreviewData
+import ee.schimke.composeai.data.render.IrSidecarChannel
 import java.lang.reflect.Method
 import java.util.concurrent.TimeUnit
 
@@ -104,6 +105,21 @@ private fun renderTileInto(
         ?.firstOrNull()
         ?.layout
         ?: error("TilePreview '$functionName' produced no layout (empty timeline)")
+
+    // Capture the protolayout IR (the Layout + Resources protos) so a bundle can carry and replay
+    // it via TileRenderer without this tile function's bytecode. Serialised here through the
+    // generated protos — `toProto().toByteArray()` — so the :data-render-core channel stays
+    // protolayout-free; the render harness drains the channel and writes the
+    // renders/<stem>.tilelayout / .tileresources sidecars BundlePreviewTask.resolvePreviewIr packs.
+    // `Resources` has no direct byte serializer (only toProto), so both go through the proto for
+    // symmetry. Best-effort — an IR-capture hiccup must never fail the render.
+    runCatching {
+        IrSidecarChannel.offer(
+            format = IrSidecarChannel.FORMAT_PROTOLAYOUT,
+            bytes = layout.toProto().toByteArray(),
+            resourcesBytes = resources.toProto().toByteArray(),
+        )
+    }
 
     // Inline executor — Robolectric has the main looper paused, so posting
     // to a background thread and awaiting back on main would deadlock. Inflating
