@@ -47,6 +47,32 @@ export function isAnimatedPreview(p: PreviewInfo): boolean {
 }
 
 /**
+ * Preview kinds whose rendered surface is an inflated platform View, not a
+ * live Compose tree — they can't take pointer/keyboard input, so live mode
+ * would do nothing useful and only confuses the toolbar. We disable the LIVE
+ * control for these. Compose previews (interactive) and tiles (kept live by
+ * request — Wear tiles carry clickable actions) are intentionally excluded.
+ */
+export const LIVE_UNSUPPORTED_KINDS: ReadonlySet<string> = new Set([
+    "NOTIFICATION",
+    "GLANCE_APPWIDGET",
+]);
+
+/**
+ * Whether live mode should be offered for [p]. `true` for the default Compose
+ * path (and `null`/absent kind, treated as Compose) and for tiles; `false` for
+ * the non-interactive surfaces in [LIVE_UNSUPPORTED_KINDS]. A missing preview
+ * is treated as supported so a transient lookup miss never wrongly greys the
+ * button mid-navigation.
+ */
+export function kindSupportsLiveMode(
+    p: PreviewInfo | undefined | null,
+): boolean {
+    const kind = p?.params?.kind ?? null;
+    return kind == null || !LIVE_UNSUPPORTED_KINDS.has(kind);
+}
+
+/**
  * Compact one-line label shown as the variant badge on each card.
  * Longer-form info still lives in the hover tooltip ([buildTooltip])
  * — here we only surface what distinguishes siblings: name / group /

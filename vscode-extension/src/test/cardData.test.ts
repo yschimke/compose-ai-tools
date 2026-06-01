@@ -4,6 +4,7 @@ import {
     buildVariantLabel,
     isAnimatedPreview,
     isWearPreview,
+    kindSupportsLiveMode,
     mimeFor,
     parseBounds,
     sanitizeId,
@@ -270,5 +271,37 @@ describe("parseBounds", () => {
         assert.strictEqual(parseBounds(""), null);
         assert.strictEqual(parseBounds(null), null);
         assert.strictEqual(parseBounds(undefined), null);
+    });
+});
+
+describe("kindSupportsLiveMode", () => {
+    const withKind = (kind: string | null) =>
+        preview({ params: { ...baseParams, kind } });
+
+    it("supports the default Compose path (explicit and absent kind)", () => {
+        assert.strictEqual(kindSupportsLiveMode(withKind("COMPOSE")), true);
+        assert.strictEqual(kindSupportsLiveMode(withKind(null)), true);
+        // params with no `kind` field at all (older manifests) → Compose.
+        assert.strictEqual(kindSupportsLiveMode(preview()), true);
+    });
+
+    it("keeps tiles live (kept by request — Wear tiles carry clickables)", () => {
+        assert.strictEqual(kindSupportsLiveMode(withKind("TILE")), true);
+    });
+
+    it("disables live for non-interactive surfaces", () => {
+        assert.strictEqual(
+            kindSupportsLiveMode(withKind("NOTIFICATION")),
+            false,
+        );
+        assert.strictEqual(
+            kindSupportsLiveMode(withKind("GLANCE_APPWIDGET")),
+            false,
+        );
+    });
+
+    it("treats a missing preview as supported (no spurious greying)", () => {
+        assert.strictEqual(kindSupportsLiveMode(undefined), true);
+        assert.strictEqual(kindSupportsLiveMode(null), true);
     });
 });

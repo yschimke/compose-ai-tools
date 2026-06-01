@@ -45,8 +45,10 @@ import type {
     PreviewOverrides,
 } from "../../daemon/daemonProtocol";
 import { liveToggleCommand } from "../../daemon/liveCommand";
+import { kindSupportsLiveMode } from "./cardData";
 import { planFollowFocusTeardown } from "./followFocus";
 import { attachInteractiveInputHandlers } from "./interactiveInput";
+import { previewStore } from "./previewStore";
 import type { InteractiveInputConfig } from "./interactiveInput";
 import { stampLiveBadgesOnGrid } from "./liveBadge";
 import { ensureLiveCardControls } from "./liveCardControls";
@@ -627,6 +629,19 @@ export class LiveStateController {
     setInteractiveForCard(card: HTMLElement, shift: boolean): void {
         const previewId = card.dataset.previewId;
         if (!previewId) return;
+        // Kind gate — refuse to ENTER live mode for non-interactive surfaces
+        // (notification / Glance): their rendered output is an inflated View
+        // with no Compose tree to stream or drive. The toolbar already disables
+        // the button, but this also blocks the in-card click and any
+        // auto-enter path (e.g. an interactive-only data extension). Toggling a
+        // card that's somehow already live back OFF stays allowed so a stream
+        // can never be stranded.
+        if (!this.interactivePreviewIds.has(previewId)) {
+            const preview = previewStore
+                .getState()
+                .allPreviews.find((p) => p.id === previewId);
+            if (!kindSupportsLiveMode(preview)) return;
+        }
         const plan = planLiveToggle(
             this.interactivePreviewIds,
             previewId,
