@@ -495,6 +495,53 @@ class AndroidInteractiveSessionTest {
   }
 
   @Test
+  fun nonComposableNotificationKindRendersInHeldSessionInsteadOfErroring() {
+    // Regression: "TilePreview goes blank on enabled live mode". The held-rule loop used to call
+    // `getDeclaredComposableMethod` unconditionally, which throws for non-composable preview kinds
+    // (tile / notification / Glance return `TilePreviewData` / `android.app.Notification` / a Glance
+    // widget — they never synthesise the `(Composer, Int)` method). The exception failed the
+    // `interactive/start` reply, so enabling live mode blanked the preview. The fix branches on
+    // `RenderSpec.kind` exactly like the one-shot `RenderEngine.render` path and routes these
+    // through their dedicated `*PreviewComposable` strategies.
+    //
+    // Notification stands in for the whole non-composable family: it exercises the identical
+    // "skip composable resolution + render via strategy in the held setContent" path the tile
+    // branch uses, but needs no wear-tiles test dependencies / merged-resource AAR in this module.
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-notification").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      // Pre-fix this `acquire` threw (the start reply carried the NoSuchMethodException) — getting a
+      // live session at all is the core of the regression.
+      val session =
+        host.acquireInteractiveSession(
+          previewId = NOTIFICATION_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        val result = session.render(requestId = RenderHost.nextRequestId())
+        val pngPath = result.pngPath
+        assertNotNull(
+          "held notification render must produce a PNG instead of blanking the preview",
+          pngPath,
+        )
+        // Decoding asserts the capture is a real, non-empty image — the notification surface
+        // rendered rather than the held composition coming up empty.
+        val img = decode(File(pngPath!!))
+        assertTrue("rendered notification frame must have pixels", img.width > 0 && img.height > 0)
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun acquireWithoutResolverThrowsUnsupported() {
     val host = RobolectricHost(sandboxCount = 2)
     assertFalse(
@@ -893,6 +940,19 @@ class AndroidInteractiveSessionTest {
           showBackground = true,
           outputBaseName = "interactive-rsb",
         )
+      NOTIFICATION_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "RedNotification",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-notification",
+          // The whole point of the regression: a non-composable preview kind must route through its
+          // dedicated strategy in the held loop instead of `getDeclaredComposableMethod`.
+          kind = RenderEngine.NOTIFICATION_KIND,
+        )
       else -> null
     }
   }
@@ -939,6 +999,7 @@ class AndroidInteractiveSessionTest {
     private const val SCROLL_PREVIEW_ID = "interactive-scroll"
     private const val RELEASE_POSITION_PREVIEW_ID = "interactive-release-position"
     private const val ROTARY_PREVIEW_ID = "interactive-rsb"
+    private const val NOTIFICATION_PREVIEW_ID = "interactive-notification"
     private const val INTERACTIVE_WIDTH_PX = 96
     private const val INTERACTIVE_HEIGHT_PX = 96
     private const val RED_RGB = 0xEF5350

@@ -273,3 +273,39 @@ fun RotaryToggleSquare() {
         .background(color)
   )
 }
+
+/**
+ * Non-composable `@NotificationPreview`-shaped fixture: a top-level `fun(Context): Notification`
+ * exactly like the ones the gradle plugin discovers and tags `kind = "NOTIFICATION"`. Used by
+ * [AndroidInteractiveSessionTest.nonComposableNotificationKindRendersInHeldSessionInsteadOfErroring]
+ * to lock in the held-interactive-session fix: previously the held-rule loop called
+ * `getDeclaredComposableMethod` unconditionally, which throws `NoSuchMethodException` on a function
+ * that returns `android.app.Notification` (no synthesised `(Composer, Int)` method) and blanked the
+ * preview the moment live mode was enabled. Notification stands in for the whole non-composable
+ * family (tiles / notifications / Glance) because it needs no extra build dependencies — wear-tiles
+ * fixtures would pull `protolayout` + a merged-resource AAR into this module's test classpath.
+ */
+fun RedNotification(context: android.content.Context): android.app.Notification {
+  val channelId = "red-fixture-channel"
+  if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+    val manager = context.getSystemService(android.app.NotificationManager::class.java)
+    manager?.createNotificationChannel(
+      android.app.NotificationChannel(
+        channelId,
+        "Red fixture",
+        android.app.NotificationManager.IMPORTANCE_DEFAULT,
+      )
+    )
+    return android.app.Notification.Builder(context, channelId)
+      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setContentTitle("Held notification")
+      .setContentText("rendered inside a live session")
+      .build()
+  }
+  @Suppress("DEPRECATION")
+  return android.app.Notification.Builder(context)
+    .setSmallIcon(android.R.drawable.ic_dialog_info)
+    .setContentTitle("Held notification")
+    .setContentText("rendered inside a live session")
+    .build()
+}

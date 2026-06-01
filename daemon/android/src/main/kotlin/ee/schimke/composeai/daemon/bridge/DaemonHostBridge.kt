@@ -417,6 +417,17 @@ sealed interface InteractiveCommand {
      * material3Theme, …) can be added the same way when their interactive use cases need them.
      */
     val touchOverlay: Boolean? = null,
+    /**
+     * `RenderSpec.kind` value (`"TILE"` / `"NOTIFICATION"` / `"GLANCE_APPWIDGET"` / `"COMPOSE"` /
+     * `null`). The held-rule loop branches on it exactly like `RenderEngine.render` does so a live
+     * session renders non-composable previews (tiles, notifications, Glance widgets) through their
+     * dedicated `*PreviewComposable` strategies instead of trying to resolve a `@Composable` method
+     * that those previews never synthesise — without this a tile preview goes blank the moment live
+     * mode is enabled (the resolution throws `NoSuchMethodException` and the start reply errors out).
+     * Threaded as the raw `java.lang.String` for the same do-not-acquire bridge reason as the other
+     * `spec.*` fields above.
+     */
+    val kind: String? = null,
   ) : InteractiveCommand
 
   /**
