@@ -238,10 +238,14 @@ export class FocusController {
             // The cell-size picker only makes sense for launcher / app-widget
             // previews, so gate on the focused preview actually surfacing a
             // `compose/launcher-widget` data product rather than on any module
-            // in the panel advertising the extension.
+            // in the panel advertising the extension. Also keep the button
+            // visible when a cell-size override is already set (e.g. restored
+            // from persisted state on a webview reload before the payload is
+            // re-cached) so the user can still reset / change it.
             advertised:
                 previewId !== null &&
-                this.config.launcherWidgetAvailable(previewId),
+                (this.config.launcherWidgetAvailable(previewId) ||
+                    live.launcherWidgetCellsForPreview(previewId) !== null),
             enabled:
                 previewId !== null &&
                 live.launcherWidgetCellsForPreview(previewId) !== null,
