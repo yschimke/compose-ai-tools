@@ -24,7 +24,7 @@ classgraph = "4.8.184"
 # `Compare previews` is exercised against. Renovate updates this freely;
 # the variant below (`compose-bom-compat`) is the older line that
 # renderer-android compiles its public API against.
-compose-bom-stable = "2026.05.00"
+compose-bom-stable = "2026.05.01"
 # renderer-android compiles its public API surface against this OLDER BOM so
 # the emitted bytecode only references Compose 1.9.x method signatures.
 # AndroidX honours binary-backward-compatibility within a major version, so
@@ -51,7 +51,7 @@ navigation-compose = "2.9.8"
 # 1.1.x is the current stable line; bump when the Glance team ships a 1.2.x with the planned
 # preview-DSL stabilisation.
 glance-appwidget = "1.2.0-rc01"
-wear-compose = "1.6.1"
+wear-compose = "1.6.2"
 wear-tiles = "1.6.0"
 wear-protolayout = "1.4.0"
 wear-tooling-preview = "1.0.0"
@@ -85,14 +85,14 @@ horologist = "0.7.15"
 #    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
 #    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
 #    inside `RemoteButtonImpl` at preview render time.
-compose-remote = "1.0.0-alpha010"
-wear-compose-remote = "1.0.0-alpha03"
+compose-remote = "1.0.0-alpha11"
+wear-compose-remote = "1.0.0-alpha04"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
 # is the first release that ships `PreviewWrapper`. Renovate updates this
 # freely; the sample is meant to ride the latest prerelease compose.
-compose-ui-prerelease = "1.11.1"
+compose-ui-prerelease = "1.11.2"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
 mcp-kotlin-sdk = "0.12.0"
@@ -106,7 +106,7 @@ maven-publish = "0.36.0"
 # that Google's plugin creates, and renders them via Robolectric without
 # driving Google's own `validate*ScreenshotTest` tasks. Still alpha —
 # re-check compatibility when bumping AGP.
-android-compose-screenshot = "0.0.1-alpha14"
+android-compose-screenshot = "0.0.1-alpha15"
 # Checker Framework qualifier annotations. ATF (`accessibility-test-framework`,
 # pulled in transitively by `roborazzi-accessibility-check`) annotates its
 # nullable getters with `@org.checkerframework.checker.nullness.qual.Nullable`.
@@ -151,8 +151,8 @@ metro = "1.1.1"
 mosaic = "0.18.0-1"
 # Ktor HTTP client (+ OkHttp engine) for downloading bundles given a URL. Ktor 3.x is current and
 # compatible with Kotlin 2.3 / coroutines 1.11; OkHttp 5.x is the stable engine backing it.
-ktor = "3.0.3"
-okhttp = "5.1.0"
+ktor = "3.5.0"
+okhttp = "5.3.2"
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -217,8 +217,8 @@ truth = { module = "com.google.truth:truth", version.ref = "truth" }
 # bytecode at test time. The B2.0 disposable user-classloader test asserts that the daemon
 # actually re-reads bytecode after a `fileChanged` notification; without two distinct `.class`
 # files the test can't differentiate "stale" from "fresh".
-asm = { module = "org.ow2.asm:asm", version = "9.10" }
-asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10" }
+asm = { module = "org.ow2.asm:asm", version = "9.10.1" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version = "9.10.1" }
 material-kolor = { module = "com.materialkolor:material-kolor", version.ref = "material-kolor" }
 # `metroViewModel()` + `LocalMetroViewModelFactory` + the `MetroViewModelFactory` /
 # `ViewModelGraph` base types live here. Used by `:samples:android-metro-viewmodel`.
