@@ -81,13 +81,88 @@ function listPngs(renderDir: string): string[] {
     return fs.readdirSync(renderDir).filter((n) => n.endsWith(".png"));
 }
 
+function firstNonEmptySetPreviews(
+    api: ComposePreviewTestApi,
+): PostedMessage | undefined {
+    const msgs = api.getPostedMessages();
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i] as PostedMessage;
+        if (m.command !== "setPreviews") continue;
+        const previews = m.previews as Array<unknown> | undefined;
+        if (previews && previews.length > 0) return m;
+    }
+    return undefined;
+}
+
+/**
+ * Force a full render of `file` and wait for the resulting non-empty
+ * `setPreviews`, leaving ≥2 PNGs in `renderDir` for the module-switch test
+ * to preload.
+ *
+ * Bounded + retried on purpose. Each render runs through `gradleService`,
+ * which caps a Gradle task at 5 minutes (`TASK_TIMEOUT_MS`) and fires
+ * `cancelRunTask` on expiry; `RealGradleApi` now honours that cancel by
+ * killing the gradlew client, so a wedged render is terminated at ~5min
+ * and its build lock released. We budget the wait just past that cap so a
+ * hung render surfaces as a fast, attributable failure (not the 20-minute
+ * hook cap), then retry once on the freed lock. A render that's genuinely
+ * progressing always completes inside the 5-minute task cap, so the budget
+ * never truncates a healthy-but-slow cold render. On failure we dump the
+ * Compose Preview output channel — the underlying render rejection is
+ * otherwise swallowed by the refresh scheduler, leaving only a bare
+ * "timed out" with no Gradle context.
+ */
+async function primeModule(
+    api: ComposePreviewTestApi,
+    label: string,
+    file: string,
+    renderDir: string,
+): Promise<void> {
+    const ATTEMPT_BUDGET_MS = 6 * 60_000;
+    const MAX_ATTEMPTS = 2;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        console.log(
+            `[preload-e2e] priming ${label} (attempt ${attempt}/${MAX_ATTEMPTS})`,
+        );
+        api.resetMessages();
+        try {
+            await api.triggerRefresh(file, /* force */ true, "full");
+            await waitFor(
+                `non-empty setPreviews for ${label} prime`,
+                ATTEMPT_BUDGET_MS,
+                500,
+                () => firstNonEmptySetPreviews(api),
+            );
+            assert.ok(
+                listPngs(renderDir).length >= 2,
+                `${label} prime produced no PNGs in ${renderDir}`,
+            );
+            return;
+        } catch (err) {
+            lastErr = err;
+            console.log(
+                `[preload-e2e] ${label} prime attempt ${attempt}/${MAX_ATTEMPTS} failed: ${
+                    (err as Error)?.message ?? String(err)
+                }`,
+            );
+            for (const line of api.getOutputChannelTail(80)) {
+                console.log(`[preload-e2e]   [out] ${line}`);
+            }
+        }
+    }
+    throw lastErr;
+}
+
 describeE2E("Compose Preview cached preload on module switch", function () {
     // Cold paths for `:samples:cmp` + `:samples:wear` both run inside
     // this suite (sibling e2e* suites may share the Gradle cache but we
     // can't rely on it — the wear cold daemon spawn alone is ~10s on a
     // warm host, multi-minute on a fresh CI runner). 20 minutes matches
     // the combined ceiling of the cmp + wear e2e suites and leaves head
-    // room under the workflow's 60m cap.
+    // room under the workflow's 60m cap. `primeModule` bounds + retries
+    // each render well inside this cap, so a hung render fails fast with
+    // diagnostics rather than burning the whole budget on one stuck task.
     this.timeout(20 * 60_000);
 
     let api: ComposePreviewTestApi;
@@ -200,51 +275,8 @@ describeE2E("Compose Preview cached preload on module switch", function () {
         // `showTextDocument` path because the prime phase wants to
         // *force* the render-all (no force flag on the activation
         // path), and the message log doesn't need to be tidy yet.
-        console.log("[preload-e2e] priming :samples:cmp");
-        api.resetMessages();
-        await api.triggerRefresh(cmpKotlinFile, /* force */ true, "full");
-        await waitFor(
-            "non-empty setPreviews for samples/cmp prime",
-            this.timeout(),
-            500,
-            () => {
-                const msgs = api.getPostedMessages();
-                for (let i = msgs.length - 1; i >= 0; i--) {
-                    const m = msgs[i] as PostedMessage;
-                    if (m.command !== "setPreviews") continue;
-                    const previews = m.previews as Array<unknown> | undefined;
-                    if (previews && previews.length > 0) return m;
-                }
-                return undefined;
-            },
-        );
-        assert.ok(
-            listPngs(cmpRenderDir).length >= 2,
-            `cmp prime produced no PNGs in ${cmpRenderDir}`,
-        );
-
-        console.log("[preload-e2e] priming :samples:wear");
-        api.resetMessages();
-        await api.triggerRefresh(wearKotlinFile, /* force */ true, "full");
-        await waitFor(
-            "non-empty setPreviews for samples/wear prime",
-            this.timeout(),
-            500,
-            () => {
-                const msgs = api.getPostedMessages();
-                for (let i = msgs.length - 1; i >= 0; i--) {
-                    const m = msgs[i] as PostedMessage;
-                    if (m.command !== "setPreviews") continue;
-                    const previews = m.previews as Array<unknown> | undefined;
-                    if (previews && previews.length > 0) return m;
-                }
-                return undefined;
-            },
-        );
-        assert.ok(
-            listPngs(wearRenderDir).length >= 2,
-            `wear prime produced no PNGs in ${wearRenderDir}`,
-        );
+        await primeModule(api, ":samples:cmp", cmpKotlinFile, cmpRenderDir);
+        await primeModule(api, ":samples:wear", wearKotlinFile, wearRenderDir);
     });
 
     it("paints cached PNGs from disk when switching to a previously-rendered module", async () => {
