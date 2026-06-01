@@ -139,12 +139,11 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Build CLI, MCP, and viewer distributions
+      - name: Build CLI and MCP distributions
         run: |
           ./gradlew \
             :cli:distZip :cli:distTar \
-            :mcp:distZip :mcp:distTar \
-            :bundle-viewer:packageUberJarForCurrentOS
+            :mcp:distZip :mcp:distTar
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cli-dist
@@ -159,37 +158,28 @@ jobs:
             mcp/build/distributions/compose-preview-mcp-*.zip
             mcp/build/distributions/compose-preview-mcp-*.tar.gz
           retention-days: 1
-      # The viewer ships as a single self-contained Compose Desktop uber jar
-      # (`compose-preview-viewer-<os>-<arch>-<ver>.jar`, ~40 MB — it carries its own Compose
-      # Multiplatform + Skiko runtime), built by Compose's `packageUberJarForCurrentOS`. A colleague
-      # `java -jar`s it on bundle.png with nothing unpacked (portable-bundles.md Tier 2.2). This
-      # runner is Linux, so the jar carries the linux-x64 Skiko native — it's the per-OS artefact for
-      # Linux recipients. Single-parent path (`bundle-viewer/build/compose/jars/`) so the artifact's
-      # LCA stays flat and the `release` job's `artifacts/*.jar` glob picks it up.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: bundle-viewer-uberjar
-          path: bundle-viewer/build/compose/jars/compose-preview-viewer-*.jar
-          retention-days: 1
 
-  # Native viewer installers (portable-bundles.md Tier 2.2): a `.deb` (Linux), `.dmg` (macOS), and
-  # `.msi` (Windows), each built by Compose's `packageDistributionForCurrentOS` (jpackage), which
-  # embeds a JDK runtime image — so a non-Java colleague installs and launches the viewer with
-  # nothing else on their machine. jpackage only builds the format native to the runner's OS, hence
-  # the OS matrix. Unsigned (no Apple/Authenticode certs in CI): recipients clear a Gatekeeper /
-  # SmartScreen prompt on first launch, same as any unsigned desktop app. The universal uber jar
-  # (above) remains the no-install option for anyone with a JDK.
-  build-viewer-installers:
+  # Per-OS viewer artefacts (portable-bundles.md Tier 2.2). Both are built on a Linux/macOS/Windows
+  # matrix because each carries the build host's Compose Desktop + Skiko native runtime, and jpackage
+  # only emits the installer format native to the host:
+  #   - the runnable uber jar (`compose-preview-viewer-<os>-<arch>-<ver>.jar`,
+  #     `packageUberJarForCurrentOS`) — one self-contained file anyone with a JDK 17+ can
+  #     `java -jar … bundle.png` with nothing unpacked;
+  #   - the native installer (`.deb`/`.dmg`/`.msi`, `packageDistributionForCurrentOS`) — embeds a JDK
+  #     runtime image, so a non-Java colleague installs and launches like any native app.
+  # Installers are unsigned (no Apple/Authenticode certs in CI): recipients clear a Gatekeeper /
+  # SmartScreen prompt on first launch, same as any unsigned desktop app.
+  build-viewer-artifacts:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: bundle-viewer-installer-linux
+            artifact: bundle-viewer-linux
           - os: macos-latest
-            artifact: bundle-viewer-installer-macos
+            artifact: bundle-viewer-macos
           - os: windows-latest
-            artifact: bundle-viewer-installer-windows
+            artifact: bundle-viewer-windows
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -202,29 +192,34 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-read-only: 'true'
-      - name: Build the native installer for this OS
-        shell: bash
-        run: ./gradlew :bundle-viewer:packageDistributionForCurrentOS
-      # Each OS emits a single installer under `bundle-viewer/build/compose/binaries/main/<fmt>/`
-      # (`deb/`, `dmg/`, or `msi/`). Stage it into a flat dir before upload: `upload-artifact`
-      # derives the artifact's internal root from the literal path prefix *before* the first
-      # wildcard, so uploading `…/main/*/…` would preserve the `<fmt>/` subdir inside the artifact —
-      # and after the release job's `merge-multiple` download the file would land at
-      # `artifacts/<fmt>/…`, which that job's flat `artifacts/*.{deb,dmg,msi}` globs would miss
-      # (failing the `gh release` literal-glob expansion). Copying to a non-wildcard dir keeps the
-      # artifact contents flat so those globs match.
-      - name: Stage installer for upload
+      - name: Build the uber jar and native installer for this OS
         shell: bash
         run: |
-          mkdir -p staged-installers
+          ./gradlew \
+            :bundle-viewer:packageUberJarForCurrentOS \
+            :bundle-viewer:packageDistributionForCurrentOS
+      # Stage both artefacts into one flat dir before upload. `upload-artifact` derives the
+      # artifact's internal root from the literal path prefix *before* the first wildcard; the
+      # installer lives under a per-format subdir (`…/binaries/main/{deb,dmg,msi}/`), so uploading
+      # that path directly would preserve the `<fmt>/` dir inside the artifact and, after the release
+      # job's `merge-multiple` download, land the file at `artifacts/<fmt>/…` — which that job's flat
+      # `artifacts/*.{deb,dmg,msi}` globs would miss (failing the `gh release` literal-glob
+      # expansion). Copying both into a non-wildcard dir keeps the artifact contents flat. The uber
+      # jar names carry the OS+arch (`-linux-x64`, `-macos-arm64`, `-windows-x64`), so the three
+      # matrix legs never collide once merged.
+      - name: Stage artefacts for upload
+        shell: bash
+        run: |
+          mkdir -p staged-artifacts
+          cp bundle-viewer/build/compose/jars/compose-preview-viewer-*.jar staged-artifacts/
           find bundle-viewer/build/compose/binaries/main \
             -type f \( -name '*.deb' -o -name '*.dmg' -o -name '*.msi' \) \
-            -exec cp {} staged-installers/ \;
-          ls -l staged-installers
+            -exec cp {} staged-artifacts/ \;
+          ls -l staged-artifacts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
-          path: staged-installers/*
+          path: staged-artifacts/*
           if-no-files-found: error
           retention-days: 1
 
@@ -324,9 +319,9 @@ jobs:
           printf '%s\n' "$output"
 
   release:
-    # `publish-gradle-plugin` transitively gates on `build-applications` (CLI/MCP/uber-jar); add the
-    # per-OS installer matrix so the Release waits for the `.deb`/`.dmg`/`.msi` assets too.
-    needs: [publish-gradle-plugin, build-viewer-installers]
+    # `publish-gradle-plugin` transitively gates on `build-applications` (CLI/MCP dists); add the
+    # per-OS viewer matrix so the Release waits for the uber jars + `.deb`/`.dmg`/`.msi` too.
+    needs: [publish-gradle-plugin, build-viewer-artifacts]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # update the release, upload assets
