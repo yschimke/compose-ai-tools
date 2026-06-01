@@ -234,10 +234,15 @@ The player already exists (`compose-preview-viewer`, §2b) — the work is small
    Compose's `compose.desktop.application` DSL rather than the JVM `application`
    plugin (the uber jar supersedes the slim `distZip`/`distTar`) and rather than the
    Shadow plugin (whose parent-project property lookup breaks this repo's Isolated
-   Projects gate). The same DSL also exposes `createDistributable` (unpacked app
-   dir) and `packageDeb`/`packageDmg`/`packageMsi` — the still-open follow-up is to
-   wire those native installers per OS so a non-Java colleague needs nothing
-   installed at all.
+   Projects gate).
+3. **Native installers for non-Java recipients.** *Done* — the same DSL's
+   `:bundle-viewer:packageDistributionForCurrentOS` builds a `.deb` (Linux), `.dmg`
+   (macOS), or `.msi` (Windows) via `jpackage`, each embedding a JDK runtime image,
+   so a colleague with no JDK installs and launches the viewer like any native app.
+   `jpackage` only emits the format native to the build host, so `release.yml` runs
+   this on a Linux/macOS/Windows matrix and uploads all three onto the Release. The
+   installers are unsigned (no certs in CI) — recipients clear a one-time
+   Gatekeeper / SmartScreen prompt; signing/notarization is the remaining polish.
 
 ### Tier 3 — the coordinate resolver (the default play path, not a fallback)
 
@@ -262,8 +267,8 @@ render.
 
 1. **Tier 0 docs** (this file) + wire contrib producers to `:bundle-viewer`. *Quick win, no format change.*
 2. **Schema v3:** add `Embedded` + `producer`/`resolution` (additive; backward-compatible). Implement `--embed-deps` in the Gradle plugin first (reuses the closure walk), then mirror in contrib's Amper/Bazel producers.
-3. **Fat player JAR** preferring `embedded`, falling back to Tier 3. *Highest-leverage portability item.*
-4. **(Optional) jpackage** for non-developer recipients.
+3. **Fat player JAR** preferring `embedded`, falling back to Tier 3. *Highest-leverage portability item.* *(Done — `packageUberJarForCurrentOS`.)*
+4. **jpackage** native installers for non-developer recipients. *(Done — `packageDistributionForCurrentOS`, per-OS matrix in `release.yml`; signing/notarization still open.)*
 
 ### Verification per tier
 
@@ -271,7 +276,7 @@ render.
 |---|---|
 | 0 | Open a v2 bundle in Preview.app / `tui-cli --dump` with no project (already in this repo's CI). |
 | 1 | Pack with `--embed-deps`; `unzip -l` shows `libs/*.jar`; render on a box with **no Gradle/Maven and no network**. |
-| 2 | `java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar sample.png` on a clean JDK. (Headless smoke: the launch reaches Compose's composition + AWT `EventQueue` and stops only at `HeadlessException` — no `NoClassDefFoundError`, proving the runtime classpath is complete.) |
+| 2 | `java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar sample.png` on a clean JDK. (Headless smoke: the launch reaches Compose's composition + AWT `EventQueue` and stops only at `HeadlessException` — no `NoClassDefFoundError`, proving the runtime classpath is complete.) Or install the native `.deb`/`.dmg`/`.msi` on a box with **no JDK** and launch it. |
 | 3 | Open a `coordinates` bundle on a Bazel-only box; resolver fetches deps. |
 
 ## 5. Questions to confirm against `compose-ai-contrib`
