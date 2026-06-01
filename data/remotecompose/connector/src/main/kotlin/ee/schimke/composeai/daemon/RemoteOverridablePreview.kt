@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.PreviewWrapperProvider
 import ee.schimke.composeai.daemon.protocol.RemoteNamedValue
+import ee.schimke.composeai.data.render.IrSidecarChannel
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -23,8 +24,8 @@ import kotlinx.coroutines.runBlocking
  * running `RemoteComposePlayer`'s `StateUpdater`. Applied as `@PreviewWrapper(
  * RemoteOverridablePreviewWrapper::class)` on a `@Preview`-annotated composable so the body stays
  * authoring-shaped (`Container { MyRemoteComponent() }`) — no `RemoteOverridablePreview(...)` /
- * `RemotePreview(...)` call inside the body. This is the canonical shape: preview authors swap
- * one annotation, not the function body.
+ * `RemotePreview(...)` call inside the body. This is the canonical shape: preview authors swap one
+ * annotation, not the function body.
  *
  * Hard-codes [RcPlatformProfiles.ANDROIDX] for symmetry with the local `RemotePreviewWrapper` the
  * sample shipped before this connector existed. Consumers that want a different profile subclass
@@ -54,11 +55,11 @@ open class RemoteOverridablePreviewWrapper : PreviewWrapperProvider {
  *
  * The "USER:" domain prefix that `rememberNamedRemoteString` (and the rest of the `rememberNamed*`
  * family) uses on the writer side is the same prefix `StateUpdater.setUserLocal*` consumes, so a
- * binding declared with `rememberNamedRemoteString("label", "Tap me")` is reachable by passing
- * the bare `"label"` (no manual prefix) into the override map.
+ * binding declared with `rememberNamedRemoteString("label", "Tap me")` is reachable by passing the
+ * bare `"label"` (no manual prefix) into the override map.
  *
- * `RemoteNamedValue.BooleanValue` has no `setUserLocalBoolean` counterpart in alpha010; we
- * collapse it to `setUserLocalInt(name, 0 | 1)` so consumer code that bound the same name to a
+ * `RemoteNamedValue.BooleanValue` has no `setUserLocalBoolean` counterpart in alpha010; we collapse
+ * it to `setUserLocalInt(name, 0 | 1)` so consumer code that bound the same name to a
  * `rememberNamedRemoteInt` sees the toggled value. `RemoteNamedValue.DpValue` maps to
  * `setUserLocalFloat` (dp units are densitised float values once they reach the player).
  *
@@ -87,7 +88,14 @@ fun RemoteOverridablePreview(
   val remoteDocument =
     remember(profile, content) {
       runBlocking {
-        RemoteDocument(captureSingleRemoteDocument(context, displayInfo, profile, content).bytes)
+        val bytes = captureSingleRemoteDocument(context, displayInfo, profile, content).bytes
+        // Offer the captured RC doc so a bundle can carry + replay it without this composable's
+        // bytecode; the render harness drains it into the `renders/<stem>.rcdoc` sidecar that
+        // `BundlePreviewTask.resolvePreviewIr` packs. No-op outside a daemon/test render (no
+        // current
+        // preview id). Best-effort — never fail the render over IR capture. See IrSidecarChannel.
+        runCatching { IrSidecarChannel.offer(IrSidecarChannel.FORMAT_REMOTECOMPOSE, bytes) }
+        RemoteDocument(bytes)
       }
     }
 
@@ -107,9 +115,9 @@ fun RemoteOverridablePreview(
 }
 
 /**
- * Pushes every entry of [overrides] through [updater] using the matching `setUserLocal*` setter
- * for the `RemoteNamedValue` variant. Internal but visible for tests; ordinary callers reach this
- * via [RemoteOverridablePreview] / [RemoteOverridablePreviewWrapper].
+ * Pushes every entry of [overrides] through [updater] using the matching `setUserLocal*` setter for
+ * the `RemoteNamedValue` variant. Internal but visible for tests; ordinary callers reach this via
+ * [RemoteOverridablePreview] / [RemoteOverridablePreviewWrapper].
  */
 internal fun applyConnectorOverrides(
   updater: StateUpdater,
@@ -132,4 +140,3 @@ internal fun applyConnectorOverrides(
     }
   }
 }
-
