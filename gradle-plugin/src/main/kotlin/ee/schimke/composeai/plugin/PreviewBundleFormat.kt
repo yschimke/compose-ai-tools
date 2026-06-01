@@ -32,11 +32,21 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            iterating the well-known directory yields every preview uniformly.
  *                            A preview with no render on disk is simply absent from this directory.
  * classes/app.jar          — consumer module bytecode, MINIMIZED to classes reachable from the
- *                            selected previews (plus all module resources)
+ *                            selected previews (plus all module resources). For an IR-backed
+ *                            preview (see below) the enclosing class is NOT a closure seed, so its
+ *                            bytecode is omitted unless some other preview reaches it.
  * libs/<name>.jar          — third-party / project jars carried IN the bundle. Present only for
  *                            [ClasspathEntry.Project] fallbacks and, since v3, [ClasspathEntry.Embedded]
  *                            entries (`resolution = "embedded"` / `"mixed"`). Absent for a pure
  *                            `coordinates` pack.
+ * ir/<id>.<ext>            — (v5) the captured **intermediate representation** for a preview whose
+ *                            flavour has one: a Remote Compose document byte stream
+ *                            (`<id>.rcdoc`) or a Wear protolayout `Layout` proto (`<id>.tilelayout`,
+ *                            with the companion resources proto as `<id>.tileresources`). A player
+ *                            replays the IR directly through the Remote Compose / ProtoLayout
+ *                            runtime — it needs neither the consumer's `@Preview` bytecode nor the
+ *                            full Compose graph that produced it. See [BundleIr] and
+ *                            [BundleManifest.intermediateRepresentations].
  * report.json              — [MinimizationReport]: which deps contributed reachable classes
  * ```
  *
@@ -61,6 +71,27 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  * For Android backends, [ClasspathEntry.Maven.type] = `"aar"` records that the player must resolve
  * the **unprocessed** AAR (not the extracted classes.jar) so AGP's artifact transforms run as they
  * would in a normal build.
+ *
+ * # Intermediate-representation previews (v5)
+ *
+ * Some preview flavours don't need their producing code re-executed to render again — they declare
+ * a serialisable **intermediate representation** that a small runtime can replay on its own:
+ * - **Remote Compose** (`@PreviewWrapper(RemotePreviewWrapper::class)` composables) captures a
+ *   `RemoteDocument` byte stream — the "RC doc". A `RemoteDocumentPlayer` paints it back with no
+ *   reference to the Kotlin that authored it.
+ * - **Wear Tiles / ProtoLayout** (`@androidx.wear.tiles.tooling.preview.Preview`) produces a
+ *   `LayoutElementBuilders.Layout` protobuf plus a `ResourceBuilders.Resources` proto. A
+ *   `TileRenderer` inflates the proto with no reference to the `fun foo(): TilePreviewData` that
+ *   built it.
+ *
+ * For such previews the bundle carries the IR bytes under `ir/<id>.<ext>` and records a [BundleIr]
+ * in [BundleManifest.intermediateRepresentations]; the enclosing class is dropped from the
+ * minimisation closure seed, so the consumer bytecode that produced it is **not** packed. The
+ * player dispatches on the recorded [BundleIr.format] and replays through the Remote Compose /
+ * ProtoLayout library instead of loading consumer classes. A bundle can mix IR-backed and
+ * classpath-backed previews; each preview is independently either listed in
+ * `intermediateRepresentations` (replayed from IR) or seeded into `classes/app.jar` (replayed by
+ * re-running its composable).
  */
 @Serializable
 data class BundleManifest(
@@ -102,6 +133,36 @@ data class BundleManifest(
    * Defaults to [RESOLUTION_COORDINATES] for v2 back-compat.
    */
   val resolution: String = RESOLUTION_COORDINATES,
+  /**
+   * (v5) Per-preview intermediate-representation records. Each entry names a preview that is
+   * replayed from a captured IR ([BundleIr.format] = [IR_FORMAT_REMOTECOMPOSE] /
+   * [IR_FORMAT_PROTOLAYOUT]) rather than by re-running its composable. A preview appears here OR
+   * has its enclosing class in `classes/app.jar`, never both. Empty (the default) on a classic
+   * all-classes bundle, so a v4 reader that ignores this field still decodes a v5 classpath bundle
+   * correctly. See the "Intermediate-representation previews" section above.
+   */
+  val intermediateRepresentations: List<BundleIr> = emptyList(),
+)
+
+/**
+ * One preview replayed from a captured intermediate representation rather than from its consumer
+ * bytecode. The player keys on [format] to pick the replay library and reads the IR bytes from
+ * [path] (and [resourcesPath] for protolayout).
+ */
+@Serializable
+data class BundleIr(
+  /** Preview id this IR renders; matches an entry in [BundleManifest.previewIds]. */
+  val previewId: String,
+  /** IR flavour: [IR_FORMAT_REMOTECOMPOSE] or [IR_FORMAT_PROTOLAYOUT]. */
+  val format: String,
+  /** Posix zip path of the IR bytes, e.g. `ir/<id>.rcdoc` or `ir/<id>.tilelayout`. */
+  val path: String,
+  /**
+   * Posix zip path of a companion artefact the format needs, e.g. the protolayout
+   * `ResourceBuilders.Resources` proto (`ir/<id>.tileresources`). `null` for formats that carry
+   * everything in [path] (Remote Compose).
+   */
+  val resourcesPath: String? = null,
 )
 
 /** Discriminator field `kind`, values: `module`, `maven`, `project`. */
@@ -194,6 +255,23 @@ const val RESOLUTION_EMBEDDED: String = "embedded"
 
 const val RESOLUTION_MIXED: String = "mixed"
 
+/** [BundleIr.format] values. */
+const val IR_FORMAT_REMOTECOMPOSE: String = "remotecompose"
+
+const val IR_FORMAT_PROTOLAYOUT: String = "protolayout"
+
+/** Well-known directory inside the bundle zip holding per-preview IR bytes (`ir/<id>.<ext>`). */
+const val BUNDLE_IR_DIR: String = "ir"
+
+/** File extension for a captured Remote Compose document byte stream. */
+const val IR_EXT_REMOTECOMPOSE: String = "rcdoc"
+
+/** File extension for a captured Wear protolayout `Layout` proto. */
+const val IR_EXT_PROTOLAYOUT_LAYOUT: String = "tilelayout"
+
+/** File extension for the companion protolayout `Resources` proto. */
+const val IR_EXT_PROTOLAYOUT_RESOURCES: String = "tileresources"
+
 /**
  * Schema version stamped into [BundleManifest.schemaVersion].
  * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
@@ -214,8 +292,14 @@ const val RESOLUTION_MIXED: String = "mixed"
  *   the coordinate however it can, then verifies the bytes against the hash. Purely additive —
  *   `sha256` defaults to null, so a v3 reader opening a v4 bundle just ignores it and an older
  *   bundle reads as "unverifiable coordinate".
+ * - v5 — adds [BundleManifest.intermediateRepresentations] and the `ir/` directory: previews with a
+ *   serialisable IR (Remote Compose doc, Wear protolayout proto) are replayed from the IR via the
+ *   matching runtime library instead of by re-running their consumer bytecode, which is then
+ *   dropped from `classes/app.jar`. Additive — the field defaults to empty and `ignoreUnknownKeys`
+ *   readers skip the `ir/` entries, so a v4 reader opening a v5 *classpath* bundle still works;
+ *   only the IR previews need a v5-aware player.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 4
+const val BUNDLE_SCHEMA_VERSION: Int = 5
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

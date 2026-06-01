@@ -128,7 +128,8 @@ private class PackSubcommand(private val args: List<String>) {
             resolvedOutput.parentFile?.mkdirs()
 
             val gradleArgs = buildList {
-              if (ids.isNotEmpty()) add("-PbundlePreviewIds=${ids.joinToString(",")}")
+              if (ids.isNotEmpty())
+                add("-PbundlePreviewIds=${ids.joinToString(",") { encodePreviewId(it) }}")
               if (embedDeps) add("-PbundleEmbedDeps=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
             }
@@ -305,6 +306,22 @@ private class RenderSubcommand(private val args: List<String>) {
 }
 
 /**
+ * Escape a preview id for the `-PbundlePreviewIds=` Gradle property: `,` and `\` are
+ * backslash-escaped so an id carrying a `@Preview(name = "Phone, dark")` suffix survives the
+ * comma-separated transport (an unescaped comma would otherwise split into two ids and the bundle
+ * task would fail with "preview id not found"). Mirrors `BundlePreviewIds.encode` in
+ * `:gradle-plugin` — the CLI can't depend on that module, same reason [BundleReader] mirrors the
+ * on-disk schema. The plugin-side `BundlePreviewIds.parse` is the matching decoder.
+ */
+private fun encodePreviewId(id: String): String =
+  buildString(id.length) {
+    for (c in id) {
+      if (c == '\\' || c == ',') append('\\')
+      append(c)
+    }
+  }
+
+/**
  * Extracts a zip safely — every entry's resolved target path is verified to live inside [target].
  * Defeats Zip Slip (`../../etc/passwd`-style entry names) reported by CodeQL / Codex on the v1
  * extract path; same call site is shared by `extract` and `render`.
@@ -358,6 +375,21 @@ internal object BundleReader {
     val producer: String = "gradle",
     /** v3+: classpath assembly strategy (`coordinates`|`embedded`|`mixed`). Defaults for v2. */
     val resolution: String = "coordinates",
+    /**
+     * v5+: previews replayed from a captured intermediate representation (`ir/<id>.<ext>`) rather
+     * than by re-running their consumer bytecode. Empty for a classic all-classes bundle.
+     */
+    val intermediateRepresentations: List<BundleIr> = emptyList(),
+  )
+
+  /** v5+ mirror of `BundleIr` in `PreviewBundleFormat.kt`. */
+  @Serializable
+  data class BundleIr(
+    val previewId: String,
+    /** `remotecompose` (RC doc) or `protolayout` (Wear tile Layout proto). */
+    val format: String,
+    val path: String,
+    val resourcesPath: String? = null,
   )
 
   @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
