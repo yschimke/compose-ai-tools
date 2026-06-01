@@ -945,6 +945,11 @@ open class RobolectricHost(
         // get threaded across the sandbox boundary (see the field's doc on
         // `InteractiveCommand.Start`).
         touchOverlay = spec.overrides?.touchOverlay,
+        // Preview flavour — lets the held-rule loop route tile / notification / Glance previews
+        // through their non-composable strategies instead of `getDeclaredComposableMethod`, which
+        // those previews never satisfy. Without it the start reply errors and live mode blanks the
+        // preview (the tile-preview-goes-blank bug).
+        kind = spec.kind,
       )
     )
     if (!replyLatch.await(INTERACTIVE_START_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -1785,16 +1790,32 @@ open class RobolectricHost(
         slot.childLoaderRef.get()
           ?: Thread.currentThread().contextClassLoader
           ?: RenderEngine::class.java.classLoader
+      // Branch on the preview flavour exactly like `RenderEngine.render` (see `RenderEngine.kt`
+      // around the `isTile` / `isNotification` / `isGlanceAppWidget` checks). Tile, notification,
+      // and Glance previews are non-composable top-level functions returning `TilePreviewData` /
+      // `android.app.Notification` / a Glance widget — they never synthesise the `(Composer, Int)`
+      // method `getDeclaredComposableMethod` looks for, so resolving one throws and (pre-fix) blanked
+      // the preview the instant live mode was enabled. Skip resolution for those and render them
+      // through their dedicated strategies in the held `setContent` below instead.
+      val isTile = start.kind.equals(RenderEngine.TILE_KIND, ignoreCase = true)
+      val isNotification = start.kind.equals(RenderEngine.NOTIFICATION_KIND, ignoreCase = true)
+      val isGlanceAppWidget =
+        start.kind.equals(RenderEngine.GLANCE_APPWIDGET_KIND, ignoreCase = true)
+      val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget
       val composableMethod =
-        try {
-          val clazz = Class.forName(start.previewClassName, true, classLoader)
-          clazz.getDeclaredComposableMethod(start.previewFunctionName)
-        } catch (t: Throwable) {
-          // Resolution failure (class missing / method missing / signature mismatch) — surface
-          // immediately on the start reply so the host doesn't wait out the 30s timeout.
-          start.replyError.set(unwrapInvocationTarget(t))
-          start.replyLatch.countDown()
-          return
+        if (nonComposableInvocation) {
+          null
+        } else {
+          try {
+            val clazz = Class.forName(start.previewClassName, true, classLoader)
+            clazz.getDeclaredComposableMethod(start.previewFunctionName)
+          } catch (t: Throwable) {
+            // Resolution failure (class missing / method missing / signature mismatch) — surface
+            // immediately on the start reply so the host doesn't wait out the 30s timeout.
+            start.replyError.set(unwrapInvocationTarget(t))
+            start.replyLatch.countDown()
+            return
+          }
         }
 
       // Activity registration — same idempotent shape RenderEngine.render uses. Robolectric
@@ -1973,7 +1994,42 @@ open class RobolectricHost(
                           renderMode = null,
                           sink = RecordingExtensionCompositionSink(),
                         ) {
-                          InvokeHeldComposable(composableMethod)
+                          // Mirror `RenderEngine.render`'s kind dispatch so live mode renders the
+                          // same way a one-shot capture does. Non-composable previews (tile /
+                          // notification / Glance) go through their `*PreviewComposable` strategy;
+                          // everything else invokes the resolved held composable. Pointer / key
+                          // dispatch against a tile or notification simply finds no Compose targets
+                          // (they're inflated Views inside an `AndroidView`), so live input no-ops
+                          // gracefully while the frame still renders instead of going blank.
+                          // `widthDp` / `heightDp` are the held session's resolved canvas dimensions
+                          // (computed above for the qualifier string), reused here verbatim.
+                          if (isTile) {
+                            ee.schimke.composeai.renderer.TilePreviewComposable(
+                              className = start.previewClassName,
+                              functionName = start.previewFunctionName,
+                              widthDp = widthDp,
+                              heightDp = heightDp,
+                              device = start.device,
+                              classLoader = classLoader,
+                            )
+                          } else if (isNotification) {
+                            ee.schimke.composeai.renderer.NotificationPreviewComposable(
+                              className = start.previewClassName,
+                              functionName = start.previewFunctionName,
+                              classLoader = classLoader,
+                              widthDp = widthDp,
+                            )
+                          } else if (isGlanceAppWidget) {
+                            ee.schimke.composeai.renderer.GlanceAppWidgetPreviewComposable(
+                              className = start.previewClassName,
+                              functionName = start.previewFunctionName,
+                              widthDp = widthDp,
+                              heightDp = heightDp,
+                              classLoader = classLoader,
+                            )
+                          } else {
+                            InvokeHeldComposable(composableMethod!!)
+                          }
                         }
                       }
                     }
