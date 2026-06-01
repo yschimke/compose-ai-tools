@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 plugins {
   id("composeai.base-conventions")
   id("composeai.jvm-conventions")
@@ -7,7 +5,6 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.compose.multiplatform)
   alias(libs.plugins.compose.compiler)
-  application
 }
 
 // Version derivation mirrors `:cli/build.gradle.kts` — CI sets `PLUGIN_VERSION` from the git
@@ -24,28 +21,31 @@ version =
       "$major.$minor.${patch + 1}-SNAPSHOT"
     }
 
-// `archivesName` drives the distZip / distTar file name (`<archivesName>-<version>.<ext>`) AND
-// the root directory inside the archive. Pinning here gives us `compose-preview-viewer-<ver>.zip`
-// / `compose-preview-viewer-<ver>.tar.gz` on disk and a matching root dir inside — same shape
-// the CLI uses and what the `gh release upload` glob in `.github/workflows/release.yml` expects.
 base { archivesName.set("compose-preview-viewer") }
 
-application {
-  applicationName = "compose-preview-viewer"
-  mainClass.set("ee.schimke.composeai.viewer.MainKt")
-  // Compose Multiplatform Desktop's Skiko loader uses `System.load` for native libs. JDK 24+
-  // would otherwise print a 4-line warning on every launch; pre-declaring native access for the
-  // unnamed module silences it.
-  applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
-}
-
-// Match the CLI's archive-extension trick. `archiveExtension = "tar.gz"` lets Gradle compute
-// the file name as `<archivesName>-<version>.tar.gz` while keeping the extracted-archive root
-// dir at `<archivesName>-<version>/`. Setting `archiveFileName` directly would leak the
-// `.tar.gz` suffix into the extracted folder name — see the warning in `:cli/build.gradle.kts`.
-tasks.named<Tar>("distTar") {
-  archiveExtension.set("tar.gz")
-  compression = Compression.GZIP
+// The viewer is a Compose Desktop application, configured through Compose Multiplatform's own
+// `compose.desktop.application` DSL rather than the JVM `application` plugin. The DSL's
+// `packageUberJarForCurrentOS` is what makes the viewer portable: a single self-contained
+// `compose-preview-viewer-<os>-<arch>-<ver>.jar` (the current OS's Compose Desktop + Skiko runtime
+// flattened in), so a colleague can `java -jar compose-preview-viewer-linux-x64-<ver>.jar foo.png`
+// with nothing unpacked (portable-bundles.md Tier 2.2). It bundles Skiko's native libs and merges
+// Compose's service files correctly, and stays Isolated-Projects-clean — unlike the GradleUp Shadow
+// plugin, whose optional-property lookup walks to the parent project and trips this repo's
+// `isolated-projects=true` + `configuration-cache.problems=fail` gate.
+//
+// We drop the JVM `application` plugin entirely (its slim `distZip`/`distTar` is superseded by the
+// drag-around uber jar, and keeping both registers two colliding `run` tasks). The DSL still offers
+// `createDistributable` (an unpacked app dir) and `packageDeb`/`packageDmg`/`packageMsi` for the
+// native-installer follow-up, if those are ever wanted.
+compose.desktop {
+  application {
+    mainClass = "ee.schimke.composeai.viewer.MainKt"
+    // Compose Multiplatform Desktop's Skiko loader uses `System.load` for native libs. JDK 24+
+    // would otherwise print a 4-line warning on every launch; pre-declaring native access for the
+    // unnamed module silences it (parity with the old applicationDefaultJvmArgs).
+    jvmArgs += "--enable-native-access=ALL-UNNAMED"
+    nativeDistributions { packageName = "compose-preview-viewer" }
+  }
 }
 
 dependencies {

@@ -85,8 +85,8 @@ whoever produced the bundle (Gradle, Amper, Bazel), the baked PNGs read the same
 ### 2b. Live re-render — already works, *Compose-only*
 
 This repo already ships a **player application**: `:bundle-viewer`
-(`compose-preview-viewer`, a Compose Desktop `application` with a `distZip`/
-`distTar` launcher). `BundleLoader.loadBundle` does the real thing:
+(`compose-preview-viewer`, a Compose Desktop app distributed as a single runnable
+uber jar — see Tier 2.2). `BundleLoader.loadBundle` does the real thing:
 
 ```kotlin
 // BundleLoader.kt — child loader over the inlined app.jar, parent = viewer's own Compose
@@ -224,10 +224,19 @@ The player already exists (`compose-preview-viewer`, §2b) — the work is small
    `URLClassLoader(arrayOf(appJarFile))`; extend it to also extract and append
    every `ClasspathEntry.Embedded` jar. ~10 lines; makes third-party deps resolve
    without touching the parent Compose stack.
-2. **Distribute it runnable.** It ships as a `distZip`/`distTar` today (slim, needs
-   the launcher script). For drag-around use, add a fat/`shadow` jar so
-   `java -jar compose-preview-viewer.jar foo.png` works, and/or a
-   `jpackage`/`jlink` native app per OS so a non-Java colleague needs nothing
+2. **Distribute it runnable.** *Done* — the viewer ships as a single self-contained
+   uber jar built by Compose Multiplatform's own
+   `:bundle-viewer:packageUberJarForCurrentOS`
+   (`compose-preview-viewer-<os>-<arch>-<ver>.jar`), so
+   `java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar foo.png` works as a
+   single drag-around file with nothing unpacked. It carries the current OS's
+   Compose Desktop + Skiko runtime (so it's per-OS, ~40 MB). The module uses
+   Compose's `compose.desktop.application` DSL rather than the JVM `application`
+   plugin (the uber jar supersedes the slim `distZip`/`distTar`) and rather than the
+   Shadow plugin (whose parent-project property lookup breaks this repo's Isolated
+   Projects gate). The same DSL also exposes `createDistributable` (unpacked app
+   dir) and `packageDeb`/`packageDmg`/`packageMsi` — the still-open follow-up is to
+   wire those native installers per OS so a non-Java colleague needs nothing
    installed at all.
 
 ### Tier 3 — the coordinate resolver (the default play path, not a fallback)
@@ -262,7 +271,7 @@ render.
 |---|---|
 | 0 | Open a v2 bundle in Preview.app / `tui-cli --dump` with no project (already in this repo's CI). |
 | 1 | Pack with `--embed-deps`; `unzip -l` shows `libs/*.jar`; render on a box with **no Gradle/Maven and no network**. |
-| 2 | `java -jar compose-preview-viewer.jar sample.png` on a clean JDK. |
+| 2 | `java -jar compose-preview-viewer-<os>-<arch>-<ver>.jar sample.png` on a clean JDK. (Headless smoke: the launch reaches Compose's composition + AWT `EventQueue` and stops only at `HeadlessException` — no `NoClassDefFoundError`, proving the runtime classpath is complete.) |
 | 3 | Open a `coordinates` bundle on a Bazel-only box; resolver fetches deps. |
 
 ## 5. Questions to confirm against `compose-ai-contrib`
