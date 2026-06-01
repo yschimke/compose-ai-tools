@@ -438,6 +438,12 @@ abstract class RobolectricRenderTestBase(
         val pngFile = preview.captures.firstOrNull()?.let { outputFileFor(it, outputDir) }
             ?: outputFileFor(preview.dataProducts.first(), outputDir)
         RenderErrorSidecar.deleteStale(pngFile)
+        // Drop any IR sidecar from a prior run before rendering. The renders dir is reused, and
+        // `BundlePreviewTask.resolvePreviewIr` treats any non-empty sidecar as authoritative — so a
+        // preview that stops producing IR (RC wrapper removed, tile serialization fails, kind
+        // changed) would otherwise leave stale `<stem>.{rcdoc,tilelayout,tileresources}` that a later
+        // bundle embeds while dropping the now-classpath-backed preview's classes, breaking replay.
+        deleteStaleIrSidecars(pngFile)
 
         // Catch Throwable per preview. Today, a throw inside the preview
         // function fails the JUnit test, fails the Test task, and the
@@ -457,6 +463,9 @@ abstract class RobolectricRenderTestBase(
         // the offered entry post-render via the same id. Cleared in `finally` so the next
         // preview's render doesn't accidentally carry this one's id.
         ee.schimke.composeai.daemon.LauncherWidgetMetadataChannel.setCurrentPreviewId(preview.id)
+        // Arm the IR channel for this preview so a Remote Compose / protolayout producer can offer
+        // its captured intermediate representation during composition; drained post-render below.
+        ee.schimke.composeai.data.render.IrSidecarChannel.setCurrentPreviewId(preview.id)
         try {
             renderDefault(
                 params = params,
@@ -469,6 +478,9 @@ abstract class RobolectricRenderTestBase(
                 composeOptions = composeOptions,
                 inspectionMode = inspectionMode,
             )
+            // Render succeeded: if the preview's flavour captured an IR, write it beside the PNG as
+            // the `renders/<stem>.<ext>` sidecar `BundlePreviewTask.resolvePreviewIr` packs.
+            writeIrSidecar(pngFile, preview.id)
         } catch (e: Throwable) {
             System.err.println(
                 "Render failed for ${preview.className}.${preview.functionName}: ${e.message}"
@@ -482,6 +494,47 @@ abstract class RobolectricRenderTestBase(
             // exception detail on the failing card.
         } finally {
             ee.schimke.composeai.daemon.LauncherWidgetMetadataChannel.setCurrentPreviewId(null)
+            // Clear the IR channel id and drop any capture this preview left behind (e.g. on a
+            // render that threw after offering) so it can't leak onto the next preview.
+            ee.schimke.composeai.data.render.IrSidecarChannel.consume(preview.id)
+            ee.schimke.composeai.data.render.IrSidecarChannel.setCurrentPreviewId(null)
+        }
+    }
+
+    /**
+     * Write the IR captured during the just-finished render (if any) as a sidecar next to [pngFile],
+     * keyed by the PNG stem so it matches the `renders/<stem>.<ext>` contract
+     * `BundlePreviewTask.resolvePreviewIr` reads: `.rcdoc` for a Remote Compose document, or
+     * `.tilelayout` (+ `.tileresources`) for a Wear protolayout proto. Best-effort — a write failure
+     * must not derail the PNG render path.
+     */
+    private fun deleteStaleIrSidecars(pngFile: File) {
+        val dir = pngFile.parentFile ?: return
+        val stem = pngFile.nameWithoutExtension
+        for (ext in listOf("rcdoc", "tilelayout", "tileresources")) {
+            val f = File(dir, "$stem.$ext")
+            if (f.isFile && !f.delete()) {
+                System.err.println("Failed to delete stale IR sidecar: ${f.absolutePath}")
+            }
+        }
+    }
+
+    private fun writeIrSidecar(pngFile: File, previewId: String) {
+        val capture =
+            ee.schimke.composeai.data.render.IrSidecarChannel.consume(previewId) ?: return
+        try {
+            val dir = pngFile.parentFile ?: return
+            val stem = pngFile.nameWithoutExtension
+            when (capture.format) {
+                ee.schimke.composeai.data.render.IrSidecarChannel.FORMAT_REMOTECOMPOSE ->
+                    File(dir, "$stem.rcdoc").writeBytes(capture.bytes)
+                ee.schimke.composeai.data.render.IrSidecarChannel.FORMAT_PROTOLAYOUT -> {
+                    File(dir, "$stem.tilelayout").writeBytes(capture.bytes)
+                    capture.resourcesBytes?.let { File(dir, "$stem.tileresources").writeBytes(it) }
+                }
+            }
+        } catch (e: Throwable) {
+            System.err.println("Failed to write IR sidecar for $previewId: ${e.message}")
         }
     }
 
