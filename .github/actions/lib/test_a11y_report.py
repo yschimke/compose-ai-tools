@@ -641,6 +641,61 @@ class CommentTest(unittest.TestCase):
         # The prior finding is preserved, not silently dropped.
         self.assertIn("### `Bad`", body)
 
+    def test_silent_when_bounds_jitter_within_tolerance(self):
+        # Regression for the "full output / not detecting duplicates" report:
+        # ATF rects jitter by a pixel or two between renders without the
+        # underlying issue changing. A finding that only moved within
+        # BOUNDS_TOLERANCE_PX must read as unchanged, so the comment stays
+        # silent rather than re-posting the whole table.
+        baseline = self._entry(
+            findings=[_finding(level="ERROR")]  # bounds "0,0,40,40"
+        )
+        jittered = dict(_finding(level="ERROR"))
+        jittered["boundsInScreen"] = "1,1,41,41"  # +1px on every coordinate
+        current = self._entry(findings=[jittered])
+        body = self._run_comment([current], baseline_entries=[baseline])
+        self.assertEqual(body, "")
+
+    def test_emits_when_bounds_move_beyond_tolerance(self):
+        # A relocation past the tolerance is a real change and must surface —
+        # the tolerance only absorbs jitter, it doesn't blind the diff.
+        baseline = self._entry(findings=[_finding(level="ERROR")])  # "0,0,40,40"
+        moved = dict(_finding(level="ERROR"))
+        moved["boundsInScreen"] = "200,200,240,240"
+        current = self._entry(findings=[moved])
+        body = self._run_comment([current], baseline_entries=[baseline])
+        self.assertIn("<!-- a11y-report -->", body)
+        self.assertIn("### `Bad`", body)
+
+    def test_distinct_same_signature_findings_not_collapsed(self):
+        # Two findings that share rule/element/message but sit far apart (e.g.
+        # several unlabeled rows) must each keep their own rect — a removed one
+        # still counts as a change rather than matching the surviving twin.
+        def at(bounds):
+            f = dict(_finding(level="ERROR"))
+            f["boundsInScreen"] = bounds
+            return f
+
+        baseline = self._entry(findings=[at("0,0,40,40"), at("0,500,40,540")])
+        current = self._entry(findings=[at("0,0,40,40")])  # one removed
+        body = self._run_comment([current], baseline_entries=[baseline])
+        self.assertIn("<!-- a11y-report -->", body)
+
+    def test_overlapping_tolerance_windows_still_match(self):
+        # Same-signature findings whose tolerance windows overlap must pair off
+        # via a complete assignment, not a greedy first-come grab. With tol=4,
+        # baselines 0,0,40,40 / 8,0,48,40 and currents 4,0,44,40 / 0,0,40,40
+        # only match 1:1 if the matcher reassigns (4,..→8,.. ; 0,..→0,..).
+        def at(bounds):
+            f = dict(_finding(level="ERROR"))
+            f["boundsInScreen"] = bounds
+            return f
+
+        baseline = self._entry(findings=[at("0,0,40,40"), at("8,0,48,40")])
+        current = self._entry(findings=[at("4,0,44,40"), at("0,0,40,40")])
+        body = self._run_comment([current], baseline_entries=[baseline])
+        self.assertEqual(body, "")
+
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now
         # should be called out as resolved.
