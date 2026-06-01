@@ -430,60 +430,99 @@ def cmd_readme(args: argparse.Namespace) -> int:
 # comment
 # ---------------------------------------------------------------------------
 
-def _finding_tuple(f: dict) -> tuple:
-    """Hash-stable representation of a single finding for change detection.
+# Per-coordinate tolerance (in screen pixels) applied to `boundsInScreen`
+# when deciding whether a finding is "the same" as one on the baseline.
+#
+# ATF reports each finding's rect as an absolute pixel box
+# ("x1,y1,x2,y2"). Those coordinates jitter by a pixel or two between
+# renders — anti-aliasing, density rounding, an unrelated layout nudge
+# elsewhere on the screen — without the underlying accessibility issue
+# changing at all. Including the raw rect in the change-detection key made
+# every such jitter read as a brand-new finding, so a PR that shifted
+# layout re-posted the full findings table for every preview instead of
+# collapsing the unchanged ones (the "full output" / "not detecting
+# duplicates" report). We treat two findings as the same when their rule,
+# element, and message match AND every bounds coordinate is within this
+# many pixels; a genuine relocation past the tolerance still surfaces.
+BOUNDS_TOLERANCE_PX: int = 4
 
-    Filenames are deliberately excluded elsewhere; here we capture only the
-    fields a reviewer reacts to (level, rule type, message, element, bounds).
+
+def _finding_signature(f: dict) -> tuple:
+    """Bounds-free identity of a finding: the fields a reviewer reacts to.
+
+    Excludes ``boundsInScreen`` on purpose — position is compared separately
+    with [_bounds_close] so pixel jitter doesn't count as a new finding.
     """
     return (
         f.get("level"),
         f.get("type"),
         f.get("message"),
         f.get("viewDescription"),
-        f.get("boundsInScreen"),
     )
 
 
-def _entry_findings_key(entry: dict) -> tuple:
-    """Order-insensitive key for one preview's findings.
+def _parse_bounds(value: str | None) -> tuple[int, ...] | None:
+    """Parse ``"x1,y1,x2,y2"`` into a 4-int tuple; ``None`` if unparseable."""
+    if not value:
+        return None
+    try:
+        parts = tuple(int(p) for p in value.split(","))
+    except ValueError:
+        return None
+    return parts if len(parts) == 4 else None
 
-    Returns the empty tuple for a preview with no findings, so an
-    absent-from-baseline preview (default ``()``) and a clean preview compare
-    equal — the surface rule in [cmd_comment] treats "clean" and "not present"
-    as the same neutral state.
+
+def _bounds_close(a: str | None, b: str | None, tol: int) -> bool:
+    """True when two bounds rects match within ``tol`` pixels per coordinate.
+
+    Falls back to exact string equality when either rect can't be parsed, so
+    a malformed/absent bounds value never silently matches a different one.
     """
-    return tuple(sorted(_finding_tuple(f) for f in entry.get("findings", [])))
+    if a == b:
+        return True
+    pa, pb = _parse_bounds(a), _parse_bounds(b)
+    if pa is None or pb is None:
+        return False
+    return all(abs(x - y) <= tol for x, y in zip(pa, pb))
 
 
-def _findings_fingerprint(entries: list[dict], status: str | None = None) -> tuple:
-    """Stable representation of (status, previews-with-findings) for change detection.
+def _findings_equivalent(
+    current: list[dict], baseline: list[dict], tol: int = BOUNDS_TOLERANCE_PX
+) -> bool:
+    """True when two findings lists describe the same a11y state.
 
-    Compares only the data a reviewer would care about — top-level status,
-    plus per-entry module, previewId, and findings list. Filenames
-    (`cleanBasename`, `annotatedBasename`) are excluded because identical
-    findings can move around between files when the renderer renames variants,
-    and we don't want to wake the PR comment for that.
+    Findings are grouped by their bounds-free [_finding_signature]; within a
+    signature each current rect must pair off (greedily, 1:1) with a distinct
+    baseline rect that's [_bounds_close]. So a clean preview matches an
+    absent/clean baseline (both empty → equivalent), pixel jitter on an
+    existing finding is absorbed, but an added/removed finding or one that
+    moved beyond ``tol`` makes the lists diverge.
 
-    Previews with **no** findings are excluded entirely: adding or removing a
-    clean preview is not an accessibility change, so it must neither break the
-    comment's silence nor surface a near-empty "nothing to see" comment. Only
-    previews that carry findings participate, which mirrors the per-preview
-    surface rule in [cmd_comment] (an absent/clean preview has the empty
-    findings key).
-
-    ``status`` is included so the fingerprint diverges when the daemon goes
-    from "ran cleanly" to "atf-unavailable" or vice versa — without this, a
-    daemon crash would match a clean baseline and the workflow would stay
-    silent on the very condition the comment needs to surface.
+    Multiple findings sharing a signature (e.g. several unlabeled rows) keep
+    their own rects, so two genuinely distinct items more than ``tol`` apart
+    won't collapse into one match.
     """
-    return (status,) + tuple(
-        (e["module"], e["previewId"], _entry_findings_key(e))
-        for e in sorted(
-            (e for e in entries if e.get("findings")),
-            key=lambda e: (e["module"], e["previewId"]),
-        )
-    )
+    by_sig_cur: dict[tuple, list[str | None]] = {}
+    by_sig_base: dict[tuple, list[str | None]] = {}
+    for f in current:
+        by_sig_cur.setdefault(_finding_signature(f), []).append(f.get("boundsInScreen"))
+    for f in baseline:
+        by_sig_base.setdefault(_finding_signature(f), []).append(f.get("boundsInScreen"))
+
+    if by_sig_cur.keys() != by_sig_base.keys():
+        return False
+    for sig, cur_bounds in by_sig_cur.items():
+        remaining = list(by_sig_base[sig])
+        if len(cur_bounds) != len(remaining):
+            return False
+        for cb in cur_bounds:
+            for i, bb in enumerate(remaining):
+                if _bounds_close(cb, bb, tol):
+                    remaining.pop(i)
+                    break
+            else:
+                return False
+    return True
 
 
 def cmd_comment(args: argparse.Namespace) -> int:
@@ -492,18 +531,13 @@ def cmd_comment(args: argparse.Namespace) -> int:
     entries: list[dict] = payload.get("entries", [])
     status: str | None = payload.get("status")
 
-    # When a baseline (the on-`compose-preview/a11y/main` findings.json) is provided, stay
-    # silent if nothing has changed — the workflow runs on every PR and a
-    # comment that says "no findings" on PRs that don't touch a11y was
-    # noted as distracting in user feedback. Empty stdout signals the
-    # action to skip both the push and the upsert.
-    #
-    # `status` participates in the fingerprint so an atf-unavailable run on
-    # this side never matches a clean-run baseline — that flips on the
-    # comment so reviewers see the daemon failure rather than the misleading
-    # "no findings" the bug in #1453 produced.
+    # Load the baseline (the on-`compose-preview/a11y/main` findings.json) when
+    # one is provided. `baseline_loaded` tracks whether we actually have a
+    # baseline to diff against — only then do we exercise the silent-skip
+    # below.
     baseline_entries: list[dict] = []
     baseline_status: str | None = None
+    baseline_loaded = False
     if args.baseline:
         baseline_path = Path(args.baseline)
         if baseline_path.exists():
@@ -513,33 +547,30 @@ def cmd_comment(args: argparse.Namespace) -> int:
                 baseline_payload = {"entries": []}
             baseline_entries = baseline_payload.get("entries", [])
             baseline_status = baseline_payload.get("status")
-            if (
-                _findings_fingerprint(entries, status)
-                == _findings_fingerprint(baseline_entries, baseline_status)
-            ):
-                return 0  # silent
+            baseline_loaded = True
 
     # Per-preview diff against the baseline. The comment used to re-post every
-    # preview's findings on every PR that tripped the fingerprint (#1585);
+    # preview's findings on every PR that tripped a hash mismatch (#1585);
     # instead, surface only the previews whose findings actually changed and
-    # collapse the rest. A preview's findings key defaults to `()` when it's
-    # absent from the baseline, so a brand-new *clean* preview compares equal
-    # to its (empty) baseline and is treated as unchanged — only new or
-    # changed findings get a full block.
-    baseline_by_key: dict[tuple[str, str], tuple] = {
-        (e["module"], e["previewId"]): _entry_findings_key(e)
-        for e in baseline_entries
+    # collapse the rest. [_findings_equivalent] treats an absent baseline
+    # preview as empty, so a brand-new *clean* preview compares equal and is
+    # unchanged; it also absorbs pixel jitter in `boundsInScreen` so a layout
+    # shift no longer flips every preview to "changed" — only new, removed, or
+    # genuinely relocated findings get a full block.
+    baseline_by_key: dict[tuple[str, str], dict] = {
+        (e["module"], e["previewId"]): e for e in baseline_entries
     }
     current_keys = {(e["module"], e["previewId"]) for e in entries}
 
     changed: list[dict] = []
     unchanged: list[dict] = []
     for entry in entries:
-        key = (entry["module"], entry["previewId"])
-        if _entry_findings_key(entry) != baseline_by_key.get(key, ()):
-            changed.append(entry)
-        else:
+        base = baseline_by_key.get((entry["module"], entry["previewId"]))
+        base_findings = base.get("findings", []) if base else []
+        if _findings_equivalent(entry.get("findings", []), base_findings):
             unchanged.append(entry)
+        else:
+            changed.append(entry)
 
     # Previews that carried findings on the baseline but are gone now — the
     # underlying issue is no longer reachable. A clean baseline preview that
@@ -548,8 +579,19 @@ def cmd_comment(args: argparse.Namespace) -> int:
         e
         for e in baseline_entries
         if (e["module"], e["previewId"]) not in current_keys
-        and _entry_findings_key(e)
+        and e.get("findings")
     ]
+
+    # Stay silent when a baseline was available and nothing a reviewer cares
+    # about moved — no changed previews, none resolved, and the same top-level
+    # status. The workflow runs on every PR; a "no findings" comment on PRs
+    # that don't touch a11y was noted as distracting (empty stdout tells the
+    # action to skip the push + upsert). The `status` guard keeps an
+    # atf-unavailable run from matching a clean-run baseline (#1453); the
+    # atf-unavailable side is handled by its own branch below before we get
+    # here, so this only fires for clean-vs-clean comparisons.
+    if baseline_loaded and not changed and not resolved and status == baseline_status:
+        return 0
 
     err, warn, info = _level_counts(entries)
     findings_count = err + warn + info
@@ -577,7 +619,7 @@ def cmd_comment(args: argparse.Namespace) -> int:
         # purpose; the workflow's failure step already surfaces a direct link
         # and the python helper doesn't know the job URL.
         preserved = sorted(
-            (e for e in baseline_entries if _entry_findings_key(e)),
+            (e for e in baseline_entries if e.get("findings")),
             key=lambda e: (e["module"], e["functionName"]),
         )
         b_err, b_warn, b_info = _level_counts(baseline_entries)
