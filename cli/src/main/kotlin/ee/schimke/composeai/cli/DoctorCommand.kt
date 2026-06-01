@@ -1,10 +1,14 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.head
+import io.ktor.client.request.header
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
 import kotlin.system.exitProcess
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -1024,19 +1028,13 @@ class DoctorCommand(private val args: List<String>) {
     val latestUrl = "https://github.com/$REPO/releases/latest"
     val resolved =
       try {
-        val conn =
-          (URI(latestUrl).toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "HEAD"
-            connectTimeout = 3_000
-            readTimeout = 3_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "compose-preview-doctor")
+        httpProbeClient().use { client ->
+          runBlocking {
+            // HEAD with redirects followed (Ktor follows for HEAD by default); the final request
+            // URL is the `…/releases/tag/v<version>` the `releases/latest` 302 lands on.
+            val response = client.head(latestUrl) { header("User-Agent", USER_AGENT) }
+            response.call.request.url.toString()
           }
-        try {
-          conn.responseCode // force the request
-          conn.url.toString()
-        } finally {
-          conn.disconnect()
         }
       } catch (e: Exception) {
         addCheck(
@@ -1140,26 +1138,37 @@ class DoctorCommand(private val args: List<String>) {
     }
   }
 
-  private fun headPlain(url: String): Pair<Int, Map<String, String>> {
-    val conn =
-      (URI(url).toURL().openConnection() as HttpURLConnection).apply {
-        requestMethod = "HEAD"
-        connectTimeout = 3_000
-        readTimeout = 3_000
-        instanceFollowRedirects = true
-        setRequestProperty("User-Agent", "compose-preview-doctor")
+  /**
+   * HEAD [url] and return its status code + response headers, or `-1 to {error}` when the host is
+   * unreachable (never throws). A non-2xx is still a real response — its code comes back unchanged
+   * so [checkNetworkReach] reports "reachable (HTTP 404)" rather than a failure.
+   */
+  internal fun headPlain(url: String): Pair<Int, Map<String, String>> =
+    try {
+      httpProbeClient().use { client ->
+        runBlocking {
+          val response = client.head(url) { header("User-Agent", USER_AGENT) }
+          val headers = response.headers.entries().associate { (k, v) -> k to v.joinToString(", ") }
+          response.status.value to headers
+        }
       }
-    return try {
-      val code = conn.responseCode
-      val headers =
-        conn.headerFields.filterKeys { it != null }.mapValues { it.value.joinToString(", ") }
-      code to headers
     } catch (e: Exception) {
       -1 to mapOf("error" to (e.message ?: e.javaClass.simpleName))
-    } finally {
-      conn.disconnect()
     }
-  }
+
+  /**
+   * A Ktor/OkHttp client tuned for doctor's one-shot HEAD probes: 3s connect + request timeouts,
+   * redirects followed (the engine default for HEAD). One client per probe — doctor isn't a hot
+   * path, and `use {}` tears the connection pool down immediately. Mirrors the Ktor/OkHttp client
+   * the rest of the CLI already uses (see [BundleSource]).
+   */
+  private fun httpProbeClient(): HttpClient =
+    HttpClient(OkHttp) {
+      install(HttpTimeout) {
+        connectTimeoutMillis = 3_000
+        requestTimeoutMillis = 3_000
+      }
+    }
 
   /**
    * Sanitise a module path (e.g. `:app` → `app`, `:samples:wear` → `samples:wear`) for use in check
@@ -1235,6 +1244,9 @@ class DoctorCommand(private val args: List<String>) {
      */
     private const val MIN_BOM_YEAR = 2025
     private const val MIN_BOM_MONTH = 1
+
+    /** User-Agent for doctor's HEAD probes — matches the string `scripts/install.sh` sends. */
+    private const val USER_AGENT = "compose-preview-doctor"
 
     /**
      * Highest JDK we trust to drive AGP without surfacing the issue-1544-class footguns
