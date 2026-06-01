@@ -112,7 +112,8 @@ class BundleRenderer(
     // class in `classes/app.jar` — their bytecode was intentionally dropped at pack time. They are
     // replayed through the Remote Compose / ProtoLayout runtime by the Android daemon
     // (`compose-preview bundle daemon`), not by the desktop subprocess renderer, which can't drive
-    // those Android-only libraries. Skip them here rather than spawn `DesktopRendererMain` against a
+    // those Android-only libraries. Skip them here rather than spawn `DesktopRendererMain` against
+    // a
     // class that isn't present (which would fail every IR preview with a ClassNotFoundException).
     val irById = manifest.intermediateRepresentations.associateBy { it.previewId }
 

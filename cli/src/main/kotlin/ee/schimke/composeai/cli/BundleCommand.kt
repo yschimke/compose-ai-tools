@@ -309,16 +309,17 @@ private class RenderSubcommand(private val args: List<String>) {
  * Escape a preview id for the `-PbundlePreviewIds=` Gradle property: `,` and `\` are
  * backslash-escaped so an id carrying a `@Preview(name = "Phone, dark")` suffix survives the
  * comma-separated transport (an unescaped comma would otherwise split into two ids and the bundle
- * task would fail with "preview id not found"). Mirrors `BundlePreviewIds.encode` in `:gradle-plugin`
- * — the CLI can't depend on that module, same reason [BundleReader] mirrors the on-disk schema. The
- * plugin-side `BundlePreviewIds.parse` is the matching decoder.
+ * task would fail with "preview id not found"). Mirrors `BundlePreviewIds.encode` in
+ * `:gradle-plugin` — the CLI can't depend on that module, same reason [BundleReader] mirrors the
+ * on-disk schema. The plugin-side `BundlePreviewIds.parse` is the matching decoder.
  */
-private fun encodePreviewId(id: String): String = buildString(id.length) {
-  for (c in id) {
-    if (c == '\\' || c == ',') append('\\')
-    append(c)
+private fun encodePreviewId(id: String): String =
+  buildString(id.length) {
+    for (c in id) {
+      if (c == '\\' || c == ',') append('\\')
+      append(c)
+    }
   }
-}
 
 /**
  * Extracts a zip safely — every entry's resolved target path is verified to live inside [target].

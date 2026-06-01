@@ -74,8 +74,8 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *
  * # Intermediate-representation previews (v5)
  *
- * Some preview flavours don't need their producing code re-executed to render again — they declare a
- * serialisable **intermediate representation** that a small runtime can replay on its own:
+ * Some preview flavours don't need their producing code re-executed to render again — they declare
+ * a serialisable **intermediate representation** that a small runtime can replay on its own:
  * - **Remote Compose** (`@PreviewWrapper(RemotePreviewWrapper::class)` composables) captures a
  *   `RemoteDocument` byte stream — the "RC doc". A `RemoteDocumentPlayer` paints it back with no
  *   reference to the Kotlin that authored it.
@@ -86,11 +86,12 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *
  * For such previews the bundle carries the IR bytes under `ir/<id>.<ext>` and records a [BundleIr]
  * in [BundleManifest.intermediateRepresentations]; the enclosing class is dropped from the
- * minimisation closure seed, so the consumer bytecode that produced it is **not** packed. The player
- * dispatches on the recorded [BundleIr.format] and replays through the Remote Compose / ProtoLayout
- * library instead of loading consumer classes. A bundle can mix IR-backed and classpath-backed
- * previews; each preview is independently either listed in `intermediateRepresentations` (replayed
- * from IR) or seeded into `classes/app.jar` (replayed by re-running its composable).
+ * minimisation closure seed, so the consumer bytecode that produced it is **not** packed. The
+ * player dispatches on the recorded [BundleIr.format] and replays through the Remote Compose /
+ * ProtoLayout library instead of loading consumer classes. A bundle can mix IR-backed and
+ * classpath-backed previews; each preview is independently either listed in
+ * `intermediateRepresentations` (replayed from IR) or seeded into `classes/app.jar` (replayed by
+ * re-running its composable).
  */
 @Serializable
 data class BundleManifest(
@@ -135,8 +136,8 @@ data class BundleManifest(
   /**
    * (v5) Per-preview intermediate-representation records. Each entry names a preview that is
    * replayed from a captured IR ([BundleIr.format] = [IR_FORMAT_REMOTECOMPOSE] /
-   * [IR_FORMAT_PROTOLAYOUT]) rather than by re-running its composable. A preview appears here OR has
-   * its enclosing class in `classes/app.jar`, never both. Empty (the default) on a classic
+   * [IR_FORMAT_PROTOLAYOUT]) rather than by re-running its composable. A preview appears here OR
+   * has its enclosing class in `classes/app.jar`, never both. Empty (the default) on a classic
    * all-classes bundle, so a v4 reader that ignores this field still decodes a v5 classpath bundle
    * correctly. See the "Intermediate-representation previews" section above.
    */
@@ -295,8 +296,8 @@ const val IR_EXT_PROTOLAYOUT_RESOURCES: String = "tileresources"
  *   serialisable IR (Remote Compose doc, Wear protolayout proto) are replayed from the IR via the
  *   matching runtime library instead of by re-running their consumer bytecode, which is then
  *   dropped from `classes/app.jar`. Additive — the field defaults to empty and `ignoreUnknownKeys`
- *   readers skip the `ir/` entries, so a v4 reader opening a v5 *classpath* bundle still works; only
- *   the IR previews need a v5-aware player.
+ *   readers skip the `ir/` entries, so a v4 reader opening a v5 *classpath* bundle still works;
+ *   only the IR previews need a v5-aware player.
  */
 const val BUNDLE_SCHEMA_VERSION: Int = 5
 

@@ -7,8 +7,8 @@ import org.junit.Test
 /**
  * Schema round-trip + back-compat coverage for [BundleManifest] / [ClasspathEntry] / [BundleIr].
  * Covers the v3 [ClasspathEntry.Embedded] kind, the v4 [ClasspathEntry.Maven.sha256], and the v5
- * [BundleManifest.intermediateRepresentations]; every added field defaults so an older `bundle.json`
- * (which omits it) still decodes.
+ * [BundleManifest.intermediateRepresentations]; every added field defaults so an older
+ * `bundle.json` (which omits it) still decodes.
  */
 class PreviewBundleFormatTest {
 

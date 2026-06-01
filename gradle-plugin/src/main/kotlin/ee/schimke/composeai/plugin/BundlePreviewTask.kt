@@ -177,7 +177,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
     // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
     // their composable. We therefore (a) carry the IR bytes in the bundle and (b) DROP their
-    // enclosing class from the closure seed below, so the consumer bytecode that produced them isn't
+    // enclosing class from the closure seed below, so the consumer bytecode that produced them
+    // isn't
     // packed at all — the whole point of the v5 format. A preview with no IR sidecar stays on the
     // classic class-minimisation path.
     val irByPreview: Map<String, ResolvedIr> =
@@ -337,14 +338,15 @@ abstract class BundlePreviewTask : DefaultTask() {
   /**
    * The rendered PNG bytes for [preview]'s primary capture, or null when no render exists on disk
    * (bundling without a prior `composePreviewRender`, or a preview that failed to render). Used
-   * both for the cover (first selected) and to bake every selected preview into `previews/<id>.png`.
+   * both for the cover (first selected) and to bake every selected preview into
+   * `previews/<id>.png`.
    *
    * Only **PNG** bytes are ever returned: the result is used verbatim as the polyglot's leading
    * cover and as `previews/<id>.png`, and [extractZipBytes] rejects a file whose leading signature
    * is neither PNG nor ZIP. A preview whose primary capture is a GIF (`@AnimatedPreview`,
-   * `@FocusedPreview(gif = true)`) therefore must NOT have its `.gif` bytes read as the cover — that
-   * would produce an unreadable bundle. Such a preview falls through to the PNG-sibling search and,
-   * failing that, to the stub gray cover.
+   * `@FocusedPreview(gif = true)`) therefore must NOT have its `.gif` bytes read as the cover —
+   * that would produce an unreadable bundle. Such a preview falls through to the PNG-sibling search
+   * and, failing that, to the stub gray cover.
    */
   private fun resolvePreviewPng(preview: PreviewInfo): ByteArray? {
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
