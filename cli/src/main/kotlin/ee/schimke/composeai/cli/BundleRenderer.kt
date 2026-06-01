@@ -327,19 +327,21 @@ class BundleRenderer(
    * defense as `safeExtractZip` in BundleCommand.
    */
   private fun expandJarBytes(appJarBytes: ByteArray, targetDir: File) {
-    val canonicalTarget = targetDir.canonicalFile
+    val targetPath = targetDir.canonicalFile.toPath()
     ZipInputStream(ByteArrayInputStream(appJarBytes)).use { zin ->
       while (true) {
         val entry: ZipEntry = zin.nextEntry ?: break
-        val candidate = File(targetDir, entry.name).canonicalFile
-        if (
-          candidate != canonicalTarget &&
-            !candidate.path.startsWith(canonicalTarget.path + File.separator)
-        ) {
+        // Resolve + normalize the entry against the target and verify containment via
+        // Path.startsWith — the form CodeQL's java/zipslip recognizes as sanitization (the prior
+        // canonicalFile + String.startsWith guard was equally safe but flagged as a false
+        // positive).
+        val resolved = targetPath.resolve(entry.name).normalize()
+        if (!resolved.startsWith(targetPath)) {
           throw SecurityException(
-            "bundle render: app jar entry escapes target dir: ${entry.name} → ${candidate.path}"
+            "bundle render: app jar entry escapes target dir: ${entry.name} → $resolved"
           )
         }
+        val candidate = resolved.toFile()
         if (entry.isDirectory) {
           candidate.mkdirs()
         } else {

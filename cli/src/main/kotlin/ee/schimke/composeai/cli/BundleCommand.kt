@@ -310,21 +310,19 @@ private class RenderSubcommand(private val args: List<String>) {
  * extract path; same call site is shared by `extract` and `render`.
  */
 private fun safeExtractZip(zipBytes: ByteArray, target: File) {
-  val canonicalTarget = target.canonicalFile
+  val targetPath = target.canonicalFile.toPath()
   ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
     while (true) {
       val entry = zin.nextEntry ?: break
-      val candidate = File(target, entry.name).canonicalFile
-      // Reject anything resolving outside the target dir, regardless of whether the entry's name
-      // happens to be relative ("foo/..//bar") or absolute on some platforms.
-      if (
-        candidate != canonicalTarget &&
-          !candidate.path.startsWith(canonicalTarget.path + File.separator)
-      ) {
-        throw SecurityException(
-          "bundle entry escapes target dir: ${entry.name} → ${candidate.path}"
-        )
+      // Resolve + normalize the entry against the target and verify containment via
+      // Path.startsWith — rejects "../" traversal and absolute entry names alike, and is the form
+      // CodeQL's java/zipslip recognizes as sanitization (the prior canonicalFile +
+      // String.startsWith guard was equally safe but flagged as a false positive).
+      val resolved = targetPath.resolve(entry.name).normalize()
+      if (!resolved.startsWith(targetPath)) {
+        throw SecurityException("bundle entry escapes target dir: ${entry.name} → $resolved")
       }
+      val candidate = resolved.toFile()
       if (entry.isDirectory) {
         candidate.mkdirs()
       } else {
