@@ -108,10 +108,26 @@ class BundleRenderer(
         it.absolutePath
       }
 
+    // Previews replayed from a captured intermediate representation (schema v5) have NO consumer
+    // class in `classes/app.jar` — their bytecode was intentionally dropped at pack time. They are
+    // replayed through the Remote Compose / ProtoLayout runtime by the Android daemon
+    // (`compose-preview bundle daemon`), not by the desktop subprocess renderer, which can't drive
+    // those Android-only libraries. Skip them here rather than spawn `DesktopRendererMain` against a
+    // class that isn't present (which would fail every IR preview with a ClassNotFoundException).
+    val irById = manifest.intermediateRepresentations.associateBy { it.previewId }
+
     outputDir.mkdirs()
     val succeeded = mutableListOf<RenderedPreview>()
     val failed = mutableListOf<FailedPreview>()
     for (preview in previews.previews) {
+      val ir = irById[preview.id]
+      if (ir != null) {
+        logSink(
+          "compose-preview: skipping ${preview.id} — IR replay (format=${ir.format}) runs in the " +
+            "Android daemon (compose-preview bundle daemon), not the desktop renderer"
+        )
+        continue
+      }
       val outFile = outputDir.resolve(safeFilename(preview.id) + ".png")
       val (exitCode, tail) = spawnRenderer(classpathString, preview, outFile)
       if (exitCode == 0 && outFile.isFile && outFile.length() > 0) {
