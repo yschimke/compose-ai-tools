@@ -181,6 +181,30 @@ class BundleRenderer(
     previews: PreviewManifest,
     previewsJsonRaw: String,
   ): Result {
+    // IR-backed previews (schema v5) are replayed by the Android daemon (`compose-preview bundle
+    // daemon`), not this one-shot renderer: their consumer class was dropped from the bundle at
+    // pack
+    // time, so handing them to AndroidRendererMain (which reflects the enclosing class) would fail.
+    // Compute the IR/non-IR split FIRST and report IR previews as skipped — parity with
+    // renderDesktop's per-preview IR skip. An all-IR bundle has nothing for this renderer to do, so
+    // return before requiring the Android sidecar/SDK (which Phase 1 doesn't package), rather than
+    // throwing on prerequisites we don't actually need.
+    val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
+    for (preview in previews.previews.filter { it.id in irIds }) {
+      logSink(
+        "compose-preview: skipping ${preview.id} — IR replay runs in the Android daemon " +
+          "(compose-preview bundle daemon), not the one-shot renderer"
+      )
+    }
+    val renderable = previews.previews.filter { it.id !in irIds }
+    if (renderable.isEmpty()) {
+      return Result(
+        previewCount = previews.previews.size,
+        succeeded = emptyList(),
+        failed = emptyList(),
+      )
+    }
+
     val rendererJars = locateAndroidRendererClasspath()
     if (rendererJars.isEmpty()) {
       throw IllegalStateException(
@@ -208,13 +232,8 @@ class BundleRenderer(
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }
 
-    // IR-backed previews (schema v5) are replayed by the Android daemon (`compose-preview bundle
-    // daemon`), not this one-shot renderer: their consumer class was dropped from the bundle at
-    // pack
-    // time, so handing them to AndroidRendererMain (which reflects the enclosing class) would fail.
-    // Strip them from the manifest the renderer sees — parity with renderDesktop's per-preview IR
-    // skip — and report them as skipped rather than failed.
-    val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
+    // Strip the IR previews from the manifest the renderer sees so AndroidRendererMain never
+    // attempts the classless preview (it renders the whole previews.json in one batch).
     val rendererPreviewsJson =
       if (irIds.isEmpty()) previewsJsonRaw else filterPreviewsJson(previewsJsonRaw, irIds)
     val previewsJsonFile =
@@ -237,14 +256,7 @@ class BundleRenderer(
     // file and falsely fail the preview).
     val succeeded = mutableListOf<RenderedPreview>()
     val failed = mutableListOf<FailedPreview>()
-    for (preview in previews.previews) {
-      if (preview.id in irIds) {
-        logSink(
-          "compose-preview: skipping ${preview.id} — IR replay runs in the Android daemon " +
-            "(compose-preview bundle daemon), not the one-shot renderer"
-        )
-        continue
-      }
+    for (preview in renderable) {
       val outFile = outputDir.resolve(androidOutputLeaf(preview))
       if (outFile.isFile && outFile.length() > 0) {
         succeeded += RenderedPreview(preview.id, outFile)
