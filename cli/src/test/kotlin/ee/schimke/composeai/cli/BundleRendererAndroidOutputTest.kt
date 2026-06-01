@@ -2,6 +2,8 @@ package ee.schimke.composeai.cli
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Pins how the Android bundle render path reconciles produced PNGs back to previews: by the
@@ -43,5 +45,32 @@ class BundleRendererAndroidOutputTest {
         captures = emptyList(),
       )
     assertEquals("Lonely.png", BundleRenderer.androidOutputLeaf(p))
+  }
+
+  @Test
+  fun `filterPreviewsJson drops IR-backed previews and preserves other fields`() {
+    val raw =
+      """
+      {"module":":app","previews":[
+        {"id":"a.Foo","functionName":"Foo","className":"a.Kt"},
+        {"id":"a.TilePreview","functionName":"TilePreview","className":"a.TileKt"}
+      ]}
+      """
+        .trimIndent()
+
+    val filtered = BundleRenderer.filterPreviewsJson(raw, drop = setOf("a.TilePreview"))
+
+    // The IR-backed preview is gone; the classpath preview and top-level `module` survive.
+    assertTrue(filtered.contains("\"a.Foo\""))
+    assertFalse(filtered.contains("a.TilePreview"))
+    assertTrue(filtered.contains("\":app\""))
+  }
+
+  @Test
+  fun `filterPreviewsJson with an empty drop set keeps every preview`() {
+    val raw = """{"module":":app","previews":[{"id":"a.Foo"},{"id":"a.Bar"}]}"""
+    val filtered = BundleRenderer.filterPreviewsJson(raw, drop = emptySet())
+    assertTrue(filtered.contains("a.Foo"))
+    assertTrue(filtered.contains("a.Bar"))
   }
 }

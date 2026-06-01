@@ -5,6 +5,12 @@ import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Re-renders a packed `.png` (PNG+ZIP polyglot bundle) outside of any Gradle project: extract the
@@ -202,9 +208,17 @@ class BundleRenderer(
         .resolveAll(mavenCoords)
         .mapNotNull { it.file }
 
-    // previews.json drives the batch — write the bundle's copy verbatim where the renderer reads
-    // it.
-    val previewsJsonFile = workDir.resolve("previews.json").apply { writeText(previewsJsonRaw) }
+    // IR-backed previews (schema v5) are replayed by the Android daemon (`compose-preview bundle
+    // daemon`), not this one-shot renderer: their consumer class was dropped from the bundle at
+    // pack
+    // time, so handing them to AndroidRendererMain (which reflects the enclosing class) would fail.
+    // Strip them from the manifest the renderer sees — parity with renderDesktop's per-preview IR
+    // skip — and report them as skipped rather than failed.
+    val irIds = manifest.intermediateRepresentations.map { it.previewId }.toSet()
+    val rendererPreviewsJson =
+      if (irIds.isEmpty()) previewsJsonRaw else filterPreviewsJson(previewsJsonRaw, irIds)
+    val previewsJsonFile =
+      workDir.resolve("previews.json").apply { writeText(rendererPreviewsJson) }
 
     // Synthesized robolectric.properties wins first; then consumer classes + deps; then the Android
     // renderer's own runtime; android.jar last (discovery-only stub — Robolectric's android-all
@@ -224,6 +238,13 @@ class BundleRenderer(
     val succeeded = mutableListOf<RenderedPreview>()
     val failed = mutableListOf<FailedPreview>()
     for (preview in previews.previews) {
+      if (preview.id in irIds) {
+        logSink(
+          "compose-preview: skipping ${preview.id} — IR replay runs in the Android daemon " +
+            "(compose-preview bundle daemon), not the one-shot renderer"
+        )
+        continue
+      }
       val outFile = outputDir.resolve(androidOutputLeaf(preview))
       if (outFile.isFile && outFile.length() > 0) {
         succeeded += RenderedPreview(preview.id, outFile)
@@ -512,6 +533,24 @@ class BundleRenderer(
      * from the preview id — is what keeps a successful Android render from being mis-reported as a
      * failure. Fan-out captures write additional files; the primary capture is the render signal.
      */
+    /**
+     * Return [raw] (a `previews.json` body) with every preview whose `id` is in [drop] removed from
+     * the top-level `previews` array, preserving all other fields verbatim (operates on the JSON
+     * tree, not the lossy `ignoreUnknownKeys` model). Used to hide IR-backed previews from the
+     * batch Android renderer, whose consumer classes were dropped from the bundle at pack time.
+     */
+    internal fun filterPreviewsJson(raw: String, drop: Set<String>): String {
+      val root = Json.parseToJsonElement(raw).jsonObject
+      val previews = root["previews"]?.jsonArray ?: return raw
+      val kept = previews.filter { el ->
+        el.jsonObject["id"]?.jsonPrimitive?.contentOrNull !in drop
+      }
+      return Json.encodeToString(
+        JsonObject.serializer(),
+        JsonObject(root + ("previews" to JsonArray(kept))),
+      )
+    }
+
     internal fun androidOutputLeaf(preview: PreviewInfo): String {
       val leaf = preview.captures.firstOrNull()?.renderOutput?.substringAfterLast('/')
       return if (leaf.isNullOrEmpty()) "${preview.id}.png" else leaf
