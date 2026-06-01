@@ -245,7 +245,6 @@ export class PreviewApp extends LitElement {
     @query("#btn-diff-head") private _btnDiffHead!: HTMLButtonElement;
     @query("#btn-diff-main") private _btnDiffMain!: HTMLButtonElement;
     @query("#btn-launch-device") private _btnLaunchDevice!: HTMLButtonElement;
-    @query("#btn-a11y-overlay") private _btnA11yOverlay!: HTMLButtonElement;
     @query("#btn-interactive") private _btnInteractive!: HTMLButtonElement;
     @query("#btn-stop-interactive")
     private _btnStopInteractive!: HTMLButtonElement;
@@ -344,15 +343,6 @@ export class PreviewApp extends LitElement {
                         class="codicon codicon-device-mobile"
                         aria-hidden="true"
                     ></i>
-                </button>
-                <button
-                    class="icon-button"
-                    id="btn-a11y-overlay"
-                    title="Show accessibility overlay"
-                    aria-label="Toggle accessibility overlay"
-                    aria-pressed="false"
-                >
-                    <i class="codicon codicon-eye" aria-hidden="true"></i>
                 </button>
                 <button
                     class="icon-button"
@@ -661,7 +651,6 @@ export class PreviewApp extends LitElement {
         const btnDiffHead = this._btnDiffHead;
         const btnDiffMain = this._btnDiffMain;
         const btnLaunchDevice = this._btnLaunchDevice;
-        const btnA11yOverlay = this._btnA11yOverlay;
         const btnInteractive = this._btnInteractive;
         const btnStopInteractive = this._btnStopInteractive;
         const btnRecording = this._btnRecording;
@@ -677,7 +666,6 @@ export class PreviewApp extends LitElement {
             btnDiffHead,
             btnDiffMain,
             btnLaunchDevice,
-            btnA11yOverlay,
             btnInteractive,
             btnStopInteractive,
             btnRecording,
@@ -2786,6 +2774,10 @@ export class PreviewApp extends LitElement {
             bundleDaemonReady: () => bundleDaemonReady,
             getA11yOverlayId: a11yOverlay,
             setA11yOverlayId: setA11yOverlay,
+            launcherWidgetAvailable: (previewId) =>
+                dataProductsByPreview
+                    .get(previewId)
+                    ?.has("compose/launcher-widget") ?? false,
             getFocusIndex: () => previewStore.getState().focusIndex,
             setFocusIndex: (next) =>
                 previewStore.setState({ focusIndex: next }),
@@ -2915,7 +2907,6 @@ export class PreviewApp extends LitElement {
         btnLaunchDevice.addEventListener("click", () =>
             requestLaunchOnDevice(),
         );
-        btnA11yOverlay.addEventListener("click", () => toggleA11yOverlay());
         // Shift modifier opts into the multi-stream path: keep the prior live targets, add or
         // remove just this one. Plain click keeps the single-target single-card UX casual users
         // expect.
@@ -3109,9 +3100,6 @@ export class PreviewApp extends LitElement {
         }
         function requestExportPreviewBundle(): void {
             focusController.requestExportPreviewBundle();
-        }
-        function toggleA11yOverlay(): void {
-            focusController.toggleA11yOverlay();
         }
 
         // Filter + message-banner orchestration shims — implementations live
@@ -3381,6 +3369,19 @@ export class PreviewApp extends LitElement {
                 // overlay-count threshold so noise is harmless.
                 if (matchesTarget && activeBundles.length > 0) {
                     postBundleState();
+                }
+                // The launcher-widget button gates on the focused preview
+                // surfacing a `compose/launcher-widget` payload, so refresh the
+                // focus-toolbar toggles when that payload lands for the focused
+                // card — otherwise the button wouldn't appear until the next
+                // focus navigation.
+                if (
+                    matches &&
+                    dataProducts.some(
+                        (dp) => dp.kind === "compose/launcher-widget",
+                    )
+                ) {
+                    focusController.applyFocusedToggleButtonStates();
                 }
             },
             applyFontPreviewBytes: (previewId, fontRowId, dataUri) => {

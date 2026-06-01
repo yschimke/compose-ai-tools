@@ -1522,15 +1522,17 @@ preview-app {
     );
 }
 
+/* In focus mode the focus-controls live button doubles as the stop control
+ * (it flips to a stop glyph while live), so the on-image corner stop on the
+ * focused card is redundant — hide it. The corner stop stays in grid/flow/
+ * column layouts, where it's the per-card stop for multi-stream live previews. */
+.preview-grid.layout-focus .preview-card.focused .card-live-stop-btn {
+    display: none;
+}
+
 /* Toggle button "live-on" state: red glyph matching the live card outline. */
 .icon-button.live-on {
     color: var(--vscode-errorForeground, #f55);
-}
-
-/* D2 — a11y-overlay toggle pressed state. Blue glyph echoes the hierarchy
- * overlay's box border colour so the toolbar tells you which layer is on. */
-.icon-button.a11y-overlay-on {
-    color: rgba(80, 160, 255, 1);
 }
 
 /* Diff overlay — covers the focused image with a side-by-side comparison
@@ -2099,10 +2101,11 @@ preview-app {
     outline: 1px solid var(--vscode-focusBorder);
     outline-offset: 1px;
 }
-/* In focus mode the icon flips to "exit focus" — same hot zone, opposite verb. */
+/* In focus mode the per-card focus button is redundant — the focus-controls
+ * bar already has an "exit focus" (×) button — so hide it rather than flip it
+ * to a second exit affordance. */
 .preview-grid.layout-focus .preview-card.focused .card-focus-btn {
-    color: var(--vscode-foreground);
-    opacity: 1;
+    display: none;
 }
 
 /* Level → colour. Used as a fallback chain for `.overlay-box` /
