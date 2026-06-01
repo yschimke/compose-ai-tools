@@ -85,8 +85,12 @@ horologist = "0.7.15"
 #    `wear-compose-remote` rebuilt against alpha09+ ships) is fine — bumping
 #    only `compose-remote` reintroduces a runtime `NoClassDefFoundError`
 #    inside `RemoteButtonImpl` at preview render time.
-compose-remote = "1.0.0-alpha11"
-wear-compose-remote = "1.0.0-alpha04"
+#  * Renovate's `gradle-minorpatch` bump to the `compose-remote alpha11` /
+#    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
+#    harness render), so the pair is held at the last green pre-bump versions
+#    until a mutually-rebuilt pair is verified together.
+compose-remote = "1.0.0-alpha010"
+wear-compose-remote = "1.0.0-alpha03"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
