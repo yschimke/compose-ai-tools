@@ -205,16 +205,26 @@ jobs:
       - name: Build the native installer for this OS
         shell: bash
         run: ./gradlew :bundle-viewer:packageDistributionForCurrentOS
-      # Each OS emits a single installer under `bundle-viewer/build/compose/binaries/main/<fmt>/`.
-      # The glob spans the per-format subdirs but matches one file per runner, so the artifact's LCA
-      # stays at `…/main/` and the `release` job's flat `artifacts/*.{deb,dmg,msi}` globs pick it up.
+      # Each OS emits a single installer under `bundle-viewer/build/compose/binaries/main/<fmt>/`
+      # (`deb/`, `dmg/`, or `msi/`). Stage it into a flat dir before upload: `upload-artifact`
+      # derives the artifact's internal root from the literal path prefix *before* the first
+      # wildcard, so uploading `…/main/*/…` would preserve the `<fmt>/` subdir inside the artifact —
+      # and after the release job's `merge-multiple` download the file would land at
+      # `artifacts/<fmt>/…`, which that job's flat `artifacts/*.{deb,dmg,msi}` globs would miss
+      # (failing the `gh release` literal-glob expansion). Copying to a non-wildcard dir keeps the
+      # artifact contents flat so those globs match.
+      - name: Stage installer for upload
+        shell: bash
+        run: |
+          mkdir -p staged-installers
+          find bundle-viewer/build/compose/binaries/main \
+            -type f \( -name '*.deb' -o -name '*.dmg' -o -name '*.msi' \) \
+            -exec cp {} staged-installers/ \;
+          ls -l staged-installers
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            bundle-viewer/build/compose/binaries/main/*/compose-preview-viewer*.deb
-            bundle-viewer/build/compose/binaries/main/*/compose-preview-viewer*.dmg
-            bundle-viewer/build/compose/binaries/main/*/compose-preview-viewer*.msi
+          path: staged-installers/*
           if-no-files-found: error
           retention-days: 1
 
