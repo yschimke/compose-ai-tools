@@ -87,6 +87,21 @@ dependencies {
   add("composePreviewRenderer", project(":renderer-desktop"))
   add("composePreviewDaemonDesktop", project(":daemon:desktop"))
 
+  // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
+  // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
+  // transitively onto this classpath, which Gradle can't reconcile against the strict ceiling
+  // — `:tui-cli`'s compile/runtime classpaths fail to resolve. Pin slf4j-api to the strictly-
+  // required 2.0.17 so the soft 2.0.18 requests downgrade. Mirrors the same pin in `:cli`. Safe:
+  // slf4j-api is a stable facade and 2.0.17↔2.0.18 are binary-compatible.
+  constraints {
+    implementation("org.slf4j:slf4j-api") {
+      version { strictly("2.0.17") }
+      because(
+        "gradle-tooling-api 9.5.1 strictly requires slf4j-api 2.0.17; ktor 3.5.0 pulls 2.0.18"
+      )
+    }
+  }
+
   testImplementation(kotlin("test"))
   // JUnit 5 — used directly for `@TempDir`, `Assumptions.assumeTrue`, `@DisplayName`
   // in the kitty e2e harness. `kotlin("test")` on its own resolves to the JUnit 4

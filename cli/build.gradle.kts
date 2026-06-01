@@ -123,6 +123,21 @@ dependencies {
   // at launch time, and the renderer sidecar already carries the per-OS Compose stack.
   add("composePreviewDaemonDesktop", project(":daemon:desktop"))
 
+  // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
+  // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
+  // transitively onto this same runtime classpath, which Gradle can't reconcile against the
+  // strict ceiling — `:cli:distTar`/`installDist`/etc. fail to resolve `runtimeClasspath`.
+  // Pin slf4j-api to the strictly-required 2.0.17 so the soft 2.0.18 requests downgrade. Safe:
+  // slf4j-api is a stable facade and 2.0.17↔2.0.18 are binary-compatible.
+  constraints {
+    implementation("org.slf4j:slf4j-api") {
+      version { strictly("2.0.17") }
+      because(
+        "gradle-tooling-api 9.5.1 strictly requires slf4j-api 2.0.17; ktor 3.5.0 pulls 2.0.18"
+      )
+    }
+  }
+
   testImplementation(kotlin("test"))
   // Gradle TestKit drives a real Gradle build inside [InitScriptExclusiveContentReproducerTest] —
   // the only way to assert that the rendered init script doesn't trip Gradle 9.3+'s
