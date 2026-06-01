@@ -1,6 +1,14 @@
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import * as path from "path";
 import type { GradleApi } from "../../gradleService";
+
+/**
+ * Grace period between SIGTERM and SIGKILL when cancelling a hung gradlew.
+ * SIGTERM lets the Gradle client disconnect cleanly (which signals its
+ * daemon to cancel the in-flight build and release the build lock); the
+ * SIGKILL fallback covers a wedged JVM that ignores the term.
+ */
+const KILL_GRACE_MS = 5_000;
 
 /**
  * Real {@link GradleApi} that shells out to the repo's `./gradlew` wrapper.
@@ -26,6 +34,18 @@ export class RealGradleApi implements GradleApi {
         private readonly onLog: (line: string) => void = () => {},
         private readonly extraArgs: ReadonlyArray<string> = [],
     ) {}
+
+    /**
+     * Live gradlew child processes keyed by `cancellationKey`. Tracked so
+     * {@link cancelRunTask} can actually terminate a hung/superseded build
+     * — the original no-op left orphaned gradlew clients running, holding
+     * the project's Gradle build lock. Across a long serial e2e session
+     * (multiple render + daemon suites) those orphans accumulate and a
+     * later module render blocks forever on the lock, surfacing only as a
+     * 20-minute mocha hook timeout with no Gradle output. See
+     * `e2eCachedPreloadOnSwitch.test.ts`.
+     */
+    private readonly liveChildren = new Map<string, ChildProcess>();
 
     runTask(opts: {
         projectFolder: string;
@@ -68,6 +88,22 @@ export class RealGradleApi implements GradleApi {
                 env: { ...process.env },
                 stdio: ["ignore", "pipe", "pipe"],
             });
+            // Register under the cancellation key so a later
+            // `cancelRunTask` (fired by gradleService's 5-minute task
+            // timeout or a refresh supersession) can terminate this exact
+            // process instead of leaving it orphaned on the build lock.
+            if (opts.cancellationKey) {
+                this.liveChildren.set(opts.cancellationKey, child);
+            }
+            const forget = () => {
+                if (opts.cancellationKey) {
+                    // Only drop the entry if it still points at *this* child;
+                    // a re-run under the same key would have replaced it.
+                    if (this.liveChildren.get(opts.cancellationKey) === child) {
+                        this.liveChildren.delete(opts.cancellationKey);
+                    }
+                }
+            };
             child.stdout.on("data", (chunk: Buffer) => {
                 if (diagE2e) {
                     const text = chunk.toString("utf-8");
@@ -92,19 +128,29 @@ export class RealGradleApi implements GradleApi {
                     getOutputType: () => 1,
                 });
             });
-            child.once("error", reject);
-            child.once("close", (code) => {
+            child.once("error", (err) => {
+                forget();
+                reject(err);
+            });
+            child.once("close", (code, signal) => {
+                forget();
                 if (diagE2e) {
                     console.log(
-                        `[gradle exit] code=${code} args=${gradleArgs.join(" ")}`,
+                        `[gradle exit] code=${code} signal=${signal ?? "none"} args=${gradleArgs.join(" ")}`,
                     );
                 }
                 if (code === 0) {
                     resolve();
                 } else {
+                    // A cancelled build exits via signal (SIGTERM/SIGKILL)
+                    // with a null code. Surface it as a distinct, matchable
+                    // message so callers can tell "I cancelled this" apart
+                    // from a genuine build failure.
                     reject(
                         new Error(
-                            `gradlew ${gradleArgs.join(" ")} exited with ${code}`,
+                            signal
+                                ? `gradlew ${gradleArgs.join(" ")} cancelled (signal ${signal})`
+                                : `gradlew ${gradleArgs.join(" ")} exited with ${code}`,
                         ),
                     );
                 }
@@ -112,9 +158,53 @@ export class RealGradleApi implements GradleApi {
         });
     }
 
-    async cancelRunTask(): Promise<void> {
-        // The e2e suite runs each gradle invocation to completion; the
-        // extension never cancels mid-run in this harness. If we ever want
-        // to exercise cancellation we'd track the live child here.
+    async cancelRunTask(opts: {
+        projectFolder: string;
+        taskName: string;
+        cancellationKey?: string;
+    }): Promise<void> {
+        // Match the production `vscode-gradle` contract: cancellation is
+        // keyed by `cancellationKey`. Without a key there's nothing
+        // specific to cancel (gradleService always supplies one).
+        const key = opts.cancellationKey;
+        const child = key ? this.liveChildren.get(key) : undefined;
+        if (!child || child.pid === undefined || child.exitCode !== null) {
+            return;
+        }
+        this.onLog(
+            `[realGradleApi] cancel ${opts.taskName} (key=${key}) — terminating gradlew pid ${child.pid}`,
+        );
+        // SIGTERM first so the Gradle client disconnects gracefully and its
+        // daemon cancels the build (releasing the build lock); escalate to
+        // SIGKILL if the process is still alive after the grace period.
+        try {
+            child.kill("SIGTERM");
+        } catch {
+            /* already gone */
+        }
+        const killTimer = setTimeout(() => {
+            if (child.exitCode === null && child.signalCode === null) {
+                try {
+                    child.kill("SIGKILL");
+                } catch {
+                    /* already gone */
+                }
+            }
+        }, KILL_GRACE_MS);
+        // Don't keep the test host's event loop alive on the grace timer.
+        killTimer.unref?.();
+        // Resolve once the child has actually exited so callers serialise
+        // their retry *after* the build lock is released, not before.
+        await new Promise<void>((resolve) => {
+            if (child.exitCode !== null || child.signalCode !== null) {
+                clearTimeout(killTimer);
+                resolve();
+                return;
+            }
+            child.once("close", () => {
+                clearTimeout(killTimer);
+                resolve();
+            });
+        });
     }
 }
