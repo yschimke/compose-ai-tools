@@ -85,6 +85,17 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         it.absolutePath
       }
 
+    // v5 IR replay: when the bundle carries intermediate representations, extract the `ir/` bytes
+    // and the bundle.json so the daemon (Piece B) can replay those previews through the protolayout
+    // / Remote Compose runtime instead of reflecting their (dropped) consumer classes. Skipped
+    // entirely for a classic all-classes bundle.
+    val hasIr = manifest.intermediateRepresentations.isNotEmpty()
+    val irDir = if (hasIr) workDir.resolve("ir").apply { mkdirs() } else null
+    val bundleManifestFile = if (hasIr) workDir.resolve("bundle.json") else null
+    if (hasIr) {
+      extractIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file)
+    }
+
     // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
     // the CMP/Skiko daemon (lib-daemon-desktop + lib-renderer); an android bundle launches the
     // Robolectric daemon (lib-daemon-android + android.jar), reusing the Phase 1
@@ -111,6 +122,9 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       // (BundleViewerPanel's DaemonClient) does the `initialize` round-trip on stdin.
       add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
       add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
+      // IR replay inputs (Piece B); present only for a bundle that carries IR.
+      irDir?.let { add("-D${IR_DIR_PROP}=${it.absolutePath}") }
+      bundleManifestFile?.let { add("-D${BUNDLE_MANIFEST_PATH_PROP}=${it.absolutePath}") }
       // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
       for (prop in launch.sysProps) add(prop)
@@ -128,6 +142,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         "[bundle-daemon] resolved coordinate jars: ${resolvedJars.size} / ${mavenCoords.size}"
       )
       System.err.println("[bundle-daemon] previews.json: ${previewsJson.absolutePath}")
+      if (hasIr) {
+        System.err.println(
+          "[bundle-daemon] IR previews: ${manifest.intermediateRepresentations.size} → ${irDir?.absolutePath}"
+        )
+      }
       System.err.println("[bundle-daemon] launching: ${command.joinToString(" ")}")
     }
 
@@ -287,6 +306,45 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * either is missing — both are required for the daemon to come up against a usable preview index.
    * Embedded `libs/` jars are extracted separately via [BundleReader.extractEmbeddedLibs].
    */
+  /**
+   * Extract the v5 IR artefacts from [zipBytes]: every `ir/<leaf>` entry into [irDir] (flattened to
+   * its basename, since `BundleIr.path` is `ir/<previewId>.<ext>` and the daemon resolves by leaf),
+   * plus `bundle.json` into [manifestFile] so the daemon can read `intermediateRepresentations`.
+   * Each `ir/` destination is verified to live inside [irDir] — defeats Zip Slip on a hostile
+   * bundle, same guard as [extractEmbeddedLibs] / [expandJarBytesSafely].
+   */
+  private fun extractIrArtifacts(
+    zipBytes: ByteArray,
+    irDir: File,
+    manifestFile: File,
+    bundleFile: File,
+  ) {
+    val canonicalIr = irDir.canonicalFile
+    var sawManifest = false
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        when {
+          name == "bundle.json" -> {
+            manifestFile.writeBytes(zin.readBytes())
+            sawManifest = true
+          }
+          !entry.isDirectory && name.startsWith("ir/") -> {
+            val dest = File(irDir, File(name).name).canonicalFile
+            if (dest.path.startsWith(canonicalIr.path + File.separator)) {
+              dest.outputStream().use { sink -> zin.copyTo(sink) }
+            }
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+    require(sawManifest) {
+      "bundle daemon: bundle.json missing in ${bundleFile.path} — cannot resolve IR descriptors"
+    }
+  }
+
   private fun expandAppJarAndManifest(
     zipBytes: ByteArray,
     classesDir: File,
@@ -430,5 +488,12 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     // need an extra :daemon:core dependency just for the constants.
     private const val USER_CLASS_DIRS_PROP = "composeai.daemon.userClassDirs"
     private const val PREVIEWS_JSON_PATH_PROP = "composeai.daemon.previewsJsonPath"
+    // v5 IR replay (consumed by the Android daemon — Piece B). `irDir` holds the extracted
+    // `ir/<id>.<ext>` bytes; `bundleManifestPath` points at the bundle.json whose
+    // `intermediateRepresentations` tell the daemon which previews replay from IR and in what
+    // format. Passed only when the bundle actually carries IR; harmless to an older daemon that
+    // doesn't read them.
+    private const val IR_DIR_PROP = "composeai.daemon.irDir"
+    private const val BUNDLE_MANIFEST_PATH_PROP = "composeai.daemon.bundleManifestPath"
   }
 }

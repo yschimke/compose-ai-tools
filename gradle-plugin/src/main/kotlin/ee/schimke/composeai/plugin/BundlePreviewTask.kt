@@ -176,25 +176,30 @@ abstract class BundlePreviewTask : DefaultTask() {
 
     // Previews whose flavour emitted a serialisable intermediate representation (Remote Compose doc
     // / Wear protolayout proto) during the render step are replayed from that IR, not by re-running
-    // their composable. We therefore (a) carry the IR bytes in the bundle and (b) DROP their
-    // enclosing class from the closure seed below, so the consumer bytecode that produced them
-    // isn't
-    // packed at all — the whole point of the v5 format. A preview with no IR sidecar stays on the
-    // classic class-minimisation path.
+    // their composable, so their consumer *bytecode* must not be packed. But the player still needs
+    // their third-party dependencies on the replay classpath (the Compose / protolayout / Remote
+    // Compose runtime the IR inflates against). So the minimisation runs two closures from one
+    // scan:
+    //  - the DEP closure seeds from every selected preview, so deps reachable from an IR preview
+    // are
+    //    still recorded as Maven coordinates (carriage — the bundle stays replayable);
+    //  - the PACK closure seeds only from non-IR previews, so only their module classes land in
+    //    `classes/app.jar`. An IR preview contributes no module bytecode.
+    // With no IR previews the two seeds are identical and this is byte-for-byte the old behaviour.
     val irByPreview: Map<String, ResolvedIr> =
       selected.mapNotNull { p -> resolvePreviewIr(p)?.let { p.id to it } }.toMap()
 
-    // Seed the minimisation closure only from previews that still need their bytecode replayed.
-    val entryClassFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
+    val depSeedFqns = selected.map { it.className }.toSet()
+    val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
 
     val classDirsList = moduleClassDirs.files.filter { it.exists() && it.isDirectory }
     val jarsList = dependencyJars.files.filter { it.isFile && it.name.endsWith(".jar") }
     val scanPaths = (classDirsList + jarsList).map { it.absolutePath }
 
-    val closure = closureWalk(scanPaths, entryClassFqns)
+    val closure = closureWalk(scanPaths, depSeed = depSeedFqns, packSeed = packSeedFqns)
 
     val moduleClassFqns = collectClassFqns(classDirsList)
-    val reachableModuleClasses = moduleClassFqns intersect closure.reachable
+    val reachableModuleClasses = moduleClassFqns intersect closure.packReachable
     val keptModuleClassFiles = packModuleClasses(classDirsList, reachableModuleClasses)
     val appJarBytes = buildJar(keptModuleClassFiles, moduleResourcesDir.orNull?.asFile)
 
@@ -206,8 +211,8 @@ abstract class BundlePreviewTask : DefaultTask() {
 
     val report =
       MinimizationReport(
-        entryClassFqns = entryClassFqns.sorted(),
-        reachableClassCount = closure.reachable.size,
+        entryClassFqns = depSeedFqns.sorted(),
+        reachableClassCount = closure.depReachable.size,
         totalScannedClassCount = closure.totalScanned,
         moduleClasses =
           ModuleClassesStats(
@@ -663,14 +668,26 @@ abstract class BundlePreviewTask : DefaultTask() {
   private data class PerElementCount(val reachable: Int, val total: Int)
 
   private data class Closure(
-    val reachable: Set<String>,
+    /** Classes reachable from the dep seed (every preview) — drives which deps are kept. */
+    val depReachable: Set<String>,
+    /** Classes reachable from the pack seed (non-IR previews) — drives module-class packing. */
+    val packReachable: Set<String>,
     val perElement: Map<String, PerElementCount>,
     val totalScanned: Int,
   )
 
-  private fun closureWalk(scanPaths: List<String>, entries: Set<String>): Closure {
+  private fun closureWalk(
+    scanPaths: List<String>,
+    depSeed: Set<String>,
+    packSeed: Set<String>,
+  ): Closure {
     if (scanPaths.isEmpty()) {
-      return Closure(reachable = entries.toSet(), perElement = emptyMap(), totalScanned = 0)
+      return Closure(
+        depReachable = depSeed.toSet(),
+        packReachable = packSeed.toSet(),
+        perElement = emptyMap(),
+        totalScanned = 0,
+      )
     }
     ClassGraph()
       .enableAllInfo()
@@ -679,43 +696,57 @@ abstract class BundlePreviewTask : DefaultTask() {
       .ignoreParentClassLoaders()
       .scan()
       .use { scan ->
-        val depMap = scan.classDependencyMap
-        val all = scan.allClasses
-        val visited = mutableSetOf<String>()
-        val queue = ArrayDeque<String>()
-        // Seed with every class in the enclosing FQN's compilation unit — Kotlin top-level
-        // functions live on `FooKt` and their generated companions (`ComposableSingletons$FooKt`,
-        // `FooKt$lambda-1`, …) share the prefix. Adding them all up front means we don't depend on
-        // ClassGraph having an edge from the FooKt class to its lambda inner classes (it usually
-        // does, but the seed is cheap insurance).
-        for (entry in entries) {
-          for (ci in all) {
-            if (ci.name == entry || ci.name.startsWith("$entry$")) {
-              if (visited.add(ci.name)) queue += ci.name
-            }
-          }
-        }
-        while (queue.isNotEmpty()) {
-          val current = queue.removeFirst()
-          val ci = scan.getClassInfo(current) ?: continue
-          val deps = depMap[ci] ?: continue
-          for (dep in deps) {
-            if (visited.add(dep.name)) queue += dep.name
-          }
-        }
+        val depReachable = bfsReachable(scan, depSeed)
+        val packReachable = bfsReachable(scan, packSeed)
+        // Dependency reachability (which jars contributed a reachable class) is computed against
+        // the
+        // dep closure so an IR preview's third-party deps are still recorded — see the carriage
+        // note
+        // in `pack`.
         val perElementReachable = HashMap<String, IntArray>() // [reachable, total]
-        for (ci in all) {
+        for (ci in scan.allClasses) {
           val file = ci.classpathElementFile?.absolutePath ?: continue
           val counts = perElementReachable.getOrPut(file) { IntArray(2) }
           counts[1]++
-          if (ci.name in visited) counts[0]++
+          if (ci.name in depReachable) counts[0]++
         }
         return Closure(
-          reachable = visited,
+          depReachable = depReachable,
+          packReachable = packReachable,
           perElement = perElementReachable.mapValues { (_, c) -> PerElementCount(c[0], c[1]) },
-          totalScanned = all.size,
+          totalScanned = scan.allClasses.size,
         )
       }
+  }
+
+  /**
+   * BFS over ClassGraph's inter-class dependency map from [seed]'s compilation units. Kotlin
+   * top-level functions live on `FooKt` and their generated companions
+   * (`ComposableSingletons$FooKt`, `FooKt$lambda-1`, …) share the prefix, so we seed every class
+   * whose name equals or is `$`-prefixed by an entry FQN — cheap insurance against a missing
+   * inner-class edge. Returns every reachable class name.
+   */
+  private fun bfsReachable(scan: io.github.classgraph.ScanResult, seed: Set<String>): Set<String> {
+    if (seed.isEmpty()) return emptySet()
+    val depMap = scan.classDependencyMap
+    val visited = mutableSetOf<String>()
+    val queue = ArrayDeque<String>()
+    for (entry in seed) {
+      for (ci in scan.allClasses) {
+        if (ci.name == entry || ci.name.startsWith("$entry$")) {
+          if (visited.add(ci.name)) queue += ci.name
+        }
+      }
+    }
+    while (queue.isNotEmpty()) {
+      val current = queue.removeFirst()
+      val ci = scan.getClassInfo(current) ?: continue
+      val deps = depMap[ci] ?: continue
+      for (dep in deps) {
+        if (visited.add(dep.name)) queue += dep.name
+      }
+    }
+    return visited
   }
 
   private companion object {
