@@ -628,8 +628,14 @@ fun main(args: Array<String>) {
   val btaCompileService = ee.schimke.composeai.daemon.bta.DefaultBtaCompileService.fromSysprops()
   if (btaCompileService != null) {
     System.err.println(
-      "compose-ai-tools daemon-android: BtaCompileService active — `compileSources` JSON-RPC " +
-        "will dispatch through the in-process Kotlin Build Tools compiler"
+      "compose-ai-tools daemon-android: in-process compile available (Kotlin Build Tools API " +
+        "loaded) — engaged only when the editor sets composePreview.daemon.compileInProcess=true; " +
+        "otherwise compiles run via Gradle"
+    )
+  } else {
+    System.err.println(
+      "compose-ai-tools daemon-android: in-process compile unavailable (Build Tools API not " +
+        "configured for this module) — compiles run via Gradle"
     )
   }
 
