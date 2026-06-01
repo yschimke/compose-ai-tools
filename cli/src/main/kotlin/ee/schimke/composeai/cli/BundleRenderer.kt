@@ -168,10 +168,11 @@ class BundleRenderer(
       )
     }
     val androidJar =
-      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = null)
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = findLocalProperties())
         ?: throw IllegalStateException(
-          "bundle render: backend=android needs android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT " +
-            "to a local Android SDK (no platforms/android-*/android.jar found)."
+          "bundle render: backend=android needs android.jar — set ANDROID_HOME / ANDROID_SDK_ROOT, " +
+            "or run from a project whose local.properties has sdk.dir (no platforms/android-*/" +
+            "android.jar found)."
         )
 
     val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
@@ -199,12 +200,14 @@ class BundleRenderer(
     val (exitCode, tail) = spawnAndroidRenderer(launch, classpath, previewsJsonFile, outputDir)
 
     // AndroidRendererMain renders the whole manifest into outputDir. Reconcile per-preview by the
-    // same `<safeId>.png` convention the desktop path uses; exact id↔filename matching is finalized
-    // alongside the Phase 2 harness run in CI.
+    // manifest capture's renderOutput leaf — the exact name `RobolectricRenderTest.outputFileFor`
+    // writes — NOT `safeFilename(id).png` (the renderer normalizes ids, e.g.
+    // `com.example.FooKt.CardPreview` → `CardPreview.png`, so an id-derived name would miss the
+    // file and falsely fail the preview).
     val succeeded = mutableListOf<RenderedPreview>()
     val failed = mutableListOf<FailedPreview>()
     for (preview in previews.previews) {
-      val outFile = outputDir.resolve(safeFilename(preview.id) + ".png")
+      val outFile = outputDir.resolve(androidOutputLeaf(preview))
       if (outFile.isFile && outFile.length() > 0) {
         succeeded += RenderedPreview(preview.id, outFile)
         if (verbose) logSink("rendered ${preview.id} → ${outFile.path}")
@@ -256,6 +259,27 @@ class BundleRenderer(
       .listFiles { f -> f.isFile && f.name.endsWith(".jar") }
       ?.sortedBy { it.name }
       .orEmpty()
+  }
+
+  /**
+   * Find the nearest `local.properties` (carrying `sdk.dir`) by walking up from the working
+   * directory — `bundle render` runs outside Gradle, but it's commonly invoked from inside an
+   * Android project whose SDK is configured only via `local.properties` (not `ANDROID_HOME`).
+   * Returns null when none is found within a few levels; the env-var fallback in
+   * [AndroidBundleLaunch.resolveAndroidJar] still applies.
+   */
+  private fun findLocalProperties(): File? {
+    var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+    repeat(8) {
+      val d = dir ?: return null
+      File(d, "local.properties")
+        .takeIf { it.isFile }
+        ?.let {
+          return it
+        }
+      dir = d.parentFile
+    }
+    return null
   }
 
   private fun androidRendererSearchDescription(): String {
@@ -462,6 +486,18 @@ class BundleRenderer(
       .joinToString("")
 
   companion object {
+    /**
+     * Leaf filename the Android renderer ([ee.schimke.composeai.renderer.RobolectricRenderTest]'s
+     * `outputFileFor`) writes a preview's primary capture to: the first capture's `renderOutput`
+     * basename, or `"<id>.png"` when unset. Reconciling against this — rather than a name derived
+     * from the preview id — is what keeps a successful Android render from being mis-reported as a
+     * failure. Fan-out captures write additional files; the primary capture is the render signal.
+     */
+    internal fun androidOutputLeaf(preview: PreviewInfo): String {
+      val leaf = preview.captures.firstOrNull()?.renderOutput?.substringAfterLast('/')
+      return if (leaf.isNullOrEmpty()) "${preview.id}.png" else leaf
+    }
+
     /** Compose Desktop's default density = 2.625× (~xxhdpi). Same constant as the renderer. */
     private const val DEFAULT_DENSITY: Float = 2.625f
 
