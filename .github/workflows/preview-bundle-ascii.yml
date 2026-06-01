@@ -10,8 +10,8 @@ name: Preview Bundle ASCII
 # The dump runs with a plain piped stdout (no PTY), so it leans on the Image
 # composable's lowest-fidelity fallback tier — it won't look great in the log,
 # but it proves the whole "open a bundle with no project, see every preview"
-# pipeline works. The TUI is opt-in (Mosaic fork snapshot), so this is the only
-# workflow that sets `tui.enabled=true`; the rest of CI never resolves it.
+# pipeline works. The TUI is built by default (the Mosaic fork is now a Maven
+# Central release), so no extra flag is needed to resolve `:tui-cli`.
 
 on:
   push:
@@ -48,12 +48,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
 
-      # The TUI module and its Mosaic fork snapshot are gated behind this flag
-      # (settings.gradle.kts). local.properties is gitignored, so writing it here
-      # is local to the runner.
-      - name: Enable the TUI build
-        run: echo "tui.enabled=true" >> local.properties
-
       # Render FIRST, in its own invocation. composePreviewBundle deliberately
       # doesn't depend on composePreviewRender (packing without a render is a
       # valid flow), and its renders dir is an @Internal input — so the renders
@@ -73,14 +67,11 @@ jobs:
 
       # Build the launcher FIRST (so the dump can run even if a unit test is flaky),
       # then run the TUI unit suite (BundleContentsTest et al). The kitty-under-Xvfb
-      # e2e self-skips without its binaries.
-      #
-      # --refresh-dependencies: `:tui-cli` depends on the Mosaic fork's 0.19.0-SNAPSHOT.
-      # Because the snapshot version string is fixed, Gradle's cached copy (restored by
-      # setup-gradle) would otherwise mask a republished snapshot — force a re-resolve so a
-      # freshly published fork (e.g. a new renderMosaic) is actually picked up.
+      # e2e self-skips without its binaries. `:tui-cli` depends on the Mosaic fork's
+      # 0.18.0-1, a fixed Maven Central release, so the cached copy is authoritative —
+      # no --refresh-dependencies needed.
       - name: Build + unit-test the TUI
-        run: ./gradlew :tui-cli:installDist :tui-cli:test --refresh-dependencies --stacktrace
+        run: ./gradlew :tui-cli:installDist :tui-cli:test --stacktrace
 
       # Headless dump: no PTY, fixed terminal geometry via COLUMNS/LINES so the
       # output is deterministic. `--dump` renders the cover preview (default; --id /

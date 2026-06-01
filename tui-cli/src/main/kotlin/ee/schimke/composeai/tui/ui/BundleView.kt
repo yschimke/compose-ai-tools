@@ -39,17 +39,17 @@ private data class BundlePage(val id: String?, val bitmap: Bitmap?)
  *
  * Since bundle schema v2 the zip carries a baked PNG per preview under `previews/<id>.png`, so this
  * works **fully detached from the originating project** — opening a bundle from `~/Downloads` lets
- * you page through every preview with the arrow keys, no Gradle checkout required. An older v1 bundle
- * (or a `--no-render` pack) falls back to the single cover image decoded from the polyglot's leading
- * bytes.
+ * you page through every preview with the arrow keys, no Gradle checkout required. An older v1
+ * bundle (or a `--no-render` pack) falls back to the single cover image decoded from the polyglot's
+ * leading bytes.
  *
  * If this is a real bundle (carries `classes/app.jar` + `previews.json`) and the daemon/renderer
- * sidecars ship in this install, the bundle's **own daemon** is spawned from those embedded classes;
- * the daemon's freshest render of the current preview then replaces its baked image live (read from
- * the path the daemon reports, never an assumed project layout), and `r` forces a re-render
- * (paused-clock animations step, deterministic re-render). Falls back to the static baked images
- * when the file is a plain PNG (no provenance), the sidecars aren't present (e.g. run from source
- * without `installDist`), or the daemon fails to start.
+ * sidecars ship in this install, the bundle's **own daemon** is spawned from those embedded
+ * classes; the daemon's freshest render of the current preview then replaces its baked image live
+ * (read from the path the daemon reports, never an assumed project layout), and `r` forces a
+ * re-render (paused-clock animations step, deterministic re-render). Falls back to the static baked
+ * images when the file is a plain PNG (no provenance), the sidecars aren't present (e.g. run from
+ * source without `installDist`), or the daemon fails to start.
  *
  * `q` / `Esc` quits; `←/→` (also `h/l`, `p/n`, `↑/↓`, `j/k`) page between previews; `r` forces a
  * re-render of the current preview (no-op without a live session).
@@ -107,8 +107,8 @@ fun runBundle(png: File, args: TuiArgs) {
 /**
  * The whole bundle-mode UI: a single full-terminal image with an optional one-line footer. When
  * [opener] is non-null it attaches the bundle's own daemon via [LiveSession.enableBundle] and swaps
- * the current page's baked image for the daemon's freshest render of the selected preview (read from
- * the path the daemon reports, never an assumed project layout) whenever a notification ticks.
+ * the current page's baked image for the daemon's freshest render of the selected preview (read
+ * from the path the daemon reports, never an assumed project layout) whenever a notification ticks.
  */
 @Composable
 private fun BundleApp(

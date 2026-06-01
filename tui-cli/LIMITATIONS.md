@@ -1,6 +1,6 @@
 # `:tui-cli` Mosaic limitations
 
-This module is a Mosaic 0.19.0-SNAPSHOT (fork) consumer. The Mosaic surface gets us most of the way
+This module is a Mosaic 0.18.0-1 (fork) consumer. The Mosaic surface gets us most of the way
 there — composables, layout, key dispatch, terminal-size as Compose state — but a handful
 of gaps push features into "best-effort" or "deferred" territory.
 
@@ -47,7 +47,7 @@ Workarounds per gap, summarised:
 ## What we found while writing the RFCs
 
 Inspecting the actual `mosaic-runtime-jvm` + `mosaic-terminal-jvm` classes (against
-both upstream 0.18.0 and the fork's 0.19.0-SNAPSHOT) turned up several "the plumbing
+both upstream 0.18.0 and the fork's 0.18.0-1) turned up several "the plumbing
 already exists, just isn't wired through" cases:
 
 - `terminal.MouseEvent` already decodes SGR mouse events from the byte stream — Mosaic

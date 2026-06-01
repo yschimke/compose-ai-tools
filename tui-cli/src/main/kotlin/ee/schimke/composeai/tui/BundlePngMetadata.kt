@@ -17,9 +17,10 @@ import kotlinx.serialization.json.Json
  * bundle straight from `~/Downloads` shows all its images, not just the cover. [BundleContents]
  * exposes both the metadata and those baked PNGs from a single zip pass.
  *
- * The polyglot-extraction routine is duplicated here rather than shared with `:cli`'s `BundleReader`
- * or `:bundle-viewer`'s loader — both deliberately keep their own copy so neither module drags the
- * other onto its classpath, and the routine is tiny and stable. See `cli/BundleCommand.kt`.
+ * The polyglot-extraction routine is duplicated here rather than shared with `:cli`'s
+ * `BundleReader` or `:bundle-viewer`'s loader — both deliberately keep their own copy so neither
+ * module drags the other onto its classpath, and the routine is tiny and stable. See
+ * `cli/BundleCommand.kt`.
  */
 @Serializable
 data class BundlePngMetadata(val modulePath: String = "", val coverPreviewId: String? = null) {
@@ -35,8 +36,7 @@ data class BundlePngMetadata(val modulePath: String = "", val coverPreviewId: St
           while (true) {
             val entry = zin.nextEntry ?: break
             if (entry.name == "bundle.json") {
-              result =
-                json.decodeFromString(serializer(), zin.readBytes().toString(Charsets.UTF_8))
+              result = json.decodeFromString(serializer(), zin.readBytes().toString(Charsets.UTF_8))
               break
             }
             zin.closeEntry()
@@ -80,9 +80,9 @@ data class BundlePngMetadata(val modulePath: String = "", val coverPreviewId: St
       }
       val cover = metadata?.coverPreviewId
       val ordered =
-        pngs.entries
-          .sortedWith(compareBy({ it.key != cover }, { it.key }))
-          .map { BundlePreview(id = it.key, pngBytes = it.value) }
+        pngs.entries.sortedWith(compareBy({ it.key != cover }, { it.key })).map {
+          BundlePreview(id = it.key, pngBytes = it.value)
+        }
       return BundleContents(metadata = metadata, previews = ordered)
     }
 
@@ -126,7 +126,4 @@ data class BundlePreview(val id: String, val pngBytes: ByteArray) {
 }
 
 /** Everything the TUI needs to render a bundle detached from its project: metadata + baked PNGs. */
-data class BundleContents(
-  val metadata: BundlePngMetadata?,
-  val previews: List<BundlePreview>,
-)
+data class BundleContents(val metadata: BundlePngMetadata?, val previews: List<BundlePreview>)

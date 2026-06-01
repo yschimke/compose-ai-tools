@@ -185,8 +185,8 @@ data class TuiArgs(
 /**
  * Resolve a bundle positional — a local `*.png` path or an http(s)/file URL — to a readable local
  * file, or null when it isn't an openable bundle (missing path, non-png, failed download). URLs are
- * downloaded to a temp file (delete-on-exit). Self-contained here rather than depending on `:cli` so
- * the opt-in TUI module's graph stays minimal.
+ * downloaded to a temp file (delete-on-exit). Self-contained here rather than depending on `:cli`
+ * so the opt-in TUI module's graph stays minimal.
  */
 private fun resolveBundleArg(arg: String): File? {
   val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()

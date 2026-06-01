@@ -1,32 +1,30 @@
 # Using the Mosaic fork
 
-`:tui-cli` consumes **`ee.schimke.composeai.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`**
+`:tui-cli` consumes **`ee.schimke.composeai.mosaic:mosaic-runtime:0.18.0-1`**
 (plus the matching `mosaic-terminal` / `mosaic-tty` / `mosaic-tty-terminal` siblings) from
 the fork at
 [**`yschimke/mosaic@compose-ai-tools`**](https://github.com/yschimke/mosaic/tree/compose-ai-tools)
 so we can develop against it without waiting for upstream PRs to merge. The fork republishes
 Mosaic under the `ee.schimke.composeai.mosaic` group (the Kotlin package names are unchanged —
-imports stay `com.jakewharton.mosaic.*`) and its `snapshot.yaml` workflow publishes a
-`-SNAPSHOT` build to the Sonatype Central snapshots repo on every push to the branch.
+imports stay `com.jakewharton.mosaic.*`) and publishes a normal release to **Maven Central**
+([`…/mosaic-runtime/0.18.0-1/`](https://repo1.maven.org/maven2/ee/schimke/composeai/mosaic/mosaic-runtime/0.18.0-1/)),
+so it resolves from the standard `mavenCentral()` repo — no snapshot repository required.
 
-## Opt-in flag
+## Opt-out flag
 
-**The TUI build is off by default.** It is only wired into the build when `local.properties`
-contains:
+**The TUI build is on by default.** Because the Mosaic fork is now a stable Maven Central
+release rather than an unstable snapshot, `:tui-cli` is included in every build and resolves
+from `mavenCentral()`. To drop the module (and its Mosaic / Compose-runtime dependency) from
+your build, set in `local.properties`:
 
 ```properties
-tui.enabled=true
+tui.enabled=false
 ```
 
-`settings.gradle.kts` reads that flag at configuration time. When it is unset:
-
-- the Sonatype Central snapshots repository is **not** added,
-- the `:tui-cli` module is **not** included, and
-- nothing references the Mosaic snapshot dependency.
-
-So a default `./gradlew` checkout (and CI) never resolves the unstable snapshot. To work on
-the TUI, set the flag, then build `:tui-cli` as usual. The version catalog still *declares*
-`libs.mosaic.runtime` either way — the declaration is inert until `:tui-cli` is included.
+`settings.gradle.kts` reads that flag at configuration time (defaulting to `true` when unset).
+When it is `false` the `:tui-cli` module is **not** included and nothing references the Mosaic
+dependency. The version catalog always *declares* `libs.mosaic.runtime`; the declaration is
+inert until `:tui-cli` is included.
 
 That branch adds two composables we describe in the RFCs alongside this doc:
 
@@ -38,11 +36,10 @@ That branch adds two composables we describe in the RFCs alongside this doc:
 
 ## Workflow
 
-**You normally don't need any of this.** The fork's `snapshot.yaml` workflow publishes the
-artefacts (native libs included — see [Runtime](#runtime)) to Sonatype Central snapshots on
-every push to `compose-ai-tools`, so a `tui.enabled=true` build just resolves them. The
-publish-to-mavenLocal dance below is **only** for iterating on the fork's own source locally
-before a snapshot is published.
+**You normally don't need any of this.** The fork publishes its release artefacts (native
+libs included — see [Runtime](#runtime)) to Maven Central, so a default build just resolves
+them. The publish-to-mavenLocal dance below is **only** for iterating on the fork's own source
+locally before a release is published.
 
 ### One-time fork setup (only when modifying the fork)
 
@@ -69,7 +66,7 @@ JAVA_HOME=/path/to/jdk-21 ./gradlew \
 The `publishKotlinMultiplatformPublicationToMavenLocal` half writes the root metadata
 module that links the per-target jars; without it Gradle resolves the JVM jar but can't
 find a `*.module` to read transitive deps from and the build fails with `Could not find
-ee.schimke.composeai.mosaic:mosaic-runtime:0.19.0-SNAPSHOT`. Both halves are required.
+ee.schimke.composeai.mosaic:mosaic-runtime:0.18.0-1`. Both halves are required.
 
 ### Iterating on Mosaic-side changes
 
@@ -85,24 +82,24 @@ cd ../compose-ai-tools
 ./gradlew :tui-cli:installDist
 ```
 
-Gradle's snapshot resolution checks the local Maven cache's mtime against the cached
-metadata — most edits are picked up within seconds; if you hit a stale-resolution issue,
+A local `publishToMavenLocal` publication wins over Maven Central for the fork's group, so the
+rebuild picks it up; if you hit a stale-resolution issue,
 `./gradlew --refresh-dependencies :tui-cli:compileKotlin` forces a recheck.
 
 ## Wiring details
 
 ### `settings.gradle.kts`
 
-Reads `tui.enabled` from `local.properties` into a `tuiEnabled` flag. When the flag is set,
-it adds **both** the Sonatype Central snapshots repo
-(`https://central.sonatype.com/repository/maven-snapshots/`) and `mavenLocal()` to
-`dependencyResolutionManagement.repositories`, each **scoped to the `ee.schimke.composeai.mosaic`
-group** via `content { includeGroup(...) }`. The snapshot repo is the normal source; `mavenLocal()`
-is kept for iterating on the fork locally (`publishToMavenLocal`) and wins when a local
-publication is present. Scoping matters: an unscoped repo would let a stale snapshot in `~/.m2`
-or on Sonatype shadow whatever's in Maven Central, a well-known way to make builds
-non-reproducible. The same flag also guards `include(":tui-cli")`, so when it's unset the module
-isn't part of the build and nothing resolves the snapshot.
+Reads `tui.enabled` from `local.properties` into a `tuiEnabled` flag, **defaulting to `true`**.
+When enabled (the default), it adds `mavenLocal()` to
+`dependencyResolutionManagement.repositories`, **scoped to the `ee.schimke.composeai.mosaic`
+group** via `content { includeGroup(...) }`. The fork's release artefacts resolve from the
+shared `mavenCentral()`; `mavenLocal()` is kept only for iterating on the fork locally
+(`publishToMavenLocal`) and wins when a local publication is present. Scoping matters: an
+unscoped `mavenLocal()` would let a stale copy in `~/.m2` shadow whatever's in Maven Central, a
+well-known way to make builds non-reproducible. The same flag also guards `include(":tui-cli")`,
+so setting `tui.enabled=false` drops the module from the build and nothing resolves the Mosaic
+dependency.
 
 The earlier draft of this wiring used `includeBuild("../mosaic")` for composite-build
 substitution instead. That doesn't work today because Mosaic's `build-support` Kotlin
@@ -113,17 +110,17 @@ isolate them by consuming the published snapshot artefact instead.
 
 ### `gradle/libs.versions.toml`
 
-`mosaic = "0.19.0-SNAPSHOT"` matches the fork's `gradle.properties` VERSION_NAME, and
-`mosaic-runtime` points at the `ee.schimke.composeai.mosaic` group the fork publishes under.
-The catalog entry is always declared but inert unless `:tui-cli` is included (i.e. unless
-`tui.enabled=true`). When stable 0.19.0 lands on Maven Central, this file is what we bump to
+`mosaic = "0.18.0-1"` matches the fork's released VERSION_NAME, and `mosaic-runtime` points at
+the `ee.schimke.composeai.mosaic` group the fork publishes under. The catalog entry is always
+declared but inert unless `:tui-cli` is included (i.e. unless `tui.enabled` is left at its
+`true` default). When a newer fork release lands on Maven Central, this file is what we bump to
 consume it.
 
 ## Sandbox vs. real-machine differences (local publish only)
 
 This section applies **only** to the local `publishToMavenLocal` path above — the published
-Sonatype snapshot is built on a CI `macos-15` runner with full network access and needs none
-of these workarounds.
+Maven Central release is built on a CI `macos-15` runner with full network access and needs
+none of these workarounds.
 
 Mosaic's `publishToMavenLocal` reaches three hosts during build setup:
 
@@ -180,9 +177,9 @@ upstream** — they're not part of yschimke/mosaic#1. `git diff` against the for
 
 ## Runtime
 
-The **published Sonatype snapshot ships the JNI native libraries**, so running the TUI
+The **published Maven Central release ships the JNI native libraries**, so running the TUI
 (`compose-preview-tui`) against it engages raw-mode terminal I/O without an
-`UnsatisfiedLinkError`. Verified contents of `mosaic-tty-jvm-0.19.0-SNAPSHOT.jar`:
+`UnsatisfiedLinkError`. Verified contents of `mosaic-tty-jvm-0.18.0-1.jar`:
 
 | Platform | Resource |
 | --- | --- |
@@ -192,26 +189,27 @@ The **published Sonatype snapshot ships the JNI native libraries**, so running t
 
 So the e2e harness at
 [`src/test/kotlin/.../e2e/KittyE2ETest.kt`](src/test/kotlin/ee/schimke/composeai/tui/e2e/KittyE2ETest.kt)
-and any real TUI run resolve the native lib straight from the snapshot — no manual
+and any real TUI run resolve the native lib straight from the Central release — no manual
 `~/.m2` copy needed.
 
 ### Caveat: the local `publishToMavenLocal` path
 
 If you instead publish the fork yourself with the **sandbox patches** above (which comment
 out the cklib / Zig / jextract native steps), the resulting local
-`mosaic-tty-jvm-0.19.0-SNAPSHOT.jar` has **no** `.so` / `.dylib` / `.dll` resources, and a
+`mosaic-tty-jvm-0.18.0-1.jar` has **no** `.so` / `.dylib` / `.dll` resources, and a
 TUI run against it fails with `UnsatisfiedLinkError`. That path is for **build verification
 only**. To exercise the TUI from a sandboxed local publish, either run on the published
-snapshot (the default) or build Mosaic unpatched on a machine with full network access.
+Central release (the default) or build Mosaic unpatched on a machine with full network access.
 
 ## Falling back to upstream
 
-To consume upstream stable Mosaic instead of the fork snapshot:
+To consume upstream stable Mosaic instead of the fork release:
 
-1. Edit `gradle/libs.versions.toml`, set `mosaic` to the stable release, and repoint
-   `mosaic-runtime` at the `com.jakewharton.mosaic` group.
-2. Swap the Sonatype snapshots repo in `settings.gradle.kts` for `mavenCentral()` scoping
-   (or drop the scoped repos entirely once the artefact is on Maven Central).
+1. Edit `gradle/libs.versions.toml`, set `mosaic` to the upstream stable release, and repoint
+   `mosaic-runtime` at the `com.jakewharton.mosaic` group. Both resolve from `mavenCentral()`,
+   so no repository change is needed.
+2. Optionally drop the scoped `mavenLocal()` block in `settings.gradle.kts` if you no longer
+   iterate on the fork locally.
 
-Note that with `tui.enabled` unset none of this is on the build path at all, so a default
-checkout already builds without ever touching the fork.
+Note that setting `tui.enabled=false` drops all of this from the build path, so such a
+checkout builds without ever touching the fork.

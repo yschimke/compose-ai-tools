@@ -139,8 +139,8 @@ class LiveSession(private val scope: CoroutineScope) {
   /**
    * Project-less live mode for a self-contained bundle. [opener] spawns a daemon straight from the
    * bundle (no `daemon-launch.json`, no source tree); the returned session is wired identically to
-   * [enable] **except there is no file watcher** — there is no source to watch, so "live" here means
-   * the daemon is held open for `r`-driven re-renders. [modulePath] is informational only.
+   * [enable] **except there is no file watcher** — there is no source to watch, so "live" here
+   * means the daemon is held open for `r`-driven re-renders. [modulePath] is informational only.
    */
   fun enableBundle(modulePath: String, extensions: Set<String>, opener: () -> RenderSession) {
     closeQuietly()
@@ -174,7 +174,8 @@ class LiveSession(private val scope: CoroutineScope) {
   /**
    * Shared post-open wiring for [enable] and [enableBundle]: register the session, enable
    * extensions, install the notification listener (which harvests `renderFinished.pngPath` into
-   * [State.lastPng]), optionally start a [FileWatcher] over [watchDir], and flip the state to READY.
+   * [State.lastPng]), optionally start a [FileWatcher] over [watchDir], and flip the state to
+   * READY.
    */
   private fun attachSession(
     session: RenderSession,
@@ -197,18 +198,17 @@ class LiveSession(private val scope: CoroutineScope) {
     // Tick on every notification so Compose recomposes. `renderFinished` additionally carries the
     // path the daemon wrote the frame to (`id` + `pngPath`); record it so consumers read the
     // freshest frame from the daemon's own report rather than guessing an on-disk project layout.
-    val ticker =
-      session.onNotification { method, params ->
-        if (method == "renderFinished" && params != null) {
-          val id = (params["id"] as? JsonPrimitive)?.contentOrNull
-          val png = (params["pngPath"] as? JsonPrimitive)?.contentOrNull
-          if (id != null && png != null) {
-            _state.update { it.copy(tick = it.tick + 1, lastPng = it.lastPng + (id to png)) }
-            return@onNotification
-          }
+    val ticker = session.onNotification { method, params ->
+      if (method == "renderFinished" && params != null) {
+        val id = (params["id"] as? JsonPrimitive)?.contentOrNull
+        val png = (params["pngPath"] as? JsonPrimitive)?.contentOrNull
+        if (id != null && png != null) {
+          _state.update { it.copy(tick = it.tick + 1, lastPng = it.lastPng + (id to png)) }
+          return@onNotification
         }
-        _state.update { it.copy(tick = it.tick + 1) }
       }
+      _state.update { it.copy(tick = it.tick + 1) }
+    }
 
     if (watchDir != null) {
       val watcher = FileWatcher(watchDir)

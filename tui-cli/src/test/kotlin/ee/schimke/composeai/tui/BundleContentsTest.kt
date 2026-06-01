@@ -54,7 +54,9 @@ class BundleContentsTest {
     assertTrue(contents.previews.isEmpty())
   }
 
-  /** Builds a PNG+ZIP polyglot: a tiny PNG cover, then a zip with bundle.json + per-preview PNGs. */
+  /**
+   * Builds a PNG+ZIP polyglot: a tiny PNG cover, then a zip with bundle.json + per-preview PNGs.
+   */
   private fun writeBundle(
     cover: String,
     modulePath: String,
