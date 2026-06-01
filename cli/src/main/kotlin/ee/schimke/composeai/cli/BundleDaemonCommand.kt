@@ -9,11 +9,12 @@ import kotlin.system.exitProcess
  * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
  * preview bundle's classpath. The backend follows the bundle's `backend`: a desktop bundle launches
  * the CMP/Skiko daemon (`lib-daemon-desktop` + `lib-renderer`); an android bundle launches the
- * Robolectric daemon (`lib-daemon-android` + `android.jar` + a synthesized `robolectric.properties`,
- * assembled by [AndroidBundleLaunch]). Both speak the same JSON-RPC over stdio via the same
- * `DaemonMain` entry point. Inherits stdio so the parent process (the VS Code extension's bundle
- * viewer panel) can speak the daemon's protocol directly, the same way the Gradle plugin's
- * `composePreviewDaemonStart` works for in-workspace modules.
+ * Robolectric daemon (`lib-daemon-android` + `android.jar`, with the JDK-17 `--add-opens` and
+ * `robolectric.*` mode sysprops from [AndroidBundleLaunch] — the daemon manages its own SDK/
+ * application config, so unlike `bundle render` it carries no `robolectric.properties`). Both speak
+ * the same JSON-RPC over stdio via the same `DaemonMain` entry point. Inherits stdio so the parent
+ * process (the VS Code extension's bundle viewer panel) can speak the daemon's protocol directly,
+ * the same way the Gradle plugin's `composePreviewDaemonStart` works for in-workspace modules.
  *
  * # Layout
  *
@@ -86,13 +87,14 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
 
     // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
     // the CMP/Skiko daemon (lib-daemon-desktop + lib-renderer); an android bundle launches the
-    // Robolectric daemon (lib-daemon-android + android.jar + a synthesized robolectric.properties),
-    // reusing the Phase 1 [AndroidBundleLaunch] assembly. Both speak the same JSON-RPC over stdio
-    // via the same `DaemonMain` entry point, so only the classpath / JVM args / sysprops differ.
+    // Robolectric daemon (lib-daemon-android + android.jar), reusing the Phase 1
+    // [AndroidBundleLaunch]
+    // jvmArgs + robolectric.* sysprops. Both speak the same JSON-RPC over stdio via the same
+    // `DaemonMain` entry point, so only the classpath / JVM args / sysprops differ.
     val launch =
       when (manifest.backend) {
         "desktop" -> desktopDaemonLaunch()
-        "android" -> androidDaemonLaunch(workDir)
+        "android" -> androidDaemonLaunch()
         else -> {
           System.err.println(
             "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')."
@@ -192,16 +194,21 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   /**
    * Assemble the Robolectric daemon launch for an `backend="android"` bundle. The Android daemon
    * ([ee.schimke.composeai.daemon.DaemonMain] in `:daemon:android`) bundles its own Robolectric
-   * render engine, so it needs only its own sidecar jars + `android.jar` (discovery stub) + a
-   * synthesized `robolectric.properties` on the classpath, plus the JDK-17 `--add-opens` args and
-   * the `robolectric.*` system properties from [AndroidBundleLaunch].
+   * render engine and manages its own Robolectric config: its `RobolectricHost.SandboxRunner` pins
+   * `@Config(sdk = 35)` and supplies the stub `Application` via `buildGlobalConfig`, and it does
+   * NOT read a renderer-package `robolectric.properties` (that file is scoped to
+   * `ee.schimke.composeai.renderer`; the daemon's runner is in `ee.schimke.composeai.daemon`). So
+   * we pass exactly what the Gradle Android daemon launch passes (AndroidPreviewSupport): the
+   * JDK-17 `--add-opens` args plus the `robolectric.*` mode sysprops — nothing that would falsely
+   * imply the SDK is configurable here. The `-Dcomposeai.bundle.androidSdk` override and
+   * synthesized `robolectric.properties` apply to the one-shot `bundle render` path only, not the
+   * daemon.
    *
-   * Phase 1's [AndroidBundleLaunch] already owns the deterministic assembly. What's still Phase 2
-   * (and only validatable in the SDK-gated Android CI chain): packaging `:daemon:android` into the
-   * CLI distribution as `lib-daemon-android/` — until then this surfaces an actionable diagnostic,
-   * and stays exercisable via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`.
+   * Still Phase 2 (only validatable in the SDK-gated Android CI chain): packaging `:daemon:android`
+   * into the CLI distribution as `lib-daemon-android/` — until then this surfaces an actionable
+   * diagnostic, and stays exercisable via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`.
    */
-  private fun androidDaemonLaunch(workDir: File): DaemonLaunch {
+  private fun androidDaemonLaunch(): DaemonLaunch {
     val daemonJars = locateSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
@@ -221,14 +228,10 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           )
           exitProcess(1)
         }
-    val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
-    val configRoot =
-      launch.writeRobolectricConfig(workDir.resolve("robolectric-config").apply { mkdirs() })
+    val launch = AndroidBundleLaunch()
     return DaemonLaunch(
       classpath =
-        (daemonJars + listOf(androidJar, configRoot)).joinToString(File.pathSeparator) {
-          it.absolutePath
-        },
+        (daemonJars + listOf(androidJar)).joinToString(File.pathSeparator) { it.absolutePath },
       jvmArgs = launch.jvmArgs(),
       sysProps = launch.robolectricSystemProperties().map { (k, v) -> "-D$k=$v" },
     )
