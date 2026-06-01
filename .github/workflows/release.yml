@@ -78,7 +78,12 @@ jobs:
   # GitHub Release asset (see `build-applications` below) — the Maven jar is
   # the library face of the same code.
   publish-gradle-plugin:
-    needs: [build-applications, build-vscode-extension]
+    # Gate the irreversible Maven Central publish on EVERY build job, including the per-OS viewer
+    # matrix. The viewer uber jar used to build inside `build-applications` (so a viewer failure
+    # already blocked publishing); now that it lives in `build-viewer-artifacts`, that job must gate
+    # publishing too — otherwise a Linux/macOS/Windows viewer build that fails after CLI/MCP/VSIX
+    # succeed could let Maven Central publishing run, leaving an unrebuildable partial release.
+    needs: [build-applications, build-viewer-artifacts, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -319,8 +324,9 @@ jobs:
           printf '%s\n' "$output"
 
   release:
-    # `publish-gradle-plugin` transitively gates on `build-applications` (CLI/MCP dists); add the
-    # per-OS viewer matrix so the Release waits for the uber jars + `.deb`/`.dmg`/`.msi` too.
+    # `publish-gradle-plugin` already gates on all three build jobs (CLI/MCP, the per-OS viewer
+    # matrix, and the VSIX). `build-viewer-artifacts` is listed explicitly too so this job can
+    # download its uber-jar + installer artifacts — the redundant edge documents that consumption.
     needs: [publish-gradle-plugin, build-viewer-artifacts]
     runs-on: ubuntu-latest
     permissions:
