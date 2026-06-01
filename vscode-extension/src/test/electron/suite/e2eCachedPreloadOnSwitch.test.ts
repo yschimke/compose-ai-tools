@@ -95,12 +95,14 @@ function firstNonEmptySetPreviews(
 }
 
 /**
- * Per-attempt wait budget for a single prime render. A render runs through
- * `gradleService`, which caps each Gradle task at 5 minutes
- * (`TASK_TIMEOUT_MS`) and fires `cancelRunTask` on expiry. Budget the wait
- * just past that cap so a render completing near the cap still posts its
- * `setPreviews`, while a wedged one is observed as "no setPreviews"
- * shortly after the cap kills it.
+ * Wall-clock ceiling for one whole prime attempt — the awaited Gradle
+ * render *and* the subsequent wait for its `setPreviews`, together (see
+ * `primeModule`). A render runs through `gradleService`, which caps each
+ * Gradle task at 5 minutes (`TASK_TIMEOUT_MS`) and fires `cancelRunTask`
+ * on expiry; budget just past that cap so a render completing near it
+ * still posts its `setPreviews`, while a wedged one is abandoned shortly
+ * after the cap kills it. Because this bounds the *entire* attempt (not
+ * just the wait), `SUITE_TIMEOUT_MS` below can be derived from it directly.
  */
 const PRIME_ATTEMPT_BUDGET_MS = 6 * 60_000;
 /** Prime attempts per module (one retry on a freed build lock). */
@@ -130,18 +132,24 @@ const SUITE_TIMEOUT_MS =
  * `setPreviews`, leaving ≥2 PNGs in `renderDir` for the module-switch test
  * to preload.
  *
- * Bounded + retried on purpose. Each render is killed by gradleService's
- * 5-minute task cap on expiry, and `RealGradleApi` honours that cancel by
- * terminating the gradlew client and releasing its build lock — so we
- * budget the wait just past that cap (see `PRIME_ATTEMPT_BUDGET_MS`) and
- * retry once on the freed lock. A render that's genuinely progressing
- * always completes inside the 5-minute task cap, so the budget never
- * truncates a healthy-but-slow cold render. The suite timeout
- * (`SUITE_TIMEOUT_MS`) is sized to outlast every attempt for both modules
- * so this throws an attributable error rather than tripping the hook cap.
- * On failure we dump the Compose Preview output channel — the underlying
- * render rejection is otherwise swallowed by the refresh scheduler,
- * leaving only a bare "timed out" with no Gradle context.
+ * Bounded + retried on purpose. `triggerRefresh` *awaits* the Gradle
+ * render (gradleService caps it at the 5-minute `TASK_TIMEOUT_MS` and, via
+ * `RealGradleApi`, kills the gradlew client + releases its build lock on
+ * expiry); on a render that times out without producing a manifest the
+ * refresh resolves *without* posting `setPreviews`. So the render's
+ * blocking time and the subsequent `setPreviews` wait must share a single
+ * budget — otherwise a slow-failing attempt costs ~5m (render) +
+ * `PRIME_ATTEMPT_BUDGET_MS` (wait) and the suite timeout, derived from
+ * attempts × budget alone, fires before this reaches its diagnostic throw.
+ * We therefore race the whole attempt (refresh + wait) against one
+ * `PRIME_ATTEMPT_BUDGET_MS` deadline, then retry once on the freed lock
+ * (the retry's refresh cancels any render still in flight from the
+ * abandoned attempt). A healthy render always completes inside the
+ * 5-minute task cap and posts `setPreviews` before the refresh resolves,
+ * so the budget never truncates a healthy-but-slow cold render. On failure
+ * we dump the Compose Preview output channel — the underlying render
+ * rejection is otherwise swallowed by the refresh scheduler, leaving only
+ * a bare "timed out" with no Gradle context.
  */
 async function primeModule(
     api: ComposePreviewTestApi,
@@ -155,7 +163,24 @@ async function primeModule(
             `[preload-e2e] priming ${label} (attempt ${attempt}/${PRIME_MAX_ATTEMPTS})`,
         );
         api.resetMessages();
-        try {
+        // One deadline covering refresh + wait, so a render that blocks up
+        // to its task cap before failing can't push the attempt past the
+        // budget the suite timeout is sized against.
+        let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+        const budget = new Promise<never>((_, reject) => {
+            budgetTimer = setTimeout(
+                () =>
+                    reject(
+                        new Error(
+                            `${label} prime attempt ${attempt} exceeded ${
+                                PRIME_ATTEMPT_BUDGET_MS / 1000
+                            }s budget`,
+                        ),
+                    ),
+                PRIME_ATTEMPT_BUDGET_MS,
+            );
+        });
+        const work = (async () => {
             await api.triggerRefresh(file, /* force */ true, "full");
             await waitFor(
                 `non-empty setPreviews for ${label} prime`,
@@ -163,6 +188,9 @@ async function primeModule(
                 500,
                 () => firstNonEmptySetPreviews(api),
             );
+        })();
+        try {
+            await Promise.race([work, budget]);
             assert.ok(
                 listPngs(renderDir).length >= 2,
                 `${label} prime produced no PNGs in ${renderDir}`,
@@ -178,6 +206,13 @@ async function primeModule(
             for (const line of api.getOutputChannelTail(80)) {
                 console.log(`[preload-e2e]   [out] ${line}`);
             }
+        } finally {
+            if (budgetTimer) clearTimeout(budgetTimer);
+            // If the budget won the race the `work` promise is still live;
+            // swallow its eventual rejection so it doesn't surface as an
+            // unhandled rejection (the next attempt's refresh cancels the
+            // render it left in flight).
+            void work.catch(() => {});
         }
     }
     throw lastErr;
