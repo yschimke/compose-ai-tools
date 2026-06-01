@@ -56,20 +56,31 @@ class AndroidBundleLaunch(
     )
 
   /**
-   * Robolectric / renderer system properties. Mirrors the static half of
-   * `AndroidPreviewClasspath.buildSystemProperties(...)`; the renderer reads `composeai.render.
-   * manifest` (the extracted `previews.json`) and `composeai.render.outputDir` to drive the batch.
+   * Robolectric render flags shared by the one-shot renderer ([BundleRenderer]) and the daemon
+   * ([BundleDaemonCommand]). Mirrors the `robolectric.*` half of
+   * `AndroidPreviewClasspath.buildSystemProperties(...)`. The daemon uses just these — it routes
+   * previews via `composeai.daemon.userClassDirs` / `previewsJsonPath`, not the render-batch props.
    */
-  fun systemProperties(manifestPath: String, outputDir: String): Map<String, String> =
+  fun robolectricSystemProperties(): Map<String, String> =
     linkedMapOf(
       "robolectric.graphicsMode" to "NATIVE",
       "robolectric.looperMode" to "PAUSED",
       "robolectric.conscryptMode" to "OFF",
       "robolectric.pixelCopyRenderMode" to "hardware",
       "roborazzi.test.record" to "true",
-      "composeai.render.manifest" to manifestPath,
-      "composeai.render.outputDir" to outputDir,
     )
+
+  /**
+   * [robolectricSystemProperties] plus the one-shot renderer's batch I/O props: the renderer reads
+   * `composeai.render.manifest` (the extracted `previews.json`) and `composeai.render.outputDir` to
+   * render the whole manifest in a single subprocess.
+   */
+  fun systemProperties(manifestPath: String, outputDir: String): Map<String, String> =
+    robolectricSystemProperties() +
+      linkedMapOf(
+        "composeai.render.manifest" to manifestPath,
+        "composeai.render.outputDir" to outputDir,
+      )
 
   /**
    * The package-level `robolectric.properties` body Robolectric merges for
