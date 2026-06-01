@@ -486,17 +486,57 @@ def _bounds_close(a: str | None, b: str | None, tol: int) -> bool:
     return all(abs(x - y) <= tol for x, y in zip(pa, pb))
 
 
+def _has_perfect_matching(
+    left: list[str | None], right: list[str | None], tol: int
+) -> bool:
+    """True when ``left`` and ``right`` rects pair off 1:1 within ``tol``.
+
+    A current rect "matches" a baseline rect when [_bounds_close]; this finds
+    a maximum bipartite matching (Kuhn's augmenting paths) and reports whether
+    every rect is paired. Greedy pairing is wrong here: when tolerance windows
+    overlap, an early rect can grab the only partner a later rect needs even
+    though a complete pairing exists by a different assignment (e.g. baselines
+    `0,0,40,40`/`8,0,48,40` vs currents `4,0,44,40`/`0,0,40,40`). The augmenting
+    search reassigns around that, so overlapping jitter on dense duplicate
+    findings (repeated unlabeled rows) doesn't reintroduce false "changed".
+
+    Per-preview finding counts are tiny, so the O(V·E) search is cheap.
+    """
+    if len(left) != len(right):
+        return False
+    adj: list[list[int]] = [
+        [j for j, rb in enumerate(right) if _bounds_close(lb, rb, tol)]
+        for lb in left
+    ]
+    match_right: list[int] = [-1] * len(right)
+
+    def augment(u: int, seen: list[bool]) -> bool:
+        for v in adj[u]:
+            if seen[v]:
+                continue
+            seen[v] = True
+            if match_right[v] == -1 or augment(match_right[v], seen):
+                match_right[v] = u
+                return True
+        return False
+
+    for u in range(len(left)):
+        if not augment(u, [False] * len(right)):
+            return False
+    return True
+
+
 def _findings_equivalent(
     current: list[dict], baseline: list[dict], tol: int = BOUNDS_TOLERANCE_PX
 ) -> bool:
     """True when two findings lists describe the same a11y state.
 
     Findings are grouped by their bounds-free [_finding_signature]; within a
-    signature each current rect must pair off (greedily, 1:1) with a distinct
-    baseline rect that's [_bounds_close]. So a clean preview matches an
-    absent/clean baseline (both empty → equivalent), pixel jitter on an
-    existing finding is absorbed, but an added/removed finding or one that
-    moved beyond ``tol`` makes the lists diverge.
+    signature the current and baseline rects must pair off 1:1 within ``tol``
+    via [_has_perfect_matching]. So a clean preview matches an absent/clean
+    baseline (both empty → equivalent), pixel jitter on an existing finding is
+    absorbed, but an added/removed finding or one that moved beyond ``tol``
+    makes the lists diverge.
 
     Multiple findings sharing a signature (e.g. several unlabeled rows) keep
     their own rects, so two genuinely distinct items more than ``tol`` apart
@@ -511,18 +551,10 @@ def _findings_equivalent(
 
     if by_sig_cur.keys() != by_sig_base.keys():
         return False
-    for sig, cur_bounds in by_sig_cur.items():
-        remaining = list(by_sig_base[sig])
-        if len(cur_bounds) != len(remaining):
-            return False
-        for cb in cur_bounds:
-            for i, bb in enumerate(remaining):
-                if _bounds_close(cb, bb, tol):
-                    remaining.pop(i)
-                    break
-            else:
-                return False
-    return True
+    return all(
+        _has_perfect_matching(cur_bounds, by_sig_base[sig], tol)
+        for sig, cur_bounds in by_sig_cur.items()
+    )
 
 
 def cmd_comment(args: argparse.Namespace) -> int:

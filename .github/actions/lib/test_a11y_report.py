@@ -681,6 +681,21 @@ class CommentTest(unittest.TestCase):
         body = self._run_comment([current], baseline_entries=[baseline])
         self.assertIn("<!-- a11y-report -->", body)
 
+    def test_overlapping_tolerance_windows_still_match(self):
+        # Same-signature findings whose tolerance windows overlap must pair off
+        # via a complete assignment, not a greedy first-come grab. With tol=4,
+        # baselines 0,0,40,40 / 8,0,48,40 and currents 4,0,44,40 / 0,0,40,40
+        # only match 1:1 if the matcher reassigns (4,..→8,.. ; 0,..→0,..).
+        def at(bounds):
+            f = dict(_finding(level="ERROR"))
+            f["boundsInScreen"] = bounds
+            return f
+
+        baseline = self._entry(findings=[at("0,0,40,40"), at("8,0,48,40")])
+        current = self._entry(findings=[at("4,0,44,40"), at("0,0,40,40")])
+        body = self._run_comment([current], baseline_entries=[baseline])
+        self.assertEqual(body, "")
+
     def test_resolved_preview_listed_when_removed(self):
         # A preview that carried a finding on the baseline but is gone now
         # should be called out as resolved.
