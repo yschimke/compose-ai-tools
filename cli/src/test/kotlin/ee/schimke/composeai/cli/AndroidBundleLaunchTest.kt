@@ -42,6 +42,20 @@ class AndroidBundleLaunchTest {
   }
 
   @Test
+  fun `robolectric-only system properties omit the render batch io props`() {
+    // The daemon path consumes these (it routes via userClassDirs/previewsJsonPath) and must NOT
+    // carry the one-shot renderer's manifest/outputDir props.
+    val props = AndroidBundleLaunch().robolectricSystemProperties()
+    assertEquals("NATIVE", props["robolectric.graphicsMode"])
+    assertEquals("PAUSED", props["robolectric.looperMode"])
+    assertEquals("OFF", props["robolectric.conscryptMode"])
+    assertEquals("hardware", props["robolectric.pixelCopyRenderMode"])
+    assertEquals("true", props["roborazzi.test.record"])
+    assertTrue(!props.containsKey("composeai.render.manifest"))
+    assertTrue(!props.containsKey("composeai.render.outputDir"))
+  }
+
+  @Test
   fun `robolectric properties pin the sdk, graphics mode, stub application and font shadow`() {
     val body = AndroidBundleLaunch(sdkLevel = 34).robolectricPropertiesBody()
     val lines = body.lines()

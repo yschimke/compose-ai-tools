@@ -6,9 +6,13 @@ import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
 
 /**
- * `compose-preview bundle daemon <bundle.png>` — spawn the desktop daemon JVM bound to a packed
- * preview bundle's classpath. Inherits stdio so the parent process (the VS Code extension's bundle
- * viewer panel) can speak the daemon's JSON-RPC protocol directly, the same way the Gradle plugin's
+ * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
+ * preview bundle's classpath. The backend follows the bundle's `backend`: a desktop bundle launches
+ * the CMP/Skiko daemon (`lib-daemon-desktop` + `lib-renderer`); an android bundle launches the
+ * Robolectric daemon (`lib-daemon-android` + `android.jar` + a synthesized `robolectric.properties`,
+ * assembled by [AndroidBundleLaunch]). Both speak the same JSON-RPC over stdio via the same
+ * `DaemonMain` entry point. Inherits stdio so the parent process (the VS Code extension's bundle
+ * viewer panel) can speak the daemon's protocol directly, the same way the Gradle plugin's
  * `composePreviewDaemonStart` works for in-workspace modules.
  *
  * # Layout
@@ -69,11 +73,8 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     // bundles) and `maven` coordinates resolved from local repos (the default detached bundles). A
     // resolver miss or hash mismatch warns but never fails — same contract as `bundle render`.
     val libJars = BundleReader.extractEmbeddedLibs(zipBytes, libsDir)
-    val mavenCoords =
-      BundleReader.readMetadata(file)
-        .manifest
-        .classpath
-        .filterIsInstance<BundleReader.ClasspathEntry.Maven>()
+    val manifest = BundleReader.readMetadata(file).manifest
+    val mavenCoords = manifest.classpath.filterIsInstance<BundleReader.ClasspathEntry.Maven>()
     val resolvedJars =
       CoordinateResolver(warn = { System.err.println("[bundle-daemon] $it") })
         .resolveAll(mavenCoords)
@@ -83,51 +84,48 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         it.absolutePath
       }
 
-    val daemonJars = locateSidecarJars("lib-daemon-desktop")
-    if (daemonJars.isEmpty()) {
-      System.err.println(
-        "bundle daemon: no daemon jars found. Looked in `${sidecarSearchDescription("lib-daemon-desktop")}`; " +
-          "either build the CLI via `./gradlew :cli:installDist` or set " +
-          "`-Dcomposeai.cli.libDaemonDesktopDir=<install-root/lib-daemon-desktop>`."
-      )
-      exitProcess(1)
-    }
-    val rendererJars = locateSidecarJars("lib-renderer")
-    if (rendererJars.isEmpty()) {
-      System.err.println(
-        "bundle daemon: no renderer jars found. Looked in `${sidecarSearchDescription("lib-renderer")}`; " +
-          "either build the CLI via `./gradlew :cli:installDist` or set " +
-          "`-Dcomposeai.cli.libRendererDir=<install-root/lib-renderer>`."
-      )
-      exitProcess(1)
-    }
+    // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
+    // the CMP/Skiko daemon (lib-daemon-desktop + lib-renderer); an android bundle launches the
+    // Robolectric daemon (lib-daemon-android + android.jar + a synthesized robolectric.properties),
+    // reusing the Phase 1 [AndroidBundleLaunch] assembly. Both speak the same JSON-RPC over stdio
+    // via the same `DaemonMain` entry point, so only the classpath / JVM args / sysprops differ.
+    val launch =
+      when (manifest.backend) {
+        "desktop" -> desktopDaemonLaunch()
+        "android" -> androidDaemonLaunch(workDir)
+        else -> {
+          System.err.println(
+            "bundle daemon: backend '${manifest.backend}' not supported (expected 'desktop' or 'android')."
+          )
+          exitProcess(1)
+        }
+      }
 
-    val classpath = (daemonJars + rendererJars).joinToString(File.pathSeparator) { it.absolutePath }
     val javaBin = locateJava()
     val command = buildList {
       add(javaBin)
-      add("--enable-native-access=ALL-UNNAMED")
+      addAll(launch.jvmArgs)
       // PROTOCOL.md § 3a — the daemon advertises capabilities lazily; the client
       // (BundleViewerPanel's DaemonClient) does the `initialize` round-trip on stdin.
       add("-D${USER_CLASS_DIRS_PROP}=$userClassPath")
       add("-D${PREVIEWS_JSON_PATH_PROP}=${previewsJson.absolutePath}")
       // Tag the temp dir on the daemon so logs / debug dumps make it discoverable.
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
+      for (prop in launch.sysProps) add(prop)
       add("-cp")
-      add(classpath)
+      add(launch.classpath)
       add("ee.schimke.composeai.daemon.DaemonMain")
     }
 
     if (verbose) {
       System.err.println("[bundle-daemon] working dir: ${workDir.absolutePath}")
+      System.err.println("[bundle-daemon] backend: ${manifest.backend}")
       System.err.println("[bundle-daemon] classes dir: ${classesDir.absolutePath}")
       System.err.println("[bundle-daemon] embedded lib jars: ${libJars.size}")
       System.err.println(
         "[bundle-daemon] resolved coordinate jars: ${resolvedJars.size} / ${mavenCoords.size}"
       )
       System.err.println("[bundle-daemon] previews.json: ${previewsJson.absolutePath}")
-      System.err.println("[bundle-daemon] daemon jars: ${daemonJars.size}")
-      System.err.println("[bundle-daemon] renderer jars: ${rendererJars.size}")
       System.err.println("[bundle-daemon] launching: ${command.joinToString(" ")}")
     }
 
@@ -158,15 +156,116 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     exitProcess(exitCode)
   }
 
+  /** The backend-specific half of the daemon launch: classpath, JVM args, and extra `-D` props. */
+  private data class DaemonLaunch(
+    val classpath: String,
+    val jvmArgs: List<String>,
+    val sysProps: List<String>,
+  )
+
+  private fun desktopDaemonLaunch(): DaemonLaunch {
+    val daemonJars = locateSidecarJars("lib-daemon-desktop")
+    if (daemonJars.isEmpty()) {
+      System.err.println(
+        "bundle daemon: no daemon jars found. Looked in `${sidecarSearchDescription("lib-daemon-desktop")}`; " +
+          "either build the CLI via `./gradlew :cli:installDist` or set " +
+          "`-Dcomposeai.cli.libDaemonDesktopDir=<install-root/lib-daemon-desktop>`."
+      )
+      exitProcess(1)
+    }
+    val rendererJars = locateSidecarJars("lib-renderer")
+    if (rendererJars.isEmpty()) {
+      System.err.println(
+        "bundle daemon: no renderer jars found. Looked in `${sidecarSearchDescription("lib-renderer")}`; " +
+          "either build the CLI via `./gradlew :cli:installDist` or set " +
+          "`-Dcomposeai.cli.libRendererDir=<install-root/lib-renderer>`."
+      )
+      exitProcess(1)
+    }
+    return DaemonLaunch(
+      classpath = (daemonJars + rendererJars).joinToString(File.pathSeparator) { it.absolutePath },
+      jvmArgs = listOf("--enable-native-access=ALL-UNNAMED"),
+      sysProps = emptyList(),
+    )
+  }
+
+  /**
+   * Assemble the Robolectric daemon launch for an `backend="android"` bundle. The Android daemon
+   * ([ee.schimke.composeai.daemon.DaemonMain] in `:daemon:android`) bundles its own Robolectric
+   * render engine, so it needs only its own sidecar jars + `android.jar` (discovery stub) + a
+   * synthesized `robolectric.properties` on the classpath, plus the JDK-17 `--add-opens` args and
+   * the `robolectric.*` system properties from [AndroidBundleLaunch].
+   *
+   * Phase 1's [AndroidBundleLaunch] already owns the deterministic assembly. What's still Phase 2
+   * (and only validatable in the SDK-gated Android CI chain): packaging `:daemon:android` into the
+   * CLI distribution as `lib-daemon-android/` — until then this surfaces an actionable diagnostic,
+   * and stays exercisable via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`.
+   */
+  private fun androidDaemonLaunch(workDir: File): DaemonLaunch {
+    val daemonJars = locateSidecarJars("lib-daemon-android")
+    if (daemonJars.isEmpty()) {
+      System.err.println(
+        "bundle daemon: backend=android needs the Android daemon sidecar, which is not packaged in " +
+          "this CLI build yet (Phase 2). Point at a built one via " +
+          "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>`. Looked in " +
+          "`${sidecarSearchDescription("lib-daemon-android")}`."
+      )
+      exitProcess(1)
+    }
+    val androidJar =
+      AndroidBundleLaunch.resolveAndroidJar(localPropertiesFile = findLocalProperties())
+        ?: run {
+          System.err.println(
+            "bundle daemon: backend=android needs android.jar — set ANDROID_HOME / " +
+              "ANDROID_SDK_ROOT, or run from a project whose local.properties has sdk.dir."
+          )
+          exitProcess(1)
+        }
+    val launch = AndroidBundleLaunch(sdkLevel = AndroidBundleLaunch.sdkLevelFromSystemProperty())
+    val configRoot =
+      launch.writeRobolectricConfig(workDir.resolve("robolectric-config").apply { mkdirs() })
+    return DaemonLaunch(
+      classpath =
+        (daemonJars + listOf(androidJar, configRoot)).joinToString(File.pathSeparator) {
+          it.absolutePath
+        },
+      jvmArgs = launch.jvmArgs(),
+      sysProps = launch.robolectricSystemProperties().map { (k, v) -> "-D$k=$v" },
+    )
+  }
+
+  /**
+   * Find the nearest `local.properties` (carrying `sdk.dir`) by walking up from the working
+   * directory — `bundle daemon` runs outside Gradle but is commonly launched from inside an Android
+   * project whose SDK is configured only there. Mirrors `BundleRenderer.findLocalProperties`.
+   */
+  private fun findLocalProperties(): File? {
+    var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+    repeat(8) {
+      val d = dir ?: return null
+      File(d, "local.properties")
+        .takeIf { it.isFile }
+        ?.let {
+          return it
+        }
+      dir = d.parentFile
+    }
+    return null
+  }
+
   private fun printHelp() {
     println(
       """
-      compose-preview bundle daemon — start the desktop daemon against a packed bundle
+      compose-preview bundle daemon — start the preview daemon against a packed bundle
 
       Usage:
         compose-preview bundle daemon <bundle.png | URL> [-v]
 
       <bundle> is a local path or an http(s)/file URL (downloaded first).
+
+      The daemon backend follows the bundle's `backend`: a desktop bundle launches the CMP/Skiko
+      daemon; an android bundle launches the Robolectric daemon (needs a local Android SDK for
+      android.jar — via ANDROID_HOME/ANDROID_SDK_ROOT or local.properties `sdk.dir`).
 
       Inherits stdio: the spawned daemon JVM speaks JSON-RPC over stdin/stdout and writes log
       lines to stderr, the same protocol `composePreviewDaemonStart` uses in a Gradle module.
@@ -264,6 +363,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val sysprop =
       when (sidecarName) {
         "lib-daemon-desktop" -> "composeai.cli.libDaemonDesktopDir"
+        "lib-daemon-android" -> "composeai.cli.libDaemonAndroidDir"
         "lib-renderer" -> "composeai.cli.libRendererDir"
         else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
       }
@@ -287,6 +387,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     val sysprop =
       when (sidecarName) {
         "lib-daemon-desktop" -> "composeai.cli.libDaemonDesktopDir"
+        "lib-daemon-android" -> "composeai.cli.libDaemonAndroidDir"
         "lib-renderer" -> "composeai.cli.libRendererDir"
         else -> "composeai.cli.${sidecarName.replace('-', '.')}Dir"
       }
