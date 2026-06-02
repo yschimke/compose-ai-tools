@@ -22,6 +22,11 @@ plugins {
 dependencies {
   api(project(":data-render-core"))
 
+  // Okio-based file IO (`SystemFileSystem`) for data-product reads, history sidecars, bundle IR
+  // replay, and forensics dumps. `implementation` — Okio stays an internal detail; daemon/core's
+  // public surface keeps its java.io.File signatures.
+  implementation(project(":common-io"))
+
   // Protocol message types are @Serializable. Exposed as `api` so downstream
   // daemon modules (e.g. :daemon:android) get
   // kotlinx-serialization-json on their compile classpath without re-declaring

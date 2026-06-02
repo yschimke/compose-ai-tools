@@ -1,8 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * Process-static lookup of a bundle's captured **intermediate representations** for IR replay
@@ -49,7 +51,10 @@ object BundleIrReplayStore {
   fun loadFrom(bundleManifestFile: File, irDir: File): Map<String, Entry> {
     val descriptors =
       runCatching {
-          JSON.decodeFromString(BundleManifestLite.serializer(), bundleManifestFile.readText())
+          JSON.decodeFromString(
+              BundleManifestLite.serializer(),
+              SystemFileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
+            )
             .intermediateRepresentations
         }
         .getOrElse { emptyList() }
@@ -61,8 +66,13 @@ object BundleIrReplayStore {
         ir.resourcesPath
           ?.let { File(irDir, it.substringAfterLast('/')) }
           ?.takeIf { it.isFile }
-          ?.readBytes()
-      out[ir.previewId] = Entry(ir.format, bytesFile.readBytes(), resourcesBytes)
+          ?.let { SystemFileSystem.read(it.path.toPath()) { readByteArray() } }
+      out[ir.previewId] =
+        Entry(
+          ir.format,
+          SystemFileSystem.read(bytesFile.path.toPath()) { readByteArray() },
+          resourcesBytes,
+        )
     }
     return out
   }

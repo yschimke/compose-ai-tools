@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.forensics
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okio.Path.Companion.toPath
 
 /**
  * Diagnostic library for the [classloader-forensics dump design](
@@ -85,7 +87,7 @@ object ClassloaderForensics {
     }
 
     out.parentFile?.mkdirs()
-    out.writeText(json.encodeToString(root))
+    SystemFileSystem.write(out.path.toPath()) { writeUtf8(json.encodeToString(root)) }
   }
 
   /**
@@ -103,8 +105,10 @@ object ClassloaderForensics {
    * 5. The remainder (loader-name diffs that don't affect identity, package version diffs).
    */
   fun diff(a: File, b: File, mdOut: File, jsonOut: File) {
-    val aRoot = json.parseToJsonElement(a.readText()).asObject()
-    val bRoot = json.parseToJsonElement(b.readText()).asObject()
+    val aRoot =
+      json.parseToJsonElement(SystemFileSystem.read(a.path.toPath()) { readUtf8() }).asObject()
+    val bRoot =
+      json.parseToJsonElement(SystemFileSystem.read(b.path.toPath()) { readUtf8() }).asObject()
     val aClasses = aRoot.classesArray(a).map { it.asObject() }.associateBy { it.fqn() }
     val bClasses = bRoot.classesArray(b).map { it.asObject() }.associateBy { it.fqn() }
 
@@ -329,7 +333,7 @@ object ClassloaderForensics {
       put("totalB", bClasses.size)
     }
     jsonOut.parentFile?.mkdirs()
-    jsonOut.writeText(json.encodeToString(jsonReport))
+    SystemFileSystem.write(jsonOut.path.toPath()) { writeUtf8(json.encodeToString(jsonReport)) }
 
     // Markdown summary, sorted by suspected significance.
     val md = buildString {
@@ -434,7 +438,7 @@ object ClassloaderForensics {
       }
     }
     mdOut.parentFile?.mkdirs()
-    mdOut.writeText(md)
+    SystemFileSystem.write(mdOut.path.toPath()) { writeUtf8(md) }
   }
 
   // ---- per-class capture ------------------------------------------------------------------------

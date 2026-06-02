@@ -1,9 +1,11 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.util.zip.CRC32
+import okio.Path.Companion.toPath
 
 /**
  * Minimal pure-JVM Animated PNG encoder. Used by [DesktopRecordingSession.encode] to assemble the
@@ -168,7 +170,7 @@ object ApngEncoder {
   private data class PngChunk(val type: String, val data: ByteArray)
 
   private fun readPngChunks(file: File): List<PngChunk> {
-    val bytes = file.readBytes()
+    val bytes = SystemFileSystem.read(file.path.toPath()) { readByteArray() }
     require(bytes.size > PNG_SIGNATURE.size) {
       "ApngEncoder: ${file.absolutePath} is too small to be a PNG"
     }
