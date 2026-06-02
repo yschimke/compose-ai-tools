@@ -57,7 +57,16 @@ class IrReplayClassloaderTopologyTest {
     // Child = `userClassDirs` analogue: the carried player lib lives here, and only here.
     val holder =
       UserClassLoaderHolder(urls = listOf(playerDir.toURI().toURL()), parentSupplier = { parent })
-    holder.currentChildLoader() // realised — but the parent-loaded host never consults it
+    val child = holder.currentChildLoader()
+    // The carried player is genuinely loadable *from the child* — even for an `androidx.*` name the
+    // child's own URLs are searched once the parent misses (`super.loadClass` is parent-first, then
+    // `findClass`), so this really does model a lib present in `userClassDirs`. The bug is that the
+    // parent-loaded host below resolves against the parent and never consults this child.
+    assertEquals(
+      "the carried player must be loadable from the child (else the topology isn't modelled)",
+      child,
+      child.loadClass(playerFqn).classLoader,
+    )
 
     val host = parent.loadClass(replayFqn).getDeclaredConstructor().newInstance()
     try {
