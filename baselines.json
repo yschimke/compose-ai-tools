@@ -1053,7 +1053,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
@@ -1230,5 +1230,26 @@
     "renderBasename": "NowPlayingCard_Glimmer_VeniceCanalCats.png",
     "sha256": "841963c4d3f749f6e4980987166c6d7282e21b825a1668e5b288dcdcede5e096",
     "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt"
+  },
+  "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.NowPlayingPanelPreview_Panel \u00b7 Content": {
+    "captureLabel": "",
+    "functionName": "NowPlayingPanelPreview",
+    "renderBasename": "NowPlayingPanelPreview_Panel_Content.png",
+    "sha256": "38226f293281b9be2de223c9b0b65cc6f2193c1ddf71cc5bca00135b91ac2009",
+    "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt"
+  },
+  "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.OrbiterControlsPreview_Orbiter \u00b7 TopControls": {
+    "captureLabel": "",
+    "functionName": "OrbiterControlsPreview",
+    "renderBasename": "OrbiterControlsPreview_Orbiter_TopControls.png",
+    "sha256": "9d55a36b75291350f1240940cdc0456d62f2bc458f8628bf14a49142f0390d82",
+    "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt"
+  },
+  "samples:xr-spatial/com.example.samplexrspatial.SpatialPreviewsKt.SpatialElevationPreview_SpatialElevation \u00b7 Panel": {
+    "captureLabel": "",
+    "functionName": "SpatialElevationPreview",
+    "renderBasename": "SpatialElevationPreview_SpatialElevation_Panel.png",
+    "sha256": "5eb940153d46eae52a21cc0a144264bf17279e795de30b97d77cc5588bee01c8",
+    "sourceFile": "src/main/kotlin/com/example/samplexrspatial/SpatialPreviews.kt"
   }
 }

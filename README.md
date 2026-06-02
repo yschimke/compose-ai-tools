@@ -238,3 +238,11 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_Light.png" width="150" /> |
 | `NowPlayingCard` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-glimmer/NowPlayingCard_Glimmer_VeniceCanalCats.png" width="150" /> |
 
+## samples:xr-spatial
+
+| Preview | Image |
+|---------|-------|
+| `NowPlayingPanelPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/NowPlayingPanelPreview_Panel_Content.png" width="150" /> |
+| `OrbiterControlsPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.png" width="150" /> |
+| `SpatialElevationPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:xr-spatial/SpatialElevationPreview_SpatialElevation_Panel.png" width="150" /> |
+
