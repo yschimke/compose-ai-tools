@@ -23,8 +23,8 @@ class PreviewBundleFormatTest {
   }
 
   @Test
-  fun `current schema version is 5`() {
-    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(5)
+  fun `current schema version is 6`() {
+    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(6)
   }
 
   @Test
