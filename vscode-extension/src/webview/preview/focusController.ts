@@ -2,7 +2,7 @@
 //
 // Lifted verbatim from `behavior.ts`'s `applyLayout` / `publishScopedPreview`
 // / `focusOnCard` / `exitFocus` / `requestFocusedDiff` /
-// `requestLaunchOnDevice` / `toggleA11yOverlay` cluster, plus the four
+// `requestLaunchOnDevice` cluster, plus the
 // `applyXxxButtonState` hooks that drive the focus-mode toolbar. After
 // this lift `behavior.ts` is mostly setup + message-event wiring; the
 // focus-mode behaviour lives here.
@@ -101,6 +101,11 @@ export interface FocusControllerConfig {
     bundleDaemonReady?(): boolean;
     getA11yOverlayId(): string | null;
     setA11yOverlayId(id: string | null): void;
+    /** True when [previewId] is a launcher-widget / app-widget preview — i.e.
+     *  it has surfaced a `compose/launcher-widget` data product. Gates the
+     *  launcher-widget cell-size button so it only appears on widget previews
+     *  rather than every preview in a module that ships the extension. */
+    launcherWidgetAvailable(previewId: string): boolean;
     getFocusIndex(): number;
     setFocusIndex(idx: number): void;
     getPreviousLayout(): "grid" | "flow" | "column";
@@ -189,19 +194,6 @@ export class FocusController {
         });
     }
 
-    applyA11yOverlayButtonState(): void {
-        const inFocus = this.inFocus();
-        const card = inFocus
-            ? this.getVisibleCards()[this.config.getFocusIndex()]
-            : null;
-        this.config.focusToolbar.applyA11yOverlayButtonState({
-            inFocus,
-            earlyFeatures: this.config.earlyFeatures(),
-            focusedPreviewId: card?.dataset.previewId ?? null,
-            a11yOverlayId: this.config.getA11yOverlayId(),
-        });
-    }
-
     /**
      * Push the touch-overlay / keyboard-band / controls toggle state for the
      * focused preview onto the focus-toolbar buttons. These were previously
@@ -239,13 +231,28 @@ export class FocusController {
         this.config.focusToolbar.applyControlsButtonState({
             inFocus,
             focusedPreviewId: previewId,
-            advertised: live.isControlsAdvertised(),
+            // Keyboard input is meaningless on Wear OS surfaces (no software
+            // keyboard), so hide the controls toggle on round-watch previews —
+            // same `data-wear-preview` gate the keyboard-band button uses.
+            advertised:
+                live.isControlsAdvertised() &&
+                card?.dataset.wearPreview !== "1",
             enabled: previewId !== null && live.isControlsEnabled(previewId),
         });
         this.config.focusToolbar.applyLauncherWidgetButtonState({
             inFocus,
             focusedPreviewId: previewId,
-            advertised: live.isLauncherWidgetAdvertised(),
+            // The cell-size picker only makes sense for launcher / app-widget
+            // previews, so gate on the focused preview actually surfacing a
+            // `compose/launcher-widget` data product rather than on any module
+            // in the panel advertising the extension. Also keep the button
+            // visible when a cell-size override is already set (e.g. restored
+            // from persisted state on a webview reload before the payload is
+            // re-cached) so the user can still reset / change it.
+            advertised:
+                previewId !== null &&
+                (this.config.launcherWidgetAvailable(previewId) ||
+                    live.launcherWidgetCellsForPreview(previewId) !== null),
             enabled:
                 previewId !== null &&
                 live.launcherWidgetCellsForPreview(previewId) !== null,
@@ -259,34 +266,6 @@ export class FocusController {
      * than waiting for a next render. When turning ON for a different
      * preview, first turn the previous one off so the wire stays clean.
      */
-    toggleA11yOverlay(): void {
-        // a11y is the graduated bundle — no early-features gate (the chip bar
-        // and the focus-toolbar button are both visible in basic mode, the
-        // host's `setA11yOverlay` handler also drops its gate). Other entry
-        // points (`launch-on-device`, `record`, `export-bundle`) keep theirs.
-        if (!this.inFocus()) return;
-        const card = this.getVisibleCards()[this.config.getFocusIndex()];
-        const previewId = card ? card.dataset.previewId : null;
-        if (!previewId) return;
-        const currentId = this.config.getA11yOverlayId();
-        const turningOn = previewId !== currentId;
-        if (currentId && currentId !== previewId) {
-            this.config.vscode.postMessage({
-                command: "setA11yOverlay",
-                previewId: currentId,
-                enabled: false,
-            });
-        }
-        this.config.setA11yOverlayId(turningOn ? previewId : null);
-        this.config.vscode.postMessage({
-            command: "setA11yOverlay",
-            previewId,
-            enabled: turningOn,
-        });
-        this.applyA11yOverlayButtonState();
-        this.config.inspectorRender(card);
-    }
-
     applyLayout(): void {
         const mode = this.config.filterToolbar.getLayoutValue();
         const inFocus = mode === "focus";
@@ -365,7 +344,6 @@ export class FocusController {
         }
         this.applyInteractiveButtonState();
         this.applyRecordingButtonState();
-        this.applyA11yOverlayButtonState();
         this.applyFocusedToggleButtonStates();
         this.applyEarlyFeatureVisibility();
         this.config.refreshBundleLegend();

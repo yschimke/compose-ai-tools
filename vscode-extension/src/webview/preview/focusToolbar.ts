@@ -26,7 +26,6 @@ export interface FocusToolbarElements {
     btnDiffHead: HTMLButtonElement;
     btnDiffMain: HTMLButtonElement;
     btnLaunchDevice: HTMLButtonElement;
-    btnA11yOverlay: HTMLButtonElement;
     btnInteractive: HTMLButtonElement;
     btnStopInteractive: HTMLButtonElement;
     btnRecording: HTMLButtonElement;
@@ -89,15 +88,6 @@ export interface RecordingButtonState {
     isRecording: boolean;
 }
 
-export interface A11yOverlayButtonState {
-    inFocus: boolean;
-    earlyFeatures: boolean;
-    focusedPreviewId: string | null;
-    /** `previewId` whose accessibility-overlay subscription is on, or
-     *  `null` when no overlay is active. */
-    a11yOverlayId: string | null;
-}
-
 /**
  * Common shape for the three preview-override / interactive-input toggles that
  * follow the focused card (touch overlay, soft-keyboard band, #1203 controls).
@@ -130,12 +120,10 @@ export class FocusToolbarController {
         // sidebar panels gate daemon-readiness per-button via the
         // individual `applyXxxButtonState` hooks).
         const daemonHidden = bundle && !s.bundleDaemonReady;
-        // a11y is the one bundle graduated out of `earlyFeatures` — the
-        // chip-bar filter at `main.ts:2415` already surfaces it in basic
-        // mode, and the focus-toolbar button is the matching focus-mode
-        // entry point. Other early-features buttons (recording, export
-        // bundle, …) stay gated until those features graduate too.
-        this.el.btnA11yOverlay.hidden = daemonHidden || !s.inFocus;
+        // The accessibility overlay no longer has a focus-toolbar button —
+        // it's reachable from the always-visible bundle chip bar at the
+        // bottom (the `a11y` chip graduated out of `earlyFeatures`), which
+        // paints the same overlay boxes via the a11y bundle presenter.
         this.el.btnRecording.hidden =
             daemonHidden || !s.earlyFeatures || !s.inFocus;
         this.el.recordingFormat.hidden =
@@ -216,8 +204,12 @@ export class FocusToolbarController {
                     " other live · click to make this one live too · " +
                     "Shift+click to add without unsubscribing the rest"
                   : "Enter live mode (stream renders) · Shift+click to add to multi-stream";
+        // While live the button doubles as the cancel/stop control, so it
+        // flips to a stop glyph (the `live-on` class keeps it tinted red).
+        // This is the per-card stop in focus mode — the on-image corner stop
+        // is suppressed here by CSS (see `.card-live-stop-btn` in preview.css).
         this.el.btnInteractive.innerHTML = s.isLive
-            ? '<i class="codicon codicon-record" aria-hidden="true"></i>'
+            ? '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>'
             : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';
     }
 
@@ -246,35 +238,6 @@ export class FocusToolbarController {
         this.el.btnRecording.innerHTML = s.isRecording
             ? '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>'
             : '<i class="codicon codicon-record-keys" aria-hidden="true"></i>';
-    }
-
-    /**
-     * D2 — keep the a11y-overlay toggle in lockstep with focus-mode +
-     * the focused card identity. Outside focus mode the button hides;
-     * inside focus mode `aria-pressed` tracks whether the currently
-     * focused preview has the overlay subscription on.
-     */
-    // applyA11yOverlayButtonState applies the in-mode pressed-state +
-    // tooltip refresh; the higher-level visibility gate is owned by
-    // applyButtonVisibility above (and intentionally no longer requires
-    // earlyFeatures, since a11y is the graduated bundle).
-    applyA11yOverlayButtonState(s: A11yOverlayButtonState): void {
-        this.el.btnA11yOverlay.hidden = !s.inFocus;
-        if (!s.inFocus) {
-            this.el.btnA11yOverlay.setAttribute("aria-pressed", "false");
-            return;
-        }
-        const on =
-            s.focusedPreviewId !== null &&
-            s.focusedPreviewId === s.a11yOverlayId;
-        this.el.btnA11yOverlay.setAttribute(
-            "aria-pressed",
-            on ? "true" : "false",
-        );
-        this.el.btnA11yOverlay.title = on
-            ? "Hide accessibility overlay"
-            : "Show accessibility overlay";
-        this.el.btnA11yOverlay.classList.toggle("a11y-overlay-on", on);
     }
 
     /**
