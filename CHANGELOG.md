@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.4](https://github.com/yschimke/compose-ai-tools/compare/v0.12.3...v0.12.4) (2026-06-02)
+
+
+### Bug Fixes
+
+* **cli:** make stageDaemonAndroidLibs build script compile (java.io.File shadowing) ([#1680](https://github.com/yschimke/compose-ai-tools/issues/1680)) ([5d2383b](https://github.com/yschimke/compose-ai-tools/commit/5d2383b60292f0ae42ee2f33d50cf74f8282f3fe))
+
 ## [0.12.3](https://github.com/yschimke/compose-ai-tools/compare/v0.12.2...v0.12.3) (2026-06-02)
 
 
