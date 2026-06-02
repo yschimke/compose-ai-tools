@@ -124,6 +124,14 @@ val functionalTestTask =
       "composeai.functionalTest.androidBundleDaemon",
       androidBundleDaemonE2E.toString(),
     )
+    // #1685 moved the Android daemon runtime out of the CLI install dist into a standalone archive,
+    // so the e2e points the CLI at the staged jars dir (`:cli:stageDaemonAndroidLibs` output) via
+    // `-Dcomposeai.cli.libDaemonAndroidDir`. Passed unconditionally (config-cache-safe, same
+    // rationale as `cliBinary` below); the test asserts it exists past the opt-in gate.
+    systemProperty(
+      "composeai.functionalTest.libDaemonAndroidDir",
+      rootDir.parentFile?.resolve("cli/build/staged-daemon-android-libs")?.absolutePath ?: "",
+    )
     // Paths to the Android sample bundles the test renders. Built by the root build's
     // `:samples:wear:composePreviewBundle` / `:samples:remotecompose:composePreviewBundle`. Passed
     // unconditionally (config-cache-safe, same rationale as `cliBinary` below); the test self-skips

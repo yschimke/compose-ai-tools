@@ -184,7 +184,9 @@ jobs:
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
       # each and render protolayout / remotecompose / classic previews to PNG via the Robolectric
-      # daemon. Guards (1) `lib-daemon-android/` being staged into the CLI dist and (2)
+      # daemon. Guards (1) the Android daemon runtime being staged by `:cli:stageDaemonAndroidLibs`
+      # (post-#1685 it ships as a standalone archive, not inside the CLI dist; the test points the
+      # CLI at the staged dir via `-Dcomposeai.cli.libDaemonAndroidDir`) and (2)
       # `BundleDaemonCommand.composeDaemonClasspath` putting the carried IR-replay libs on the
       # daemon `-cp` (else replay dies with NoClassDefFoundError). The ubuntu-latest image ships an
       # Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT) which the daemon launch resolves android.jar
@@ -196,6 +198,7 @@ jobs:
       - name: Pre-build CLI install + sample bundles + publish plugin
         run: >-
           ./gradlew :cli:installDist
+          :cli:stageDaemonAndroidLibs
           :samples:wear:composePreviewBundle
           :samples:remotecompose:composePreviewBundle
           :gradle-plugin:publishToMavenLocal --stacktrace
