@@ -60,6 +60,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## spatial-view
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![spatial-view/dark](renders/spatial-view.dark.png) |
+| `light` | ![spatial-view/light](renders/spatial-view.light.png) |
+
 ## text-strings
 
 | Theme | Capture |
