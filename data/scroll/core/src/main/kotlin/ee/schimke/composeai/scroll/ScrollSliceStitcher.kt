@@ -1,5 +1,6 @@
 package ee.schimke.composeai.scroll
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.AlphaComposite
 import java.awt.Color
 import java.awt.RenderingHints
@@ -13,6 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import okio.Path.Companion.toPath
 
 /**
  * One captured slice — the on-disk PNG plus the cumulative scroll offset (in layout pixels) the
@@ -56,7 +58,9 @@ fun stitchSlices(slices: List<SliceCapture>, viewportLayoutPx: Int, outputFile: 
 
   val stitched = buildStitchedImage(slices, viewportLayoutPx) ?: return null
   outputFile.parentFile?.mkdirs()
-  ImageIO.write(stitched, "PNG", outputFile)
+  SystemFileSystem.write(outputFile.path.toPath()) {
+    ImageIO.write(stitched, "PNG", outputStream())
+  }
   return outputFile
 }
 
@@ -97,13 +101,17 @@ fun stitchSlicesWithFinalFrame(
   if (slices.isEmpty()) return null
 
   val finalImage =
-    ImageIO.read(finalFrameFile) ?: error("Failed to read final frame PNG: $finalFrameFile")
+    ImageIO.read(
+      SystemFileSystem.read(finalFrameFile.path.toPath()) { readByteArray() }.inputStream()
+    ) ?: error("Failed to read final frame PNG: $finalFrameFile")
 
   // Single slice: no scroll history. The settled final frame IS the
   // preview.
   if (slices.size == 1) {
     outputFile.parentFile?.mkdirs()
-    ImageIO.write(finalImage, "PNG", outputFile)
+    SystemFileSystem.write(outputFile.path.toPath()) {
+      ImageIO.write(finalImage, "PNG", outputStream())
+    }
     return outputFile
   }
 
@@ -132,7 +140,9 @@ fun stitchSlicesWithFinalFrame(
     val anchored = anchorByEdgeButton(content, finalImage)
     if (anchored != null) {
       outputFile.parentFile?.mkdirs()
-      ImageIO.write(anchored, "PNG", outputFile)
+      SystemFileSystem.write(outputFile.path.toPath()) {
+        ImageIO.write(anchored, "PNG", outputStream())
+      }
       return outputFile
     }
   }
@@ -144,7 +154,9 @@ fun stitchSlicesWithFinalFrame(
     // band into the reserved tail via the fallback in
     // [buildStitchedImage], so the normal stitch is already correct.
     outputFile.parentFile?.mkdirs()
-    ImageIO.write(topImage, "PNG", outputFile)
+    SystemFileSystem.write(outputFile.path.toPath()) {
+      ImageIO.write(topImage, "PNG", outputStream())
+    }
     return outputFile
   }
 
@@ -185,7 +197,9 @@ fun stitchSlicesWithFinalFrame(
   }
 
   outputFile.parentFile?.mkdirs()
-  ImageIO.write(composed, "PNG", outputFile)
+  SystemFileSystem.write(outputFile.path.toPath()) {
+    ImageIO.write(composed, "PNG", outputStream())
+  }
   return outputFile
 }
 
@@ -284,7 +298,9 @@ private fun buildStitchedContent(
   if (slices.isEmpty()) return null
 
   val firstImage =
-    ImageIO.read(slices[0].file) ?: error("Failed to read first slice PNG: ${slices[0].file}")
+    ImageIO.read(
+      SystemFileSystem.read(slices[0].file.path.toPath()) { readByteArray() }.inputStream()
+    ) ?: error("Failed to read first slice PNG: ${slices[0].file}")
   val width = firstImage.width
   val sliceH = firstImage.height
   val pxPerLayoutPx = sliceH.toDouble() / viewportLayoutPx.toDouble()
@@ -295,7 +311,9 @@ private fun buildStitchedContent(
         if (i == 0) {
           firstImage
         } else {
-          ImageIO.read(slices[i].file) ?: error("Failed to read slice PNG: ${slices[i].file}")
+          ImageIO.read(
+            SystemFileSystem.read(slices[i].file.path.toPath()) { readByteArray() }.inputStream()
+          ) ?: error("Failed to read slice PNG: ${slices[i].file}")
         }
       require(img.width == width && img.height == sliceH) {
         "Slice dimensions drifted: expected ${width}x$sliceH, got ${img.width}x${img.height} at index $i"
@@ -875,7 +893,9 @@ private fun findBestAnchorMatch(
  * frame.
  */
 fun applyWearPillClip(file: File) {
-  val src = ImageIO.read(file) ?: return
+  val src =
+    ImageIO.read(SystemFileSystem.read(file.path.toPath()) { readByteArray() }.inputStream())
+      ?: return
   val w = src.width
   val h = src.height
   if (h <= 0 || w <= 0) return
@@ -907,5 +927,5 @@ fun applyWearPillClip(file: File) {
   } finally {
     g.dispose()
   }
-  ImageIO.write(out, "PNG", file)
+  SystemFileSystem.write(file.path.toPath()) { ImageIO.write(out, "PNG", outputStream()) }
 }
