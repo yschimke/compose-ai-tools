@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.5](https://github.com/yschimke/compose-ai-tools/compare/v0.12.4...v0.12.5) (2026-06-02)
+
+
+### Features
+
+* **vscode:** open Android preview bundles in the bundle viewer ([#1679](https://github.com/yschimke/compose-ai-tools/issues/1679)) ([9c33c0b](https://github.com/yschimke/compose-ai-tools/commit/9c33c0bad7597f31d63a5db9f1b5e5750ef94842))
+
+
+### Bug Fixes
+
+* **cli:** ship the Android daemon runtime as a separate on-demand archive ([#1685](https://github.com/yschimke/compose-ai-tools/issues/1685)) ([f3d7d15](https://github.com/yschimke/compose-ai-tools/commit/f3d7d151d1ae5927cb15586110aacda01e472fef))
+* **daemon:** Android bundle-daemon E2E render-path bug ([#1687](https://github.com/yschimke/compose-ai-tools/issues/1687)) ([#1688](https://github.com/yschimke/compose-ai-tools/issues/1688)) ([e14af60](https://github.com/yschimke/compose-ai-tools/commit/e14af60aaaf3a57d54d8851a0da834443cc87ae3))
+* **plugin:** tolerate unselectable runtime deps when probing aar/jar packaging ([#1686](https://github.com/yschimke/compose-ai-tools/issues/1686)) ([32ca9dc](https://github.com/yschimke/compose-ai-tools/commit/32ca9dc81821be1e3687b2e861434eb8299f9ea7))
+
 ## [0.12.4](https://github.com/yschimke/compose-ai-tools/compare/v0.12.3...v0.12.4) (2026-06-02)
 
 
