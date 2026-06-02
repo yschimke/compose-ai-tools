@@ -516,25 +516,49 @@ abstract class BundlePreviewTask : DefaultTask() {
     // which
     // AGP also puts the config directory on and which is guaranteed built (it's a `@Classpath`
     // input with real task dependencies).
+    // Pack-time diagnostic threaded into the bundle (android/diag.txt) and surfaced by the player —
+    // the pack runs inside Gradle whose CI console is truncated, so this is the only reliable way
+    // to
+    // see WHY the carriage did or didn't happen. Records input shape + the resolved paths.
+    val diag = StringBuilder()
+    val configEntries =
+      runCatching { androidUnitTestConfig.files.map { it.name } }
+        .getOrElse { listOf("<error:${it.message}>") }
+    val runtimeCpCount = runCatching { androidUnitTestRuntimeClasspath.files.size }.getOrElse { -1 }
+    diag.appendLine("protolayout=true")
+    diag.appendLine("androidUnitTestConfig.entries=$configEntries")
+    diag.appendLine("androidUnitTestRuntimeClasspath.entryCount=$runtimeCpCount")
+    fun emitDiag() {
+      zipFiles[ANDROID_DIAG_PATH] = diag.toString().toByteArray(Charsets.UTF_8)
+    }
+
     val configFile =
       sequenceOf(androidUnitTestConfig, androidUnitTestRuntimeClasspath)
         .flatMap { it.asFileTree.files.asSequence() }
         .firstOrNull { it.isFile && it.name == "test_config.properties" }
-        ?: run {
-          logger.warn(
-            "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
-              "unit-test config / runtime-classpath inputs — tile replay on a detached daemon can't " +
-              "resolve resources. Run composePreviewRender first so AGP generates it."
-          )
-          return null
-        }
+    diag.appendLine("testConfigFound=${configFile != null} path=${configFile?.absolutePath}")
+    if (configFile == null) {
+      emitDiag()
+      logger.warn(
+        "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
+          "unit-test config / runtime-classpath inputs — tile replay on a detached daemon can't " +
+          "resolve resources. Run composePreviewRender first so AGP generates it."
+      )
+      return null
+    }
     val props = Properties().apply { configFile.inputStream().use { load(it) } }
     val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
     val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
     val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
     val apkFile = apkPath.takeIf { it.isNotEmpty() }?.let { File(it) }
     val manifestFile = manifestPath.takeIf { it.isNotEmpty() }?.let { File(it) }
+    diag.appendLine("android_resource_apk='$apkPath' exists=${apkFile?.isFile == true}")
+    diag.appendLine(
+      "android_merged_manifest='$manifestPath' exists=${manifestFile?.isFile == true}"
+    )
+    diag.appendLine("android_custom_package=$pkg")
     if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
+      emitDiag()
       logger.warn(
         "composePreviewBundle: protolayout IR present but the merged resource APK / manifest from " +
           "test_config.properties is missing (apk='$apkPath', manifest='$manifestPath') — tile " +
@@ -546,6 +570,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
     if (rClassesJar != null) zipFiles[ANDROID_R_CLASSES_JAR_PATH] = rClassesJar
+    diag.appendLine("rClassesBytes=${rClassesJar?.size ?: 0}")
+    emitDiag()
     logger.lifecycle(
       "composePreviewBundle — carried Android resources for protolayout replay " +
         "(apk=${apkFile.length()}B, manifest=${manifestFile.length()}B, " +
