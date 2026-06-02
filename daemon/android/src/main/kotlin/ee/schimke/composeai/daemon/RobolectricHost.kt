@@ -629,7 +629,18 @@ open class RobolectricHost(
     require(request !is RenderRequest.Shutdown) {
       "Use shutdown() to stop the host, not submit(Shutdown)."
     }
-    val typed = request as RenderRequest.Render
+    val inbound = request as RenderRequest.Render
+    // #1687 — `JsonRpcServer.encodeRenderPayload` only knows the protocol-level `previewId=<id>`
+    // (it can't name the class/function), so a plain (non-router) host would fall through to
+    // `renderStub` for every classic renderNow. Resolve the id to a spec payload here, on the host
+    // thread, before the request crosses into the sandbox — the Android analogue of
+    // `DesktopHost.specFromPreviewIdPayload`. No-op (same instance) when the payload is already a
+    // spec payload, no resolver is wired, or the id is unknown — see [reshapeRenderPayload].
+    val typed =
+      reshapeRenderPayload(inbound.payload).let { reshaped ->
+        if (reshaped === inbound.payload) inbound
+        else RenderRequest.Render(id = inbound.id, payload = reshaped)
+      }
     // SANDBOX-POOL.md — slot dispatch. Hash the **previewId** to a slot so the same preview always
     // lands on the same sandbox; Compose snapshot caches and Robolectric shadow caches accumulate
     // per-sandbox and pay off on repeat renders. Falls back to the request id when the payload
@@ -707,6 +718,91 @@ open class RobolectricHost(
       }
     }
     return null
+  }
+
+  /**
+   * Host-side reshape of a core-issued `renderNow` payload (#1687).
+   * [JsonRpcServer.encodeRenderPayload] emits only the protocol-level `previewId=<id>` (plus any
+   * [PreviewOverrides] tokens); it can't name the class/function. When a [previewSpecResolver] is
+   * wired — production [DaemonMain] backs it with the bundle's `previews.json` — we resolve the id
+   * to a [RenderSpec] on the host thread and rewrite the payload into the parseable
+   * `className=…;functionName=…` shape the sandbox's [SandboxRunner.dispatchRender] expects.
+   * Mirrors [DesktopHost.specFromPreviewIdPayload] and the [PreviewManifestRouter]; inbound
+   * override tokens win over the spec's per-preview defaults.
+   *
+   * Returns [payload] unchanged (same instance) when it already carries `className=` (router output
+   * or a direct spec-payload caller), when no resolver is wired (in-process unit tests), or when
+   * the resolver doesn't know the id — in those cases [dispatchRender] keeps its existing behaviour
+   * (parse the spec, or fall through to [renderStub] for legacy `render-N` payloads). Without this,
+   * the Android bundle daemon (which never mounts a [PreviewManifestRouter]) stubbed every classic
+   * preview, emitting a `renderFinished` with a `daemon-stub-<id>.png` path that was never written.
+   */
+  internal fun reshapeRenderPayload(payload: String): String {
+    if (payload.contains("className=")) return payload
+    val resolver = previewSpecResolver ?: return payload
+    val inbound = parsePayloadMap(payload)
+    val previewId = inbound["previewId"]?.takeIf { it.isNotBlank() } ?: return payload
+    val base = resolver(previewId) ?: return payload
+    return buildString {
+      append("previewId=").append(previewId).append(';')
+      append("className=").append(base.className).append(';')
+      append("functionName=").append(base.functionName).append(';')
+      // Inbound explicit override wins over the spec's per-preview default. `device=` overrides are
+      // pre-resolved into widthPx/heightPx/density by `JsonRpcServer.encodeRenderPayload`.
+      append("widthPx=").append(inbound["widthPx"] ?: base.widthPx).append(';')
+      append("heightPx=").append(inbound["heightPx"] ?: base.heightPx).append(';')
+      append("density=").append(inbound["density"] ?: base.density).append(';')
+      append("showBackground=").append(base.showBackground).append(';')
+      if (base.backgroundColor != 0L) {
+        append("backgroundColor=").append(base.backgroundColor).append(';')
+      }
+      // The raw device string is forwarded so the render body's round-Wear crop heuristic sees it.
+      (inbound["device"]?.takeIf { it.isNotBlank() } ?: base.device)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("device=").append(it).append(';') }
+      (inbound["localeTag"] ?: base.localeTag)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("localeTag=").append(it).append(';') }
+      (inbound["fontScale"] ?: base.fontScale?.toString())?.let {
+        append("fontScale=").append(it).append(';')
+      }
+      (inbound["uiMode"] ?: base.uiMode?.name?.lowercase())?.let {
+        append("uiMode=").append(it).append(';')
+      }
+      (inbound["orientation"] ?: base.orientation?.name?.lowercase())?.let {
+        append("orientation=").append(it).append(';')
+      }
+      inbound["captureAdvanceMs"]?.let { append("captureAdvanceMs=").append(it).append(';') }
+      (inbound["inspectionMode"] ?: base.inspectionMode?.toString())?.let {
+        append("inspectionMode=").append(it).append(';')
+      }
+      inbound["overrides"]?.let { append("overrides=").append(it).append(';') }
+      inbound["mode"]?.let { append("mode=").append(it).append(';') }
+      (inbound["kind"]?.takeIf { it.isNotBlank() } ?: base.kind)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("kind=").append(it).append(';') }
+      base.wrapperClassName
+        ?.takeIf { it.isNotBlank() }
+        ?.let { append("wrapperClassName=").append(it).append(';') }
+      // Key the output PNG on the (unique) previewId, like [PreviewManifestRouter]; the default
+      // `className-functionName` stem would collide for the multiple `@Preview` / @WearPreview*
+      // variants that share one function, overwriting each other's render.
+      append("outputBaseName=").append(previewId)
+    }
+  }
+
+  /** Parses a `;`-delimited `key=value` payload into a map; mirrors [PreviewManifestRouter]. */
+  private fun parsePayloadMap(payload: String): Map<String, String> {
+    val map = mutableMapOf<String, String>()
+    for (entry in payload.split(';')) {
+      val trimmed = entry.trim()
+      if (trimmed.isEmpty()) continue
+      val eq = trimmed.indexOf('=')
+      if (eq <= 0) continue
+      val v = trimmed.substring(eq + 1).trim()
+      if (v.isNotEmpty()) map[trimmed.substring(0, eq).trim()] = v
+    }
+    return map
   }
 
   private fun copyResultAcrossClassloaders(raw: Any): RenderResult {
