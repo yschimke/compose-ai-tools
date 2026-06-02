@@ -137,6 +137,16 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Classpath abstract val androidUnitTestRuntimeClasspath: ConfigurableFileCollection
 
   /**
+   * (v6 Android) The consumer module's project directory. AGP writes the `android_resource_apk` /
+   * `android_merged_manifest` entries in `test_config.properties` as paths **relative to the module
+   * dir** (e.g. `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the
+   * unit-test working directory (the module dir). [resolveAndroidResources] resolves them the same
+   * way. `@Internal` — it's only a resolution base; the carried bytes are content-tracked via
+   * [androidUnitTestConfig] / [androidUnitTestRuntimeClasspath].
+   */
+  @get:Internal abstract val moduleProjectDir: DirectoryProperty
+
+  /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
    * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
    * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
@@ -550,11 +560,33 @@ abstract class BundlePreviewTask : DefaultTask() {
     val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
     val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
     val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
-    val apkFile = apkPath.takeIf { it.isNotEmpty() }?.let { File(it) }
-    val manifestFile = manifestPath.takeIf { it.isNotEmpty() }?.let { File(it) }
-    diag.appendLine("android_resource_apk='$apkPath' exists=${apkFile?.isFile == true}")
+    // AGP writes these paths **relative to the module dir** (e.g.
+    // `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the unit-test
+    // working directory (the module dir). Resolve the same way — a plain `File(path)` resolves
+    // against the build's CWD and misses (the observed `exists=false`). Absolute paths (older AGP)
+    // pass through; fall back to the test_config's own module root (ancestor before `/build/`).
+    val baseDir =
+      moduleProjectDir.asFile.orNull
+        ?: configFile.absolutePath.substringBeforeLast("/build/").let(::File).takeIf {
+          it.isDirectory
+        }
+    fun resolveModulePath(p: String): File? {
+      if (p.isEmpty()) return null
+      val f = File(p)
+      return when {
+        f.isAbsolute -> f
+        baseDir != null -> File(baseDir, p)
+        else -> f
+      }
+    }
+    val apkFile = resolveModulePath(apkPath)
+    val manifestFile = resolveModulePath(manifestPath)
+    diag.appendLine("moduleProjectDir=${baseDir?.absolutePath}")
     diag.appendLine(
-      "android_merged_manifest='$manifestPath' exists=${manifestFile?.isFile == true}"
+      "android_resource_apk='$apkPath' → ${apkFile?.absolutePath} exists=${apkFile?.isFile == true}"
+    )
+    diag.appendLine(
+      "android_merged_manifest='$manifestPath' → ${manifestFile?.absolutePath} exists=${manifestFile?.isFile == true}"
     )
     diag.appendLine("android_custom_package=$pkg")
     if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {

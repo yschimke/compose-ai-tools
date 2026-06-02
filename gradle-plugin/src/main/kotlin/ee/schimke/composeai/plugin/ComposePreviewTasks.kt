@@ -362,6 +362,9 @@ internal object ComposePreviewTasks {
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
       modulePath.set(project.path)
+      // (v6 Android) base dir for resolving test_config.properties' module-relative apk/manifest
+      // paths. Harmless on desktop. See [BundlePreviewTask.moduleProjectDir].
+      moduleProjectDir.set(project.layout.projectDirectory)
       backend.set(backendId)
       producedBy.set("compose-preview $pluginVersionProperty")
       output.set(project.layout.file(resolvedOutput))
