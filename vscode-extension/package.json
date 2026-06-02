@@ -208,6 +208,12 @@
                     "scope": "machine-overridable",
                     "markdownDescription": "Absolute path to the `compose-preview` CLI launcher used by `Compose Preview: Open Preview Bundle…`. Empty (default) falls back to `$COMPOSE_PREVIEW_CLI` and then `compose-preview` on PATH (the install script's default landing spot is `~/.local/bin/compose-preview`)."
                 },
+                "composePreview.androidSdkPath": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine-overridable",
+                    "markdownDescription": "Absolute path to a local Android SDK, used when opening an **Android** preview bundle (Wear tiles / Remote Compose / Robolectric). The bundle daemon needs `android.jar` from this SDK. Empty (default) falls back to `$ANDROID_HOME`, then `$ANDROID_SDK_ROOT`, then the workspace `local.properties` `sdk.dir`. Set this when VS Code is launched from the GUI (so it doesn't inherit your shell's `ANDROID_HOME`)."
+                },
                 "composePreview.logging.level": {
                     "type": "string",
                     "enum": [

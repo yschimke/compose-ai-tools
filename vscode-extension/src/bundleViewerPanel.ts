@@ -23,6 +23,7 @@ import {
     BundleFormatError,
     readBundleContents,
 } from "./bundleFormat";
+import { androidSdkEnv, resolveAndroidSdk } from "./androidSdk";
 import { BundleCliNotFoundError, locateBundleCli } from "./bundleRender";
 import {
     A11Y_DATA_KINDS,
@@ -308,6 +309,63 @@ export class BundleViewerPanel {
         void this.spawnDaemonAndSeed();
     }
 
+    /**
+     * Env overrides for the daemon subprocess. Only an `backend="android"`
+     * bundle needs them: it launches the Robolectric daemon, which resolves
+     * `android.jar` from the SDK. Returns `undefined` for desktop bundles, or
+     * when no SDK resolves (the daemon then falls back to its inherited env and
+     * surfaces an actionable error if that has none either).
+     */
+    private resolveAndroidDaemonEnv(): Record<string, string> | undefined {
+        if (this.contents.manifest?.backend !== "android") return undefined;
+        const settingPath = vscode.workspace
+            .getConfiguration("composePreview")
+            .get<string>("androidSdkPath", "");
+        // Prefer the workspace folder that actually contains the opened bundle so
+        // its `local.properties`/`sdk.dir` is consulted in a multi-root window;
+        // fall back to the first folder when the bundle lives outside any folder.
+        const bundleFolder = vscode.workspace.getWorkspaceFolder(
+            vscode.Uri.file(this.bundlePath),
+        );
+        const workspaceRoot = (
+            bundleFolder ?? vscode.workspace.workspaceFolders?.[0]
+        )?.uri.fsPath;
+        const resolution = resolveAndroidSdk({ settingPath, workspaceRoot });
+        if (!resolution) {
+            this.deps.logLine(
+                `${CHANNEL} android bundle: no Android SDK resolved (composePreview.androidSdkPath / ` +
+                    `ANDROID_HOME / ANDROID_SDK_ROOT / local.properties); relying on inherited env.`,
+            );
+            return undefined;
+        }
+        this.deps.logLine(
+            `${CHANNEL} android bundle: Android SDK from ${resolution.source}: ${resolution.sdkDir}`,
+        );
+        return androidSdkEnv(resolution);
+    }
+
+    /**
+     * Tack an actionable hint onto an android daemon launch failure whose
+     * message points at a missing SDK / sidecar, so the panel error tells the
+     * user how to fix it rather than just quoting the exit code.
+     */
+    private augmentSpawnError(message: string): string {
+        const isAndroid = this.contents.manifest?.backend === "android";
+        if (
+            isAndroid &&
+            /android\.jar|ANDROID_HOME|ANDROID_SDK_ROOT|lib-daemon-android/i.test(
+                message,
+            )
+        ) {
+            return (
+                `${message}\n\nThis is an Android bundle. Set the SDK location via the ` +
+                `\`composePreview.androidSdkPath\` setting (or export ANDROID_HOME before ` +
+                `launching VS Code), and ensure the compose-preview CLI ships the Android daemon.`
+            );
+        }
+        return message;
+    }
+
     private async spawnDaemonAndSeed(): Promise<void> {
         let cliPath: string;
         try {
@@ -324,6 +382,12 @@ export class BundleViewerPanel {
             );
             return;
         }
+        // An android bundle launches the Robolectric daemon, which needs
+        // android.jar from a local SDK. Resolve one (setting → ANDROID_HOME →
+        // ANDROID_SDK_ROOT → workspace local.properties) and forward it into the
+        // daemon's env so the launch works even when VS Code was started from the
+        // GUI without a shell ANDROID_HOME.
+        const envOverrides = this.resolveAndroidDaemonEnv();
         let daemon: BundleDaemonHandle;
         try {
             daemon = await vscode.window.withProgress(
@@ -340,6 +404,7 @@ export class BundleViewerPanel {
                             appendLine: (line) => this.deps.logLine(line),
                         },
                         clientVersion: CLIENT_VERSION,
+                        envOverrides,
                         events: {
                             onRenderFinished: (params) =>
                                 void this.onRenderFinished(params),
@@ -353,7 +418,10 @@ export class BundleViewerPanel {
         } catch (err) {
             const message = (err as Error).message ?? String(err);
             this.deps.logLine(`${CHANNEL} daemon spawn failed: ${message}`);
-            this.postError("Bundle daemon failed to start", message);
+            this.postError(
+                "Bundle daemon failed to start",
+                this.augmentSpawnError(message),
+            );
             return;
         }
         this.daemon = daemon;
