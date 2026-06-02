@@ -73,8 +73,12 @@ When the renderer mode is built it must emit exactly this shape:
    identity) and stamp `version = SPATIAL_SCENE_VERSION`.
 4. Write `scene.json` next to the panel PNGs under the render output dir.
 
-A `@Serializable` Kotlin mirror of these types will live in `:renderer-xr`; keep its field names and
-JSON shape identical to `spatialScene.ts`.
+A `@Serializable` Kotlin mirror of these types lives in
+[`:preview-data-api`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)
+(`ee.schimke.composeai.xr.SpatialScene`) — the wire-DTO module the renderer and other tooling
+already build on. Its field names and JSON shape are identical to `spatialScene.ts`, and
+`SpatialSceneTest` deserializes the committed fixture to keep the two languages locked; change one
+side and the other must follow.
 
 ## For the webview agent
 
