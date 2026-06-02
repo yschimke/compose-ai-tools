@@ -321,8 +321,15 @@ export class BundleViewerPanel {
         const settingPath = vscode.workspace
             .getConfiguration("composePreview")
             .get<string>("androidSdkPath", "");
-        const workspaceRoot =
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        // Prefer the workspace folder that actually contains the opened bundle so
+        // its `local.properties`/`sdk.dir` is consulted in a multi-root window;
+        // fall back to the first folder when the bundle lives outside any folder.
+        const bundleFolder = vscode.workspace.getWorkspaceFolder(
+            vscode.Uri.file(this.bundlePath),
+        );
+        const workspaceRoot = (
+            bundleFolder ?? vscode.workspace.workspaceFolders?.[0]
+        )?.uri.fsPath;
         const resolution = resolveAndroidSdk({ settingPath, workspaceRoot });
         if (!resolution) {
             this.deps.logLine(
