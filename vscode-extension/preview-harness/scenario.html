@@ -73,6 +73,38 @@
                 for (const msg of data.messages ?? []) {
                     window.postMessage(msg, "*");
                 }
+                // Simulate the preview daemon coming up. In a real
+                // session VS Code posts `setInteractiveAvailability`
+                // once the focused module's daemon is ready; the bundle
+                // chip bar (and the focus toolbar's Interactive /
+                // Recording buttons) gate on that signal. Without it
+                // every chip paints disabled, so a fixture's chip-
+                // activation action can't fire the toggle and the data
+                // tab it would open never mounts — the snapshot then
+                // hangs on the unreachable row click. Derive the module
+                // id(s) from the replayed `setPreviews` so readiness
+                // lands on the module the manifest declared; fall back
+                // to a synthetic id for fixtures with no `moduleDir`.
+                const readyModules = new Set();
+                for (const msg of data.messages ?? []) {
+                    if (msg?.command === "setPreviews" && msg.moduleDir) {
+                        readyModules.add(msg.moduleDir);
+                    }
+                }
+                if (readyModules.size === 0) {
+                    readyModules.add("preview-harness");
+                }
+                for (const moduleId of readyModules) {
+                    window.postMessage(
+                        {
+                            command: "setInteractiveAvailability",
+                            moduleId,
+                            ready: true,
+                            interactiveSupported: true,
+                        },
+                        "*",
+                    );
+                }
                 await settle();
 
                 // After the manifest has rendered, replay user-style
