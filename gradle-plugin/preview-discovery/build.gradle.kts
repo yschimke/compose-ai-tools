@@ -72,7 +72,5 @@ composeAiMavenPublishing {
 // "CLI invocation" section in `docs/NON_GRADLE_INTEGRATION.md` for the consumer-facing
 // contract.
 tasks.named<Jar>("jar").configure {
-  manifest {
-    attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli")
-  }
+  manifest { attributes("Main-Class" to "ee.schimke.composeai.discovery.PreviewDiscoveryCli") }
 }
