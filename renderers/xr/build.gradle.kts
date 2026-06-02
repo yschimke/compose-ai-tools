@@ -22,7 +22,18 @@ android {
   // `androidx.xr.compose` declares `minCompileSdk = 36`.
   compileSdk = 36
   buildFeatures { compose = true }
-  testOptions { unitTests.all { it.jvmArgs("-Xmx2048m") } }
+  testOptions {
+    unitTests.all {
+      it.jvmArgs("-Xmx2048m")
+      // Mirror the capture JVM/system properties the gradle plugin sets on its render Test task
+      // (AndroidPreviewSupport) so `captureRoboImage` can rasterise Compose under Robolectric.
+      it.systemProperty("robolectric.graphicsMode", "NATIVE")
+      it.systemProperty("robolectric.looperMode", "PAUSED")
+      it.systemProperty("robolectric.conscryptMode", "OFF")
+      it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+      it.systemProperty("roborazzi.test.record", "true")
+    }
+  }
 }
 
 dependencies {
@@ -31,10 +42,14 @@ dependencies {
 
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly(libs.compose.ui)
+  compileOnly(libs.compose.foundation)
   compileOnly(libs.activity.compose)
   compileOnly(libs.xr.compose)
   compileOnly(libs.xr.compose.testing)
   compileOnly("androidx.compose.ui:ui-test-junit4")
+  // Per-panel texture capture (captureRoboImage). compileOnly — provided by the render runtime.
+  compileOnly(libs.roborazzi)
+  compileOnly(libs.roborazzi.compose)
 
   // Own unit tests run the recorder under Robolectric against the fake XR runtime (registered for
   // ServiceLoader in src/test/resources/META-INF/services). SDK 35 so it renders on the JDK 17
@@ -50,6 +65,8 @@ dependencies {
   testImplementation("androidx.xr.runtime:runtime-testing:1.0.0-alpha14")
   testImplementation("androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15")
   testImplementation(libs.robolectric)
+  testImplementation(libs.roborazzi)
+  testImplementation(libs.roborazzi.compose)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }
