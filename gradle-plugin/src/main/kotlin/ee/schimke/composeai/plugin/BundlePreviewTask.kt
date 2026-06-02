@@ -189,19 +189,24 @@ abstract class BundlePreviewTask : DefaultTask() {
     val irByPreview: Map<String, ResolvedIr> =
       selected.mapNotNull { p -> resolvePreviewIr(p)?.let { p.id to it } }.toMap()
 
-    // A protolayout IR preview replays through `TileRenderer` (see renderers/android's
-    // `TileIrReplayComposable`), which no tile *preview* function references — the preview only
-    // touches the protolayout builders. So seed the dep closure from the player entry point too:
-    // the BFS then reaches `tiles-renderer` + its transitive `protolayout-renderer` / proto
-    // runtime,
-    // and since deps are kept as whole coordinates whenever any class is reachable, those renderer
-    // libs are recorded as carriage coordinates. `AndroidPreviewSupport` already injects
-    // `tiles-renderer` onto the consumer's runtime classpath, so the jar is present in the scan;
-    // without this seed it'd be pruned (reachable == 0) and the daemon replay would
-    // `NoClassDefFoundError` on `TileRenderer`. A missing entry FQN (jar absent) seeds nothing, so
-    // this is a no-op for non-tile bundles.
-    val hasProtolayoutIr = irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT }
-    val replayEntrySeeds = if (hasProtolayoutIr) PROTOLAYOUT_REPLAY_ENTRY_FQNS else emptySet()
+    // An IR preview replays through a *player* its own bytecode never references — a protolayout
+    // tile through `TileRenderer`, a Remote Compose doc through `RemoteDocumentPlayer` — so the
+    // preview's closure alone wouldn't keep the renderer/player libs. Seed the dep closure from
+    // each
+    // format's player entry points: the BFS then reaches those libs + their transitive runtime, and
+    // since deps are kept as whole coordinates whenever any class is reachable, they're recorded as
+    // carriage coordinates. The libs are on the consumer's runtime classpath already
+    // (`AndroidPreviewSupport` injects `tiles-renderer`; an RC consumer depends on the player), so
+    // their jars are in the scan; without these seeds they'd be pruned (reachable == 0) and the
+    // daemon replay would `NoClassDefFoundError`. A missing entry FQN (jar absent) seeds nothing,
+    // so
+    // each is a no-op unless that format's IR is actually present.
+    val replayEntrySeeds = buildSet {
+      if (irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT })
+        addAll(PROTOLAYOUT_REPLAY_ENTRY_FQNS)
+      if (irByPreview.values.any { it.format == IR_FORMAT_REMOTECOMPOSE })
+        addAll(REMOTECOMPOSE_REPLAY_ENTRY_FQNS)
+    }
 
     val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds
     val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
@@ -778,6 +783,19 @@ abstract class BundlePreviewTask : DefaultTask() {
      * when any class is reachable, so this single entry carries the lot.
      */
     val PROTOLAYOUT_REPLAY_ENTRY_FQNS = setOf("androidx.wear.tiles.renderer.TileRenderer")
+
+    /**
+     * Player entry points seeded when a bundle carries Remote Compose IR, so the alpha player the
+     * daemon replays through (`:data-remotecompose-connector`'s `RemoteComposeIrReplay`) is carried
+     * as coordinates. The RC preview's bytecode references the creation/tooling APIs, not the
+     * player; `RemoteDocument` (remote-player-core) + `RemoteDocumentPlayer`
+     * (remote-player-compose) pull the rest of the player runtime transitively.
+     */
+    val REMOTECOMPOSE_REPLAY_ENTRY_FQNS =
+      setOf(
+        "androidx.compose.remote.player.core.RemoteDocument",
+        "androidx.compose.remote.player.compose.RemoteDocumentPlayerKt",
+      )
 
     /**
      * Soft size ceiling above which an embed-deps pack warns. 25 MB is comfortably above a normal
