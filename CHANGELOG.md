@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.12.2](https://github.com/yschimke/compose-ai-tools/compare/v0.12.1...v0.12.2) (2026-06-02)
+
+
+### Features
+
+* **bundle-viewer:** native installers (.deb/.dmg/.msi) for non-Java recipients ([#1655](https://github.com/yschimke/compose-ai-tools/issues/1655)) ([d30bcd0](https://github.com/yschimke/compose-ai-tools/commit/d30bcd0dced68223dc5563eb7e10dae4a5d3a8e9))
+* **bundle-viewer:** network coordinate resolution at viewer parity ([#1644](https://github.com/yschimke/compose-ai-tools/issues/1644)) ([de20406](https://github.com/yschimke/compose-ai-tools/commit/de2040663842c7d30cc8835a99b667695840a56f))
+* **bundle-viewer:** ship the viewer as a runnable Compose uber jar ([#1650](https://github.com/yschimke/compose-ai-tools/issues/1650)) ([ca20581](https://github.com/yschimke/compose-ai-tools/commit/ca20581407b171ead60694cbf0c339ef19ba28ea))
+* **bundle:** Android re-render player foundation (Phase 1) ([#1651](https://github.com/yschimke/compose-ai-tools/issues/1651)) ([e558f22](https://github.com/yschimke/compose-ai-tools/commit/e558f22119c4fff41fd75de20261b5af417ff78b))
+* **bundle:** bake every preview into the bundle + TUI ASCII dump ([#1627](https://github.com/yschimke/compose-ai-tools/issues/1627)) ([4accaac](https://github.com/yschimke/compose-ai-tools/commit/4accaaccb264a73af60d8b31302da8ae193f0668))
+* **bundle:** branch bundle daemon on backend (Android Robolectric daemon) ([#1656](https://github.com/yschimke/compose-ai-tools/issues/1656)) ([9ee989d](https://github.com/yschimke/compose-ai-tools/commit/9ee989dc3e697ac0da3cc348824425ac159dca73))
+* **bundle:** carry IR-preview deps + pass ir/ to the daemon (Piece B foundation) ([#1665](https://github.com/yschimke/compose-ai-tools/issues/1665)) ([e63fc64](https://github.com/yschimke/compose-ai-tools/commit/e63fc6456094a29f94edf854cd7eaeaf0d7f162b))
+* **bundle:** emit protolayout IR sidecar at render time (Piece A, tiles) ([#1662](https://github.com/yschimke/compose-ai-tools/issues/1662)) ([9c3bd82](https://github.com/yschimke/compose-ai-tools/commit/9c3bd82403192f1ab48972909df7a59afe94522b))
+* **bundle:** emit Remote Compose IR sidecar at render time (Piece A) ([#1659](https://github.com/yschimke/compose-ai-tools/issues/1659)) ([809a7b3](https://github.com/yschimke/compose-ai-tools/commit/809a7b30e2a94194a1e291274b2f152dd40a5a67))
+* **bundle:** open bundles from a URL, not just a local path ([#1636](https://github.com/yschimke/compose-ai-tools/issues/1636)) ([bb9488b](https://github.com/yschimke/compose-ai-tools/commit/bb9488b6795f560dd6c8861fcfb8c1f5f7bb9b32))
+* **bundle:** register composePreviewBundle on the Android path ([#1645](https://github.com/yschimke/compose-ai-tools/issues/1645)) ([2fe0837](https://github.com/yschimke/compose-ai-tools/commit/2fe08373e5df30ff2cb0ece10df34f39265fc8b6))
+* **bundle:** replay protolayout IR in the Android daemon (Piece B, tiles) ([#1666](https://github.com/yschimke/compose-ai-tools/issues/1666)) ([9042237](https://github.com/yschimke/compose-ai-tools/commit/90422379effe81122a130b8b9746c447e9b614ff))
+* **bundle:** replay Remote Compose IR in the Android daemon (Piece B, RC) ([#1672](https://github.com/yschimke/compose-ai-tools/issues/1672)) ([01306ac](https://github.com/yschimke/compose-ai-tools/commit/01306acbf5c79803dde2399277480a86e198c69d))
+* **bundle:** replay remote-compose & protolayout previews from a captured IR (schema v5) ([#1654](https://github.com/yschimke/compose-ai-tools/issues/1654)) ([1ec9382](https://github.com/yschimke/compose-ai-tools/commit/1ec93821275ac3627dbaed171ddd443ded2b2fbc))
+* **bundle:** resolve maven coordinates in the daemon + desktop viewer ([#1639](https://github.com/yschimke/compose-ai-tools/issues/1639)) ([a954294](https://github.com/yschimke/compose-ai-tools/commit/a95429441e8ca27aa8d777f1506214409208c25f))
+* **bundle:** schema v3 — Embedded classpath kind + producer/resolution fields ([#1633](https://github.com/yschimke/compose-ai-tools/issues/1633)) ([8c7dbcd](https://github.com/yschimke/compose-ai-tools/commit/8c7dbcd4a1f4b9e0d72ab6a85285cf069d76af85))
+* **bundle:** schema v4 — content-hashed detached dependencies ([#1634](https://github.com/yschimke/compose-ai-tools/issues/1634)) ([7eb6d95](https://github.com/yschimke/compose-ai-tools/commit/7eb6d9540992b2584f6b096cd2c2f2d4e57e5f60))
+* **cli:** add opt-in --bundle flag to render ([#1641](https://github.com/yschimke/compose-ai-tools/issues/1641)) ([b825f3f](https://github.com/yschimke/compose-ai-tools/commit/b825f3fe7605d5379b9c2e3982fc10aa9bcfc17f))
+* **cli:** resolve detached maven coordinates from local repos (Tier 3) ([#1635](https://github.com/yschimke/compose-ai-tools/issues/1635)) ([3b69feb](https://github.com/yschimke/compose-ai-tools/commit/3b69feb74a982292574df700f69aff7903d5200c))
+* **cli:** resolver downloads missing coordinates from remote repos ([#1640](https://github.com/yschimke/compose-ai-tools/issues/1640)) ([74f272e](https://github.com/yschimke/compose-ai-tools/commit/74f272e7cfa15e70ad2d259cc334c5e2b56c998d))
+* **daemon:** clarify in-process compile (BTA) startup logging ([#1664](https://github.com/yschimke/compose-ai-tools/issues/1664)) ([0e4be98](https://github.com/yschimke/compose-ai-tools/commit/0e4be9824aa62b406362e475c5f056bea159c198))
+* **tui-cli:** consume Mosaic fork 0.18.0-1 release and build TUI by default ([#1643](https://github.com/yschimke/compose-ai-tools/issues/1643)) ([038e873](https://github.com/yschimke/compose-ai-tools/commit/038e873b30f9d253bf38f48d7c5a58aa2de044d2))
+* **tui-cli:** open a bundle PNG straight into a live image-only view ([#1622](https://github.com/yschimke/compose-ai-tools/issues/1622)) ([6871ab7](https://github.com/yschimke/compose-ai-tools/commit/6871ab729f2a7abb522cf1e2b3338b315d00706f))
+* **tui-cli:** view a bundle with no project context ([#1628](https://github.com/yschimke/compose-ai-tools/issues/1628)) ([82a4325](https://github.com/yschimke/compose-ai-tools/commit/82a43253e30dfcc74d095e12d7b903675f73aaf6))
+* **vscode:** declutter focus-mode preview toolbar ([#1668](https://github.com/yschimke/compose-ai-tools/issues/1668)) ([408677c](https://github.com/yschimke/compose-ai-tools/commit/408677c04ca2676c8022ec49b36bd6a6ece6e8d5))
+* **vscode:** disable live mode for non-interactive preview kinds ([#1670](https://github.com/yschimke/compose-ai-tools/issues/1670)) ([707e3ef](https://github.com/yschimke/compose-ai-tools/commit/707e3ef12e761ccf158caffaeb588a1dbd233e22))
+* **xr-glimmer:** calibrate previews to Studio's Glimmer angular + contrast model ([#1671](https://github.com/yschimke/compose-ai-tools/issues/1671)) ([b4a9267](https://github.com/yschimke/compose-ai-tools/commit/b4a9267557a1c7aff0e382ee1a6a35efb6be7ede))
+
+
+### Bug Fixes
+
+* **a11y-report:** tolerate boundsInScreen jitter in PR-comment diff ([#1653](https://github.com/yschimke/compose-ai-tools/issues/1653)) ([84351bb](https://github.com/yschimke/compose-ai-tools/commit/84351bb4da8c1c2be0e0fc8c38b110e16fc45cd9))
+* **bundle:** carry + resolve the tile renderer runtime for protolayout IR replay ([#1669](https://github.com/yschimke/compose-ai-tools/issues/1669)) ([54682d5](https://github.com/yschimke/compose-ai-tools/commit/54682d5f8dfe1b6dd24b81c834ffc345dbf4b4ed))
+* **bundle:** carry IR replay libs onto the daemon launch -cp ([#1675](https://github.com/yschimke/compose-ai-tools/issues/1675)) ([57b184d](https://github.com/yschimke/compose-ai-tools/commit/57b184d9f12a4c38e5a30ee61d0eb42a94373ae2))
+* **bundle:** skip IR-backed previews in renderAndroid (parity with renderDesktop) ([#1657](https://github.com/yschimke/compose-ai-tools/issues/1657)) ([36ce462](https://github.com/yschimke/compose-ai-tools/commit/36ce462fae27ec6ead4533f6e4802d3564a2c8d1))
+* **daemon:** expand classpath [@argfile](https://github.com/argfile) before user JVM args ([#1623](https://github.com/yschimke/compose-ai-tools/issues/1623)) ([e249bf6](https://github.com/yschimke/compose-ai-tools/commit/e249bf61f1efbd2137220fef8f1731f1fc1d7774))
+* **daemon:** render non-composable previews in live mode instead of blanking ([#1667](https://github.com/yschimke/compose-ai-tools/issues/1667)) ([8bb9526](https://github.com/yschimke/compose-ai-tools/commit/8bb95262996de570c065e6f24b4e9f10282d95a5))
+* **daemon:** respawn on launch-descriptor change after first warm ([#1630](https://github.com/yschimke/compose-ai-tools/issues/1630)) ([cf3190e](https://github.com/yschimke/compose-ai-tools/commit/cf3190e24ae885e9d7932407f68123e64d9e76ef))
+* **daemon:** strip classpath/argfile-control options from jvmArgs ([#1625](https://github.com/yschimke/compose-ai-tools/issues/1625)) ([9c0b564](https://github.com/yschimke/compose-ai-tools/commit/9c0b56428bebd2b03205a6b8904c3ebaa4a36c51))
+* **daemon:** tolerate missing previews.json on first warm ([#1629](https://github.com/yschimke/compose-ai-tools/issues/1629)) ([6133c5e](https://github.com/yschimke/compose-ai-tools/commit/6133c5e16a7ab81e38e82451f8dbda4180507a77))
+* **deps:** update gradle minor/patch ([#1649](https://github.com/yschimke/compose-ai-tools/issues/1649)) ([cea9ad2](https://github.com/yschimke/compose-ai-tools/commit/cea9ad2fc6587527dcb114bac222156d405b3c33))
+* **gradle-plugin:** clamp Robolectric SDK to 35 when render JVM is JDK &lt; 21 ([#1646](https://github.com/yschimke/compose-ai-tools/issues/1646)) ([1c3f83f](https://github.com/yschimke/compose-ai-tools/commit/1c3f83f36b0e819e3c0ce6854f89a1f6d11739cc))
+* **vscode:** signal daemon readiness in preview-harness so chip fixtures render ([#1673](https://github.com/yschimke/compose-ai-tools/issues/1673)) ([3dc1947](https://github.com/yschimke/compose-ai-tools/commit/3dc19479d894d8ab22b561ef8382f796935ba311))
+
 ## [0.12.1](https://github.com/yschimke/compose-ai-tools/compare/v0.12.0...v0.12.1) (2026-05-30)
 
 
