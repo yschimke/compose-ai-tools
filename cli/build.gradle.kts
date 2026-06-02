@@ -261,9 +261,23 @@ distributions {
     contents {
       into("lib-renderer") { from(composePreviewRenderer) }
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
-      into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
     }
   }
+}
+
+// The Android (Robolectric) daemon runtime is ~150-200 MB (Robolectric + the full Compose-Android /
+// AndroidX / Wear-Tiles / Remote-Compose stack). Bundling it into the main CLI tarball ballooned it
+// to ~382 MB, so it ships as a SEPARATE archive (`compose-preview-android-daemon-<version>.zip`)
+// that `compose-preview bundle daemon` fetches on demand and caches the first time it renders an
+// `backend="android"` bundle. A standalone `Zip` (NOT a second `distributions {}` entry) so the
+// distribution plugin doesn't wire it into `assemble` — that would drag `:daemon:android` (and its
+// Android SDK requirement) back into a plain `:cli:build`. Built explicitly by the release job.
+tasks.register<Zip>("packageAndroidDaemon") {
+  description =
+    "Packages the Android daemon runtime as a standalone archive for on-demand download."
+  archiveFileName.set("compose-preview-android-daemon-${project.version}.zip")
+  destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+  into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
 }
 
 tasks.withType<Test>().configureEach { useJUnitPlatform() }
