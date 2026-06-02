@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.3](https://github.com/yschimke/compose-ai-tools/compare/v0.12.2...v0.12.3) (2026-06-02)
+
+
+### Features
+
+* **cli:** ship lib-daemon-android + e2e for Android bundle-daemon IR render ([#1677](https://github.com/yschimke/compose-ai-tools/issues/1677)) ([dc3c2d2](https://github.com/yschimke/compose-ai-tools/commit/dc3c2d2dcc484bc12543485547bb1dc648607b79))
+
+
+### Bug Fixes
+
+* **release:** disable Isolated Projects for the Windows MSI viewer build ([#1676](https://github.com/yschimke/compose-ai-tools/issues/1676)) ([8b025e3](https://github.com/yschimke/compose-ai-tools/commit/8b025e3f118906ba7a76d53bd78f25518c6cde42))
+
 ## [0.12.2](https://github.com/yschimke/compose-ai-tools/compare/v0.12.1...v0.12.2) (2026-06-02)
 
 
