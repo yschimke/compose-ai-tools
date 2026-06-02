@@ -226,13 +226,14 @@ internal object ComposePreviewTasks {
     // properties point at. The pack action reads the APK/manifest by the absolute paths in
     // `test_config.properties`, so they must also be declared here as tracked `@InputFiles`
     // content — otherwise the cacheable task could restore a stale bundle when those generated
-    // files change while their paths stay the same. `androidUnitTestRuntimeClasspath` is the
-    // variant's `${variant}UnitTestRuntimeClasspath` (resolved leniently by the caller), scanned
-    // for the generated library R classes — with non-transitive R, the tile renderer's `R$style`
-    // is only on that classpath's merged R.jar, which the `artifactType=jar` `dependencyJars` view
-    // drops.
+    // files change while their paths stay the same. `androidUnitTestRuntimeClasspath` is a lazy
+    // supplier of the AGP unit-test `Test` task's classpath (the SAME source the render path links
+    // its resources + library R classes from) — invoked inside the task-config lambda so the
+    // `test<Variant>UnitTest` task exists by then. With non-transitive R, the tile renderer's
+    // `R$style` is generated only into that classpath's merged R.jar — a raw file dep without the
+    // `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view drops it.
     androidUnitTestConfigFiles: FileCollection? = null,
-    androidUnitTestRuntimeClasspath: FileCollection? = null,
+    androidUnitTestRuntimeClasspath: (() -> FileCollection?)? = null,
   ) {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
@@ -343,9 +344,13 @@ internal object ComposePreviewTasks {
       moduleResourcesDir.set(moduleResourcesDirProvider)
       depJarFiles?.let { dependencyJars.from(it) }
       dependencyCoordinates.set(coordMapProvider)
-      // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op).
+      // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op). The
+      // unit-test classpath supplier is invoked here (inside the task-config lambda) so AGP's
+      // `test<Variant>UnitTest` task is registered by the time we query its classpath.
       androidUnitTestConfigFiles?.let { androidUnitTestConfig.from(it) }
-      androidUnitTestRuntimeClasspath?.let { this.androidUnitTestRuntimeClasspath.from(it) }
+      androidUnitTestRuntimeClasspath?.invoke()?.let {
+        this.androidUnitTestRuntimeClasspath.from(it)
+      }
       // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
       // contains PNGs. Use orNull semantics: missing dir = stub cover. `rendersDir` is the
       // @Internal

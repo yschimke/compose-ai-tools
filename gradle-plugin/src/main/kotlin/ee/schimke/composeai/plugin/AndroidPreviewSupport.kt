@@ -1734,21 +1734,16 @@ internal object AndroidPreviewSupport {
           variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
         ),
       // The generated library R classes the tile renderer links
-      // (`androidx.wear.protolayout.renderer.R$style`)
-      // are generated only into the unit-test merged R.jar (a raw file dep on this classpath with
-      // no
-      // `artifactType=jar` attribute, so the bundle's `dependencyJars` view drops it). Resolve it
-      // through a LENIENT artifactView so AGP's `AmbiguousArtifactsFailure` on project deps
-      // exposing
-      // secondary variants (e.g. `:data-ambient-connector`) is skipped rather than fatal — the same
-      // pattern this file uses for `typeByComponent`. Raw file deps (the R.jar) are included by any
-      // view regardless of attributes.
-      androidUnitTestRuntimeClasspath =
-        project.configurations
-          .findByName("${variantName}UnitTestRuntimeClasspath")
-          ?.incoming
-          ?.artifactView { lenient(true) }
-          ?.files,
+      // (`androidx.wear.protolayout.renderer.R$style`) are generated only into the unit-test merged
+      // R.jar. That jar lives on AGP's `test<Variant>UnitTest` task classpath (a raw file dep added
+      // without the `artifactType=jar` attribute, so the bundle's filtered `dependencyJars` view —
+      // and a configuration `artifactView` — drop it). Source it from the Test task's *resolved*
+      // classpath, the SAME collection `composePreviewRender` links it from (so it resolves cleanly
+      // without the `AmbiguousArtifactsFailure` a raw configuration read hits). Supplied lazily and
+      // invoked inside the bundle task's config lambda, by which point the unit-test task exists.
+      androidUnitTestRuntimeClasspath = {
+        (project.tasks.findByName("test${capVariant}UnitTest") as? Test)?.classpath
+      },
     )
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
