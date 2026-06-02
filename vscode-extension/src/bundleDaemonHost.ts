@@ -34,6 +34,11 @@ export interface BundleDaemonOptions {
      *  panel's value so the daemon's compatibility check passes
      *  identically. */
     clientVersion: string;
+    /** Extra environment merged onto `process.env` for the spawned daemon.
+     *  The panel populates this with `ANDROID_HOME` / `ANDROID_SDK_ROOT` for
+     *  an `backend="android"` bundle so the Robolectric daemon can resolve
+     *  `android.jar` even when VS Code was launched without a shell env. */
+    envOverrides?: Record<string, string>;
 }
 
 export interface BundleDaemonHandle {
@@ -79,6 +84,9 @@ export async function spawnBundleDaemon(
         {
             stdio: ["pipe", "pipe", "pipe"],
             windowsHide: true,
+            // Merge onto the inherited env (don't replace it) so PATH / JAVA_HOME
+            // stay intact while the panel can inject ANDROID_HOME for an android bundle.
+            env: { ...process.env, ...(opts.envOverrides ?? {}) },
         },
     );
     if (!child.stdin || !child.stdout || !child.stderr) {
@@ -88,12 +96,18 @@ export async function spawnBundleDaemon(
     }
     // The CLI emits a leading `[bundle-daemon] launching: …` block on
     // stderr before exec-ing the JVM; surface it (and subsequent daemon
-    // stderr) into the extension log so spawn failures are debuggable.
+    // stderr) into the extension log so spawn failures are debuggable. We
+    // also keep a short tail so an early death can quote the CLI's own
+    // actionable diagnostic (e.g. "backend=android needs android.jar — set
+    // ANDROID_HOME …") in the thrown error instead of just an exit code.
+    const stderrTail: string[] = [];
     child.stderr.setEncoding("utf-8");
     child.stderr.on("data", (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
             if (line.length === 0) continue;
             opts.logger?.appendLine(`[bundle-daemon] ${line}`);
+            stderrTail.push(line);
+            if (stderrTail.length > 20) stderrTail.shift();
         }
     });
 
@@ -111,9 +125,11 @@ export async function spawnBundleDaemon(
     // malformed beyond the manifest-read pre-flight.
     const earlyDeath = new Promise<never>((_, reject) => {
         child.once("exit", (code) => {
+            const tail =
+                stderrTail.length > 0 ? `\n${stderrTail.join("\n")}` : "";
             reject(
                 new BundleDaemonSpawnError(
-                    `bundle daemon exited before initialize (code=${code})`,
+                    `bundle daemon exited before initialize (code=${code})${tail}`,
                 ),
             );
         });
