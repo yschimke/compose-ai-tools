@@ -103,6 +103,27 @@ val functionalTestTask =
     // Root build's `functionalTestWithBundleRender` task flips this on.
     val bundleRenderE2E = providers.gradleProperty("bundle.render.e2e").orNull == "true"
     systemProperty("composeai.functionalTest.cliBundleRender", bundleRenderE2E.toString())
+    // Opt-in `bundle.daemon.android.e2e=true` gate for [AndroidBundleDaemonRenderFunctionalTest].
+    // Drives `compose-preview bundle daemon` against pre-built Android sample bundles and renders
+    // protolayout / remotecompose / classic previews to PNG via the Robolectric daemon — needs a
+    // local Android SDK + cold-starts a daemon JVM per bundle, so it's off by default. The root
+    // build's `functionalTestWithAndroidBundleDaemon` task flips it on after building the bundles.
+    val androidBundleDaemonE2E =
+      providers.gradleProperty("bundle.daemon.android.e2e").orNull == "true"
+    systemProperty("composeai.functionalTest.androidBundleDaemon", androidBundleDaemonE2E.toString())
+    // Paths to the Android sample bundles the test renders. Built by the root build's
+    // `:samples:wear:composePreviewBundle` / `:samples:remotecompose:composePreviewBundle`. Passed
+    // unconditionally (config-cache-safe, same rationale as `cliBinary` below); the test self-skips
+    // past the opt-in gate when a path is absent.
+    val samplesDir = rootDir.parentFile?.resolve("samples")
+    systemProperty(
+      "composeai.functionalTest.wearBundle",
+      samplesDir?.resolve("wear/build/compose-previews/bundle.png")?.absolutePath ?: "",
+    )
+    systemProperty(
+      "composeai.functionalTest.remoteComposeBundle",
+      samplesDir?.resolve("remotecompose/build/compose-previews/bundle.png")?.absolutePath ?: "",
+    )
     // Path to the compose-preview CLI binary built by `:cli:installDist`. The test invokes it
     // directly as a subprocess — that's the actual subject of the e2e. The test self-skips when
     // the binary isn't there (an `assertWithMessage(...).isFile.isTrue()` past the opt-in gate).

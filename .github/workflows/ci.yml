@@ -173,6 +173,41 @@ jobs:
           name: bundle-render-functional-test-reports
           path: gradle-plugin/build/reports/tests/functionalTest/
 
+  android-bundle-daemon-e2e:
+    name: Android Bundle Daemon E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
+      # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
+      # each and render protolayout / remotecompose / classic previews to PNG via the Robolectric
+      # daemon. Guards (1) `lib-daemon-android/` being staged into the CLI dist and (2)
+      # `BundleDaemonCommand.composeDaemonClasspath` putting the carried IR-replay libs on the
+      # daemon `-cp` (else replay dies with NoClassDefFoundError). The ubuntu-latest image ships an
+      # Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT) which the daemon launch resolves android.jar
+      # from. Opt-in via `-Pbundle.daemon.android.e2e=true` — cold-starts a daemon JVM per bundle.
+      #
+      # Split into two phases for the same parallel-execution race the desktop bundle-render job
+      # documents: the included-build functionalTest can start before `:cli:installDist` finishes
+      # populating the lib dirs. Pre-building serialises the two (and is otherwise no-op).
+      - name: Pre-build CLI install + sample bundles + publish plugin
+        run: >-
+          ./gradlew :cli:installDist
+          :samples:wear:composePreviewBundle
+          :samples:remotecompose:composePreviewBundle
+          :gradle-plugin:publishToMavenLocal --stacktrace
+      - name: Android bundle daemon e2e
+        run: ./gradlew functionalTestWithAndroidBundleDaemon -Pbundle.daemon.android.e2e=true --stacktrace
+      - name: Upload functionalTest reports on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-bundle-daemon-functional-test-reports
+          path: gradle-plugin/build/reports/tests/functionalTest/
+
   agent-audit-samples:
     name: Agent Audit Samples
     runs-on: ubuntu-latest

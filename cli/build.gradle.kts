@@ -1,10 +1,14 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.attributes.Attribute
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
 
@@ -77,6 +81,34 @@ val composePreviewDaemonDesktop =
     isCanBeConsumed = false
   }
 
+// Sidecar configuration carrying the Android (Robolectric) daemon module (`:daemon:android`).
+// Same subprocess-only isolation as the desktop daemon above — never on the CLI's own classpath,
+// only loaded by the JVM that `compose-preview bundle daemon` spawns for an `backend="android"`
+// bundle, joined at launch time with the consumer's SDK `android.jar` (resolved from ANDROID_HOME).
+//
+// Unlike the desktop daemon, `:daemon:android` is an AGP `com.android.library`: a plain-JVM
+// consumer like `:cli` can't natively resolve its runtime (AGP exposes it as an AAR with
+// AAR-shaped transitive deps + AGP-generated R.jars). So we mirror `:daemon:harness`'s proven
+// approach instead of staging resolved artifacts directly: `:daemon:android` exposes a
+// `daemonHarnessClasspathFile` consumable configuration whose single artifact is a text file
+// listing the absolute paths of every JAR on its debug-unit-test runtime classpath. We consume
+// that descriptor here (matching attribute, zero AGP variants on the consumer side) and
+// [StageDaemonAndroidLibs] copies the listed jars into `lib-daemon-android/`.
+//
+// Resolved into `cli/build/install/compose-preview/lib-daemon-android/` and located at runtime via
+// `APP_HOME/lib-daemon-android/` (or `-Dcomposeai.cli.libDaemonAndroidDir`).
+val composePreviewDaemonAndroid =
+  configurations.create("composePreviewDaemonAndroid") {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+    attributes {
+      attribute(
+        Attribute.of("ee.schimke.composeai.daemon.harness.classpath", String::class.java),
+        "android",
+      )
+    }
+  }
+
 dependencies {
   // Published wire-format DTOs (`PreviewResult`, `PreviewManifest`, the v1 a11y mirror types,
   // `ExtensionPayload`). `api` so the existing in-package imports across this module (and the
@@ -122,6 +154,12 @@ dependencies {
   // bundled here — the subprocess classpath joins `lib-daemon-desktop/*` + `lib-renderer/*`
   // at launch time, and the renderer sidecar already carries the per-OS Compose stack.
   add("composePreviewDaemonDesktop", project(":daemon:desktop"))
+
+  // `compose-preview bundle daemon` ships the Android (Robolectric) daemon in
+  // `lib-daemon-android/`. This resolves `:daemon:android`'s `daemonHarnessClasspathFile`
+  // descriptor (a text file of runtime jar paths) — see the configuration KDoc above — never the
+  // AAR itself, so no AGP variant resolution leaks onto a plain-JVM consumer.
+  add("composePreviewDaemonAndroid", project(":daemon:android"))
 
   // `:gradle-preview-driver` pulls `org.gradle:gradle-tooling-api`, whose shaded variant
   // *strictly* requires `slf4j-api:2.0.17`. Ktor 3.5.0 (and friends) pull `slf4j-api:2.0.18`
@@ -176,11 +214,54 @@ val stageDaemonDesktopLibs =
     }
   }
 
+// Stage the Android daemon's runtime jars from `:daemon:android`'s `daemonHarnessClasspathFile`
+// descriptor (a newline-separated text file of absolute jar paths, ordered module-jar →
+// testFixtures → R.jar → full test runtime → android.jar; see that module's `writeDaemonClasspath`).
+// We copy each listed jar into a build dir so the distribution wiring can fold it into
+// `lib-daemon-android/`. Two deliberate transforms:
+//   - `android.jar` is dropped: it's the SDK platform jar (redistribution-sensitive, and
+//     `BundleDaemonCommand.androidDaemonLaunch` re-adds it from the consumer's ANDROID_HOME at
+//     launch), so it must not ride along in the shipped tarball.
+//   - filenames are index-prefixed (`%04d-<name>`) to (a) keep the descriptor's classpath
+//     precedence intact under the `lib-daemon-android/*` glob the daemon launcher expands and
+//     (b) dodge basename collisions on AAR `classes.jar` / AGP-generated `R.jar`.
+abstract class StageDaemonAndroidLibs : DefaultTask() {
+  @get:InputFiles abstract val classpathDescriptor: ConfigurableFileCollection
+
+  @get:OutputDirectory abstract val destinationDir: DirectoryProperty
+
+  @TaskAction
+  fun stage() {
+    val descriptor = classpathDescriptor.singleFile
+    val dest = destinationDir.get().asFile
+    dest.deleteRecursively()
+    dest.mkdirs()
+    descriptor
+      .readLines()
+      .map { it.trim() }
+      .filter { it.isNotEmpty() }
+      .map { java.io.File(it) }
+      .filter { it.isFile && it.name.endsWith(".jar") && it.name != "android.jar" }
+      .forEachIndexed { index, jar ->
+        jar.copyTo(java.io.File(dest, "%04d-%s".format(index, jar.name)))
+      }
+  }
+}
+
+val stageDaemonAndroidLibs =
+  tasks.register<StageDaemonAndroidLibs>("stageDaemonAndroidLibs") {
+    description =
+      "Stages :daemon:android runtime jars (from its classpath descriptor) into lib-daemon-android."
+    classpathDescriptor.from(composePreviewDaemonAndroid)
+    destinationDir.set(layout.buildDirectory.dir("staged-daemon-android-libs"))
+  }
+
 distributions {
   named("main") {
     contents {
       into("lib-renderer") { from(composePreviewRenderer) }
       into("lib-daemon-desktop") { from(stageDaemonDesktopLibs) }
+      into("lib-daemon-android") { from(stageDaemonAndroidLibs) }
     }
   }
 }
