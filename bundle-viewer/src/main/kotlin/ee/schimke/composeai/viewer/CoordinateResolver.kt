@@ -14,7 +14,7 @@ import okio.Path
 import okio.Path.Companion.toPath
 import okio.blackholeSink
 import okio.buffer
-import okio.source
+import okio.openZip
 
 /**
  * Resolves a bundle's detached `maven` coordinates ([ClasspathEntry.Maven]) to jar files so the
@@ -155,13 +155,14 @@ internal object CoordinateResolver {
           "extracted/${canonical.toString().hashCode().toUInt().toString(16)}/classes.jar"
       if ((SystemFileSystem.metadataOrNull(dest)?.size ?: 0L) > 0L) return@fileIo dest
       try {
-        // ZipFile is a hard `java.io.File` boundary — bridge the Okio path here.
-        java.util.zip.ZipFile(file.toFile()).use { zip ->
-          val entry = zip.getEntry("classes.jar") ?: return@fileIo null
-          SystemFileSystem.createDirectories(dest.parent!!)
-          zip.getInputStream(entry).use { input ->
-            SystemFileSystem.sink(dest).buffer().use { it.writeAll(input.source().buffer()) }
-          }
+        // Read the `.aar` (a zip) as an Okio FileSystem — no `java.util.zip.ZipFile` /
+        // `java.io.File` boundary. Entries are addressed relative to the zip root.
+        val aar = SystemFileSystem.openZip(file)
+        val entry = "classes.jar".toPath()
+        if (!aar.exists(entry)) return@fileIo null
+        SystemFileSystem.createDirectories(dest.parent!!)
+        aar.source(entry).use { source ->
+          SystemFileSystem.sink(dest).buffer().use { it.writeAll(source) }
         }
         dest.takeIf { (SystemFileSystem.metadataOrNull(it)?.size ?: 0L) > 0L }
       } catch (_: Exception) {
