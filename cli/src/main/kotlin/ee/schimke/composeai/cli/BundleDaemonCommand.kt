@@ -96,6 +96,29 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       extractIrArtifacts(zipBytes, irDir!!, bundleManifestFile!!, file)
     }
 
+    // v6 Android resource carriage: a protolayout (Wear tile) IR replays through `TileRenderer`,
+    // which resolves a library theme resource via `getResources()` and links the non-final library
+    // `R$style` class. A detached daemon has neither the merged resource table (no AGP build) nor
+    // those generated R classes (an AAR's published classes.jar omits them), so an android bundle
+    // carrying protolayout IR also carries the merged resource APK + manifest + R classes under
+    // `android/`. Extract them, synthesize the Robolectric
+    // `com/android/tools/test_config.properties`
+    // the daemon's RobolectricTestRunner auto-reads from the classpath (exactly how the in-Gradle
+    // render path gets resources), and expose the R classes to the parent (renderer) classloader.
+    // The synthesized-config dir and the R jar both ride the IR-carriage `-cp` seam below. Absent
+    // for desktop / classic / Remote-Compose-only bundles.
+    val androidReplayClasspath = mutableListOf<File>()
+    if (manifest.backend == "android" && hasIr) {
+      val androidDir = workDir.resolve("android").apply { mkdirs() }
+      val res = extractAndroidResources(zipBytes, androidDir)
+      if (res != null) {
+        val testConfigDir = workDir.resolve("test-config")
+        writeAndroidTestConfig(testConfigDir, res.resourceApk, res.mergedManifest)
+        androidReplayClasspath += testConfigDir
+        res.rClassesJar?.let { androidReplayClasspath += it }
+      }
+    }
+
     // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
     // the CMP/Skiko daemon (lib-daemon-desktop + lib-renderer); an android bundle launches the
     // Robolectric daemon (lib-daemon-android + android.jar), reusing the Phase 1
@@ -129,7 +152,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
       for (prop in launch.sysProps) add(prop)
       add("-cp")
-      add(composeDaemonClasspath(launch.classpath, libJars + resolvedJars, hasIr))
+      add(
+        composeDaemonClasspath(
+          launch.classpath,
+          libJars + resolvedJars + androidReplayClasspath,
+          hasIr,
+        )
+      )
       add("ee.schimke.composeai.daemon.DaemonMain")
     }
 
@@ -145,6 +174,11 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       if (hasIr) {
         System.err.println(
           "[bundle-daemon] IR previews: ${manifest.intermediateRepresentations.size} → ${irDir?.absolutePath}"
+        )
+      }
+      if (androidReplayClasspath.isNotEmpty()) {
+        System.err.println(
+          "[bundle-daemon] android resource carriage: ${androidReplayClasspath.joinToString(", ") { it.name }}"
         )
       }
       System.err.println("[bundle-daemon] launching: ${command.joinToString(" ")}")
@@ -348,6 +382,74 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
     require(sawManifest) {
       "bundle daemon: bundle.json missing in ${bundleFile.path} — cannot resolve IR descriptors"
     }
+  }
+
+  /** The extracted v6 `android/` resource carriage (see [extractAndroidResources]). */
+  private data class AndroidReplayResources(
+    val resourceApk: File,
+    val mergedManifest: File,
+    val rClassesJar: File?,
+  )
+
+  /**
+   * Extract the v6 `android/` resource carriage from [zipBytes] into [androidDir]: the merged
+   * resource APK and manifest (both required) plus the generated R-class jar (optional). Returns
+   * null when the bundle carries no resource APK — a protolayout bundle from a pre-v6 producer, or
+   * one whose pack couldn't locate AGP's merged resources — in which case the daemon falls back to
+   * its pre-v6 (failing) tile-replay path. Each destination is verified to live inside [androidDir]
+   * (Zip Slip guard), same shape as [extractIrArtifacts].
+   */
+  private fun extractAndroidResources(
+    zipBytes: ByteArray,
+    androidDir: File,
+  ): AndroidReplayResources? {
+    val canonical = androidDir.canonicalFile
+    var apk: File? = null
+    var mergedManifest: File? = null
+    var rJar: File? = null
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        if (!entry.isDirectory && name.startsWith("android/")) {
+          val dest = File(androidDir, File(name).name).canonicalFile
+          if (dest.path.startsWith(canonical.path + File.separator)) {
+            dest.outputStream().use { sink -> zin.copyTo(sink) }
+            when (name) {
+              "android/resources.ap_" -> apk = dest
+              "android/AndroidManifest.xml" -> mergedManifest = dest
+              "android/r-classes.jar" -> rJar = dest
+            }
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+    val resolvedApk = apk
+    val resolvedManifest = mergedManifest
+    return if (resolvedApk != null && resolvedManifest != null)
+      AndroidReplayResources(resolvedApk, resolvedManifest, rJar)
+    else null
+  }
+
+  /**
+   * Write the Robolectric `com/android/tools/test_config.properties` the daemon's
+   * RobolectricTestRunner reads from the classpath — the same file AGP generates for the in-Gradle
+   * render path — pointing at the extracted merged resource APK + manifest. Returns [root], which
+   * the caller puts on the daemon `-cp` so the resource resolves. Binary-resources mode:
+   * `android_resource_apk` carries the resource table; package + theme come from
+   * `android_merged_manifest`.
+   */
+  private fun writeAndroidTestConfig(root: File, resourceApk: File, mergedManifest: File): File {
+    val dir = File(root, "com/android/tools").apply { mkdirs() }
+    File(dir, "test_config.properties")
+      .writeText(
+        buildString {
+          appendLine("android_resource_apk=${resourceApk.absolutePath}")
+          appendLine("android_merged_manifest=${mergedManifest.absolutePath}")
+        }
+      )
+    return root
   }
 
   private fun expandAppJarAndManifest(

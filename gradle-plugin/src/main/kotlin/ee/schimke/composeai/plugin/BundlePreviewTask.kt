@@ -5,7 +5,9 @@ import io.github.classgraph.ClassGraph
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Properties
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
@@ -107,6 +109,29 @@ abstract class BundlePreviewTask : DefaultTask() {
    * so the player can still load them, but the manifest entry is flagged.
    */
   @get:Input abstract val dependencyCoordinates: MapProperty<String, String>
+
+  /**
+   * (v6 Android) AGP's `unit_test_config_directory` contents — specifically
+   * `com/android/tools/test_config.properties`. Read at pack time **only when the bundle carries
+   * protolayout (Wear tile) IR** to locate the merged resource APK + manifest the tile renderer
+   * resolves its theme against on a detached daemon. Empty on desktop and on Android bundles
+   * without a prior render; absent input is treated as "no Android resource carriage". See
+   * [resolveAndroidResources].
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val androidUnitTestConfig: ConfigurableFileCollection
+
+  /**
+   * (v6 Android) The variant's `${variant}UnitTestRuntimeClasspath`. Scanned at pack time **only
+   * when protolayout IR is present** for the generated library R classes (`…/R.class`,
+   * `…/R$*.class` — the non-final library R fields the tile renderer links as real class
+   * references) that an AAR's published `classes.jar` omits. The collected R classes are repacked
+   * under `android/r-classes.jar` so the daemon's parent (renderer) classloader can link
+   * `androidx.wear.protolayout.renderer.R$style`. Unused by the desktop path.
+   */
+  @get:Classpath abstract val androidUnitTestRuntimeClasspath: ConfigurableFileCollection
 
   /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
@@ -265,6 +290,16 @@ abstract class BundlePreviewTask : DefaultTask() {
         )
     }
 
+    // v6 Android resource carriage: a protolayout (Wear tile) IR replays through `TileRenderer`,
+    // which resolves a library theme resource and links the non-final library `R$style` class —
+    // neither of which a detached daemon has. When the bundle carries protolayout IR, pack the
+    // AGP-built merged resource APK + manifest and the generated library R classes under `android/`
+    // (added to `irZipFiles`, written verbatim by `buildZip`). No-op for desktop / non-protolayout.
+    val androidResources =
+      if (irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT })
+        resolveAndroidResources(irZipFiles)
+      else null
+
     val bundle =
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
@@ -277,6 +312,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         producer = PRODUCER_GRADLE,
         resolution = classpath.resolution,
         intermediateRepresentations = irEntries,
+        androidResources = androidResources,
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -450,6 +486,103 @@ abstract class BundlePreviewTask : DefaultTask() {
       )
     }
     return null
+  }
+
+  /**
+   * Build the v6 Android resource carriage for a protolayout-IR bundle and add its artefacts to
+   * [zipFiles] (which [buildZip] writes verbatim). Mirrors the render path's reliance on AGP's
+   * generated `com/android/tools/test_config.properties` (see `AndroidPreviewSupport`): we read it
+   * to locate the merged resource APK (`apk-for-local-test.ap_`) + merged manifest the tile
+   * renderer resolves its theme against, and pack the generated library R classes so
+   * `androidx.wear.protolayout.renderer.R$style` links on the detached daemon.
+   *
+   * Returns null (adding nothing) when the inputs aren't available — bundling without a prior
+   * render, a project that doesn't emit binary resources, etc. — so the bundle stays well-formed
+   * and the daemon simply falls back to its pre-v6 behaviour (tile replay then fails the same way
+   * it did before this carriage existed) rather than the pack crashing.
+   */
+  private fun resolveAndroidResources(
+    zipFiles: LinkedHashMap<String, ByteArray>
+  ): BundleAndroidResources? {
+    val configFile =
+      androidUnitTestConfig.files.firstOrNull { it.isFile && it.name == "test_config.properties" }
+        ?: run {
+          logger.warn(
+            "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
+              "unit-test config input — tile replay on a detached daemon can't resolve resources. " +
+              "Run composePreviewRender first so AGP generates it."
+          )
+          return null
+        }
+    val props = Properties().apply { configFile.inputStream().use { load(it) } }
+    val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
+    val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
+    val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
+    val apkFile = apkPath.takeIf { it.isNotEmpty() }?.let { File(it) }
+    val manifestFile = manifestPath.takeIf { it.isNotEmpty() }?.let { File(it) }
+    if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
+      logger.warn(
+        "composePreviewBundle: protolayout IR present but the merged resource APK / manifest from " +
+          "test_config.properties is missing (apk='$apkPath', manifest='$manifestPath') — tile " +
+          "replay on a detached daemon can't resolve resources."
+      )
+      return null
+    }
+    zipFiles[ANDROID_RESOURCE_APK_PATH] = apkFile.readBytes()
+    zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
+    val rClassesJar = packAndroidRClasses()
+    if (rClassesJar != null) zipFiles[ANDROID_R_CLASSES_JAR_PATH] = rClassesJar
+    logger.lifecycle(
+      "composePreviewBundle — carried Android resources for protolayout replay " +
+        "(apk=${apkFile.length()}B, manifest=${manifestFile.length()}B, " +
+        "rClasses=${if (rClassesJar != null) "${rClassesJar.size}B" else "none"})"
+    )
+    return BundleAndroidResources(
+      resourceApkPath = ANDROID_RESOURCE_APK_PATH,
+      mergedManifestPath = ANDROID_MERGED_MANIFEST_PATH,
+      rClassesJarPath = if (rClassesJar != null) ANDROID_R_CLASSES_JAR_PATH else null,
+      applicationPackage = pkg,
+    )
+  }
+
+  /**
+   * Collect the generated R classes from the unit-test runtime classpath and repack them into a
+   * single jar's bytes. AGP generates these (a library's R fields are non-final, so `R.style.X`
+   * compiles to a real `getstatic` on the `R$style` *class*, which an AAR's published `classes.jar`
+   * does not contain), and the same classpath is what the render path links them from. We keep
+   * every `…/R.class` and `…/R$*.class` across all jars (deduped by entry name) — R classes are
+   * tiny leaf data holders, so carrying the lot is cheaper than guessing which library the renderer
+   * needs. Returns null when none are found.
+   */
+  private fun packAndroidRClasses(): ByteArray? {
+    val jars =
+      androidUnitTestRuntimeClasspath.files.filter { it.isFile && it.name.endsWith(".jar") }
+    if (jars.isEmpty()) return null
+    val collected = LinkedHashMap<String, ByteArray>()
+    for (jar in jars) {
+      try {
+        ZipInputStream(jar.inputStream().buffered()).use { zin ->
+          while (true) {
+            val entry = zin.nextEntry ?: break
+            val name = entry.name
+            val leaf = name.substringAfterLast('/')
+            val isR = leaf == "R.class" || (leaf.startsWith("R$") && leaf.endsWith(".class"))
+            if (!entry.isDirectory && isR && name !in collected) {
+              collected[name] = zin.readBytes()
+            }
+            zin.closeEntry()
+          }
+        }
+      } catch (e: Exception) {
+        logger.warn("composePreviewBundle: couldn't scan $jar for R classes: ${e.message}")
+      }
+    }
+    if (collected.isEmpty()) return null
+    val baos = ByteArrayOutputStream()
+    ZipOutputStream(baos).use { zip ->
+      collected.forEach { (name, bytes) -> zip.writeFile(name, bytes) }
+    }
+    return baos.toByteArray()
   }
 
   private fun packModuleClasses(

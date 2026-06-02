@@ -15,9 +15,13 @@ import java.util.Properties
  * none of it is runnable without an Android SDK + Robolectric runtime):
  * - packaging `:renderer-android` / `:daemon:android` into the CLI distribution (today only the
  *   desktop sidecars ship — see `cli/build.gradle.kts`), and
- * - the bundle-side packing of Android-merged resources, and
  * - recording the consumer's `compileSdk` in the bundle manifest (we default + allow an override
  *   until then).
+ *
+ * Bundle-side packing of Android-merged resources now exists for the **daemon** path (schema v6,
+ * [ee.schimke.composeai.plugin.BundleAndroidResources]): a protolayout-IR bundle carries the merged
+ * resource APK + manifest + generated R classes, and [BundleDaemonCommand] rebuilds the Robolectric
+ * `test_config.properties` from them so the tile renderer resolves its theme on a detached daemon.
  *
  * The constants below MUST stay in lockstep with the Gradle plugin's
  * [ee.schimke.composeai.plugin.AndroidPreviewClasspath] (`buildJvmArgs`, `buildSystemProperties`)

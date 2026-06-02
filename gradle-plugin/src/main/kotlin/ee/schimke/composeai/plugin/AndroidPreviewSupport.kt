@@ -1719,6 +1719,13 @@ internal object AndroidPreviewSupport {
       resolveDependencyConfigName = { dependencyConfigName },
       discoverTaskName = "composePreviewDiscover",
       backendId = "android",
+      // (v6) Feed the same AGP artefacts the render path links its resources + library R classes
+      // from, so a protolayout-IR bundle carries the merged resource APK + manifest
+      // (`unitTestConfigDir`'s `test_config.properties` points at them) and the generated R classes
+      // (`${variant}UnitTestRuntimeClasspath`) for tile replay on a detached daemon.
+      androidUnitTestConfigDir = unitTestConfigDir,
+      androidUnitTestRuntimeClasspath =
+        project.configurations.findByName("${variantName}UnitTestRuntimeClasspath"),
     )
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered
