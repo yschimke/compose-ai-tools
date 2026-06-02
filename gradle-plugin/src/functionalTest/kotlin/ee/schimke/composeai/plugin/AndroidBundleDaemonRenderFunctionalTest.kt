@@ -218,9 +218,22 @@ class AndroidBundleDaemonRenderFunctionalTest {
         .containsAtLeastElementsIn(selected)
       for ((id, pngPath) in finished) {
         val png = File(pngPath)
-        assertWithMessage("render PNG missing for $id at $pngPath (bundle=${bundle.name})")
-          .that(png.isFile)
-          .isTrue()
+        // Rich diagnostics for the "daemon reported renderFinished but the PNG isn't there" failure
+        // (see #1687): the reported path, the preview's IR format, what the daemon actually wrote
+        // into the output dir, and the daemon stderr tail (which logs each render's pngPath).
+        val parent = png.parentFile
+        val dirListing =
+          parent
+            ?.listFiles()
+            ?.sortedBy { it.name }
+            ?.joinToString("\n") { "    ${it.name} (${it.length()} bytes)" }
+            ?: "    (output dir does not exist: $parent)"
+        val missingDiagnostics =
+          "render PNG missing for $id at $pngPath (bundle=${bundle.name})\n" +
+            "  format=${manifest.formatById[id] ?: "classic"}\n" +
+            "  output dir $parent contents:\n$dirListing\n" +
+            "  daemon stderr (tail):\n${stderr.takeLast(4000)}"
+        assertWithMessage(missingDiagnostics).that(png.isFile).isTrue()
         assertWithMessage("render PNG empty for $id at $pngPath")
           .that(png.length())
           .isGreaterThan(0L)

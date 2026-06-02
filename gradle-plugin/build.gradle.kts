@@ -74,6 +74,16 @@ val functionalTestTask =
     classpath = functionalTest.runtimeClasspath
     useJUnit()
 
+    // Surface the full failure message + stack trace for failed functional tests on the console.
+    // Without this Gradle prints only `<Exception> at <File>:<line>`, which hides the assertion
+    // message — and these E2Es (Robolectric daemon, CLI subprocess) carry their diagnostic context
+    // in the message (e.g. the missing PNG path, daemon stderr tail), invisible in CI logs
+    // otherwise.
+    testLogging {
+      exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+      events("failed")
+    }
+
     // `CliA11yEndToEndFunctionalTest` (and any future Android-flavour functional test) requires
     // a `publishToMavenLocal` pre-step so its synthetic `com.android.library` project can
     // resolve the renderer AAR closure from `~/.m2`. The `mustRunAfter` ensures the publish
