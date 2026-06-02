@@ -129,13 +129,28 @@ fun FocusableMenu() {
   }
 }
 
-// Studio's AI-Glasses preview-pane device preset (4:3 at 240dpi). Values are expressed in dp
-// without a suffix — the discovery-side `DeviceSpec.resolve(...)` reads `width=` / `height=`
-// as bare integers (`spec:width=…px` silently falls back to the 400×800dp default) and
-// applies `dpi/160` as the density. Kept as a named const so the previews above all share
-// one source of truth — bump in lockstep when the eventual `@GlimmerPreview` meta-annotation
-// adopts a different spec.
-internal const val AI_GLASSES_DEVICE_SPEC: String = "spec:width=640,height=480,dpi=240"
+// Studio's AI-Glasses preview-pane device preset, calibrated to Glimmer's published **angular**
+// sizing model rather than a phone-style dp/dpi guess. Glimmer measures UI in visual angle, not
+// pixels: the design guidance (developer.android.com/design/ui/ai-glasses/guides/styles/type)
+// pins the display at **30 pixels-per-degree (PPD)** and a minimum readable text size of
+// **0.6° = 18px**, and the official skill restates that as **18sp** — an identity (18sp == 18px
+// == 0.6°) that only holds when **density == 1.0** (dpi 160). At the old `dpi=240` (density 1.5)
+// every `.sp`/`.dp` Glimmer component rendered 1.5× larger in angle than Studio shows (18sp →
+// 27px → 0.9°), so contrast/legibility read optimistically. Pinning **dpi=160 ⇒ density 1.0**
+// makes our sp/px/degree mapping numerically identical to Studio's.
+//
+// Canvas: **960×720 px** (width/height are bare dp integers — `DeviceSpec.resolve(...)` reads
+// `width=` / `height=` as integers and `spec:width=…px` silently falls back to the 400×800dp
+// default, so no `px` suffix — and at density 1.0 dp == px). That is the same pixel canvas the
+// old `640×480 @ dpi240` produced (640·1.5 = 960, 480·1.5 = 720), so the 960×720 env backdrops
+// still fit exactly; only the density (and thus the angular size of the Glimmer UI) changes. At
+// 30 PPD the canvas spans **32° × 24°** field-of-view (960/30, 720/30) — a plausible 4:3 display-
+// glasses HUD. Re-pin width/height/dpi here if Google publishes the AI Glasses AVD's exact
+// resolution / FoV / densityDpi; the 30-PPD identity above is the anchor to preserve.
+//
+// Kept as a named const so the previews above (and `GlimmerInteractiveMenuPreviews`) share one
+// source of truth — bump in lockstep when the eventual `@GlimmerPreview` meta-annotation lands.
+internal const val AI_GLASSES_DEVICE_SPEC: String = "spec:width=960,height=720,dpi=160"
 
 // Opaque pure black — additive-zero base per the SKILL.md mandate. Drawn by the renderer's
 // background-fill path so the captured PNG carries `RGB == (0, 0, 0)` in every pixel the

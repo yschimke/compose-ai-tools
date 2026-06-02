@@ -65,7 +65,7 @@ import ee.schimke.composeai.preview.FocusedPreview
  * affordance on screen. When `@GlimmerPreviewInput` + `:data-glimmer-input-connector` land the
  * planner's per-frame gesture override paints through that connector.
  *
- * Item count: four — the AI Glasses canvas (640×480dp) seats four `ListItem`s with 16-dp
+ * Item count: four — the AI Glasses canvas (960×720dp at density 1.0) seats four `ListItem`s with 16-dp
  * inter-item spacing and 24-dp insets cleanly. A header chip over the menu was the first cut
  * but ate the focus ring on the fourth item; standalone chips live in the `NowPlayingCard`
  * sample.
@@ -167,7 +167,8 @@ private fun GlimmerEnvSurface(env: GlimmerEnvironment, content: @Composable () -
  * Backdrop per env. Mixes two source modes:
  *
  *  - **Dark / Busy / VeniceCanalCats**: bitmap drawables in `res/drawable-nodpi/` (Unsplash
- *    License photos cropped to 960×720 to match the AI Glasses 4:3 canvas at density 1.5).
+ *    License photos cropped to 960×720 to match the AI Glasses 4:3 canvas — 960×720 dp at the
+ *    calibrated density 1.0, see `AI_GLASSES_DEVICE_SPEC`).
  *    Drawn via `Image(painter = painterResource(...), contentScale = ContentScale.Crop)` so
  *    the photo fills the box at any device size.
  *  - **Light**: still procedurally drawn (sky gradient + grass + sun). No clean Unsplash photo

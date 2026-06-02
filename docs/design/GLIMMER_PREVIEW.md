@@ -82,7 +82,7 @@ glimmer-preview-runtime/
 // Authors who only want the raw capture (no env compositing) use this directly.
 @Preview(
   name = "Glimmer",
-  device = "spec:width=640px,height=480px,dpi=240",  // Studio's AI-Glasses preset
+  device = "spec:width=960,height=720,dpi=160",       // AI-Glasses preset, calibrated below
   showBackground = true,                              // see "Capture encoding" below
   backgroundColor = 0xFF000000L,                      // opaque black = additive-zero baseline
   fontScale = 1f,
@@ -93,7 +93,7 @@ annotation class GlimmerPreview
 // so discovery generates a distinct PreviewInfo.id and the four captures don't
 // collapse into one. The connector reads the env intent off the name suffix
 // (`Glimmer · Light` → `light`) — no schema changes to `PreviewParams`.
-@Preview(name = "Glimmer · Light", device = "spec:width=640px,height=480px,dpi=240",
+@Preview(name = "Glimmer · Light", device = "spec:width=960,height=720,dpi=160",
          showBackground = true, backgroundColor = 0xFF000000L)
 annotation class GlimmerPreviewLight
 
@@ -280,6 +280,13 @@ fun FocusableMenu() {
 A four-way Venice / Light / Dark / Busy fan demonstrates the additive-display approximation directly — same code, same `GlimmerSurface`, four different rendered scenes, the contrast shifts visibly between the four. (Reviewing a preview-diff PR that bumps Glimmer's `surface` colour token, you see the gondolier cats at the same time as you see the unreadable text in Busy. Good.)
 
 A new `GlimmerCaptureAdditivePixelTest` in `:samples:android` asserts that the *un-composited* `NowPlayingCard_Glimmer · Light.png` capture is opaque (`alpha == 0xFF` in every pixel) and that the four corners read RGB `(0, 0, 0)` (additive-zero). This is the Encoding-B mirror of `TransparentBackgroundPreviewPixelTest` — same shape, different channel. The environment compositor outputs a sibling file, it doesn't mutate the source.
+
+### Calibrating to Studio's Glimmer model
+
+Studio's preview pane exists to check two *quantitative* rules; we pin both so our previews aren't merely "additive-looking" but numerically aligned to Studio (`:samples:xr-glimmer`'s `GlimmerContrast` + `GlimmerContrastTest`):
+
+- **Angular sizing.** Glimmer measures UI in visual angle, not pixels: the [type guidance](https://developer.android.com/design/ui/ai-glasses/guides/styles/type) pins the display at **30 pixels-per-degree** with a minimum readable text size of **0.6° = 18px**, which the [official skill](https://github.com/android/skills/tree/main/xr/display-glasses-with-jetpack-compose-glimmer) restates as **18sp**. The identity `18sp == 18px == 0.6°` only holds at **density 1.0**, so `AI_GLASSES_DEVICE_SPEC` is `spec:width=960,height=720,dpi=160` (density 1.0; a 960×720-px / 32°×24° canvas at 30 PPD), *not* a phone-style `dpi=240`. At the old `dpi=240` (density 1.5) every `.sp`/`.dp` Glimmer component rendered 1.5× larger in angle than Studio shows, so legibility read optimistically.
+- **Contrast.** The skill mandates *"at least a 70% tone difference between foreground and background using the HCT color space"*; HCT tone == CIELAB L\*, so the bar is `ΔL* ≥ 70`. `GlimmerContrastTest` reproduces the additive composite (`BlendMode.Plus` of white text / `#262626` surface over each backdrop) straight from the source env images and measures the white-text-vs-panel tone gap. Calibrated result: **additive-zero ≈ 85** (the only surface that clears 70), **Dark ≈ 64**, **Busy ≈ 42**, **VeniceCanalCats ≈ 37** — i.e. *no* real backdrop clears Studio's bar, and Busy/Venice are decisively unreadable. That turns the informal "unreadable text in Busy. Good." above into a regression gate: brighten the `surface` token, swap a backdrop, or break the blend and the relevant bound trips.
 
 ## Toolchain notes
 

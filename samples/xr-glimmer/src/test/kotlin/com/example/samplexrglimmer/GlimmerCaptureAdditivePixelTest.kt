@@ -57,7 +57,7 @@ class GlimmerCaptureAdditivePixelTest {
       assertThat(img.height).isAtLeast(40)
 
       val (w, h) = img.width to img.height
-      // The card and chip sit centred in a 640×480 canvas with 24-dp insets from the
+      // The card and chip sit centred in a 960×720 canvas with 24-dp insets from the
       // background `Box`, so the four absolute corner pixels are well outside any
       // composable that could paint over the background-fill layer.
       listOf(0 to 0, w - 1 to 0, 0 to h - 1, w - 1 to h - 1).forEach { (x, y) ->
