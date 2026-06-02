@@ -730,37 +730,37 @@ _No findings._
 
 ## xr-glimmer
 
-### `FocusableMenu` · `spec:width=640,height=480,dpi=240`
+### `FocusableMenu` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/FocusableMenu_Glimmer_Input.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemDefault` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemDefault` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListItemDefault_Glimmer_Default.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemFocused` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemFocused` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListItemFocused_Glimmer_Focused.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListItemPressed` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListItemPressed` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListItemPressed_Glimmer_Pressed.a11y.png" width="400" />
 
 _No findings._
 
-### `GlimmerListPressedWalk` · `spec:width=640,height=480,dpi=240`
+### `GlimmerListPressedWalk` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png" width="400" />
 
 _No findings._
 
-### `NowPlayingCard` · `spec:width=640,height=480,dpi=240`
+### `NowPlayingCard` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/NowPlayingCard_Glimmer_Busy.a11y.png" width="400" />
 

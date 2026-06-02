@@ -1314,7 +1314,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.FocusableMenu_Glimmer \u00b7 Input",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemDefault_Glimmer_Default.a11y.png",
@@ -1324,7 +1324,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemDefault_Glimmer \u00b7 Default",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemFocused_Glimmer_Focused.a11y.png",
@@ -1334,7 +1334,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemFocused_Glimmer \u00b7 Focused",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListItemPressed_Glimmer_Pressed.a11y.png",
@@ -1344,7 +1344,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListItemPressed_Glimmer \u00b7 Pressed",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "GlimmerListPressedWalk_Glimmer_Pressed_Walk_FOCUS_0.a11y.png",
@@ -1354,7 +1354,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerFocusStatePreviewsKt.GlimmerListPressedWalk_Glimmer \u00b7 Pressed Walk",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerFocusStatePreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "NowPlayingCard_Glimmer_Busy.a11y.png",
@@ -1364,7 +1364,7 @@
       "module": "xr-glimmer",
       "previewId": "com.example.samplexrglimmer.GlimmerPreviewsKt.NowPlayingCard_Glimmer \u00b7 Busy",
       "sourceFile": "src/main/kotlin/com/example/samplexrglimmer/GlimmerPreviews.kt",
-      "variant": "spec:width=640,height=480,dpi=240"
+      "variant": "spec:width=960,height=720,dpi=160"
     },
     {
       "annotatedBasename": "",
