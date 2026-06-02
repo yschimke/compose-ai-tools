@@ -507,13 +507,24 @@ abstract class BundlePreviewTask : DefaultTask() {
   private fun resolveAndroidResources(
     zipFiles: LinkedHashMap<String, ByteArray>
   ): BundleAndroidResources? {
+    // `com/android/tools/test_config.properties` lives nested inside AGP's unit-test config
+    // directory, so we must walk the input as a file *tree* — a plain
+    // `ConfigurableFileCollection.files`
+    // returns the registered directory entry (`…/out`), never the nested file, which silently
+    // produced an empty carriage (issue: tile replay still ClassNotFound'd `R$style`). Try the
+    // dedicated config input first (small), then fall back to the unit-test runtime classpath,
+    // which
+    // AGP also puts the config directory on and which is guaranteed built (it's a `@Classpath`
+    // input with real task dependencies).
     val configFile =
-      androidUnitTestConfig.files.firstOrNull { it.isFile && it.name == "test_config.properties" }
+      sequenceOf(androidUnitTestConfig, androidUnitTestRuntimeClasspath)
+        .flatMap { it.asFileTree.files.asSequence() }
+        .firstOrNull { it.isFile && it.name == "test_config.properties" }
         ?: run {
           logger.warn(
             "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
-              "unit-test config input — tile replay on a detached daemon can't resolve resources. " +
-              "Run composePreviewRender first so AGP generates it."
+              "unit-test config / runtime-classpath inputs — tile replay on a detached daemon can't " +
+              "resolve resources. Run composePreviewRender first so AGP generates it."
           )
           return null
         }

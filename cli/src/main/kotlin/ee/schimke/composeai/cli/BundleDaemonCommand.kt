@@ -122,6 +122,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         androidReplayClasspath += testConfigDir
         res.rClassesJar?.let { androidReplayClasspath += it }
       }
+      // Always surface what the bundle carried (even when nothing) — this is the one signal that
+      // distinguishes a pack-side miss (bundle has no `android/` payload) from a launch-side miss,
+      // and it prints near the top of the daemon's own stderr.
+      System.err.println(
+        "[bundle-daemon] android carriage: resourcesAp_=${res != null} " +
+          "rClasses=${res?.rClassesJar != null} cpEntries=${androidReplayClasspath.size}"
+      )
     }
 
     // Branch on the bundle's backend, exactly as `bundle render` does: a desktop bundle launches
