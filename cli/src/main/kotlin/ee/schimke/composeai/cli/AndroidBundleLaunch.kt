@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.Properties
+import okio.Path.Companion.toPath
 
 /**
  * Pure-logic assembly of the inputs a standalone Android (Robolectric) preview render needs when
@@ -107,7 +109,9 @@ class AndroidBundleLaunch(
    */
   fun writeRobolectricConfig(root: File): File {
     val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
-    File(pkgDir, "robolectric.properties").writeText(robolectricPropertiesBody() + "\n")
+    SystemFileSystem.write(File(pkgDir, "robolectric.properties").path.toPath()) {
+      writeUtf8(robolectricPropertiesBody() + "\n")
+    }
     return root
   }
 
@@ -149,7 +153,8 @@ class AndroidBundleLaunch(
       localPropertiesFile
         ?.takeIf { it.isFile }
         ?.let { f ->
-          val props = Properties().apply { f.inputStream().use { load(it) } }
+          val props =
+            Properties().apply { SystemFileSystem.read(f.path.toPath()) { load(inputStream()) } }
           props
             .getProperty("sdk.dir")
             ?.trim()

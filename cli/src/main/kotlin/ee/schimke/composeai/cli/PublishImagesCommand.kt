@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.File
-import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
@@ -97,9 +99,10 @@ class PublishImagesCommand(args: List<String>) {
     val headSha = readHeadSha()
     val message = customMessage ?: defaultMessage(prNumber, headSha)
 
-    val tmp = Files.createTempDirectory("compose-preview-publish-")
+    val tmp = TemporaryDirectory / "compose-preview-publish-${UUID.randomUUID()}"
+    SystemFileSystem.createDirectories(tmp)
     try {
-      val staging = tmp.resolve("staging").toFile().apply { mkdirs() }
+      val staging = (tmp / "staging").toFile().apply { mkdirs() }
       // Copy SOURCE's contents (not SOURCE itself) into staging so the commit tree mirrors
       // SOURCE's layout exactly — `renders/<module>/<id>.png` stays at the same relative path.
       source.copyRecursively(staging, overwrite = true)
@@ -122,7 +125,7 @@ class PublishImagesCommand(args: List<String>) {
         files.map { it.relativeTo(source).path.replace(File.separatorChar, '/') }.sorted()
       emit(commitSha, remoteUrl, rawUrlBase, pushedRelative)
     } finally {
-      tmp.toFile().deleteRecursively()
+      SystemFileSystem.deleteRecursively(tmp)
     }
   }
 
