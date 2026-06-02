@@ -129,7 +129,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       add("-Dcomposeai.daemon.bundleSource=${file.absolutePath}")
       for (prop in launch.sysProps) add(prop)
       add("-cp")
-      add(launch.classpath)
+      add(composeDaemonClasspath(launch.classpath, libJars + resolvedJars, hasIr))
       add("ee.schimke.composeai.daemon.DaemonMain")
     }
 
@@ -484,6 +484,32 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
   }
 
   companion object {
+    /**
+     * Build the daemon launch `-cp`.
+     *
+     * For an **IR-carrying** bundle, the parent-loaded replay host (`:renderer-android`'s
+     * `TileIrReplayComposable` or the connector's `RemoteComposeIrReplay`, both shipped on the
+     * sidecar `-cp`) links the carried renderer/player libs (`androidx.wear.tiles.renderer.*`,
+     * `androidx.compose.remote.player.*`) directly. Those libs live only in
+     * `composeai.daemon.userClassDirs` — the child ([UserClassLoaderHolder]) loader — which the
+     * parent never consults, so the parent-loaded host would `NoClassDefFoundError` at replay. We
+     * therefore also append the carried deps onto the parent `-cp` here.
+     *
+     * **Appended, not prepended:** the renderer's own bundled Compose on the sidecar `-cp` must
+     * stay authoritative (a `URLClassLoader` resolves first-match), so only classes *absent* from
+     * the parent — the player / tiles-renderer APIs — become resolvable; a stale Compose carried in
+     * the bundle can't shadow the renderer's. Classic (non-IR) bundles, which never load a replay
+     * host, are left untouched. See `IrReplayClassloaderTopologyTest` for the topology
+     * characterisation.
+     */
+    internal fun composeDaemonClasspath(
+      base: String,
+      carriedDeps: List<File>,
+      hasIr: Boolean,
+    ): String =
+      if (!hasIr || carriedDeps.isEmpty()) base
+      else (listOf(base) + carriedDeps.map { it.absolutePath }).joinToString(File.pathSeparator)
+
     // Same names the gradle daemon launch path uses — kept inline so this command doesn't
     // need an extra :daemon:core dependency just for the constants.
     private const val USER_CLASS_DIRS_PROP = "composeai.daemon.userClassDirs"

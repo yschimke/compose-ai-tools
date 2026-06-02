@@ -27,9 +27,10 @@ import org.junit.Test
  *
  * This is pure JVM classloading — no Android/Robolectric needed to pin it. The first test
  * reproduces the failure with the real [UserClassLoaderHolder] as the child; the second shows the
- * fix direction (the carried lib also on the parent `-cp`, i.e. what `BundleDaemonCommand` should
- * add) makes the same call link. The actual fix (and which entry point applies it) is a separate
- * change tracked off this harness; this only characterises the mechanism and guards the resolution.
+ * fix direction (the carried lib also on the parent `-cp`) makes the same call link. The fix that
+ * applies this in production is `BundleDaemonCommand.composeDaemonClasspath`, which appends the
+ * bundle's carried deps onto the daemon launch `-cp` for IR-carrying bundles (guarded by
+ * `BundleDaemonClasspathTest`); this test stays as the classloader-topology characterisation.
  */
 class IrReplayClassloaderTopologyTest {
 
