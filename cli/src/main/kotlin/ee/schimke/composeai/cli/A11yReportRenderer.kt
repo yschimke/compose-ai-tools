@@ -1,6 +1,8 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /*
  * On-disk shape mirrors the daemon-side aggregation in
@@ -62,7 +64,8 @@ class A11yReportRenderer : ExtensionReportRenderer {
       enabled += module.gradlePath
       val report =
         try {
-          json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
+          val text = SystemFileSystem.read(reportFile.path.toPath()) { readUtf8() }
+          json.decodeFromString(AccessibilityReport.serializer(), text)
         } catch (e: Exception) {
           if (verbose) {
             System.err.println("Warning: unreadable a11y report ${reportFile.path}: ${e.message}")
