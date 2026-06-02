@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -7,8 +8,12 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
-import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
+import okio.HashingSink
+import okio.Path.Companion.toPath
+import okio.blackholeSink
+import okio.buffer
+import okio.openZip
 
 /**
  * Resolves a bundle's detached `maven` coordinates (#1632, Tier 3) into local jar files so a player
@@ -147,7 +152,7 @@ internal class CoordinateResolver(
     // online run lives in [downloadCacheDir] (Maven layout) and must resolve offline too, since the
     // network gate only governs *new* fetches, not reading what we already have.
     for (root in repositoryRoots + downloadCacheDir) {
-      if (!root.isDirectory) continue
+      if (SystemFileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
       // Try each candidate filename: the coordinate's recorded type first, then `.aar` (an Android
       // dep may be recorded as `jar` by an older bundle, or its `.jar` simply isn't published —
       // AndroidX libs ship `.aar`). [materialize] turns any `.aar` hit into its `classes.jar`.
@@ -158,17 +163,22 @@ internal class CoordinateResolver(
             root,
             "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName",
           )
-        if (mavenPath.isFile) found += mavenPath
+        if (SystemFileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
+          found += mavenPath
         // Gradle modules-2 layout fans the artifact under per-hash dirs; collect every match under
         // <root>/<group>/<artifact>/<version>/<hash>/<fileName>. One directory level only, so a
         // huge cache root doesn't turn this into a full filesystem scan.
         val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
-        if (gradleVersionDir.isDirectory) {
-          gradleVersionDir
-            .listFiles()
+        if (SystemFileSystem.metadataOrNull(gradleVersionDir.path.toPath())?.isDirectory == true) {
+          SystemFileSystem.listOrNull(gradleVersionDir.path.toPath())
             ?.asSequence()
-            ?.filter { it.isDirectory }
-            ?.mapNotNull { hashDir -> File(hashDir, fileName).takeIf { it.isFile } }
+            ?.map { it.toFile() }
+            ?.filter { SystemFileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
+            ?.mapNotNull { hashDir ->
+              File(hashDir, fileName).takeIf {
+                SystemFileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
+              }
+            }
             ?.let { found += it }
         }
       }
@@ -215,29 +225,36 @@ internal class CoordinateResolver(
         downloadCacheDir,
         "extracted/${file.absolutePath.hashCode().toUInt().toString(16)}/classes.jar",
       )
-    if (dest.isFile && dest.length() > 0) return dest
+    val destPath = dest.path.toPath()
+    if ((SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) return dest
     return try {
-      java.util.zip.ZipFile(file).use { zip ->
-        val entry = zip.getEntry("classes.jar") ?: return null
-        dest.parentFile?.mkdirs()
-        zip.getInputStream(entry).use { input -> dest.outputStream().use { input.copyTo(it) } }
+      // Read the `.aar` (a zip) as an Okio FileSystem — no java.util.zip.ZipFile boundary.
+      val aar = SystemFileSystem.openZip(file.path.toPath())
+      val entry = "classes.jar".toPath()
+      if (!aar.exists(entry)) return null
+      dest.parentFile?.mkdirs()
+      aar.source(entry).use { source ->
+        SystemFileSystem.sink(destPath).buffer().use { it.writeAll(source) }
       }
-      dest.takeIf { it.length() > 0 }
+      dest.takeIf { (SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L }
     } catch (_: Exception) {
       null
     }
   }
 
   /** GET [url] → [dest] (parent dirs created); true only on a 2xx with a non-empty body. */
-  private fun fetchTo(url: String, dest: File): Boolean =
-    try {
+  private fun fetchTo(url: String, dest: File): Boolean {
+    val destPath = dest.path.toPath()
+    return try {
       dest.parentFile?.mkdirs()
       val ok =
         HttpClient(OkHttp).use { client ->
           runBlocking {
             client.prepareGet(url).execute { response ->
               if (response.status.isSuccess()) {
-                dest.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+                SystemFileSystem.sink(destPath).buffer().use { sink ->
+                  response.bodyAsChannel().copyTo(sink.outputStream())
+                }
                 true
               } else {
                 false
@@ -245,29 +262,24 @@ internal class CoordinateResolver(
             }
           }
         }
-      if (ok && dest.length() > 0) {
+      if (ok && (SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) {
         true
       } else {
-        dest.delete()
+        SystemFileSystem.delete(destPath, mustExist = false)
         false
       }
     } catch (_: Exception) {
-      dest.delete()
+      SystemFileSystem.delete(destPath, mustExist = false)
       false
     }
-
-  private fun sha256Hex(file: File): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    file.inputStream().use { input ->
-      val buf = ByteArray(64 * 1024)
-      while (true) {
-        val n = input.read(buf)
-        if (n < 0) break
-        digest.update(buf, 0, n)
-      }
-    }
-    return digest.digest().joinToString("") { "%02x".format(it) }
   }
+
+  private fun sha256Hex(file: File): String =
+    SystemFileSystem.source(file.path.toPath()).buffer().use { source ->
+      val hashing = HashingSink.sha256(blackholeSink())
+      hashing.buffer().use { it.writeAll(source) }
+      hashing.hash.hex()
+    }
 
   companion object {
     /** Maven Central + Google Maven, the two repos that serve almost every Compose/AndroidX dep. */
