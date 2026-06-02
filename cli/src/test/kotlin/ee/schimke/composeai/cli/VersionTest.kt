@@ -49,6 +49,43 @@ class CompareSemverTest {
   }
 }
 
+class VersionCompatibilityTest {
+  @Test
+  fun `major version is the first numeric segment`() {
+    assertEquals(0, majorVersionOf("0.12.5"))
+    assertEquals(1, majorVersionOf("1.2.3"))
+    assertEquals(2, majorVersionOf("v2.0.0-SNAPSHOT"))
+    assertEquals(12, majorVersionOf("12.0.0"))
+  }
+
+  @Test
+  fun `unparseable major returns null`() {
+    assertEquals(null, majorVersionOf("main"))
+    assertEquals(null, majorVersionOf(""))
+    assertEquals(null, majorVersionOf("-SNAPSHOT"))
+  }
+
+  @Test
+  fun `same major is compatible regardless of minor or patch`() {
+    assertTrue(!versionsIncompatible("1.2.3", "1.9.0"))
+    assertTrue(!versionsIncompatible("0.12.5", "0.8.0"))
+    assertTrue(!versionsIncompatible("2.0.0-SNAPSHOT", "2.3.1"))
+  }
+
+  @Test
+  fun `different major is incompatible`() {
+    assertTrue(versionsIncompatible("1.0.0", "2.0.0"))
+    assertTrue(versionsIncompatible("0.12.5", "1.0.0"))
+  }
+
+  @Test
+  fun `unparseable version is treated as compatible (no false alarm)`() {
+    // We can't reason about non-semver strings (a dev building from `main`), so don't warn.
+    assertTrue(!versionsIncompatible("main", "1.0.0"))
+    assertTrue(!versionsIncompatible("1.0.0", ""))
+  }
+}
+
 class UpdateCommandPipelineTest {
   @Test
   fun `no version pins to latest via plain pipe`() {
