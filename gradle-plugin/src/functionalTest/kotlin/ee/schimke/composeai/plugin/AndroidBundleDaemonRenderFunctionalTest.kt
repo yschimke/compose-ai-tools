@@ -58,6 +58,14 @@ class AndroidBundleDaemonRenderFunctionalTest {
   private val remoteComposeBundle: String =
     System.getProperty("composeai.functionalTest.remoteComposeBundle", "")
 
+  // #1685 moved the Android (Robolectric) daemon runtime OUT of the CLI install dist (it ballooned
+  // the tarball to ~382 MB) into a standalone `packageAndroidDaemon` archive. The runtime now comes
+  // from `:cli:stageDaemonAndroidLibs`'s staged jars dir, which this e2e points the CLI at via the
+  // documented `-Dcomposeai.cli.libDaemonAndroidDir` override (set as JAVA_OPTS on the daemon
+  // subprocess below) — the same shape the eventual on-demand download unpacks to.
+  private val libDaemonAndroidDir: String =
+    System.getProperty("composeai.functionalTest.libDaemonAndroidDir", "")
+
   @Test
   fun `bundle daemon renders protolayout, remotecompose and classic Android previews to PNG`() {
     assumeTrue("Skipping: -Pbundle.daemon.android.e2e=true not set", enabled)
@@ -67,13 +75,21 @@ class AndroidBundleDaemonRenderFunctionalTest {
     // Tracks which kinds of preview actually rendered across both bundles: protolayout (Wear
     // tile IR), remotecompose (RC doc IR), and classic (reflected app.jar Compose preview).
     val formatsSeen = mutableSetOf<String>()
-    renderBundle(cli, File(wearBundle), formatsSeen)
-    renderBundle(cli, File(remoteComposeBundle), formatsSeen)
+    // TEMP diagnostic (remove before merge): the IR breakdown of each bundle, surfaced in the
+    // assertion message so a green-but-classic-only run still prints why no IR preview was
+    // exercised (empty `intermediateRepresentations` in bundle.json vs a parse/selection mismatch).
+    val diagnostics = StringBuilder()
+    renderBundle(cli, File(wearBundle), formatsSeen, diagnostics)
+    renderBundle(cli, File(remoteComposeBundle), formatsSeen, diagnostics)
 
-    assertWithMessage("expected a protolayout (Wear tile) IR preview to render. saw: $formatsSeen")
+    assertWithMessage(
+        "expected a protolayout (Wear tile) IR preview to render. saw: $formatsSeen\n$diagnostics"
+      )
       .that(formatsSeen)
       .contains("protolayout")
-    assertWithMessage("expected a remotecompose IR preview to render. saw: $formatsSeen")
+    assertWithMessage(
+        "expected a remotecompose IR preview to render. saw: $formatsSeen\n$diagnostics"
+      )
       .that(formatsSeen)
       .contains("remotecompose")
     assertWithMessage("expected a classic (non-IR) Compose preview to render. saw: $formatsSeen")
@@ -86,7 +102,12 @@ class AndroidBundleDaemonRenderFunctionalTest {
    * preview, render them via `renderNow`, and assert each produces a fresh, valid PNG. Records the
    * rendered formats into [formatsSeen].
    */
-  private fun renderBundle(cli: File, bundle: File, formatsSeen: MutableSet<String>) {
+  private fun renderBundle(
+    cli: File,
+    bundle: File,
+    formatsSeen: MutableSet<String>,
+    diagnostics: StringBuilder,
+  ) {
     assertWithMessage(
         "sample bundle missing: ${bundle.path} — did `:samples:…:composePreviewBundle` run? Use " +
           "`./gradlew functionalTestWithAndroidBundleDaemon`"
@@ -112,11 +133,17 @@ class AndroidBundleDaemonRenderFunctionalTest {
 
     val startMillis = System.currentTimeMillis()
     val stderrFile = tempDir.newFile("daemon-stderr-${System.nanoTime()}.log")
-    val proc =
+    val processBuilder =
       ProcessBuilder(cli.absolutePath, "bundle", "daemon", bundle.absolutePath, "--verbose")
         .directory(tempDir.root)
         .redirectError(ProcessBuilder.Redirect.to(stderrFile))
-        .start()
+    // #1685 ships the Android daemon runtime as a standalone archive rather than inside the CLI
+    // install, so point the CLI at the staged jars dir via the documented override. The Gradle
+    // application start script forwards `JAVA_OPTS` to the CLI JVM, where `locateSidecarJars` reads
+    // `composeai.cli.libDaemonAndroidDir` to assemble the Android daemon `-cp`.
+    processBuilder.environment()["JAVA_OPTS"] =
+      "-Dcomposeai.cli.libDaemonAndroidDir=$libDaemonAndroidDir"
+    val proc = processBuilder.start()
     val stdin: OutputStream = proc.outputStream
     val stdout: InputStream = BufferedInputStream(proc.inputStream)
     val json = Json { ignoreUnknownKeys = true }
@@ -244,6 +271,16 @@ class AndroidBundleDaemonRenderFunctionalTest {
         formatsSeen.add(manifest.formatById[id] ?: "classic")
       }
 
+      // TEMP diagnostic (remove before merge): per-bundle IR breakdown, appended to the buffer the
+      // top-level `formatsSeen` assertion prints. Confirms (or refutes) that the CI-built bundle
+      // carries no IR, which would explain why only classic previews are ever selected/rendered.
+      diagnostics.append("\n[${bundle.name}] backend=${manifest.backend}")
+      diagnostics.append(" previewIds(${manifest.previewIds.size})=${manifest.previewIds}")
+      diagnostics.append("\n  intermediateRepresentations(raw)=${manifest.rawIr}")
+      diagnostics.append("\n  formatById=${manifest.formatById}")
+      diagnostics.append("\n  selected=$selected")
+      diagnostics.append("\n  finished=${finished.keys}")
+
       // The exact failure `composeDaemonClasspath` fixes: a parent-loaded IR replay host that can't
       // see the carried player / tiles-renderer libs trips NoClassDefFoundError at replay time.
       assertWithMessage(
@@ -290,11 +327,19 @@ class AndroidBundleDaemonRenderFunctionalTest {
       )
       .that(cli.isFile)
       .isTrue()
-    val installRoot = cli.parentFile.parentFile
-    val libDaemonAndroid = installRoot.resolve("lib-daemon-android")
+    // Post-#1685 the Android daemon runtime lives in the staged jars dir
+    // (`:cli:stageDaemonAndroidLibs` output), not under `$installRoot/lib-daemon-android`. The CLI
+    // is pointed at it via `-Dcomposeai.cli.libDaemonAndroidDir` (JAVA_OPTS, set in renderBundle).
     assertWithMessage(
-        "lib-daemon-android dir missing in CLI distribution at ${libDaemonAndroid.path} — the cli " +
-          "build didn't stage the `composePreviewDaemonAndroid` configuration (Phase 2 packaging)."
+        "lib-daemon-android jars dir not surfaced via system property — did " +
+          "`:cli:stageDaemonAndroidLibs` run? Use `./gradlew functionalTestWithAndroidBundleDaemon`"
+      )
+      .that(libDaemonAndroidDir)
+      .isNotEmpty()
+    val libDaemonAndroid = File(libDaemonAndroidDir)
+    assertWithMessage(
+        "lib-daemon-android jars dir missing at ${libDaemonAndroid.path} — the cli build didn't " +
+          "stage the `composePreviewDaemonAndroid` configuration (`:cli:stageDaemonAndroidLibs`)."
       )
       .that(libDaemonAndroid.isDirectory)
       .isTrue()
@@ -323,7 +368,10 @@ class AndroidBundleDaemonRenderFunctionalTest {
           val ir = it.jsonObject
           ir["previewId"]!!.jsonPrimitive.content to ir["format"]!!.jsonPrimitive.content
         } ?: emptyMap()
-      return BundleManifestInfo(backend, previewIds, formatById)
+      // TEMP diagnostic (remove before merge): the raw IR array as the bundle writer emitted it, so
+      // CI shows whether `intermediateRepresentations` is genuinely empty vs a parse mismatch.
+      val rawIr = root["intermediateRepresentations"]?.toString() ?: "(key absent)"
+      return BundleManifestInfo(backend, previewIds, formatById, rawIr)
     }
   }
 
@@ -331,6 +379,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
     val backend: String,
     val previewIds: List<String>,
     val formatById: Map<String, String>,
+    val rawIr: String,
   )
 
   private fun isPng(file: File): Boolean {

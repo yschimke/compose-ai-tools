@@ -163,8 +163,12 @@ tasks.register("functionalTestWithAndroidBundleDaemon") {
   // tests that resolve the plugin (and renderer-desktop transitives) from mavenLocal.
   bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
   dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
-  // CLI install dist carries `lib-daemon-android/` (the new `stageDaemonAndroidLibs` output).
+  // The CLI install dist provides the `compose-preview` binary; #1685 moved the Android daemon
+  // runtime OUT of it into a standalone archive, so those jars now come from the staged dir
+  // produced by `:cli:stageDaemonAndroidLibs`. The test points the CLI at that dir via
+  // `-Dcomposeai.cli.libDaemonAndroidDir`.
   dependsOn(":cli:installDist")
+  dependsOn(":cli:stageDaemonAndroidLibs")
   // The Android sample bundles the test renders. Each `composePreviewBundle` runs the plugin's
   // render (Robolectric) + pack against the real sample, emitting an `backend="android"` bundle
   // with non-empty `intermediateRepresentations` (Wear tile + Remote Compose IR) alongside classic

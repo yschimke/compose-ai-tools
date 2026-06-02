@@ -184,7 +184,9 @@ jobs:
       # End-to-end for the Android path of `bundle daemon`: pack real-sample bundles (Wear tile +
       # Remote Compose IR, plus classic Compose previews), then spawn the actual CLI binary against
       # each and render protolayout / remotecompose / classic previews to PNG via the Robolectric
-      # daemon. Guards (1) `lib-daemon-android/` being staged into the CLI dist and (2)
+      # daemon. Guards (1) the Android daemon runtime being staged by `:cli:stageDaemonAndroidLibs`
+      # (post-#1685 it ships as a standalone archive, not inside the CLI dist; the test points the
+      # CLI at the staged dir via `-Dcomposeai.cli.libDaemonAndroidDir`) and (2)
       # `BundleDaemonCommand.composeDaemonClasspath` putting the carried IR-replay libs on the
       # daemon `-cp` (else replay dies with NoClassDefFoundError). The ubuntu-latest image ships an
       # Android SDK (ANDROID_HOME/ANDROID_SDK_ROOT) which the daemon launch resolves android.jar
@@ -193,9 +195,30 @@ jobs:
       # Split into two phases for the same parallel-execution race the desktop bundle-render job
       # documents: the included-build functionalTest can start before `:cli:installDist` finishes
       # populating the lib dirs. Pre-building serialises the two (and is otherwise no-op).
+      #
+      # Render the samples FIRST, in their own invocation, exactly as the desktop bundle-render job
+      # does (preview-bundle-ascii.yml): `composePreviewBundle` deliberately does NOT depend on
+      # `composePreviewRender` (packing without a render is a valid stub-cover flow) — it only
+      # `mustRunAfter`s it. So the IR sidecars (`<stem>.tilelayout`/`.tileresources`/`.rcdoc`) the
+      # render step writes beside each PNG have to already exist on disk before the bundle task's
+      # first execution to be baked into `intermediateRepresentations`. Without this step the packed
+      # bundles carry no IR and every preview falls back to classic, so the protolayout/remotecompose
+      # assertions below can never pass. `composePreviewBundle` tracks the renders dir as an input
+      # (`renderFiles`), so the fresh renders are picked up — no `--rerun-tasks` needed.
+      # `missingRenders=warn` rather than the default `fail`: these samples render here for the first
+      # time, and the E2E only needs at least one protolayout + one remotecompose IR to land — a
+      # single stubborn preview shouldn't fail the whole job (its `.error.json` still surfaces).
+      - name: Render sample previews (captures Wear tile + Remote Compose IR sidecars)
+        run: >-
+          ./gradlew
+          :samples:wear:composePreviewRenderAll
+          :samples:remotecompose:composePreviewRenderAll
+          -PcomposePreview.missingRenders=warn
+          --stacktrace
       - name: Pre-build CLI install + sample bundles + publish plugin
         run: >-
           ./gradlew :cli:installDist
+          :cli:stageDaemonAndroidLibs
           :samples:wear:composePreviewBundle
           :samples:remotecompose:composePreviewBundle
           :gradle-plugin:publishToMavenLocal --stacktrace
