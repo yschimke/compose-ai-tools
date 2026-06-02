@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 115 preview(s) across 13 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/main`. 118 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -763,5 +763,25 @@ _No findings._
 ### `NowPlayingCard` · `spec:width=960,height=720,dpi=160`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-glimmer/NowPlayingCard_Glimmer_Busy.a11y.png" width="400" />
+
+_No findings._
+
+## xr-spatial
+
+### `NowPlayingPanelPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-spatial/NowPlayingPanelPreview_Panel_Content.a11y.png" width="400" />
+
+_No findings._
+
+### `OrbiterControlsPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-spatial/OrbiterControlsPreview_Orbiter_TopControls.a11y.png" width="400" />
+
+_No findings._
+
+### `SpatialElevationPreview` · `spec:width=1280,height=720,dpi=160`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/xr-spatial/SpatialElevationPreview_SpatialElevation_Panel.a11y.png" width="400" />
 
 _No findings._
