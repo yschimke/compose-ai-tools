@@ -1719,13 +1719,22 @@ internal object AndroidPreviewSupport {
       resolveDependencyConfigName = { dependencyConfigName },
       discoverTaskName = "composePreviewDiscover",
       backendId = "android",
-      // (v6) Feed the same AGP artefacts the render path links its resources + library R classes
-      // from, so a protolayout-IR bundle carries the merged resource APK + manifest
-      // (`unitTestConfigDir`'s `test_config.properties` points at them) and the generated R classes
-      // (`${variant}UnitTestRuntimeClasspath`) for tile replay on a detached daemon.
-      androidUnitTestConfigDir = unitTestConfigDir,
-      androidUnitTestRuntimeClasspath =
-        project.configurations.findByName("${variantName}UnitTestRuntimeClasspath"),
+      // (v6) Feed the AGP artefacts a protolayout-IR bundle carries for tile replay on a detached
+      // daemon: `unitTestConfigDir`'s `test_config.properties` names the merged resource APK +
+      // manifest, and the pack action reads those by absolute path — so union the artefacts they
+      // point at (the `apk_for_local_test` output dir + the merged manifest) into the tracked
+      // `@InputFiles` so the cacheable task re-packs when their content changes even if the paths
+      // don't. (The library R classes are scanned from the existing `dependencyJars` view inside
+      // the task — no unit-test-classpath input, which would trip AGP's
+      // `AmbiguousArtifactsFailure`.)
+      androidUnitTestConfigFiles =
+        project.files(
+          unitTestConfigDir,
+          project.layout.buildDirectory.dir(
+            "intermediates/apk_for_local_test/${variantName}UnitTest"
+          ),
+          variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
+        ),
     )
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered

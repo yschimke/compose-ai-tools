@@ -124,16 +124,6 @@ abstract class BundlePreviewTask : DefaultTask() {
   abstract val androidUnitTestConfig: ConfigurableFileCollection
 
   /**
-   * (v6 Android) The variant's `${variant}UnitTestRuntimeClasspath`. Scanned at pack time **only
-   * when protolayout IR is present** for the generated library R classes (`…/R.class`,
-   * `…/R$*.class` — the non-final library R fields the tile renderer links as real class
-   * references) that an AAR's published `classes.jar` omits. The collected R classes are repacked
-   * under `android/r-classes.jar` so the daemon's parent (renderer) classloader can link
-   * `androidx.wear.protolayout.renderer.R$style`. Unused by the desktop path.
-   */
-  @get:Classpath abstract val androidUnitTestRuntimeClasspath: ConfigurableFileCollection
-
-  /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
    * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
    * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
@@ -546,17 +536,25 @@ abstract class BundlePreviewTask : DefaultTask() {
   }
 
   /**
-   * Collect the generated R classes from the unit-test runtime classpath and repack them into a
-   * single jar's bytes. AGP generates these (a library's R fields are non-final, so `R.style.X`
-   * compiles to a real `getstatic` on the `R$style` *class*, which an AAR's published `classes.jar`
-   * does not contain), and the same classpath is what the render path links them from. We keep
-   * every `…/R.class` and `…/R$*.class` across all jars (deduped by entry name) — R classes are
-   * tiny leaf data holders, so carrying the lot is cheaper than guessing which library the renderer
-   * needs. Returns null when none are found.
+   * Collect the generated R classes from [dependencyJars] and repack them into a single jar's
+   * bytes. AGP generates these (a library's R fields are non-final, so `R.style.X` compiles to a
+   * real `getstatic` on the `R$style` *class*, which an AAR's published `classes.jar` does not
+   * contain). For an application module — the bundle's primary Android target — AGP's
+   * `process<Variant>Resources` puts the merged R.jar (carrying every dependency library's R,
+   * including `androidx.wear.protolayout.renderer.R$style`) on the main runtime classpath, which
+   * the bundle's `artifactType=jar` view already exposes here. We keep every `…/R.class` and
+   * `…/R$*.class` across all jars (deduped by entry name) — R classes are tiny leaf data holders,
+   * so carrying the lot is cheaper than guessing which library the renderer needs. Returns null
+   * when none are found.
+   *
+   * (Scanning the main runtime classpath rather than `…UnitTestRuntimeClasspath` deliberately
+   * avoids resolving that configuration as a task input — it triggers AGP's
+   * `AmbiguousArtifactsFailure` on project deps exposing secondary variants. The trade-off: a
+   * *library*-module consumer whose R.jar lives only on the unit-test classpath wouldn't be
+   * covered, but the bundle's Android target is an application.)
    */
   private fun packAndroidRClasses(): ByteArray? {
-    val jars =
-      androidUnitTestRuntimeClasspath.files.filter { it.isFile && it.name.endsWith(".jar") }
+    val jars = dependencyJars.files.filter { it.isFile && it.name.endsWith(".jar") }
     if (jars.isEmpty()) return null
     val collected = LinkedHashMap<String, ByteArray>()
     for (jar in jars) {

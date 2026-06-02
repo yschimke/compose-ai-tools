@@ -113,7 +113,12 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
       val res = extractAndroidResources(zipBytes, androidDir)
       if (res != null) {
         val testConfigDir = workDir.resolve("test-config")
-        writeAndroidTestConfig(testConfigDir, res.resourceApk, res.mergedManifest)
+        writeAndroidTestConfig(
+          testConfigDir,
+          res.resourceApk,
+          res.mergedManifest,
+          manifest.androidResources?.applicationPackage,
+        )
         androidReplayClasspath += testConfigDir
         res.rClassesJar?.let { androidReplayClasspath += it }
       }
@@ -438,15 +443,26 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * render path — pointing at the extracted merged resource APK + manifest. Returns [root], which
    * the caller puts on the daemon `-cp` so the resource resolves. Binary-resources mode:
    * `android_resource_apk` carries the resource table; package + theme come from
-   * `android_merged_manifest`.
+   * `android_merged_manifest`. [applicationPackage] (when the pack step recorded it) is written as
+   * `android_custom_package` — the package Robolectric/AGP use for the final R class; without it,
+   * for projects whose namespace isn't recoverable from the merged manifest alone, the final R
+   * would resolve against the wrong/default package and tile replay could miss its resources.
    */
-  private fun writeAndroidTestConfig(root: File, resourceApk: File, mergedManifest: File): File {
+  private fun writeAndroidTestConfig(
+    root: File,
+    resourceApk: File,
+    mergedManifest: File,
+    applicationPackage: String?,
+  ): File {
     val dir = File(root, "com/android/tools").apply { mkdirs() }
     File(dir, "test_config.properties")
       .writeText(
         buildString {
           appendLine("android_resource_apk=${resourceApk.absolutePath}")
           appendLine("android_merged_manifest=${mergedManifest.absolutePath}")
+          if (!applicationPackage.isNullOrBlank()) {
+            appendLine("android_custom_package=$applicationPackage")
+          }
         }
       )
     return root
