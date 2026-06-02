@@ -1,6 +1,8 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.Path.Companion.toPath
 
 /**
  * Tiny support layer the v1 scenario tests share. Keeps the seven test files (S1 from v0; S2-S5,
@@ -42,7 +44,7 @@ object HarnessTestSupport {
     if (LATENCY_CSV.exists()) LATENCY_CSV.delete()
     // Always write the marker — even when the CSV didn't exist — so the subsequent scenarios in
     // this same JVM see "already reset" and append rather than re-wiping.
-    marker.writeText("reset")
+    SystemFileSystem.write(marker.path.toPath()) { writeUtf8("reset") }
   }
 
   fun scenario(name: String): ScenarioPaths {
@@ -138,7 +140,7 @@ fun diffOrCaptureBaseline(
 ) {
   if (HarnessTestSupport.regenerateBaselines()) {
     baseline.parentFile.mkdirs()
-    baseline.writeBytes(actualBytes)
+    SystemFileSystem.write(baseline.path.toPath()) { write(actualBytes) }
     System.err.println(
       "$scenario: regenerate=true — overwrote baseline at ${baseline.absolutePath}"
     )
@@ -146,14 +148,14 @@ fun diffOrCaptureBaseline(
   }
   if (!baseline.exists()) {
     baseline.parentFile.mkdirs()
-    baseline.writeBytes(actualBytes)
+    SystemFileSystem.write(baseline.path.toPath()) { write(actualBytes) }
     System.err.println(
       "$scenario: captured baseline at ${baseline.absolutePath} (first run; subsequent runs " +
         "will pixel-diff against it)"
     )
     return
   }
-  val expectedBytes = baseline.readBytes()
+  val expectedBytes = SystemFileSystem.read(baseline.path.toPath()) { readByteArray() }
   val diff = PixelDiff.compare(actual = actualBytes, expected = expectedBytes)
   if (!diff.ok) {
     PixelDiff.writeDiffArtefacts(
@@ -312,7 +314,9 @@ private fun prepareRealModeScenarioPaths(
       """
         .trimIndent()
     }
-  manifestFile.writeText("""{"previews":[$previewsJson]}""")
+  SystemFileSystem.write(manifestFile.path.toPath()) {
+    writeUtf8("""{"previews":[$previewsJson]}""")
+  }
   val classpath =
     System.getProperty("java.class.path")
       .split(File.pathSeparator)

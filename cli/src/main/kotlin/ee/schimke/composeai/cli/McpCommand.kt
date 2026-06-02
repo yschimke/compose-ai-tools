@@ -635,7 +635,8 @@ internal fun inspectDescriptor(gradlePath: String, descriptor: File): DoctorStat
 
   val obj =
     try {
-      Json.parseToJsonElement(descriptor.readText()).jsonObject
+      Json.parseToJsonElement(SystemFileSystem.read(descriptor.path.toPath()) { readUtf8() })
+        .jsonObject
     } catch (_: Exception) {
       null
     }
