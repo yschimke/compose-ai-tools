@@ -38,6 +38,7 @@ dependencies {
   // wire-shaped seams the harness needs to play "VS Code". Core module re-exposes
   // kotlinx-serialization-json as `api`, so the harness picks it up transitively.
   implementation(project(":daemon:core"))
+  implementation(project(":common-io"))
 
   testImplementation(libs.junit)
   // B2.0 — ASM is used only by `S3_5RecompileSaveLoopRealModeTest` to mint two `.class` files

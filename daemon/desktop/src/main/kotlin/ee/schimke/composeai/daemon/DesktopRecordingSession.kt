@@ -19,8 +19,10 @@ import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
+import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.Rect
@@ -709,7 +711,7 @@ class DesktopRecordingSession(
           surface.close()
         }
       }
-    outFile.writeBytes(bytes)
+    SystemFileSystem.write(outFile.path.toPath()) { write(bytes) }
   }
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {

@@ -1,6 +1,9 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.Path.Companion.toPath
+import okio.buffer
 
 /**
  * Minimal scenario abstraction — see
@@ -86,13 +89,13 @@ data class ScenarioContext(
  */
 fun editSource(target: File, newBytes: ByteArray, block: () -> Unit) {
   require(target.exists()) { "editSource: target ${target.absolutePath} does not exist" }
-  val original = target.readBytes()
-  target.writeBytes(newBytes)
+  val original = SystemFileSystem.read(target.path.toPath()) { readByteArray() }
+  SystemFileSystem.write(target.path.toPath()) { write(newBytes) }
   try {
     block()
   } finally {
     try {
-      target.writeBytes(original)
+      SystemFileSystem.write(target.path.toPath()) { write(original) }
     } catch (e: Throwable) {
       System.err.println(
         "editSource: failed to revert ${target.absolutePath}: ${e.message} " +
@@ -142,7 +145,9 @@ class LatencyRecorder(
   init {
     if (!csvFile.exists()) {
       csvFile.parentFile.mkdirs()
-      csvFile.writeText("target,scenario,preview,actualMs,baselineMs,deltaPct,notes\n")
+      SystemFileSystem.write(csvFile.path.toPath()) {
+        writeUtf8("target,scenario,preview,actualMs,baselineMs,deltaPct,notes\n")
+      }
     }
   }
 
@@ -157,7 +162,9 @@ class LatencyRecorder(
       else ((actualMs - baselineMsPerPreview).toDouble() / baselineMsPerPreview) * 100.0
     val row =
       "$target,$scenario,$preview,$actualMs,$baselineMsPerPreview,${"%.2f".format(deltaPct)},\"$notes\"\n"
-    synchronized(csvFile) { csvFile.appendText(row) }
+    synchronized(csvFile) {
+      SystemFileSystem.appendingSink(csvFile.path.toPath()).buffer().use { it.writeUtf8(row) }
+    }
   }
 
   companion object {

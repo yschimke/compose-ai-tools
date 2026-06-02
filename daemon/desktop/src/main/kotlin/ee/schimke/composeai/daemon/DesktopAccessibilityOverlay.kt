@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.cli.AccessibilityFinding
 import ee.schimke.composeai.cli.AccessibilityNode
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
@@ -16,6 +17,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.max
+import okio.Path.Companion.toPath
 
 /**
  * AWT port of `:data-a11y-core`'s `AccessibilityOverlay` for the desktop daemon.
@@ -120,7 +122,8 @@ object DesktopAccessibilityOverlay {
     nodes: List<AccessibilityNode>,
     destPng: File,
   ): File? {
-    val source = ImageIO.read(sourcePng)
+    val source =
+      ImageIO.read(SystemFileSystem.read(sourcePng.path.toPath()) { readByteArray() }.inputStream())
     if (source == null) {
       System.err.println(
         "[compose-a11y] overlay skipped: ImageIO could not decode " +
@@ -130,7 +133,9 @@ object DesktopAccessibilityOverlay {
     }
     val composite = compose(source, emptyList(), nodes)
     destPng.parentFile?.mkdirs()
-    ImageIO.write(composite, "png", destPng)
+    SystemFileSystem.write(destPng.path.toPath()) {
+      ImageIO.write(composite, "png", outputStream())
+    }
     return destPng
   }
 

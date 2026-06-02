@@ -50,6 +50,7 @@ dependencies {
   // core module re-exposes kotlinx-serialization-json as `api`, so we don't
   // re-declare it here.
   implementation(project(":daemon:core"))
+  implementation(project(":common-io"))
   implementation(project(":data-render-connector"))
   implementation(project(":data-history-connector"))
   implementation(project(":data-theme-connector"))

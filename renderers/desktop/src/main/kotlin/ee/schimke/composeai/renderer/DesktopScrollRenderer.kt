@@ -25,6 +25,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.unit.Density
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.scroll.DEFAULT_LONG_SCROLL_STEP_FRACTION
 import ee.schimke.composeai.scroll.HOLD_END_MS
 import ee.schimke.composeai.scroll.HOLD_START_MS
@@ -35,6 +36,7 @@ import ee.schimke.composeai.scroll.buildGifScrollScript
 import ee.schimke.composeai.scroll.stitchSlices
 import java.io.File
 import javax.imageio.ImageIO
+import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkiaImage
 
@@ -379,7 +381,10 @@ private fun captureGif(
 
     if (frameFiles.isEmpty()) return false
 
-    val frames = frameFiles.map { ImageIO.read(it) ?: error("Failed to read GIF frame PNG: $it") }
+    val frames = frameFiles.map {
+      ImageIO.read(SystemFileSystem.read(it.path.toPath()) { readByteArray() }.inputStream())
+        ?: error("Failed to read GIF frame PNG: $it")
+    }
     val written =
       ScrollGifEncoder.encode(
         frames = frames,
@@ -408,7 +413,7 @@ private fun captureRootFrame(host: ComposeUiTestScrollHost, file: File) {
       ?: error("Failed to encode captured frame to PNG")
   try {
     file.parentFile?.mkdirs()
-    file.writeBytes(pngData.bytes)
+    SystemFileSystem.write(file.path.toPath()) { write(pngData.bytes) }
   } finally {
     pngData.close()
     skiaImage.close()
@@ -416,7 +421,8 @@ private fun captureRootFrame(host: ComposeUiTestScrollHost, file: File) {
   // Defensive re-read to ensure the file is decodable by the stitcher's ImageIO path. Most CMP
   // bitmap formats decode fine — but on rare encoder oddities we want a hard failure here, not a
   // silent corrupt slice that the stitcher then chokes on with a confusing error.
-  ImageIO.read(file) ?: error("Captured frame written to $file but couldn't be decoded back")
+  ImageIO.read(SystemFileSystem.read(file.path.toPath()) { readByteArray() }.inputStream())
+    ?: error("Captured frame written to $file but couldn't be decoded back")
 }
 
 @OptIn(ExperimentalTestApi::class)

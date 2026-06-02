@@ -19,11 +19,13 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
+import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
@@ -305,7 +307,7 @@ private fun writeErrorSidecar(
   }
   sb.append("\"stackTrace\":").append(jsonString(stack))
   sb.append('}')
-  sidecar.writeText(sb.toString())
+  SystemFileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
 }
 
 /**
@@ -574,12 +576,12 @@ private fun renderPreview(
           cropW.coerceAtMost(decoded.width),
           cropH.coerceAtMost(decoded.height),
         )
-      ImageIO.write(sub, "PNG", outputFile)
+      SystemFileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
     } else {
-      outputFile.writeBytes(pngData.bytes)
+      SystemFileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
     }
   } else {
-    outputFile.writeBytes(pngData.bytes)
+    SystemFileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
   }
 
   scene.close()

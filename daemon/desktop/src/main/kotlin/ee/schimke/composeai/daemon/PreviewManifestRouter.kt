@@ -1,8 +1,10 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * Test/harness-only [DesktopHost] subclass that re-packs an inbound `previewId=<id>` payload into a
@@ -165,7 +167,10 @@ class PreviewManifestRouter(
     /** Loads a [PreviewManifest] from [file]. Throws if the file does not exist or is malformed. */
     fun loadManifest(file: File): PreviewManifest {
       require(file.isFile) { "PreviewManifestRouter: manifest '$file' does not exist" }
-      return json.decodeFromString(PreviewManifest.serializer(), file.readText())
+      return json.decodeFromString(
+        PreviewManifest.serializer(),
+        SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+      )
     }
 
     /**
