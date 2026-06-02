@@ -1,7 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * Pure-function builder that turns a list of `(PreviewModule, PreviewManifest)` pairs into
@@ -25,9 +27,12 @@ object PreviewResultBuilder {
    * module that has no previews discovered yet.
    */
   fun readManifest(module: PreviewModule): PreviewManifest? {
-    val manifestFile = module.projectDir.resolve("build/compose-previews/previews.json")
-    if (!manifestFile.exists()) return null
-    return manifestJson.decodeFromString(manifestFile.readText())
+    // `projectDir` stays a `File` (it crosses the Gradle Tooling API serialization boundary and
+    // feeds `forProjectDirectory`); the manifest read itself goes through Okio.
+    val manifestPath = module.projectDir.path.toPath() / "build/compose-previews/previews.json"
+    if (!SystemFileSystem.exists(manifestPath)) return null
+    val text = SystemFileSystem.read(manifestPath) { readUtf8() }
+    return manifestJson.decodeFromString(text)
   }
 
   /**
@@ -159,7 +164,7 @@ object PreviewResultBuilder {
     val templateDir = rel.substringBeforeLast('/', "")
     val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
     val matches =
-      (dir.listFiles() ?: emptyArray())
+      (SystemFileSystem.listOrNull(dir.path.toPath())?.map { it.toFile() } ?: emptyList())
         .filter { f ->
           f.name.startsWith(prefix) &&
             f.name.endsWith(ext) &&

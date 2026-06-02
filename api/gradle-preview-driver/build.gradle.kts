@@ -26,6 +26,11 @@ dependencies {
   // DTOs transitively.
   api(project(":preview-data-api"))
 
+  // Okio-based file IO for the manifest read + PNG sha256 (see `PreviewResultBuilder` /
+  // `PreviewSha256`). `implementation` — consumers don't need Okio on their compile classpath
+  // just to call `render()`.
+  implementation(project(":common-io"))
+
   // Gradle Tooling API for the cross-process build drive. The version here mirrors what
   // `:cli` used to declare — bumping is a published-API concern, not a CLI one.
   api("org.gradle:gradle-tooling-api:9.5.1")
