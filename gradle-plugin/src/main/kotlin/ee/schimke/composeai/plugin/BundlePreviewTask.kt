@@ -189,7 +189,21 @@ abstract class BundlePreviewTask : DefaultTask() {
     val irByPreview: Map<String, ResolvedIr> =
       selected.mapNotNull { p -> resolvePreviewIr(p)?.let { p.id to it } }.toMap()
 
-    val depSeedFqns = selected.map { it.className }.toSet()
+    // A protolayout IR preview replays through `TileRenderer` (see renderers/android's
+    // `TileIrReplayComposable`), which no tile *preview* function references — the preview only
+    // touches the protolayout builders. So seed the dep closure from the player entry point too:
+    // the BFS then reaches `tiles-renderer` + its transitive `protolayout-renderer` / proto
+    // runtime,
+    // and since deps are kept as whole coordinates whenever any class is reachable, those renderer
+    // libs are recorded as carriage coordinates. `AndroidPreviewSupport` already injects
+    // `tiles-renderer` onto the consumer's runtime classpath, so the jar is present in the scan;
+    // without this seed it'd be pruned (reachable == 0) and the daemon replay would
+    // `NoClassDefFoundError` on `TileRenderer`. A missing entry FQN (jar absent) seeds nothing, so
+    // this is a no-op for non-tile bundles.
+    val hasProtolayoutIr = irByPreview.values.any { it.format == IR_FORMAT_PROTOLAYOUT }
+    val replayEntrySeeds = if (hasProtolayoutIr) PROTOLAYOUT_REPLAY_ENTRY_FQNS else emptySet()
+
+    val depSeedFqns = selected.map { it.className }.toSet() + replayEntrySeeds
     val packSeedFqns = selected.filter { it.id !in irByPreview }.map { it.className }.toSet()
 
     val classDirsList = moduleClassDirs.files.filter { it.exists() && it.isDirectory }
@@ -755,6 +769,15 @@ abstract class BundlePreviewTask : DefaultTask() {
       encodeDefaults = true
       classDiscriminator = "kind"
     }
+
+    /**
+     * Player entry points seeded into the dependency closure when a bundle carries protolayout IR,
+     * so the renderer runtime the daemon replays through ([TilePreviewRenderer]'s `TileRenderer`
+     * path) is carried as coordinates even though no tile preview references it. `TileRenderer`
+     * pulls `protolayout-renderer` + the proto runtime transitively, and whole coordinates are kept
+     * when any class is reachable, so this single entry carries the lot.
+     */
+    val PROTOLAYOUT_REPLAY_ENTRY_FQNS = setOf("androidx.wear.tiles.renderer.TileRenderer")
 
     /**
      * Soft size ceiling above which an embed-deps pack warns. 25 MB is comfortably above a normal

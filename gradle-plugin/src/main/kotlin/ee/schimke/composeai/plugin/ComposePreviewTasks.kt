@@ -244,10 +244,23 @@ internal object ComposePreviewTasks {
     val depJarView =
       depConfig?.incoming?.artifactView { attributes.attribute(artifactTypeAttr, "jar") }
     val depJarFiles = depJarView?.files
+    // The `artifactType=jar` view extracts every AAR to its `classes.jar`, erasing the aar/jar
+    // distinction — but the player's `CoordinateResolver` needs the real packaging to find the
+    // artifact (`<artifact>-<version>.aar`) in a Maven/Gradle cache and unpack its classes. So read
+    // the *untransformed* artifacts too and key each component's packaging off its file extension
+    // (Android deps resolve to `.aar`, JVM deps to `.jar`), then stamp it into the coordinate
+    // below.
+    val typeByComponent: Provider<Map<String, String>> =
+      depConfig?.incoming?.artifacts?.resolvedArtifacts?.map { artifacts ->
+        artifacts.associate { artifact ->
+          artifact.id.componentIdentifier.displayName to
+            if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
+        }
+      } ?: project.providers.provider { emptyMap<String, String>() }
     // Map each resolved dependency jar to a coordinate string the task action can fold into
     // `bundle.json`'s `classpath`:
-    // - `maven:<group>:<artifact>:<version>:jar` for Maven-resolved deps (the player resolves at
-    //   open time — small bundle, no inlined jars).
+    // - `maven:<group>:<artifact>:<version>:<aar|jar>` for Maven-resolved deps (the player resolves
+    //   at open time — small bundle, no inlined jars).
     // - `project:<gradle path>` for project-local deps (the task inlines those into the bundle
     //   since they can't be re-resolved from Maven).
     //
@@ -255,13 +268,14 @@ internal object ComposePreviewTasks {
     // transformed artifact keeps its original `componentIdentifier` (the Maven module / project),
     // so coordinates resolve correctly even though `.file` points at the extracted classes.jar.
     val coordMapProvider: Provider<Map<String, String>> =
-      depJarView?.artifacts?.resolvedArtifacts?.map { artifacts ->
+      depJarView?.artifacts?.resolvedArtifacts?.zip(typeByComponent) { artifacts, typeByComponentMap
+        ->
         artifacts.associate { artifact ->
           val id = artifact.id.componentIdentifier
           val value =
             when (id) {
               is org.gradle.api.artifacts.component.ModuleComponentIdentifier ->
-                "maven:${id.group}:${id.module}:${id.version}:jar"
+                "maven:${id.group}:${id.module}:${id.version}:${typeByComponentMap[id.displayName] ?: "jar"}"
               is org.gradle.api.artifacts.component.ProjectComponentIdentifier ->
                 "project:${id.projectPath}"
               else -> "unknown:${id.displayName}"
