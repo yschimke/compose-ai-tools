@@ -107,6 +107,12 @@ include(":common-io")
 
 project(":common-io").projectDir = file("common/io")
 
+// Suspend + Dispatchers.IO wrappers over `:common-io`. Split out so `:common-io` stays
+// coroutines-free for the render subprocess classpath. Only async consumers depend on this.
+include(":common-io-suspend")
+
+project(":common-io-suspend").projectDir = file("common/io-suspend")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the

@@ -100,9 +100,9 @@ dependencies {
 
   implementation(libs.kotlinx.serialization.json)
 
-  // Okio-based file/IO foundation: all bundle reads/extraction/coordinate resolution funnel
-  // through `:common-io`'s suspend helpers (Dispatchers.IO + Okio FileSystem).
-  implementation(project(":common-io"))
+  // Okio-based file/IO with the suspend/Dispatchers.IO wrappers: the bundle load runs in a Compose
+  // LaunchedEffect, so it uses `:common-io-suspend` (which re-exports `:common-io`).
+  implementation(project(":common-io-suspend"))
 
   // Ktor client (OkHttp engine) for opening a bundle from a URL. Explicit okhttp dep pins the
   // engine to OkHttp 5.x over ktor-client-okhttp's transitive 4.12.0.
