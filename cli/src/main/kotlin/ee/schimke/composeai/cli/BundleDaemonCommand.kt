@@ -223,17 +223,19 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * synthesized `robolectric.properties` apply to the one-shot `bundle render` path only, not the
    * daemon.
    *
-   * Still Phase 2 (only validatable in the SDK-gated Android CI chain): packaging `:daemon:android`
-   * into the CLI distribution as `lib-daemon-android/` — until then this surfaces an actionable
-   * diagnostic, and stays exercisable via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`.
+   * The `:daemon:android` runtime is shipped in the CLI distribution as `lib-daemon-android/`
+   * (staged by `:cli`'s `stageDaemonAndroidLibs` from the module's classpath descriptor), so this
+   * resolves the sidecar from `APP_HOME/lib-daemon-android/` for a normal install; the
+   * `-Dcomposeai.cli.libDaemonAndroidDir=<dir>` override stays available for IDE / `JavaExec` runs.
+   * End-to-end coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
     val daemonJars = locateSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
-        "bundle daemon: backend=android needs the Android daemon sidecar, which is not packaged in " +
-          "this CLI build yet (Phase 2). Point at a built one via " +
-          "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>`. Looked in " +
+        "bundle daemon: backend=android needs the Android daemon sidecar (`lib-daemon-android/`), " +
+          "normally staged into the CLI install by `./gradlew :cli:installDist`. Point at a built " +
+          "one via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`. Looked in " +
           "`${sidecarSearchDescription("lib-daemon-android")}`."
       )
       exitProcess(1)

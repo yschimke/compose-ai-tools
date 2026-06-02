@@ -150,6 +150,30 @@ tasks.register("functionalTestWithBundleRender") {
   dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
 }
 
+tasks.register("functionalTestWithAndroidBundleDaemon") {
+  group = "verification"
+  description =
+    "Builds the compose-preview CLI install dist (now shipping `lib-daemon-android/`) plus the " +
+      "Android sample bundles (`:samples:wear` Wear-tile/Compose, `:samples:remotecompose` Remote " +
+      "Compose), then runs gradle-plugin's functionalTest with `bundle.daemon.android.e2e=true` so " +
+      "`AndroidBundleDaemonRenderFunctionalTest` drives `compose-preview bundle daemon` against " +
+      "each bundle and renders protolayout / remotecompose / classic previews to PNG. Needs a " +
+      "local Android SDK (ANDROID_HOME / ANDROID_SDK_ROOT) for android.jar + the Robolectric build."
+  // Same publish targets as the desktop e2e — running the full `functionalTest` also exercises
+  // tests that resolve the plugin (and renderer-desktop transitives) from mavenLocal.
+  bundleRenderFunctionalTestPublishTargets.forEach { dependsOn("$it:publishToMavenLocal") }
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":publishToMavenLocal"))
+  // CLI install dist carries `lib-daemon-android/` (the new `stageDaemonAndroidLibs` output).
+  dependsOn(":cli:installDist")
+  // The Android sample bundles the test renders. Each `composePreviewBundle` runs the plugin's
+  // render (Robolectric) + pack against the real sample, emitting an `backend="android"` bundle
+  // with non-empty `intermediateRepresentations` (Wear tile + Remote Compose IR) alongside classic
+  // Compose previews.
+  dependsOn(":samples:wear:composePreviewBundle")
+  dependsOn(":samples:remotecompose:composePreviewBundle")
+  dependsOn(gradle.includedBuild("gradle-plugin").task(":functionalTest"))
+}
+
 // `:cli:installDist` and the included build's `functionalTest` would otherwise run in parallel
 // (Gradle's parallel scheduler doesn't serialise cross-build deps automatically). The functional
 // test invokes the CLI via `ProcessBuilder`, so it crashes with `NoClassDefFoundError` against a

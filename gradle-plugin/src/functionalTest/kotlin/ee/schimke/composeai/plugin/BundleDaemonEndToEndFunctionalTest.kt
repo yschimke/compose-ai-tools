@@ -8,7 +8,6 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -89,8 +88,11 @@ class BundleDaemonEndToEndFunctionalTest {
           },
         )
       }
-      writeFrame(stdin, jsonRpcRequest(id = 1, method = "initialize", params = initParams))
-      val initResponse = readFrameWithTimeoutMs(stdout, timeoutMs = 60_000)
+      BundleDaemonStdio.writeFrame(
+        stdin,
+        BundleDaemonStdio.jsonRpcRequest(id = 1, method = "initialize", params = initParams),
+      )
+      val initResponse = BundleDaemonStdio.readFrameWithTimeoutMs(stdout, timeoutMs = 60_000)
       val initJson = json.parseToJsonElement(initResponse).jsonObject
       assertWithMessage("initialize response payload: $initResponse")
         .that(initJson["id"]?.jsonPrimitive?.content)
@@ -106,11 +108,17 @@ class BundleDaemonEndToEndFunctionalTest {
       initOk = true
 
       // 2. initialized notification → PROTOCOL.md § 3 requires this before further requests.
-      writeFrame(stdin, jsonRpcNotification(method = "initialized"))
+      BundleDaemonStdio.writeFrame(
+        stdin,
+        BundleDaemonStdio.jsonRpcNotification(method = "initialized"),
+      )
 
       // 3. shutdown request → expect a (typically null) result, then exit.
-      writeFrame(stdin, jsonRpcRequest(id = 2, method = "shutdown"))
-      val shutdownResponse = readFrameWithTimeoutMs(stdout, timeoutMs = 10_000)
+      BundleDaemonStdio.writeFrame(
+        stdin,
+        BundleDaemonStdio.jsonRpcRequest(id = 2, method = "shutdown"),
+      )
+      val shutdownResponse = BundleDaemonStdio.readFrameWithTimeoutMs(stdout, timeoutMs = 10_000)
       val shutdownJson = json.parseToJsonElement(shutdownResponse).jsonObject
       assertWithMessage("shutdown response payload: $shutdownResponse")
         .that(shutdownJson["id"]?.jsonPrimitive?.content)
@@ -120,7 +128,7 @@ class BundleDaemonEndToEndFunctionalTest {
         .isNull()
       shutdownOk = true
 
-      writeFrame(stdin, jsonRpcNotification(method = "exit"))
+      BundleDaemonStdio.writeFrame(stdin, BundleDaemonStdio.jsonRpcNotification(method = "exit"))
       stdin.close()
 
       val exited = proc.waitFor(30, TimeUnit.SECONDS)
@@ -208,100 +216,6 @@ class BundleDaemonEndToEndFunctionalTest {
     assertWithMessage("bundle missing after pack:\n$packOutput").that(bundle.isFile).isTrue()
     assertThat(bundle.length()).isGreaterThan(0L)
     return bundle
-  }
-
-  private fun jsonRpcRequest(id: Int, method: String, params: JsonObject? = null): String =
-    Json.encodeToString(
-      JsonObject.serializer(),
-      buildJsonObject {
-        put("jsonrpc", "2.0")
-        put("id", id)
-        put("method", method)
-        if (params != null) put("params", params)
-      },
-    )
-
-  private fun jsonRpcNotification(method: String, params: JsonObject? = null): String =
-    Json.encodeToString(
-      JsonObject.serializer(),
-      buildJsonObject {
-        put("jsonrpc", "2.0")
-        put("method", method)
-        if (params != null) put("params", params)
-      },
-    )
-
-  /**
-   * Write a JSON-RPC payload framed with LSP-style `Content-Length`. Mirrors the wire shape
-   * `DaemonClient` writes — kept inline so this test stays free of vscode-extension deps.
-   */
-  private fun writeFrame(stream: OutputStream, json: String) {
-    val bytes = json.toByteArray(Charsets.UTF_8)
-    val header = "Content-Length: ${bytes.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
-    stream.write(header)
-    stream.write(bytes)
-    stream.flush()
-  }
-
-  /**
-   * Read one LSP-framed JSON-RPC message from [stream]. Bound to [timeoutMs] in wall-clock — the
-   * blocking [InputStream.read] runs on a worker thread and we wait via
-   * [java.util.concurrent.Future.get] so a wedged daemon surfaces as a deterministic timeout rather
-   * than hanging this test until Gradle's outer cancel kicks in. The daemon's cold-start can run
-   * several seconds on first request, so the initialize timeout is generous.
-   */
-  private fun readFrameWithTimeoutMs(stream: InputStream, timeoutMs: Long): String {
-    // Single-shot executor + daemon thread so a cancelled read can't keep the JVM alive past
-    // teardown — the parent kills the daemon process in `finally` either way, but cancelling
-    // the read here lets the assertion message describe the timeout rather than blocking on
-    // GC of the lingering worker.
-    val executor =
-      java.util.concurrent.Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "bundle-daemon-frame-reader").apply { isDaemon = true }
-      }
-    try {
-      val future = executor.submit<String> { readFrameBlocking(stream) }
-      try {
-        return future.get(timeoutMs, TimeUnit.MILLISECONDS)
-      } catch (_: java.util.concurrent.TimeoutException) {
-        future.cancel(true)
-        error("timeout (${timeoutMs}ms) reading daemon frame on stdio")
-      } catch (e: java.util.concurrent.ExecutionException) {
-        // Unwrap the worker's failure so the assertion message points at the inner
-        // `daemon stdout closed mid-header` / malformed-header diagnostic instead of an opaque
-        // `ExecutionException`.
-        throw e.cause ?: e
-      }
-    } finally {
-      executor.shutdownNow()
-    }
-  }
-
-  /**
-   * Blocking single-frame reader. Runs on a worker thread submitted by [readFrameWithTimeoutMs] —
-   * the wait there enforces the timeout, this just does the I/O. The daemon may interleave stderr
-   * (redirected to a file in the caller so it doesn't pollute this stream) or fire-and-forget log
-   * lines on stdout in future; v1 doesn't, and the framing decoder catches violations.
-   */
-  private fun readFrameBlocking(stream: InputStream): String {
-    val header = StringBuilder()
-    while (true) {
-      val ch = stream.read()
-      check(ch != -1) { "daemon stdout closed mid-header. partial=${header}" }
-      header.append(ch.toChar())
-      if (header.endsWith("\r\n\r\n")) break
-    }
-    val contentLength =
-      Regex("""(?i)Content-Length:\s*(\d+)""").find(header)?.groupValues?.get(1)?.toIntOrNull()
-        ?: error("malformed daemon frame header: $header")
-    val buf = ByteArray(contentLength)
-    var read = 0
-    while (read < contentLength) {
-      val n = stream.read(buf, read, contentLength - read)
-      check(n != -1) { "daemon stdout closed mid-body. expected=$contentLength got=$read" }
-      read += n
-    }
-    return String(buf, Charsets.UTF_8)
   }
 
   private fun File.readTextOrEmpty(): String =
