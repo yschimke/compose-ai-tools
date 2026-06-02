@@ -195,6 +195,26 @@ jobs:
       # Split into two phases for the same parallel-execution race the desktop bundle-render job
       # documents: the included-build functionalTest can start before `:cli:installDist` finishes
       # populating the lib dirs. Pre-building serialises the two (and is otherwise no-op).
+      #
+      # Render the samples FIRST, in their own invocation, exactly as the desktop bundle-render job
+      # does (preview-bundle-ascii.yml): `composePreviewBundle` deliberately does NOT depend on
+      # `composePreviewRender` (packing without a render is a valid stub-cover flow) — it only
+      # `mustRunAfter`s it. So the IR sidecars (`<stem>.tilelayout`/`.tileresources`/`.rcdoc`) the
+      # render step writes beside each PNG have to already exist on disk before the bundle task's
+      # first execution to be baked into `intermediateRepresentations`. Without this step the packed
+      # bundles carry no IR and every preview falls back to classic, so the protolayout/remotecompose
+      # assertions below can never pass. `composePreviewBundle` tracks the renders dir as an input
+      # (`renderFiles`), so the fresh renders are picked up — no `--rerun-tasks` needed.
+      # `missingRenders=warn` rather than the default `fail`: these samples render here for the first
+      # time, and the E2E only needs at least one protolayout + one remotecompose IR to land — a
+      # single stubborn preview shouldn't fail the whole job (its `.error.json` still surfaces).
+      - name: Render sample previews (captures Wear tile + Remote Compose IR sidecars)
+        run: >-
+          ./gradlew
+          :samples:wear:composePreviewRenderAll
+          :samples:remotecompose:composePreviewRenderAll
+          -PcomposePreview.missingRenders=warn
+          --stacktrace
       - name: Pre-build CLI install + sample bundles + publish plugin
         run: >-
           ./gradlew :cli:installDist
