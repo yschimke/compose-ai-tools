@@ -1724,9 +1724,7 @@ internal object AndroidPreviewSupport {
       // manifest, and the pack action reads those by absolute path — so union the artefacts they
       // point at (the `apk_for_local_test` output dir + the merged manifest) into the tracked
       // `@InputFiles` so the cacheable task re-packs when their content changes even if the paths
-      // don't. (The library R classes are scanned from the existing `dependencyJars` view inside
-      // the task — no unit-test-classpath input, which would trip AGP's
-      // `AmbiguousArtifactsFailure`.)
+      // don't.
       androidUnitTestConfigFiles =
         project.files(
           unitTestConfigDir,
@@ -1735,6 +1733,22 @@ internal object AndroidPreviewSupport {
           ),
           variant.artifacts.get(SingleArtifact.MERGED_MANIFEST),
         ),
+      // The generated library R classes the tile renderer links
+      // (`androidx.wear.protolayout.renderer.R$style`)
+      // are generated only into the unit-test merged R.jar (a raw file dep on this classpath with
+      // no
+      // `artifactType=jar` attribute, so the bundle's `dependencyJars` view drops it). Resolve it
+      // through a LENIENT artifactView so AGP's `AmbiguousArtifactsFailure` on project deps
+      // exposing
+      // secondary variants (e.g. `:data-ambient-connector`) is skipped rather than fatal — the same
+      // pattern this file uses for `typeByComponent`. Raw file deps (the R.jar) are included by any
+      // view regardless of attributes.
+      androidUnitTestRuntimeClasspath =
+        project.configurations
+          .findByName("${variantName}UnitTestRuntimeClasspath")
+          ?.incoming
+          ?.artifactView { lenient(true) }
+          ?.files,
     )
 
     // Phase 1, Stream A — preview daemon bootstrap descriptor. Registered

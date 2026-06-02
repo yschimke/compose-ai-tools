@@ -226,11 +226,13 @@ internal object ComposePreviewTasks {
     // properties point at. The pack action reads the APK/manifest by the absolute paths in
     // `test_config.properties`, so they must also be declared here as tracked `@InputFiles`
     // content — otherwise the cacheable task could restore a stale bundle when those generated
-    // files change while their paths stay the same. (The generated library R classes the tile
-    // renderer needs are scanned straight from the bundle's existing `dependencyJars` view — for an
-    // application module AGP puts the merged R.jar on the main runtime classpath — so no separate
-    // unit-test-classpath input is wired, avoiding AGP's `AmbiguousArtifactsFailure`.)
+    // files change while their paths stay the same. `androidUnitTestRuntimeClasspath` is the
+    // variant's `${variant}UnitTestRuntimeClasspath` (resolved leniently by the caller), scanned
+    // for the generated library R classes — with non-transitive R, the tile renderer's `R$style`
+    // is only on that classpath's merged R.jar, which the `artifactType=jar` `dependencyJars` view
+    // drops.
     androidUnitTestConfigFiles: FileCollection? = null,
+    androidUnitTestRuntimeClasspath: FileCollection? = null,
   ) {
     val previewIdsProperty: Provider<List<String>> =
       project.providers.gradleProperty("bundlePreviewIds").map { raw ->
@@ -343,6 +345,7 @@ internal object ComposePreviewTasks {
       dependencyCoordinates.set(coordMapProvider)
       // (v6 Android) Inputs for protolayout resource carriage; null on desktop (no-op).
       androidUnitTestConfigFiles?.let { androidUnitTestConfig.from(it) }
+      androidUnitTestRuntimeClasspath?.let { this.androidUnitTestRuntimeClasspath.from(it) }
       // Renders dir is wired conditionally — when composePreviewRender has run, the dir exists and
       // contains PNGs. Use orNull semantics: missing dir = stub cover. `rendersDir` is the
       // @Internal
