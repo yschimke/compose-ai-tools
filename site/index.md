@@ -36,7 +36,7 @@ The plugin is published to
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.10.1"
+    id("ee.schimke.composeai.preview") version "0.12.5"
 }
 ```
 <!-- x-release-please-end -->
@@ -48,8 +48,8 @@ Then:
 ./gradlew :app:composePreviewRenderAll   # render every @Preview to PNG
 ```
 
-Requires Java 17+, Gradle 9.4.1+, AGP 9.1+ (Android), Kotlin 2.2.21,
-Compose Multiplatform 1.10.3 (Desktop).
+Requires Java 17+, Gradle 8.13+, AGP 8.13.0+ (Android), Kotlin 2.0.21+,
+Compose Multiplatform 1.10.3+ (Desktop).
 
 ### VS Code extension
 
