@@ -19,6 +19,7 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
 import ee.schimke.composeai.mcp.protocol.ReadResourceResult
@@ -27,7 +28,6 @@ import ee.schimke.composeai.mcp.protocol.ResourceDescriptor
 import ee.schimke.composeai.mcp.protocol.ToolDef
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import java.io.File
-import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Base64
@@ -50,6 +50,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import okio.Path.Companion.toPath
 
 /**
  * The load-bearing wiring layer. Owns:
@@ -427,7 +428,8 @@ class DaemonMcpServer(
         ?: run {
           val file = File(result.pngPath)
           check(file.isFile) { "history/read pngPath does not exist: ${result.pngPath}" }
-          Base64.getEncoder().encodeToString(Files.readAllBytes(file.toPath()))
+          Base64.getEncoder()
+            .encodeToString(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
         }
     return ReadResourceResult(
       contents = listOf(ResourceContents.Blob(uri = uriString, mimeType = "image/png", blob = blob))
@@ -443,7 +445,7 @@ class DaemonMcpServer(
     val outcome = awaitNextRender(uri, session, progressToken, overrides)
     val file = File(outcome.pngPath)
     check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
-    return applyImageSizeOverride(Files.readAllBytes(file.toPath()))
+    return applyImageSizeOverride(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
   }
 
   /**
@@ -740,7 +742,8 @@ class DaemonMcpServer(
       return
     }
 
-    val text = runCatching { file.readText() }.getOrNull() ?: return
+    val text =
+      runCatching { SystemFileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: return
     val previews =
       runCatching {
           val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
@@ -2803,7 +2806,10 @@ class DaemonMcpServer(
               "render_preview_overlay: overlay PNG missing at $pngPath"
             )
           }
-          pngCallToolResult(Base64.getEncoder().encodeToString(Files.readAllBytes(file.toPath())))
+          pngCallToolResult(
+            Base64.getEncoder()
+              .encodeToString(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
+          )
         } else {
           val payload = buildJsonObject {
             put("kind", kind)
@@ -3085,7 +3091,8 @@ class DaemonMcpServer(
         val stopResult = daemon.client.recordingStop(recordingId)
         val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
         val encoded = daemon.client.recordingEncode(recordingId, format)
-        val videoBytes = Files.readAllBytes(File(encoded.videoPath).toPath())
+        val videoBytes =
+          SystemFileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
         val payload = buildJsonObject {
           put("recordingId", recordingId)
           put("videoPath", encoded.videoPath)
@@ -3186,7 +3193,13 @@ class DaemonMcpServer(
         .orEmpty()
     var previous: java.awt.image.BufferedImage? = null
     return frames.mapIndexed { index, frame ->
-      val image = runCatching { ImageIO.read(frame) }.getOrNull()
+      // Read the PNG bytes through Okio, then decode from memory (ImageIO is the codec boundary).
+      val image =
+        runCatching {
+            val bytes = SystemFileSystem.read(frame.path.toPath()) { readByteArray() }
+            ImageIO.read(bytes.inputStream())
+          }
+          .getOrNull()
       val previousImage = previous
       val changedPixels =
         if (previousImage != null && image != null && sameDimensions(previousImage, image)) {
@@ -3925,7 +3938,9 @@ class DaemonMcpServer(
 
   private fun detectBranch(workspacePath: File): String? {
     val head = File(workspacePath, ".git/HEAD").takeIf { it.isFile } ?: return null
-    val content = runCatching { head.readText().trim() }.getOrNull() ?: return null
+    val content =
+      runCatching { SystemFileSystem.read(head.path.toPath()) { readUtf8() }.trim() }.getOrNull()
+        ?: return null
     return if (content.startsWith("ref:"))
       content.removePrefix("ref:").trim().substringAfterLast('/')
     else content.take(8)
