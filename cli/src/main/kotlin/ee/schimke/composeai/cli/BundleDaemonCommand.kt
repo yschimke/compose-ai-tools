@@ -223,19 +223,22 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
    * synthesized `robolectric.properties` apply to the one-shot `bundle render` path only, not the
    * daemon.
    *
-   * The `:daemon:android` runtime is shipped in the CLI distribution as `lib-daemon-android/`
-   * (staged by `:cli`'s `stageDaemonAndroidLibs` from the module's classpath descriptor), so this
-   * resolves the sidecar from `APP_HOME/lib-daemon-android/` for a normal install; the
-   * `-Dcomposeai.cli.libDaemonAndroidDir=<dir>` override stays available for IDE / `JavaExec` runs.
-   * End-to-end coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
+   * The `:daemon:android` runtime is ~150-200 MB (Robolectric + the full Compose-Android stack), so
+   * it is NOT bundled in the main CLI tarball — that ballooned it to ~382 MB. It ships separately
+   * as `compose-preview-android-daemon-<version>.zip` (built by `packageAndroidDaemon`), which
+   * `compose-preview bundle daemon` fetches on demand and caches the first time it renders an
+   * `backend="android"` bundle. Until that auto-download lands, point at an unpacked archive via
+   * `-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android` (the CI e2e does this). E2E
+   * coverage lives in the SDK-gated `AndroidBundleDaemonRenderFunctionalTest`.
    */
   private fun androidDaemonLaunch(): DaemonLaunch {
     val daemonJars = locateSidecarJars("lib-daemon-android")
     if (daemonJars.isEmpty()) {
       System.err.println(
         "bundle daemon: backend=android needs the Android daemon sidecar (`lib-daemon-android/`), " +
-          "normally staged into the CLI install by `./gradlew :cli:installDist`. Point at a built " +
-          "one via `-Dcomposeai.cli.libDaemonAndroidDir=<dir>`. Looked in " +
+          "which ships separately as `compose-preview-android-daemon-<version>.zip` (it's too large " +
+          "to bundle in the CLI tarball). Download + unpack it and point at it via " +
+          "`-Dcomposeai.cli.libDaemonAndroidDir=<dir>/lib-daemon-android`. Looked in " +
           "`${sidecarSearchDescription("lib-daemon-android")}`."
       )
       exitProcess(1)

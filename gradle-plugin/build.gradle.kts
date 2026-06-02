@@ -110,7 +110,10 @@ val functionalTestTask =
     // build's `functionalTestWithAndroidBundleDaemon` task flips it on after building the bundles.
     val androidBundleDaemonE2E =
       providers.gradleProperty("bundle.daemon.android.e2e").orNull == "true"
-    systemProperty("composeai.functionalTest.androidBundleDaemon", androidBundleDaemonE2E.toString())
+    systemProperty(
+      "composeai.functionalTest.androidBundleDaemon",
+      androidBundleDaemonE2E.toString(),
+    )
     // Paths to the Android sample bundles the test renders. Built by the root build's
     // `:samples:wear:composePreviewBundle` / `:samples:remotecompose:composePreviewBundle`. Passed
     // unconditionally (config-cache-safe, same rationale as `cliBinary` below); the test self-skips
