@@ -160,6 +160,8 @@ include(":samples:wear")
 
 include(":samples:xr-glimmer")
 
+include(":samples:xr-spatial")
+
 include(":samples:cmp")
 
 include(":samples:cmp-shared")

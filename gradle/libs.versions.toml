@@ -60,6 +60,15 @@ wear-tooling-preview = "1.0.0"
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
 xr-glimmer = "1.0.0-alpha13"
+# Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
+# (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
+# AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
+# the repo's default `compileSdk = 36` + AGP 9.2.x — no need for the platform-37
+# bump Glimmer requires. Used by `:samples:xr-spatial`, which renders the
+# 2D Home-Space fallback of these composables through the Android Robolectric
+# pipeline (see docs/design/XR_SPATIAL_PREVIEW.md). Alpha14 was published
+# 2026-05-19.
+xr-compose = "1.0.0-alpha14"
 # `androidx.wear:wear` carries `androidx.wear.ambient.AmbientLifecycleObserver` —
 # the AOSP entry point both horologist's `AmbientAware` and direct subscribers
 # wrap. Used only by `:data-ambient-connector` (the Robolectric shadow + state
@@ -188,6 +197,8 @@ wear-tiles-tooling = { module = "androidx.wear.tiles:tiles-tooling", version.ref
 wear-tiles-tooling-preview = { module = "androidx.wear.tiles:tiles-tooling-preview", version.ref = "wear-tiles" }
 xr-glimmer = { module = "androidx.xr.glimmer:glimmer", version.ref = "xr-glimmer" }
 xr-glimmer-google-fonts = { module = "androidx.xr.glimmer:glimmer-google-fonts", version.ref = "xr-glimmer" }
+xr-compose = { module = "androidx.xr.compose:compose", version.ref = "xr-compose" }
+xr-compose-testing = { module = "androidx.xr.compose:compose-testing", version.ref = "xr-compose" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }

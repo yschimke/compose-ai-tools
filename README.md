@@ -101,6 +101,7 @@ branch:
 - [`samples:wear`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#sampleswear) — Wear OS Material 3 Expressive, `EdgeButton`, tile previews.
 - [`samples:cmp`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplescmp) — Compose Multiplatform Desktop.
 - [`samples:remotecompose`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplesremotecompose) — Remote Compose against `wear-compose-remote-material3`.
+- [`samples:xr-spatial`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/main#samplesxr-spatial) — Jetpack Compose for XR (`androidx.xr.compose`), 2D Home-Space fallback of `Orbiter` / `SpatialElevation` / `SpatialPanel` content.
 
 ATF a11y findings for the same samples are on the
 [`compose-preview/a11y/main`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/a11y/main)
