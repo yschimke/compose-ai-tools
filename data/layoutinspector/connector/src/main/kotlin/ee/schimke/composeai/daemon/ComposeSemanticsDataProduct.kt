@@ -23,11 +23,13 @@ import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionSlotTables
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /** Producer for `compose/semantics`, a compact SemanticsNode projection for inspector clients. */
 object ComposeSemanticsDataProducer {
@@ -43,9 +45,9 @@ object ComposeSemanticsDataProducer {
   fun writeArtifacts(rootDir: File, previewId: String, root: SemanticsNode) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ComposeSemanticsPayload(root = root.toWireNode())
-    previewDir
-      .resolve(FILE)
-      .writeText(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
+    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
+    }
   }
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
@@ -220,9 +222,9 @@ object LayoutInspectorDataProducer {
     val layoutRoot = ComposeLayoutInspector.inspect(capture) ?: return
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = LayoutInspectorPayload(root = layoutRoot)
-    previewDir
-      .resolve(FILE)
-      .writeText(json.encodeToString(LayoutInspectorPayload.serializer(), payload))
+    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(LayoutInspectorPayload.serializer(), payload))
+    }
   }
 }
 
