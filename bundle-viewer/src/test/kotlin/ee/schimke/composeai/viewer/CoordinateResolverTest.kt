@@ -9,6 +9,8 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.runBlocking
+import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Test
 
@@ -83,26 +85,36 @@ class CoordinateResolverTest {
     return baos.toByteArray()
   }
 
-  /** Local-only resolve: network off so a miss stays hermetic. */
+  /**
+   * Local-only resolve: network off so a miss stays hermetic. `CoordinateResolver.resolve` is
+   * suspend and returns `okio.Path`s; the helper drives it with `runBlocking` and maps back to
+   * `File` so the assertions stay file-shaped.
+   */
   private fun resolve(vararg coords: ClasspathEntry.Maven): List<File> =
-    CoordinateResolver.resolve(
-      coords.toList(),
-      warn = { warnings += it },
-      repositoryRoots = listOf(root),
-      networkEnabled = false,
-      downloadCacheDir = cacheDir,
-    )
+    runBlocking {
+        CoordinateResolver.resolve(
+          coords.toList(),
+          warn = { warnings += it },
+          repositoryRoots = listOf(root.path.toPath()),
+          networkEnabled = false,
+          downloadCacheDir = cacheDir.path.toPath(),
+        )
+      }
+      .map { it.toFile() }
 
   /** Network-enabled resolve pointed only at [base], caching into [cacheDir]. */
   private fun resolveNetwork(base: String, vararg coords: ClasspathEntry.Maven): List<File> =
-    CoordinateResolver.resolve(
-      coords.toList(),
-      warn = { warnings += it },
-      repositoryRoots = listOf(root),
-      networkEnabled = true,
-      remoteRepositories = listOf(base),
-      downloadCacheDir = cacheDir,
-    )
+    runBlocking {
+        CoordinateResolver.resolve(
+          coords.toList(),
+          warn = { warnings += it },
+          repositoryRoots = listOf(root.path.toPath()),
+          networkEnabled = true,
+          remoteRepositories = listOf(base),
+          downloadCacheDir = cacheDir.path.toPath(),
+        )
+      }
+      .map { it.toFile() }
 
   @Test
   fun `resolves and verifies a matching hash`() {

@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.createTempFile
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
@@ -40,6 +45,11 @@ import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetAdapter
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import okio.Path
+import okio.Path.Companion.toPath
+import okio.buffer
 
 /**
  * Compose Preview Viewer — a one-window desktop app that opens a `compose-preview` bundle (PNG+ZIP
@@ -80,10 +90,15 @@ fun main(args: Array<String>) {
           loadedBundle = loadBundle(initial)
           loadError = null
         } catch (e: Throwable) {
-          loadError = "Could not load ${initial.path}: ${e.message}"
+          loadError = "Could not load $initial: ${e.message}"
         }
       }
     }
+
+    // Coroutine scope for the AWT drop callback below — `loadBundle` is suspend, so the drop
+    // handler launches into this scope (Main dispatcher) and the file IO hops to Dispatchers.IO
+    // internally.
+    val scope = rememberCoroutineScope()
 
     // Resize the window to the preview's declared size whenever a fresh bundle lands. We
     // observe [loadedBundle]'s cover here rather than at load-site so a drop-while-running
@@ -124,13 +139,15 @@ fun main(args: Array<String>) {
                   }
                 event.dropComplete(true)
                 val file = files.firstOrNull() ?: return
-                try {
-                  val next = loadBundle(file)
-                  loadedBundle?.close()
-                  loadedBundle = next
-                  loadError = null
-                } catch (e: Throwable) {
-                  loadError = "Could not load ${file.path}: ${e.message}"
+                scope.launch {
+                  try {
+                    val next = loadBundle(file.path.toPath())
+                    loadedBundle?.close()
+                    loadedBundle = next
+                    loadError = null
+                  } catch (e: Throwable) {
+                    loadError = "Could not load ${file.path}: ${e.message}"
+                  }
                 }
               }
             },
@@ -255,34 +272,41 @@ private val INITIAL_HEIGHT = 720.dp
  * (delete-on-exit). Kept self-contained here rather than depending on `:cli`'s BundleSource so the
  * viewer's module graph stays minimal (same convention as the duplicated `extractZipBytes`).
  */
-private fun resolveBundleArg(arg: String): File? {
+private fun resolveBundleArg(arg: String): Path? {
   val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()
   val isUrl = scheme == "http" || scheme == "https" || scheme == "file"
-  if (!isUrl) return File(arg).takeIf { it.isFile }
+  fun Path.takeIfFile(): Path? = takeIf {
+    SystemFileSystem.metadataOrNull(it)?.isRegularFile == true
+  }
+  if (!isUrl) return arg.toPath().takeIfFile()
   return try {
     val uri = java.net.URI(arg)
-    if (uri.scheme.equals("file", ignoreCase = true)) return File(uri).takeIf { it.isFile }
-    val temp = java.nio.file.Files.createTempFile("compose-preview-bundle-", ".png").toFile()
-    temp.deleteOnExit()
+    // file: URIs go via java.io.File(URI) — the only correct cross-platform URI→path decode — then
+    // bridge to an Okio Path.
+    if (uri.scheme.equals("file", ignoreCase = true)) return File(uri).path.toPath().takeIfFile()
     // Ktor client over the OkHttp engine; stream the body to disk on a 2xx. runBlocking is fine at
-    // this one-shot startup call.
-    val ok =
-      io.ktor.client.HttpClient(io.ktor.client.engine.okhttp.OkHttp).use { client ->
-        kotlinx.coroutines.runBlocking {
+    // this one-shot startup call (main(), before Compose starts).
+    runBlocking {
+      val temp = SystemFileSystem.createTempFile("compose-preview-bundle-", ".png")
+      temp.toFile().deleteOnExit()
+      val ok =
+        HttpClient(OkHttp).use { client ->
           client.prepareGet(uri.toString()).execute { response ->
             if (response.status.isSuccess()) {
-              temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+              SystemFileSystem.sink(temp).buffer().use { sink ->
+                response.bodyAsChannel().copyTo(sink.outputStream())
+              }
               true
             } else {
               false
             }
           }
         }
+      if (ok && (SystemFileSystem.metadataOrNull(temp)?.size ?: 0L) > 0L) temp
+      else {
+        SystemFileSystem.delete(temp, mustExist = false)
+        null
       }
-    if (ok && temp.length() > 0) temp
-    else {
-      temp.delete()
-      null
     }
   } catch (_: Exception) {
     null

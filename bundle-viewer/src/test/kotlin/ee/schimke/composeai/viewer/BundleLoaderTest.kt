@@ -5,7 +5,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -25,7 +27,7 @@ class BundleLoaderTest {
   fun `loadBundle parses a minimal png-zip polyglot bundle`() {
     val bundle = writeMinimalBundle(includeAppClass = false)
 
-    val loaded = loadBundle(bundle)
+    val loaded = runBlocking { loadBundle(bundle.path.toPath()) }
     try {
       assertThat(loaded.bundleManifest.schemaVersion).isEqualTo(1)
       assertThat(loaded.bundleManifest.backend).isEqualTo("desktop")
@@ -51,7 +53,7 @@ class BundleLoaderTest {
     val txt = tempDir.newFile("not-a-bundle.txt").apply { writeText("hello world") }
 
     val ex =
-      runCatching { loadBundle(txt) }.exceptionOrNull()
+      runCatching { runBlocking { loadBundle(txt.path.toPath()) } }.exceptionOrNull()
         ?: error("expected loadBundle to throw on non-bundle input")
     assertThat(ex).isInstanceOf(IllegalArgumentException::class.java)
   }
@@ -77,7 +79,7 @@ class BundleLoaderTest {
         libs = mapOf("libs/embedded.jar" to singleClassJar(embeddedClassFqn)),
       )
 
-    val loaded = loadBundle(bundle)
+    val loaded = runBlocking { loadBundle(bundle.path.toPath()) }
     try {
       assertThat(loaded.bundleManifest.resolution).isEqualTo("embedded")
       // `test.PreviewsKt` resolved → ownerClass is the real class loaded by the bundle's loader.
