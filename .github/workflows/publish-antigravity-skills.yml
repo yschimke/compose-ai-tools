@@ -1,0 +1,89 @@
+name: Publish skills (antigravity-awesome-skills)
+
+# Publishes the compose-preview / compose-preview-review skill bundles to the
+# antigravity-awesome-skills registry (https://github.com/sickn33/antigravity-awesome-skills).
+#
+# Two surfaces:
+#   - validate: a no-write dry-run (clone registry, inject our SKILL.md, run the
+#     upstream strict validator). Runs on every change to the bundles so we
+#     never ship a SKILL.md that the registry would reject.
+#   - publish: the real push-to-fork + open-PR step, keyed off the SAME release
+#     tag as release.yml (called from release-please.yml). No-ops cleanly until
+#     the ANTIGRAVITY_SKILLS_TOKEN secret is configured, so the workflow can
+#     land before the cross-repo token does.
+#
+# See contrib/registries/antigravity-awesome-skills/ for the bundles + publish.sh.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.3.5).'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.3.5).'
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - 'contrib/registries/antigravity-awesome-skills/**'
+      - '.github/workflows/publish-antigravity-skills.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contrib/registries/antigravity-awesome-skills/**'
+      - '.github/workflows/publish-antigravity-skills.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-antigravity-skills-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # No-write validation: prove the bundles still pass the registry's own
+  # validator. Runs on PRs/pushes that touch the bundles, and as a gate ahead
+  # of a real publish.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Validate bundles against the upstream registry
+        env:
+          DRY_RUN: '1'
+        run: contrib/registries/antigravity-awesome-skills/publish.sh
+
+  # Real publish: only on a release (workflow_call / dispatch). Opens/updates a
+  # PR on the registry from a fork we control. Skipped if the token isn't set.
+  publish:
+    needs: validate
+    if: ${{ inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Publish to antigravity-awesome-skills
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.ANTIGRAVITY_SKILLS_TOKEN }}
+          AAS_FORK_REPO: ${{ vars.ANTIGRAVITY_SKILLS_FORK || 'yschimke/antigravity-awesome-skills' }}
+          AAS_GIT_NAME: ${{ vars.ANTIGRAVITY_SKILLS_GIT_NAME }}
+          AAS_GIT_EMAIL: ${{ vars.ANTIGRAVITY_SKILLS_GIT_EMAIL }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::notice::ANTIGRAVITY_SKILLS_TOKEN not set — skipping the cross-repo PR. " \
+                 "Configure the secret (and a fork) to enable automated publishing." >&2
+            DRY_RUN=1 contrib/registries/antigravity-awesome-skills/publish.sh
+            exit 0
+          fi
+          contrib/registries/antigravity-awesome-skills/publish.sh

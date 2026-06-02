@@ -43,6 +43,15 @@ installed agent host it detects (Claude Code, Codex, Antigravity). The
 standalone `:mcp:installDist` launcher is the alternative path for embedders
 that don't ship the CLI.
 
+> **Skill registries.** The companion `compose-preview` /
+> `compose-preview-review` skill bundles are published to the
+> [antigravity-awesome-skills](https://github.com/sickn33/antigravity-awesome-skills)
+> registry (installable across Claude Code, Cursor, Codex, Gemini CLI,
+> Antigravity, …) — see
+> [`contrib/registries/antigravity-awesome-skills/`](../contrib/registries/antigravity-awesome-skills/README.md).
+> Additional registry targets are tracked in
+> [#772](https://github.com/yschimke/compose-ai-tools/issues/772).
+
 ### Path A: via the bundled CLI (recommended)
 
 ```bash

@@ -55,3 +55,16 @@ jobs:
     secrets: inherit
     permissions:
       contents: write   # needed by the called workflow's `release` job
+
+  # Publish the compose-preview / compose-preview-review skill bundles to the
+  # antigravity-awesome-skills registry off the SAME tag. Self-guards on the
+  # ANTIGRAVITY_SKILLS_TOKEN secret, so it no-ops until that's configured.
+  publish-antigravity-skills:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/publish-antigravity-skills.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    secrets: inherit
+    permissions:
+      contents: read
