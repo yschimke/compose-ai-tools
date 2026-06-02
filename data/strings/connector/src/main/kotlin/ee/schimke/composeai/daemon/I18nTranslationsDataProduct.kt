@@ -5,9 +5,11 @@ import androidx.compose.ui.semantics.getOrNull
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.strings.I18nTranslationsProduct
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * Producer for `i18n/translations`, backed by Android string resources plus the visible text
@@ -57,7 +59,9 @@ object I18nTranslationsDataProducer {
           },
       )
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    previewDir.resolve(FILE).writeText(json.encodeToString(payload))
+    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(payload))
+    }
   }
 
   internal fun resDirsFromSysprop(): List<File> =

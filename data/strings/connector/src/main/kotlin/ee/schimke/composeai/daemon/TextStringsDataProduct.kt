@@ -9,11 +9,13 @@ import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.strings.TextStringsProduct
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import okio.Path.Companion.toPath
 
 /**
  * Android `text/strings` producer backed by the default-mode Compose semantics artifact.
@@ -95,7 +97,11 @@ class TextStringsDataProductRegistry(
   private fun payloadFor(previewId: String): TextStringsPayload? {
     val file = rootDir.resolve(previewId).resolve(ComposeSemanticsProduct.FILE)
     if (!file.exists()) return null
-    val semantics = json.decodeFromString(ComposeSemanticsPayload.serializer(), file.readText())
+    val semantics =
+      json.decodeFromString(
+        ComposeSemanticsPayload.serializer(),
+        SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+      )
     val metadata = latestRenderMetadata[previewId] ?: metadataFor(previewId, overrides = null)
     val texts = buildList { collectTexts(semantics.root, metadata.localeTag, metadata.fontScale) }
     return TextStringsPayload(texts = texts)

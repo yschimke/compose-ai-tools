@@ -33,6 +33,7 @@ plugins {
 android { namespace = "ee.schimke.composeai.data.uiautomator.connector" }
 
 dependencies {
+  implementation(project(":common-io"))
   // Typed payload + `UiAutomatorDataProducts.Hierarchy` key — the producer/registry below
   // serialise / advertise this kind. Re-exported via `api` so `:daemon:android` can refer to
   // `UiAutomatorHierarchyPayload` without adding a second `project` dep.
