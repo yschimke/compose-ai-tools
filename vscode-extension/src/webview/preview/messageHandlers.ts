@@ -40,6 +40,7 @@ import type {
     ExtensionToWebview,
     PreviewInfo,
 } from "../shared/types";
+import type { SpatialScene } from "../shared/spatialScene";
 import type { VsCodeApi } from "../shared/vscode";
 import { safeArrayIndex } from "../shared/safeIndex";
 import { sanitizeId } from "./cardData";
@@ -163,6 +164,13 @@ export interface PreviewMessageContext {
      * failure.
      */
     promoteErrorsBundle(): void;
+    /**
+     * Hand the panel's 3D spatial view a `SpatialScene` plus the
+     * webview-resource base URI its textures resolve against. Routed to the
+     * `SpatialToggleController`, which mounts the (separately-bundled) viewer
+     * lazily — so this can land before or after the user toggles to 3D.
+     */
+    setSpatialScene(scene: SpatialScene, textureBaseUri: string): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -229,6 +237,9 @@ export function handleExtensionMessage(
                 msg.fontRowId,
                 msg.dataUri,
             );
+            return;
+        case "setSpatialScene":
+            ctx.setSpatialScene(msg.scene, msg.textureBaseUri);
             return;
         case "triggerBundleToggle":
             ctx.toggleBundle(msg.bundleId);

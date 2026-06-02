@@ -1,0 +1,183 @@
+{
+  "description": "Panel 2D ⇄ 3D toggle: setSpatialScene + click the toggle to show the 3D spatial view (rich scene — angled panels + orbiters).",
+  "dataset": {
+    "earlyFeatures": "false",
+    "minimalMode": "false",
+    "spatialSrc": "/media/webview/spatial.js",
+    "cspNonce": "harness"
+  },
+  "messages": [
+    {
+      "command": "setSpatialScene",
+      "scene": {
+        "version": 1,
+        "units": "dp",
+        "previewId": "spatial-fixtures.spatial-rich",
+        "camera": {
+          "kind": "orbit",
+          "target": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "distance": 1700,
+          "yawDeg": 0,
+          "pitchDeg": -8
+        },
+        "panels": [
+          {
+            "id": "now-playing",
+            "label": "Now Playing",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": 340,
+                "z": -120
+              },
+              "rotation": {
+                "x": 0.0697564737441253,
+                "y": 0,
+                "z": 0,
+                "w": 0.9975640502598242
+              }
+            },
+            "sizeDp": {
+              "width": 560,
+              "height": 180
+            },
+            "texture": "panels/now-playing.png",
+            "parentId": null
+          },
+          {
+            "id": "album-art",
+            "label": "Album Art",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": -40,
+                "z": 0
+              },
+              "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              }
+            },
+            "sizeDp": {
+              "width": 460,
+              "height": 460
+            },
+            "texture": "panels/album-art.png",
+            "parentId": null
+          },
+          {
+            "id": "queue",
+            "label": "Up Next",
+            "poseInRoot": {
+              "translation": {
+                "x": -520,
+                "y": 40,
+                "z": 160
+              },
+              "rotation": {
+                "x": 0,
+                "y": 0.27563735581699916,
+                "z": 0,
+                "w": 0.9612616959383189
+              }
+            },
+            "sizeDp": {
+              "width": 300,
+              "height": 520
+            },
+            "texture": "panels/queue.png",
+            "parentId": null
+          },
+          {
+            "id": "lyrics",
+            "label": "Lyrics",
+            "poseInRoot": {
+              "translation": {
+                "x": 520,
+                "y": 40,
+                "z": 160
+              },
+              "rotation": {
+                "x": 0,
+                "y": -0.27563735581699916,
+                "z": 0,
+                "w": 0.9612616959383189
+              }
+            },
+            "sizeDp": {
+              "width": 300,
+              "height": 520
+            },
+            "texture": "panels/lyrics.png",
+            "parentId": null
+          }
+        ],
+        "orbiters": [
+          {
+            "id": "transport",
+            "label": "Transport",
+            "edge": "bottom",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": -340,
+                "z": 80
+              },
+              "rotation": {
+                "x": -0.15643446504023087,
+                "y": 0,
+                "z": 0,
+                "w": 0.9876883405951378
+              }
+            },
+            "sizeDp": {
+              "width": 560,
+              "height": 96
+            },
+            "texture": "panels/transport.png"
+          },
+          {
+            "id": "volume",
+            "label": "Volume",
+            "edge": "end",
+            "poseInRoot": {
+              "translation": {
+                "x": 360,
+                "y": -40,
+                "z": 40
+              },
+              "rotation": {
+                "x": 0,
+                "y": -0.17364817766693033,
+                "z": 0,
+                "w": 0.984807753012208
+              }
+            },
+            "sizeDp": {
+              "width": 80,
+              "height": 320
+            },
+            "texture": "panels/volume.png"
+          }
+        ],
+        "environment": {
+          "kind": "color",
+          "color": "#101014"
+        }
+      },
+      "textureBaseUri": "/spatial-fixtures/spatial-rich/"
+    }
+  ],
+  "actions": [
+    {
+      "click": "#btn-spatial-toggle"
+    }
+  ],
+  "settleMs": 1600
+}

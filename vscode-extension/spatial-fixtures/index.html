@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Spatial view — fixture preview</title>
+        <style>
+            html,
+            body {
+                margin: 0;
+                height: 100%;
+                background: #1b1b1f;
+                color: #ddd;
+                font-family: system-ui, sans-serif;
+            }
+            #stage {
+                position: absolute;
+                inset: 0;
+            }
+            spatial-view {
+                width: 100%;
+                height: 100%;
+            }
+            #hud {
+                position: absolute;
+                left: 12px;
+                top: 12px;
+                z-index: 10;
+                font-size: 12px;
+                background: rgba(20, 20, 24, 0.7);
+                padding: 8px 10px;
+                border-radius: 6px;
+            }
+            #hud select {
+                background: #2a2a33;
+                color: #eee;
+                border: 1px solid #444;
+                border-radius: 4px;
+            }
+            #focus {
+                color: #4a9eff;
+            }
+        </style>
+    </head>
+    <body>
+        <!--
+            Standalone dev harness for the 3D spatial viewer. Serve the
+            extension root and open this page:
+
+                npx --yes http-server -c-1 .   # from vscode-extension/
+                # → http://localhost:8080/spatial-fixtures/
+
+            It loads the built `media/webview/spatial.js` bundle, mounts a
+            `<spatial-view>`, fetches a fixture's `scene.json`, and resolves
+            each quad's relative texture path against the fixture directory.
+            No VS Code, no CSP — purely for eyeballing the viewer while
+            iterating. `npm run compile:webview` rebuilds the bundle.
+        -->
+        <div id="hud">
+            Fixture:
+            <select id="fixture">
+                <option value="spatial-scene">spatial-scene (contract)</option>
+                <option value="spatial-rich">spatial-rich</option>
+            </select>
+            &nbsp;|&nbsp; drag to orbit · right-drag to pan · scroll to zoom
+            &nbsp;|&nbsp; focused: <span id="focus">—</span>
+        </div>
+        <div id="stage"><spatial-view id="view"></spatial-view></div>
+
+        <script type="module">
+            import "../media/webview/spatial.js";
+
+            // Fixture name → directory the scene.json + textures live under.
+            const fixtureBase = {
+                "spatial-scene": "../preview-harness/fixtures/spatial-scene/",
+                "spatial-rich": "./spatial-rich/",
+            };
+
+            const view = document.getElementById("view");
+            const focusEl = document.getElementById("focus");
+            const fixtureSel = document.getElementById("fixture");
+
+            view.addEventListener("panel-focus", (e) => {
+                focusEl.textContent = e.detail.panelId;
+            });
+
+            async function load(name) {
+                const base = fixtureBase[name];
+                view.resolveTextureUrl = (tex) => base + tex;
+                const res = await fetch(`${base}scene.json`);
+                view.setSceneJson(await res.text());
+                focusEl.textContent = "—";
+            }
+
+            fixtureSel.addEventListener("change", () => load(fixtureSel.value));
+            customElements
+                .whenDefined("spatial-view")
+                .then(() => load(fixtureSel.value));
+        </script>
+    </body>
+</html>
