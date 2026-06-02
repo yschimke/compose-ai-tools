@@ -142,6 +142,45 @@ data class BundleManifest(
    * correctly. See the "Intermediate-representation previews" section above.
    */
   val intermediateRepresentations: List<BundleIr> = emptyList(),
+  /**
+   * (v6) Android resource carriage for IR replay. Present only when the bundle carries protolayout
+   * (Wear tile) IR: replaying a tile drives `TileRenderer`, which resolves the library theme
+   * `androidx.wear.protolayout.renderer.R.style.ProtoLayoutBaseTheme` through `getResources()` and
+   * links the non-final library `R$style` *class*. A detached daemon has neither the merged
+   * resource table (no AGP build) nor the generated R classes (an AAR's published `classes.jar`
+   * omits them), so without this carriage tile replay dies with `NoClassDefFoundError` on `R$style`
+   * and then `Unknown resource value type 0`. The record points at the AGP-built merged resource
+   * APK + manifest and the generated R classes packed under `android/`; the player rebuilds a
+   * Robolectric `com/android/tools/test_config.properties` from them. `null` for desktop bundles
+   * and for Android bundles with no protolayout IR (classic / Remote-Compose-only previews need
+   * none). Additive — a pre-v6 reader ignores the field and the `android/` entries.
+   */
+  val androidResources: BundleAndroidResources? = null,
+)
+
+/**
+ * (v6) Android resource artefacts carried for protolayout IR replay. See
+ * [BundleManifest.androidResources]. All paths are posix zip paths inside the bundle.
+ */
+@Serializable
+data class BundleAndroidResources(
+  /**
+   * Zip path of the merged resource APK (AAPT2 `apk-for-local-test.ap_`), e.g.
+   * `android/resources.ap_`.
+   */
+  val resourceApkPath: String,
+  /** Zip path of the merged `AndroidManifest.xml` Robolectric reads the package + theme from. */
+  val mergedManifestPath: String,
+  /**
+   * Zip path of the jar holding the generated library R classes (`androidx.wear.protolayout.*.R$*`
+   * etc.) the tile renderer links against, e.g. `android/r-classes.jar`. `null` when no R classes
+   * were found to carry (the renderer then relies on whatever is already reachable).
+   */
+  val rClassesJarPath: String? = null,
+  /**
+   * Consumer application package (`android_custom_package`), recorded for the synthesized config.
+   */
+  val applicationPackage: String? = null,
 )
 
 /**
@@ -272,6 +311,18 @@ const val IR_EXT_PROTOLAYOUT_LAYOUT: String = "tilelayout"
 /** File extension for the companion protolayout `Resources` proto. */
 const val IR_EXT_PROTOLAYOUT_RESOURCES: String = "tileresources"
 
+/** Well-known directory inside the bundle zip holding Android resource carriage (v6). */
+const val BUNDLE_ANDROID_DIR: String = "android"
+
+/** Zip path of the carried merged resource APK (v6). See [BundleAndroidResources]. */
+const val ANDROID_RESOURCE_APK_PATH: String = "android/resources.ap_"
+
+/** Zip path of the carried merged `AndroidManifest.xml` (v6). */
+const val ANDROID_MERGED_MANIFEST_PATH: String = "android/AndroidManifest.xml"
+
+/** Zip path of the carried generated R-class jar (v6). */
+const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
+
 /**
  * Schema version stamped into [BundleManifest.schemaVersion].
  * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
@@ -298,8 +349,14 @@ const val IR_EXT_PROTOLAYOUT_RESOURCES: String = "tileresources"
  *   dropped from `classes/app.jar`. Additive — the field defaults to empty and `ignoreUnknownKeys`
  *   readers skip the `ir/` entries, so a v4 reader opening a v5 *classpath* bundle still works;
  *   only the IR previews need a v5-aware player.
+ * - v6 — adds [BundleManifest.androidResources] and the `android/` directory: an Android bundle
+ *   carrying protolayout (Wear tile) IR also carries the AGP-built merged resource APK + manifest
+ *   and the generated library R classes, so a detached daemon can resolve the tile renderer's theme
+ *   resource and link its `R$style` class on replay. Additive — the field defaults to null and
+ *   `ignoreUnknownKeys` readers skip the `android/` entries, so a v5 reader opening a v6 bundle
+ *   still works; only protolayout IR replay on a detached Android daemon needs a v6-aware player.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 5
+const val BUNDLE_SCHEMA_VERSION: Int = 6
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed

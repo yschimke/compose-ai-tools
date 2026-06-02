@@ -378,6 +378,24 @@ internal object BundleReader {
      * than by re-running their consumer bytecode. Empty for a classic all-classes bundle.
      */
     val intermediateRepresentations: List<BundleIr> = emptyList(),
+    /**
+     * v6+: Android resource carriage for protolayout (Wear tile) IR replay — the merged resource
+     * APK + manifest + generated R classes under `android/`. Null for desktop / non-protolayout
+     * bundles. See `BundleAndroidResources` in `PreviewBundleFormat.kt`.
+     */
+    val androidResources: AndroidResources? = null,
+  )
+
+  /** v6+ mirror of `BundleAndroidResources` in `PreviewBundleFormat.kt`. */
+  @Serializable
+  data class AndroidResources(
+    val resourceApkPath: String,
+    val mergedManifestPath: String,
+    val rClassesJarPath: String? = null,
+    /**
+     * Consumer application package; written as `android_custom_package` in the synthesized config.
+     */
+    val applicationPackage: String? = null,
   )
 
   /** v5+ mirror of `BundleIr` in `PreviewBundleFormat.kt`. */
