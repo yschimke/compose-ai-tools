@@ -62,4 +62,20 @@ dependencies {
   implementation(libs.xr.compose)
 
   debugImplementation("androidx.compose.ui:ui-tooling")
+
+  // `SubspaceLayoutPoseTest` recovers the real subspace panel poses offline by driving the fake XR
+  // runtime under Robolectric (no headset / OpenXR / SceneCore native). It needs the XR `*-testing`
+  // artifacts plus Compose UI test + Robolectric. The fake `SceneRuntimeFactory` /
+  // `RenderingRuntimeFactory` are registered for `ServiceLoader` in
+  // `src/test/resources/META-INF/services/`. Versions are pinned literally (rather than via the
+  // catalog) because these alpha test artifacts move on their own cadence and only this sample's
+  // canary test consumes them; bump alongside `xr-compose` in libs.versions.toml.
+  testImplementation(libs.robolectric)
+  testImplementation("androidx.compose.ui:ui-test-junit4")
+  testImplementation("androidx.compose.ui:ui-test-manifest")
+  testImplementation(libs.xr.compose.testing)
+  testImplementation("androidx.xr.runtime:runtime-testing:1.0.0-alpha14")
+  testImplementation("androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15")
+  testImplementation(libs.junit)
+  testImplementation(libs.truth)
 }

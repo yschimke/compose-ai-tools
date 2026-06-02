@@ -107,13 +107,56 @@ An Android **library** module (no `applicationId` needed; mirrors `:samples:andr
 
 PNGs land under `samples/xr-spatial/build/compose-previews/renders/`.
 
-## Out of scope / future work
+## Recovering the real layout offline — it works (`SubspaceLayoutPoseTest`)
 
-- **True 3D spatial capture.** Rendering the actual `Subspace`/`SpatialPanel` 3D layout (panel
-  poses, depth, curved rows) needs the SceneCore runtime; use the Android Studio **XR emulator** for
-  that. If `androidx.xr.compose:compose-testing` ever ships a host-side fake that composes subspace
-  content into a flat 2D tree (analogous to `ImageComposeScene`), a follow-up could capture a
-  flattened top-down projection — tracked, not built.
+The interesting question is whether the *real* subspace layout (panel poses/sizes computed by the
+framework) can be harvested offline and projected to 2D ourselves — geometry-true previews without
+reimplementing the layout. **It can**, with no headset, no OpenXR, and no SceneCore native code. The
+proof-of-concept is [`SubspaceLayoutPoseTest`](../../samples/xr-spatial/src/test/kotlin/com/example/samplexrspatial/SubspaceLayoutPoseTest.kt);
+the recipe is entirely public API plus **one Robolectric shadow**:
+
+1. **Fake runtime off-device.** `androidx.xr.runtime:runtime-testing` +
+   `androidx.xr.scenecore:scenecore-testing` provide `FakeSceneRuntimeFactory` /
+   `FakeRenderingRuntimeFactory`. Register them for `ServiceLoader` (a `META-INF/services/` file per
+   `SceneRuntimeFactory` / `RenderingRuntimeFactory` interface) and `Session.create(activity)`
+   returns `SessionCreateSuccess` on a plain JVM under Robolectric. `FakeSceneRuntime` defaults to
+   `SpatialCapabilities(63)` = all capabilities.
+2. **Flip the one gate.** `Subspace` only takes its spatial path when
+   `packageManager.hasSystemFeature("android.software.xr.api.spatial")` (`ManifestFeature
+   .FEATURE_XR_API_SPATIAL`) is true — Robolectric reports `false`, so shadow it on with
+   `shadowOf(pm).setSystemFeature(…, true)`. **That was the whole blocker.** The session and
+   `LocalComposeXrOwners` then auto-wire from the activity (the `LocalComposeXrOwners` default
+   computes `getOrCreateXrOwnerLocals(activity)` from `LocalContext`), so no internal/reflection
+   session-injection is needed — an earlier dead end that probed the locals *above* `Subspace` (where
+   the host hasn't installed them) mis-diagnosed this as internal-only.
+3. **Read the public spatial-semantics tree.** `onSubspaceNodeWithTag(tag).fetchSemanticsNode()` →
+   `SubspaceSemanticsInfo.poseInRoot` (`Pose`, dp) + `.size` (`IntVolumeSize`, dp) + children.
+
+For a `SpatialColumn` of a 200dp panel over a 160dp panel the test recovers, offline:
+
+```
+column: poseInRoot=(0, 0, 0)    size=(560 x 360)
+top:    poseInRoot=(0, 80, 0)   size=(560 x 200)
+bottom: poseInRoot=(0, -100, 0) size=(560 x 160)
+```
+
+i.e. the genuine framework-computed stack (top above bottom, column = sum of children).
+
+**Verdict / path forward:** a real **subspace-layout projector** is feasible — render each panel's
+2D content (Robolectric, as the committed `@Preview`s already do), then composite the panels at
+their recovered `poseInRoot`/`size` through a chosen preview camera. That is a future renderer
+feature, not built here; `SubspaceLayoutPoseTest` proves the geometry is recoverable and stands as
+the **canary** that flags when the alpha XR testing stack shifts. **Fragility mitigation** (the
+honest cost of leaning on alpha `*-testing` libs + a private system-feature string): the canary test
+fails loudly on a stack change, and a future `compose-preview doctor` check can assert the fake
+runtime still loads and `Subspace` still composes before any projector feature relies on it.
+
+- **True 3D spatial capture.** Rendering the actual `Subspace`/`SpatialPanel` 3D layout with real
+  shading/compositing needs the SceneCore renderer. The Android Studio **XR emulator** runs the real
+  SceneCore/Compose-XR stack on a desktop GPU, but it is **not** an OpenXR host (Google: "OpenXR is
+  not supported on the emulator"), is **Canary-channel + GPU-mandatory**, and exposes no documented
+  spatial frame-capture / head-pose-injection hook — so it's a manual dev aid, not a deterministic CI
+  capture path.
 - **An `@SpatialPreview` meta-annotation / spatial device spec.** Studio uses an "XR" device preset
   in the preview picker. We could add a meta-annotation in `:preview-annotations` that pins a wide
   spatial-panel device spec, but — unlike `@FocusedPreview`/`@AmbientPreview` — it would carry no
