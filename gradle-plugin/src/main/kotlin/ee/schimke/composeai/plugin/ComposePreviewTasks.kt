@@ -250,13 +250,29 @@ internal object ComposePreviewTasks {
     // the *untransformed* artifacts too and key each component's packaging off its file extension
     // (Android deps resolve to `.aar`, JVM deps to `.jar`), then stamp it into the coordinate
     // below.
+    //
+    // This read goes through a `lenient(true)` artifactView rather than the raw
+    // `incoming.artifacts`. The raw read selects artifacts using the configuration's full runtime
+    // attributes, which a dependency exposing AGP secondary variants without the standard
+    // `org.gradle.category` / jvm-environment / `kotlin.platform.type` attributes (e.g. an Android
+    // library relying on AGP's built-in Kotlin, consumed on an app's `…RuntimeClasspath`) can't
+    // satisfy — turning packaging detection into a hard `AmbiguousArtifactsFailure` that fails the
+    // whole bundle. `lenient(true)` skips any such unselectable dep here; it simply isn't keyed in
+    // the packaging map and falls back to the `"jar"` default at the coordinate below. The
+    // `artifactType=jar` view that feeds the actual classpath/closure walk is unaffected — it
+    // selects each dep's `jar` secondary variant unambiguously.
     val typeByComponent: Provider<Map<String, String>> =
-      depConfig?.incoming?.artifacts?.resolvedArtifacts?.map { artifacts ->
-        artifacts.associate { artifact ->
-          artifact.id.componentIdentifier.displayName to
-            if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
-        }
-      } ?: project.providers.provider { emptyMap<String, String>() }
+      depConfig
+        ?.incoming
+        ?.artifactView { lenient(true) }
+        ?.artifacts
+        ?.resolvedArtifacts
+        ?.map { artifacts ->
+          artifacts.associate { artifact ->
+            artifact.id.componentIdentifier.displayName to
+              if (artifact.file.name.endsWith(".aar", ignoreCase = true)) "aar" else "jar"
+          }
+        } ?: project.providers.provider { emptyMap<String, String>() }
     // Map each resolved dependency jar to a coordinate string the task action can fold into
     // `bundle.json`'s `classpath`:
     // - `maven:<group>:<artifact>:<version>:<aar|jar>` for Maven-resolved deps (the player resolves
