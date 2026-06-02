@@ -104,9 +104,11 @@ export interface SpatialScene {
 }
 
 /**
- * Minimal structural guard — enough to reject obviously-wrong payloads (wrong version, missing
- * panels) before the viewer touches them. It is intentionally shallow; the viewer should still
- * tolerate missing optional fields.
+ * Minimal structural guard — enough to reject payloads the consumer can't safely render before it
+ * touches them: a `version` other than the {@link SPATIAL_SCENE_VERSION} this build was compiled
+ * against (the version is bumped only on breaking shape changes, so a mismatch — newer *or* older —
+ * means an incompatible shape), or missing required fields. It is intentionally shallow otherwise;
+ * the viewer should still tolerate missing optional fields.
  */
 export function isSpatialScene(value: unknown): value is SpatialScene {
     if (typeof value !== "object" || value === null) {
@@ -115,7 +117,7 @@ export function isSpatialScene(value: unknown): value is SpatialScene {
     const scene = value as Partial<SpatialScene>;
     return (
         scene.units === "dp" &&
-        typeof scene.version === "number" &&
+        scene.version === SPATIAL_SCENE_VERSION &&
         Array.isArray(scene.panels) &&
         typeof scene.camera === "object" &&
         scene.camera !== null
