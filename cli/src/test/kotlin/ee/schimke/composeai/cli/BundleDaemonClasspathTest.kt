@@ -1,9 +1,9 @@
 package ee.schimke.composeai.cli
 
 import java.io.File
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Guards [BundleDaemonCommand.composeDaemonClasspath] — the bundle-daemon fix for the IR-replay
@@ -36,13 +36,13 @@ class BundleDaemonClasspathTest {
     assertEquals(listOf("/lib/daemon.jar", "/lib/renderer.jar"), entries.take(2))
     // The carried player / tiles-renderer libs are present so the parent can resolve them.
     assertTrue(
-      "carried deps must be on the parent -cp, got $entries",
       carried.all { it.absolutePath in entries },
+      "carried deps must be on the parent -cp, got $entries",
     )
     // ...and appended *after* the sidecar, never shadowing it.
     assertTrue(
-      "carried deps must come after the sidecar jars",
       entries.indexOf("/lib/renderer.jar") < entries.indexOf(carried.first().absolutePath),
+      "carried deps must come after the sidecar jars",
     )
   }
 
