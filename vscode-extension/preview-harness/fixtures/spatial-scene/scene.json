@@ -1,0 +1,38 @@
+{
+    "version": 1,
+    "units": "dp",
+    "previewId": "com.example.samplexrspatial.SubspaceXrLayout",
+    "camera": {
+        "kind": "orbit",
+        "target": { "x": 0, "y": -10, "z": 0 },
+        "distance": 1200,
+        "yawDeg": 0,
+        "pitchDeg": -10
+    },
+    "panels": [
+        {
+            "id": "top",
+            "label": "Now Playing",
+            "poseInRoot": {
+                "translation": { "x": 0, "y": 80, "z": 0 },
+                "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+            },
+            "sizeDp": { "width": 560, "height": 200 },
+            "texture": "top.png",
+            "parentId": "column"
+        },
+        {
+            "id": "bottom",
+            "label": "Transport",
+            "poseInRoot": {
+                "translation": { "x": 0, "y": -100, "z": 0 },
+                "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+            },
+            "sizeDp": { "width": 560, "height": 160 },
+            "texture": "bottom.png",
+            "parentId": "column"
+        }
+    ],
+    "orbiters": [],
+    "environment": { "kind": "color", "color": "#101014" }
+}
