@@ -38,7 +38,7 @@ runs:
         echo "::warning::preview-baselines is deprecated; call ./.github/actions/apply with mode=baseline + only=compose,resources instead. See apply/action.yml for the input mapping."
 
     # zizmor: ignore[known-vulnerable-actions] same-repo release action trips GitHub Advisories API 403 under GITHUB_TOKEN
-    - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.12.3 # x-release-please-version
+    - uses: yschimke/compose-ai-tools/.github/actions/apply@v0.12.4 # x-release-please-version
       with:
         mode: baseline
         only: 'compose,resources'
