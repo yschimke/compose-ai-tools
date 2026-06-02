@@ -199,8 +199,19 @@ jobs:
           cache-read-only: 'true'
       - name: Build the uber jar and native installer for this OS
         shell: bash
+        # On Windows the installer is an `.msi`, which Compose Multiplatform packages via the WiX
+        # toolset. The Compose Gradle plugin registers its `downloadWix` / `unzipWix` tasks on the
+        # ROOT project (`rootProject.tasks.findByName(...) ?: rootProject.tasks.register(...)`), and
+        # `:bundle-viewer`'s `packageMsi` then reads `rootProject.tasks` / `rootProject.layout` at
+        # configuration time. That cross-project access is forbidden by this repo's Isolated Projects
+        # setting (`org.gradle.unsafe.isolated-projects=true`), and `configuration-cache.problems=fail`
+        # turns it into a hard failure — but only on Windows, since `.deb`/`.dmg` need no WiX. It's a
+        # plugin-internal access we can't satisfy from our build scripts, so disable Isolated Projects
+        # for this packaging run on Windows only. Plain configuration cache stays on (the violation is
+        # IP-specific, not a plain-CC problem), and the Linux/macOS legs keep the full IP gate.
         run: |
           ./gradlew \
+            ${{ runner.os == 'Windows' && '-Dorg.gradle.unsafe.isolated-projects=false' || '' }} \
             :bundle-viewer:packageUberJarForCurrentOS \
             :bundle-viewer:packageDistributionForCurrentOS
       # Stage both artefacts into one flat dir before upload. `upload-artifact` derives the
