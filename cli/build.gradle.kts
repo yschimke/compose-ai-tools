@@ -1,3 +1,4 @@
+import java.io.File
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
@@ -240,10 +241,10 @@ abstract class StageDaemonAndroidLibs : DefaultTask() {
       .readLines()
       .map { it.trim() }
       .filter { it.isNotEmpty() }
-      .map { java.io.File(it) }
+      .map { File(it) }
       .filter { it.isFile && it.name.endsWith(".jar") && it.name != "android.jar" }
       .forEachIndexed { index, jar ->
-        jar.copyTo(java.io.File(dest, "%04d-%s".format(index, jar.name)))
+        jar.copyTo(File(dest, "%04d-%s".format(index, jar.name)))
       }
   }
 }
