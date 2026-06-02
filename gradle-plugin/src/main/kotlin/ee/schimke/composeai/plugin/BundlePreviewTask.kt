@@ -137,6 +137,16 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Classpath abstract val androidUnitTestRuntimeClasspath: ConfigurableFileCollection
 
   /**
+   * (v6 Android) The consumer module's project directory. AGP writes the `android_resource_apk` /
+   * `android_merged_manifest` entries in `test_config.properties` as paths **relative to the module
+   * dir** (e.g. `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the
+   * unit-test working directory (the module dir). [resolveAndroidResources] resolves them the same
+   * way. `@Internal` — it's only a resolution base; the carried bytes are content-tracked via
+   * [androidUnitTestConfig] / [androidUnitTestRuntimeClasspath].
+   */
+  @get:Internal abstract val moduleProjectDir: DirectoryProperty
+
+  /**
    * Renders directory from the preceding `composePreviewRender` task. Each selected preview's PNG
    * is read from here: the cover is prepended to the polyglot, and every selected preview is baked
    * into `previews/<id>.png`. When missing or empty, the cover falls back to a stub gray PNG so the
@@ -507,23 +517,80 @@ abstract class BundlePreviewTask : DefaultTask() {
   private fun resolveAndroidResources(
     zipFiles: LinkedHashMap<String, ByteArray>
   ): BundleAndroidResources? {
+    // `com/android/tools/test_config.properties` lives nested inside AGP's unit-test config
+    // directory, so we must walk the input as a file *tree* — a plain
+    // `ConfigurableFileCollection.files`
+    // returns the registered directory entry (`…/out`), never the nested file, which silently
+    // produced an empty carriage (issue: tile replay still ClassNotFound'd `R$style`). Try the
+    // dedicated config input first (small), then fall back to the unit-test runtime classpath,
+    // which
+    // AGP also puts the config directory on and which is guaranteed built (it's a `@Classpath`
+    // input with real task dependencies).
+    // Pack-time diagnostic threaded into the bundle (android/diag.txt) and surfaced by the player —
+    // the pack runs inside Gradle whose CI console is truncated, so this is the only reliable way
+    // to
+    // see WHY the carriage did or didn't happen. Records input shape + the resolved paths.
+    val diag = StringBuilder()
+    val configEntries =
+      runCatching { androidUnitTestConfig.files.map { it.name } }
+        .getOrElse { listOf("<error:${it.message}>") }
+    val runtimeCpCount = runCatching { androidUnitTestRuntimeClasspath.files.size }.getOrElse { -1 }
+    diag.appendLine("protolayout=true")
+    diag.appendLine("androidUnitTestConfig.entries=$configEntries")
+    diag.appendLine("androidUnitTestRuntimeClasspath.entryCount=$runtimeCpCount")
+    fun emitDiag() {
+      zipFiles[ANDROID_DIAG_PATH] = diag.toString().toByteArray(Charsets.UTF_8)
+    }
+
     val configFile =
-      androidUnitTestConfig.files.firstOrNull { it.isFile && it.name == "test_config.properties" }
-        ?: run {
-          logger.warn(
-            "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
-              "unit-test config input — tile replay on a detached daemon can't resolve resources. " +
-              "Run composePreviewRender first so AGP generates it."
-          )
-          return null
-        }
+      sequenceOf(androidUnitTestConfig, androidUnitTestRuntimeClasspath)
+        .flatMap { it.asFileTree.files.asSequence() }
+        .firstOrNull { it.isFile && it.name == "test_config.properties" }
+    diag.appendLine("testConfigFound=${configFile != null} path=${configFile?.absolutePath}")
+    if (configFile == null) {
+      emitDiag()
+      logger.warn(
+        "composePreviewBundle: protolayout IR present but no test_config.properties on the " +
+          "unit-test config / runtime-classpath inputs — tile replay on a detached daemon can't " +
+          "resolve resources. Run composePreviewRender first so AGP generates it."
+      )
+      return null
+    }
     val props = Properties().apply { configFile.inputStream().use { load(it) } }
     val apkPath = props.getProperty("android_resource_apk")?.trim().orEmpty()
     val manifestPath = props.getProperty("android_merged_manifest")?.trim().orEmpty()
     val pkg = props.getProperty("android_custom_package")?.trim()?.takeIf { it.isNotEmpty() }
-    val apkFile = apkPath.takeIf { it.isNotEmpty() }?.let { File(it) }
-    val manifestFile = manifestPath.takeIf { it.isNotEmpty() }?.let { File(it) }
+    // AGP writes these paths **relative to the module dir** (e.g.
+    // `build/intermediates/apk_for_local_test/…`); Robolectric resolves them against the unit-test
+    // working directory (the module dir). Resolve the same way — a plain `File(path)` resolves
+    // against the build's CWD and misses (the observed `exists=false`). Absolute paths (older AGP)
+    // pass through; fall back to the test_config's own module root (ancestor before `/build/`).
+    val baseDir =
+      moduleProjectDir.asFile.orNull
+        ?: configFile.absolutePath.substringBeforeLast("/build/").let(::File).takeIf {
+          it.isDirectory
+        }
+    fun resolveModulePath(p: String): File? {
+      if (p.isEmpty()) return null
+      val f = File(p)
+      return when {
+        f.isAbsolute -> f
+        baseDir != null -> File(baseDir, p)
+        else -> f
+      }
+    }
+    val apkFile = resolveModulePath(apkPath)
+    val manifestFile = resolveModulePath(manifestPath)
+    diag.appendLine("moduleProjectDir=${baseDir?.absolutePath}")
+    diag.appendLine(
+      "android_resource_apk='$apkPath' → ${apkFile?.absolutePath} exists=${apkFile?.isFile == true}"
+    )
+    diag.appendLine(
+      "android_merged_manifest='$manifestPath' → ${manifestFile?.absolutePath} exists=${manifestFile?.isFile == true}"
+    )
+    diag.appendLine("android_custom_package=$pkg")
     if (apkFile == null || !apkFile.isFile || manifestFile == null || !manifestFile.isFile) {
+      emitDiag()
       logger.warn(
         "composePreviewBundle: protolayout IR present but the merged resource APK / manifest from " +
           "test_config.properties is missing (apk='$apkPath', manifest='$manifestPath') — tile " +
@@ -535,6 +602,8 @@ abstract class BundlePreviewTask : DefaultTask() {
     zipFiles[ANDROID_MERGED_MANIFEST_PATH] = manifestFile.readBytes()
     val rClassesJar = packAndroidRClasses()
     if (rClassesJar != null) zipFiles[ANDROID_R_CLASSES_JAR_PATH] = rClassesJar
+    diag.appendLine("rClassesBytes=${rClassesJar?.size ?: 0}")
+    emitDiag()
     logger.lifecycle(
       "composePreviewBundle — carried Android resources for protolayout replay " +
         "(apk=${apkFile.length()}B, manifest=${manifestFile.length()}B, " +
