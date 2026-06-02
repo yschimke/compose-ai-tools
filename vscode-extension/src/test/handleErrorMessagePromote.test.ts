@@ -58,7 +58,7 @@ function buildContextStub(): ContextWithSpy {
         applyRelativeSizing: noop,
         applyFilters: noop,
         applyLayout: noop,
-        applyPendingFocusRestore: noop,
+        leaveFocusMode: noop,
         applyInteractiveButtonState: noop,
         applyRecordingButtonState: noop,
         saveFilterState: noop,

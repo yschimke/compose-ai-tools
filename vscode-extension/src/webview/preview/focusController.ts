@@ -37,14 +37,14 @@ export interface FocusControllerPersistedState {
     diffMode?: DiffMode;
     filters?: { fn?: string; group?: string };
     /** Previously focused previewId — written on every focus navigation
-     *  so a webview reload can verify the focused preview still belongs
-     *  to the currently active file before re-entering focus mode.
-     *  See the deferred restore at boot in `main.ts`. */
+     *  so the History panel can re-scope. Not restored across a cold boot:
+     *  an IDE restart clears it (see `main.ts`) so the panel never silently
+     *  re-enters focus mode against whatever file happens to be open. */
     focusedPreviewId?: string | null;
-    /** Layout to fall back to when exiting focus. Persisted (not just
-     *  held in `previewStore`) so the cold-boot "drop out of focus if
-     *  the focused preview isn't in the current file" path can restore
-     *  the prior dropdown choice. */
+    /** Layout to fall back to when the user exits focus via the toolbar.
+     *  Persisted (not just held in `previewStore`) so a cold boot that
+     *  declines to restore focus mode can still land on the prior dropdown
+     *  choice. */
     previousLayout?: "grid" | "flow" | "column";
 }
 
@@ -420,6 +420,21 @@ export class FocusController {
         const target = this.config.getPreviousLayout();
         this.config.filterToolbar.setLayoutValue(target);
         this.config.state.layout = target;
+        this.config.vscode.setState(this.config.state);
+        this.applyLayout();
+    }
+
+    /**
+     * Host-driven focus teardown: the user switched to another editor, so
+     * the focused preview belongs to a file they're no longer editing.
+     * Drop straight to the grid browser rather than the user's prior
+     * layout — unlike [exitFocus], this always lands on `grid`. No-op when
+     * the panel isn't in focus mode.
+     */
+    leaveFocusMode(): void {
+        if (!this.inFocus()) return;
+        this.config.filterToolbar.setLayoutValue("grid");
+        this.config.state.layout = "grid";
         this.config.vscode.setState(this.config.state);
         this.applyLayout();
     }
