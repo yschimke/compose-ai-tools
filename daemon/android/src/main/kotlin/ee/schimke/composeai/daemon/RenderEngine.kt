@@ -40,6 +40,7 @@ import ee.schimke.composeai.data.render.extensions.ExtensionContextValue
 import ee.schimke.composeai.data.render.extensions.ExtensionPostCaptureContext
 import ee.schimke.composeai.data.render.extensions.PostCaptureProcessor
 import ee.schimke.composeai.data.render.extensions.RecordingDataProductStore
+import ee.schimke.composeai.data.render.extensions.loadIrReplayClass
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.render.extensions.provides
 import ee.schimke.composeai.renderer.AccessibilityDataProducts
@@ -221,8 +222,22 @@ class RenderEngine(
     // errors as it did before, until its replay path lands).
     val irReplay = BundleIrReplayStore.lookup(spec.previewId)
     val isProtolayoutIr = irReplay?.format == BundleIrReplayStore.FORMAT_PROTOLAYOUT
+    // Remote Compose replays through a connector composable the daemon can't compile against (it's
+    // built on the alpha player SDK); resolve it reflectively via the IR-replay SPI. Null when the
+    // connector isn't on the classpath — then we fall through to the normal class path (which fails
+    // as before, since the IR preview's class was dropped at pack time).
+    // Resolve via the default (context) classloader, exactly as `loadPreviewWrapperClass` does for
+    // the live RC wrapper path — that's the classloader topology under which the connector links
+    // against the alpha player at runtime.
+    val rcReplayClass: Class<*>? =
+      if (irReplay?.format == BundleIrReplayStore.FORMAT_REMOTECOMPOSE)
+        runCatching { loadIrReplayClass(BundleIrReplayStore.FORMAT_REMOTECOMPOSE) }.getOrNull()
+      else null
+    // An IR-backed preview's consumer class was dropped at pack time, so skip the reflective load
+    // whenever we have a replay path for it (protolayout direct, or a resolved RC provider).
+    val isIrReplay = isProtolayoutIr || rcReplayClass != null
     val clazz =
-      if (isProtolayoutIr) null
+      if (isIrReplay) null
       else trace.section("classloader:loadPreviewClass") { Class.forName(spec.className, true, classLoader) }
     // Tile / notification previews are non-composable top-level functions returning
     // `TilePreviewData` / `android.app.Notification`; routing them through
@@ -235,7 +250,7 @@ class RenderEngine(
     // body that fails the moment a Glance composable touches the GlanceComposition applier. The
     // dedicated branches skip top-level composable resolution and paint the result through the
     // matching renderer helper in the setContent body below.
-    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isProtolayoutIr
+    val nonComposableInvocation = isTile || isNotification || isGlanceAppWidget || isIrReplay
     val composableMethod: ComposableMethod? =
       if (nonComposableInvocation) null
       else trace.section("compose:resolveComposable") { clazz!!.getDeclaredComposableMethod(spec.functionName) }
@@ -354,6 +369,11 @@ class RenderEngine(
                             resourcesBytes = irReplay.resourcesBytes ?: ByteArray(0),
                             label = "IR replay ${spec.previewId ?: spec.outputBaseName}",
                           )
+                        } else if (rcReplayClass != null) {
+                          // Remote Compose IR replay — render the captured RemoteDocument through
+                          // the connector's player, reached reflectively (the daemon can't compile
+                          // against the alpha SDK). See IrReplayComposableProvider.
+                          InvokeIrReplay(rcReplayClass, irReplay!!.bytes)
                         } else if (isTile) {
                           // Non-composable @Preview from `androidx.wear.tiles.tooling.preview` —
                           // mirrors the standalone renderer's `TilePreviewStrategy`. The
@@ -1154,6 +1174,23 @@ private fun InvokeWithOptionalWrapper(
     val body: @Composable () -> Unit = { InvokeComposable(composableMethod) }
     wrapMethod.invoke(currentComposer, wrapperInstance, body)
   }
+}
+
+/**
+ * Render an IR-backed preview through a connector-provided replay composable resolved by
+ * [loadIrReplayClass]. The class exposes `@Composable Replay(bytes: ByteArray)` and a no-arg ctor;
+ * we invoke it the same way [InvokeWithOptionalWrapper] invokes `PreviewWrapperProvider.Wrap` — via
+ * [getDeclaredComposableMethod], which absorbs the synthetic `Composer`/`changed` tail. Used for
+ * Remote Compose, whose player lives in the alpha connector the daemon can't compile against.
+ */
+@Composable
+private fun InvokeIrReplay(replayClass: Class<*>, bytes: ByteArray) {
+  val (method, instance) =
+    remember(replayClass) {
+      val inst = replayClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+      replayClass.getDeclaredComposableMethod("Replay", ByteArray::class.java) to (inst as Any)
+    }
+  method.invoke(currentComposer, instance, bytes)
 }
 
 /**
