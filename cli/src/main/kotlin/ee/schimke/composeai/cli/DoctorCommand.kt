@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -11,6 +12,7 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview doctor`
@@ -718,7 +720,7 @@ class DoctorCommand(private val args: List<String>) {
         .asSequence()
         .mapNotNull {
           try {
-            it.readText()
+            SystemFileSystem.read(it.path.toPath()) { readUtf8() }
           } catch (_: Exception) {
             null
           }
@@ -866,7 +868,7 @@ class DoctorCommand(private val args: List<String>) {
     fun scanTextFile(file: File) {
       val text =
         try {
-          file.readText()
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (_: Exception) {
           return
         }
@@ -1245,7 +1247,9 @@ class DoctorCommand(private val args: List<String>) {
     val release = File(javaHome, "release").takeIf { it.isFile } ?: return null
     val line =
       try {
-        release.readLines().firstOrNull { it.startsWith("JAVA_VERSION=") }
+        SystemFileSystem.read(release.path.toPath()) { readUtf8() }
+          .lineSequence()
+          .firstOrNull { it.startsWith("JAVA_VERSION=") }
       } catch (_: Exception) {
         return null
       } ?: return null
