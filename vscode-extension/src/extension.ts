@@ -1619,10 +1619,14 @@ export async function activate(
                 try {
                     const text = fs.readFileSync(sceneFile.fsPath, "utf8");
                     const scene = parseSpatialSceneJson(text);
-                    panel.showSpatialScene(scene, fixtureDir);
+                    // Reveal/resolve the panel first; `showSpatialScene`
+                    // retains the scene and re-posts it on `webviewReady`, so
+                    // it lands even when the view is resolving for the first
+                    // time (command run from the palette before opening it).
                     await vscode.commands.executeCommand(
                         `${PreviewPanel.viewId}.focus`,
                     );
+                    panel.showSpatialScene(scene, fixtureDir);
                 } catch (err) {
                     void vscode.window.showErrorMessage(
                         `Could not load spatial fixture: ${(err as Error).message}`,

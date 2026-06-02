@@ -78,6 +78,7 @@ export class SpatialToggleController {
     private textureBaseUri = "";
     private view: SpatialViewElement | null = null;
     private bundlePromise: Promise<void> | null = null;
+    private viewReady: Promise<void> | null = null;
 
     constructor(private readonly deps: SpatialToggleDeps) {
         this.effects = { ...defaultEffects(), ...deps.effects };
@@ -139,8 +140,22 @@ export class SpatialToggleController {
         this.view?.focusPanel?.(panelId);
     }
 
-    private async ensureView(): Promise<void> {
-        if (this.view) return;
+    private ensureView(): Promise<void> {
+        if (this.view) return Promise.resolve();
+        // Serialize onto a single promise so a rapid double-toggle (two
+        // setMode("3d") calls before the lazy bundle load + whenDefined
+        // settle) doesn't run `createView` twice and leave two
+        // `<spatial-view>` canvases / render loops in the mount. Clear it on
+        // failure so a later retry (e.g. after the bundle src is configured)
+        // can start fresh rather than re-throwing a cached rejection.
+        this.viewReady ??= this.createView().catch((err) => {
+            this.viewReady = null;
+            throw err;
+        });
+        return this.viewReady;
+    }
+
+    private async createView(): Promise<void> {
         if (!this.effects.isDefined(TAG)) {
             if (!this.deps.bundleSrc) {
                 throw new Error(
@@ -154,6 +169,7 @@ export class SpatialToggleController {
             await this.bundlePromise;
             await this.effects.whenDefined(TAG);
         }
+        if (this.view) return;
         const view = this.effects.createView();
         view.resolveTextureUrl = (tex) => this.textureBaseUri + tex;
         if (this.deps.onPanelFocus) {

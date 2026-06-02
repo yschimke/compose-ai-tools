@@ -11,6 +11,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private earlyFeaturesEnabled: () => boolean;
     private minimalModeEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
+    /** The scene last handed to {@link showSpatialScene}; re-posted on every
+     *  `webviewReady` so a late-resolving or reloaded webview still gets it. */
+    private currentSpatialScene?: { scene: SpatialScene; sceneDir: vscode.Uri };
 
     constructor(
         extensionUri: vscode.Uri,
@@ -38,6 +41,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         };
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.webview.onDidReceiveMessage((msg: WebviewToExtension) => {
+            // The webview's `webviewReady` handshake is the host's cue to
+            // (re)publish stateful messages a just-resolved/reloaded panel
+            // would otherwise miss. The spatial scene is one of those: a
+            // `setSpatialScene` posted before the webview booted (e.g. the
+            // dev command run from the palette before the view existed) is
+            // dropped, so re-post the current one here.
+            if (msg?.command === "webviewReady") {
+                this.postSpatialScene();
+            }
             this.onMessage(msg);
         });
         webviewView.onDidChangeVisibility(() => {
@@ -61,10 +73,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
      * and the dev `openSpatialFixture` command both drive this.
      */
     showSpatialScene(scene: SpatialScene, sceneDir: vscode.Uri): void {
+        // Retain as the current scene so it survives a not-yet-resolved view
+        // and a webview reload (hidden → shown): `postSpatialScene` re-sends it
+        // on every `webviewReady`, the same way the host republishes
+        // `setPreviews` et al.
+        this.currentSpatialScene = { scene, sceneDir };
+        this.postSpatialScene();
+    }
+
+    private postSpatialScene(): void {
         const webview = this.view?.webview;
-        if (!webview) {
+        if (!webview || !this.currentSpatialScene) {
             return;
         }
+        const { scene, sceneDir } = this.currentSpatialScene;
         const textureBaseUri = `${webview.asWebviewUri(sceneDir)}/`;
         webview.postMessage({
             command: "setSpatialScene",

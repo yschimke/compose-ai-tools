@@ -138,6 +138,48 @@ describe("SpatialToggleController", () => {
         assert.strictEqual(h.mount.children.length, 1, "view reused");
     });
 
+    it("creates a single view when toggled twice during a slow load", async () => {
+        // Reproduces the race the controller guards against: two switches to
+        // 3D before the lazy bundle load resolves must not mount two views.
+        const button = document.createElement("button");
+        const mount = document.createElement("div");
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        let loads = 0;
+        let defined = false;
+
+        const controller = new SpatialToggleController({
+            toggleButton: button,
+            mount,
+            twoDStage: document.createElement("div"),
+            bundleSrc: "/media/webview/spatial.js",
+            nonce: null,
+            effects: {
+                isDefined: () => defined,
+                loadBundle: async () => {
+                    loads += 1;
+                    await gate; // stay pending until released
+                    defined = true;
+                },
+                whenDefined: async () => undefined,
+                createView: () => document.createElement("div") as never,
+            },
+        });
+        controller.setScene(scene(), "https://base/");
+
+        const a = controller.setMode("3d");
+        const b = controller.setMode("3d");
+        release();
+        await Promise.all([a, b]);
+
+        assert.strictEqual(loads, 1, "bundle loaded once");
+        assert.strictEqual(
+            mount.children.length,
+            1,
+            "exactly one view mounted",
+        );
+    });
+
     it("clicking the toggle button flips the mode", async () => {
         const h = makeHarness();
         h.controller.setScene(scene(), "https://base/");
