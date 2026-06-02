@@ -21,7 +21,7 @@ In:
 Out:
 
 - Real-device capture / emulator integration. Use the Android Studio AI Glasses emulator for that — this work targets the offline-render pipeline only.
-- 3-D scene XR (`androidx.xr.compose`'s `Subspace` / `SpatialPanel`). A separate toolkit with a separate rendering model; tracked elsewhere.
+- 3-D scene XR (`androidx.xr.compose`'s `Subspace` / `SpatialPanel`). A separate toolkit with a separate rendering model — see [`XR_SPATIAL_PREVIEW.md`](XR_SPATIAL_PREVIEW.md) and [`:samples:xr-spatial`](../../samples/xr-spatial).
 - Wear OS or phone-projection rendering — different display models, different stacks.
 
 ## Architecture
