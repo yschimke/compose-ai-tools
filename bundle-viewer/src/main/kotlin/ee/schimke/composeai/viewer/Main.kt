@@ -45,6 +45,8 @@ import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetAdapter
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okio.Path
@@ -97,8 +99,11 @@ fun main(args: Array<String>) {
 
     // Coroutine scope for the AWT drop callback below — `loadBundle` is suspend, so the drop
     // handler launches into this scope (Main dispatcher) and the file IO hops to Dispatchers.IO
-    // internally.
+    // internally. `loadJob` tracks the in-flight drop so a rapid second drop cancels the first:
+    // without it the two independent launches could finish out of order and leave the newest
+    // bundle closed and a stale one shown.
     val scope = rememberCoroutineScope()
+    val loadJob = remember { mutableStateOf<Job?>(null) }
 
     // Resize the window to the preview's declared size whenever a fresh bundle lands. We
     // observe [loadedBundle]'s cover here rather than at load-site so a drop-while-running
@@ -139,12 +144,17 @@ fun main(args: Array<String>) {
                   }
                 event.dropComplete(true)
                 val file = files.firstOrNull() ?: return
-                scope.launch {
+                // Latest drop wins: cancel any in-flight load so an out-of-order completion can't
+                // close the newest bundle and restore a stale one.
+                loadJob.value?.cancel()
+                loadJob.value = scope.launch {
                   try {
                     val next = loadBundle(file.path.toPath())
                     loadedBundle?.close()
                     loadedBundle = next
                     loadError = null
+                  } catch (c: CancellationException) {
+                    throw c
                   } catch (e: Throwable) {
                     loadError = "Could not load ${file.path}: ${e.message}"
                   }
