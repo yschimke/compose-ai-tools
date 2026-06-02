@@ -13,6 +13,14 @@ import {
     SpawnedDaemon,
 } from "./daemonProcess";
 import { DaemonLaunchDescriptor } from "./daemonProtocol";
+import { majorVersionOf, versionsIncompatible } from "../version";
+
+/** Details of a daemon/extension major-version mismatch, surfaced to the host for a notification. */
+export interface DaemonVersionMismatch {
+    modulePath: string;
+    daemonVersion: string;
+    expectedVersion: string;
+}
 
 /**
  * Returns `daemon-launch.json`'s mtime in milliseconds for [module], or `null` when the file is
@@ -128,11 +136,31 @@ export class LiveDaemonGate implements DaemonGate {
      */
     private readonly warnedMissingDescriptor = new Set<string>();
 
+    /**
+     * Major-version pairs we've already warned about, so a daemon/extension version mismatch logs a
+     * notification once rather than on every (re)spawn. Keyed by `<daemonMajor>-><expectedMajor>`.
+     */
+    private readonly warnedVersionMismatch = new Set<string>();
+
     constructor(
         private readonly workspaceRoot: string,
         private readonly clientVersion: string,
         private readonly logger: DaemonClientLogger,
         private readonly logFilter: LogFilter = new LogFilter(),
+        /**
+         * Plugin/daemon version this extension bundles (`BUNDLED_PLUGIN_VERSION`). Compared against
+         * the spawned daemon's reported version to detect a project pinning an incompatible-major
+         * plugin. Empty disables the check (e.g. unit tests that don't care about versions).
+         */
+        private readonly expectedDaemonVersion: string = "",
+        /**
+         * Invoked (once per distinct major mismatch) when a spawned daemon's version is on a
+         * different major than [expectedDaemonVersion], so the host can surface a user-facing
+         * warning. Kept as a callback to keep this class free of `vscode`.
+         */
+        private readonly onVersionMismatch?: (
+            mismatch: DaemonVersionMismatch,
+        ) => void,
     ) {}
 
     /**
@@ -297,7 +325,47 @@ export class LiveDaemonGate implements DaemonGate {
         if (this.logFilter.shouldEmitInformational(readyLine)) {
             this.logger.appendLine(readyLine);
         }
+        this.checkDaemonVersion(module.modulePath, spawned);
         return spawned.client;
+    }
+
+    /**
+     * Warn when a freshly-spawned daemon is on a different *major* version than the plugin this
+     * extension bundles ([expectedDaemonVersion]) — the project pins an incompatible-major
+     * compose-preview plugin, whose render/daemon wire format and APIs differ, so renders can fail
+     * or look wrong. Always logs to the output channel; fires [onVersionMismatch] (deduped per
+     * major-pair) so the host can show a one-time notification. No-op when the check is disabled or
+     * the versions are same-major / unparseable.
+     */
+    private checkDaemonVersion(
+        modulePath: string,
+        spawned: SpawnedDaemon,
+    ): void {
+        if (this.expectedDaemonVersion.length === 0) {
+            return;
+        }
+        const daemonVersion = spawned.initializeResult.daemonVersion;
+        if (!versionsIncompatible(daemonVersion, this.expectedDaemonVersion)) {
+            return;
+        }
+        this.logger.appendLine(
+            `[daemon] version mismatch for ${modulePath}: daemon v${daemonVersion} vs this ` +
+                `extension's bundled plugin v${this.expectedDaemonVersion} — they are on different ` +
+                `major versions, which can render incorrectly. Align the project's compose-preview ` +
+                `plugin and the extension to the same major.`,
+        );
+        const dedupeKey = `${majorVersionOf(daemonVersion)}->${majorVersionOf(
+            this.expectedDaemonVersion,
+        )}`;
+        if (this.warnedVersionMismatch.has(dedupeKey)) {
+            return;
+        }
+        this.warnedVersionMismatch.add(dedupeKey);
+        this.onVersionMismatch?.({
+            modulePath,
+            daemonVersion,
+            expectedVersion: this.expectedDaemonVersion,
+        });
     }
 
     /**
