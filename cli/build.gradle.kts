@@ -217,7 +217,8 @@ val stageDaemonDesktopLibs =
 
 // Stage the Android daemon's runtime jars from `:daemon:android`'s `daemonHarnessClasspathFile`
 // descriptor (a newline-separated text file of absolute jar paths, ordered module-jar →
-// testFixtures → R.jar → full test runtime → android.jar; see that module's `writeDaemonClasspath`).
+// testFixtures → R.jar → full test runtime → android.jar; see that module's
+// `writeDaemonClasspath`).
 // We copy each listed jar into a build dir so the distribution wiring can fold it into
 // `lib-daemon-android/`. Two deliberate transforms:
 //   - `android.jar` is dropped: it's the SDK platform jar (redistribution-sensitive, and
@@ -243,9 +244,7 @@ abstract class StageDaemonAndroidLibs : DefaultTask() {
       .filter { it.isNotEmpty() }
       .map { File(it) }
       .filter { it.isFile && it.name.endsWith(".jar") && it.name != "android.jar" }
-      .forEachIndexed { index, jar ->
-        jar.copyTo(File(dest, "%04d-%s".format(index, jar.name)))
-      }
+      .forEachIndexed { index, jar -> jar.copyTo(File(dest, "%04d-%s".format(index, jar.name))) }
   }
 }
 
