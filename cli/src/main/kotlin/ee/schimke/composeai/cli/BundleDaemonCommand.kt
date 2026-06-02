@@ -431,12 +431,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
               "android/resources.ap_" -> apk = dest
               "android/AndroidManifest.xml" -> mergedManifest = dest
               "android/r-classes.jar" -> rJar = dest
-              "android/diag.txt" ->
-                // Pack-time carriage diagnostic — surface it so a null carriage is explainable
-                // without the (truncated) Gradle pack console.
-                dest.readText().trim().lineSequence().forEach {
-                  System.err.println("[bundle-daemon] pack-diag: $it")
-                }
             }
           }
         }

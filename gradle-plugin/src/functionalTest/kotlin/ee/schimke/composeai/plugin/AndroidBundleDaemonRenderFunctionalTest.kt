@@ -75,21 +75,13 @@ class AndroidBundleDaemonRenderFunctionalTest {
     // Tracks which kinds of preview actually rendered across both bundles: protolayout (Wear
     // tile IR), remotecompose (RC doc IR), and classic (reflected app.jar Compose preview).
     val formatsSeen = mutableSetOf<String>()
-    // TEMP diagnostic (remove before merge): the IR breakdown of each bundle, surfaced in the
-    // assertion message so a green-but-classic-only run still prints why no IR preview was
-    // exercised (empty `intermediateRepresentations` in bundle.json vs a parse/selection mismatch).
-    val diagnostics = StringBuilder()
-    renderBundle(cli, File(wearBundle), formatsSeen, diagnostics)
-    renderBundle(cli, File(remoteComposeBundle), formatsSeen, diagnostics)
+    renderBundle(cli, File(wearBundle), formatsSeen)
+    renderBundle(cli, File(remoteComposeBundle), formatsSeen)
 
-    assertWithMessage(
-        "expected a protolayout (Wear tile) IR preview to render. saw: $formatsSeen\n$diagnostics"
-      )
+    assertWithMessage("expected a protolayout (Wear tile) IR preview to render. saw: $formatsSeen")
       .that(formatsSeen)
       .contains("protolayout")
-    assertWithMessage(
-        "expected a remotecompose IR preview to render. saw: $formatsSeen\n$diagnostics"
-      )
+    assertWithMessage("expected a remotecompose IR preview to render. saw: $formatsSeen")
       .that(formatsSeen)
       .contains("remotecompose")
     assertWithMessage("expected a classic (non-IR) Compose preview to render. saw: $formatsSeen")
@@ -102,12 +94,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
    * preview, render them via `renderNow`, and assert each produces a fresh, valid PNG. Records the
    * rendered formats into [formatsSeen].
    */
-  private fun renderBundle(
-    cli: File,
-    bundle: File,
-    formatsSeen: MutableSet<String>,
-    diagnostics: StringBuilder,
-  ) {
+  private fun renderBundle(cli: File, bundle: File, formatsSeen: MutableSet<String>) {
     assertWithMessage(
         "sample bundle missing: ${bundle.path} — did `:samples:…:composePreviewBundle` run? Use " +
           "`./gradlew functionalTestWithAndroidBundleDaemon`"
@@ -271,16 +258,6 @@ class AndroidBundleDaemonRenderFunctionalTest {
         formatsSeen.add(manifest.formatById[id] ?: "classic")
       }
 
-      // TEMP diagnostic (remove before merge): per-bundle IR breakdown, appended to the buffer the
-      // top-level `formatsSeen` assertion prints. Confirms (or refutes) that the CI-built bundle
-      // carries no IR, which would explain why only classic previews are ever selected/rendered.
-      diagnostics.append("\n[${bundle.name}] backend=${manifest.backend}")
-      diagnostics.append(" previewIds(${manifest.previewIds.size})=${manifest.previewIds}")
-      diagnostics.append("\n  intermediateRepresentations(raw)=${manifest.rawIr}")
-      diagnostics.append("\n  formatById=${manifest.formatById}")
-      diagnostics.append("\n  selected=$selected")
-      diagnostics.append("\n  finished=${finished.keys}")
-
       // The exact failure `composeDaemonClasspath` fixes: a parent-loaded IR replay host that can't
       // see the carried player / tiles-renderer libs trips NoClassDefFoundError at replay time.
       assertWithMessage(
@@ -368,10 +345,7 @@ class AndroidBundleDaemonRenderFunctionalTest {
           val ir = it.jsonObject
           ir["previewId"]!!.jsonPrimitive.content to ir["format"]!!.jsonPrimitive.content
         } ?: emptyMap()
-      // TEMP diagnostic (remove before merge): the raw IR array as the bundle writer emitted it, so
-      // CI shows whether `intermediateRepresentations` is genuinely empty vs a parse mismatch.
-      val rawIr = root["intermediateRepresentations"]?.toString() ?: "(key absent)"
-      return BundleManifestInfo(backend, previewIds, formatById, rawIr)
+      return BundleManifestInfo(backend, previewIds, formatById)
     }
   }
 
@@ -379,7 +353,6 @@ class AndroidBundleDaemonRenderFunctionalTest {
     val backend: String,
     val previewIds: List<String>,
     val formatById: Map<String, String>,
-    val rawIr: String,
   )
 
   private fun isPng(file: File): Boolean {
