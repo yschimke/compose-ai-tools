@@ -171,6 +171,7 @@ import { previewStore } from "./previewStore";
 import { StaleBadgeController } from "./staleBadge";
 import { StreamingPainter } from "./streamingPainter";
 import { ViewportTracker } from "./viewportTracker";
+import { SpatialToggleController } from "./spatialToggle";
 
 /** Persisted webview state stored via `vscode.setState` / `getState`. Survives
  *  across webview reloads (panel hidden + revealed) but not across full
@@ -259,6 +260,9 @@ export class PreviewApp extends LitElement {
     private _launcherWidgetPickerPopover!: HTMLElement;
     @query("#btn-export-bundle") private _btnExportBundle!: HTMLButtonElement;
     @query("#btn-exit-focus") private _btnExitFocus!: HTMLButtonElement;
+    @query("#btn-spatial-toggle")
+    private _btnSpatialToggle!: HTMLButtonElement;
+    @query("#spatial-mount") private _spatialMount!: HTMLElement;
 
     protected render(): TemplateResult {
         const minimal = this.dataset.minimalMode === "true";
@@ -468,11 +472,27 @@ export class PreviewApp extends LitElement {
                 </button>
             </div>
             <div class="focus-stage">
+                <button
+                    class="icon-button spatial-toggle"
+                    id="btn-spatial-toggle"
+                    title="Switch to 3D spatial view"
+                    aria-label="Switch to 3D spatial view"
+                    aria-pressed="false"
+                    hidden
+                >
+                    <i class="codicon codicon-globe" aria-hidden="true"></i>
+                </button>
                 <preview-grid
                     id="preview-grid"
                     role="list"
                     aria-label="Preview cards"
                 ></preview-grid>
+                <div
+                    id="spatial-mount"
+                    class="spatial-mount"
+                    aria-label="3D spatial layout"
+                    hidden
+                ></div>
                 <bundle-legend
                     id="bundle-legend"
                     class="focus-stage-legend"
@@ -677,6 +697,18 @@ export class PreviewApp extends LitElement {
             btnExitFocus,
             recordingFormat,
             focusInspector,
+        });
+        // 2D ⇄ 3D toggle. The viewer (three.js) lives in a separate bundle
+        // loaded lazily on first switch to 3D; `data-spatial-src` /
+        // `data-csp-nonce` come from `previewPanel.ts` (the webview URI of
+        // `media/webview/spatial.js` + the page nonce). The button stays
+        // hidden until a `setSpatialScene` arrives.
+        const spatialToggle = new SpatialToggleController({
+            toggleButton: this._btnSpatialToggle,
+            mount: this._spatialMount,
+            twoDStage: grid,
+            bundleSrc: this.dataset.spatialSrc ?? null,
+            nonce: this.dataset.cspNonce ?? null,
         });
         // D2 — focus-mode a11y overlay toggle. Off by default; turning it on subscribes the
         // focused preview to a11y/atf + a11y/hierarchy via the extension, off unsubscribes.
@@ -3420,6 +3452,8 @@ export class PreviewApp extends LitElement {
                 bundleController.handleExternalKindToggle("test/failure", true),
             toggleBundle: (bundleId) =>
                 bundleController.toggleBundle(bundleId as BundleId),
+            setSpatialScene: (scene, textureBaseUri) =>
+                spatialToggle.setScene(scene, textureBaseUri),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);

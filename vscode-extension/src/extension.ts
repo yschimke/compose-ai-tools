@@ -13,6 +13,7 @@ import { JdkImageError } from "./jdkImageErrorDetector";
 import { ClassVersionError } from "./classVersionErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import { PreviewPanel } from "./previewPanel";
+import { parseSpatialSceneJson } from "./webview/spatial/sceneLoader";
 import { BundleViewerPanel } from "./bundleViewerPanel";
 import { isLikelyBundle } from "./bundleFormat";
 import { PreviewRegistry } from "./previewRegistry";
@@ -1596,6 +1597,42 @@ export async function activate(
         ),
         vscode.commands.registerCommand("composePreview.renderAll", () =>
             refresh(true, editorScope.file ?? undefined),
+        ),
+        // Dev affordance: load a committed SpatialScene fixture into the
+        // panel's 3D view, standing in for the (not-yet-built) `:renderer-xr`
+        // producer. Reveals the panel's 2D ⇄ 3D toggle. The fixtures live
+        // under the extension dir, so their textures resolve under the CSP
+        // via the extension's `localResourceRoots`.
+        vscode.commands.registerCommand(
+            "composePreview.openSpatialFixture",
+            async () => {
+                if (!panel) {
+                    return;
+                }
+                const fixtureDir = vscode.Uri.joinPath(
+                    context.extensionUri,
+                    "preview-harness",
+                    "fixtures",
+                    "spatial-scene",
+                );
+                const sceneFile = vscode.Uri.joinPath(fixtureDir, "scene.json");
+                try {
+                    const text = fs.readFileSync(sceneFile.fsPath, "utf8");
+                    const scene = parseSpatialSceneJson(text);
+                    // Reveal/resolve the panel first; `showSpatialScene`
+                    // retains the scene and re-posts it on `webviewReady`, so
+                    // it lands even when the view is resolving for the first
+                    // time (command run from the palette before opening it).
+                    await vscode.commands.executeCommand(
+                        `${PreviewPanel.viewId}.focus`,
+                    );
+                    panel.showSpatialScene(scene, fixtureDir);
+                } catch (err) {
+                    void vscode.window.showErrorMessage(
+                        `Could not load spatial fixture: ${(err as Error).message}`,
+                    );
+                }
+            },
         ),
         vscode.commands.registerCommand(
             "composePreview.runForFile",

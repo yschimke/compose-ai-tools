@@ -118,6 +118,15 @@
                     await settle();
                 }
 
+                // Optional fixed settle for surfaces the rAF/img/animation
+                // settle can't observe — e.g. the 3D `<spatial-view>` loads
+                // its quad textures through three.js's own image loader, not
+                // `.preview-card img`, so a WebGL fixture sets `settleMs` to
+                // give those a beat to decode before the screenshot.
+                if (data.settleMs) {
+                    await new Promise((r) => setTimeout(r, data.settleMs));
+                }
+
                 harness.ready = true;
             }
 

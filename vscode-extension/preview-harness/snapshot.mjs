@@ -114,7 +114,14 @@ const fixtures = await listFixtures();
 // Serve from the extension root so the scenario page can reach both
 // `preview-harness/...` and `../media/...` via the same origin.
 const server = await startServer(extensionRoot);
-const browser = await chromium.launch();
+const browser = await chromium.launch({
+    // Software WebGL so the 3D spatial-view fixture renders headlessly; the
+    // flags are inert for the 2D fixtures. `HARNESS_CHROMIUM` points at a
+    // Chromium binary when the default Playwright download isn't present
+    // (some CI sandboxes ship only the full build, not the headless shell).
+    args: ["--enable-unsafe-swiftshader", "--use-gl=angle"],
+    executablePath: process.env.HARNESS_CHROMIUM || chromium.executablePath(),
+});
 
 try {
     for (const fixture of fixtures) {

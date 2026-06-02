@@ -1,3 +1,5 @@
+import type { SpatialScene } from "./webview/shared/spatialScene";
+
 export interface PreviewParams {
     name: string | null;
     device: string | null;
@@ -695,6 +697,24 @@ export type ExtensionToWebview =
     | {
           command: "triggerBundleToggle";
           bundleId: string;
+      }
+    /**
+     * Hand the panel's 3D spatial view a `SpatialScene` to render (see
+     * `webview/shared/spatialScene.ts`). The producer (`:renderer-xr`, later)
+     * and the dev `openSpatialFixture` command both post this. The viewer is
+     * mounted lazily on the first 2D ⇄ 3D toggle, so this can arrive before or
+     * after the user switches to 3D.
+     */
+    | {
+          command: "setSpatialScene";
+          scene: SpatialScene;
+          /**
+           * Webview-resource base URI the viewer prepends to each quad's
+           * relative `texture` path — the scene file's directory run through
+           * `webview.asWebviewUri`, with a trailing slash. CSP forbids loading
+           * arbitrary disk paths, so textures must be addressed this way.
+           */
+          textureBaseUri: string;
       };
 
 /**

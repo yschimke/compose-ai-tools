@@ -34,29 +34,32 @@ See `spatialScene.ts` for the authoritative types. In brief:
 
 ```jsonc
 {
-  "version": 1,
-  "units": "dp",
-  "previewId": "…",                       // optional: the source preview
-  "camera": {                              // default view; only "orbit" defined today
-    "kind": "orbit",
-    "target": { "x": 0, "y": -10, "z": 0 },
-    "distance": 1200, "yawDeg": 0, "pitchDeg": -10
-  },
-  "panels": [
-    {
-      "id": "top",                         // subspace node testTag / semantics id
-      "label": "Now Playing",              // optional, for overlays
-      "poseInRoot": {
-        "translation": { "x": 0, "y": 80, "z": 0 },
-        "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
-      },
-      "sizeDp": { "width": 560, "height": 200 },
-      "texture": "top.png",
-      "parentId": "column"                 // optional; null/omitted = top-level
-    }
-  ],
-  "orbiters": [],                          // optional: edge-anchored control strips (same shape + "edge")
-  "environment": { "kind": "color", "color": "#101014" }  // optional backdrop
+    "version": 1,
+    "units": "dp",
+    "previewId": "…", // optional: the source preview
+    "camera": {
+        // default view; only "orbit" defined today
+        "kind": "orbit",
+        "target": { "x": 0, "y": -10, "z": 0 },
+        "distance": 1200,
+        "yawDeg": 0,
+        "pitchDeg": -10,
+    },
+    "panels": [
+        {
+            "id": "top", // subspace node testTag / semantics id
+            "label": "Now Playing", // optional, for overlays
+            "poseInRoot": {
+                "translation": { "x": 0, "y": 80, "z": 0 },
+                "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+            },
+            "sizeDp": { "width": 560, "height": 200 },
+            "texture": "top.png",
+            "parentId": "column", // optional; null/omitted = top-level
+        },
+    ],
+    "orbiters": [], // optional: edge-anchored control strips (same shape + "edge")
+    "environment": { "kind": "color", "color": "#101014" }, // optional backdrop
 }
 ```
 
@@ -87,3 +90,16 @@ relative texture paths to webview resources, place a textured quad per panel at 
 extent `sizeDp`, and drive an orbit camera from `camera`. You do **not** need `:renderer-xr` to exist;
 it will emit this same JSON later. Flag any shape change back through this doc + `spatialScene.ts` so
 the producer stays in sync.
+
+### Consumer (implemented)
+
+The WebGL viewer now lives in
+[`vscode-extension/src/webview/spatial/`](../../vscode-extension/src/webview/spatial/README.md) — a
+three.js `<spatial-view>` element (textured quads, orbit/pan/zoom, grid + axes, labels,
+click-to-focus) bundled separately as `media/webview/spatial.js`, mounted behind the panel's 2D ⇄ 3D
+toggle (`SpatialToggleController`). The host hands it a scene via the `setSpatialScene`
+`ExtensionToWebview` message (`PreviewPanel.showSpatialScene`), with a `textureBaseUri` resolving the
+relative `texture` paths to webview resources under the CSP. The producer's job is to emit
+`scene.json` + the panel PNGs into a render-output dir; the host resolves that dir to a
+`textureBaseUri` and posts it. Until the producer exists, the `Compose Preview: Open 3D Spatial
+Fixture (dev)` command loads the committed fixture.

@@ -42,6 +42,8 @@
         "src/webview/history/historyData.ts",
         "src/webview/history/historyStore.ts",
         "src/webview/shared/diffStatsLabel.ts",
+        "src/webview/shared/spatialScene.ts",
+        "src/webview/spatial/sceneLoader.ts",
         "src/webview/shared/safeIndex.ts",
         "src/webview/shared/store.ts",
         "src/webview/shared/storeController.ts",

@@ -35,6 +35,13 @@ const entries = [
         in: resolve(root, "src/webview/history/main.ts"),
         out: resolve(root, "media/webview/history.js"),
     },
+    {
+        // three.js + the spatial viewer in their own bundle so the ~560 KB
+        // lib only loads when the panel's 3D view is actually requested,
+        // rather than bloating the main preview bundle.
+        in: resolve(root, "src/webview/spatial/main.ts"),
+        out: resolve(root, "media/webview/spatial.js"),
+    },
 ];
 
 if (watch) {
