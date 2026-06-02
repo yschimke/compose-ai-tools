@@ -100,6 +100,13 @@ include(":preview-data-api")
 
 project(":preview-data-api").projectDir = file("api/preview-data-api")
 
+// Okio-based file/IO foundation. Every non-Gradle production module funnels file reads/writes
+// through `:common-io`'s suspend helpers (Dispatchers.IO + Okio FileSystem) instead of
+// `java.io.File`. Published because most consumers are themselves published.
+include(":common-io")
+
+project(":common-io").projectDir = file("common/io")
+
 // Step B of the clean-API carve-out: the Gradle Tooling-API render pipeline that previously
 // lived inside `:cli`'s `Command` base class. Exposes a `GradlePreviewDriver` library so
 // external consumers (contrib scripting, third-party tooling) can render previews and read the

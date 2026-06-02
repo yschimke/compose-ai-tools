@@ -223,6 +223,7 @@ wear-protolayout-expression = { module = "androidx.wear.protolayout:protolayout-
 wear-protolayout-proto = { module = "androidx.wear.protolayout:protolayout-proto", version.ref = "wear-protolayout" }
 wear-protolayout-external-protobuf = { module = "androidx.wear.protolayout:protolayout-external-protobuf", version.ref = "wear-protolayout" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 mcp-kotlin-sdk-server = { module = "io.modelcontextprotocol:kotlin-sdk-server", version.ref = "mcp-kotlin-sdk" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
