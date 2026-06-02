@@ -335,10 +335,15 @@ jobs:
           printf '%s\n' "$output"
 
   release:
-    # `publish-gradle-plugin` already gates on all three build jobs (CLI/MCP, the per-OS viewer
-    # matrix, and the VSIX). `build-viewer-artifacts` is listed explicitly too so this job can
-    # download its uber-jar + installer artifacts — the redundant edge documents that consumption.
-    needs: [publish-gradle-plugin, build-viewer-artifacts]
+    # The GitHub Release asset upload depends ONLY on the build jobs that produce the assets — it is
+    # deliberately NOT gated on `publish-gradle-plugin`. The Maven Central publish is slow and
+    # irreversible (Central won't overwrite a published version), so it's gated behind every build
+    # job for safety; but the GitHub assets don't need to wait behind that publish. Listing the three
+    # build jobs directly lets this job run in parallel with the Maven publish, so the `.zip`/`.tar.gz`
+    # /`.jar`/installer/`.vsix` files land on the Release as soon as the builds finish instead of after
+    # Central wraps up. The build jobs still gate the Maven publish independently, so decoupling here
+    # doesn't weaken the irreversible-publish safety gate.
+    needs: [build-applications, build-viewer-artifacts, build-vscode-extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # update the release, upload assets

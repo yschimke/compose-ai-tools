@@ -43,7 +43,8 @@ import org.junit.rules.TemporaryFolder
  * the root build's `functionalTestWithAndroidBundleDaemon` task and handed over as paths; the test
  * reads `bundle.json` from each to learn which preview ids are IR-backed (and their format) vs
  * classic. Opt-in via `-Pbundle.daemon.android.e2e=true` (cold-starts a Robolectric daemon JVM and
- * needs a local Android SDK for `android.jar`), keyed to `composeai.functionalTest.androidBundleDaemon`.
+ * needs a local Android SDK for `android.jar`), keyed to
+ * `composeai.functionalTest.androidBundleDaemon`.
  */
 class AndroidBundleDaemonRenderFunctionalTest {
 
@@ -101,9 +102,9 @@ class AndroidBundleDaemonRenderFunctionalTest {
 
     // One preview per IR format present, plus one classic (non-IR) preview if the bundle has one.
     val selected = LinkedHashSet<String>()
-    manifest.formatById.entries
-      .groupBy({ it.value }, { it.key })
-      .forEach { (_, ids) -> ids.firstOrNull()?.let { selected.add(it) } }
+    manifest.formatById.entries.groupBy({ it.value }, { it.key }).forEach { (_, ids) ->
+      ids.firstOrNull()?.let { selected.add(it) }
+    }
     manifest.previewIds.firstOrNull { it !in manifest.formatById.keys }?.let { selected.add(it) }
     assertWithMessage("no renderable previews discovered in ${bundle.name}")
       .that(selected)
@@ -246,7 +247,9 @@ class AndroidBundleDaemonRenderFunctionalTest {
     }
   }
 
-  /** Best-effort `shutdown` + `exit` handshake; tolerates trailing notifications still in flight. */
+  /**
+   * Best-effort `shutdown` + `exit` handshake; tolerates trailing notifications still in flight.
+   */
   private fun drainShutdown(stdin: OutputStream, stdout: InputStream) {
     BundleDaemonStdio.writeFrame(
       stdin,
