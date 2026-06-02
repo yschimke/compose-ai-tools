@@ -35,13 +35,14 @@ base { archivesName.set("compose-preview-viewer") }
 //     macOS, `.msi` on Windows) built by `jpackage`, which embeds a JDK runtime image — so a
 //     non-Java colleague installs and launches the viewer with nothing else on their machine.
 // The uber jar stays Isolated-Projects-clean — unlike the GradleUp Shadow plugin, whose
-// optional-property lookup walks to the parent project and trips this repo's `isolated-projects=true`
-// + `configuration-cache.problems=fail` gate. The native-installer path is IP-clean on Linux/macOS
-// (`.deb`/`.dmg`), but the Windows `.msi` is NOT: Compose Multiplatform packages MSIs via the WiX
-// toolset and registers its `downloadWix` / `unzipWix` tasks on the ROOT project, so `packageMsi`
-// reads `rootProject.tasks` / `rootProject.layout` at configuration time and trips the IP gate. The
-// release workflow's viewer-packaging step disables Isolated Projects on the Windows leg only to work
-// around this plugin-internal access (see `.github/workflows/release.yml`).
+// optional-property lookup walks to the parent project and trips this repo's
+// `isolated-projects=true` + `configuration-cache.problems=fail` gate. The native-installer path is
+// IP-clean on Linux/macOS (`.deb`/`.dmg`), but the Windows `.msi` is NOT: Compose Multiplatform
+// packages MSIs via the WiX toolset and registers its `downloadWix` / `unzipWix` tasks on the ROOT
+// project, so `packageMsi` reads `rootProject.tasks` / `rootProject.layout` at configuration time
+// and trips the IP gate. The release workflow's viewer-packaging step disables Isolated Projects on
+// the Windows leg only to work around this plugin-internal access (see
+// `.github/workflows/release.yml`).
 //
 // We drop the JVM `application` plugin entirely (its slim `distZip`/`distTar` is superseded by the
 // drag-around uber jar, and keeping both registers two colliding `run` tasks).
