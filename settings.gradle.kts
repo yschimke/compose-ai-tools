@@ -178,6 +178,10 @@ include(":renderer-android")
 
 project(":renderer-android").projectDir = file("renderers/android")
 
+include(":renderer-xr")
+
+project(":renderer-xr").projectDir = file("renderers/xr")
+
 include(":daemon:core")
 
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
