@@ -459,6 +459,10 @@ describeExternal(
             "measures warm edit→preview latency over consecutive saves",
             async function () {
                 const ITERATIONS = 4;
+                // A warm incremental edit on even a heavy module renders well
+                // under this; exceeding it means no *changed* image arrived =
+                // stale render.
+                const PER_EDIT_TIMEOUT_MS = 120_000;
                 // Append a dedicated preview we can mutate deterministically,
                 // independent of upstream's current Background.kt content.
                 const marker = "ComposeAiEditLoopProbe";
@@ -550,7 +554,11 @@ describeExternal(
                     // out here and fail the test loudly.
                     const shot = await waitFor(
                         `edit ${i + 1} → CHANGED probe image`,
-                        this.timeout(),
+                        // Bounded per-edit: a warm incremental edit that can't
+                        // produce a *changed* render within this window is the
+                        // stale-render bug — fail fast and loud rather than
+                        // hanging until the 30-min suite timeout.
+                        PER_EDIT_TIMEOUT_MS,
                         100,
                         () => {
                             const cur = probeImageOf();
