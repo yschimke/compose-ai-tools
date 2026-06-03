@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.Properties
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -40,6 +41,7 @@ class AndroidBundleLaunch(
    * consumer's Application is preview-safe.
    */
   private val useConsumerApplication: Boolean = false,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   /** Clamped to Robolectric 4.16.x's supported `android-all` range — see [MIN_SDK] / [MAX_SDK]. */
@@ -109,7 +111,7 @@ class AndroidBundleLaunch(
    */
   fun writeRobolectricConfig(root: File): File {
     val pkgDir = File(root, RENDERER_PKG_PATH).apply { mkdirs() }
-    SystemFileSystem.write(File(pkgDir, "robolectric.properties").path.toPath()) {
+    fileSystem.write(File(pkgDir, "robolectric.properties").path.toPath()) {
       writeUtf8(robolectricPropertiesBody() + "\n")
     }
     return root
@@ -144,17 +146,22 @@ class AndroidBundleLaunch(
     fun resolveAndroidJar(
       localPropertiesFile: File?,
       env: (String) -> String? = { System.getenv(it) },
+      fileSystem: FileSystem = SystemFileSystem,
     ): File? {
-      val root = sdkRoot(localPropertiesFile, env) ?: return null
+      val root = sdkRoot(localPropertiesFile, env, fileSystem) ?: return null
       return highestPlatformAndroidJar(root)
     }
 
-    private fun sdkRoot(localPropertiesFile: File?, env: (String) -> String?): File? {
+    private fun sdkRoot(
+      localPropertiesFile: File?,
+      env: (String) -> String?,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): File? {
       localPropertiesFile
         ?.takeIf { it.isFile }
         ?.let { f ->
           val props =
-            Properties().apply { SystemFileSystem.read(f.path.toPath()) { load(inputStream()) } }
+            Properties().apply { fileSystem.read(f.path.toPath()) { load(inputStream()) } }
           props
             .getProperty("sdk.dir")
             ?.trim()

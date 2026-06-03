@@ -8,6 +8,7 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 import java.util.UUID
+import okio.FileSystem
 import okio.buffer
 
 /**
@@ -192,7 +193,7 @@ data class TuiArgs(
  * downloaded to a temp file (delete-on-exit). Self-contained here rather than depending on `:cli`
  * so the opt-in TUI module's graph stays minimal.
  */
-private fun resolveBundleArg(arg: String): File? {
+private fun resolveBundleArg(arg: String, fileSystem: FileSystem = SystemFileSystem): File? {
   val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()
   val isUrl = scheme == "http" || scheme == "https" || scheme == "file"
   if (!isUrl) {
@@ -212,7 +213,7 @@ private fun resolveBundleArg(arg: String): File? {
         kotlinx.coroutines.runBlocking {
           client.prepareGet(uri.toString()).execute { response ->
             if (response.status.isSuccess()) {
-              SystemFileSystem.sink(tempPath).buffer().use { out ->
+              fileSystem.sink(tempPath).buffer().use { out ->
                 response.bodyAsChannel().copyTo(out.outputStream())
               }
               true
@@ -222,9 +223,9 @@ private fun resolveBundleArg(arg: String): File? {
           }
         }
       }
-    if (ok && (SystemFileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) temp
+    if (ok && (fileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) temp
     else {
-      SystemFileSystem.delete(tempPath, mustExist = false)
+      fileSystem.delete(tempPath, mustExist = false)
       null
     }
   } catch (_: Exception) {

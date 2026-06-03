@@ -12,6 +12,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -29,6 +30,7 @@ import okio.Path.Companion.toPath
 internal class DaemonA11yFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
   private val onLog: (String) -> Unit = {},
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
   private val json = Json {
     ignoreUnknownKeys = true
@@ -157,7 +159,7 @@ internal class DaemonA11yFetcher(
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
     val report = AccessibilityReport(module = moduleName, entries = entries, status = status)
-    SystemFileSystem.write(reportFile.path.toPath()) {
+    fileSystem.write(reportFile.path.toPath()) {
       writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
     }
     return reportFile
@@ -183,7 +185,7 @@ internal class DaemonA11yFetcher(
     val file = projectDir.resolve("build/compose-previews/data/$previewId/a11y-hierarchy.json")
     if (!file.isFile) return emptyList()
     return try {
-      val text = SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+      val text = fileSystem.read(file.path.toPath()) { readUtf8() }
       val obj = json.parseToJsonElement(text) as? JsonObject ?: return emptyList()
       val nodes = obj["nodes"] ?: return emptyList()
       json.decodeFromJsonElement(

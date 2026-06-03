@@ -1621,4 +1621,66 @@ class DiscoveryFunctionalTest {
     // Target inference is skipped for non-composable kinds, so `targets` stays empty.
     assertThat(notificationPreviews.flatMap { it.targets }).isEmpty()
   }
+
+  @Test
+  fun `composePreviewDiscover tags XrSubspacePreview functions as XR_SUBSPACE`() {
+    val projectDir = createCmpTestProject()
+
+    // Stub `@XrSubspacePreview` under its real FQN — discovery is FQN-driven, so the stub exercises
+    // the same path a real consumer (depending on `:preview-annotations`) would, without dragging
+    // `androidx.xr.compose` onto the fixture's classpath.
+    val previewFqnDir = File(projectDir, "src/main/kotlin/ee/schimke/composeai/preview")
+    previewFqnDir.mkdirs()
+    File(previewFqnDir, "XrSubspacePreview.kt")
+      .writeText(
+        """
+        package ee.schimke.composeai.preview
+
+        @MustBeDocumented
+        @Retention(AnnotationRetention.BINARY)
+        @Target(AnnotationTarget.FUNCTION)
+        annotation class XrSubspacePreview
+        """
+          .trimIndent()
+      )
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/XrPreviews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.runtime.Composable
+      import ee.schimke.composeai.preview.XrSubspacePreview
+
+      // The body would be a `Subspace { … }` in a real consumer; discovery is annotation-driven and
+      // doesn't reflect the body, so an empty composable exercises the detection + kind assignment.
+      @XrSubspacePreview
+      @Composable
+      fun MySpatialPreview() {}
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    // The "unsupported parameters" warning must NOT fire — XR previews bypass the composable-param
+    // check the same way tile / notification / glance do.
+    assertThat(result.output).doesNotContain("MySpatialPreview' — method has parameter(s)")
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+    val xrPreviews = manifest.previews.filter { it.functionName == "MySpatialPreview" }
+    assertThat(xrPreviews.map { it.functionName }).containsExactly("MySpatialPreview")
+    assertThat(xrPreviews.map { it.params.kind }.toSet()).containsExactly(PreviewKind.XR_SUBSPACE)
+    // Non-composable kind: no scroll / time / focus fan-out, no target inference.
+    assertThat(xrPreviews.map { it.captures.size }).containsExactly(1)
+    assertThat(xrPreviews.flatMap { it.targets }).isEmpty()
+  }
 }

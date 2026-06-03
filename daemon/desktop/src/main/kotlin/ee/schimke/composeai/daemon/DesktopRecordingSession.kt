@@ -22,6 +22,7 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -69,6 +70,7 @@ class DesktopRecordingSession(
   private val sandboxStats: SandboxLifecycleStats,
   private val framesDir: File,
   private val encodedDir: File,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) : RecordingSession {
 
   private val timeline = mutableListOf<RecordingScriptEvent>()
@@ -711,7 +713,7 @@ class DesktopRecordingSession(
           surface.close()
         }
       }
-    SystemFileSystem.write(outFile.path.toPath()) { write(bytes) }
+    fileSystem.write(outFile.path.toPath()) { write(bytes) }
   }
 
   private fun sceneOffset(px: Int, py: Int): androidx.compose.ui.geometry.Offset {

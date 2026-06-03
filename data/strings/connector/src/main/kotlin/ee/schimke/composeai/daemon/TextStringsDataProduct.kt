@@ -15,6 +15,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -30,6 +31,7 @@ import okio.Path.Companion.toPath
 class TextStringsDataProductRegistry(
   private val rootDir: File,
   private val previewIndex: PreviewIndex,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) : DataProductRegistry {
   private val json = Json {
     encodeDefaults = false
@@ -100,7 +102,7 @@ class TextStringsDataProductRegistry(
     val semantics =
       json.decodeFromString(
         ComposeSemanticsPayload.serializer(),
-        SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+        fileSystem.read(file.path.toPath()) { readUtf8() },
       )
     val metadata = latestRenderMetadata[previewId] ?: metadataFor(previewId, overrides = null)
     val texts = buildList { collectTexts(semantics.root, metadata.localeTag, metadata.fontScale) }

@@ -16,6 +16,7 @@ import ee.schimke.composeai.render.session.RenderSessionFactory
 import java.io.File
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -28,6 +29,8 @@ import okio.Path.Companion.toPath
  */
 object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
+
+  var fileSystem: FileSystem = SystemFileSystem
 
   override fun open(config: RenderSessionConfig): RenderSession =
     open(config = config, factory = SubprocessDaemonClientFactory())
@@ -46,9 +49,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
     }
     val descriptor =
       try {
-        DaemonLaunchDescriptor.parse(
-          SystemFileSystem.read(descriptorFile.path.toPath()) { readUtf8() }
-        )
+        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       } catch (e: Exception) {
         throw RenderSessionException(
           "Daemon launch descriptor at ${descriptorFile.path} is unreadable: " +

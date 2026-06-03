@@ -1,7 +1,11 @@
 package ee.schimke.composeai.renderer.xr
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.xr.compose.subspace.node.SubspaceSemanticsInfo
+import androidx.xr.compose.testing.SubspaceTestContext
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
 import ee.schimke.composeai.xr.OrbitCamera
 import ee.schimke.composeai.xr.Quat
@@ -42,21 +46,89 @@ public object SubspaceSceneRecorder {
     val panels =
       panelTags.map { tag ->
         val node = rule.onSubspaceNodeWithTag(tag).fetchSemanticsNode("no subspace node '$tag'")
-        val t = node.poseInRoot.translation
-        val r = node.poseInRoot.rotation
-        val size = node.size
-        SpatialPanel(
-          id = tag,
-          poseInRoot =
-            SpatialPose(
-              translation = Vec3(t.x.toDouble(), t.y.toDouble(), t.z.toDouble()),
-              rotation = Quat(r.x.toDouble(), r.y.toDouble(), r.z.toDouble(), r.w.toDouble()),
-            ),
-          sizeDp = SizeDp(width = size.width, height = size.height),
-          texture = "$tag.png",
-        )
+        panelFrom(node, id = tag, parentId = null)
       }
     return SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
+  }
+
+  /**
+   * Auto-enumerates the **tagged** panels of the subspace composed on [rule] — the path the render
+   * pipeline takes for a discovered `@XrSubspacePreview`. Every node carrying a
+   * `SubspaceModifier.testTag(...)` becomes a [SpatialPanel], with the tag as its id. Authors tag
+   * the panels they want in the scene; an untagged `SpatialPanel` produces no spatial-semantics
+   * node and is therefore invisible here (and to `onSubspaceNodeWithTag`), so tagging is required
+   * either way.
+   *
+   * `poseInRoot` is absolute, so `parentId` is left null — the viewer positions panels without the
+   * hierarchy.
+   *
+   * Implementation note: the public spatial-semantics surface only exposes nodes by *unique* match,
+   * and the merged root reports no children, so there's no public way to list every node. We reach
+   * the flat node list through one reflective call into `androidx.xr.compose.testing`'s internal
+   * `SubspaceTestContext.getAllSemanticsNodes`; the nodes it returns are the public
+   * [SubspaceSemanticsInfo] type and the tag is read from the standard
+   * [SemanticsProperties.TestTag], so only the list *access* is reflective. `:samples:xr-spatial`'s
+   * `SubspaceLayoutPoseTest` (and these tests) are the canary if that internal shifts in a future
+   * `androidx.xr.compose:compose-testing`.
+   */
+  public fun recordAll(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    previewId: String? = null,
+  ): SpatialScene {
+    val panels =
+      allSemanticsNodes(rule).mapNotNull { node ->
+        val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@mapNotNull null
+        panelFrom(node, id = tag, parentId = null)
+      }
+    // The tag is the panel id and drives the `<id>.png` texture path, so duplicates would yield an
+    // ambiguous scene + colliding captures. The tag-based `record` path fails on this implicitly
+    // (onSubspaceNodeWithTag requires a unique match); make recordAll fail just as loudly.
+    val duplicates = panels.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys
+    check(duplicates.isEmpty()) {
+      "Duplicate subspace panel testTag(s) ${duplicates.sorted()}: each SpatialPanel in an " +
+        "@XrSubspacePreview must carry a unique testTag (panel ids and texture paths derive from it)."
+    }
+    return SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun allSemanticsNodes(
+    rule: AndroidComposeTestRule<*, ComponentActivity>
+  ): List<SubspaceSemanticsInfo> {
+    val context = SubspaceTestContext(rule)
+    return try {
+      val method =
+        context.javaClass.getMethod(
+          "getAllSemanticsNodes\$compose_testing",
+          Boolean::class.javaPrimitiveType,
+        )
+      method.isAccessible = true
+      (method.invoke(context, /* useUnmergedTree = */ true) as Iterable<SubspaceSemanticsInfo>)
+        .toList()
+    } catch (e: ReflectiveOperationException) {
+      throw IllegalStateException(
+        "Could not enumerate subspace nodes via androidx.xr.compose.testing internals; the " +
+          "compose-testing API may have changed (see SubspaceSceneRecorder.recordAll).",
+        e,
+      )
+    }
+  }
+
+  private fun panelFrom(node: SubspaceSemanticsInfo, id: String, parentId: String?): SpatialPanel {
+    val t = node.poseInRoot.translation
+    val r = node.poseInRoot.rotation
+    val size = node.size
+    return SpatialPanel(
+      id = id,
+      poseInRoot =
+        SpatialPose(
+          translation = Vec3(t.x.toDouble(), t.y.toDouble(), t.z.toDouble()),
+          rotation = Quat(r.x.toDouble(), r.y.toDouble(), r.z.toDouble(), r.w.toDouble()),
+        ),
+      sizeDp = SizeDp(width = size.width, height = size.height),
+      texture = "$id.png",
+      parentId = parentId,
+    )
   }
 
   /**

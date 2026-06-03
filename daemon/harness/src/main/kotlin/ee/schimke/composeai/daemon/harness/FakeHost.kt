@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -39,8 +40,11 @@ import okio.Path.Companion.toPath
  * nothing to drain because each `submit` returns synchronously. The drain semantics live in
  * `JsonRpcServer` itself; this host just refuses no submissions.
  */
-class FakeHost(private val fixtureDir: File, private val manifest: Map<String, FakePreviewSpec>) :
-  RenderHost {
+class FakeHost(
+  private val fixtureDir: File,
+  private val manifest: Map<String, FakePreviewSpec>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) : RenderHost {
 
   /**
    * Tracks the next "internal request id" the host would assign if anyone called the legacy
@@ -170,16 +174,14 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
     val delayMs =
       delayFile
         .takeIf { it.exists() }
-        ?.let { SystemFileSystem.read(it.path.toPath()) { readUtf8() } }
+        ?.let { fileSystem.read(it.path.toPath()) { readUtf8() } }
         ?.trim()
         ?.toLongOrNull()
     val metrics: Map<String, Long>? =
       metricsFile
         .takeIf { it.exists() }
         ?.let { f ->
-          JSON.decodeFromString<Map<String, Long>>(
-            SystemFileSystem.read(f.path.toPath()) { readUtf8() }
-          )
+          JSON.decodeFromString<Map<String, Long>>(fileSystem.read(f.path.toPath()) { readUtf8() })
         }
     return ResolvedSidecars(error = error, delayMs = delayMs, metrics = metrics)
   }
@@ -193,7 +195,7 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
    * 2. Plain text — legacy v0 path; treated as a message with `kind="runtime"`.
    */
   private fun parseErrorSidecar(file: File): ErrorSpec {
-    val raw = SystemFileSystem.read(file.path.toPath()) { readUtf8() }.trim()
+    val raw = fileSystem.read(file.path.toPath()) { readUtf8() }.trim()
     return if (raw.startsWith("{")) {
       val obj: JsonObject = JSON.parseToJsonElement(raw).jsonObject
       val kind = obj["kind"]?.jsonPrimitive?.contentOrNull ?: "runtime"
@@ -219,11 +221,14 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
      * Loads a `previews.json` manifest into the in-memory shape [FakeHost] expects. Defensive
      * against optional fields so test scenarios can grow without rewriting the loader.
      */
-    fun loadManifest(file: File): Map<String, FakePreviewSpec> {
+    fun loadManifest(
+      file: File,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): Map<String, FakePreviewSpec> {
       require(file.exists()) { "FakeHost.loadManifest: ${file.absolutePath} does not exist" }
       val list =
         JSON.decodeFromString<List<FakePreviewSpec>>(
-          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+          fileSystem.read(file.path.toPath()) { readUtf8() }
         )
       return list.associateBy { it.id }
     }

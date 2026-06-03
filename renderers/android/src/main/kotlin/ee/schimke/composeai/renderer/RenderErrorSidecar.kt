@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import java.io.File
 import java.io.PrintWriter
@@ -36,7 +37,7 @@ internal object RenderErrorSidecar {
    * since the goal is to *avoid* derailing the test on a per-preview
    * issue.
    */
-  fun write(pngFile: File, e: Throwable) {
+  fun write(pngFile: File, e: Throwable, fileSystem: FileSystem = SystemFileSystem) {
     try {
       val sidecar = pathFor(pngFile)
       sidecar.parentFile?.mkdirs()
@@ -57,7 +58,7 @@ internal object RenderErrorSidecar {
       }
       sb.append("\"stackTrace\":").append(jsonString(stack))
       sb.append('}')
-      SystemFileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
+      fileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
     } catch (sidecarWriteFailure: Throwable) {
       System.err.println(
         "Failed to write render-error sidecar for ${pngFile.name}: ${sidecarWriteFailure.message}"

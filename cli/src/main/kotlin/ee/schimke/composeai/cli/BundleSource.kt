@@ -12,6 +12,7 @@ import java.io.File
 import java.net.URI
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import okio.FileSystem
 import okio.buffer
 
 /**
@@ -44,7 +45,7 @@ object BundleSource {
    * [IllegalArgumentException] when a path doesn't exist or a download fails — callers map that to
    * their usual "not a file" exit.
    */
-  fun resolveToFile(arg: String): File {
+  fun resolveToFile(arg: String, fileSystem: FileSystem = SystemFileSystem): File {
     if (!looksLikeUrl(arg)) {
       val f = File(arg)
       require(f.isFile) { "not a file: $arg" }
@@ -61,10 +62,10 @@ object BundleSource {
       require(f.isFile) { "not a file: $arg" }
       return f
     }
-    return download(uri, arg)
+    return download(uri, arg, fileSystem)
   }
 
-  private fun download(uri: URI, arg: String): File {
+  private fun download(uri: URI, arg: String, fileSystem: FileSystem = SystemFileSystem): File {
     // Bundles are always PNG+ZIP polyglots, so a `.png` temp suffix keeps downstream
     // name-derivation (`<name>-render`, the daemon's bundleSource tag) sensible.
     val tempPath = TemporaryDirectory / "compose-preview-bundle-${UUID.randomUUID()}.png"
@@ -81,20 +82,20 @@ object BundleSource {
                 "could not download bundle from $arg: HTTP ${response.status.value}"
               )
             }
-            SystemFileSystem.sink(tempPath).buffer().use { sink ->
+            fileSystem.sink(tempPath).buffer().use { sink ->
               response.bodyAsChannel().copyTo(sink.outputStream())
             }
           }
         }
       }
     } catch (e: IllegalArgumentException) {
-      SystemFileSystem.delete(tempPath, mustExist = false)
+      fileSystem.delete(tempPath, mustExist = false)
       throw e
     } catch (e: Exception) {
-      SystemFileSystem.delete(tempPath, mustExist = false)
+      fileSystem.delete(tempPath, mustExist = false)
       throw IllegalArgumentException("could not download bundle from $arg: ${e.message}")
     }
-    require((SystemFileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) {
+    require((fileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) {
       "downloaded an empty bundle from $arg"
     }
     return temp

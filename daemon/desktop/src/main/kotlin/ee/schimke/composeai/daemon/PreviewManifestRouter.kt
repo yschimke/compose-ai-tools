@@ -4,6 +4,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -165,11 +166,11 @@ class PreviewManifestRouter(
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Loads a [PreviewManifest] from [file]. Throws if the file does not exist or is malformed. */
-    fun loadManifest(file: File): PreviewManifest {
+    fun loadManifest(file: File, fileSystem: FileSystem = SystemFileSystem): PreviewManifest {
       require(file.isFile) { "PreviewManifestRouter: manifest '$file' does not exist" }
       return json.decodeFromString(
         PreviewManifest.serializer(),
-        SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+        fileSystem.read(file.path.toPath()) { readUtf8() },
       )
     }
 

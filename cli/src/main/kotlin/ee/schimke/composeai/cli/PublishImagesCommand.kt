@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 
 /**
  * `compose-preview publish-images DIR [--branch compose-preview/pr] [--remote origin]
@@ -23,7 +24,10 @@ import kotlinx.serialization.json.Json
  * `compose-preview show --json` diff) and writes the PR comment markdown itself; this command just
  * gets the bytes onto a branch and prints the resulting commit SHA + raw URL pattern.
  */
-class PublishImagesCommand(args: List<String>) {
+class PublishImagesCommand(
+  args: List<String>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) {
   private val jsonOut = "--json" in args
   private val branch: String = args.flagValue("--branch") ?: "compose-preview/pr"
   private val remote: String = args.flagValue("--remote") ?: "origin"
@@ -100,7 +104,7 @@ class PublishImagesCommand(args: List<String>) {
     val message = customMessage ?: defaultMessage(prNumber, headSha)
 
     val tmp = TemporaryDirectory / "compose-preview-publish-${UUID.randomUUID()}"
-    SystemFileSystem.createDirectories(tmp)
+    fileSystem.createDirectories(tmp)
     try {
       val staging = (tmp / "staging").toFile().apply { mkdirs() }
       // Copy SOURCE's contents (not SOURCE itself) into staging so the commit tree mirrors
@@ -125,7 +129,7 @@ class PublishImagesCommand(args: List<String>) {
         files.map { it.relativeTo(source).path.replace(File.separatorChar, '/') }.sorted()
       emit(commitSha, remoteUrl, rawUrlBase, pushedRelative)
     } finally {
-      SystemFileSystem.deleteRecursively(tmp)
+      fileSystem.deleteRecursively(tmp)
     }
   }
 

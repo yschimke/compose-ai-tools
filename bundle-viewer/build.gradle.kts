@@ -111,4 +111,5 @@ dependencies {
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+  testImplementation(libs.okio.fakefilesystem)
 }
