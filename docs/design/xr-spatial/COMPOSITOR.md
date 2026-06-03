@@ -63,3 +63,8 @@ composite into the render pipeline + preview manifest with graceful degradation
 when the binary / display / software GL is unavailable, and macOS/Windows builds
 plus a distribution/bootstrap story. Those are the real remaining cost — the
 GPU-free rendering itself is solved.
+
+The longer-term direction — turning this one-shot CLI into a long-lived,
+extensible, multi-session render *service* behind the daemon (live panel/pose
+input + frame streaming, capability-negotiated data-product kinds for overlays /
+structure / XR a11y) — is sketched in [`RENDERER_SERVICE.md`](RENDERER_SERVICE.md).
