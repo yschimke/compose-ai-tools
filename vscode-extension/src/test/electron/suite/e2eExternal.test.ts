@@ -582,16 +582,18 @@ describeExternal(
 
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
-                // Seed prevImage with the probe's BASELINE render (its current,
-                // pre-edit colour) so edit 1 must produce a *changed* image. A
-                // save with no source change renders the baseline; capturing it
-                // here means a baseline `updateImage` that arrives late (from the
-                // prime / first daemon render) can't be accepted by edit 1 as if
-                // it were edit 1's own render — which would mask a stale edit-1
-                // render even while the later edits still produce distinct images
-                // (Codex review on #1718).
-                api.resetMessages();
-                api.triggerSave(kotlinFile);
+                // Seed prevImage with the probe's BASELINE render — the pink
+                // pre-edit image the post-restart re-warm just rendered through
+                // the daemon (warmShownPreviews). Capturing that render, rather
+                // than forcing a fresh no-change save, matters twice over:
+                //   - it gives edit 1 a real baseline to differ from, so a stale
+                //     edit-1 render can't slip through (Codex review on #1718);
+                //   - a no-change save renders byte-identical pink, which the
+                //     daemon's frame-dedup reports as `unchanged` and the host
+                //     drops (no updateImage) — so the baseline has to come from
+                //     the re-warm's render, not a redundant save.
+                // No resetMessages here: that render's updateImage is exactly
+                // what we're capturing.
                 // Diagnostic: if the daemon never renders the probe (the save
                 // path falls back to Gradle instead of driving daemon renderNow),
                 // dump the extension's own [refresh]/daemon log tail and the
