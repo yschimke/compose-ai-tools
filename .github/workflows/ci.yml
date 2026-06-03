@@ -142,6 +142,68 @@ jobs:
       - name: Build CLI
         run: ./gradlew :cli:build
 
+  # End-to-end gate for the XR composite still: build the native xr-composite binary, then run
+  # the xr-spatial sample's full render so composePreviewRenderXr writes scene.json + panel
+  # textures and composePreviewCompositeXr bakes composite.png from them — headless, no GPU.
+  # This is otherwise only exercised by hand, so without a gate the binary↔plugin contract
+  # (CLI flags, sanitised composite path, the optional capture in previews.json) can silently
+  # rot. The graceful no-binary path is covered by the plugin unit/functional tests.
+  render-xr-composite:
+    name: Render XR composite (sample)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Build the compositor (clang + libc++ against the pinned Filament SDK) and its compiled
+      # materials into dist/ — the same composite action the build/release workflows use.
+      - uses: ./.github/actions/build-xr-composite
+        with:
+          platform: linux
+      # The prebuilt Filament Linux backend is GLX-only, so headless rendering needs a virtual
+      # X display (Xvfb) routed to Mesa's llvmpipe software rasteriser — no GPU required.
+      - name: Install Xvfb + Mesa software GL
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
+      # Run the whole render under Xvfb (so DISPLAY is set) with --no-daemon (so the composite
+      # task's subprocess inherits the software-GL env from this step rather than a stale daemon).
+      - name: Render xr-spatial sample (bake composite)
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a -s "-screen 0 2000x1400x24" \
+            ./gradlew --no-daemon :samples:xr-spatial:composePreviewRenderAll \
+              -PcomposePreview.xrCompositeBinary="$PWD/dist/xr-composite" \
+              -PcomposePreview.xrCompositeMaterials="$PWD/dist/materials" \
+              --stacktrace
+      - name: Assert composite baked + referenced in the manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=samples/xr-spatial/build/compose-previews
+          png="$(find "$base/renders" -name composite.png -print -quit)"
+          if [ -z "$png" ] || [ ! -s "$png" ]; then
+            echo "::error::no non-empty composite.png under $base/renders"
+            find "$base/renders" -maxdepth 2 -type f | sort || true
+            exit 1
+          fi
+          file "$png" | grep -q 'PNG image data' || { echo "::error::$png is not a PNG"; exit 1; }
+          grep -q 'composite.png' "$base/previews.json" \
+            || { echo "::error::previews.json has no composite capture"; exit 1; }
+          echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
+      - name: Upload XR composite
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xr-spatial-composite
+          path: samples/xr-spatial/build/compose-previews/renders/**/composite.png
+          if-no-files-found: warn
+
   bundle-render:
     name: Bundle Render E2E
     runs-on: ubuntu-latest
