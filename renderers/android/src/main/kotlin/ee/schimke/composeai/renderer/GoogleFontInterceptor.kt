@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import androidx.compose.ui.text.font.FontWeight
 import java.io.File
@@ -152,7 +153,7 @@ internal class GoogleFontCache(
  * which the API still returns TrueType. Same mechanism
  * `google-webfonts-helper` and similar offline caches rely on.
  */
-internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File): Boolean {
+internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File, fileSystem: FileSystem = SystemFileSystem): Boolean {
     val exactUrl = httpGet(buildCssUrl(key), TTF_USER_AGENT)
         ?.let { extractFirstTruetypeUrl(it) }
     val url = exactUrl ?: run {
@@ -162,7 +163,7 @@ internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File): Boo
     val bytes = httpGetBytes(url, userAgent = TTF_USER_AGENT) ?: return false
     if (bytes.isEmpty()) return false
     destination.parentFile?.mkdirs()
-    SystemFileSystem.write(destination.path.toPath()) { write(bytes) }
+    fileSystem.write(destination.path.toPath()) { write(bytes) }
     return true
 }
 

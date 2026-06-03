@@ -83,6 +83,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.long
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -236,6 +237,7 @@ class JsonRpcServer(
    * returns `result=fallback` so the editor falls back to stage 1 / 0 without surface churn.
    */
   private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
+  private val fileSystem: FileSystem = SystemFileSystem,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -1196,14 +1198,14 @@ class JsonRpcServer(
     if (!mgr.isEnabled) return
     val pngPath = result.pngPath ?: return
     val pngFile = pngPath.toPath()
-    if (!SystemFileSystem.exists(pngFile)) {
+    if (!fileSystem.exists(pngFile)) {
       // Stub-host path — pngPath is the deterministic `daemon-stub-${id}.png` placeholder that
       // never actually lands on disk. Skip silently; this is the pre-H1 behaviour for stub hosts.
       return
     }
     val pngBytes =
       try {
-        SystemFileSystem.read(pngFile) { readByteArray() }
+        fileSystem.read(pngFile) { readByteArray() }
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
@@ -1622,10 +1624,10 @@ class JsonRpcServer(
       } catch (_: Throwable) {
         return null
       }
-    if (!SystemFileSystem.exists(path)) return null
+    if (!fileSystem.exists(path)) return null
     val bytes =
       try {
-        SystemFileSystem.read(path) { readByteArray() }
+        fileSystem.read(path) { readByteArray() }
       } catch (_: Throwable) {
         return null
       }

@@ -6,6 +6,7 @@ import ee.schimke.composeai.cli.PreviewModule
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -121,7 +122,10 @@ class PreviewIndex(
 
   companion object {
     /** Build a row list from a set of [PreviewModule]s by reading each module's `previews.json`. */
-    fun loadRows(modules: List<PreviewModule>): List<PreviewRow> {
+    fun loadRows(
+      modules: List<PreviewModule>,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): List<PreviewRow> {
       val json = Json { ignoreUnknownKeys = true }
       val out = mutableListOf<PreviewRow>()
       for (module in modules) {
@@ -132,7 +136,7 @@ class PreviewIndex(
           try {
             json.decodeFromString(
               PreviewManifest.serializer(),
-              SystemFileSystem.read(manifestFile.path.toPath()) { readUtf8() },
+              fileSystem.read(manifestFile.path.toPath()) { readUtf8() },
             )
           } catch (_: Throwable) {
             continue

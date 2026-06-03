@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import android.content.Context
 import android.content.ContextWrapper
@@ -50,10 +51,10 @@ object ResourcesUsedDataProducer {
       override fun getAssets(): AssetManager = resources.assets
     }
 
-  fun writeArtifacts(rootDir: File, previewId: String, recorder: RecordingResources) {
+  fun writeArtifacts(rootDir: File, previewId: String, recorder: RecordingResources, fileSystem: FileSystem = SystemFileSystem) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ResourcesUsedPayload(references = recorder.references())
-    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(ResourcesUsedPayload.serializer(), payload))
     }
   }

@@ -83,4 +83,4 @@ interface ExtensionReportRenderer {
  * also rely on this for isolation.
  */
 internal fun builtInExtensionReporters(): Map<String, () -> ExtensionReportRenderer> =
-  mapOf("a11y" to ::A11yReportRenderer)
+  mapOf("a11y" to { A11yReportRenderer() })

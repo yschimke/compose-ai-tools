@@ -14,6 +14,7 @@ import ee.schimke.composeai.render.session.subprocess.DaemonClientRenderSession
 import ee.schimke.composeai.render.session.subprocess.NotificationFanout
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -37,6 +38,8 @@ import okio.Path.Companion.toPath
 object EmbeddedDesktopRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Embedded
 
+  var fileSystem: FileSystem = SystemFileSystem
+
   override fun open(config: RenderSessionConfig): RenderSession {
     val descriptorFile = config.descriptorPath
     if (!descriptorFile.isFile) {
@@ -47,9 +50,7 @@ object EmbeddedDesktopRenderSessions : RenderSessionFactory {
     }
     val descriptor =
       try {
-        DaemonLaunchDescriptor.parse(
-          SystemFileSystem.read(descriptorFile.path.toPath()) { readUtf8() }
-        )
+        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       } catch (e: Exception) {
         throw RenderSessionException(
           "Daemon launch descriptor at ${descriptorFile.path} is unreadable: " +

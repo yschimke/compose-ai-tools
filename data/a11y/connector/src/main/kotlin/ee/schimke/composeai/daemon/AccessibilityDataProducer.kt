@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
@@ -91,13 +92,14 @@ object AccessibilityDataProducer {
     density: Float = 1f,
     pngFile: File? = null,
     isRound: Boolean = false,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    SystemFileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
       writeUtf8(json.encodeToString(AtfPayload.serializer(), AtfPayload(findings)))
     }
-    SystemFileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
       writeUtf8(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
     }
 
@@ -117,7 +119,7 @@ object AccessibilityDataProducer {
         isRound = isRound,
       )
     store.get(AccessibilityDataProducts.TouchTargets)?.let { touchTargets ->
-      SystemFileSystem.write(previewDir.resolve(FILE_TOUCH_TARGETS).path.toPath()) {
+      fileSystem.write(previewDir.resolve(FILE_TOUCH_TARGETS).path.toPath()) {
         writeUtf8(
           json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets)
         )

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -70,6 +71,7 @@ object ClassloaderForensics {
     robolectricConfig: RobolectricConfigSnapshot? = null,
     contextHint: String,
     out: File,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     val seen = LinkedHashSet<String>()
     val classes = surveySet.filter { seen.add(it) }.map { fqn -> captureClass(fqn) }
@@ -87,7 +89,7 @@ object ClassloaderForensics {
     }
 
     out.parentFile?.mkdirs()
-    SystemFileSystem.write(out.path.toPath()) { writeUtf8(json.encodeToString(root)) }
+    fileSystem.write(out.path.toPath()) { writeUtf8(json.encodeToString(root)) }
   }
 
   /**
@@ -104,11 +106,15 @@ object ClassloaderForensics {
    * 4. Robolectric-config field diffs.
    * 5. The remainder (loader-name diffs that don't affect identity, package version diffs).
    */
-  fun diff(a: File, b: File, mdOut: File, jsonOut: File) {
-    val aRoot =
-      json.parseToJsonElement(SystemFileSystem.read(a.path.toPath()) { readUtf8() }).asObject()
-    val bRoot =
-      json.parseToJsonElement(SystemFileSystem.read(b.path.toPath()) { readUtf8() }).asObject()
+  fun diff(
+    a: File,
+    b: File,
+    mdOut: File,
+    jsonOut: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
+    val aRoot = json.parseToJsonElement(fileSystem.read(a.path.toPath()) { readUtf8() }).asObject()
+    val bRoot = json.parseToJsonElement(fileSystem.read(b.path.toPath()) { readUtf8() }).asObject()
     val aClasses = aRoot.classesArray(a).map { it.asObject() }.associateBy { it.fqn() }
     val bClasses = bRoot.classesArray(b).map { it.asObject() }.associateBy { it.fqn() }
 
@@ -333,7 +339,7 @@ object ClassloaderForensics {
       put("totalB", bClasses.size)
     }
     jsonOut.parentFile?.mkdirs()
-    SystemFileSystem.write(jsonOut.path.toPath()) { writeUtf8(json.encodeToString(jsonReport)) }
+    fileSystem.write(jsonOut.path.toPath()) { writeUtf8(json.encodeToString(jsonReport)) }
 
     // Markdown summary, sorted by suspected significance.
     val md = buildString {
@@ -438,7 +444,7 @@ object ClassloaderForensics {
       }
     }
     mdOut.parentFile?.mkdirs()
-    SystemFileSystem.write(mdOut.path.toPath()) { writeUtf8(md) }
+    fileSystem.write(mdOut.path.toPath()) { writeUtf8(md) }
   }
 
   // ---- per-class capture ------------------------------------------------------------------------

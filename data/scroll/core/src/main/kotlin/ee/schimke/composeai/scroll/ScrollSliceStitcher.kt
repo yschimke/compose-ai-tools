@@ -14,6 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -53,14 +54,17 @@ data class SliceCapture(val scrolledLayoutPx: Float, val file: File)
  *
  * Returns the written file, or `null` if [slices] is empty.
  */
-fun stitchSlices(slices: List<SliceCapture>, viewportLayoutPx: Int, outputFile: File): File? {
+fun stitchSlices(
+  slices: List<SliceCapture>,
+  viewportLayoutPx: Int,
+  outputFile: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): File? {
   if (slices.isEmpty()) return null
 
-  val stitched = buildStitchedImage(slices, viewportLayoutPx) ?: return null
+  val stitched = buildStitchedImage(slices, viewportLayoutPx, fileSystem) ?: return null
   outputFile.parentFile?.mkdirs()
-  SystemFileSystem.write(outputFile.path.toPath()) {
-    ImageIO.write(stitched, "PNG", outputStream())
-  }
+  fileSystem.write(outputFile.path.toPath()) { ImageIO.write(stitched, "PNG", outputStream()) }
   return outputFile
 }
 
@@ -97,26 +101,29 @@ fun stitchSlicesWithFinalFrame(
   viewportLayoutPx: Int,
   outputFile: File,
   isRound: Boolean = false,
+  fileSystem: FileSystem = SystemFileSystem,
 ): File? {
   if (slices.isEmpty()) return null
 
   val finalImage =
-    ImageIO.read(
-      SystemFileSystem.read(finalFrameFile.path.toPath()) { readByteArray() }.inputStream()
-    ) ?: error("Failed to read final frame PNG: $finalFrameFile")
+    ImageIO.read(fileSystem.read(finalFrameFile.path.toPath()) { readByteArray() }.inputStream())
+      ?: error("Failed to read final frame PNG: $finalFrameFile")
 
   // Single slice: no scroll history. The settled final frame IS the
   // preview.
   if (slices.size == 1) {
     outputFile.parentFile?.mkdirs()
-    SystemFileSystem.write(outputFile.path.toPath()) {
-      ImageIO.write(finalImage, "PNG", outputStream())
-    }
+    fileSystem.write(outputFile.path.toPath()) { ImageIO.write(finalImage, "PNG", outputStream()) }
     return outputFile
   }
 
   val content =
-    buildStitchedContent(slices, viewportLayoutPx, detectPinnedBottom = true) ?: return null
+    buildStitchedContent(
+      slices,
+      viewportLayoutPx,
+      detectPinnedBottom = true,
+      fileSystem = fileSystem,
+    ) ?: return null
   val topImage = content.image
   val width = topImage.width
   val topH = topImage.height
@@ -140,9 +147,7 @@ fun stitchSlicesWithFinalFrame(
     val anchored = anchorByEdgeButton(content, finalImage)
     if (anchored != null) {
       outputFile.parentFile?.mkdirs()
-      SystemFileSystem.write(outputFile.path.toPath()) {
-        ImageIO.write(anchored, "PNG", outputStream())
-      }
+      fileSystem.write(outputFile.path.toPath()) { ImageIO.write(anchored, "PNG", outputStream()) }
       return outputFile
     }
   }
@@ -154,9 +159,7 @@ fun stitchSlicesWithFinalFrame(
     // band into the reserved tail via the fallback in
     // [buildStitchedImage], so the normal stitch is already correct.
     outputFile.parentFile?.mkdirs()
-    SystemFileSystem.write(outputFile.path.toPath()) {
-      ImageIO.write(topImage, "PNG", outputStream())
-    }
+    fileSystem.write(outputFile.path.toPath()) { ImageIO.write(topImage, "PNG", outputStream()) }
     return outputFile
   }
 
@@ -197,9 +200,7 @@ fun stitchSlicesWithFinalFrame(
   }
 
   outputFile.parentFile?.mkdirs()
-  SystemFileSystem.write(outputFile.path.toPath()) {
-    ImageIO.write(composed, "PNG", outputStream())
-  }
+  fileSystem.write(outputFile.path.toPath()) { ImageIO.write(composed, "PNG", outputStream()) }
   return outputFile
 }
 
@@ -294,13 +295,13 @@ private fun buildStitchedContent(
   slices: List<SliceCapture>,
   viewportLayoutPx: Int,
   detectPinnedBottom: Boolean = false,
+  fileSystem: FileSystem = SystemFileSystem,
 ): StitchedContent? {
   if (slices.isEmpty()) return null
 
   val firstImage =
-    ImageIO.read(
-      SystemFileSystem.read(slices[0].file.path.toPath()) { readByteArray() }.inputStream()
-    ) ?: error("Failed to read first slice PNG: ${slices[0].file}")
+    ImageIO.read(fileSystem.read(slices[0].file.path.toPath()) { readByteArray() }.inputStream())
+      ?: error("Failed to read first slice PNG: ${slices[0].file}")
   val width = firstImage.width
   val sliceH = firstImage.height
   val pxPerLayoutPx = sliceH.toDouble() / viewportLayoutPx.toDouble()
@@ -312,7 +313,7 @@ private fun buildStitchedContent(
           firstImage
         } else {
           ImageIO.read(
-            SystemFileSystem.read(slices[i].file.path.toPath()) { readByteArray() }.inputStream()
+            fileSystem.read(slices[i].file.path.toPath()) { readByteArray() }.inputStream()
           ) ?: error("Failed to read slice PNG: ${slices[i].file}")
         }
       require(img.width == width && img.height == sliceH) {
@@ -413,8 +414,12 @@ private fun buildStitchedContent(
 }
 
 /** Legacy entry point preserved for [stitchSlices]. */
-private fun buildStitchedImage(slices: List<SliceCapture>, viewportLayoutPx: Int): BufferedImage? =
-  buildStitchedContent(slices, viewportLayoutPx)?.let { s ->
+private fun buildStitchedImage(
+  slices: List<SliceCapture>,
+  viewportLayoutPx: Int,
+  fileSystem: FileSystem = SystemFileSystem,
+): BufferedImage? =
+  buildStitchedContent(slices, viewportLayoutPx, fileSystem = fileSystem)?.let { s ->
     // When no pinned chrome was detected, contentYEnd == sliceH + Σd and
     // the image is already the full stitch. When a pinned region exists
     // but the caller didn't supply a final frame, paint the last slice's
@@ -892,10 +897,9 @@ private fun findBestAnchorMatch(
  * visually preserves the round screen edge at the top of the first frame and the bottom of the last
  * frame.
  */
-fun applyWearPillClip(file: File) {
+fun applyWearPillClip(file: File, fileSystem: FileSystem = SystemFileSystem) {
   val src =
-    ImageIO.read(SystemFileSystem.read(file.path.toPath()) { readByteArray() }.inputStream())
-      ?: return
+    ImageIO.read(fileSystem.read(file.path.toPath()) { readByteArray() }.inputStream()) ?: return
   val w = src.width
   val h = src.height
   if (h <= 0 || w <= 0) return
@@ -927,5 +931,5 @@ fun applyWearPillClip(file: File) {
   } finally {
     g.dispose()
   }
-  SystemFileSystem.write(file.path.toPath()) { ImageIO.write(out, "PNG", outputStream()) }
+  fileSystem.write(file.path.toPath()) { ImageIO.write(out, "PNG", outputStream()) }
 }

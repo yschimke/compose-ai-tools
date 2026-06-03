@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -381,13 +380,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val name = entry.name
         when {
           name == "bundle.json" -> {
-            SystemFileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
+            fileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
             sawManifest = true
           }
           !entry.isDirectory && name.startsWith("ir/") -> {
             val dest = File(irDir, File(name).name).canonicalFile
             if (dest.path.startsWith(canonicalIr.path + File.separator)) {
-              SystemFileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
+              fileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
             }
           }
         }
@@ -434,12 +433,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
               "android/resources.ap_" -> apk = dest
               "android/AndroidManifest.xml" -> mergedManifest = dest
               "android/r-classes.jar" -> rJar = dest
-              "android/diag.txt" ->
-                // Pack-time carriage diagnostic — surface it so a null carriage is explainable
-                // without the (truncated) Gradle pack console.
-                dest.readText().trim().lineSequence().forEach {
-                  System.err.println("[bundle-daemon] pack-diag: $it")
-                }
             }
           }
         }
@@ -497,7 +490,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val entry = zin.nextEntry ?: break
         when (entry.name) {
           "previews.json" -> {
-            SystemFileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
+            fileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
             sawPreviewsJson = true
           }
           "classes/app.jar" -> {
@@ -542,7 +535,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          SystemFileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
+          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }

@@ -8,6 +8,7 @@ import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonClassDiscriminator
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.source
 
@@ -329,7 +330,11 @@ private fun encodePreviewId(id: String): String =
  * Defeats Zip Slip (`../../etc/passwd`-style entry names) reported by CodeQL / Codex on the v1
  * extract path; same call site is shared by `extract` and `render`.
  */
-private fun safeExtractZip(zipBytes: ByteArray, target: File) {
+private fun safeExtractZip(
+  zipBytes: ByteArray,
+  target: File,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
   val targetPath = target.canonicalFile.toPath()
   ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
     while (true) {
@@ -347,7 +352,7 @@ private fun safeExtractZip(zipBytes: ByteArray, target: File) {
         candidate.mkdirs()
       } else {
         candidate.parentFile?.mkdirs()
-        SystemFileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
+        fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
       }
       zin.closeEntry()
     }
@@ -497,8 +502,8 @@ internal object BundleReader {
   }
 
   /** Polyglot-aware zip extraction; mirrors [extractZipBytes] in the plugin module. */
-  fun extractZipBytes(file: File): ByteArray {
-    val bytes = SystemFileSystem.read(file.path.toPath()) { readByteArray() }
+  fun extractZipBytes(file: File, fileSystem: FileSystem = SystemFileSystem): ByteArray {
+    val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
     if (bytes.size < 8) {
       throw IllegalArgumentException("not a bundle: ${file.path} is too small (${bytes.size}B)")
     }
@@ -546,7 +551,11 @@ internal object BundleReader {
    * and directory entries are ignored. Shared by [BundleRenderer] and [BundleDaemonCommand] so the
    * two player paths extract identically.
    */
-  fun extractEmbeddedLibs(zipBytes: ByteArray, libsDir: File): List<File> {
+  fun extractEmbeddedLibs(
+    zipBytes: ByteArray,
+    libsDir: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): List<File> {
     libsDir.mkdirs()
     val canonicalLibs = libsDir.canonicalFile
     val written = mutableListOf<File>()
@@ -557,7 +566,7 @@ internal object BundleReader {
         if (!entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar")) {
           val dest = File(libsDir, File(name).name).canonicalFile
           if (dest.path.startsWith(canonicalLibs.path + File.separator)) {
-            SystemFileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
+            fileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
             written += dest
           }
         }

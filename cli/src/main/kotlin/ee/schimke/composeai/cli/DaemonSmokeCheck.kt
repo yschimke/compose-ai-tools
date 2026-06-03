@@ -7,6 +7,7 @@ import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId
 import java.io.File
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -76,15 +77,14 @@ internal fun runDaemonSmokeTest(
   modulePath: String,
   workspaceName: String = projectDir.name.ifBlank { "workspace" },
   factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
+  fileSystem: FileSystem = SystemFileSystem,
 ): DaemonSmokeOutcome {
   val descriptorFile = daemonDescriptorFile(projectDir, modulePath)
   if (!descriptorFile.isFile) return DaemonSmokeOutcome.DescriptorMissing(descriptorFile)
 
   val descriptor =
     try {
-      DaemonLaunchDescriptor.parse(
-        SystemFileSystem.read(descriptorFile.path.toPath()) { readUtf8() }
-      )
+      DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
     } catch (e: Exception) {
       return DaemonSmokeOutcome.DescriptorUnreadable(
         descriptorPath = descriptorFile,

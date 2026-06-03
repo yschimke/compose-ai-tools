@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import android.view.View
 import ee.schimke.composeai.daemon.protocol.FocusOverride
@@ -23,7 +24,12 @@ import javax.imageio.ImageIO
  */
 object FocusOverlay {
 
-  fun apply(view: View?, outputFile: File, focus: FocusOverride) {
+  fun apply(
+    view: View?,
+    outputFile: File,
+    focus: FocusOverride,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     if (view == null) return
     val rect = readFocusRect(view) ?: return
     if (rect.width <= 0 || rect.height <= 0) return
@@ -34,7 +40,7 @@ object FocusOverlay {
     }
 
     val image =
-      runCatching { ImageIO.read(SystemFileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream()) }.getOrNull() ?: return
+      runCatching { ImageIO.read(fileSystem.read(outputFile.path.toPath()) { readByteArray() }.inputStream()) }.getOrNull() ?: return
     val g = image.createGraphics()
     try {
       g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -59,7 +65,7 @@ object FocusOverlay {
       g.dispose()
     }
     runCatching {
-      SystemFileSystem.write(outputFile.path.toPath()) { ImageIO.write(image, "png", outputStream()) }
+      fileSystem.write(outputFile.path.toPath()) { ImageIO.write(image, "png", outputStream()) }
     }
   }
 

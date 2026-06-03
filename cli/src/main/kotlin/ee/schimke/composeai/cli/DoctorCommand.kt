@@ -12,6 +12,7 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -54,7 +55,10 @@ import okio.Path.Companion.toPath
  *
  * Exits 0 when no errors (warnings OK), 1 when any check reports ERROR.
  */
-class DoctorCommand(private val args: List<String>) {
+class DoctorCommand(
+  private val args: List<String>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) {
   private val jsonOut = "--json" in args
   private val reportOut = "--report" in args
   private val explain = "--explain" in args
@@ -720,7 +724,7 @@ class DoctorCommand(private val args: List<String>) {
         .asSequence()
         .mapNotNull {
           try {
-            SystemFileSystem.read(it.path.toPath()) { readUtf8() }
+            fileSystem.read(it.path.toPath()) { readUtf8() }
           } catch (_: Exception) {
             null
           }
@@ -868,7 +872,7 @@ class DoctorCommand(private val args: List<String>) {
     fun scanTextFile(file: File) {
       val text =
         try {
-          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+          fileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (_: Exception) {
           return
         }
@@ -1247,7 +1251,8 @@ class DoctorCommand(private val args: List<String>) {
     val release = File(javaHome, "release").takeIf { it.isFile } ?: return null
     val line =
       try {
-        SystemFileSystem.read(release.path.toPath()) { readUtf8() }
+        fileSystem
+          .read(release.path.toPath()) { readUtf8() }
           .lineSequence()
           .firstOrNull { it.startsWith("JAVA_VERSION=") }
       } catch (_: Exception) {
