@@ -9,7 +9,6 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import kotlinx.coroutines.runBlocking
 import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Test
@@ -86,34 +85,29 @@ class CoordinateResolverTest {
   }
 
   /**
-   * Local-only resolve: network off so a miss stays hermetic. `CoordinateResolver.resolve` is
-   * suspend and returns `okio.Path`s; the helper drives it with `runBlocking` and maps back to
-   * `File` so the assertions stay file-shaped.
+   * Local-only resolve: network off so a miss stays hermetic. `CoordinateResolver.resolve` returns
+   * `okio.Path`s; the helper maps back to `File` so the assertions stay file-shaped.
    */
   private fun resolve(vararg coords: ClasspathEntry.Maven): List<File> =
-    runBlocking {
-        CoordinateResolver.resolve(
-          coords.toList(),
-          warn = { warnings += it },
-          repositoryRoots = listOf(root.path.toPath()),
-          networkEnabled = false,
-          downloadCacheDir = cacheDir.path.toPath(),
-        )
-      }
+    CoordinateResolver.resolve(
+        coords.toList(),
+        warn = { warnings += it },
+        repositoryRoots = listOf(root.path.toPath()),
+        networkEnabled = false,
+        downloadCacheDir = cacheDir.path.toPath(),
+      )
       .map { it.toFile() }
 
   /** Network-enabled resolve pointed only at [base], caching into [cacheDir]. */
   private fun resolveNetwork(base: String, vararg coords: ClasspathEntry.Maven): List<File> =
-    runBlocking {
-        CoordinateResolver.resolve(
-          coords.toList(),
-          warn = { warnings += it },
-          repositoryRoots = listOf(root.path.toPath()),
-          networkEnabled = true,
-          remoteRepositories = listOf(base),
-          downloadCacheDir = cacheDir.path.toPath(),
-        )
-      }
+    CoordinateResolver.resolve(
+        coords.toList(),
+        warn = { warnings += it },
+        repositoryRoots = listOf(root.path.toPath()),
+        networkEnabled = true,
+        remoteRepositories = listOf(base),
+        downloadCacheDir = cacheDir.path.toPath(),
+      )
       .map { it.toFile() }
 
   @Test

@@ -1,7 +1,6 @@
 package ee.schimke.composeai.viewer
 
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.io.fileIo
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -9,6 +8,7 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.util.UUID
+import kotlinx.coroutines.runBlocking
 import okio.HashingSink
 import okio.Path
 import okio.Path.Companion.toPath
@@ -41,7 +41,7 @@ import okio.openZip
 internal object CoordinateResolver {
 
   /** Resolve [coords] to jars (misses dropped), warning on misses/mismatches. */
-  suspend fun resolve(
+  fun resolve(
     coords: List<ClasspathEntry.Maven>,
     warn: (String) -> Unit = { System.err.println("compose-preview-viewer: $it") },
     repositoryRoots: List<Path> = defaultRepositoryRoots(),
@@ -52,7 +52,7 @@ internal object CoordinateResolver {
     resolveOne(it, warn, repositoryRoots, networkEnabled, remoteRepositories, downloadCacheDir)
   }
 
-  private suspend fun resolveOne(
+  private fun resolveOne(
     coord: ClasspathEntry.Maven,
     warn: (String) -> Unit,
     roots: List<Path>,
@@ -105,34 +105,32 @@ internal object CoordinateResolver {
     return null
   }
 
-  private suspend fun locate(
+  private fun locate(
     coord: ClasspathEntry.Maven,
     roots: List<Path>,
     downloadCacheDir: Path,
   ): List<Path> {
     val found = mutableListOf<Path>()
-    fileIo {
-      for (root in roots) {
-        if (SystemFileSystem.metadataOrNull(root)?.isDirectory != true) continue
-        // Coordinate's recorded type first, then `.aar` (Android deps recorded as `jar` by an older
-        // bundle, or whose `.jar` isn't published). [materialize] turns an `.aar` into its
-        // classes.jar.
-        for (fileName in candidateFileNames(coord)) {
-          val mavenPath =
-            root / "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
-          if (SystemFileSystem.metadataOrNull(mavenPath)?.isRegularFile == true) found += mavenPath
-          val gradleVersionDir = root / "${coord.group}/${coord.artifact}/${coord.version}"
-          if (SystemFileSystem.metadataOrNull(gradleVersionDir)?.isDirectory == true) {
-            SystemFileSystem.list(gradleVersionDir)
-              .asSequence()
-              .filter { SystemFileSystem.metadataOrNull(it)?.isDirectory == true }
-              .mapNotNull { hashDir ->
-                (hashDir / fileName).takeIf {
-                  SystemFileSystem.metadataOrNull(it)?.isRegularFile == true
-                }
+    for (root in roots) {
+      if (SystemFileSystem.metadataOrNull(root)?.isDirectory != true) continue
+      // Coordinate's recorded type first, then `.aar` (Android deps recorded as `jar` by an older
+      // bundle, or whose `.jar` isn't published). [materialize] turns an `.aar` into its
+      // classes.jar.
+      for (fileName in candidateFileNames(coord)) {
+        val mavenPath =
+          root / "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName"
+        if (SystemFileSystem.metadataOrNull(mavenPath)?.isRegularFile == true) found += mavenPath
+        val gradleVersionDir = root / "${coord.group}/${coord.artifact}/${coord.version}"
+        if (SystemFileSystem.metadataOrNull(gradleVersionDir)?.isDirectory == true) {
+          SystemFileSystem.list(gradleVersionDir)
+            .asSequence()
+            .filter { SystemFileSystem.metadataOrNull(it)?.isDirectory == true }
+            .mapNotNull { hashDir ->
+              (hashDir / fileName).takeIf {
+                SystemFileSystem.metadataOrNull(it)?.isRegularFile == true
               }
-              .let { found += it }
-          }
+            }
+            .let { found += it }
         }
       }
     }
@@ -146,28 +144,26 @@ internal object CoordinateResolver {
    * [downloadCacheDir] and return that; a `.jar` passes through. Returns null for a resource-only
    * `.aar` (no `classes.jar`) or any extraction error — the caller then treats it as a miss.
    */
-  private suspend fun materialize(file: Path, downloadCacheDir: Path): Path? {
+  private fun materialize(file: Path, downloadCacheDir: Path): Path? {
     if (!file.name.endsWith(".aar", ignoreCase = true)) return file
-    return fileIo {
-      val canonical = SystemFileSystem.canonicalize(file)
-      val dest =
-        downloadCacheDir /
-          "extracted/${canonical.toString().hashCode().toUInt().toString(16)}/classes.jar"
-      if ((SystemFileSystem.metadataOrNull(dest)?.size ?: 0L) > 0L) return@fileIo dest
-      try {
-        // Read the `.aar` (a zip) as an Okio FileSystem — no `java.util.zip.ZipFile` /
-        // `java.io.File` boundary. Entries are addressed relative to the zip root.
-        val aar = SystemFileSystem.openZip(file)
-        val entry = "classes.jar".toPath()
-        if (!aar.exists(entry)) return@fileIo null
-        SystemFileSystem.createDirectories(dest.parent!!)
-        aar.source(entry).use { source ->
-          SystemFileSystem.sink(dest).buffer().use { it.writeAll(source) }
-        }
-        dest.takeIf { (SystemFileSystem.metadataOrNull(it)?.size ?: 0L) > 0L }
-      } catch (_: Exception) {
-        null
+    val canonical = SystemFileSystem.canonicalize(file)
+    val dest =
+      downloadCacheDir /
+        "extracted/${canonical.toString().hashCode().toUInt().toString(16)}/classes.jar"
+    if ((SystemFileSystem.metadataOrNull(dest)?.size ?: 0L) > 0L) return dest
+    return try {
+      // Read the `.aar` (a zip) as an Okio FileSystem — no `java.util.zip.ZipFile` / `java.io.File`
+      // boundary. Entries are addressed relative to the zip root.
+      val aar = SystemFileSystem.openZip(file)
+      val entry = "classes.jar".toPath()
+      if (!aar.exists(entry)) return null
+      SystemFileSystem.createDirectories(dest.parent!!)
+      aar.source(entry).use { source ->
+        SystemFileSystem.sink(dest).buffer().use { it.writeAll(source) }
       }
+      dest.takeIf { (SystemFileSystem.metadataOrNull(it)?.size ?: 0L) > 0L }
+    } catch (_: Exception) {
+      null
     }
   }
 
@@ -177,7 +173,7 @@ internal object CoordinateResolver {
    * isn't short-circuited here — [locate] already searches the cache, so reaching this means we
    * want fresh bytes.
    */
-  private suspend fun download(
+  private fun download(
     coord: ClasspathEntry.Maven,
     remoteRepositories: List<String>,
     downloadCacheDir: Path,
@@ -198,28 +194,30 @@ internal object CoordinateResolver {
    * failed or empty fetch never clobbers an existing cached copy — which may be the
    * stale-but-usable jar that [resolveOne]'s warn-never-fail fallback then returns.
    */
-  private suspend fun fetchTo(url: String, dest: Path): Boolean {
+  private fun fetchTo(url: String, dest: Path): Boolean {
     val parent = dest.parent
     val tmp = (parent ?: ".".toPath()) / "${dest.name}.${UUID.randomUUID()}.part"
     return try {
+      // ktor's HTTP client is suspend; `runBlocking` keeps this resolver synchronous (the viewer's
+      // bundle load runs off the UI thread already).
       val ok =
         HttpClient(OkHttp).use { client ->
-          client.prepareGet(url).execute { response ->
-            if (response.status.isSuccess()) {
-              if (parent != null) fileIo { SystemFileSystem.createDirectories(parent) }
-              fileIo {
+          runBlocking {
+            client.prepareGet(url).execute { response ->
+              if (response.status.isSuccess()) {
+                if (parent != null) SystemFileSystem.createDirectories(parent)
                 SystemFileSystem.sink(tmp).buffer().use { sink ->
                   response.bodyAsChannel().copyTo(sink.outputStream())
                 }
+                true
+              } else {
+                false
               }
-              true
-            } else {
-              false
             }
           }
         }
       if (ok && (SystemFileSystem.metadataOrNull(tmp)?.size ?: 0L) > 0L) {
-        fileIo { SystemFileSystem.atomicMove(tmp, dest) }
+        SystemFileSystem.atomicMove(tmp, dest)
         true
       } else {
         false
@@ -227,17 +225,16 @@ internal object CoordinateResolver {
     } catch (_: Exception) {
       false
     } finally {
-      fileIo { SystemFileSystem.delete(tmp, mustExist = false) }
+      SystemFileSystem.delete(tmp, mustExist = false)
     }
   }
 
-  private suspend fun sha256Hex(file: Path): String = fileIo {
+  private fun sha256Hex(file: Path): String =
     SystemFileSystem.source(file).buffer().use { source ->
       val hashing = HashingSink.sha256(blackholeSink())
       hashing.buffer().use { it.writeAll(source) }
       hashing.hash.hex()
     }
-  }
 
   /** Maven Central + Google Maven, the two repos that serve almost every Compose/AndroidX dep. */
   val DEFAULT_REMOTE_REPOSITORIES: List<String> =

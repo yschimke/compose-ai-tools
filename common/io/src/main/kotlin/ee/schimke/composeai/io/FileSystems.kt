@@ -8,9 +8,9 @@ import okio.Path
  *
  * A single indirection point so the codebase funnels through Okio rather than `java.io.File` /
  * `java.nio`, and so tests can substitute a `FakeFileSystem`. Use it with Okio's own blocking `read
- * { … }` / `write { … }` for synchronous code; the suspend / `Dispatchers.IO` wrappers live in the
- * separate `:common-io-suspend` module (kept out of here so this foundation stays coroutines-free
- * for the render subprocess classpath).
+ * { … }` / `write { … }`. This module is intentionally synchronous and coroutines-free so it stays
+ * safe on the render subprocess classpath (a `kotlinx-coroutines` version skew there breaks Compose
+ * rendering — see `docs/RENDERER_COMPATIBILITY.md`).
  */
 val SystemFileSystem: FileSystem = FileSystem.SYSTEM
 

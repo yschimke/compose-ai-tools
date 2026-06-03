@@ -20,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,7 +31,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import ee.schimke.composeai.io.SystemFileSystem
-import ee.schimke.composeai.io.createTempFile
+import ee.schimke.composeai.io.TemporaryDirectory
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -45,9 +44,7 @@ import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetAdapter
 import java.awt.dnd.DropTargetDropEvent
 import java.io.File
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import okio.Path
 import okio.Path.Companion.toPath
@@ -97,14 +94,6 @@ fun main(args: Array<String>) {
       }
     }
 
-    // Coroutine scope for the AWT drop callback below — `loadBundle` is suspend, so the drop
-    // handler launches into this scope (Main dispatcher) and the file IO hops to Dispatchers.IO
-    // internally. `loadJob` tracks the in-flight drop so a rapid second drop cancels the first:
-    // without it the two independent launches could finish out of order and leave the newest
-    // bundle closed and a stale one shown.
-    val scope = rememberCoroutineScope()
-    val loadJob = remember { mutableStateOf<Job?>(null) }
-
     // Resize the window to the preview's declared size whenever a fresh bundle lands. We
     // observe [loadedBundle]'s cover here rather than at load-site so a drop-while-running
     // swap repaints the window without an explicit recomputation.
@@ -144,20 +133,15 @@ fun main(args: Array<String>) {
                   }
                 event.dropComplete(true)
                 val file = files.firstOrNull() ?: return
-                // Latest drop wins: cancel any in-flight load so an out-of-order completion can't
-                // close the newest bundle and restore a stale one.
-                loadJob.value?.cancel()
-                loadJob.value = scope.launch {
-                  try {
-                    val next = loadBundle(file.path.toPath())
-                    loadedBundle?.close()
-                    loadedBundle = next
-                    loadError = null
-                  } catch (c: CancellationException) {
-                    throw c
-                  } catch (e: Throwable) {
-                    loadError = "Could not load ${file.path}: ${e.message}"
-                  }
+                // Synchronous on the AWT event thread — loads are serialised, so a second drop
+                // can't race an in-flight one.
+                try {
+                  val next = loadBundle(file.path.toPath())
+                  loadedBundle?.close()
+                  loadedBundle = next
+                  loadError = null
+                } catch (e: Throwable) {
+                  loadError = "Could not load ${file.path}: ${e.message}"
                 }
               }
             },
@@ -296,9 +280,9 @@ private fun resolveBundleArg(arg: String): Path? {
     if (uri.scheme.equals("file", ignoreCase = true)) return File(uri).path.toPath().takeIfFile()
     // Ktor client over the OkHttp engine; stream the body to disk on a 2xx. runBlocking is fine at
     // this one-shot startup call (main(), before Compose starts).
+    val temp = TemporaryDirectory / "compose-preview-bundle-${UUID.randomUUID()}.png"
+    temp.toFile().deleteOnExit()
     runBlocking {
-      val temp = SystemFileSystem.createTempFile("compose-preview-bundle-", ".png")
-      temp.toFile().deleteOnExit()
       val ok =
         HttpClient(OkHttp).use { client ->
           client.prepareGet(uri.toString()).execute { response ->
