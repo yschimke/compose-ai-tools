@@ -459,10 +459,11 @@ describeExternal(
             "measures warm edit→preview latency over consecutive saves",
             async function () {
                 const ITERATIONS = 4;
-                // A warm incremental edit on even a heavy module renders well
-                // under this; exceeding it means no *changed* image arrived =
+                // Edit 1 also pays the probe's first-image render (~130s on
+                // this heavy module); edits 2+ are pure body re-renders. A
+                // *changed* image that can't arrive within this window means a
                 // stale render.
-                const PER_EDIT_TIMEOUT_MS = 120_000;
+                const PER_EDIT_TIMEOUT_MS = 220_000;
                 // Distinct, visually-obvious fills so a stale render (same
                 // bytes) is provable, not just plausible.
                 const marker = "ComposeAiEditLoopProbe";
@@ -515,36 +516,68 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Establish the baseline by waiting for the probe's first actual
-                // IMAGE (`updateImage`), not just the card — a newly-discovered
-                // preview paints its card (`webviewPreviewsRendered`) before the
-                // daemon renders its pixels, so keying the baseline off the card
-                // makes the first loop edit absorb the slow first-image render.
-                // Generous window: this one pays the discovery + first-render
-                // cost so each loop edit measures a pure body change.
+                // Land the probe in the daemon's manifest before the loop via a
+                // full (Gradle) refresh: it discovers + renders every preview —
+                // posting setPreviews with the probe's card AND priming the
+                // daemon's manifest cache — so the first loop edit is a save where
+                // the probe is in-manifest and renders through the daemon. (A bare
+                // triggerSave doesn't suffice: a newly-added preview's image isn't
+                // rendered on the first save, and the daemon's deferred discovery
+                // only runs after a render, so the card never surfaces.)
                 api.resetMessages();
-                api.triggerSave(kotlinFile);
-                const baseline = await waitFor(
-                    "probe baseline image (first updateImage)",
+                await api.triggerRefresh(kotlinFile, /* force */ true, "full");
+                await waitFor(
+                    "probe discovered (card present)",
                     5 * 60_000,
                     300,
-                    () => probeImageOf() ?? undefined,
-                );
-                const baselineBuf = Buffer.from(baseline.imageData, "base64");
-                fs.writeFileSync(
-                    path.join(
-                        dumpDir,
-                        `probe-baseline-${baselineColor.slice(2)}.png`,
-                    ),
-                    baselineBuf,
-                );
-                console.log(
-                    `[editloop] baseline ${baselineColor} captured bytes=${baselineBuf.length}`,
+                    () =>
+                        api.getPostedMessages().find((m) => {
+                            const msg = m as PostedMessage;
+                            if (msg.command !== "setPreviews") return false;
+                            const previews = msg.previews as
+                                | Array<{ id?: string }>
+                                | undefined;
+                            return previews?.some((p) =>
+                                /ComposeAiEditLoopProbe/.test(
+                                    String(p.id ?? ""),
+                                ),
+                            );
+                        }),
                 );
 
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
+                // Seed prevImage with the probe's BASELINE render (its current,
+                // pre-edit colour) so edit 1 must produce a *changed* image. A
+                // save with no source change renders the baseline; capturing it
+                // here means a baseline `updateImage` that arrives late (from the
+                // prime / first daemon render) can't be accepted by edit 1 as if
+                // it were edit 1's own render — which would mask a stale edit-1
+                // render even while the later edits still produce distinct images
+                // (Codex review on #1718).
+                api.resetMessages();
+                api.triggerSave(kotlinFile);
+                const baseline = await waitFor(
+                    "probe baseline image (pre-edit render)",
+                    PER_EDIT_TIMEOUT_MS,
+                    100,
+                    () => probeImageOf() ?? undefined,
+                );
                 let prevImage: string | null = baseline.imageData;
+                {
+                    const buf = Buffer.from(baseline.imageData, "base64");
+                    fs.writeFileSync(
+                        path.join(
+                            dumpDir,
+                            `probe-baseline-${baselineColor.slice(2)}.png`,
+                        ),
+                        buf,
+                    );
+                    console.log(
+                        `[editloop] baseline ${baselineColor} bytes=${buf.length} ` +
+                            `sha=${createHash("sha256").update(buf).digest("hex").slice(0, 12)}`,
+                    );
+                }
                 for (let i = 0; i < ITERATIONS; i++) {
                     api.resetMessages();
                     src = fs

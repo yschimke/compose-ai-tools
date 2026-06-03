@@ -175,6 +175,44 @@ class GenerateRobolectricPropertiesTaskTest {
     assertThat(exception.message).contains("JDK 21")
   }
 
+  @Test
+  fun `default also writes the daemon-package Application override`() {
+    // The daemon's SandboxRunner (package ee.schimke.composeai.daemon) can't read the
+    // renderer-package file, and its deprecated buildGlobalConfig override is no longer merged over
+    // the manifest by Robolectric 4.16 — so without this the daemon runs the consumer's Application
+    // and crashes the render sandbox.
+    val body = generateDaemon(useConsumerApplication = false)
+    assertThat(body).contains("application=android.app.Application")
+  }
+
+  @Test
+  fun `useConsumerApplication drops the daemon-package Application override`() {
+    val body = generateDaemon(useConsumerApplication = true)
+    assertThat(body).doesNotContain("application=")
+  }
+
+  private fun generateDaemon(useConsumerApplication: Boolean): String {
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val task =
+      project.tasks
+        .register(
+          "composePreviewGenerateRobolectricProperties",
+          GenerateRobolectricPropertiesTask::class.java,
+        )
+        .get()
+    task.useConsumerApplication.set(useConsumerApplication)
+    task.consumerCompileSdk.set(36)
+    task.defaultSdk.set(GenerateRobolectricPropertiesTask.DEFAULT_SDK)
+    task.buildJavaMajor.set(21)
+    task.outputDir.set(tmp.newFolder("daemon-out-$useConsumerApplication"))
+    task.generate()
+    return task.outputDir
+      .get()
+      .asFile
+      .resolve("ee/schimke/composeai/daemon/robolectric.properties")
+      .readText()
+  }
+
   private fun generate(
     useConsumerApplication: Boolean,
     override: Int?,

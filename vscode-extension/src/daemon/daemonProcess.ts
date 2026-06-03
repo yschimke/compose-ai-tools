@@ -274,6 +274,19 @@ export async function spawnDaemon(opts: SpawnOptions): Promise<SpawnedDaemon> {
         if (line.length === 0) {
             return;
         }
+        // Diagnostic seam: when COMPOSE_PREVIEW_DAEMON_STDERR_FILE is set, append
+        // every RAW (pre-filter) daemon stderr line to that file. Lets e2e/test
+        // harnesses inspect the daemon's own self-diagnostics (`[classloader]
+        // swap …`, the per-render `loaderId=… classFile=<fingerprint>` line)
+        // which the output channel both filters and never routes to stdout.
+        const rawSink = process.env.COMPOSE_PREVIEW_DAEMON_STDERR_FILE;
+        if (rawSink) {
+            try {
+                require("fs").appendFileSync(rawSink, line + "\n");
+            } catch {
+                // best-effort diagnostics; never let logging break the daemon
+            }
+        }
         const filtered = logFilter.filterDaemonStderrLine(line);
         if (filtered === null) {
             return;
