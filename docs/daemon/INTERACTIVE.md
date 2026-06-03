@@ -12,10 +12,14 @@ wire contract this builds on.
 
 Two affordances reach interactive mode:
 
-1. **Click the preview image** — single-click on a non-live card enters
-   LIVE; subsequent clicks while LIVE forward as pointer events. Plain
-   click is single-target (drops every prior live stream); Shift+click
-   adds the preview to the live set without disturbing others.
+1. **Click the preview image** — in focus mode, single-click on a
+   non-live card enters LIVE; subsequent clicks while LIVE forward as
+   pointer events. Plain click is single-target (drops every prior live
+   stream); Shift+click adds the preview to the live set without
+   disturbing others. In a multi-card layout (grid/flow/column) a plain
+   click enters focus first, while **Shift+click goes live in place**
+   (multi-stream) without leaving the grid — so several grid cards can
+   stream at once.
 2. **The LIVE button** in the focus-mode toolbar — same plain/Shift
    semantics.
 

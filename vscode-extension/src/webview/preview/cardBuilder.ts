@@ -284,10 +284,12 @@ export function populatePreviewCard(
     imgContainer.appendChild(skeleton);
     card.appendChild(imgContainer);
 
-    // Multi-mode (grid/flow/column): clicking the image enters Focus
-    // mode on this card, preserving the carousel's current variant
+    // Multi-mode (grid/flow/column): a plain click on the image enters
+    // Focus mode on this card, preserving the carousel's current variant
     // (`card.dataset.currentIndex`) because focus is the inspector
     // mode and we want to land on the variant the user was looking at.
+    // Shift+click instead goes live *in place* (multi-stream) without
+    // leaving the grid, so multiple grid cards can stream at once.
     // Focus mode: clicking the image enters LIVE (interactive
     // streaming) for this preview — the toolbar's `btn-interactive` is
     // the canonical entry, but image-click is the casual shortcut and
@@ -312,7 +314,17 @@ export function populatePreviewCard(
         if (!config.inFocus()) {
             evt.preventDefault();
             evt.stopPropagation();
-            config.enterFocus(card);
+            // Shift+click in a grid/flow/column layout lights this card
+            // up live *in place* (multi-stream semantics) instead of
+            // diving into focus first — so several grid cards can stream
+            // at once without the focus round-trip. Plain click still
+            // enters focus. The kind gate inside setInteractiveForCard
+            // no-ops non-interactive surfaces (notification / Glance).
+            if (evt.shiftKey) {
+                config.liveState.enterInteractiveOnCard(card, true);
+            } else {
+                config.enterFocus(card);
+            }
             return;
         }
         config.liveState.enterInteractiveOnCard(card, evt.shiftKey);
