@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -74,6 +75,7 @@ class DaemonSupervisor(
    * response under `unknown` and are logged but not retried.
    */
   private val defaultExtensions: List<String> = emptyList(),
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   init {
@@ -298,7 +300,7 @@ class DaemonSupervisor(
     if (!file.isFile) return
     val previews =
       runCatching {
-          val text = SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+          val text = fileSystem.read(file.path.toPath()) { readUtf8() }
           val arr =
             (Json.parseToJsonElement(text) as? JsonObject)?.get("previews")
               as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
@@ -590,17 +592,16 @@ fun interface DescriptorProvider {
      * A future enhancement may invoke Gradle's Tooling API itself; for v0 we keep the seam clean
      * and let the user (or VS Code) drive the bootstrap.
      */
-    fun readingFromDisk(): DescriptorProvider = DescriptorProvider { project, modulePath ->
-      val moduleDir = gradlePathToFile(project.path, modulePath)
-      val descriptorFile = File(moduleDir, "build/compose-previews/daemon-launch.json")
-      check(descriptorFile.isFile) {
-        "Missing daemon launch descriptor for $modulePath under ${project.path.absolutePath}. " +
-          "Run `./gradlew $modulePath:composePreviewDaemonStart` first."
+    fun readingFromDisk(fileSystem: FileSystem = SystemFileSystem): DescriptorProvider =
+      DescriptorProvider { project, modulePath ->
+        val moduleDir = gradlePathToFile(project.path, modulePath)
+        val descriptorFile = File(moduleDir, "build/compose-previews/daemon-launch.json")
+        check(descriptorFile.isFile) {
+          "Missing daemon launch descriptor for $modulePath under ${project.path.absolutePath}. " +
+            "Run `./gradlew $modulePath:composePreviewDaemonStart` first."
+        }
+        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       }
-      DaemonLaunchDescriptor.parse(
-        SystemFileSystem.read(descriptorFile.path.toPath()) { readUtf8() }
-      )
-    }
 
     private fun gradlePathToFile(projectRoot: File, modulePath: String): File {
       // ":" → root, ":a:b" → projectRoot/a/b

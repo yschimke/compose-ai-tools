@@ -76,6 +76,12 @@ data class LoadedPreview(
  * isn't a recognised polyglot or zip, [IllegalStateException] when required entries are absent.
  * Per-preview resolution failures are recorded inside [LoadedPreview.errorMessage] rather than
  * aborting the whole load.
+ *
+ * This deliberately uses the real [SystemFileSystem] rather than an injected one: the extracted
+ * `app.jar` / `libs/` are handed to a [URLClassLoader] via `file:` URLs, which can only read the
+ * real process filesystem — so a non-real `FileSystem` would pass the Okio existence checks here
+ * and then fail to resolve any preview class. (The dependency [CoordinateResolver] is separately
+ * injectable; it has no classloader boundary.)
  */
 fun loadBundle(bundleFile: Path): LoadedBundle {
   require(SystemFileSystem.metadataOrNull(bundleFile)?.isRegularFile == true) {

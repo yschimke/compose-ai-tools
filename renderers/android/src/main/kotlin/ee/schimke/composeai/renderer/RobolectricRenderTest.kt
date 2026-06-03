@@ -115,7 +115,13 @@ object PreviewManifestLoader {
         // (Array<Any>[entry, args]) instead of being serialised back into the
         // manifest: provider values can be arbitrary runtime objects, often
         // not JSON-representable.
-        val expanded = manifest.previews.flatMap { expandParameterProvider(it) }
+        // XR_SUBSPACE previews are rendered by the separate `:renderer-xr` Robolectric task, not by
+        // this Android image renderer (there's no `PreviewRenderStrategy` for them, by design).
+        // Drop them before any expansion so they never reach `strategyFor`.
+        val expanded =
+            manifest.previews
+                .filter { it.params.kind != PreviewKind.XR_SUBSPACE }
+                .flatMap { expandParameterProvider(it) }
         // Tier filter (set by the plugin via TierSystemPropProvider). When
         // `fast`, drop heavyweight captures and annotation-sourced data
         // products. Heavy outputs keep their previous files on disk and stay

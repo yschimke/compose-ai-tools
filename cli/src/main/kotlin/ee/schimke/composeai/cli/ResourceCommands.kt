@@ -1,6 +1,5 @@
 package ee.schimke.composeai.cli
 
-import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess
@@ -261,9 +260,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   private fun readResourceManifest(module: PreviewModule): ResourceManifest? {
     val manifestFile = module.projectDir.resolve("build/compose-previews/resources.json")
     if (!manifestFile.exists()) return null
-    return resourceJson.decodeFromString(
-      SystemFileSystem.read(manifestFile.path.toPath()) { readUtf8() }
-    )
+    return resourceJson.decodeFromString(fileSystem.read(manifestFile.path.toPath()) { readUtf8() })
   }
 
   private fun readAllResourceManifests(
@@ -422,7 +419,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     val f = stateFile(module)
     if (!f.exists()) return ResourceCliState()
     return try {
-      val text = SystemFileSystem.read(f.path.toPath()) { readUtf8() }
+      val text = fileSystem.read(f.path.toPath()) { readUtf8() }
       resourceJson.decodeFromString(ResourceCliState.serializer(), text)
     } catch (e: Exception) {
       if (verbose)
@@ -436,7 +433,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   private fun writeResourceState(module: PreviewModule, state: ResourceCliState) {
     val f = stateFile(module)
     f.parentFile?.mkdirs()
-    SystemFileSystem.write(f.path.toPath()) {
+    fileSystem.write(f.path.toPath()) {
       writeUtf8(resourceJson.encodeToString(ResourceCliState.serializer(), state))
     }
   }

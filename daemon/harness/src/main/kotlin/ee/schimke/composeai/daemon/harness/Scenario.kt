@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.harness
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import okio.buffer
 
@@ -87,15 +88,20 @@ data class ScenarioContext(
  * compiled `classes/` dir before/after and fail fast if the edit was a comment-only no-op; here in
  * fake mode the test's pixel-diff between the v1 and v2 fixtures is the equivalent loud check.
  */
-fun editSource(target: File, newBytes: ByteArray, block: () -> Unit) {
+fun editSource(
+  target: File,
+  newBytes: ByteArray,
+  fileSystem: FileSystem = SystemFileSystem,
+  block: () -> Unit,
+) {
   require(target.exists()) { "editSource: target ${target.absolutePath} does not exist" }
-  val original = SystemFileSystem.read(target.path.toPath()) { readByteArray() }
-  SystemFileSystem.write(target.path.toPath()) { write(newBytes) }
+  val original = fileSystem.read(target.path.toPath()) { readByteArray() }
+  fileSystem.write(target.path.toPath()) { write(newBytes) }
   try {
     block()
   } finally {
     try {
-      SystemFileSystem.write(target.path.toPath()) { write(original) }
+      fileSystem.write(target.path.toPath()) { write(original) }
     } catch (e: Throwable) {
       System.err.println(
         "editSource: failed to revert ${target.absolutePath}: ${e.message} " +
@@ -111,7 +117,7 @@ fun editSource(target: File, newBytes: ByteArray, block: () -> Unit) {
  * etc.); for binary swaps (`<previewId>.png`) prefer the [ByteArray] overload above.
  */
 fun editSource(target: File, newText: String, block: () -> Unit) {
-  editSource(target, newText.toByteArray(Charsets.UTF_8), block)
+  editSource(target, newText.toByteArray(Charsets.UTF_8), block = block)
 }
 
 /**
@@ -140,12 +146,13 @@ class LatencyRecorder(
   // mode doesn't drive a real Android renderer.
   private val target: String = HarnessTestSupport.harnessTarget(),
   private val baselineMsPerPreview: Long = DEFAULT_DESKTOP_BASELINE_MS,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   init {
     if (!csvFile.exists()) {
       csvFile.parentFile.mkdirs()
-      SystemFileSystem.write(csvFile.path.toPath()) {
+      fileSystem.write(csvFile.path.toPath()) {
         writeUtf8("target,scenario,preview,actualMs,baselineMs,deltaPct,notes\n")
       }
     }
@@ -163,7 +170,7 @@ class LatencyRecorder(
     val row =
       "$target,$scenario,$preview,$actualMs,$baselineMsPerPreview,${"%.2f".format(deltaPct)},\"$notes\"\n"
     synchronized(csvFile) {
-      SystemFileSystem.appendingSink(csvFile.path.toPath()).buffer().use { it.writeUtf8(row) }
+      fileSystem.appendingSink(csvFile.path.toPath()).buffer().use { it.writeUtf8(row) }
     }
   }
 

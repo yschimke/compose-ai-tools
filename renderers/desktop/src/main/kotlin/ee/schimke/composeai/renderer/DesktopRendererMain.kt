@@ -25,6 +25,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 
@@ -281,6 +282,7 @@ private fun writeErrorSidecar(
   className: String,
   functionName: String,
   e: Throwable,
+  fileSystem: FileSystem = SystemFileSystem,
 ) {
   val sidecar = errorSidecarFor(pngFile)
   sidecar.parentFile?.mkdirs()
@@ -307,7 +309,7 @@ private fun writeErrorSidecar(
   }
   sb.append("\"stackTrace\":").append(jsonString(stack))
   sb.append('}')
-  SystemFileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
+  fileSystem.write(sidecar.path.toPath()) { writeUtf8(sb.toString()) }
 }
 
 /**
@@ -448,6 +450,7 @@ private fun renderPreview(
   wrapHeight: Boolean,
   previewArgs: List<Any?>,
   localeTag: String?,
+  fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
   val composableMethod =
@@ -576,12 +579,12 @@ private fun renderPreview(
           cropW.coerceAtMost(decoded.width),
           cropH.coerceAtMost(decoded.height),
         )
-      SystemFileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
+      fileSystem.write(outputFile.path.toPath()) { ImageIO.write(sub, "PNG", outputStream()) }
     } else {
-      SystemFileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+      fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
     }
   } else {
-    SystemFileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+    fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
   }
 
   scene.close()

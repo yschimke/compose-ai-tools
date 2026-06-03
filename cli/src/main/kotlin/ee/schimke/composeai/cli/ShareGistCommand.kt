@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -22,7 +23,7 @@ import okio.Path.Companion.toPath
  * Image references inside the markdown should use basenames (e.g. `![](before.png)`). This command
  * does NOT rewrite paths.
  */
-class ShareGistCommand(args: List<String>) {
+class ShareGistCommand(args: List<String>, private val fileSystem: FileSystem = SystemFileSystem) {
   private val jsonOut = "--json" in args
   private val visibility: GistVisibility =
     when {
@@ -73,7 +74,7 @@ class ShareGistCommand(args: List<String>) {
     val rawBase = parseRawBase(gistUrl)
 
     val tmp = TemporaryDirectory / "compose-preview-gist-${UUID.randomUUID()}"
-    SystemFileSystem.createDirectories(tmp)
+    fileSystem.createDirectories(tmp)
     try {
       val clonePath = tmp / "g"
       val clone = clonePath.toFile()
@@ -83,7 +84,7 @@ class ShareGistCommand(args: List<String>) {
       )
 
       for (img in images) {
-        SystemFileSystem.copy(img.path.toPath(), clonePath / img.name)
+        fileSystem.copy(img.path.toPath(), clonePath / img.name)
       }
 
       runOrFail(
@@ -111,7 +112,7 @@ class ShareGistCommand(args: List<String>) {
         "git push to gist failed (gist exists at $gistUrl)",
       )
     } finally {
-      SystemFileSystem.deleteRecursively(tmp)
+      fileSystem.deleteRecursively(tmp)
     }
 
     emit(gistUrl, rawBase, images)

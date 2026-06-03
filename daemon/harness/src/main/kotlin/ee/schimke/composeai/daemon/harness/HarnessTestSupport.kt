@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.harness
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -36,7 +37,7 @@ object HarnessTestSupport {
    * JVMs always reset (different pids → different marker files); the build step's standard
    * `./gradlew clean` also clears the marker when the whole `build/reports/` tree goes away.
    */
-  fun resetLatencyCsvIfStale() {
+  fun resetLatencyCsvIfStale(fileSystem: FileSystem = SystemFileSystem) {
     val marker =
       File(LATENCY_CSV.parentFile, ".harness-csv-marker-${ProcessHandle.current().pid()}")
     if (marker.exists()) return
@@ -44,7 +45,7 @@ object HarnessTestSupport {
     if (LATENCY_CSV.exists()) LATENCY_CSV.delete()
     // Always write the marker — even when the CSV didn't exist — so the subsequent scenarios in
     // this same JVM see "already reset" and append rather than re-wiping.
-    SystemFileSystem.write(marker.path.toPath()) { writeUtf8("reset") }
+    fileSystem.write(marker.path.toPath()) { writeUtf8("reset") }
   }
 
   fun scenario(name: String): ScenarioPaths {
@@ -136,11 +137,12 @@ fun diffOrCaptureBaseline(
   baseline: File,
   reportsDir: File,
   scenario: String,
+  fileSystem: FileSystem = SystemFileSystem,
   stderrSupplier: () -> String = { "" },
 ) {
   if (HarnessTestSupport.regenerateBaselines()) {
     baseline.parentFile.mkdirs()
-    SystemFileSystem.write(baseline.path.toPath()) { write(actualBytes) }
+    fileSystem.write(baseline.path.toPath()) { write(actualBytes) }
     System.err.println(
       "$scenario: regenerate=true — overwrote baseline at ${baseline.absolutePath}"
     )
@@ -148,14 +150,14 @@ fun diffOrCaptureBaseline(
   }
   if (!baseline.exists()) {
     baseline.parentFile.mkdirs()
-    SystemFileSystem.write(baseline.path.toPath()) { write(actualBytes) }
+    fileSystem.write(baseline.path.toPath()) { write(actualBytes) }
     System.err.println(
       "$scenario: captured baseline at ${baseline.absolutePath} (first run; subsequent runs " +
         "will pixel-diff against it)"
     )
     return
   }
-  val expectedBytes = SystemFileSystem.read(baseline.path.toPath()) { readByteArray() }
+  val expectedBytes = fileSystem.read(baseline.path.toPath()) { readByteArray() }
   val diff = PixelDiff.compare(actual = actualBytes, expected = expectedBytes)
   if (!diff.ok) {
     PixelDiff.writeDiffArtefacts(
@@ -282,6 +284,7 @@ private data class RealModeScenarioFiles(
 private fun prepareRealModeScenarioPaths(
   name: String,
   previews: List<RealModePreview>,
+  fileSystem: FileSystem = SystemFileSystem,
 ): RealModeScenarioFiles {
   val moduleBuildDir = File("build")
   val rendersDir =
@@ -314,9 +317,7 @@ private fun prepareRealModeScenarioPaths(
       """
         .trimIndent()
     }
-  SystemFileSystem.write(manifestFile.path.toPath()) {
-    writeUtf8("""{"previews":[$previewsJson]}""")
-  }
+  fileSystem.write(manifestFile.path.toPath()) { writeUtf8("""{"previews":[$previewsJson]}""") }
   val classpath =
     System.getProperty("java.class.path")
       .split(File.pathSeparator)

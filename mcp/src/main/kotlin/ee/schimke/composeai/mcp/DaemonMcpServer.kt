@@ -50,6 +50,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -95,6 +96,7 @@ class DaemonMcpServer(
    * disables the sampler; production defaults to 10 minutes.
    */
   private val samplingIntervalMs: Long = DEFAULT_SAMPLING_INTERVAL_MS,
+  private val fileSystem: FileSystem = SystemFileSystem,
   fullToolDefsLoader: (() -> List<ToolDef>)? = null,
 ) {
 
@@ -429,7 +431,7 @@ class DaemonMcpServer(
           val file = File(result.pngPath)
           check(file.isFile) { "history/read pngPath does not exist: ${result.pngPath}" }
           Base64.getEncoder()
-            .encodeToString(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
+            .encodeToString(fileSystem.read(file.path.toPath()) { readByteArray() })
         }
     return ReadResourceResult(
       contents = listOf(ResourceContents.Blob(uri = uriString, mimeType = "image/png", blob = blob))
@@ -445,7 +447,7 @@ class DaemonMcpServer(
     val outcome = awaitNextRender(uri, session, progressToken, overrides)
     val file = File(outcome.pngPath)
     check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
-    return applyImageSizeOverride(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
+    return applyImageSizeOverride(fileSystem.read(file.path.toPath()) { readByteArray() })
   }
 
   /**
@@ -743,7 +745,7 @@ class DaemonMcpServer(
     }
 
     val text =
-      runCatching { SystemFileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: return
+      runCatching { fileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: return
     val previews =
       runCatching {
           val obj = json.parseToJsonElement(text) as? JsonObject ?: return@runCatching null
@@ -2808,7 +2810,7 @@ class DaemonMcpServer(
           }
           pngCallToolResult(
             Base64.getEncoder()
-              .encodeToString(SystemFileSystem.read(file.path.toPath()) { readByteArray() })
+              .encodeToString(fileSystem.read(file.path.toPath()) { readByteArray() })
           )
         } else {
           val payload = buildJsonObject {
@@ -3091,8 +3093,7 @@ class DaemonMcpServer(
         val stopResult = daemon.client.recordingStop(recordingId)
         val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
         val encoded = daemon.client.recordingEncode(recordingId, format)
-        val videoBytes =
-          SystemFileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
+        val videoBytes = fileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
         val payload = buildJsonObject {
           put("recordingId", recordingId)
           put("videoPath", encoded.videoPath)
@@ -3196,7 +3197,7 @@ class DaemonMcpServer(
       // Read the PNG bytes through Okio, then decode from memory (ImageIO is the codec boundary).
       val image =
         runCatching {
-            val bytes = SystemFileSystem.read(frame.path.toPath()) { readByteArray() }
+            val bytes = fileSystem.read(frame.path.toPath()) { readByteArray() }
             ImageIO.read(bytes.inputStream())
           }
           .getOrNull()
@@ -3939,7 +3940,7 @@ class DaemonMcpServer(
   private fun detectBranch(workspacePath: File): String? {
     val head = File(workspacePath, ".git/HEAD").takeIf { it.isFile } ?: return null
     val content =
-      runCatching { SystemFileSystem.read(head.path.toPath()) { readUtf8() }.trim() }.getOrNull()
+      runCatching { fileSystem.read(head.path.toPath()) { readUtf8() }.trim() }.getOrNull()
         ?: return null
     return if (content.startsWith("ref:"))
       content.removePrefix("ref:").trim().substringAfterLast('/')
