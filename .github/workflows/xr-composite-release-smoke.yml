@@ -1,0 +1,149 @@
+name: xr-composite release smoke
+
+# Manually-triggered, isolated end-to-end check of the RELEASE binary path WITHOUT cutting a real
+# release (no Maven Central / release-please): build the per-OS xr-composite tarballs exactly as
+# release.yml does, attach them to a throwaway GitHub PRE-RELEASE, then download from that real
+# Release URL — the exact path `XrCompositeProvision.assetUrl` derives — and bake a committed
+# fixture scene headless on llvmpipe. The pre-release (and its tag) is deleted at the end.
+#
+# Run it from the Actions tab (workflow_dispatch) before a real release to confirm the
+# publish → fetch → bake chain works against a genuine GitHub Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke_version:
+        description: 'Throwaway version: asset = xr-composite-<platform>-<v>.tar.gz, tag = v<v>.'
+        default: '0.0.0-xrsmoke'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xr-composite-release-smoke
+  cancel-in-progress: true
+
+jobs:
+  # Build the release-style per-OS tarballs (mirrors release.yml's build-xr-composite).
+  build:
+    name: build (${{ matrix.asset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            sdk: linux
+            asset: linux-x86_64
+          - os: macos-14
+            sdk: mac
+            asset: macos-arm64
+          - os: windows-2022
+            sdk: windows
+            asset: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-xr-composite
+        with:
+          platform: ${{ matrix.sdk }}
+      - name: Package versioned tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          tar -C dist -czf \
+            "staged/xr-composite-${{ matrix.asset }}-${{ inputs.smoke_version }}.tar.gz" .
+          ls -l staged
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-${{ matrix.asset }}
+          path: staged/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Attach the tarballs to a throwaway pre-release at tag v<smoke_version>.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v${{ inputs.smoke_version }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create pre-release with the tarballs
+        run: |
+          set -euo pipefail
+          # Idempotent: drop any prior smoke release + tag first.
+          gh release delete "$TAG" --cleanup-tag --yes || true
+          gh release create "$TAG" \
+            --prerelease \
+            --title "xr-composite release smoke ${{ inputs.smoke_version }}" \
+            --notes "Throwaway pre-release for the xr-composite release-path smoke. Auto-deleted by the workflow; safe to delete if it lingers." \
+            assets/*.tar.gz
+          echo "Published $TAG with:"; ls -l assets
+
+  # Download from the REAL Release URL the CLI derives, then run the binary + bake a fixture scene.
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false # only need the committed fixture scene + textures
+      - name: Install Xvfb + Mesa software GL
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri libglx-mesa0
+      - name: Fetch from the Release URL and bake
+        shell: bash
+        env:
+          VER: ${{ inputs.smoke_version }}
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          set -euo pipefail
+          asset="xr-composite-linux-x86_64-${VER}.tar.gz"
+          url="https://github.com/${{ github.repository }}/releases/download/v${VER}/${asset}"
+          echo "Fetching the exact path XrCompositeProvision.assetUrl derives: $url"
+          curl -fL --retry 4 --retry-delay 2 -o "$asset" "$url"
+          mkdir -p got && tar -xzf "$asset" -C got
+          test -x got/xr-composite || { echo "::error::no executable binary in the published tarball"; ls -lR got; exit 1; }
+          ls got/materials/*.filamat >/dev/null 2>&1 || { echo "::error::no compiled materials in the published tarball"; exit 1; }
+          scene="vscode-extension/preview-harness/fixtures/spatial-scene/scene.json"
+          xvfb-run -a -s "-screen 0 1600x1000x24" \
+            got/xr-composite --scene "$scene" --out smoke-composite.png \
+              --materials got/materials --width 1280 --height 800
+          test -s smoke-composite.png && file smoke-composite.png | grep -q 'PNG image data' \
+            || { echo "::error::the published binary did not bake a PNG"; exit 1; }
+          echo "OK: fetched the published asset from the real Release URL, ran it, baked a composite."
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: smoke-composite
+          path: smoke-composite.png
+          if-no-files-found: error
+
+  # Always remove the throwaway pre-release + tag, pass or fail.
+  cleanup:
+    needs: [build, publish, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Delete the smoke pre-release + tag
+        run: gh release delete "v${{ inputs.smoke_version }}" --cleanup-tag --yes || true
