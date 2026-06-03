@@ -1,7 +1,7 @@
 // Live (interactive) + recording state controller for the preview panel.
 //
 // Lifted verbatim from `behavior.ts`'s `applyLiveBadge` / `ensureLiveCardControls`
-// / `stopAllInteractive` / `stopInteractiveForCard` / `toggleInteractive` /
+// / `stopInteractiveForCard` / `toggleInteractive` /
 // `setInteractiveForCard` / `enterInteractiveOnCard` / `toggleRecording`
 // cluster, plus the lone-stream follow-focus teardown that used to live inline
 // in `applyLayout` and the ad-hoc Set manipulations spread across the
@@ -131,7 +131,7 @@ export class LiveStateController {
     // Mutable references — the planner-driven mutators in
     // `setInteractiveForCard` / `toggleRecording` replace these with
     // fresh Sets returned by the planners, while the local-mutation
-    // methods (`stopAllInteractive`, the silent extension-clear paths,
+    // methods (`stopInteractiveForCard`, the silent extension-clear paths,
     // etc.) call `.clear()` / `.delete()` directly.
     private interactivePreviewIds: Set<string> = new Set<string>();
     private recordingPreviewIds: Set<string> = new Set<string>();
@@ -579,21 +579,6 @@ export class LiveStateController {
         );
     }
 
-    /** Toolbar `<i class="codicon codicon-debug-stop">` button — stop every
-     *  live stream at once. */
-    stopAllInteractive(): void {
-        if (this.interactivePreviewIds.size === 0) return;
-        const ids = Array.from(this.interactivePreviewIds);
-        this.interactivePreviewIds.clear();
-        ids.forEach((previewId) => {
-            this.controlsEnabledPreviewIds.delete(previewId);
-            this.postLiveCommand(previewId, false);
-        });
-        this.applyLiveBadge();
-        this.applyControlsToggleButtons();
-        this.cfg.applyInteractiveButtonState();
-    }
-
     /** Per-card stop button (the codicon overlay) — stop only [card]. */
     stopInteractiveForCard(card: HTMLElement): void {
         const previewId = card.dataset.previewId;
@@ -657,6 +642,14 @@ export class LiveStateController {
             this.postLiveCommand(prior, false);
         }
         this.interactivePreviewIds = plan.next;
+        if (!plan.turnOnTarget) {
+            // Issue #1203 — the target itself is being toggled OFF (it's never
+            // in `plan.deactivate`, which only carries the *other* priors). Clear
+            // its Controls flag too, matching the loop above and
+            // `stopInteractiveForCard`, so a later live re-entry doesn't silently
+            // re-attach keyboard interception after an explicit stop.
+            this.controlsEnabledPreviewIds.delete(previewId);
+        }
         if (plan.turnOnTarget) {
             attachInteractiveInputHandlers(
                 card,
@@ -809,8 +802,7 @@ export class LiveStateController {
     /** Extension-driven `clearInteractive` — silent, the extension already
      *  stopped the streams server-side. Also drop the per-card "Controls"
      *  flag (#1203) so a future live-mode re-entry doesn't silently re-attach
-     *  keyboard interception, matching `stopInteractiveForCard` /
-     *  `stopAllInteractive`. */
+     *  keyboard interception, matching `stopInteractiveForCard`. */
     handleExtensionClearInteractive(previewId: string | null): void {
         if (previewId) {
             this.interactivePreviewIds.delete(previewId);

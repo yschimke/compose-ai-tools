@@ -247,8 +247,6 @@ export class PreviewApp extends LitElement {
     @query("#btn-diff-main") private _btnDiffMain!: HTMLButtonElement;
     @query("#btn-launch-device") private _btnLaunchDevice!: HTMLButtonElement;
     @query("#btn-interactive") private _btnInteractive!: HTMLButtonElement;
-    @query("#btn-stop-interactive")
-    private _btnStopInteractive!: HTMLButtonElement;
     @query("#btn-recording") private _btnRecording!: HTMLButtonElement;
     @query("#recording-format") private _recordingFormat!: HTMLSelectElement;
     @query("#btn-touch-overlay") private _btnTouchOverlay!: HTMLButtonElement;
@@ -359,18 +357,6 @@ export class PreviewApp extends LitElement {
                 >
                     <i
                         class="codicon codicon-circle-large-outline"
-                        aria-hidden="true"
-                    ></i>
-                </button>
-                <button
-                    class="icon-button"
-                    id="btn-stop-interactive"
-                    title="Stop live preview"
-                    aria-label="Stop live preview"
-                    hidden
-                >
-                    <i
-                        class="codicon codicon-debug-stop"
                         aria-hidden="true"
                     ></i>
                 </button>
@@ -672,7 +658,6 @@ export class PreviewApp extends LitElement {
         const btnDiffMain = this._btnDiffMain;
         const btnLaunchDevice = this._btnLaunchDevice;
         const btnInteractive = this._btnInteractive;
-        const btnStopInteractive = this._btnStopInteractive;
         const btnRecording = this._btnRecording;
         const recordingFormat = this._recordingFormat;
         const btnTouchOverlay = this._btnTouchOverlay;
@@ -687,7 +672,6 @@ export class PreviewApp extends LitElement {
             btnDiffMain,
             btnLaunchDevice,
             btnInteractive,
-            btnStopInteractive,
             btnRecording,
             btnTouchOverlay,
             btnKeyboardBand,
@@ -2947,9 +2931,6 @@ export class PreviewApp extends LitElement {
         // expect.
         btnInteractive.addEventListener("click", (e) =>
             liveState.toggleInteractive(e.shiftKey),
-        );
-        btnStopInteractive.addEventListener("click", () =>
-            liveState.stopAllInteractive(),
         );
         btnRecording.addEventListener("click", () =>
             liveState.toggleRecording(),
