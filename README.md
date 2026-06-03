@@ -310,7 +310,7 @@ _No findings._
 
 ### `RedBoxPreview`
 
-<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RedBoxPreview_Red_Box.png" width="400" />
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/android/RedBoxPreview_Red_Box.a11y.png" width="400" />
 
 _No findings._
 
