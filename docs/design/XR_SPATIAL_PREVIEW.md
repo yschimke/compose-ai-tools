@@ -144,9 +144,12 @@ i.e. the genuine framework-computed stack (top above bottom, column = sum of chi
 
 **Verdict / path forward:** a real **subspace-layout projector** is feasible — render each panel's
 2D content (Robolectric, as the committed `@Preview`s already do), then composite the panels at
-their recovered `poseInRoot`/`size` through a chosen preview camera. That is a future renderer
-feature, not built here; `SubspaceLayoutPoseTest` proves the geometry is recoverable and stands as
-the **canary** that flags when the alpha XR testing stack shifts. **Fragility mitigation** (the
+their recovered `poseInRoot`/`size` through a chosen preview camera. **This is now built** in
+[`:renderer-xr`](../../renderers/xr): `composePreviewRenderXr` recovers each tagged panel's pose +
+size **and** its live content `View`, rasterises that view to its `<id>.png` texture at the panel's
+true size, and emits the `scene.json` the VS Code 3D viewer composites (see
+`SPATIAL_SCENE_CONTRACT.md`). `SubspaceLayoutPoseTest` still proves the geometry is recoverable and
+stands as the **canary** that flags when the alpha XR testing stack shifts. **Fragility mitigation** (the
 honest cost of leaning on alpha `*-testing` libs + a private system-feature string): the canary test
 fails loudly on a stack change, and a future `compose-preview doctor` check can assert the fake
 runtime still loads and `Subspace` still composes before any projector feature relies on it.

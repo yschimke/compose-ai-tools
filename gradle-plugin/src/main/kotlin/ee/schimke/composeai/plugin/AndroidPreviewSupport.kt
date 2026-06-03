@@ -1790,6 +1790,12 @@ internal object AndroidPreviewSupport {
         systemProperty("robolectric.graphicsMode", "NATIVE")
         systemProperty("robolectric.looperMode", "PAUSED")
         systemProperty("robolectric.conscryptMode", "OFF")
+        // Each panel's content view is rasterised to its `<id>.png` texture (under NATIVE graphics,
+        // above) and written via roborazzi's `captureRoboImage`, which only writes when its task
+        // type is enabled — so the render task must opt in, or texture capture silently no-ops.
+        // pixelCopyRenderMode mirrors the Compose `@Preview` render task for parity.
+        systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        systemProperty("roborazzi.test.record", "true")
         systemProperty("composeai.render.manifest", manifestFile.get())
         systemProperty("composeai.render.outputDir", rendersDir.get())
 

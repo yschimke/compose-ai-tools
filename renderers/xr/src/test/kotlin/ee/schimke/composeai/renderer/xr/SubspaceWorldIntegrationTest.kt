@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -46,22 +45,6 @@ class SubspaceWorldIntegrationTest {
 
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
-  private val panelContent: Map<String, @Composable () -> Unit> =
-    mapOf(
-      "main" to { Box(Modifier.fillMaxSize().background(Color(0xFF1E3C78))) },
-      "queue" to { Box(Modifier.fillMaxSize().background(Color(0xFF146E6E))) },
-      "lyrics" to { Box(Modifier.fillMaxSize().background(Color(0xFF7A3E1E))) },
-      "controls" to { Box(Modifier.fillMaxSize().background(Color(0xFF333845))) },
-    )
-
-  private val panelSizes =
-    mapOf(
-      "main" to SizeDp(720, 360),
-      "queue" to SizeDp(320, 280),
-      "lyrics" to SizeDp(320, 280),
-      "controls" to SizeDp(400, 80),
-    )
-
   @Test
   fun producesCompleteSceneForFloatingWindowWorld() {
     val pm = ApplicationProvider.getApplicationContext<Context>().packageManager
@@ -69,19 +52,19 @@ class SubspaceWorldIntegrationTest {
 
     rule.setContent {
       Subspace {
-        SpatialColumn(SubspaceModifier.testTag("root")) {
+        SpatialColumn {
           SpatialPanel(SubspaceModifier.testTag("main").width(720.dp).height(360.dp)) {
-            panelContent.getValue("main")()
+            Box(Modifier.fillMaxSize().background(Color(0xFF1E3C78)))
             Orbiter(position = ContentEdge.Bottom) {
               Box(Modifier.fillMaxSize().background(Color(0xFF333845)))
             }
           }
-          SpatialRow(SubspaceModifier.testTag("row")) {
+          SpatialRow {
             SpatialPanel(SubspaceModifier.testTag("queue").width(320.dp).height(280.dp)) {
-              panelContent.getValue("queue")()
+              Box(Modifier.fillMaxSize().background(Color(0xFF146E6E)))
             }
             SpatialPanel(SubspaceModifier.testTag("lyrics").width(320.dp).height(280.dp)) {
-              panelContent.getValue("lyrics")()
+              Box(Modifier.fillMaxSize().background(Color(0xFF7A3E1E)))
             }
           }
         }
@@ -89,10 +72,13 @@ class SubspaceWorldIntegrationTest {
     }
     rule.waitForIdle()
 
-    val panelTags = listOf("main", "queue", "lyrics")
-    val scene = SubspaceSceneRecorder.record(rule, panelTags, previewId = "spatial-world")
+    // Auto-enumerate the tagged panels and recover their content views — the path the render
+    // pipeline takes for a discovered @XrSubspacePreview.
+    val recorded = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = "spatial-world")
+    val scene = recorded.scene
 
     // Geometry recovered for every floating window.
+    val panelTags = listOf("main", "queue", "lyrics")
     assertThat(scene.panels.map { it.id }).containsExactlyElementsIn(panelTags)
     val byId = scene.panels.associateBy { it.id }
     assertThat(byId.getValue("main").sizeDp).isEqualTo(SizeDp(720, 360))
@@ -106,17 +92,15 @@ class SubspaceWorldIntegrationTest {
     assertThat(byId.getValue("main").poseInRoot.translation.y)
       .isGreaterThan(byId.getValue("queue").poseInRoot.translation.y)
 
-    // Full render output: textures for every panel + scene.json, co-located and consistent.
+    // Full render output: a real content texture for every panel + scene.json, co-located and
+    // consistent.
     val outDir =
       File.createTempFile("xr-world", "").let {
         it.delete()
         it.mkdirs()
         it
       }
-    SubspaceSceneWriter.captureTextures(
-      outDir,
-      panelTags.map { tag -> PanelTexture(tag, panelSizes.getValue(tag), panelContent.getValue(tag)) },
-    )
+    SubspaceSceneWriter.captureViewTextures(outDir, scene.panels, recorded.panelViews)
     val sceneFile = SubspaceSceneWriter.writeScene(outDir, scene)
 
     val decoded =
