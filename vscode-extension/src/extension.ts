@@ -583,8 +583,20 @@ export interface ComposePreviewTestApi {
      * live daemon. Resolves to whether the daemon ended up ready. Used by
      * the wear a11y e2e — the regular `triggerRefresh` only drives the
      * Gradle-task render path and never touches the daemon gate.
+     *
+     * `refreshAfterReady` mirrors the production view-open warm
+     * (`refreshOrchestrator` passes it `true`): once the daemon is ready it
+     * runs a post-warm `composePreviewDiscover`, which writes `previews.json`
+     * and populates the daemon's `PreviewIndex`. Without it the daemon comes
+     * up with an empty index, so a later `renderNow(ids)` from the save path
+     * has no previews to resolve and silently renders nothing. Tests that go
+     * on to drive daemon saves must pass `true`; defaults to `false` to keep
+     * the lean warm the chip-toggle/wear tests rely on.
      */
-    triggerWarmDaemon(filePath: string): Promise<boolean>;
+    triggerWarmDaemon(
+        filePath: string,
+        refreshAfterReady?: boolean,
+    ): Promise<boolean>;
     /**
      * Drive `composePreviewApplied` against the currently-wired
      * `gradleService` and await completion, so subsequent
@@ -2354,8 +2366,11 @@ export async function activate(
                     bundleId,
                 });
             },
-            triggerWarmDaemon(filePath: string): Promise<boolean> {
-                return warmDaemonForFile(filePath);
+            triggerWarmDaemon(
+                filePath: string,
+                refreshAfterReady = false,
+            ): Promise<boolean> {
+                return warmDaemonForFile(filePath, { refreshAfterReady });
             },
             async triggerBootstrapAppliedMarkers(): Promise<void> {
                 if (!gradleService) {

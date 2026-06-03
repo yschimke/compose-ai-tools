@@ -245,7 +245,12 @@ describeExternal(
             // stderr tail is already in the channel log thanks to
             // issue #1326's wrapping (`formatDaemonSpawnFailure`).
             const tWarm = phaseStart();
-            const warmed = await api.triggerWarmDaemon(kotlinFile);
+            // refreshAfterReady=true mirrors the production view-open warm: it
+            // runs a post-warm composePreviewDiscover that writes previews.json
+            // and populates the daemon's PreviewIndex. Without it the daemon
+            // comes up empty and a later save's renderNow has no previews to
+            // resolve (the daemon renders nothing).
+            const warmed = await api.triggerWarmDaemon(kotlinFile, true);
             phaseEnd("warmDaemonMs", tWarm);
             if (!warmed) {
                 // Post-mortem: surface every applied.json the workspace has on
@@ -516,16 +521,21 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Land the probe in the daemon's manifest before the loop via a
-                // full (Gradle) refresh: it discovers + renders every preview —
-                // posting setPreviews with the probe's card AND priming the
-                // daemon's manifest cache — so the first loop edit is a save where
-                // the probe is in-manifest and renders through the daemon. (A bare
-                // triggerSave doesn't suffice: a newly-added preview's image isn't
-                // rendered on the first save, and the daemon's deferred discovery
-                // only runs after a render, so the card never surfaces.)
+                // Land the probe in the DAEMON before the loop. The probe is a
+                // brand-new @Preview, so the daemon's PreviewIndex (seeded at
+                // warm time) doesn't know it yet; a save's renderNow can only
+                // resolve IDs the daemon already knows. A bare triggerSave or a
+                // Gradle triggerRefresh won't fix that — neither re-runs
+                // composePreviewDiscover into the daemon. Re-warming with
+                // refreshAfterReady=true does: the daemon is already up, so this
+                // just runs the post-warm discover (rewriting previews.json with
+                // the probe) and pre-renders the file's previews through the
+                // daemon, surfacing the probe's card.
                 api.resetMessages();
-                await api.triggerRefresh(kotlinFile, /* force */ true, "full");
+                await api.triggerWarmDaemon(
+                    kotlinFile,
+                    /* refreshAfterReady */ true,
+                );
                 await waitFor(
                     "probe discovered (card present)",
                     5 * 60_000,
