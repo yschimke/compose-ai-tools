@@ -70,10 +70,38 @@ fix_truststore() {
   fi
 }
 
-# Reuse an existing install; just make sure its trust store is patched.
+# Symlink the JDK into a directory Gradle scans for toolchains
+# (`/usr/lib/jvm`, one of the "Common Linux Locations"). Without this,
+# Gradle only finds the JDK when it is the *current* daemon JVM — so a
+# build whose daemon runs on a different JDK (e.g. the system JDK 21,
+# because `JAVA_HOME` did not propagate to a spawned `gradlew`) cannot
+# resolve a `languageVersion=17` toolchain even though the JDK is on
+# disk. This is what makes the repo's own `toolchainVersion=17`
+# daemon-jvm pin work under a JDK-21 launcher, and what lets a Confetti
+# `:proto` toolchain-17 module resolve while the daemon runs on JDK 21
+# for the Robolectric-36 render. foojay auto-provisioning is the usual
+# fallback, but cloud allowlists block it.
+link_into_jvm_dir() {
+  local jdk="$1"
+  local jvm_dir="/usr/lib/jvm"
+  local link="$jvm_dir/temurin-17"
+  if [[ ! -d "$jvm_dir" ]]; then
+    mkdir -p "$jvm_dir" 2>/dev/null || {
+      echo "[setup-cloud-jdk] WARNING: cannot create $jvm_dir; toolchain auto-detection may miss this JDK" >&2
+      return 0
+    }
+  fi
+  if [[ "$(readlink -f "$link" 2>/dev/null)" != "$(readlink -f "$jdk" 2>/dev/null)" ]]; then
+    ln -sfn "$jdk" "$link"
+    echo "[setup-cloud-jdk] linked $link -> $jdk (Gradle toolchain auto-detection)" >&2
+  fi
+}
+
+# Reuse an existing install; just make sure its trust store + symlink are set.
 if [[ -x "$install_dir/bin/java" ]]; then
   echo "[setup-cloud-jdk] reusing existing JDK at $install_dir" >&2
   fix_truststore "$install_dir"
+  link_into_jvm_dir "$install_dir"
   echo "$install_dir"
   exit 0
 fi
@@ -110,5 +138,6 @@ if [[ ! -x "$install_dir/bin/java" ]]; then
 fi
 
 fix_truststore "$install_dir"
+link_into_jvm_dir "$install_dir"
 echo "[setup-cloud-jdk] installed Temurin $tag at $install_dir" >&2
 echo "$install_dir"
