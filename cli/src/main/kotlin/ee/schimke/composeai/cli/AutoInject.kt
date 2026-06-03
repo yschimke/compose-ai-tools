@@ -3,6 +3,7 @@ package ee.schimke.composeai.cli
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.security.MessageDigest
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -501,15 +502,19 @@ allprojects {
  * re-running with the same plugin version leaves the file untouched (and its mtime, which keeps
  * Gradle's configuration cache happy).
  */
-internal fun materializeInitScript(storageDir: File, pluginVersion: String): File {
+internal fun materializeInitScript(
+  storageDir: File,
+  pluginVersion: String,
+  fileSystem: FileSystem = SystemFileSystem,
+): File {
   storageDir.mkdirs()
   val target = File(storageDir, INIT_SCRIPT_FILENAME)
   val desired = renderInitScript(pluginVersion)
   val existing =
     if (target.isFile)
-      runCatching { SystemFileSystem.read(target.path.toPath()) { readUtf8() } }.getOrNull()
+      runCatching { fileSystem.read(target.path.toPath()) { readUtf8() } }.getOrNull()
     else null
-  if (existing != desired) SystemFileSystem.write(target.path.toPath()) { writeUtf8(desired) }
+  if (existing != desired) fileSystem.write(target.path.toPath()) { writeUtf8(desired) }
   return target
 }
 
@@ -578,12 +583,15 @@ internal fun autoInjectInitScriptArgs(
  *
  * Visible for tests.
  */
-internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
+internal fun hasIncludedPluginBuild(
+  projectRoot: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
   val candidates =
     listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
   val pattern = Regex("""includeBuild\s*\(\s*["']gradle-plugin["']\s*\)""")
   return candidates.any {
-    it.isFile && pattern.containsMatchIn(SystemFileSystem.read(it.path.toPath()) { readUtf8() })
+    it.isFile && pattern.containsMatchIn(fileSystem.read(it.path.toPath()) { readUtf8() })
   }
 }
 
@@ -600,14 +608,16 @@ internal fun hasIncludedPluginBuild(projectRoot: File): Boolean {
  *
  * Visible for tests. Kept in lockstep with the embedded Kotlin function inside [renderInitScript].
  */
-internal fun settingsDeclaresExclusiveContentInPluginManagement(projectRoot: File): Boolean {
+internal fun settingsDeclaresExclusiveContentInPluginManagement(
+  projectRoot: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
   val candidates =
     listOf(File(projectRoot, "settings.gradle.kts"), File(projectRoot, "settings.gradle"))
   for (file in candidates) {
     if (!file.isFile) continue
     val raw =
-      runCatching { SystemFileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull()
-        ?: continue
+      runCatching { fileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: continue
     val text = stripGradleComments(raw)
     if (!Regex("""\bexclusiveContent\b""").containsMatchIn(text)) continue
     var i = 0
@@ -647,12 +657,15 @@ internal fun settingsDeclaresExclusiveContentInPluginManagement(projectRoot: Fil
  *
  * Visible for tests.
  */
-internal fun projectHasBuildscriptRepositories(projectDir: File): Boolean {
+internal fun projectHasBuildscriptRepositories(
+  projectDir: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): Boolean {
   for (name in listOf("build.gradle.kts", "build.gradle")) {
     val buildFile = File(projectDir, name)
     if (!buildFile.isFile) continue
     val raw =
-      runCatching { SystemFileSystem.read(buildFile.path.toPath()) { readUtf8() } }.getOrNull()
+      runCatching { fileSystem.read(buildFile.path.toPath()) { readUtf8() } }.getOrNull()
         ?: continue
     val text = stripGradleComments(raw)
     var i = 0

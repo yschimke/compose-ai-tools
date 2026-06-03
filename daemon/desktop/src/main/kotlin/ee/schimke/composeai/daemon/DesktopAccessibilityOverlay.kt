@@ -17,6 +17,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.max
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -95,7 +96,12 @@ object DesktopAccessibilityOverlay {
    * is missing / undecodable. Wrapped so a draw failure never strands the primary PNG — the caller
    * logs and continues.
    */
-  fun generate(sourcePng: File, nodes: List<AccessibilityNode>, destPng: File): File? {
+  fun generate(
+    sourcePng: File,
+    nodes: List<AccessibilityNode>,
+    destPng: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): File? {
     if (nodes.isEmpty()) return null
     if (!sourcePng.exists()) {
       System.err.println(
@@ -104,7 +110,7 @@ object DesktopAccessibilityOverlay {
       return null
     }
     return try {
-      generateInternal(sourcePng, nodes, destPng)
+      generateInternal(sourcePng, nodes, destPng, fileSystem)
     } catch (t: Throwable) {
       // Without this catch a BufferedImage / Graphics2D blow-up would propagate through
       // writeArtifacts and skip the JSON sidecars too — masking the failure as "no a11y data".
@@ -121,9 +127,10 @@ object DesktopAccessibilityOverlay {
     sourcePng: File,
     nodes: List<AccessibilityNode>,
     destPng: File,
+    fileSystem: FileSystem,
   ): File? {
     val source =
-      ImageIO.read(SystemFileSystem.read(sourcePng.path.toPath()) { readByteArray() }.inputStream())
+      ImageIO.read(fileSystem.read(sourcePng.path.toPath()) { readByteArray() }.inputStream())
     if (source == null) {
       System.err.println(
         "[compose-a11y] overlay skipped: ImageIO could not decode " +
@@ -133,9 +140,7 @@ object DesktopAccessibilityOverlay {
     }
     val composite = compose(source, emptyList(), nodes)
     destPng.parentFile?.mkdirs()
-    SystemFileSystem.write(destPng.path.toPath()) {
-      ImageIO.write(composite, "png", outputStream())
-    }
+    fileSystem.write(destPng.path.toPath()) { ImageIO.write(composite, "png", outputStream()) }
     return destPng
   }
 

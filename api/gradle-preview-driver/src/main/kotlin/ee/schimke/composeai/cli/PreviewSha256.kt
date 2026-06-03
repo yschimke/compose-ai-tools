@@ -6,6 +6,7 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import javax.imageio.ImageIO
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -26,16 +27,16 @@ import okio.Path.Companion.toPath
  * through `:cli` need the same change-detection hash function so their state files stay compatible
  * with the CLI's.
  */
-fun previewSha256(file: File): String =
+fun previewSha256(file: File, fileSystem: FileSystem = SystemFileSystem): String =
   if (file.extension.equals("gif", ignoreCase = true)) {
-    gifBookendFrameSha256(file) ?: sha256(readAllBytes(file))
+    gifBookendFrameSha256(file) ?: sha256(readAllBytes(file, fileSystem))
   } else {
-    sha256(readAllBytes(file))
+    sha256(readAllBytes(file, fileSystem))
   }
 
 /** Read [file]'s bytes through Okio's `FileSystem`. */
-private fun readAllBytes(file: File): ByteArray =
-  SystemFileSystem.read(file.path.toPath()) { readByteArray() }
+private fun readAllBytes(file: File, fileSystem: FileSystem = SystemFileSystem): ByteArray =
+  fileSystem.read(file.path.toPath()) { readByteArray() }
 
 internal fun sha256(bytes: ByteArray): String {
   val md = MessageDigest.getInstance("SHA-256")

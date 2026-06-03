@@ -4,6 +4,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -48,12 +49,16 @@ object BundleIrReplayStore {
   private fun entries(): Map<String, Entry> = cached ?: load().also { cached = it }
 
   /** Visible for tests — load from explicit paths instead of the system properties. */
-  fun loadFrom(bundleManifestFile: File, irDir: File): Map<String, Entry> {
+  fun loadFrom(
+    bundleManifestFile: File,
+    irDir: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): Map<String, Entry> {
     val descriptors =
       runCatching {
           JSON.decodeFromString(
               BundleManifestLite.serializer(),
-              SystemFileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
+              fileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
             )
             .intermediateRepresentations
         }
@@ -66,11 +71,11 @@ object BundleIrReplayStore {
         ir.resourcesPath
           ?.let { File(irDir, it.substringAfterLast('/')) }
           ?.takeIf { it.isFile }
-          ?.let { SystemFileSystem.read(it.path.toPath()) { readByteArray() } }
+          ?.let { fileSystem.read(it.path.toPath()) { readByteArray() } }
       out[ir.previewId] =
         Entry(
           ir.format,
-          SystemFileSystem.read(bytesFile.path.toPath()) { readByteArray() },
+          fileSystem.read(bytesFile.path.toPath()) { readByteArray() },
           resourcesBytes,
         )
     }

@@ -6,6 +6,7 @@ import java.io.File
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -92,8 +93,11 @@ data class BundlePngMetadata(val modulePath: String = "", val coverPreviewId: St
      * The trailing zip of a PNG+ZIP polyglot, the whole file for a bare zip, or null otherwise.
      * `internal` so [BundleExtractor] reuses the same polyglot scan instead of re-implementing it.
      */
-    internal fun extractZipBytes(file: File): ByteArray? {
-      val bytes = SystemFileSystem.read(file.path.toPath()) { readByteArray() }
+    internal fun extractZipBytes(
+      file: File,
+      fileSystem: FileSystem = SystemFileSystem,
+    ): ByteArray? {
+      val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
       if (bytes.size < PNG_SIG.size) return null
       if (bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) return bytes // bare zip "PK"
       for (i in PNG_SIG.indices) if (bytes[i] != PNG_SIG[i]) return null

@@ -18,14 +18,17 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
  * `history/diff/regions` — compares the latest render for a preview against an explicit history
  * baseline and returns connected changed-pixel regions.
  */
-class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryManager) :
-  DataProductRegistry {
+class HistoryDiffRegionsDataProductRegistry(
+  private val historyManager: HistoryManager,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) : DataProductRegistry {
 
   private val json = Json { encodeDefaults = false }
   private val subscriptions = ConcurrentHashMap<String, DiffParams>()
@@ -100,15 +103,14 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
     }
     val latestImage =
       ImageIO.read(
-        SystemFileSystem.read(File(latest.pngPath).path.toPath()) { readByteArray() }.inputStream()
+        fileSystem.read(File(latest.pngPath).path.toPath()) { readByteArray() }.inputStream()
       )
         ?: return DataProductRegistry.Outcome.FetchFailed(
           "could not decode latest PNG ${latest.pngPath}"
         )
     val baselineImage =
       ImageIO.read(
-        SystemFileSystem.read(File(baseline.pngPath).path.toPath()) { readByteArray() }
-          .inputStream()
+        fileSystem.read(File(baseline.pngPath).path.toPath()) { readByteArray() }.inputStream()
       )
         ?: return DataProductRegistry.Outcome.FetchFailed(
           "could not decode baseline PNG ${baseline.pngPath}"

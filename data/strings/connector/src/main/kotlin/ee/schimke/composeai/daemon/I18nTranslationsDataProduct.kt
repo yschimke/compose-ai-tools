@@ -9,6 +9,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -36,6 +37,7 @@ object I18nTranslationsDataProducer {
     resDirs: List<File> = resDirsFromSysprop(),
     defaultLocale: String =
       System.getProperty(DEFAULT_LOCALE_PROP)?.takeIf { it.isNotBlank() } ?: DEFAULT_LOCALE,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     val catalog = AndroidStringCatalog.load(resDirs = resDirs, defaultLocale = defaultLocale)
     val payload =
@@ -59,7 +61,7 @@ object I18nTranslationsDataProducer {
           },
       )
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(payload))
     }
   }

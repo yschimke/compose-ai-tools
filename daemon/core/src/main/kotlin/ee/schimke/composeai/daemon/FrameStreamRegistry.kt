@@ -5,6 +5,7 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.io.SystemFileSystem
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -19,7 +20,8 @@ import okio.Path.Companion.toPath
  */
 internal class FrameStreamRegistry(
   private val clock: () -> Long = System::currentTimeMillis,
-  private val pngBytesReader: (String) -> ByteArray? = { path -> readPngBytes(path) },
+  fileSystem: FileSystem = SystemFileSystem,
+  private val pngBytesReader: (String) -> ByteArray? = { path -> readPngBytes(path, fileSystem) },
   private val supportedCodecs: Set<StreamCodec> = setOf(StreamCodec.PNG),
 ) {
 
@@ -213,16 +215,16 @@ internal class FrameStreamRegistry(
   }
 
   companion object {
-    private fun readPngBytes(pngPath: String): ByteArray? {
+    private fun readPngBytes(pngPath: String, fileSystem: FileSystem): ByteArray? {
       val path =
         try {
           pngPath.toPath()
         } catch (_: Throwable) {
           return null
         }
-      if (!SystemFileSystem.exists(path)) return null
+      if (!fileSystem.exists(path)) return null
       return try {
-        SystemFileSystem.read(path) { readByteArray() }
+        fileSystem.read(path) { readByteArray() }
       } catch (_: Throwable) {
         null
       }

@@ -7,6 +7,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -48,6 +49,7 @@ object DisplayFilterDataProducer {
     previewId: String,
     pngFile: File,
     filters: List<DisplayFilter>,
+    fileSystem: FileSystem = SystemFileSystem,
   ): List<DisplayFilterArtifactRecord> {
     if (filters.isEmpty()) return emptyList()
     val previewDir = rootDir.resolve(previewId)
@@ -70,7 +72,7 @@ object DisplayFilterDataProducer {
             VariantEntry(filter = it.filter.id, path = it.path, mediaType = it.mediaType)
           }
       )
-    SystemFileSystem.write(previewDir.resolve(FILE_VARIANTS).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE_VARIANTS).path.toPath()) {
       writeUtf8(json.encodeToString(VariantsManifest.serializer(), manifest))
     }
     return records

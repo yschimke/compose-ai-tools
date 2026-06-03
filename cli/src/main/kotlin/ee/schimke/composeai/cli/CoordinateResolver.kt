@@ -9,6 +9,7 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import okio.FileSystem
 import okio.HashingSink
 import okio.Path.Companion.toPath
 import okio.blackholeSink
@@ -53,6 +54,7 @@ internal class CoordinateResolver(
   private val networkEnabled: Boolean = defaultNetworkEnabled(),
   private val remoteRepositories: List<String> = DEFAULT_REMOTE_REPOSITORIES,
   private val downloadCacheDir: File = defaultDownloadCacheDir(),
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   /** Outcome of resolving one coordinate. [file] is null when nothing was found or downloaded. */
@@ -152,7 +154,7 @@ internal class CoordinateResolver(
     // online run lives in [downloadCacheDir] (Maven layout) and must resolve offline too, since the
     // network gate only governs *new* fetches, not reading what we already have.
     for (root in repositoryRoots + downloadCacheDir) {
-      if (SystemFileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
+      if (fileSystem.metadataOrNull(root.path.toPath())?.isDirectory != true) continue
       // Try each candidate filename: the coordinate's recorded type first, then `.aar` (an Android
       // dep may be recorded as `jar` by an older bundle, or its `.jar` simply isn't published —
       // AndroidX libs ship `.aar`). [materialize] turns any `.aar` hit into its `classes.jar`.
@@ -163,20 +165,21 @@ internal class CoordinateResolver(
             root,
             "${coord.group.replace('.', '/')}/${coord.artifact}/${coord.version}/$fileName",
           )
-        if (SystemFileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
+        if (fileSystem.metadataOrNull(mavenPath.path.toPath())?.isRegularFile == true)
           found += mavenPath
         // Gradle modules-2 layout fans the artifact under per-hash dirs; collect every match under
         // <root>/<group>/<artifact>/<version>/<hash>/<fileName>. One directory level only, so a
         // huge cache root doesn't turn this into a full filesystem scan.
         val gradleVersionDir = File(root, "${coord.group}/${coord.artifact}/${coord.version}")
-        if (SystemFileSystem.metadataOrNull(gradleVersionDir.path.toPath())?.isDirectory == true) {
-          SystemFileSystem.listOrNull(gradleVersionDir.path.toPath())
+        if (fileSystem.metadataOrNull(gradleVersionDir.path.toPath())?.isDirectory == true) {
+          fileSystem
+            .listOrNull(gradleVersionDir.path.toPath())
             ?.asSequence()
             ?.map { it.toFile() }
-            ?.filter { SystemFileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
+            ?.filter { fileSystem.metadataOrNull(it.path.toPath())?.isDirectory == true }
             ?.mapNotNull { hashDir ->
               File(hashDir, fileName).takeIf {
-                SystemFileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
+                fileSystem.metadataOrNull(it.path.toPath())?.isRegularFile == true
               }
             }
             ?.let { found += it }
@@ -226,17 +229,17 @@ internal class CoordinateResolver(
         "extracted/${file.absolutePath.hashCode().toUInt().toString(16)}/classes.jar",
       )
     val destPath = dest.path.toPath()
-    if ((SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) return dest
+    if ((fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) return dest
     return try {
       // Read the `.aar` (a zip) as an Okio FileSystem — no java.util.zip.ZipFile boundary.
-      val aar = SystemFileSystem.openZip(file.path.toPath())
+      val aar = fileSystem.openZip(file.path.toPath())
       val entry = "classes.jar".toPath()
       if (!aar.exists(entry)) return null
       dest.parentFile?.mkdirs()
       aar.source(entry).use { source ->
-        SystemFileSystem.sink(destPath).buffer().use { it.writeAll(source) }
+        fileSystem.sink(destPath).buffer().use { it.writeAll(source) }
       }
-      dest.takeIf { (SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L }
+      dest.takeIf { (fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L }
     } catch (_: Exception) {
       null
     }
@@ -252,7 +255,7 @@ internal class CoordinateResolver(
           runBlocking {
             client.prepareGet(url).execute { response ->
               if (response.status.isSuccess()) {
-                SystemFileSystem.sink(destPath).buffer().use { sink ->
+                fileSystem.sink(destPath).buffer().use { sink ->
                   response.bodyAsChannel().copyTo(sink.outputStream())
                 }
                 true
@@ -262,20 +265,20 @@ internal class CoordinateResolver(
             }
           }
         }
-      if (ok && (SystemFileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) {
+      if (ok && (fileSystem.metadataOrNull(destPath)?.size ?: 0L) > 0L) {
         true
       } else {
-        SystemFileSystem.delete(destPath, mustExist = false)
+        fileSystem.delete(destPath, mustExist = false)
         false
       }
     } catch (_: Exception) {
-      SystemFileSystem.delete(destPath, mustExist = false)
+      fileSystem.delete(destPath, mustExist = false)
       false
     }
   }
 
   private fun sha256Hex(file: File): String =
-    SystemFileSystem.source(file.path.toPath()).buffer().use { source ->
+    fileSystem.source(file.path.toPath()).buffer().use { source ->
       val hashing = HashingSink.sha256(blackholeSink())
       hashing.buffer().use { it.writeAll(source) }
       hashing.hash.hex()

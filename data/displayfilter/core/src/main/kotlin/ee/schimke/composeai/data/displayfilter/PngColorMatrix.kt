@@ -4,6 +4,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -13,10 +14,15 @@ import okio.Path.Companion.toPath
  */
 object PngColorMatrix {
 
-  fun apply(source: File, destination: File, matrix: ColorMatrix4x5): File {
+  fun apply(
+    source: File,
+    destination: File,
+    matrix: ColorMatrix4x5,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): File {
     require(source.isFile) { "Source PNG '${source.absolutePath}' does not exist." }
     val image =
-      ImageIO.read(SystemFileSystem.read(source.path.toPath()) { readByteArray() }.inputStream())
+      ImageIO.read(fileSystem.read(source.path.toPath()) { readByteArray() }.inputStream())
         ?: error("Could not decode PNG '${source.absolutePath}'.")
     val output = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB)
     val width = image.width
@@ -30,9 +36,7 @@ object PngColorMatrix {
       output.setRGB(0, y, width, 1, row, 0, width)
     }
     destination.parentFile?.mkdirs()
-    SystemFileSystem.write(destination.path.toPath()) {
-      ImageIO.write(output, "png", outputStream())
-    }
+    fileSystem.write(destination.path.toPath()) { ImageIO.write(output, "png", outputStream()) }
     return destination
   }
 }
