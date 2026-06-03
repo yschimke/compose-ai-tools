@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -106,11 +107,12 @@ object PixelDiff {
     expected: ByteArray,
     outDir: File,
     tolerance: PixelDiffTolerance = PixelDiffTolerance.DEFAULT,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     try {
       outDir.mkdirs()
-      SystemFileSystem.write(File(outDir, "actual.png").path.toPath()) { write(actual) }
-      SystemFileSystem.write(File(outDir, "expected.png").path.toPath()) { write(expected) }
+      fileSystem.write(File(outDir, "actual.png").path.toPath()) { write(actual) }
+      fileSystem.write(File(outDir, "expected.png").path.toPath()) { write(expected) }
       val actualImg = decode(actual)
       val expectedImg = decode(expected)
       if (
@@ -141,7 +143,7 @@ object PixelDiff {
             }
           }
         }
-        SystemFileSystem.write(File(outDir, "diff.png").path.toPath()) {
+        fileSystem.write(File(outDir, "diff.png").path.toPath()) {
           ImageIO.write(diff, "png", outputStream())
         }
       }

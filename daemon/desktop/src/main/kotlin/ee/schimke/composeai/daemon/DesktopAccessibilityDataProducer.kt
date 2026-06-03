@@ -6,6 +6,7 @@ import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -59,13 +60,14 @@ object DesktopAccessibilityDataProducer {
     previewId: String,
     nodes: List<AccessibilityNode>,
     pngFile: File?,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    SystemFileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
       writeUtf8(json.encodeToString(AtfPayload.serializer(), AtfPayload(emptyList())))
     }
-    SystemFileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
       writeUtf8(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
     }
 
@@ -76,6 +78,7 @@ object DesktopAccessibilityDataProducer {
           sourcePng = pngFile,
           nodes = nodes,
           destPng = overlayDest,
+          fileSystem = fileSystem,
         )
       } else {
         null

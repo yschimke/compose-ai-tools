@@ -1,6 +1,7 @@
 package ee.schimke.composeai.renderer
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import android.app.Notification
 import android.content.Context
@@ -40,12 +41,12 @@ internal object NotificationSidecar {
    * silently no-ops when the property isn't set (e.g. unit-test invocations that don't go through
    * the gradle plugin's render task).
    */
-  fun write(previewId: String, notification: Notification, context: Context) {
+  fun write(previewId: String, notification: Notification, context: Context, fileSystem: FileSystem = SystemFileSystem) {
     try {
       val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
       val sidecar = pathFor(File(rendersDirPath), previewId)
       sidecar.parentFile?.mkdirs()
-      SystemFileSystem.write(sidecar.path.toPath()) {
+      fileSystem.write(sidecar.path.toPath()) {
         writeUtf8(buildJson(previewId, notification, context))
       }
     } catch (e: Throwable) {

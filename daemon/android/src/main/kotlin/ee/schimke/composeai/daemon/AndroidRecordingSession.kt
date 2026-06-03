@@ -1,6 +1,7 @@
 package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
@@ -57,6 +58,7 @@ class AndroidRecordingSession(
    * dispatch loop.
    */
   private val dispatchObservers: List<RecordingScriptDispatchObserver> = emptyList(),
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) : RecordingSession {
 
   private val timeline = mutableListOf<RecordingScriptEvent>()
@@ -823,7 +825,7 @@ class AndroidRecordingSession(
    */
   private fun copyAndMaybeScale(src: File, dst: File, scaleMul: Float): Pair<Int, Int> {
     val img =
-      ImageIO.read(SystemFileSystem.read(src.path.toPath()) { readByteArray() }.inputStream())
+      ImageIO.read(fileSystem.read(src.path.toPath()) { readByteArray() }.inputStream())
         ?: error("AndroidRecordingSession: failed to decode PNG ${src.absolutePath}")
     val outW = (img.width * scaleMul).toInt().coerceAtLeast(1)
     val outH = (img.height * scaleMul).toInt().coerceAtLeast(1)
@@ -844,7 +846,7 @@ class AndroidRecordingSession(
           }
         }
       }
-    SystemFileSystem.write(dst.path.toPath()) { ImageIO.write(out, "png", outputStream()) }
+    fileSystem.write(dst.path.toPath()) { ImageIO.write(out, "png", outputStream()) }
     return outW to outH
   }
 

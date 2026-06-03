@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -18,11 +19,9 @@ import okio.Path.Companion.toPath
  * a try/catch.
  */
 object Bitmaps {
-  fun readPng(file: File): Bitmap? =
+  fun readPng(file: File, fileSystem: FileSystem = SystemFileSystem): Bitmap? =
     try {
-      toBitmap(
-        ImageIO.read(SystemFileSystem.read(file.path.toPath()) { readByteArray() }.inputStream())
-      )
+      toBitmap(ImageIO.read(fileSystem.read(file.path.toPath()) { readByteArray() }.inputStream()))
     } catch (_: Throwable) {
       null
     }

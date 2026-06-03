@@ -29,6 +29,7 @@ import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /** Producer for `compose/semantics`, a compact SemanticsNode projection for inspector clients. */
@@ -42,10 +43,15 @@ object ComposeSemanticsDataProducer {
     prettyPrint = false
   }
 
-  fun writeArtifacts(rootDir: File, previewId: String, root: SemanticsNode) {
+  fun writeArtifacts(
+    rootDir: File,
+    previewId: String,
+    root: SemanticsNode,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ComposeSemanticsPayload(root = root.toWireNode())
-    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
     }
   }
@@ -217,12 +223,17 @@ object LayoutInspectorDataProducer {
     prettyPrint = false
   }
 
-  fun writeArtifacts(rootDir: File, previewId: String, previewContext: PreviewContext) {
+  fun writeArtifacts(
+    rootDir: File,
+    previewId: String,
+    previewContext: PreviewContext,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val capture = LayoutInspectorCaptureContext.from(previewContext) ?: return
     val layoutRoot = ComposeLayoutInspector.inspect(capture) ?: return
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = LayoutInspectorPayload(root = layoutRoot)
-    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(LayoutInspectorPayload.serializer(), payload))
     }
   }

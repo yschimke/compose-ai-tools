@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon.harness
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.FileSystem
 import okio.Path.Companion.toPath
 
 /**
@@ -267,11 +268,12 @@ class RealAndroidHarnessLauncher(
      * with `Assume.assumeTrue(target == "android")` and the harness build only sets the property
      * when `-Ptarget=android`-compatible test runs are configured.
      */
-    fun classpathFromProperty(): List<File>? {
+    fun classpathFromProperty(fileSystem: FileSystem = SystemFileSystem): List<File>? {
       val path = System.getProperty("composeai.harness.androidDaemonClasspath") ?: return null
       val file = File(path)
       if (!file.isFile) return null
-      return SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+      return fileSystem
+        .read(file.path.toPath()) { readUtf8() }
         .lineSequence()
         .filter { it.isNotBlank() }
         .map { File(it.trim()) }

@@ -43,6 +43,7 @@ import java.util.Collections
 import java.util.WeakHashMap
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 
@@ -96,6 +97,7 @@ class RenderEngine(
   private val previewOverrideExtensions: PreviewOverrideExtensions =
     PreviewOverrideExtensions.Empty,
   private val frameNanoTime: () -> Long = System::nanoTime,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   /**
@@ -351,7 +353,7 @@ class RenderEngine(
 
     state.outputFile.parentFile?.mkdirs()
     trace.section("render:writePng") {
-      SystemFileSystem.write(state.outputFile.path.toPath()) { write(pngData.bytes) }
+      fileSystem.write(state.outputFile.path.toPath()) { write(pngData.bytes) }
     }
 
     // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
