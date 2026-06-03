@@ -459,10 +459,11 @@ describeExternal(
             "measures warm edit→preview latency over consecutive saves",
             async function () {
                 const ITERATIONS = 4;
-                // A warm incremental edit on even a heavy module renders well
-                // under this; exceeding it means no *changed* image arrived =
+                // Edit 1 also pays the probe's first-image render (~130s on
+                // this heavy module); edits 2+ are pure body re-renders. A
+                // *changed* image that can't arrive within this window means a
                 // stale render.
-                const PER_EDIT_TIMEOUT_MS = 120_000;
+                const PER_EDIT_TIMEOUT_MS = 220_000;
                 // Distinct, visually-obvious fills so a stale render (same
                 // bytes) is provable, not just plausible.
                 const marker = "ComposeAiEditLoopProbe";
@@ -515,36 +516,39 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Establish the baseline by waiting for the probe's first actual
-                // IMAGE (`updateImage`), not just the card — a newly-discovered
-                // preview paints its card (`webviewPreviewsRendered`) before the
-                // daemon renders its pixels, so keying the baseline off the card
-                // makes the first loop edit absorb the slow first-image render.
-                // Generous window: this one pays the discovery + first-render
-                // cost so each loop edit measures a pure body change.
+                // Land the probe in the daemon's manifest before the loop. A
+                // newly-added preview's *image* doesn't render on the first save
+                // (that save renders the file's already-known previews; the new
+                // one is found by async discovery and only paints a card). So we
+                // wait for the probe's CARD here, then the first loop edit is the
+                // first save where the probe is in-manifest and gets rendered.
                 api.resetMessages();
                 api.triggerSave(kotlinFile);
-                const baseline = await waitFor(
-                    "probe baseline image (first updateImage)",
+                await waitFor(
+                    "probe discovered (card present)",
                     5 * 60_000,
                     300,
-                    () => probeImageOf() ?? undefined,
-                );
-                const baselineBuf = Buffer.from(baseline.imageData, "base64");
-                fs.writeFileSync(
-                    path.join(
-                        dumpDir,
-                        `probe-baseline-${baselineColor.slice(2)}.png`,
-                    ),
-                    baselineBuf,
-                );
-                console.log(
-                    `[editloop] baseline ${baselineColor} captured bytes=${baselineBuf.length}`,
+                    () =>
+                        api.getPostedMessages().find((m) => {
+                            const msg = m as PostedMessage;
+                            if (msg.command !== "setPreviews") return false;
+                            const previews = msg.previews as
+                                | Array<{ id?: string }>
+                                | undefined;
+                            return previews?.some((p) =>
+                                /ComposeAiEditLoopProbe/.test(
+                                    String(p.id ?? ""),
+                                ),
+                            );
+                        }),
                 );
 
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
-                let prevImage: string | null = baseline.imageData;
+                // Edit 1 captures the probe's first image (the daemon renders it
+                // on the first save where it's in-manifest); edits 2+ must each
+                // produce a *changed* image.
+                let prevImage: string | null = null;
                 for (let i = 0; i < ITERATIONS; i++) {
                     api.resetMessages();
                     src = fs
