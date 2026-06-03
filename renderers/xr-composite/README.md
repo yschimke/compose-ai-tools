@@ -55,6 +55,23 @@ Xvfb, Mesa routes GLX to the **llvmpipe** software rasterizer, so no GPU is
 required. (Confirmed against Filament's own `BUILDING.md` "Software
 Rasterization" section.)
 
+## Runtime requirements (where it actually bakes)
+
+Having the binary (auto-provisioned — see "Consumer flow" below) and being able to *run* it are two
+separate conditions; **both** must hold for a still to appear. When the host can't create a GL
+context the pipeline **skips gracefully** — the composite is an optional capture, so the render
+never fails and the interactive viewer + `scene.json` are unaffected.
+
+- **Linux (the proven path):** needs a virtual X display + Mesa software GL —
+  `sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0`. The plugin/CLI wrap the binary in
+  `xvfb-run -a` automatically when `DISPLAY` is unset; if neither a display nor `xvfb-run` is
+  available it skips. **No GPU** is required (llvmpipe). This repo's `Render XR composite (sample)`
+  CI job installs exactly these — a consumer's Linux box/CI needs them too, or composites are
+  skipped.
+- **macOS / Windows:** the binaries are published but **not yet runtime-verified** — only
+  Linux + llvmpipe is exercised end-to-end. Treat mac/win as best-effort until a runtime smoke
+  lands.
+
 ## CLI
 
 | flag | meaning | default |
