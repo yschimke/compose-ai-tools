@@ -1,5 +1,6 @@
 package ee.schimke.composeai.renderer.xr
 
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -20,10 +21,10 @@ import ee.schimke.composeai.xr.Vec3
  * fake XR runtime (no headset / OpenXR / SceneCore native — see
  * docs/design/XR_SPATIAL_PREVIEW.md and `:samples:xr-spatial`'s `SubspaceLayoutPoseTest`).
  *
- * This is the geometry half of the producer: it reads each named panel's `poseInRoot` and `size`
- * from the public spatial-semantics tree and maps them to the [SpatialScene] wire shape. Rendering
- * each panel's 2D content to the `texture` PNG is a separate pass; until then the texture path
- * follows the `<tag>.png` convention so the emitted scene is shape-complete.
+ * This reads each named panel's `poseInRoot` and `size` from the public spatial-semantics tree and
+ * maps them to the [SpatialScene] wire shape. It also recovers each panel's live content [View] (see
+ * [recordAllWithViews]) so the texture pass ([SubspaceSceneWriter.captureViewTextures]) can
+ * rasterise the real panel content into the `<tag>.png` the scene references.
  *
  * The caller owns the composition: it must enable the `android.software.xr.api.spatial` system
  * feature (so `Subspace` takes its spatial path) and `setContent { Subspace { … } }` with each
@@ -74,12 +75,31 @@ public object SubspaceSceneRecorder {
   public fun recordAll(
     rule: AndroidComposeTestRule<*, ComponentActivity>,
     previewId: String? = null,
-  ): SpatialScene {
-    val panels =
+  ): SpatialScene = recordAllWithViews(rule, previewId).scene
+
+  /** A recovered [SpatialScene] plus each panel's live content [View], keyed by panel id. */
+  public class RecordedSubspace(
+    public val scene: SpatialScene,
+    public val panelViews: Map<String, View>,
+  )
+
+  /**
+   * Like [recordAll], but also recovers each tagged panel's live content [View] so the texture pass
+   * can rasterise it. The view is reached through the runtime panel entity backing each
+   * spatial-semantics node (see [contentView]); panels whose view can't be recovered are simply
+   * absent from [RecordedSubspace.panelViews] (the scene still carries their geometry + texture
+   * path, so a missing capture degrades to a placeholder rather than failing the render).
+   */
+  public fun recordAllWithViews(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    previewId: String? = null,
+  ): RecordedSubspace {
+    val tagged =
       allSemanticsNodes(rule).mapNotNull { node ->
         val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@mapNotNull null
-        panelFrom(node, id = tag, parentId = null)
+        tag to node
       }
+    val panels = tagged.map { (tag, node) -> panelFrom(node, id = tag, parentId = null) }
     // The tag is the panel id and drives the `<id>.png` texture path, so duplicates would yield an
     // ambiguous scene + colliding captures. The tag-based `record` path fails on this implicitly
     // (onSubspaceNodeWithTag requires a unique match); make recordAll fail just as loudly.
@@ -88,7 +108,28 @@ public object SubspaceSceneRecorder {
       "Duplicate subspace panel testTag(s) ${duplicates.sorted()}: each SpatialPanel in an " +
         "@XrSubspacePreview must carry a unique testTag (panel ids and texture paths derive from it)."
     }
-    return SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
+    val views = tagged.mapNotNull { (tag, node) -> contentView(node)?.let { tag to it } }.toMap()
+    val scene = SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
+    return RecordedSubspace(scene, views)
+  }
+
+  /**
+   * Recovers the content [View] hosted by a panel node. A `SpatialPanel`'s
+   * [SubspaceSemanticsInfo.getSemanticsEntity] is the public `androidx.xr.scenecore.PanelEntity`,
+   * whose `rtEntity` is the runtime panel — under the fake XR runtime that's a
+   * `FakePanelEntity`, which holds the `android.view.View` the panel composed. Both the
+   * `getRtEntity$scenecore` bridge and `getView` are reached reflectively so this module compiles
+   * without the scenecore-testing fakes on its main classpath (they're a render-time dependency,
+   * mirroring how the node enumeration reaches `compose-testing` internals); the recorder tests are
+   * the canary if either shifts.
+   */
+  private fun contentView(node: SubspaceSemanticsInfo): View? {
+    val entity: Any = node.semanticsEntity ?: return null
+    return runCatching {
+        val rt = entity.javaClass.getMethod("getRtEntity\$scenecore").invoke(entity) ?: return null
+        rt.javaClass.getMethod("getView").invoke(rt) as? View
+      }
+      .getOrNull()
   }
 
   @Suppress("UNCHECKED_CAST")

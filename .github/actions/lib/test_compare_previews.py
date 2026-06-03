@@ -34,7 +34,8 @@ def _png_with(content: bytes) -> bytes:
 
 def _entry(*, id: str, module: str = "app", function: str = "Fn",
            source: str | None = "f.kt", png: str | None = None,
-           sha: str | None = None, captures: list | None = None) -> dict:
+           sha: str | None = None, captures: list | None = None,
+           kind: str | None = None) -> dict:
     return {
         "id": id,
         "module": module,
@@ -43,6 +44,9 @@ def _entry(*, id: str, module: str = "app", function: str = "Fn",
         "sourceFile": source,
         "pngPath": png,
         "sha256": sha,
+        # `params.kind` mirrors the CLI envelope; omit it for the common
+        # COMPOSE case so existing fixtures stay terse.
+        **({"params": {"kind": kind}} if kind is not None else {}),
         # CLI always emits `captures[]`; omitting it exercises the legacy
         # (pre-fan-out) fallback path in load_cli_output. Callers that want
         # a multi-capture entry pass an explicit list.
@@ -88,6 +92,18 @@ class LoadCliOutputTest(unittest.TestCase):
         path = self._write("legacy.json", [_entry(id="X", module="app", sha="abc")])
         out = cp.load_cli_output(path)
         self.assertEqual(out["app/X"]["sha256"], "abc")
+
+    def test_kind_defaults_to_compose_and_round_trips(self):
+        path = self._write("kinds.json", {
+            "schema": "compose-preview-show/v2",
+            "previews": [
+                _entry(id="Plain", module="app", png="/p.png", sha="abc"),
+                _entry(id="Spatial", module="app", captures=[], kind="XR_SUBSPACE"),
+            ],
+        })
+        out = cp.load_cli_output(path)
+        self.assertEqual(out["app/Plain"]["kind"], "COMPOSE")
+        self.assertEqual(out["app/Spatial"]["kind"], "XR_SUBSPACE")
 
     def test_envelope_with_no_previews_is_empty_dict(self):
         path = self._write("empty.json", {"schema": "compose-preview-show/v1", "previews": []})
@@ -634,6 +650,25 @@ class CompareMarkdownTest(unittest.TestCase):
         self.assertNotIn("No visual changes detected.", out)
         self.assertIn("### Render Failures", out)
         self.assertIn("Crashy", out)
+
+    def test_xr_subspace_preview_without_png_is_not_a_render_failure(self):
+        # An `@XrSubspacePreview` (kind=XR_SUBSPACE) emits scene.json + per-panel
+        # textures, never a preview-named PNG, so its empty sha must NOT be
+        # reported as a render failure (regression: it was flagged on every PR).
+        out = self._run(
+            {
+                "previews": [
+                    _entry(id="Ok", function="Same", sha="s", png="/ok.png"),
+                    _entry(id="Spatial", function="NowPlayingSpatialPreview",
+                           sha="", png="", captures=[], kind="XR_SUBSPACE"),
+                ],
+            },
+            {"app/Ok": {"sha256": "s", "functionName": "Same"}},
+        )
+        self.assertNotIn("[!WARNING]", out)
+        self.assertNotIn("Render Failures", out)
+        self.assertNotIn("failed to render", out)
+        self.assertNotIn("NowPlayingSpatialPreview", out)
 
 
 class MultiCaptureLoadTest(unittest.TestCase):

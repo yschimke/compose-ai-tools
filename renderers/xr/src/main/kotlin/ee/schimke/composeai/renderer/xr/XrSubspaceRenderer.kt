@@ -16,9 +16,9 @@ import java.io.File
  *
  * The caller owns the Robolectric environment: it must enable the
  * [SubspaceSceneRecorder.XR_SPATIAL_FEATURE] system feature **before** calling this (so `Subspace`
- * takes its spatial path), exactly as the render task / the tests do. Geometry-only: panel textures
- * aren't captured here — the emitted scene carries `<tag>.png` paths the viewer renders as
- * placeholders until the texture pass lands.
+ * takes its spatial path), exactly as the render task / the tests do. Each panel's content is
+ * rasterised to its `<tag>.png` texture next to the `scene.json`, so the viewer shows the real
+ * panels.
  */
 public object XrSubspaceRenderer {
 
@@ -43,8 +43,9 @@ public object XrSubspaceRenderer {
     rule.setContent { method.invoke(currentComposer, receiver) }
     rule.waitForIdle()
 
-    val scene = SubspaceSceneRecorder.recordAll(rule, previewId = previewId)
-    return SubspaceSceneWriter.writeScene(outputDir, scene)
+    val recorded = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = previewId)
+    SubspaceSceneWriter.captureViewTextures(outputDir, recorded.scene.panels, recorded.panelViews)
+    return SubspaceSceneWriter.writeScene(outputDir, recorded.scene)
   }
 
   /**
