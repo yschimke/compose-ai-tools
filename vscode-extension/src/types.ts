@@ -476,6 +476,14 @@ export type ExtensionToWebview =
     | { command: "setLoading"; previewId?: string }
     | { command: "clearLoading"; previewId: string }
     | { command: "markAllLoading" }
+    /**
+     * Leave focus mode for the grid layout. Posted by the host when the
+     * user switches the active editor to a different preview source file —
+     * the focused preview is backed by a file they're no longer editing,
+     * so the panel drops back to the grid browser. No-op in the webview
+     * when the panel isn't currently in focus mode.
+     */
+    | { command: "leaveFocusMode" }
     | { command: "setError"; previewId: string; message: string }
     | { command: "showMessage"; text: string }
     | { command: "clearAll" }

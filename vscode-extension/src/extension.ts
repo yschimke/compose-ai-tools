@@ -2024,6 +2024,11 @@ export async function activate(
                 void flushRecordingSessions({ encode: true });
                 panel?.postMessage({ command: "clearInteractive" });
                 panel?.postMessage({ command: "clearRecording" });
+                // Switching to another preview source file leaves focus
+                // mode — the focused preview is backed by a file the user
+                // is no longer editing, so drop the panel back to the grid
+                // browser. No-op in the webview if it isn't in focus mode.
+                panel?.postMessage({ command: "leaveFocusMode" });
                 clearHeavyRefreshOptIns();
                 // Reconcile the panel first, then pre-warm the daemon for
                 // this file's module. transitionToFile aborts the previous
@@ -2054,6 +2059,11 @@ export async function activate(
                 void flushRecordingSessions({ encode: true });
                 panel?.postMessage({ command: "clearInteractive" });
                 panel?.postMessage({ command: "clearRecording" });
+                // The sticky source file is gone — same "leave focus mode"
+                // teardown as the different-file branch above so the user
+                // isn't stranded in a focus stage for a file they can no
+                // longer see. No-op in the webview if it isn't focused.
+                panel?.postMessage({ command: "leaveFocusMode" });
                 clearHeavyRefreshOptIns();
                 // Route through the same preload-first sequence as the
                 // happy path so this fallback can no longer skip preload —
@@ -2089,6 +2099,11 @@ export async function activate(
                 )
             ) {
                 clearHeavyRefreshOptIns();
+                // The sticky source file's tab was closed — leave focus
+                // mode so the panel drops back to the grid browser instead
+                // of pinning a focus stage to a file that's no longer open.
+                // No-op in the webview if it isn't currently focused.
+                panel?.postMessage({ command: "leaveFocusMode" });
                 // Same fallback pattern as the focus-change handler above:
                 // route the active editor through transitionToFile so the
                 // new module's preload lands before refresh, instead of

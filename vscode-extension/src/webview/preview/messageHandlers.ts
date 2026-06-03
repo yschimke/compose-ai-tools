@@ -92,13 +92,12 @@ export interface PreviewMessageContext {
     applyFilters(): void;
     applyLayout(): void;
     /**
-     * One-shot focus restoration triggered by the first `setPreviews`
-     * after a webview boot. If the panel was in focus mode at unload,
-     * the boot defers re-entering focus until this call verifies the
-     * previously focused preview is in the new manifest. No-op after
-     * it's consumed once or when there's no pending focus to restore.
+     * Leave focus mode for the grid layout. Driven by the host when the
+     * user switches to another editor — the focused preview is backed by
+     * a file they're no longer editing, so we drop back to the grid
+     * browser. No-op when the panel isn't in focus mode.
      */
-    applyPendingFocusRestore(): void;
+    leaveFocusMode(): void;
     applyInteractiveButtonState(): void;
     applyRecordingButtonState(): void;
     saveFilterState(): void;
@@ -191,6 +190,9 @@ export function handleExtensionMessage(
             return handleSetPreviews(msg, ctx);
         case "markAllLoading":
             ctx.loadingOverlay.markAll();
+            return;
+        case "leaveFocusMode":
+            ctx.leaveFocusMode();
             return;
         case "clearAll":
             return handleClearAll(ctx);
@@ -393,10 +395,6 @@ function handleSetPreviews(
     ctx.restoreFilterState();
     ctx.applyFilters();
     ctx.applyLayout();
-    // Lazy focus-mode restore — re-enters focus only if the previously
-    // focused preview survived the new manifest. See the deferred-restore
-    // note on `pendingFocusRestoreId` in `main.ts`.
-    ctx.applyPendingFocusRestore();
     // setPreviews can rebuild the focused card from scratch; re-stamp the live
     // badge so the LIVE chip reattaches to the right card(s). Drop any live
     // previewIds that are gone from the new manifest — silent cleanup; the

@@ -2858,26 +2858,33 @@ export class PreviewApp extends LitElement {
         // is hidden and the persisted layout from the sidebar panel
         // shouldn't carry over.
         //
-        // Focus mode is restored lazily: cold boots don't enter focus
-        // until `setPreviews` arrives and confirms the previously focused
-        // preview is in the active file's manifest. Otherwise reopening
-        // the panel against a different file (or no open file) leaves
-        // the user staring at an empty focus stage with the filter
-        // toolbar hidden. `pendingFocusRestoreId` carries the previously
-        // focused previewId across to the first `setPreviews` handler.
-        let pendingFocusRestoreId: string | null = null;
+        // Focus mode is intentionally NOT restored across a cold boot
+        // (an IDE restart). The user may have left the panel focused on a
+        // preview from a file they're no longer editing, so silently
+        // re-entering focus against whatever happens to be open is
+        // disorienting. Instead we fall back to the prior multi-preview
+        // layout (or the grid) and let the user re-enter focus explicitly.
         if (bundleMode) {
             filterToolbar.setLayoutValue("focus");
             state.layout = "focus";
         } else if (state.layout === "focus") {
-            pendingFocusRestoreId = state.focusedPreviewId ?? null;
             const fallback = state.previousLayout ?? "grid";
             filterToolbar.setLayoutValue(fallback);
             state.layout = fallback;
-            // Clear the persisted focused-preview marker until we
-            // confirm the focused preview reappears. If `setPreviews`
-            // re-enters focus mode, `publishScopedPreview` will write
-            // it back; otherwise we stay out of focus.
+            // Seed the scope-publish dedupe with the previously focused
+            // preview so the `applyLayout()` below actually emits
+            // `previewScopeChanged(null)` and the host widens the History
+            // panel back to the whole module. Without this the dedupe
+            // swallows the null (a fresh `lastScopedPreviewId` starts null,
+            // so `null === null` short-circuits) and a History panel still
+            // scoped to the just-left preview — e.g. after a sidebar
+            // hide/show recreated the webview while the host kept running —
+            // stays pinned to a preview the UI no longer shows.
+            previewStore.setState({
+                lastScopedPreviewId: state.focusedPreviewId ?? null,
+            });
+            // Drop the persisted focus marker so nothing downstream
+            // tries to re-enter focus mode for this boot.
             state.focusedPreviewId = null;
             vscode.setState(state);
         } else if (
@@ -2895,10 +2902,6 @@ export class PreviewApp extends LitElement {
 
         filterToolbar.addEventListener("layout-changed", () => {
             const next = filterToolbar.getLayoutValue();
-            // User took control of the layout — drop any deferred
-            // focus-restore from the previous session so a late-arriving
-            // `setPreviews` doesn't yank them back into focus mode.
-            pendingFocusRestoreId = null;
             if (next === "focus" && state.layout !== "focus") {
                 // state.layout is now narrowed to "grid"|"flow"|"column"|undefined.
                 const prev = state.layout ?? "grid";
@@ -3244,18 +3247,7 @@ export class PreviewApp extends LitElement {
             applyRelativeSizing,
             applyFilters,
             applyLayout,
-            applyPendingFocusRestore: () => {
-                if (!pendingFocusRestoreId) return;
-                const target = pendingFocusRestoreId;
-                // One-shot — clear before acting so a focusOnCard call
-                // that re-runs applyLayout (and therefore setPreviews
-                // handlers, in pathological re-entrancy) doesn't loop.
-                pendingFocusRestoreId = null;
-                const card = grid
-                    .getVisibleCards()
-                    .find((c) => c.dataset.previewId === target);
-                if (card) focusController.focusOnCard(card);
-            },
+            leaveFocusMode: () => focusController.leaveFocusMode(),
             applyInteractiveButtonState,
             applyRecordingButtonState,
             saveFilterState,

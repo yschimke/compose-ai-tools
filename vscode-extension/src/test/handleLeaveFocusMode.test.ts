@@ -1,9 +1,11 @@
-// Dispatcher routing for the `triggerBundleToggle` message — proves
-// the extension-side test trigger
-// (`ComposePreviewTestApi.triggerWebviewBundleToggle`) reaches the
-// webview's `BundleController.toggleBundle` via
-// `handleExtensionMessage`. Without this contract the e2e bundle-chain
-// suite would silently pass when the trigger drops on the floor.
+// Dispatch contract for the host-driven "leave focus mode" message.
+//
+// The host posts `{ command: "leaveFocusMode" }` when the user switches
+// the active editor to a different preview source file (see the
+// `onDidChangeActiveTextEditor` handler in `extension.ts`). The webview
+// drops the focus layout for the grid browser so the user isn't stranded
+// in a focus stage for a file they're no longer editing. This test locks
+// in the dispatcher → `ctx.leaveFocusMode()` wiring.
 
 import * as assert from "assert";
 import {
@@ -14,11 +16,11 @@ import type { ExtensionToWebview } from "../types";
 
 interface ContextWithSpy {
     ctx: PreviewMessageContext;
-    toggleCalls(): string[];
+    leaveCalls(): number;
 }
 
 function buildContextStub(): ContextWithSpy {
-    const calls: string[] = [];
+    const calls = { leave: 0 };
     const noop = () => {};
     const ctx: PreviewMessageContext = {
         vscode: {
@@ -47,7 +49,9 @@ function buildContextStub(): ContextWithSpy {
         applyRelativeSizing: noop,
         applyFilters: noop,
         applyLayout: noop,
-        leaveFocusMode: noop,
+        leaveFocusMode: () => {
+            calls.leave += 1;
+        },
         applyInteractiveButtonState: noop,
         applyRecordingButtonState: noop,
         saveFilterState: noop,
@@ -60,40 +64,17 @@ function buildContextStub(): ContextWithSpy {
         deactivateAllBundles: noop,
         refreshBundleState: noop,
         promoteErrorsBundle: noop,
-        toggleBundle: (bundleId: string) => {
-            calls.push(bundleId);
-        },
+        toggleBundle: noop,
         setSpatialScene: noop,
     };
-    return { ctx, toggleCalls: () => calls };
+    return { ctx, leaveCalls: () => calls.leave };
 }
 
-describe("handleExtensionMessage triggerBundleToggle", () => {
-    it("routes triggerBundleToggle to ctx.toggleBundle with the bundleId", () => {
-        const { ctx, toggleCalls } = buildContextStub();
-        const msg: ExtensionToWebview = {
-            command: "triggerBundleToggle",
-            bundleId: "a11y",
-        };
+describe("handleExtensionMessage leaveFocusMode", () => {
+    it("routes leaveFocusMode to ctx.leaveFocusMode", () => {
+        const { ctx, leaveCalls } = buildContextStub();
+        const msg: ExtensionToWebview = { command: "leaveFocusMode" };
         handleExtensionMessage(msg, ctx);
-        assert.deepStrictEqual(toggleCalls(), ["a11y"]);
-    });
-
-    it("forwards the literal bundleId — no normalisation or validation in the dispatch layer", () => {
-        // Validation belongs in `BundleController.toggleBundle` (it
-        // short-circuits unknown ids via `getBundle`). Keeping the
-        // dispatcher transparent matches the rest of the message
-        // handlers and lets future bundle ids land without
-        // touching this file.
-        const { ctx, toggleCalls } = buildContextStub();
-        handleExtensionMessage(
-            { command: "triggerBundleToggle", bundleId: "history" },
-            ctx,
-        );
-        handleExtensionMessage(
-            { command: "triggerBundleToggle", bundleId: "not-a-bundle" },
-            ctx,
-        );
-        assert.deepStrictEqual(toggleCalls(), ["history", "not-a-bundle"]);
+        assert.strictEqual(leaveCalls(), 1);
     });
 });
