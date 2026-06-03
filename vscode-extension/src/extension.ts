@@ -2749,8 +2749,16 @@ function invalidateModuleCache(filePath: string): void {
     }
     const module = gradleService.resolveModule(filePath);
     if (module) {
+        // Invalidate Gradle's discover/compile cache so the next discover
+        // recompiles against the edited sources. Deliberately KEEP
+        // moduleManifestCache (the render-id snapshot): an identity-only edit
+        // doesn't change the preview set, so the daemon save path reuses the
+        // cached ids and dispatches renderNow without paying a Gradle
+        // composePreviewDiscover on every keystroke. Set changes still refresh
+        // the snapshot — drops via sourceMayHaveDroppedCachedPreviews on the
+        // save, adds via the daemon's discoveryUpdated push — both of which call
+        // reconcilePreviewManifest.
         gradleService.invalidateCache(module);
-        moduleManifestCache.delete(module.modulePath);
     }
 }
 
@@ -2881,15 +2889,14 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
             ? editorScope.file
             : undefined;
-    // The manifest cache is wiped by `invalidateModuleCache` on every save and
-    // file-change, and is only repopulated asynchronously (the daemon's
-    // `discoveryUpdated` push, or a Gradle refresh). An identity-only edit (e.g.
-    // tweaking a colour) keeps the daemon quiet — no `discoveryUpdated` — so the
-    // cache stays empty after the wipe. Without recovering here we'd derive
-    // `renderIds=0` and the save would render nothing: previews silently stop
-    // updating after the first invalidation. `sourceMayHaveDroppedCachedPreviews`
-    // can't cover this (it returns false for an empty preview list), so an empty
-    // cache must trigger a discover to recover the render ids.
+    // The manifest snapshot persists across identity edits, but it can be empty
+    // on a cold save: the first save before any discover ran, or right after an
+    // explicit refresh cleared it. An empty snapshot would derive renderIds=0
+    // and render nothing — and an identity edit keeps the daemon quiet, so no
+    // `discoveryUpdated` would repopulate it. Recover by discovering once here.
+    // (`sourceMayHaveDroppedCachedPreviews` can't cover this — it returns false
+    // for an empty preview list.) Once populated, subsequent identity saves skip
+    // this and reuse the snapshot.
     if (manifest.length === 0) {
         const fresh = await reconcilePreviewManifest(module, repaintFile);
         if (fresh) {
