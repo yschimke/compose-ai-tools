@@ -67,7 +67,7 @@ dependencies {
   implementation(libs.navigation.compose)
   // Exercises the `Font(GoogleFont(...), provider)` path under Robolectric —
   // the shadow in `renderer-android` swaps the GMS provider lookup for a
-  // local cache under `.compose-preview-history/fonts/`.
+  // shared local cache under `~/.cache/composeai/fonts/`.
   implementation("androidx.compose.ui:ui-text-google-fonts")
   // Roborazzi's per-preview clock control annotation. Source-retained
   // metadata read by `DiscoverPreviewsTask` — the annotation itself has no

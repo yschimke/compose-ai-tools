@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -314,6 +315,7 @@ internal class CoordinateResolver(
       val gradleHome =
         System.getenv("GRADLE_USER_HOME")?.let(::File) ?: home?.let { File(it, ".gradle") }
       if (gradleHome != null) roots += File(gradleHome, "caches/modules-2/files-2.1")
+      legacyDownloadCacheDir()?.let { roots += it }
       return roots
     }
 
@@ -333,8 +335,15 @@ internal class CoordinateResolver(
       System.getProperty("composeai.bundle.cacheDir")?.let {
         return File(it)
       }
-      val home = System.getProperty("user.home")?.let(::File) ?: File(".")
-      return File(home, ".cache/compose-preview/bundle-deps")
+      return composeAiCacheDir("bundle-deps")
     }
+
+    /**
+     * Pre-XDG download-cache location (`~/.cache/compose-preview/bundle-deps`). Added to
+     * [defaultRepositoryRoots] as a read-only fallback so artifacts a previous version downloaded
+     * still resolve offline after the cache moved to [composeAiCacheDir]; nothing writes here.
+     */
+    private fun legacyDownloadCacheDir(): File? =
+      System.getProperty("user.home")?.let { File(it, ".cache/compose-preview/bundle-deps") }
   }
 }

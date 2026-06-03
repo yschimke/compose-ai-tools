@@ -29,11 +29,12 @@ import java.net.URLEncoder
  * builds), resolve a TTF from a local cache keyed by `(name, weight, italic)`,
  * and call the supplied callback synchronously with a [Typeface.createFromFile].
  *
- * The cache lives under `.compose-preview-history/fonts/` so downloaded
- * fonts commit alongside baselines — first author run over the network, every
- * subsequent run (author + CI) offline. The cache directory is plumbed via
- * the `composeai.fonts.cacheDir` system property by the plugin's
- * `composePreviewRender` `Test` task.
+ * The cache lives in a shared, machine-local directory
+ * (`$XDG_CACHE_HOME/composeai/fonts`, else `~/.cache/composeai/fonts`) — a
+ * font keyed by `(family, weight, italic)` is identical across projects, so it
+ * resolves once per machine and is reused by every render thereafter. The cache
+ * directory is plumbed via the `composeai.fonts.cacheDir` system property by the
+ * plugin's `composePreviewRender` `Test` task.
  *
  * Consumer code is unchanged: the same `Font(GoogleFont(...))` that runs on
  * device renders under Robolectric with zero `src/debug` fork, zero
@@ -59,7 +60,7 @@ internal object GoogleFontCacheAccess {
 /**
  * Represents a single resolved Google font file keyed by family + axes.
  * Serialised on disk as `<slug>-<weight>[-italic].ttf` so the cache is
- * human-readable and diffable under `.compose-preview-history/fonts/`.
+ * human-readable under `~/.cache/composeai/fonts/`.
  */
 internal data class GoogleFontKey(
     val name: String,

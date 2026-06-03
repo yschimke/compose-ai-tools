@@ -450,12 +450,7 @@ internal object ComposePreviewTasks {
     val previewsJsonProvider = previewOutputDir.map { it.file("previews.json").asFile.absolutePath }
     val rendersDirProvider = previewOutputDir.map { it.dir("renders").asFile.absolutePath }
     val outputFileProvider = previewOutputDir.map { it.file("daemon-launch.json") }
-    val daemonFontsCacheDir =
-      project.layout.projectDirectory
-        .dir(".compose-preview-history")
-        .dir("fonts")
-        .asFile
-        .absolutePath
+    val daemonFontsCacheDir = composeAiFontsCacheDir(project)
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     val daemonCheapSignalFiles =

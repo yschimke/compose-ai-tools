@@ -215,7 +215,7 @@ fun BadButtonPreview() {
  * no `src/debug` fork, no preloaded resource fonts. The shadow in
  * `renderer-android` intercepts `FontsContractCompat.requestFont` and swaps
  * in a TTF downloaded on first render from `fonts.googleapis.com/css2`,
- * cached under `.compose-preview-history/fonts/`.
+ * cached under `~/.cache/composeai/fonts/`.
  *
  * Compares four visually distinct families at multiple weights:
  *  - **Roboto** — static family with pre-rendered weights 100/400/700/900.

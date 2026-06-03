@@ -1,6 +1,7 @@
 package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import java.io.File
 import java.security.MessageDigest
 import okio.FileSystem
@@ -529,15 +530,11 @@ internal fun initScriptDigest(pluginVersion: String): String {
  * Default per-version storage directory under the user home, picked so multiple CLI versions can
  * coexist without racing on the same file path. Mirrors VS Code's `globalStorageUri` approach.
  *
- * Honours `XDG_CACHE_HOME` when set (Linux/BSD), else falls back to `~/.compose-preview/init`.
+ * Lives under the shared [composeAiCacheDir] (`$XDG_CACHE_HOME/composeai/init` when set, else
+ * `~/.cache/composeai/init`), versioned so multiple CLI versions coexist.
  */
-internal fun defaultInitScriptStorageDir(version: String): File {
-  val xdg = System.getenv("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
-  val base =
-    if (xdg != null) File(xdg, "compose-preview/init")
-    else File(System.getProperty("user.home"), ".compose-preview/init")
-  return File(base, version)
-}
+internal fun defaultInitScriptStorageDir(version: String): File =
+  File(composeAiCacheDir("init"), version)
 
 /**
  * Returns the `--init-script <path>` arguments to prepend to every Gradle invocation, or an empty
