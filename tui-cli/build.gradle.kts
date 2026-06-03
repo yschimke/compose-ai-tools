@@ -63,6 +63,7 @@ val composePreviewDaemonDesktop =
   }
 
 dependencies {
+  implementation(project(":common-io"))
   implementation(project(":preview-data-api"))
   implementation(project(":gradle-preview-driver"))
   implementation(project(":render-session-api"))

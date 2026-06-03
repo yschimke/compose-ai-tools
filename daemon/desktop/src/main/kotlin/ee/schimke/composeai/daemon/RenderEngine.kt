@@ -36,12 +36,15 @@ import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionP
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.theme.ThemePayload
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.Base64
 import java.util.Collections
 import java.util.WeakHashMap
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import org.jetbrains.skia.EncodedImageFormat
 
 /**
@@ -94,6 +97,7 @@ class RenderEngine(
   private val previewOverrideExtensions: PreviewOverrideExtensions =
     PreviewOverrideExtensions.Empty,
   private val frameNanoTime: () -> Long = System::nanoTime,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   /**
@@ -348,7 +352,9 @@ class RenderEngine(
       }
 
     state.outputFile.parentFile?.mkdirs()
-    trace.section("render:writePng") { state.outputFile.writeBytes(pngData.bytes) }
+    trace.section("render:writePng") {
+      fileSystem.write(state.outputFile.path.toPath()) { write(pngData.bytes) }
+    }
 
     // Display filters — post-capture colour-matrix variants (grayscale/bedtime, invert,
     // daltonizer simulations). Gated on `composeai.displayfilter.filters` being non-empty so the

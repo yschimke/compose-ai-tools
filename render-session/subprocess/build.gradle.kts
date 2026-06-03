@@ -18,6 +18,7 @@ plugins {
 
 dependencies {
   api(project(":render-session-api"))
+  implementation(project(":common-io"))
 
   // Existing JSON-RPC client + subprocess spawn infrastructure. Public surface here is the
   // `RenderSession` contract; `:mcp` types stay internal to this module.

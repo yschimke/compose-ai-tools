@@ -5,9 +5,12 @@ import ee.schimke.composeai.daemon.protocol.DataProductAttachment
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Reusable base for the "per-previewId, per-kind, file-on-disk" data-product shape that most D2
@@ -38,7 +41,8 @@ import kotlinx.serialization.json.JsonElement
  *   file, not its own).
  */
 abstract class FileBackedDataProductRegistry(
-  final override val capabilities: List<DataProductCapability>
+  final override val capabilities: List<DataProductCapability>,
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) : DataProductRegistry {
 
   private val byKind: Map<String, DataProductCapability> = capabilities.associateBy { it.kind }
@@ -71,7 +75,7 @@ abstract class FileBackedDataProductRegistry(
    * treated the same as missing-file by [fetch] and [attachmentsFor].
    */
   protected open fun readInlinePayload(previewId: String, kind: String, file: File): JsonElement? =
-    DEFAULT_JSON.parseToJsonElement(file.readText())
+    DEFAULT_JSON.parseToJsonElement(fileSystem.read(file.path.toPath()) { readUtf8() })
 
   /**
    * Optional extras attached alongside the payload — e.g. [DisplayFilterDataProductRegistry]

@@ -1,9 +1,12 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.util.zip.CRC32
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Minimal pure-JVM Animated PNG encoder. Used by [DesktopRecordingSession.encode] to assemble the
@@ -56,6 +59,7 @@ object ApngEncoder {
     delayDenominator: Short,
     loopCount: Int,
     out: File,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     require(frames.isNotEmpty()) { "ApngEncoder: at least one frame required" }
     require(delayDenominator > 0) { "ApngEncoder: delayDenominator must be > 0" }
@@ -67,7 +71,7 @@ object ApngEncoder {
       raf.write(PNG_SIGNATURE)
 
       // Read the first frame's IHDR + IDATs to seed the output IHDR + frame 0 fcTL+IDAT.
-      val firstFrame = readPngChunks(frames[0])
+      val firstFrame = readPngChunks(frames[0], fileSystem)
       val ihdr =
         firstFrame.firstOrNull { it.type == CHUNK_TYPE_IHDR }
           ?: error("ApngEncoder: ${frames[0]} has no IHDR chunk")
@@ -96,7 +100,7 @@ object ApngEncoder {
 
       // Frames 1..N — fcTL + fdAT(seq, idatPayload) per frame.
       for (frameIndex in 1 until frames.size) {
-        val frameChunks = readPngChunks(frames[frameIndex])
+        val frameChunks = readPngChunks(frames[frameIndex], fileSystem)
         val frameIhdr =
           frameChunks.firstOrNull { it.type == CHUNK_TYPE_IHDR }
             ?: error("ApngEncoder: ${frames[frameIndex]} has no IHDR chunk")
@@ -167,8 +171,8 @@ object ApngEncoder {
 
   private data class PngChunk(val type: String, val data: ByteArray)
 
-  private fun readPngChunks(file: File): List<PngChunk> {
-    val bytes = file.readBytes()
+  private fun readPngChunks(file: File, fileSystem: FileSystem): List<PngChunk> {
+    val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
     require(bytes.size > PNG_SIGNATURE.size) {
       "ApngEncoder: ${file.absolutePath} is too small to be a PNG"
     }

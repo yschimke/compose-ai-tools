@@ -10,9 +10,12 @@ import com.jakewharton.mosaic.ui.Text
 import com.jakewharton.mosaic.ui.TextStyle
 import ee.schimke.composeai.cli.AccessibilityEntry
 import ee.schimke.composeai.cli.AccessibilityReport
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.tui.LiveSession
 import ee.schimke.composeai.tui.PreviewIndex
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Right pane (wide) / third tab (narrow): structured data products for the selected preview. The
@@ -81,11 +84,19 @@ fun DataPane(
 
 private val json = Json { ignoreUnknownKeys = true }
 
-private fun loadA11yEntry(projectDir: java.io.File, previewId: String): AccessibilityEntry? {
+private fun loadA11yEntry(
+  projectDir: java.io.File,
+  previewId: String,
+  fileSystem: FileSystem = SystemFileSystem,
+): AccessibilityEntry? {
   val file = projectDir.resolve("build/compose-previews/accessibility.json")
   if (!file.isFile) return null
   return try {
-    val report = json.decodeFromString(AccessibilityReport.serializer(), file.readText())
+    val report =
+      json.decodeFromString(
+        AccessibilityReport.serializer(),
+        fileSystem.read(file.path.toPath()) { readUtf8() },
+      )
     report.entries.firstOrNull { it.previewId == previewId }
   } catch (_: Throwable) {
     null

@@ -65,6 +65,15 @@ A few specifics that come up:
   `test:electron`. Use it for shape, layout, and theming; use the
   electron suite for behavioural correctness (message routing, daemon
   round-trips, focus traversal).
+- **WebGL fixtures** (the 3D `spatial-view`): the launcher runs Chromium
+  with software WebGL (`--enable-unsafe-swiftshader --use-gl=angle`), so
+  no GPU is needed. three.js loads quad textures through its own image
+  loader (not `.preview-card img`), which the rAF/img/animation settle
+  can't observe — give those a beat with a `settleMs` field on the
+  fixture (the `spatial-view` fixture uses `1600`). Set
+  `HARNESS_CHROMIUM=<path-to-chrome>` when the default Playwright
+  Chromium download isn't present (some sandboxes ship only the full
+  build, not the headless shell).
 
 ## Run
 

@@ -95,6 +95,7 @@ object PreviewDiscovery {
       TILE_PREVIEW_FQN,
       NOTIFICATION_PREVIEW_FQN,
       GLANCE_APPWIDGET_PREVIEW_FQN,
+      XR_SUBSPACE_PREVIEW_FQN,
     )
   private val CONTAINER_FQNS =
     setOf(
@@ -141,6 +142,13 @@ object PreviewDiscovery {
   // tile. The annotated function is a `@Composable @GlanceComposable () -> Unit` body invoked
   // from a synthetic `GlanceAppWidget.providePreview(...)` at render time.
   internal const val GLANCE_APPWIDGET_PREVIEW_FQN = "androidx.glance.preview.Preview"
+
+  // Our own opt-in for XR spatial (subspace) previews. The annotated function is a `@Composable`
+  // whose body is an `androidx.xr.compose.spatial.Subspace { … }`; it's not captured to a single
+  // PNG but rendered by a separate `:renderer-xr` Robolectric task that recovers the panel layout
+  // and writes a `scene.json`. Same FQN-match policy as the other annotations we own. See
+  // `XrSubspacePreview.kt`.
+  internal const val XR_SUBSPACE_PREVIEW_FQN = "ee.schimke.composeai.preview.XrSubspacePreview"
 
   // `@LauncherWidgetResize` — fan-out annotation that emits one capture per whole-cell stop on
   // the walk between source and target sizes. The renderer renders each stop through the same
@@ -676,10 +684,12 @@ object PreviewDiscovery {
     val isTilePreview = isAnyTilePreviewAnnotation(annotations, scanResult)
     val isNotificationPreview = isAnyNotificationPreviewAnnotation(annotations, scanResult)
     val isGlanceAppWidgetPreview = isAnyGlanceAppWidgetPreviewAnnotation(annotations, scanResult)
+    val isXrSubspacePreview = isAnyXrSubspacePreviewAnnotation(annotations, scanResult)
     val hasUnsupportedParameters =
       !isTilePreview &&
         !isNotificationPreview &&
         !isGlanceAppWidgetPreview &&
+        !isXrSubspacePreview &&
         hasUnsupportedPreviewParameters(method, previewParameter)
     if (hasUnsupportedParameters) {
       warnings.add(
@@ -817,6 +827,26 @@ object PreviewDiscovery {
     return false
   }
 
+  /**
+   * XR subspace previews (`XR_SUBSPACE_PREVIEW_FQN`) are `@Composable` functions whose JVM
+   * signature carries the compiler-added `Composer, Int` pair the standard composable-parameter
+   * check would flag. Treat them the same as tile / notification / glance so the check is skipped:
+   * they're rendered by the separate `:renderer-xr` task, not the Android image renderer. Walk
+   * direct annotations + multi-preview meta-annotations so an XR preview reached through an alias
+   * is exempted too.
+   */
+  private fun isAnyXrSubspacePreviewAnnotation(
+    annotations: List<AnnotationInfo>,
+    scanResult: ScanResult,
+  ): Boolean {
+    if (collectDirectPreviews(annotations).any { it.name == XR_SUBSPACE_PREVIEW_FQN }) return true
+    for (ann in annotations) {
+      val resolved = resolveMultiPreview(ann, scanResult, mutableSetOf())
+      if (resolved.any { it.name == XR_SUBSPACE_PREVIEW_FQN }) return true
+    }
+    return false
+  }
+
   private fun hasUnsupportedPreviewParameters(
     method: MethodInfo,
     previewParameter: Pair<String, Int>?,
@@ -902,7 +932,11 @@ object PreviewDiscovery {
     // / focus drive, no `mainClock` tick, the renderer handles the whole materialise + inflate
     // in one shot.
     val isGlanceAppWidget = ann.name == GLANCE_APPWIDGET_PREVIEW_FQN
-    val nonComposable = isTile || isNotification || isGlanceAppWidget
+    // XR subspace previews aren't captured to a single image and have no `mainClock` / scrollable /
+    // focus owner here — the `:renderer-xr` task drives the whole recover-and-write in one shot.
+    // Gate them out of every dimensional fan-out the same way as tile / notification / glance.
+    val isXrSubspace = ann.name == XR_SUBSPACE_PREVIEW_FQN
+    val nonComposable = isTile || isNotification || isGlanceAppWidget || isXrSubspace
     val effectiveTimings = if (nonComposable) emptyList() else timings
     val effectiveScrolls = if (nonComposable) emptyList() else scrolls
     // Tile / notification previews don't go through `mainClock` — there's no animation surface to
@@ -1625,7 +1659,8 @@ object PreviewDiscovery {
       if (
         params.kind == PreviewKind.TILE ||
           params.kind == PreviewKind.NOTIFICATION ||
-          params.kind == PreviewKind.GLANCE_APPWIDGET
+          params.kind == PreviewKind.GLANCE_APPWIDGET ||
+          params.kind == PreviewKind.XR_SUBSPACE
       )
         emptyList()
       else inferredTargets.value
@@ -1728,6 +1763,11 @@ object PreviewDiscovery {
         widthDp = widthDp,
         heightDp = heightDp,
       )
+    }
+    // XR subspace previews carry no device / dimension annotation params — the layout comes from
+    // the composed `Subspace`. Emit minimal params; the `:renderer-xr` task does the rest.
+    if (ann.name == XR_SUBSPACE_PREVIEW_FQN) {
+      return PreviewParams(kind = PreviewKind.XR_SUBSPACE)
     }
     val pv = ann.parameterValues
     val kind = if (ann.name == TILE_PREVIEW_FQN) PreviewKind.TILE else PreviewKind.COMPOSE

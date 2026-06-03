@@ -7,6 +7,7 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 // ---------------------------------------------------------------------------
 // Wire shape — `<module>/build/compose-previews/resources.json` from the
@@ -259,7 +260,7 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   private fun readResourceManifest(module: PreviewModule): ResourceManifest? {
     val manifestFile = module.projectDir.resolve("build/compose-previews/resources.json")
     if (!manifestFile.exists()) return null
-    return resourceJson.decodeFromString(manifestFile.readText())
+    return resourceJson.decodeFromString(fileSystem.read(manifestFile.path.toPath()) { readUtf8() })
   }
 
   private fun readAllResourceManifests(
@@ -418,7 +419,8 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
     val f = stateFile(module)
     if (!f.exists()) return ResourceCliState()
     return try {
-      resourceJson.decodeFromString(ResourceCliState.serializer(), f.readText())
+      val text = fileSystem.read(f.path.toPath()) { readUtf8() }
+      resourceJson.decodeFromString(ResourceCliState.serializer(), text)
     } catch (e: Exception) {
       if (verbose)
         System.err.println(
@@ -431,7 +433,9 @@ class ShowResourcesCommand(args: List<String>) : Command(args) {
   private fun writeResourceState(module: PreviewModule, state: ResourceCliState) {
     val f = stateFile(module)
     f.parentFile?.mkdirs()
-    f.writeText(resourceJson.encodeToString(ResourceCliState.serializer(), state))
+    fileSystem.write(f.path.toPath()) {
+      writeUtf8(resourceJson.encodeToString(ResourceCliState.serializer(), state))
+    }
   }
 
   private fun sha256Hex(file: File): String {

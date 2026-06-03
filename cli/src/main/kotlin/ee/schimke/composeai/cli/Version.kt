@@ -69,3 +69,23 @@ internal fun compareSemver(a: String, b: String): Int {
     else -> 0
   }
 }
+
+/**
+ * Major version (the first numeric segment) of a semver-ish string, or `null` when it can't be
+ * parsed. `"1.2.3"` → 1, `"v2.0.0-SNAPSHOT"` → 2, `"main"` → null.
+ */
+internal fun majorVersionOf(v: String): Int? =
+  v.trim().removePrefix("v").substringBefore('-').split('.').firstOrNull()?.toIntOrNull()
+
+/**
+ * Whether two compose-preview component versions are mutually incompatible — i.e. they parse to
+ * different **major** versions. A major release changes the render/daemon wire format and the
+ * published `okio.Path` / suspend APIs, so a plugin and CLI (or daemon) on different majors can
+ * fail to render or misbehave. Returns `false` when either version is unparseable (we don't warn on
+ * strings like `main` / SNAPSHOT-only builds we can't reason about).
+ */
+internal fun versionsIncompatible(a: String, b: String): Boolean {
+  val am = majorVersionOf(a) ?: return false
+  val bm = majorVersionOf(b) ?: return false
+  return am != bm
+}

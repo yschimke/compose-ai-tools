@@ -7,12 +7,15 @@ import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 typealias TraceEvent = ee.schimke.composeai.data.render.TraceEvent
 
@@ -66,7 +69,10 @@ object PerfettoTraceDataProducer {
 }
 
 /** Registry side for `render/perfettoTrace`; reads the latest trace JSON artifact from disk. */
-class PerfettoTraceDataProductRegistry(private val rootDir: File) : DataProductRegistry {
+class PerfettoTraceDataProductRegistry(
+  private val rootDir: File,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) : DataProductRegistry {
   private val json = Json { ignoreUnknownKeys = true }
 
   override val capabilities: List<DataProductCapability> =
@@ -107,7 +113,7 @@ class PerfettoTraceDataProductRegistry(private val rootDir: File) : DataProductR
     }
     val payload: JsonObject =
       try {
-        json.parseToJsonElement(file.readText()) as JsonObject
+        json.parseToJsonElement(fileSystem.read(file.path.toPath()) { readUtf8() }) as JsonObject
       } catch (t: Throwable) {
         return DataProductRegistry.Outcome.FetchFailed(
           message = "could not parse $kind for $previewId: ${t.message}"

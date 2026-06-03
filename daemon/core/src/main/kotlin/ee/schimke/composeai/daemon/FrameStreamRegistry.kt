@@ -2,10 +2,11 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.StreamCodec
 import ee.schimke.composeai.daemon.protocol.StreamFrameParams
-import java.nio.file.Files
-import java.nio.file.Path
+import ee.schimke.composeai.io.SystemFileSystem
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Per-daemon registry of live `stream/start` subscribers. Owns the per-stream state needed to make
@@ -19,7 +20,8 @@ import java.util.concurrent.atomic.AtomicLong
  */
 internal class FrameStreamRegistry(
   private val clock: () -> Long = System::currentTimeMillis,
-  private val pngBytesReader: (String) -> ByteArray? = { path -> readPngBytes(path) },
+  fileSystem: FileSystem = SystemFileSystem,
+  private val pngBytesReader: (String) -> ByteArray? = { path -> readPngBytes(path, fileSystem) },
   private val supportedCodecs: Set<StreamCodec> = setOf(StreamCodec.PNG),
 ) {
 
@@ -213,16 +215,16 @@ internal class FrameStreamRegistry(
   }
 
   companion object {
-    private fun readPngBytes(pngPath: String): ByteArray? {
+    private fun readPngBytes(pngPath: String, fileSystem: FileSystem): ByteArray? {
       val path =
         try {
-          Path.of(pngPath)
+          pngPath.toPath()
         } catch (_: Throwable) {
           return null
         }
-      if (!Files.exists(path)) return null
+      if (!fileSystem.exists(path)) return null
       return try {
-        Files.readAllBytes(path)
+        fileSystem.read(path) { readByteArray() }
       } catch (_: Throwable) {
         null
       }

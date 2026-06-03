@@ -1,10 +1,13 @@
 package ee.schimke.composeai.tui.image
 
 import com.jakewharton.mosaic.ui.Bitmap
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Decode a PNG (or anything else ImageIO understands) into a Mosaic [Bitmap]. The fork's
@@ -16,9 +19,9 @@ import javax.imageio.ImageIO
  * a try/catch.
  */
 object Bitmaps {
-  fun readPng(file: File): Bitmap? =
+  fun readPng(file: File, fileSystem: FileSystem = SystemFileSystem): Bitmap? =
     try {
-      toBitmap(ImageIO.read(file))
+      toBitmap(ImageIO.read(fileSystem.read(file.path.toPath()) { readByteArray() }.inputStream()))
     } catch (_: Throwable) {
       null
     }

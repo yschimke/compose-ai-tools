@@ -1,5 +1,7 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -8,8 +10,10 @@ import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
 import java.net.URI
-import java.nio.file.Files
+import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import okio.FileSystem
+import okio.buffer
 
 /**
  * Resolves a bundle argument — a local path **or** a URL — to a local [File] every bundle-open
@@ -41,7 +45,7 @@ object BundleSource {
    * [IllegalArgumentException] when a path doesn't exist or a download fails — callers map that to
    * their usual "not a file" exit.
    */
-  fun resolveToFile(arg: String): File {
+  fun resolveToFile(arg: String, fileSystem: FileSystem = SystemFileSystem): File {
     if (!looksLikeUrl(arg)) {
       val f = File(arg)
       require(f.isFile) { "not a file: $arg" }
@@ -58,18 +62,17 @@ object BundleSource {
       require(f.isFile) { "not a file: $arg" }
       return f
     }
-    return download(uri, arg)
+    return download(uri, arg, fileSystem)
   }
 
-  private fun download(uri: URI, arg: String): File {
+  private fun download(uri: URI, arg: String, fileSystem: FileSystem = SystemFileSystem): File {
     // Bundles are always PNG+ZIP polyglots, so a `.png` temp suffix keeps downstream
     // name-derivation (`<name>-render`, the daemon's bundleSource tag) sensible.
-    val temp = Files.createTempFile("compose-preview-bundle-", ".png").toFile()
-    temp.deleteOnExit()
+    val tempPath = TemporaryDirectory / "compose-preview-bundle-${UUID.randomUUID()}.png"
+    val temp = tempPath.toFile().apply { deleteOnExit() }
     // Ktor client over the OkHttp engine. OkHttp follows redirects by default; we stream the body
-    // to
-    // disk and only keep the file on a 2xx. `runBlocking` is fine here — this is a one-shot CLI /
-    // startup call, not a hot path.
+    // to disk (via an Okio sink) and only keep the file on a 2xx. `runBlocking` is fine here — this
+    // is a one-shot CLI / startup call, not a hot path.
     try {
       HttpClient(OkHttp).use { client ->
         runBlocking {
@@ -79,18 +82,22 @@ object BundleSource {
                 "could not download bundle from $arg: HTTP ${response.status.value}"
               )
             }
-            temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+            fileSystem.sink(tempPath).buffer().use { sink ->
+              response.bodyAsChannel().copyTo(sink.outputStream())
+            }
           }
         }
       }
     } catch (e: IllegalArgumentException) {
-      temp.delete()
+      fileSystem.delete(tempPath, mustExist = false)
       throw e
     } catch (e: Exception) {
-      temp.delete()
+      fileSystem.delete(tempPath, mustExist = false)
       throw IllegalArgumentException("could not download bundle from $arg: ${e.message}")
     }
-    require(temp.length() > 0) { "downloaded an empty bundle from $arg" }
+    require((fileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) {
+      "downloaded an empty bundle from $arg"
+    }
     return temp
   }
 }

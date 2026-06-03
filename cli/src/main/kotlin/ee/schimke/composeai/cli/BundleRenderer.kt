@@ -1,7 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
@@ -11,6 +14,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
+import okio.Path.Companion.toPath
+import okio.source
 
 /**
  * Re-renders a packed `.png` (PNG+ZIP polyglot bundle) outside of any Gradle project: extract the
@@ -53,6 +59,7 @@ class BundleRenderer(
   private val outputDir: File,
   private val verbose: Boolean = false,
   private val logSink: (String) -> Unit = { System.err.println(it) },
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
 
   /** Outcome of one bundle render — surfaced for the CLI's exit-code logic and test assertions. */
@@ -396,7 +403,7 @@ class BundleRenderer(
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          candidate.outputStream().use { sink -> zin.copyTo(sink) }
+          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }
@@ -521,9 +528,10 @@ class BundleRenderer(
   }
 
   private fun createTempWorkDir(): File {
-    val dir = java.nio.file.Files.createTempDirectory("compose-preview-bundle-render-").toFile()
-    Runtime.getRuntime().addShutdownHook(Thread { dir.deleteRecursively() })
-    return dir
+    val dirPath = TemporaryDirectory / "compose-preview-bundle-render-${UUID.randomUUID()}"
+    fileSystem.createDirectories(dirPath)
+    Runtime.getRuntime().addShutdownHook(Thread { fileSystem.deleteRecursively(dirPath) })
+    return dirPath.toFile()
   }
 
   /** Strip filesystem-hostile characters from a preview id. */

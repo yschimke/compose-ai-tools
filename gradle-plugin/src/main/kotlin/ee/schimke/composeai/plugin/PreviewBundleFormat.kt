@@ -324,14 +324,6 @@ const val ANDROID_MERGED_MANIFEST_PATH: String = "android/AndroidManifest.xml"
 const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
 
 /**
- * Zip path of a pack-time diagnostic note for the Android resource carriage (v6). Written on every
- * protolayout-IR pack — success or failure — so a detached player/daemon can surface *why* the
- * carriage did or didn't happen (the pack runs inside Gradle whose console is often truncated in
- * CI). Purely diagnostic; never affects rendering.
- */
-const val ANDROID_DIAG_PATH: String = "android/diag.txt"
-
-/**
  * Schema version stamped into [BundleManifest.schemaVersion].
  * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
  *   polyglot's leading bytes only.

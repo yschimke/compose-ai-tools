@@ -171,7 +171,11 @@ const failures = [];
 
 const fixtures = await listFixtures();
 const server = await startServer(extensionRoot);
-const browser = await chromium.launch();
+// `HARNESS_CHROMIUM` points at a Chromium binary when the default Playwright
+// download isn't present (some CI sandboxes ship only the full build).
+const browser = await chromium.launch({
+    executablePath: process.env.HARNESS_CHROMIUM || chromium.executablePath(),
+});
 
 try {
     for (const fixtureName of fixtures) {

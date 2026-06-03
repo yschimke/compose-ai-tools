@@ -1,8 +1,14 @@
 package ee.schimke.composeai.tui
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.UUID
 import java.util.zip.ZipInputStream
+import okio.FileSystem
+import okio.Path.Companion.toPath
+import okio.source
 
 /**
  * Extracts the two products a self-contained preview bundle needs to drive its own daemon — the
@@ -25,15 +31,13 @@ object BundleExtractor {
    *
    * The caller owns [Extracted.workDir]; delete it when the session closes.
    */
-  fun extract(bundle: File): Extracted? {
+  fun extract(bundle: File, fileSystem: FileSystem = SystemFileSystem): Extracted? {
     val zipBytes = BundlePngMetadata.extractZipBytes(bundle) ?: return null
 
     val workDir =
-      File.createTempFile("compose-preview-tui-bundle-", "").let { tmp ->
-        tmp.delete()
-        tmp.mkdirs()
-        tmp
-      }
+      (TemporaryDirectory / "compose-preview-tui-bundle-${UUID.randomUUID()}")
+        .also { fileSystem.createDirectories(it) }
+        .toFile()
     val classesDir = File(workDir, "classes").apply { mkdirs() }
     val previewsJson = File(workDir, "previews.json")
 
@@ -45,11 +49,11 @@ object BundleExtractor {
           val entry = zin.nextEntry ?: break
           when (entry.name) {
             "previews.json" -> {
-              previewsJson.writeBytes(zin.readBytes())
+              fileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
               sawPreviews = true
             }
             "classes/app.jar" -> {
-              expandJarSafely(zin.readBytes(), classesDir)
+              expandJarSafely(zin.readBytes(), classesDir, fileSystem)
               sawAppJar = true
             }
           }
@@ -73,7 +77,11 @@ object BundleExtractor {
    * [targetDir]). Same shape as `BundleDaemonCommand.expandJarBytesSafely`; duplicated rather than
    * shared to keep `:tui-cli` off `:cli`'s classpath.
    */
-  private fun expandJarSafely(appJarBytes: ByteArray, targetDir: File) {
+  private fun expandJarSafely(
+    appJarBytes: ByteArray,
+    targetDir: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val targetPath = targetDir.canonicalFile.toPath()
     ZipInputStream(ByteArrayInputStream(appJarBytes)).use { zin ->
       while (true) {
@@ -91,7 +99,7 @@ object BundleExtractor {
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          candidate.outputStream().use { sink -> zin.copyTo(sink) }
+          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }
