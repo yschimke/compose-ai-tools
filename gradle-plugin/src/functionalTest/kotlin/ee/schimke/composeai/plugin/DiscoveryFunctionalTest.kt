@@ -1685,8 +1685,11 @@ class DiscoveryFunctionalTest {
     val xrPreviews = manifest.previews.filter { it.functionName == "MySpatialPreview" }
     assertThat(xrPreviews.map { it.functionName }).containsExactly("MySpatialPreview")
     assertThat(xrPreviews.map { it.params.kind }.toSet()).containsExactly(PreviewKind.XR_SUBSPACE)
-    // Non-composable kind: no scroll / time / focus fan-out, no target inference.
-    assertThat(xrPreviews.map { it.captures.size }).containsExactly(1)
+    // XR subspace previews emit NO PNG capture (and no data product) — their output is the
+    // scene.json written by composePreviewRenderXr, so composePreviewRenderAll's missing-render
+    // gate must expect nothing for them. Also no target inference (non-composable kind).
+    assertThat(xrPreviews.single().captures).isEmpty()
+    assertThat(xrPreviews.single().dataProducts).isEmpty()
     assertThat(xrPreviews.flatMap { it.targets }).isEmpty()
 
     // The parameterized XR preview is rejected with a clear warning and never reaches the manifest.

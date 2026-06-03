@@ -30,6 +30,11 @@ composePreview {
   // `:samples:android-alpha` use to render compileSdk-37 modules under JDK 17.
   // Drop this override when the toolchain moves to JDK 21.
   sdkVersion.set(35)
+
+  // Opt into the XR subspace render path so `@XrSubspacePreview` (NowPlayingSpatialPreview) renders
+  // to scene.json via composePreviewRenderXr. Off by default — see
+  // PreviewExtension.enableXrPreviews.
+  enableXrPreviews.set(true)
 }
 
 android {
@@ -60,6 +65,10 @@ dependencies {
   // `androidx.xr.runtime` transitively — those only matter on-device; the 2D
   // fallback path the previews exercise never reaches for a `Session`.
   implementation(libs.xr.compose)
+
+  // `@XrSubspacePreview` — FQN-discovered marker for the XR subspace render path. Binary-retained;
+  // read at discovery time. Rendered by `composePreviewRenderXr` into `scene.json`.
+  implementation(project(":preview-annotations"))
 
   debugImplementation("androidx.compose.ui:ui-tooling")
 

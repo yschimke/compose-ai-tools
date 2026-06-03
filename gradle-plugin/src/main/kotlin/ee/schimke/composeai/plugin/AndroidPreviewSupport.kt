@@ -1230,6 +1230,45 @@ internal object AndroidPreviewSupport {
       )
     }
 
+    // XR render backend (opt-in via `composePreview.enableXrPreviews`). Adds `:renderer-xr`'s
+    // `XrSubspaceRenderTest` + the fake XR runtime to the render config so `composePreviewRenderXr`
+    // (below) can render `@XrSubspacePreview` to `scene.json`. Gated because `androidx.xr.compose`
+    // declares `minCompileSdk = 36` and the `*-testing` fakes are heavyweight — a non-XR consumer
+    // (especially below compileSdk 36) must never get them on its render classpath. The fakes are
+    // inert for compose/tile/notification/glance renders anyway (they only engage when a `Subspace`
+    // reaches `Session.create`); the fake `SceneRuntimeFactory` / `RenderingRuntimeFactory`
+    // ServiceLoader registration ships in `:renderer-xr`'s main resources.
+    val xrPreviewsEnabled = extension.enableXrPreviews.get()
+    if (xrPreviewsEnabled) {
+      if (useLocalRenderer) {
+        try {
+          project.dependencies.add(
+            rendererConfig.name,
+            project.dependencies.project(mapOf("path" to ":renderer-xr")),
+          )
+        } catch (e: org.gradle.api.UnknownProjectException) {
+          project.logger.debug("compose-ai-tools: :renderer-xr project not found, skipping", e)
+        }
+      } else {
+        project.dependencies.add(
+          rendererConfig.name,
+          "ee.schimke.composeai:renderer-xr:${PluginVersion.value}",
+        )
+      }
+      project.dependencies.add(
+        rendererConfig.name,
+        "androidx.xr.runtime:runtime-testing:1.0.0-alpha14",
+      )
+      project.dependencies.add(
+        rendererConfig.name,
+        "androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15",
+      )
+      project.dependencies.add(
+        rendererConfig.name,
+        "androidx.xr.compose:compose-testing:1.0.0-alpha14",
+      )
+    }
+
     // Mirror of rendererConfig for `:daemon:android`. The daemon
     // module depends on :renderer-android, so transitive deps flow through
     // the same `extendsFrom(testConfig)` graph and stay version-coherent
@@ -1312,6 +1351,36 @@ internal object AndroidPreviewSupport {
         // realising the configuration until task execution.
         project.files(
           rendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
+        )
+      }
+
+    // Class dirs for `:renderer-xr`'s `XrSubspaceRenderTest` entry — same local-vs-published shape
+    // as
+    // [rendererClassDirs] above (the lazy `elements.map { zipTree }` keeps the config off the
+    // configuration-time resolution path). Only `composePreviewRenderXr` reads this.
+    val xrRendererProjectDir = project.rootDir.resolve("renderers/xr")
+    val xrRendererClassDirs =
+      if (useLocalRenderer) {
+        project.files(
+          xrRendererProjectDir.resolve(
+            "build/intermediates/built_in_kotlinc/$variantName/compile${capVariant}Kotlin/classes"
+          ),
+          xrRendererProjectDir.resolve("build/tmp/kotlin-classes/$variantName"),
+        )
+      } else {
+        val xrRendererJars =
+          rendererConfig.incoming
+            .artifactView {
+              attributes.attribute(artifactType, "android-classes")
+              componentFilter { id ->
+                id is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                  id.group == "ee.schimke.composeai" &&
+                  id.module == "renderer-xr"
+              }
+            }
+            .files
+        project.files(
+          xrRendererJars.elements.map { elements -> elements.map { project.zipTree(it.asFile) } }
         )
       }
 
@@ -1689,6 +1758,60 @@ internal object AndroidPreviewSupport {
       }
     }
 
+    // XR subspace render task — same Robolectric harness as `composePreviewRender`, a different
+    // test
+    // entry (`:renderer-xr`'s `XrSubspaceRenderTest`) and no pixel capture. Reuses the renderer /
+    // test / runtime classpaths computed above (the XR backend + fakes were added to
+    // `rendererConfig`
+    // so they're already in `resolvedClasspath`); `xrRendererClassDirs` puts the entry class on the
+    // test class dirs. It reads the SAME `previews.json` the compose render does, filtering to
+    // `XR_SUBSPACE` itself, and writes `scene.json` per preview under `renders/`. Opt-in via
+    // `composePreview.enableXrPreviews` (see the renderer-config gate above) — registered only when
+    // the consumer asked for XR, so non-XR consumers don't get the task (or its deps) at all.
+    if (xrPreviewsEnabled)
+      project.tasks.register("composePreviewRenderXr", Test::class.java) {
+        group = "compose preview"
+        description = "Render XR subspace previews to scene.json via Robolectric"
+        val agpTestTask = project.tasks.findByName("test${capVariant}UnitTest") as? Test
+        testClassesDirs = xrRendererClassDirs + (agpTestTask?.testClassesDirs ?: project.files())
+        val agpTestClasspath = agpTestTask?.classpath ?: project.files()
+        classpath =
+          resolvedClasspath +
+            xrRendererClassDirs +
+            (agpTestTask?.testClassesDirs ?: project.files()) +
+            agpTestClasspath
+        include("**/XrSubspaceRenderTest.class")
+        useJUnit()
+
+        jvmArgs(agpTestTask?.jvmArgs ?: emptyList<String>())
+        jvmArgs(AndroidPreviewClasspath.buildJvmArgs())
+        agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
+
+        systemProperty("robolectric.graphicsMode", "NATIVE")
+        systemProperty("robolectric.looperMode", "PAUSED")
+        systemProperty("robolectric.conscryptMode", "OFF")
+        systemProperty("composeai.render.manifest", manifestFile.get())
+        systemProperty("composeai.render.outputDir", rendersDir.get())
+
+        outputs.dir(rendersDirectory).withPropertyName("xrRendersDir")
+
+        // Same #1243 guard as composePreviewRender — boots Robolectric through the same classpath
+        // and hits the same `Config.<clinit>` -> `Application.class` resolution at runner init.
+        doFirst { AndroidPreviewClasspath.validateApplicationOnClasspath(classpath.files) }
+
+        dependsOn(discoverTask)
+        dependsOn(generateRobolectricPropertiesTask)
+        if (useLocalRenderer) {
+          dependsOn(":renderer-xr:compile${capVariant}Kotlin")
+        }
+        dependsOn(
+          project.tasks.matching {
+            it.name in
+              listOf("process${capVariant}Resources", "generate${capVariant}UnitTestConfig")
+          }
+        )
+      }
+
     // `aggregateAccessibility` was the rollup task that turned per-preview ATF sidecars into a
     // top-level `accessibility.json`. With a11y now produced exclusively by the daemon (which
     // streams findings on demand via `data/fetch`), nothing on the standalone Gradle path
@@ -1696,6 +1819,13 @@ internal object AndroidPreviewSupport {
     // registered.
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+    // Fold the XR render into the user-facing aggregate so `composePreviewRenderAll` produces
+    // scene.json alongside the PNGs (only when the XR path is enabled / the task exists).
+    if (xrPreviewsEnabled) {
+      project.tasks.named("composePreviewRenderAll").configure {
+        dependsOn("composePreviewRenderXr")
+      }
+    }
 
     // Register the portable-bundle task on the Android path too. `composePreviewBundle` was
     // previously desktop/JVM-only, so `compose-preview render --bundle` against a project with

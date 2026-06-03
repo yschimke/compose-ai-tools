@@ -148,6 +148,18 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
   val renderBeforeUnitTests: Property<Boolean> =
     objects.property(Boolean::class.java).convention(false)
 
+  /**
+   * Opt-in for the XR subspace render path. When true, the plugin registers
+   * `composePreviewRenderXr` (and folds it into `composePreviewRenderAll`), pulling
+   * `:renderer-xr` + the fake XR runtime onto a dedicated render configuration to render
+   * `@XrSubspacePreview` functions to `scene.json`.
+   *
+   * Off by default — `androidx.xr.compose` declares `minCompileSdk = 36` and the XR `*-testing`
+   * fakes are heavyweight, so a non-XR consumer (especially below compileSdk 36) must never pay for
+   * them on its render classpath. Enable it only in modules that actually use `@XrSubspacePreview`.
+   */
+  val enableXrPreviews: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+
   /** Generic selector for preview extensions that produce data alongside preview PNGs. */
   val previewExtensions: PreviewExtensionsExtension =
     objects.newInstance(PreviewExtensionsExtension::class.java)
