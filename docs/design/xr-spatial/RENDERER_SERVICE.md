@@ -84,11 +84,11 @@ MCP ─────┘                │  proxies / multiplexes            ├�
 
 ### Extensibility: new capabilities = new data-product kinds
 
-New features are **kinds the native renderer advertises in `initialize.capabilities.dataProducts`
-and produces on subscribe** — never a new binary, never a new CLI flag baked into a one-shot:
+New *artefact* features are **kinds the native renderer advertises in
+`initialize.capabilities.dataProducts` and produces on subscribe** — never a new binary, never a new
+CLI flag baked into a one-shot:
 
 - `xr/composite` — the baked still (the increment, promoted to a kind).
-- `xr/frame-stream` — live frames (via `composestream/1`).
 - `xr/structure` — the spatial panel tree + poses + semantics as inline JSON (mirrors
   `a11y/hierarchy`).
 - `xr/a11y-overlay` — a rendered overlay PNG for XR a11y/TalkBack affordances (mirrors
@@ -96,6 +96,16 @@ and produces on subscribe** — never a new binary, never a new CLI flag baked i
 
 The C++ side mirrors the `DataProductRegistry` seam: a capabilities list + dispatch by kind, with
 **no `if (kind == …)`** scattered through the renderer — same rule the JVM side enforces.
+
+**Live frames are NOT a data product.** They are a distinct wire surface: data products are
+attachable artefacts negotiated via `data/subscribe` (sticky `(previewId, kind)`, delivered as
+`renderFinished` attachments), whereas live frames are negotiated via **`stream/start`** (which
+allocates a `frameStreamId` with `stream/visibility`/`stream/stop` semantics on a held session) and
+delivered as **`streamFrame`** notifications — see the [Live](#xr-render-inputoutput) section and
+`docs/daemon/STREAMING.md`. So XR live rendering reuses the `composestream/1` stream surface
+directly; it is advertised as a **stream capability/method**, not as an `xr/frame-stream`
+data-product kind. (Conflating the two would leave a subscriber without a `frameStreamId` or the
+visibility/stop controls a stream requires.)
 
 ### Concurrency (not 1:1)
 
