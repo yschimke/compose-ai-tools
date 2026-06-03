@@ -514,6 +514,18 @@ export interface ComposePreviewTestApi {
         tier?: "fast" | "full",
     ): Promise<void>;
     /**
+     * Drive the production save path for a file — the same `startEditJourney`
+     * + `refreshQueue.dispatchSave(..., { allowImmediate: true })` the
+     * `onDidSaveTextDocument` handler runs. Unlike {@link triggerRefresh}
+     * (which forces a Gradle `composePreviewRenderAll`), this exercises the
+     * save→compile→render pipeline, so it routes through the
+     * `compileInProcess` / `continuousCompile` fast-compile paths when those
+     * settings are enabled. The file must already be modified on disk; this
+     * only kicks the pipeline. Returns immediately — poll
+     * `getReceivedMessages()` for the resulting `webviewPreviewsRendered`.
+     */
+    triggerSave(filePath: string): void;
+    /**
      * Drive a focus-inspector data-extension chip toggle from a test, by
      * calling the same `handleSetDataExtensionEnabled` path the webview
      * postMessage hits. Used by the a11y e2e tests to exercise the
@@ -2260,6 +2272,10 @@ export async function activate(
                     () => [...baseGradleArgs, ...initScriptArgs],
                     logFilter,
                 );
+                // The continuous-compile manager captured the activation-time
+                // gradleService; re-point it at the injected one so its workers
+                // register on the service `compileOnly()` actually queries.
+                continuousCompileManager?.rebindGradleService(gradleService);
             },
             triggerRefresh(
                 filePath: string,
@@ -2267,6 +2283,20 @@ export async function activate(
                 tier: "fast" | "full" = "full",
             ): Promise<void> {
                 return refresh(force, filePath, tier).then(() => {});
+            },
+            triggerSave(filePath: string): void {
+                // Mirror the onDidSaveTextDocument handler so tests measure
+                // the real save→compile→render journey (and exercise the
+                // compileInProcess / continuousCompile routes) rather than
+                // the forced-Gradle triggerRefresh path.
+                const journeyModule = gradleService?.resolveModule(filePath);
+                if (journeyModule) {
+                    startEditJourney(journeyModule.modulePath);
+                }
+                refreshQueue.dispatchSave(filePath, {
+                    allowImmediate: true,
+                    debounceMs: refreshDebounceMsFor(filePath),
+                });
             },
             triggerSetDataExtensionEnabled(
                 previewId: string,

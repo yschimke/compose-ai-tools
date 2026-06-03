@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -443,5 +444,196 @@ describeExternal(
             };
             console.log(`[bench] ${JSON.stringify(bench)}`);
         });
+
+        // Warm edit-loop benchmark. Gated by COMPOSE_PREVIEW_E2E_EDITLOOP=1
+        // (set by `npm run test:e2e-editloop`) so the default external e2e
+        // stays a single cold render. Reuses the daemon + continuous-compile
+        // worker the first `it` warmed. Measures the user-perceived
+        // save→preview latency through the production save path
+        // (`triggerSave` → dispatchSave → compile → daemon render), so it
+        // reflects the `compileInProcess` / `continuousCompile` fast-compile
+        // routes when those settings are enabled in the workspace's
+        // `.vscode/settings.json`.
+        const EDITLOOP = process.env.COMPOSE_PREVIEW_E2E_EDITLOOP === "1";
+        (EDITLOOP ? it : it.skip)(
+            "measures warm edit→preview latency over consecutive saves",
+            async function () {
+                const ITERATIONS = 4;
+                // A warm incremental edit on even a heavy module renders well
+                // under this; exceeding it means no *changed* image arrived =
+                // stale render.
+                const PER_EDIT_TIMEOUT_MS = 120_000;
+                // Distinct, visually-obvious fills so a stale render (same
+                // bytes) is provable, not just plausible.
+                const marker = "ComposeAiEditLoopProbe";
+                const baselineColor = "0xFFE91E63"; // pink
+                const palette = [
+                    "0xFF4CAF50", // green
+                    "0xFF2196F3", // blue
+                    "0xFFFF9800", // orange
+                    "0xFF9C27B0", // purple
+                ];
+                const dumpDir =
+                    process.env.COMPOSE_PREVIEW_EDITLOOP_DUMP ??
+                    "/tmp/editloop-images";
+                fs.mkdirSync(dumpDir, { recursive: true });
+                const probeImageOf = (): {
+                    previewId: string;
+                    imageData: string;
+                } | null => {
+                    // Latest updateImage for the probe preview, posted since the
+                    // last resetMessages.
+                    const msgs = api.getPostedMessages();
+                    for (let j = msgs.length - 1; j >= 0; j--) {
+                        const m = msgs[j] as PostedMessage;
+                        if (m.command !== "updateImage") continue;
+                        const pid = String(m.previewId ?? "");
+                        if (!/ComposeAiEditLoopProbe/.test(pid)) continue;
+                        const data = m.imageData as string | undefined;
+                        if (data && data.length > 0)
+                            return { previewId: pid, imageData: data };
+                    }
+                    return null;
+                };
+
+                // Append a dedicated preview we can mutate deterministically,
+                // independent of upstream's current Background.kt content.
+                let src = fs.readFileSync(kotlinFile, "utf-8");
+                if (!src.includes(marker)) {
+                    src +=
+                        `\n\n@androidx.compose.ui.tooling.preview.Preview(name = "${marker}")\n` +
+                        `@androidx.compose.runtime.Composable\n` +
+                        `fun ${marker}() {\n` +
+                        `    ConfettiTheme {\n` +
+                        `        ConfettiBackground(\n` +
+                        `            androidx.compose.ui.Modifier.size(120.dp),\n` +
+                        `            color = androidx.compose.ui.graphics.Color(${baselineColor}),\n` +
+                        `            content = {},\n` +
+                        `        )\n` +
+                        `    }\n` +
+                        `}\n`;
+                    fs.writeFileSync(kotlinFile, src);
+                }
+
+                // Establish the baseline by waiting for the probe's first actual
+                // IMAGE (`updateImage`), not just the card — a newly-discovered
+                // preview paints its card (`webviewPreviewsRendered`) before the
+                // daemon renders its pixels, so keying the baseline off the card
+                // makes the first loop edit absorb the slow first-image render.
+                // Generous window: this one pays the discovery + first-render
+                // cost so each loop edit measures a pure body change.
+                api.resetMessages();
+                api.triggerSave(kotlinFile);
+                const baseline = await waitFor(
+                    "probe baseline image (first updateImage)",
+                    5 * 60_000,
+                    300,
+                    () => probeImageOf() ?? undefined,
+                );
+                const baselineBuf = Buffer.from(baseline.imageData, "base64");
+                fs.writeFileSync(
+                    path.join(
+                        dumpDir,
+                        `probe-baseline-${baselineColor.slice(2)}.png`,
+                    ),
+                    baselineBuf,
+                );
+                console.log(
+                    `[editloop] baseline ${baselineColor} captured bytes=${baselineBuf.length}`,
+                );
+
+                const timingsMs: number[] = [];
+                const imageHashes: string[] = [];
+                let prevImage: string | null = baseline.imageData;
+                for (let i = 0; i < ITERATIONS; i++) {
+                    api.resetMessages();
+                    src = fs
+                        .readFileSync(kotlinFile, "utf-8")
+                        .replace(
+                            /0xFF[0-9A-Fa-f]{6}/,
+                            palette[i % palette.length],
+                        );
+                    fs.writeFileSync(kotlinFile, src);
+
+                    const t0 = Date.now();
+                    api.triggerSave(kotlinFile);
+                    // Wait for the probe's daemon render whose pixels actually
+                    // CHANGED from the previous edit. The daemon streams the PNG
+                    // as base64 in `updateImage` (no disk write). Requiring a
+                    // *different* image — not merely an updateImage event — is
+                    // what proves live mode reflects the edit instead of
+                    // re-emitting a stale render. A same-bytes render would time
+                    // out here and fail the test loudly.
+                    const shot = await waitFor(
+                        `edit ${i + 1} → CHANGED probe image`,
+                        // Bounded per-edit: a warm incremental edit that can't
+                        // produce a *changed* render within this window is the
+                        // stale-render bug — fail fast and loud rather than
+                        // hanging until the 30-min suite timeout.
+                        PER_EDIT_TIMEOUT_MS,
+                        100,
+                        () => {
+                            const cur = probeImageOf();
+                            if (!cur) return undefined;
+                            if (
+                                prevImage !== null &&
+                                cur.imageData === prevImage
+                            )
+                                return undefined;
+                            return cur;
+                        },
+                    );
+                    const dt = Date.now() - t0;
+                    timingsMs.push(dt);
+
+                    const buf = Buffer.from(shot.imageData, "base64");
+                    const hash = createHash("sha256")
+                        .update(buf)
+                        .digest("hex")
+                        .slice(0, 12);
+                    imageHashes.push(hash);
+                    const outPath = path.join(
+                        dumpDir,
+                        `probe-edit-${i + 1}-${palette[i % palette.length].slice(2)}.png`,
+                    );
+                    fs.writeFileSync(outPath, buf);
+                    console.log(
+                        `[editloop] edit ${i + 1}: ${dt}ms color=${palette[i % palette.length]} ` +
+                            `bytes=${buf.length} sha=${hash} -> ${outPath}`,
+                    );
+                    prevImage = shot.imageData;
+                }
+
+                // Every edit must have produced a distinct render — identical
+                // bytes anywhere means the daemon re-served a stale image.
+                assert.strictEqual(
+                    new Set(imageHashes).size,
+                    imageHashes.length,
+                    `expected ${imageHashes.length} distinct probe renders, got hashes ${imageHashes.join(", ")} — ` +
+                        "a duplicate means live mode rendered a stale image, not the edit",
+                );
+
+                const sorted = [...timingsMs].sort((a, b) => a - b);
+                const median = sorted[Math.floor(sorted.length / 2)];
+                console.log(
+                    `[bench-editloop] ${JSON.stringify({
+                        scenario: "confetti-androidApp-warm-editloop",
+                        schemaVersion: 1,
+                        iterations: ITERATIONS,
+                        perEditMs: timingsMs,
+                        medianMs: median,
+                        minMs: sorted[0],
+                        maxMs: sorted[sorted.length - 1],
+                        continuousCompile:
+                            process.env.COMPOSE_PREVIEW_EDITLOOP_LABEL ?? "",
+                    })}`,
+                );
+
+                assert.ok(
+                    timingsMs.every((t) => t > 0),
+                    "each edit should produce a measurable render",
+                );
+            },
+        );
     },
 );

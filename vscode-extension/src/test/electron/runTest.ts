@@ -81,8 +81,20 @@ async function main(): Promise<void> {
     console.log(`[runTest] fakeGradleExtensionPath=${fakeGradleExtensionPath}`);
     console.log(`[runTest] fakeKotlinLanguagePath=${fakeKotlinLanguagePath}`);
 
-    const vscodeExecutablePath = await downloadAndUnzipVSCode("stable");
-    console.log(`[runTest] vscodeExecutablePath=${vscodeExecutablePath}`);
+    // Allow pointing at a pre-provisioned VS Code / VSCodium binary instead of
+    // downloading from update.code.visualstudio.com. Cloud sandboxes whose
+    // egress allowlist blocks the Microsoft download hosts (403) can set
+    // VSCODE_TEST_EXECUTABLE to a GitHub-hosted VSCodium extracted locally —
+    // @vscode/test-electron drives it the same way, and our extension plus the
+    // fake gradle/kotlin stubs are side-loaded, so the marketplace is never hit.
+    const preProvisioned = process.env.VSCODE_TEST_EXECUTABLE;
+    const vscodeExecutablePath = preProvisioned
+        ? preProvisioned
+        : await downloadAndUnzipVSCode("stable");
+    console.log(
+        `[runTest] vscodeExecutablePath=${vscodeExecutablePath}` +
+            (preProvisioned ? " (from VSCODE_TEST_EXECUTABLE)" : ""),
+    );
 
     // Load the fake `vscjava.vscode-gradle` stub alongside our extension by
     // passing both paths to `extensionDevelopmentPath`. VS Code's
