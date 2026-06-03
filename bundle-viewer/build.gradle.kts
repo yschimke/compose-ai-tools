@@ -90,13 +90,13 @@ dependencies {
   // on the parent classloader. Bundle's classes load via a child URLClassLoader (see
   // `BundleLoader.kt`); parent-loader Compose wins on every shared symbol.
   implementation(compose.desktop.currentOs)
-  implementation(compose.runtime)
-  implementation(compose.ui)
-  implementation(compose.foundation)
-  implementation(compose.material3)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.foundation)
+  implementation(libs.jetbrains.compose.material3)
   // `androidx.compose.ui.tooling.preview.Preview` lives here. Bundles compiled against the
   // standard Compose `@Preview` annotation only resolve when this artifact is on the classpath.
-  implementation(compose.components.uiToolingPreview)
+  implementation(libs.jetbrains.compose.components.ui.tooling.preview)
 
   implementation(libs.kotlinx.serialization.json)
 

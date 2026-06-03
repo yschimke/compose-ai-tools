@@ -26,8 +26,8 @@ dependencies {
   // and to the desktop/skiko variant on JVM consumers via Gradle variant attributes. `compileOnly`
   // keeps it out of the published POM — the consumer (`:daemon:android` / `:daemon:desktop`)
   // supplies its own at runtime, same shape as the pre-migration `compileOnly(libs.compose.ui)`.
-  compileOnly(compose.ui)
-  testImplementation(compose.ui)
+  compileOnly(libs.jetbrains.compose.ui)
+  testImplementation(libs.jetbrains.compose.ui)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
 }

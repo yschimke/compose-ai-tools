@@ -130,11 +130,11 @@ dependencies {
   // `getDeclaredComposableMethod`, and a few Modifier / layout helpers.
   // Platform-agnostic surface; resolves to `*-desktop` variants on JVM
   // consumers via Compose Multiplatform's variant selection.
-  implementation(compose.runtime)
-  implementation(compose.foundation)
-  implementation(compose.ui)
-  implementation(compose.material3)
-  implementation(compose.components.uiToolingPreview)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.foundation)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.material3)
+  implementation(libs.jetbrains.compose.components.ui.tooling.preview)
 
   // `compose.desktop.currentOs` bakes the *build host's* Skiko platform into
   // the published POM (e.g. `desktop-jvm-linux-x64` when CI builds on Linux),
@@ -177,11 +177,11 @@ dependencies {
   // Tests declare a small fixture composable + drive RenderEngine against it,
   // so the test classpath needs the same Compose Multiplatform stack.
   testImplementation(compose.desktop.currentOs)
-  testImplementation(compose.runtime)
-  testImplementation(compose.foundation)
-  testImplementation(compose.ui)
-  testImplementation(compose.material3)
-  testImplementation(compose.components.uiToolingPreview)
+  testImplementation(libs.jetbrains.compose.runtime)
+  testImplementation(libs.jetbrains.compose.foundation)
+  testImplementation(libs.jetbrains.compose.ui)
+  testImplementation(libs.jetbrains.compose.material3)
+  testImplementation(libs.jetbrains.compose.components.ui.tooling.preview)
 
   // testFixtures source set holds `RedFixturePreviews.kt` so its `RedSquare` composable can be
   // consumed by `:daemon:harness`'s real-mode S1 (D-harness.v1.5a) without requiring that
@@ -198,10 +198,10 @@ dependencies {
   // resolution path. testFixtures variants are skipped from the publishable component (see the
   // `afterEvaluate` block below), so this stays out of `daemon-desktop`'s POM either way.
   "testFixturesImplementation"(compose.desktop.currentOs)
-  "testFixturesImplementation"(compose.runtime)
-  "testFixturesImplementation"(compose.foundation)
-  "testFixturesImplementation"(compose.ui)
-  "testFixturesImplementation"(compose.material3)
+  "testFixturesImplementation"(libs.jetbrains.compose.runtime)
+  "testFixturesImplementation"(libs.jetbrains.compose.foundation)
+  "testFixturesImplementation"(libs.jetbrains.compose.ui)
+  "testFixturesImplementation"(libs.jetbrains.compose.material3)
 }
 
 // Convenience task — equivalent to `java -cp $(runtimeClasspath) ee.schimke.composeai.daemon

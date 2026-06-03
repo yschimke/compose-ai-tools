@@ -13,9 +13,9 @@ dependencies {
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
   api(project(":data-wallpaper-core"))
-  implementation(compose.runtime)
-  implementation(compose.ui)
-  implementation(compose.material3)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.material3)
   // KMP port of Material Color Utilities — `dynamicColorScheme(seed, isDark, style, contrast)`
   // returns the canonical Material 3 dynamic ColorScheme from a single seed color, matching what
   // Android's wallpaper-derived theming produces.
@@ -26,10 +26,10 @@ dependencies {
   }
   testImplementation(libs.junit)
   testImplementation(compose.desktop.currentOs)
-  testImplementation(compose.runtime)
-  testImplementation(compose.ui)
-  testImplementation(compose.foundation)
-  testImplementation(compose.material3)
+  testImplementation(libs.jetbrains.compose.runtime)
+  testImplementation(libs.jetbrains.compose.ui)
+  testImplementation(libs.jetbrains.compose.foundation)
+  testImplementation(libs.jetbrains.compose.material3)
 }
 
 composeAiMavenPublishing {

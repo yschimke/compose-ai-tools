@@ -17,8 +17,8 @@ dependencies {
   api(project(":data-strings-core"))
   api(project(":daemon:core"))
   api(project(":data-layoutinspector-core"))
-  compileOnly(compose.ui)
-  testImplementation(compose.ui)
+  compileOnly(libs.jetbrains.compose.ui)
+  testImplementation(libs.jetbrains.compose.ui)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.serialization.json)
 }
