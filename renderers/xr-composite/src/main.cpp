@@ -99,7 +99,10 @@ int main(int argc, char** argv) {
     else if (a == "--height") args.height = std::stoul(next());
   }
   if (args.scenePath.empty()) { fprintf(stderr, "usage: --scene scene.json --out out.png\n"); return 2; }
-  args.sceneDir = args.scenePath.substr(0, args.scenePath.find_last_of('/'));
+  // A bare filename (no '/') means the scene lives in the current directory; find_last_of
+  // returns npos there, so default to "." rather than treating the filename as the directory.
+  auto slash = args.scenePath.find_last_of('/');
+  args.sceneDir = (slash == std::string::npos) ? "." : args.scenePath.substr(0, slash);
   if (args.materialsDir.empty()) args.materialsDir = ".";
 
   // ---- parse scene.json ----
