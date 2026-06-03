@@ -162,7 +162,15 @@ panels-in-previews increment.
    Kotlin↔TS approach. Moving to a single-source IDL with codegen (e.g. protobuf) is tracked as
    follow-up in [#1729](https://github.com/yschimke/compose-ai-tools/issues/1729) — worthwhile once
    the third (C++) mirror actually exists.
-6. **Distribution — fetch the per-OS Release tarballs.** Reuse the
-   `xr-composite-<platform>-<ver>.tar.gz` binaries now published on each GitHub Release (see
-   `.github/workflows/release.yml`), gated/cached like the existing `install.sh --android-sdk` SDK
-   bootstrap, rather than a bespoke bundling scheme.
+6. **Distribution — auto-provisioned by the CLI (daemon to follow).** The
+   `xr-composite-<platform>-<ver>.tar.gz` binaries published on each GitHub Release (see
+   `.github/workflows/release.yml`) are fetched automatically by the CLI into a shared, well-known
+   cache (`${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/`) the first time
+   it drives an XR render — no manual install step. The Gradle plugin's `composePreviewCompositeXr`
+   task only *reads* that cache (after the `composePreview.xrCompositeBinary` property /
+   `XR_COMPOSITE_BIN` env overrides); the CLI is the writer. Both sides derive the identical path
+   from the release version + host platform, so the fetch and the read meet with no runtime
+   handshake. Implemented in `XrCompositeProvision` (`:cli`) +
+   `AndroidPreviewSupport.xrCompositeCacheBinaryPath` (`:gradle-plugin`). Daemon-side
+   auto-provisioning is a follow-up tied to the daemon actually producing composites (this RFC) —
+   today only the CLI→Gradle path bakes composites.
