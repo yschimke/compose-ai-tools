@@ -80,6 +80,14 @@ public object SubspaceSceneRecorder {
         val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@mapNotNull null
         panelFrom(node, id = tag, parentId = null)
       }
+    // The tag is the panel id and drives the `<id>.png` texture path, so duplicates would yield an
+    // ambiguous scene + colliding captures. The tag-based `record` path fails on this implicitly
+    // (onSubspaceNodeWithTag requires a unique match); make recordAll fail just as loudly.
+    val duplicates = panels.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys
+    check(duplicates.isEmpty()) {
+      "Duplicate subspace panel testTag(s) ${duplicates.sorted()}: each SpatialPanel in an " +
+        "@XrSubspacePreview must carry a unique testTag (panel ids and texture paths derive from it)."
+    }
     return SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
   }
 
