@@ -30,6 +30,11 @@ composePreview {
   // `:samples:android-alpha` use to render compileSdk-37 modules under JDK 17.
   // Drop this override when the toolchain moves to JDK 21.
   sdkVersion.set(35)
+
+  // Opt into the XR subspace render path so `@XrSubspacePreview` (NowPlayingSpatialPreview) renders
+  // to scene.json via composePreviewRenderXr. Off by default — see
+  // PreviewExtension.enableXrPreviews.
+  enableXrPreviews.set(true)
 }
 
 android {
