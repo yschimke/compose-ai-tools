@@ -58,7 +58,10 @@ import {
     GradleOnlyDaemonGate,
     LiveDaemonGate,
 } from "./daemon/daemonGate";
-import { DataProductAttachment } from "./daemon/daemonProtocol";
+import {
+    DataProductAttachment,
+    DiscoveryUpdatedParams,
+} from "./daemon/daemonProtocol";
 import {
     A11Y_OVERLAY_KINDS,
     DaemonScheduler,
@@ -2749,8 +2752,16 @@ function invalidateModuleCache(filePath: string): void {
     }
     const module = gradleService.resolveModule(filePath);
     if (module) {
+        // Invalidate Gradle's discover/compile cache so the next discover
+        // recompiles against the edited sources. Deliberately KEEP
+        // moduleManifestCache (the render-id snapshot): an identity-only edit
+        // doesn't change the preview set, so the daemon save path reuses the
+        // cached ids and dispatches renderNow without paying a Gradle
+        // composePreviewDiscover on every keystroke. Set changes still refresh
+        // the snapshot — drops via sourceMayHaveDroppedCachedPreviews on the
+        // save, adds via the daemon's discoveryUpdated push — both of which call
+        // reconcilePreviewManifest.
         gradleService.invalidateCache(module);
-        moduleManifestCache.delete(module.modulePath);
     }
 }
 
@@ -2776,21 +2787,16 @@ function invalidateModuleCache(filePath: string): void {
  */
 async function applyDiscoveryDiff(
     moduleId: string,
-    params: {
-        added: unknown[];
-        removed: string[];
-        changed: unknown[];
-        totalPreviews: number;
-    },
+    params: DiscoveryUpdatedParams,
 ): Promise<void> {
     if (!gradleService || !panel) {
         return;
     }
 
     const removedIds = params.removed ?? [];
-    const addedCount = params.added?.length ?? 0;
+    const added = params.added ?? [];
     const changedCount = params.changed?.length ?? 0;
-    if (removedIds.length === 0 && addedCount === 0 && changedCount === 0) {
+    if (removedIds.length === 0 && added.length === 0 && changedCount === 0) {
         return;
     }
 
@@ -2807,7 +2813,34 @@ async function applyDiscoveryDiff(
         gradleService.resolveModule(editorScope.file)?.modulePath === moduleId
             ? editorScope.file
             : undefined;
-    await reconcilePreviewManifest(module, repaintFile);
+    const fresh = await reconcilePreviewManifest(module, repaintFile);
+
+    // reconcilePreviewManifest only reshapes the panel (setPreviews) — it does
+    // not render. A newly-added @Preview would otherwise show as a card with no
+    // PNG until the next save: notifyDaemonOfSave derives its renderNow ids from
+    // the pre-add snapshot (we keep moduleManifestCache across identity saves for
+    // perf), and the daemon defers this discoveryUpdated until after the save's
+    // render. This is the first point we know the added ids, so render them now.
+    if (fresh && added.length > 0) {
+        const renderable = new Set(fresh.map((p) => p.id));
+        const addedIds = added
+            .map((p) => p.id)
+            .filter((id) => renderable.has(id));
+        if (addedIds.length > 0) {
+            try {
+                await dispatchDaemonRender(
+                    module,
+                    addedIds,
+                    "discovery-added",
+                    "discovery-added-heavy-opt-in",
+                );
+            } catch (err) {
+                logLine(
+                    `daemon: render for added previews failed: ${String((err as Error).message ?? err)}`,
+                );
+            }
+        }
+    }
 }
 
 /**
@@ -2881,15 +2914,14 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
             ? editorScope.file
             : undefined;
-    // The manifest cache is wiped by `invalidateModuleCache` on every save and
-    // file-change, and is only repopulated asynchronously (the daemon's
-    // `discoveryUpdated` push, or a Gradle refresh). An identity-only edit (e.g.
-    // tweaking a colour) keeps the daemon quiet — no `discoveryUpdated` — so the
-    // cache stays empty after the wipe. Without recovering here we'd derive
-    // `renderIds=0` and the save would render nothing: previews silently stop
-    // updating after the first invalidation. `sourceMayHaveDroppedCachedPreviews`
-    // can't cover this (it returns false for an empty preview list), so an empty
-    // cache must trigger a discover to recover the render ids.
+    // The manifest snapshot persists across identity edits, but it can be empty
+    // on a cold save: the first save before any discover ran, or right after an
+    // explicit refresh cleared it. An empty snapshot would derive renderIds=0
+    // and render nothing — and an identity edit keeps the daemon quiet, so no
+    // `discoveryUpdated` would repopulate it. Recover by discovering once here.
+    // (`sourceMayHaveDroppedCachedPreviews` can't cover this — it returns false
+    // for an empty preview list.) Once populated, subsequent identity saves skip
+    // this and reuse the snapshot.
     if (manifest.length === 0) {
         const fresh = await reconcilePreviewManifest(module, repaintFile);
         if (fresh) {
@@ -2917,40 +2949,61 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         return "accepted";
     }
     try {
-        await daemonScheduler.setFocus(module, ids);
-        const fullIds = heavyOptInsFor(module.modulePath, ids);
-        const fastIds =
-            fullIds.length === 0
-                ? ids
-                : ids.filter((id) => !fullIds.includes(id));
-
-        if (fastIds.length > 0) {
-            const ok = await daemonScheduler.renderNow(
-                module,
-                fastIds,
-                "fast",
-                "save",
-            );
-            if (!ok) {
-                return "failed";
-            }
-        }
-        if (fullIds.length > 0) {
-            const ok = await daemonScheduler.renderNow(
-                module,
-                fullIds,
-                "full",
-                "save-heavy-opt-in",
-            );
-            if (!ok) {
-                return "failed";
-            }
-        }
-        return "accepted";
+        const ok = await dispatchDaemonRender(
+            module,
+            ids,
+            "save",
+            "save-heavy-opt-in",
+        );
+        return ok ? "accepted" : "failed";
     } catch (err) {
         logLine(`daemon: ${String((err as Error).message ?? err)}`);
         return daemonGate.isBuildDisabled(module) ? "disabled" : "failed";
     }
+}
+
+/**
+ * Focus `ids` and dispatch a daemon render, split across the fast/full tiers by
+ * heavy-capture opt-in. Returns false if a renderNow was rejected, true
+ * otherwise (including an empty id set, which is a no-op). Shared by the save
+ * path and the discoveryUpdated handler so both render through the same tiering.
+ */
+async function dispatchDaemonRender(
+    module: ModuleInfo,
+    ids: string[],
+    fastReason: string,
+    fullReason: string,
+): Promise<boolean> {
+    if (!daemonScheduler || ids.length === 0) {
+        return true;
+    }
+    await daemonScheduler.setFocus(module, ids);
+    const fullIds = heavyOptInsFor(module.modulePath, ids);
+    const fastIds =
+        fullIds.length === 0 ? ids : ids.filter((id) => !fullIds.includes(id));
+    if (fastIds.length > 0) {
+        const ok = await daemonScheduler.renderNow(
+            module,
+            fastIds,
+            "fast",
+            fastReason,
+        );
+        if (!ok) {
+            return false;
+        }
+    }
+    if (fullIds.length > 0) {
+        const ok = await daemonScheduler.renderNow(
+            module,
+            fullIds,
+            "full",
+            fullReason,
+        );
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
 }
 
 function prioritizeEditedPreview(filePath: string, ids: string[]): string[] {
