@@ -1,5 +1,6 @@
 package ee.schimke.composeai.io
 
+import java.io.File
 import okio.FileSystem
 import okio.Path
 
@@ -24,3 +25,25 @@ val SystemFileSystem: FileSystem = FileSystem.SYSTEM
 
 /** Okio's process-temp directory, e.g. `$TMPDIR`. */
 val TemporaryDirectory: Path = FileSystem.SYSTEM_TEMPORARY_DIRECTORY
+
+/**
+ * Root of compose-ai-tools' user-level cache, following the XDG Base Directory spec:
+ * `$XDG_CACHE_HOME/composeai` when `XDG_CACHE_HOME` is set and non-blank (Linux/BSD), else
+ * `~/.cache/composeai`.
+ *
+ * Regenerable, machine-local artifacts — downloaded Google Fonts, remote-fetched bundle
+ * dependencies, materialised Gradle init scripts — belong here, *outside* any project tree: they're
+ * caches, not sources, so they shouldn't clutter a working copy or land in version control.
+ * [subdir] names the per-feature subtree (e.g. `"fonts"`, `"bundle-deps"`, `"init"`).
+ *
+ * Note this is deliberately a single shared location across projects: a font keyed by `(family,
+ * weight, italic)` or a dependency keyed by Maven coordinate is identical regardless of which
+ * project asked for it, so one cache serves them all.
+ */
+fun composeAiCacheDir(subdir: String): File {
+  val xdg = System.getenv("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() }
+  val base =
+    if (xdg != null) File(xdg, "composeai")
+    else File(System.getProperty("user.home") ?: ".", ".cache/composeai")
+  return File(base, subdir)
+}

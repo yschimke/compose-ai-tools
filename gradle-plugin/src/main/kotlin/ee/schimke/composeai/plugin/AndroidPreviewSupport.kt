@@ -1595,17 +1595,11 @@ internal object AndroidPreviewSupport {
         // discovery on some JVM/classloader combinations. See #142.
         agpTestTask?.javaLauncher?.orNull?.let { javaLauncher.set(it) }
 
-        // GoogleFont interceptor cache lives under
-        // `<project>/.compose-preview-history/fonts/`. The dirname is
-        // historical; nothing else writes there now. The renderer class
-        // no-ops when this property is absent, so the feature is fully
-        // additive for existing consumers.
-        val fontsCacheDir =
-          project.layout.projectDirectory
-            .dir(".compose-preview-history")
-            .dir("fonts")
-            .asFile
-            .absolutePath
+        // GoogleFont interceptor cache lives in the shared, machine-local
+        // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`).
+        // The renderer class no-ops when this property is absent, so the feature
+        // is fully additive for existing consumers.
+        val fontsCacheDir = composeAiFontsCacheDir(project)
         // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
         // on a CI profile) skips network on cache miss so the render
         // shows the fallback font rather than silently fetching from
@@ -2025,12 +2019,7 @@ internal object AndroidPreviewSupport {
     //
     // Built lazily via providers so the AGP unit-test task's javaLauncher
     // resolves at execution time (same reason composePreviewRender above defers it).
-    val daemonFontsCacheDir =
-      project.layout.projectDirectory
-        .dir(".compose-preview-history")
-        .dir("fonts")
-        .asFile
-        .absolutePath
+    val daemonFontsCacheDir = composeAiFontsCacheDir(project)
     val daemonFontsOffline =
       project.providers.gradleProperty("composePreview.fontsOffline").orElse("false")
     // Pre-resolved at configuration time — both feed @Input fields whose Provider chains

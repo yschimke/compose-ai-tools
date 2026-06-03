@@ -1,6 +1,7 @@
 package ee.schimke.composeai.viewer
 
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.composeAiCacheDir
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.prepareGet
@@ -268,6 +269,10 @@ internal object CoordinateResolver {
     if (home != null) roots += home / ".m2/repository"
     val gradleHome = System.getenv("GRADLE_USER_HOME")?.toPath() ?: home?.let { it / ".gradle" }
     if (gradleHome != null) roots += gradleHome / "caches/modules-2/files-2.1"
+    // Pre-XDG download-cache location — read-only fallback so artifacts a previous version
+    // downloaded into `~/.cache/compose-preview/bundle-deps` still resolve after the move to
+    // [composeAiCacheDir]. Nothing writes here.
+    if (home != null) roots += home / ".cache/compose-preview/bundle-deps"
     return roots
   }
 
@@ -281,7 +286,6 @@ internal object CoordinateResolver {
     System.getProperty("composeai.bundle.cacheDir")?.let {
       return it.toPath()
     }
-    val home = System.getProperty("user.home")?.toPath() ?: ".".toPath()
-    return home / ".cache/compose-preview/bundle-deps"
+    return composeAiCacheDir("bundle-deps").path.toPath()
   }
 }

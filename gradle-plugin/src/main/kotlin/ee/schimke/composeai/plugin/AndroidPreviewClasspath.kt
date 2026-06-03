@@ -279,11 +279,11 @@ internal object AndroidPreviewClasspath {
       "roborazzi.test.record" to "true",
       "composeai.render.manifest" to manifestPath,
       "composeai.render.outputDir" to rendersDir,
-      // GoogleFont interceptor cache — the cache lives under
-      // `<project>/.compose-preview-history/fonts/`. The dirname is
-      // historical; nothing else writes there now. The renderer class
-      // no-ops when this property is absent, so the feature is fully
-      // additive for existing consumers.
+      // GoogleFont interceptor cache — a shared, machine-local cache under
+      // `${'$'}XDG_CACHE_HOME/composeai/fonts` (else `~/.cache/composeai/fonts`),
+      // computed by [composeAiFontsCacheDir]. The renderer class no-ops when
+      // this property is absent, so the feature is fully additive for existing
+      // consumers.
       "composeai.fonts.cacheDir" to fontsCacheDir,
       // `-PcomposePreview.fontsOffline=true` (or the same Gradle property
       // on a CI profile) skips network on cache miss so the render
@@ -291,4 +291,25 @@ internal object AndroidPreviewClasspath {
       // `fonts.googleapis.com`.
       "composeai.fonts.offline" to fontsOffline,
     )
+}
+
+/**
+ * Absolute path of the shared GoogleFont download cache: `$XDG_CACHE_HOME/composeai/fonts` when
+ * `XDG_CACHE_HOME` is set and non-blank, else `~/.cache/composeai/fonts`. Mirrors `common/io`'s
+ * `composeAiCacheDir("fonts")` — the plugin can't depend on that module, so the XDG resolution is
+ * inlined here.
+ *
+ * Downloaded fonts are regenerable and identical across projects (keyed by family/weight/italic),
+ * so they belong in one user-level cache rather than inside each project's
+ * `.compose-preview-history/`. Resolved through [org.gradle.api.provider.ProviderFactory] so the
+ * configuration cache records `XDG_CACHE_HOME` / `user.home` as inputs instead of flagging a raw
+ * `System.getenv` read.
+ */
+internal fun composeAiFontsCacheDir(project: Project): String {
+  val xdg =
+    project.providers.environmentVariable("XDG_CACHE_HOME").orNull?.takeIf { it.isNotBlank() }
+  val base =
+    if (xdg != null) File(xdg, "composeai")
+    else File(project.providers.systemProperty("user.home").get(), ".cache/composeai")
+  return File(base, "fonts").absolutePath
 }
