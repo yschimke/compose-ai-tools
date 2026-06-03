@@ -136,6 +136,26 @@ describe("LiveStateController — launcher-widget override", () => {
         assert.strictEqual(changes.length, 1);
     });
 
+    it("clears the Controls flag when the live target is toggled off", () => {
+        // Regression (#1709): once the focus-toolbar live button became the
+        // sole stop path, toggling a card OFF must clear its #1203 Controls
+        // flag. `planLiveToggle` only lists the *other* priors in
+        // `deactivate`, so the target's own flag is cleared by the explicit
+        // `!turnOnTarget` branch in `setInteractiveForCard` — without it a
+        // later live re-entry silently re-attaches keyboard interception.
+        const live = makeController();
+        const card = makeCard("preview:A");
+        // Enabling Controls drives the card live and sets the flag.
+        live.toggleControlsForCard(card, true);
+        assert.strictEqual(live.isLive("preview:A"), true);
+        assert.strictEqual(live.isControlsEnabled("preview:A"), true);
+        // Plain toggle off (the focus-toolbar live/stop button) stops live...
+        live.setInteractiveForCard(card, false);
+        assert.strictEqual(live.isLive("preview:A"), false);
+        // ...and must also drop the Controls flag.
+        assert.strictEqual(live.isControlsEnabled("preview:A"), false);
+    });
+
     it("hydrateLauncherWidgetOverride seeds the map without firing the callback", () => {
         const changes: ChangeRecord[] = [];
         const live = makeController((previewId, cells) =>

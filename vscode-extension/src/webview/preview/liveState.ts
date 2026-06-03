@@ -642,6 +642,14 @@ export class LiveStateController {
             this.postLiveCommand(prior, false);
         }
         this.interactivePreviewIds = plan.next;
+        if (!plan.turnOnTarget) {
+            // Issue #1203 — the target itself is being toggled OFF (it's never
+            // in `plan.deactivate`, which only carries the *other* priors). Clear
+            // its Controls flag too, matching the loop above and
+            // `stopInteractiveForCard`, so a later live re-entry doesn't silently
+            // re-attach keyboard interception after an explicit stop.
+            this.controlsEnabledPreviewIds.delete(previewId);
+        }
         if (plan.turnOnTarget) {
             attachInteractiveInputHandlers(
                 card,
