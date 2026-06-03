@@ -949,6 +949,17 @@ object PreviewDiscovery {
     // focus owner here — the `:renderer-xr` task drives the whole recover-and-write in one shot.
     // Gate them out of every dimensional fan-out the same way as tile / notification / glance.
     val isXrSubspace = ann.name == XR_SUBSPACE_PREVIEW_FQN
+    // XR subspace previews don't render a PNG — the opt-in `composePreviewRenderXr` task writes a
+    // `scene.json` (keyed off the preview's id/class/function, not these outputs). Emit NO captures
+    // and NO data products so `composePreviewRenderAll`'s missing-render validation expects neither
+    // a
+    // PNG (which is never produced) nor a scene.json (which isn't produced at all when a consumer
+    // declares `@XrSubspacePreview` but leaves `enableXrPreviews` off). The XR render is validated
+    // by
+    // `:renderer-xr`'s own tests + the sample run, not by the standard render gate.
+    if (isXrSubspace) {
+      return PreviewOutputPlan(captures = emptyList(), dataProducts = emptyList())
+    }
     val nonComposable = isTile || isNotification || isGlanceAppWidget || isXrSubspace
     val effectiveTimings = if (nonComposable) emptyList() else timings
     val effectiveScrolls = if (nonComposable) emptyList() else scrolls
