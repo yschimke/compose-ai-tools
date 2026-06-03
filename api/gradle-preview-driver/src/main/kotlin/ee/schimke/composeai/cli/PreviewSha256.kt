@@ -29,7 +29,7 @@ import okio.Path.Companion.toPath
  */
 fun previewSha256(file: File, fileSystem: FileSystem = SystemFileSystem): String =
   if (file.extension.equals("gif", ignoreCase = true)) {
-    gifBookendFrameSha256(file) ?: sha256(readAllBytes(file, fileSystem))
+    gifBookendFrameSha256(file, fileSystem) ?: sha256(readAllBytes(file, fileSystem))
   } else {
     sha256(readAllBytes(file, fileSystem))
   }
@@ -44,10 +44,15 @@ internal fun sha256(bytes: ByteArray): String {
 }
 
 /** Hash a GIF's first + last frames as `(w:int)(h:int)(pixels:int[w*h])` ARGB bytes per frame. */
-private fun gifBookendFrameSha256(file: File): String? {
+private fun gifBookendFrameSha256(file: File, fileSystem: FileSystem = SystemFileSystem): String? {
   val reader = ImageIO.getImageReadersByFormatName("gif").asSequence().firstOrNull() ?: return null
   return try {
-    ImageIO.createImageInputStream(file).use { stream ->
+    // Decode the GIF through the injected filesystem (bridged to an `ImageInputStream`) so the
+    // bookend-frame hash and the raw-byte fallback read the *same* bytes — otherwise a non-default
+    // FileSystem would decode a (possibly absent) real-disk file and silently fall back to the
+    // unstable raw-byte hash this function exists to avoid.
+    val bytes = fileSystem.read(file.path.toPath()) { readByteArray() }
+    ImageIO.createImageInputStream(bytes.inputStream()).use { stream ->
       reader.input = stream
       val numFrames = reader.getNumImages(true)
       if (numFrames <= 0) return null

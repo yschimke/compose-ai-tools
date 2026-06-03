@@ -9,7 +9,6 @@ import java.net.URLClassLoader
 import java.util.UUID
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
-import okio.FileSystem
 import okio.Path
 import okio.buffer
 import okio.source
@@ -50,11 +49,10 @@ data class LoadedBundle(
   val coverPreview: LoadedPreview,
   private val classLoader: URLClassLoader,
   private val workDir: Path,
-  private val fileSystem: FileSystem = SystemFileSystem,
 ) : AutoCloseable {
   override fun close() {
     runCatching { classLoader.close() }
-    runCatching { fileSystem.deleteRecursively(workDir) }
+    runCatching { SystemFileSystem.deleteRecursively(workDir) }
   }
 }
 
@@ -78,16 +76,22 @@ data class LoadedPreview(
  * isn't a recognised polyglot or zip, [IllegalStateException] when required entries are absent.
  * Per-preview resolution failures are recorded inside [LoadedPreview.errorMessage] rather than
  * aborting the whole load.
+ *
+ * This deliberately uses the real [SystemFileSystem] rather than an injected one: the extracted
+ * `app.jar` / `libs/` are handed to a [URLClassLoader] via `file:` URLs, which can only read the
+ * real process filesystem — so a non-real `FileSystem` would pass the Okio existence checks here
+ * and then fail to resolve any preview class. (The dependency [CoordinateResolver] is separately
+ * injectable; it has no classloader boundary.)
  */
-fun loadBundle(bundleFile: Path, fileSystem: FileSystem = SystemFileSystem): LoadedBundle {
-  require(fileSystem.metadataOrNull(bundleFile)?.isRegularFile == true) {
+fun loadBundle(bundleFile: Path): LoadedBundle {
+  require(SystemFileSystem.metadataOrNull(bundleFile)?.isRegularFile == true) {
     "not a file: $bundleFile"
   }
 
-  val zipBytes = extractZipBytes(bundleFile, fileSystem)
+  val zipBytes = extractZipBytes(bundleFile)
   val workDir =
     (TemporaryDirectory / "compose-preview-viewer-${UUID.randomUUID()}").also {
-      fileSystem.createDirectories(it)
+      SystemFileSystem.createDirectories(it)
     }
   val appJarPath = workDir / "app.jar"
   // Embedded dep jars, keyed by their posix `libs/<name>.jar` path so order is deterministic and
@@ -103,14 +107,14 @@ fun loadBundle(bundleFile: Path, fileSystem: FileSystem = SystemFileSystem): Loa
         name == "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
         name == "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
         name == "classes/app.jar" ->
-          fileSystem.sink(appJarPath).buffer().use { it.writeAll(zin.source()) }
+          SystemFileSystem.sink(appJarPath).buffer().use { it.writeAll(zin.source()) }
         !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
           // Flatten to a safe basename under workDir/libs/; `libs/` paths in our own bundles
           // never contain `..` or nested dirs, but guard against a hostile bundle escaping
           // workDir.
           val safe = workDir / "libs" / name.substringAfterLast('/')
-          safe.parent?.let { fileSystem.createDirectories(it) }
-          fileSystem.sink(safe).buffer().use { it.writeAll(zin.source()) }
+          safe.parent?.let { SystemFileSystem.createDirectories(it) }
+          SystemFileSystem.sink(safe).buffer().use { it.writeAll(zin.source()) }
           libJarFiles[name] = safe
         }
       }
@@ -119,12 +123,12 @@ fun loadBundle(bundleFile: Path, fileSystem: FileSystem = SystemFileSystem): Loa
   }
   val bundleJsonNonNull = requireNotNull(bundleJson) { "bundle.json missing in $bundleFile" }
   val previewsJsonNonNull = requireNotNull(previewsJson) { "previews.json missing in $bundleFile" }
-  check(fileSystem.exists(appJarPath)) { "classes/app.jar missing in $bundleFile" }
+  check(SystemFileSystem.exists(appJarPath)) { "classes/app.jar missing in $bundleFile" }
 
   val bundleManifest = JSON.decodeFromString(BundleManifest.serializer(), bundleJsonNonNull)
   val previewManifest = JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonNonNull)
   if (previewManifest.previews.isEmpty()) {
-    fileSystem.deleteRecursively(workDir)
+    SystemFileSystem.deleteRecursively(workDir)
     throw IllegalStateException("bundle has no previews: $bundleFile")
   }
 
@@ -132,10 +136,7 @@ fun loadBundle(bundleFile: Path, fileSystem: FileSystem = SystemFileSystem): Loa
   // carrying them; resolve those from the machine's local Maven / Gradle caches (warn-not-fail) so
   // the preview's own third-party deps are available the same way embedded `libs/` jars are.
   val resolvedCoordJars =
-    CoordinateResolver.resolve(
-      bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>(),
-      fileSystem = fileSystem,
-    )
+    CoordinateResolver.resolve(bundleManifest.classpath.filterIsInstance<ClasspathEntry.Maven>())
 
   val parentLoader = LoadedBundle::class.java.classLoader
   // app.jar first, then embedded lib jars (path-sorted), then resolved coordinate jars. The
@@ -163,7 +164,6 @@ fun loadBundle(bundleFile: Path, fileSystem: FileSystem = SystemFileSystem): Loa
     coverPreview = cover,
     classLoader = classLoader,
     workDir = workDir,
-    fileSystem = fileSystem,
   )
 }
 
@@ -231,8 +231,8 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
  * Mirrors the same routine in `:cli/BundleCommand.kt` — duplicated rather than depended on to keep
  * the viewer's module graph clean.
  */
-private fun extractZipBytes(file: Path, fileSystem: FileSystem): ByteArray {
-  val bytes = fileSystem.read(file) { readByteArray() }
+private fun extractZipBytes(file: Path): ByteArray {
+  val bytes = SystemFileSystem.read(file) { readByteArray() }
   require(bytes.size >= 8) { "not a bundle: $file is too small (${bytes.size} bytes)" }
   if (bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) return bytes
   if (!isPngSignature(bytes)) {
