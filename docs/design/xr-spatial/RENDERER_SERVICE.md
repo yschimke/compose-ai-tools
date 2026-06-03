@@ -1,8 +1,9 @@
 # RFC: the XR renderer as a streaming, extensible service behind the daemon
 
-**Status: draft / RFC.** Captures the agreed direction and the open decisions for evolving
-`renderers/xr-composite` from a one-shot CLI into a long-lived, extensible render service. Nothing
-here is built yet; the [one-shot tool](../../../renderers/xr-composite/README.md) and the
+**Status: accepted (design only).** Captures the agreed direction and the settled decisions (see
+[Decisions](#decisions)) for evolving `renderers/xr-composite` from a one-shot CLI into a long-lived,
+extensible render service. Nothing here is built yet; the
+[one-shot tool](../../../renderers/xr-composite/README.md) and the
 [panels-in-previews increment](COMPOSITOR.md) land first and are unaffected.
 
 ## Motivation
@@ -140,19 +141,28 @@ maintenance cost — see open questions.
 
 Each step is independently shippable; the one-shot CLI remains the floor.
 
-## Open questions (need a decision)
+## Decisions
 
-1. **Layering.** (A) Native process speaks the full daemon JSON-RPC subset directly (max reuse,
-   "just another node"); vs (B) native speaks a thin XR protocol and a Kotlin connector in the
-   daemon translates to the data-product/stream surface (smaller native surface, more JVM glue).
-2. **Topology.** Native renderer as a **child the daemon supervises** (a `RenderSession` backend),
-   vs a **sibling daemon** the JVM daemon proxies. Affects `render-session` design.
-3. **VS Code 3D view.** Keep client-side Three.js fed `scene.json`, or move to server-rendered
-   frames from the native renderer (via the daemon)?
-4. **Frame transport.** Reuse base64-over-JSON `streamFrame` now (fine for ≤30fps PNG/WebP, already
-   proven), or invest in the speced binary data plane / shared memory for higher throughput?
-5. **Third IDL mirror.** Accept hand-mirrored C++ types + shared fixtures, or introduce codegen for
-   the wire types (none exists today; everything is hand-mirrored)?
-6. **Distribution.** A long-lived native renderer must ship to wherever the daemon runs
-   (dev machines, CI, the VS Code host) — tighter than the one-shot tool. Bundle + bootstrap story
-   (à la `install.sh --android-sdk`).
+Settled on RFC review; these shape the implementation but none block the one-shot CLI or the
+panels-in-previews increment.
+
+1. **Layering — native speaks the daemon JSON-RPC subset directly.** The renderer is "just another
+   node" on the same protocol, not a thin XR protocol behind a Kotlin translator. Less glue, and it
+   makes the renderer a first-class producer.
+2. **Topology — daemon-supervised child.** The native renderer is a child the daemon owns and
+   multiplexes (a new `RenderSession` backend), not a sibling daemon. Matches "the daemon fronts it;
+   no parallel services spawned from VS Code."
+3. **VS Code 3D view — keep client-side Three.js (for now).** The view stays a Three.js viewer fed
+   `scene.json`; server-rendered frames via the daemon are deferred (revisit only if parity or heavy
+   scenes demand it).
+4. **Frame transport — base64-over-JSON `streamFrame`.** Reuse the proven `composestream/1`
+   transport (fine for ≤30fps PNG/WebP); the speced binary data plane / shared memory is a later
+   optimization only if throughput demands it.
+5. **IDL — hand-mirror the C++ types + shared fixtures for now**, consistent with the existing
+   Kotlin↔TS approach. Moving to a single-source IDL with codegen (e.g. protobuf) is tracked as
+   follow-up in [#1729](https://github.com/yschimke/compose-ai-tools/issues/1729) — worthwhile once
+   the third (C++) mirror actually exists.
+6. **Distribution — fetch the per-OS Release tarballs.** Reuse the
+   `xr-composite-<platform>-<ver>.tar.gz` binaries now published on each GitHub Release (see
+   `.github/workflows/release.yml`), gated/cached like the existing `install.sh --android-sdk` SDK
+   bootstrap, rather than a bespoke bundling scheme.
