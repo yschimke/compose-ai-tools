@@ -2878,18 +2878,32 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // own; the caller just shouldn't escalate to a Gradle render in that
     // case (the panel will repopulate via discover + the daemon's
     // discoveryUpdated push).
-    const manifest = moduleManifestCache.get(moduleKey) ?? [];
+    let manifest = moduleManifestCache.get(moduleKey) ?? [];
+    const repaintFile =
+        editorScope.file &&
+        gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
+            ? editorScope.file
+            : undefined;
+    // The manifest cache is wiped by `invalidateModuleCache` on every save and
+    // file-change, and is only repopulated asynchronously (the daemon's
+    // `discoveryUpdated` push, or a Gradle refresh). An identity-only edit (e.g.
+    // tweaking a colour) keeps the daemon quiet — no `discoveryUpdated` — so the
+    // cache stays empty after the wipe. Without recovering here we'd derive
+    // `renderIds=0` and the save would render nothing: previews silently stop
+    // updating after the first invalidation. `sourceMayHaveDroppedCachedPreviews`
+    // can't cover this (it returns false for an empty preview list), so an empty
+    // cache must trigger a discover to recover the render ids.
+    if (manifest.length === 0) {
+        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        if (fresh) {
+            manifest = fresh;
+        }
+    }
     let filePreviews = previewsForFile(manifest, module, filePath);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
         logLine(
             `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
         );
-        const repaintFile =
-            editorScope.file &&
-            gradleService.resolveModule(editorScope.file)?.modulePath ===
-                moduleKey
-                ? editorScope.file
-                : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
         filePreviews = fresh
             ? previewsForFile(fresh, module, filePath)
