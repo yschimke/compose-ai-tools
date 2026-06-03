@@ -58,6 +58,21 @@ fun BlueSquare() {
   Box(modifier = Modifier.fillMaxSize().background(Color(0xFF42A5F5)))
 }
 
+/**
+ * Identical fill to [RedSquare] but declared `private`, so it compiles to a JVM-private static
+ * method on `RedFixturePreviewsKt`. Kotlin `private fun` previews are a real, supported shape
+ * (`samples/android/.../Previews.kt`'s `RedBoxPreview` ships one on purpose). The daemon's
+ * [RenderEngine] resolves it via `getDeclaredComposableMethod` — which scans `declaredMethods` and
+ * finds private members — but the reflective `invoke` throws `IllegalAccessException` unless the
+ * method is opened with `setAccessible(true)` first. Used by
+ * [RenderEngineTest.privateComposableRendersToValidPng] to lock that in.
+ */
+@Suppress("unused") // invoked reflectively by the daemon's RenderEngine, not from Kotlin
+@Composable
+private fun PrivateRedSquare() {
+  Box(modifier = Modifier.fillMaxSize().background(Color(0xFFEF5350)))
+}
+
 @Composable
 fun ThemedPrimarySquare() {
   MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF123456))) {

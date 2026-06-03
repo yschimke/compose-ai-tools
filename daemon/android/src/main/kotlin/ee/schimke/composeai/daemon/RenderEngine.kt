@@ -254,6 +254,13 @@ class RenderEngine(
     val composableMethod: ComposableMethod? =
       if (nonComposableInvocation) null
       else trace.section("compose:resolveComposable") { clazz!!.getDeclaredComposableMethod(spec.functionName) }
+    // Kotlin `private fun` previews compile to JVM-private methods. `getDeclaredComposableMethod`
+    // still resolves them (it scans `declaredMethods`), but the reflective `invoke` in
+    // [InvokeComposable] would throw IllegalAccessException, so open the method up first — mirrors
+    // `:renderer-android`'s ComposePreviewStrategy. Guarded with `runCatching`: a SecurityManager
+    // or strong module encapsulation can refuse, in which case we still attempt the invoke
+    // (which succeeds for public/internal previews) rather than failing resolution outright.
+    composableMethod?.let { runCatching { it.asMethod().isAccessible = true } }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
