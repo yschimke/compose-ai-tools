@@ -29,6 +29,14 @@ import shutil
 from pathlib import Path
 
 
+# Preview kinds that, by design, never produce a render PNG — their render task
+# emits a different data product (e.g. an `@XrSubspacePreview` emits `scene.json`
+# plus per-panel textures, not a single preview-named PNG). Such a preview has an
+# empty `sha256` for the same reason a crashed render does, so it must be excluded
+# from "render failed" detection or every run flags it as a false failure.
+NON_PNG_PREVIEW_KINDS = frozenset({"XR_SUBSPACE"})
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -147,8 +155,15 @@ def _collect_failures(rows: dict) -> list[tuple[str, dict]]:
     "render failed in this run" lets the baseline and PR-comment flows push
     the successful subset while still warning reviewers about the partial
     state. Sorted by key so the markdown output is deterministic.
+
+    Previews whose kind never emits a PNG (see [NON_PNG_PREVIEW_KINDS]) are
+    excluded — their empty `sha256` is expected, not a render failure.
     """
-    return [(key, info) for key, info in sorted(rows.items()) if not info.get("sha256")]
+    return [
+        (key, info)
+        for key, info in sorted(rows.items())
+        if not info.get("sha256") and info.get("kind") not in NON_PNG_PREVIEW_KINDS
+    ]
 
 
 def _capture_label(capture: dict) -> str:
@@ -294,6 +309,9 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
         preview_id = entry["id"]
         fn = entry["functionName"]
         source = entry.get("sourceFile", "")
+        # Preview kind ("COMPOSE", "TILE", "XR_SUBSPACE", …) — drives whether a
+        # missing PNG counts as a render failure (see NON_PNG_PREVIEW_KINDS).
+        kind = (entry.get("params") or {}).get("kind") or "COMPOSE"
 
         # Legacy / unrendered shape: no per-capture list, fall back to the
         # top-level sha/png. Produces one row as before.
@@ -305,6 +323,7 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
                 "sourceFile": source,
                 "module": module,
                 "previewId": preview_id,
+                "kind": kind,
                 "pngPath": entry.get("pngPath") or "",
                 "captureIndex": 0,
                 "captureLabel": "",
@@ -326,6 +345,7 @@ def load_cli_output(cli_json_path: Path) -> dict[str, dict]:
                 "sourceFile": source,
                 "module": module,
                 "previewId": preview_id,
+                "kind": kind,
                 "pngPath": png,
                 "captureIndex": idx,
                 "captureLabel": _capture_label(capture),
