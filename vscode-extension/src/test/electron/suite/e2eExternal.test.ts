@@ -547,10 +547,37 @@ describeExternal(
 
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
-                // Edit 1 captures the probe's first image (the daemon renders it
-                // on the first save where it's in-manifest); edits 2+ must each
-                // produce a *changed* image.
-                let prevImage: string | null = null;
+                // Seed prevImage with the probe's BASELINE render (its current,
+                // pre-edit colour) so edit 1 must produce a *changed* image. A
+                // save with no source change renders the baseline; capturing it
+                // here means a baseline `updateImage` that arrives late (from the
+                // prime / first daemon render) can't be accepted by edit 1 as if
+                // it were edit 1's own render — which would mask a stale edit-1
+                // render even while the later edits still produce distinct images
+                // (Codex review on #1718).
+                api.resetMessages();
+                api.triggerSave(kotlinFile);
+                const baseline = await waitFor(
+                    "probe baseline image (pre-edit render)",
+                    PER_EDIT_TIMEOUT_MS,
+                    100,
+                    () => probeImageOf() ?? undefined,
+                );
+                let prevImage: string | null = baseline.imageData;
+                {
+                    const buf = Buffer.from(baseline.imageData, "base64");
+                    fs.writeFileSync(
+                        path.join(
+                            dumpDir,
+                            `probe-baseline-${baselineColor.slice(2)}.png`,
+                        ),
+                        buf,
+                    );
+                    console.log(
+                        `[editloop] baseline ${baselineColor} bytes=${buf.length} ` +
+                            `sha=${createHash("sha256").update(buf).digest("hex").slice(0, 12)}`,
+                    );
+                }
                 for (let i = 0; i < ITERATIONS; i++) {
                     api.resetMessages();
                     src = fs
