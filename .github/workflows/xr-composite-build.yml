@@ -93,20 +93,34 @@ jobs:
           tar xzf "${tgz}" -C filament-sdk
           rm -f "${tgz}"
 
-      # filament-sdk/filament/ is the unpacked SDK root (include/, lib/, bin/).
+      # Locate the SDK root (the dir holding include/filament/Engine.h) and export
+      # it. This runs on both cache-hit and fresh-download, and copes with the
+      # tarball's top-level layout differing per platform. On Windows we hand
+      # CMake (a native binary) a Windows-style path (C:/...) rather than the
+      # Git-bash MSYS path (/d/a/...), which it cannot resolve.
+      - name: Resolve Filament SDK root
+        shell: bash
+        run: |
+          set -euo pipefail
+          engine="$(find "$PWD/filament-sdk" -path '*/include/filament/Engine.h' -print -quit)"
+          if [ -z "$engine" ]; then
+            echo "::error::could not find include/filament/Engine.h under filament-sdk/"
+            find "$PWD/filament-sdk" -maxdepth 2 -type d | sort
+            exit 1
+          fi
+          sdk="${engine%/include/filament/Engine.h}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            sdk="$(cygpath -m "$sdk")"
+          fi
+          echo "FILAMENT_SDK=${sdk}" >> "$GITHUB_ENV"
+          echo "Resolved FILAMENT_SDK=${sdk}"
+
       - name: Configure
         shell: bash
         run: |
           set -euo pipefail
-          sdk="$PWD/filament-sdk/filament"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            # CMake here is a native Windows binary; hand it a Windows-style path
-            # (C:/...) rather than the Git-bash MSYS path (/d/a/...) so the SDK
-            # EXISTS check in CMakeLists resolves.
-            sdk="$(cygpath -m "$sdk")"
-          fi
           common=(-S renderers/xr-composite -B renderers/xr-composite/build
-                  -DCMAKE_BUILD_TYPE=Release "-DFILAMENT_SDK=${sdk}")
+                  -DCMAKE_BUILD_TYPE=Release "-DFILAMENT_SDK=${FILAMENT_SDK}")
           if [ "$RUNNER_OS" = "Windows" ]; then
             # MSVC multi-config generator; CMakeLists pins the static /MT runtime.
             cmake "${common[@]}" -G "Visual Studio 17 2022" -A x64

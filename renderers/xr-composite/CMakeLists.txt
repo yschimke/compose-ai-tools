@@ -80,8 +80,11 @@ target_link_directories(xr-composite PRIVATE "${FILAMENT_LIB_DIR}")
 target_link_libraries(xr-composite PRIVATE
   filament backend bluegl bluevk filabridge filaflat utils geometry smol-v ibl abseil zstd)
 if(APPLE)
+  # QuartzCore provides CAMetalLayer (referenced by Filament's Metal backend);
+  # Foundation backs the Objective-C runtime the .mm objects pull in.
   target_link_libraries(xr-composite PRIVATE
-    "-framework Cocoa" "-framework Metal" "-framework CoreVideo")
+    "-framework Cocoa" "-framework Metal" "-framework CoreVideo"
+    "-framework QuartzCore" "-framework Foundation")
 elseif(WIN32)
   # Per Filament's SDK README Windows recipe: the OpenGL backend needs the GDI,
   # user, and OpenGL system libs.
