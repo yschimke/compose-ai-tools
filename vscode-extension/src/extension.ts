@@ -2751,9 +2751,6 @@ function invalidateModuleCache(filePath: string): void {
     if (module) {
         gradleService.invalidateCache(module);
         moduleManifestCache.delete(module.modulePath);
-        logLine(
-            `[daemon] invalidateModuleCache cleared manifest cache for ${module.modulePath} (file=${path.basename(filePath)})`,
-        );
     }
 }
 
@@ -3420,9 +3417,6 @@ async function reconcilePreviewManifest(
     }
     gradleService.invalidateCache(module);
     moduleManifestCache.delete(module.modulePath);
-    logLine(
-        `[daemon] reconcile: cleared manifest cache for ${module.modulePath} (discovering…)`,
-    );
     let manifest;
     try {
         manifest = await gradleService.composePreviewDiscover(module);
