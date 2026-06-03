@@ -142,6 +142,17 @@ bottom: poseInRoot=(0, -100, 0) size=(560 x 160)
 
 i.e. the genuine framework-computed stack (top above bottom, column = sum of children).
 
+### Example output
+
+`:samples:xr-spatial`'s `NowPlayingSpatialPreview` (a `SpatialColumn` of two tagged
+`SpatialPanel`s) rendered by `composePreviewRenderXr` — each panel's real content rasterised to its
+`<id>.png` at the panel's true size, next to the [`scene.json`](xr-spatial/scene.json) that places
+them:
+
+| `now-playing` (560×320) | `transport` (560×96) |
+| --- | --- |
+| ![now-playing panel](xr-spatial/now-playing.png) | ![transport panel](xr-spatial/transport.png) |
+
 **Verdict / path forward:** a real **subspace-layout projector** is feasible — render each panel's
 2D content (Robolectric, as the committed `@Preview`s already do), then composite the panels at
 their recovered `poseInRoot`/`size` through a chosen preview camera. **This is now built** in
