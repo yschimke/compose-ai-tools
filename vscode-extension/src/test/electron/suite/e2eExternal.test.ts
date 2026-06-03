@@ -245,7 +245,12 @@ describeExternal(
             // stderr tail is already in the channel log thanks to
             // issue #1326's wrapping (`formatDaemonSpawnFailure`).
             const tWarm = phaseStart();
-            const warmed = await api.triggerWarmDaemon(kotlinFile);
+            // refreshAfterReady=true mirrors the production view-open warm: it
+            // runs a post-warm composePreviewDiscover that writes previews.json
+            // and populates the daemon's PreviewIndex. Without it the daemon
+            // comes up empty and a later save's renderNow has no previews to
+            // resolve (the daemon renders nothing).
+            const warmed = await api.triggerWarmDaemon(kotlinFile, true);
             phaseEnd("warmDaemonMs", tWarm);
             if (!warmed) {
                 // Post-mortem: surface every applied.json the workspace has on
@@ -516,16 +521,31 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Land the probe in the daemon's manifest before the loop via a
-                // full (Gradle) refresh: it discovers + renders every preview —
-                // posting setPreviews with the probe's card AND priming the
-                // daemon's manifest cache — so the first loop edit is a save where
-                // the probe is in-manifest and renders through the daemon. (A bare
-                // triggerSave doesn't suffice: a newly-added preview's image isn't
-                // rendered on the first save, and the daemon's deferred discovery
-                // only runs after a render, so the card never surfaces.)
+                // Land the probe in the DAEMON before the loop. Two things have
+                // to be true for a save's renderNow to render the probe (rather
+                // than emit a dropped `daemon-stub-*`):
+                //
+                //  1. previews.json must list the probe — the host resolves the
+                //     renderNow's `previewId=` to a class/function via that
+                //     manifest (RobolectricHost.reshapeRenderPayload); unknown
+                //     ids fall through to renderStub.
+                //  2. The daemon process must have LOADED that manifest. The
+                //     daemon binds its PreviewManifestRouter once at startup
+                //     (DaemonMain), and the cold-pass daemon spawned before
+                //     previews.json existed — so it's stuck in the empty-index
+                //     fallback and stubs every render for its whole lifetime.
+                //
+                // triggerWarmDaemon(refreshAfterReady=true) runs the post-warm
+                // composePreviewDiscover that satisfies (1). For (2) we then
+                // restart the daemon and warm again: the daemon's own docs call
+                // this "the next warm after discover picks up the populated
+                // manifest". restartDaemon clears the bootstrap memo, so the
+                // re-warm genuinely re-spawns against the now-written manifest.
                 api.resetMessages();
-                await api.triggerRefresh(kotlinFile, /* force */ true, "full");
+                await api.triggerWarmDaemon(
+                    kotlinFile,
+                    /* refreshAfterReady */ true,
+                );
                 await waitFor(
                     "probe discovered (card present)",
                     5 * 60_000,
@@ -544,25 +564,72 @@ describeExternal(
                             );
                         }),
                 );
+                // Re-spawn against the now-populated previews.json so the daemon
+                // leaves stub-render mode and resolves real specs (incl. the
+                // probe) — without this every renderNow returns a dropped
+                // daemon-stub path and no updateImage ever reaches the panel.
+                await vscode.commands.executeCommand(
+                    "composePreview.restartDaemon",
+                );
+                const rewarmed = await api.triggerWarmDaemon(
+                    kotlinFile,
+                    /* refreshAfterReady */ true,
+                );
+                assert.ok(
+                    rewarmed,
+                    "daemon must re-warm after restart so it loads the populated previews.json",
+                );
 
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
-                // Seed prevImage with the probe's BASELINE render (its current,
-                // pre-edit colour) so edit 1 must produce a *changed* image. A
-                // save with no source change renders the baseline; capturing it
-                // here means a baseline `updateImage` that arrives late (from the
-                // prime / first daemon render) can't be accepted by edit 1 as if
-                // it were edit 1's own render — which would mask a stale edit-1
-                // render even while the later edits still produce distinct images
-                // (Codex review on #1718).
-                api.resetMessages();
-                api.triggerSave(kotlinFile);
-                const baseline = await waitFor(
-                    "probe baseline image (pre-edit render)",
-                    PER_EDIT_TIMEOUT_MS,
-                    100,
-                    () => probeImageOf() ?? undefined,
-                );
+                // Seed prevImage with the probe's BASELINE render — the pink
+                // pre-edit image the post-restart re-warm just rendered through
+                // the daemon (warmShownPreviews). Capturing that render, rather
+                // than forcing a fresh no-change save, matters twice over:
+                //   - it gives edit 1 a real baseline to differ from, so a stale
+                //     edit-1 render can't slip through (Codex review on #1718);
+                //   - a no-change save renders byte-identical pink, which the
+                //     daemon's frame-dedup reports as `unchanged` and the host
+                //     drops (no updateImage) — so the baseline has to come from
+                //     the re-warm's render, not a redundant save.
+                // No resetMessages here: that render's updateImage is exactly
+                // what we're capturing.
+                // Diagnostic: if the daemon never renders the probe (the save
+                // path falls back to Gradle instead of driving daemon renderNow),
+                // dump the extension's own [refresh]/daemon log tail and the
+                // panel message commands so the cause is visible in CI output
+                // rather than just a bare timeout.
+                const dumpDaemonDiag = (label: string) => {
+                    const tail = api
+                        .getOutputChannelTail(400)
+                        .filter((l) =>
+                            /daemon|render|fileChanged|disabled|focus|ensureModule|compile|manifest|discover/i.test(
+                                l,
+                            ),
+                        );
+                    console.log(
+                        `\n[editloop] ===== ${label}: output-channel tail (${tail.length} relevant lines) =====`,
+                    );
+                    for (const l of tail.slice(-120)) console.log(`  ${l}`);
+                    const cmds = (
+                        api.getPostedMessages() as PostedMessage[]
+                    ).map((m) => m.command);
+                    console.log(
+                        `[editloop] posted commands since reset: ${JSON.stringify(cmds)}`,
+                    );
+                };
+                let baseline: { previewId: string; imageData: string };
+                try {
+                    baseline = await waitFor(
+                        "probe baseline image (pre-edit render)",
+                        PER_EDIT_TIMEOUT_MS,
+                        100,
+                        () => probeImageOf() ?? undefined,
+                    );
+                } catch (e) {
+                    dumpDaemonDiag("baseline render TIMED OUT");
+                    throw e;
+                }
                 let prevImage: string | null = baseline.imageData;
                 {
                     const buf = Buffer.from(baseline.imageData, "base64");
@@ -597,25 +664,31 @@ describeExternal(
                     // what proves live mode reflects the edit instead of
                     // re-emitting a stale render. A same-bytes render would time
                     // out here and fail the test loudly.
-                    const shot = await waitFor(
-                        `edit ${i + 1} → CHANGED probe image`,
-                        // Bounded per-edit: a warm incremental edit that can't
-                        // produce a *changed* render within this window is the
-                        // stale-render bug — fail fast and loud rather than
-                        // hanging until the 30-min suite timeout.
-                        PER_EDIT_TIMEOUT_MS,
-                        100,
-                        () => {
-                            const cur = probeImageOf();
-                            if (!cur) return undefined;
-                            if (
-                                prevImage !== null &&
-                                cur.imageData === prevImage
-                            )
-                                return undefined;
-                            return cur;
-                        },
-                    );
+                    let shot: { previewId: string; imageData: string };
+                    try {
+                        shot = await waitFor(
+                            `edit ${i + 1} → CHANGED probe image`,
+                            // Bounded per-edit: a warm incremental edit that can't
+                            // produce a *changed* render within this window is the
+                            // stale-render bug — fail fast and loud rather than
+                            // hanging until the 30-min suite timeout.
+                            PER_EDIT_TIMEOUT_MS,
+                            100,
+                            () => {
+                                const cur = probeImageOf();
+                                if (!cur) return undefined;
+                                if (
+                                    prevImage !== null &&
+                                    cur.imageData === prevImage
+                                )
+                                    return undefined;
+                                return cur;
+                            },
+                        );
+                    } catch (e) {
+                        dumpDaemonDiag(`edit ${i + 1} render TIMED OUT`);
+                        throw e;
+                    }
                     const dt = Date.now() - t0;
                     timingsMs.push(dt);
 

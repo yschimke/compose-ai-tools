@@ -583,8 +583,20 @@ export interface ComposePreviewTestApi {
      * live daemon. Resolves to whether the daemon ended up ready. Used by
      * the wear a11y e2e — the regular `triggerRefresh` only drives the
      * Gradle-task render path and never touches the daemon gate.
+     *
+     * `refreshAfterReady` mirrors the production view-open warm
+     * (`refreshOrchestrator` passes it `true`): once the daemon is ready it
+     * runs a post-warm `composePreviewDiscover`, which writes `previews.json`
+     * and populates the daemon's `PreviewIndex`. Without it the daemon comes
+     * up with an empty index, so a later `renderNow(ids)` from the save path
+     * has no previews to resolve and silently renders nothing. Tests that go
+     * on to drive daemon saves must pass `true`; defaults to `false` to keep
+     * the lean warm the chip-toggle/wear tests rely on.
      */
-    triggerWarmDaemon(filePath: string): Promise<boolean>;
+    triggerWarmDaemon(
+        filePath: string,
+        refreshAfterReady?: boolean,
+    ): Promise<boolean>;
     /**
      * Drive `composePreviewApplied` against the currently-wired
      * `gradleService` and await completion, so subsequent
@@ -2354,8 +2366,11 @@ export async function activate(
                     bundleId,
                 });
             },
-            triggerWarmDaemon(filePath: string): Promise<boolean> {
-                return warmDaemonForFile(filePath);
+            triggerWarmDaemon(
+                filePath: string,
+                refreshAfterReady = false,
+            ): Promise<boolean> {
+                return warmDaemonForFile(filePath, { refreshAfterReady });
             },
             async triggerBootstrapAppliedMarkers(): Promise<void> {
                 if (!gradleService) {
@@ -2860,18 +2875,32 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     // own; the caller just shouldn't escalate to a Gradle render in that
     // case (the panel will repopulate via discover + the daemon's
     // discoveryUpdated push).
-    const manifest = moduleManifestCache.get(moduleKey) ?? [];
+    let manifest = moduleManifestCache.get(moduleKey) ?? [];
+    const repaintFile =
+        editorScope.file &&
+        gradleService.resolveModule(editorScope.file)?.modulePath === moduleKey
+            ? editorScope.file
+            : undefined;
+    // The manifest cache is wiped by `invalidateModuleCache` on every save and
+    // file-change, and is only repopulated asynchronously (the daemon's
+    // `discoveryUpdated` push, or a Gradle refresh). An identity-only edit (e.g.
+    // tweaking a colour) keeps the daemon quiet — no `discoveryUpdated` — so the
+    // cache stays empty after the wipe. Without recovering here we'd derive
+    // `renderIds=0` and the save would render nothing: previews silently stop
+    // updating after the first invalidation. `sourceMayHaveDroppedCachedPreviews`
+    // can't cover this (it returns false for an empty preview list), so an empty
+    // cache must trigger a discover to recover the render ids.
+    if (manifest.length === 0) {
+        const fresh = await reconcilePreviewManifest(module, repaintFile);
+        if (fresh) {
+            manifest = fresh;
+        }
+    }
     let filePreviews = previewsForFile(manifest, module, filePath);
     if (await sourceMayHaveDroppedCachedPreviews(filePath, filePreviews)) {
         logLine(
             `daemon: preview declarations changed in ${path.basename(filePath)}; reconciling before render`,
         );
-        const repaintFile =
-            editorScope.file &&
-            gradleService.resolveModule(editorScope.file)?.modulePath ===
-                moduleKey
-                ? editorScope.file
-                : undefined;
         const fresh = await reconcilePreviewManifest(module, repaintFile);
         filePreviews = fresh
             ? previewsForFile(fresh, module, filePath)
@@ -2880,6 +2909,9 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
     const ids = prioritizeEditedPreview(
         filePath,
         filePreviews.map((p) => p.id),
+    );
+    logLine(
+        `daemon save: ${path.basename(filePath)} manifest=${manifest.length} filePreviews=${filePreviews.length} renderIds=${ids.length}`,
     );
     if (ids.length === 0) {
         return "accepted";
@@ -3390,13 +3422,19 @@ async function reconcilePreviewManifest(
         manifest = await gradleService.composePreviewDiscover(module);
     } catch (err) {
         logLine(
-            `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message}`,
+            `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message} — manifest cache left cleared`,
         );
         return null;
     }
     if (!manifest) {
+        logLine(
+            `[daemon] reconcile: discover returned null for ${module.modulePath} — manifest cache left cleared`,
+        );
         return null;
     }
+    logLine(
+        `[daemon] reconcile: discover returned ${manifest.previews.length} preview(s) for ${module.modulePath}`,
+    );
 
     const fresh = manifest.previews;
     const moduleKey = module.modulePath;
