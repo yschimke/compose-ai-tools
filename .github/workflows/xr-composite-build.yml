@@ -55,102 +55,12 @@ jobs:
         with:
           persist-credentials: false
 
-      # Linux: Filament's release libs are built against libc++, so we build the
-      # tool with clang + libc++ to match the ABI. macOS (AppleClang) and Windows
-      # (MSVC) ship their toolchains preinstalled on the runner images.
-      - name: Install clang + libc++ (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang libc++-dev libc++abi-dev ninja-build
-        shell: bash
-
-      - name: Install Ninja (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ninja
-        shell: bash
-
-      # Cache the unpacked SDK keyed on version + platform so repeat runs skip the
-      # ~50-730 MB download. The download step below is a no-op on a cache hit.
-      - name: Cache Filament SDK
-        id: cache-sdk
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # Build + stage into dist/ via the shared composite action (also used by
+      # the release asset job in release.yml).
+      - uses: ./.github/actions/build-xr-composite
         with:
-          path: filament-sdk
-          key: filament-${{ env.FILAMENT_VERSION }}-${{ matrix.platform }}
-
-      - name: Download Filament SDK
-        if: steps.cache-sdk.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p filament-sdk
-          tgz="filament-${FILAMENT_VERSION}-${{ matrix.platform }}.tgz"
-          url="https://github.com/google/filament/releases/download/${FILAMENT_VERSION}/${tgz}"
-          echo "Downloading ${url}"
-          curl -fL --retry 4 --retry-delay 2 -o "${tgz}" "${url}"
-          tar xzf "${tgz}" -C filament-sdk
-          rm -f "${tgz}"
-
-      # Locate the SDK root (the dir holding include/filament/Engine.h) and export
-      # it. This runs on both cache-hit and fresh-download, and copes with the
-      # tarball's top-level layout differing per platform. On Windows we hand
-      # CMake (a native binary) a Windows-style path (C:/...) rather than the
-      # Git-bash MSYS path (/d/a/...), which it cannot resolve.
-      - name: Resolve Filament SDK root
-        shell: bash
-        run: |
-          set -euo pipefail
-          engine="$(find "$PWD/filament-sdk" -path '*/include/filament/Engine.h' -print -quit)"
-          if [ -z "$engine" ]; then
-            echo "::error::could not find include/filament/Engine.h under filament-sdk/"
-            find "$PWD/filament-sdk" -maxdepth 2 -type d | sort
-            exit 1
-          fi
-          sdk="${engine%/include/filament/Engine.h}"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            sdk="$(cygpath -m "$sdk")"
-          fi
-          echo "FILAMENT_SDK=${sdk}" >> "$GITHUB_ENV"
-          echo "Resolved FILAMENT_SDK=${sdk}"
-
-      - name: Configure
-        shell: bash
-        run: |
-          set -euo pipefail
-          common=(-S renderers/xr-composite -B renderers/xr-composite/build
-                  -DCMAKE_BUILD_TYPE=Release "-DFILAMENT_SDK=${FILAMENT_SDK}")
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            # MSVC multi-config generator; CMakeLists pins the static /MT runtime.
-            cmake "${common[@]}" -G "Visual Studio 17 2022" -A x64
-          else
-            cmake "${common[@]}" -G Ninja \
-              -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-          fi
-
-      - name: Build
-        shell: bash
-        run: cmake --build renderers/xr-composite/build --config Release
-
-      # The Visual Studio generator nests outputs under a per-config subdir; Ninja
-      # writes them at the build root. Stage both the binary and materials/ into a
-      # flat dist/ so the artifact layout is identical across platforms.
-      - name: Stage artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          build=renderers/xr-composite/build
-          dist=dist
-          rm -rf "$dist"
-          mkdir -p "$dist"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp "$build/Release/xr-composite.exe" "$dist/"
-          else
-            cp "$build/xr-composite" "$dist/"
-          fi
-          cp -r "$build/materials" "$dist/materials"
-          ls -lR "$dist"
+          platform: ${{ matrix.platform }}
+          filament-version: ${{ env.FILAMENT_VERSION }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

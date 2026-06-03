@@ -279,6 +279,61 @@ jobs:
           path: vscode-extension/*.vsix
           retention-days: 1
 
+  # Native xr-composite binaries shipped on each GitHub Release — one per desktop
+  # platform, each a `.tar.gz` of the binary + compiled materials. Built against
+  # the pinned Filament SDK via the shared `build-xr-composite` composite action
+  # (the same one the `xr-composite build` CI workflow uses). Unlike the JVM
+  # artefacts these aren't published to Maven Central, and `release` (not
+  # `publish-gradle-plugin`) is the only job that needs them — they're pure
+  # GitHub Release assets. The `.tar.gz` naming carries platform + arch + version
+  # so the three matrix legs never collide once merged into `artifacts/`, and the
+  # `release` job's existing `artifacts/*.tar.gz` glob uploads them with no extra
+  # wiring.
+  build-xr-composite:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            asset: linux-x86_64
+          - os: macos-14
+            platform: mac
+            asset: macos-arm64
+          - os: windows-2022
+            platform: windows
+            asset: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TAG_NAME }}
+          persist-credentials: false
+      - name: Derive plugin version from tag
+        shell: bash
+        run: echo "PLUGIN_VERSION=${TAG_NAME#v}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/build-xr-composite
+        with:
+          platform: ${{ matrix.platform }}
+      # Pack the staged dist/ (binary + materials/) into one versioned tarball.
+      # `staged-artifacts/*` keeps the upload-artifact LCA at staged-artifacts/,
+      # so after the release job's `merge-multiple` the `.tar.gz` lands flat under
+      # `artifacts/` for the `artifacts/*.tar.gz` upload glob.
+      - name: Package versioned tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staged-artifacts
+          tar -C dist -czf \
+            "staged-artifacts/xr-composite-${{ matrix.asset }}-${PLUGIN_VERSION}.tar.gz" .
+          ls -l staged-artifacts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: xr-composite-${{ matrix.asset }}
+          path: staged-artifacts/*
+          if-no-files-found: error
+          retention-days: 1
+
   # Publish the prebuilt VSIX to both marketplaces. Runs alongside the
   # `release` job (not gating it) so a marketplace outage can't block the
   # `.vsix` landing on the GitHub Release. On workflow_dispatch re-runs for
@@ -341,10 +396,12 @@ jobs:
     # irreversible (Central won't overwrite a published version), so it's gated behind every build
     # job for safety; but the GitHub assets don't need to wait behind that publish. Listing the three
     # build jobs directly lets this job run in parallel with the Maven publish, so the `.zip`/`.tar.gz`
-    # /`.jar`/installer/`.vsix` files land on the Release as soon as the builds finish instead of after
-    # Central wraps up. The build jobs still gate the Maven publish independently, so decoupling here
-    # doesn't weaken the irreversible-publish safety gate.
-    needs: [build-applications, build-viewer-artifacts, build-vscode-extension]
+    # /`.jar`/installer/`.vsix` files (including the per-OS `xr-composite-*.tar.gz` binaries) land on the
+    # Release as soon as the builds finish instead of after Central wraps up. The build jobs still gate
+    # the Maven publish independently, so decoupling here doesn't weaken the irreversible-publish safety
+    # gate. (xr-composite is in `release`'s needs but deliberately NOT in `publish-gradle-plugin`'s — the
+    # native binaries are GitHub Release assets, not Maven artifacts.)
+    needs: [build-applications, build-viewer-artifacts, build-vscode-extension, build-xr-composite]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # update the release, upload assets
