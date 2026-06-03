@@ -1657,6 +1657,12 @@ class DiscoveryFunctionalTest {
       @XrSubspacePreview
       @Composable
       fun MySpatialPreview() {}
+
+      // A parameterized XR preview must be skipped — the XR renderer composes parameterless and has
+      // no @PreviewParameter injection path.
+      @XrSubspacePreview
+      @Composable
+      fun ParameterizedSpatialPreview(label: String) {}
       """
         .trimIndent()
     )
@@ -1682,5 +1688,11 @@ class DiscoveryFunctionalTest {
     // Non-composable kind: no scroll / time / focus fan-out, no target inference.
     assertThat(xrPreviews.map { it.captures.size }).containsExactly(1)
     assertThat(xrPreviews.flatMap { it.targets }).isEmpty()
+
+    // The parameterized XR preview is rejected with a clear warning and never reaches the manifest.
+    assertThat(result.output)
+      .contains("ParameterizedSpatialPreview' — XR subspace previews must be parameterless")
+    assertThat(manifest.previews.map { it.functionName })
+      .doesNotContain("ParameterizedSpatialPreview")
   }
 }
