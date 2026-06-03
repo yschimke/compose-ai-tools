@@ -61,6 +61,10 @@ dependencies {
   // fallback path the previews exercise never reaches for a `Session`.
   implementation(libs.xr.compose)
 
+  // `@XrSubspacePreview` — FQN-discovered marker for the XR subspace render path. Binary-retained;
+  // read at discovery time. Rendered by `composePreviewRenderXr` into `scene.json`.
+  implementation(project(":preview-annotations"))
+
   debugImplementation("androidx.compose.ui:ui-tooling")
 
   // `SubspaceLayoutPoseTest` recovers the real subspace panel poses offline by driving the fake XR
