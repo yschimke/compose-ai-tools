@@ -124,6 +124,48 @@ class RenderEngineTest {
   }
 
   @Test
+  fun privateComposableRendersToValidPng() {
+    // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
+    // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw
+    // `IllegalAccessException: … cannot access a member … with modifiers "private static final"`
+    // until [RenderEngine] started calling `asMethod().isAccessible = true` after resolution. The
+    // `samples/android/.../Previews.kt`'s `RedBoxPreview` ships such a preview on purpose, so a
+    // regression here blanks one render and fails the whole baseline pipeline (MISSING_RENDERS=fail).
+    val outputDir = tempFolder.newFolder("renders-private")
+    System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost()
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=PrivateRedSquare;" +
+              "widthPx=64;heightPx=64;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=private-red-square"
+        )
+      val result = host.submit(request, timeoutMs = 120_000)
+
+      assertNotNull("private @Composable must render a PNG, not blank", result.pngPath)
+      val pngFile = File(result.pngPath!!)
+      assertTrue("rendered PNG must exist on disk: ${pngFile.absolutePath}", pngFile.exists())
+      assertTrue("rendered PNG must be non-empty", pngFile.length() > 0)
+
+      val img = ByteArrayInputStream(pngFile.readBytes()).use { ImageIO.read(it) }
+      assertNotNull("PNG must decode via javax.imageio", img)
+      val matchPct = pixelMatchPct(img!!, 0xEF5350, perChannelTolerance = 8)
+      assertTrue(
+        "expected >= 95% of pixels close to #EF5350; got ${"%.2f".format(matchPct * 100)}%",
+        matchPct >= 0.95,
+      )
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun serifTextWritesFontsUsedDataProduct() {
     val outputDir = tempFolder.newFolder("renders-fonts")
     System.setProperty(RenderEngine.OUTPUT_DIR_PROP, outputDir.absolutePath)
