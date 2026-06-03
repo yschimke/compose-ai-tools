@@ -1,0 +1,18 @@
+material {
+    name : unlitTexture,
+    shadingModel : unlit,
+    blending : transparent,
+    culling : none,
+    parameters : [
+        { type : sampler2d, name : albedo }
+    ],
+    requires : [ uv0 ]
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 c = texture(materialParams_albedo, getUV0());
+        // straight alpha from the PNG -> premultiplied for Filament's transparent blending
+        material.baseColor = vec4(c.rgb * c.a, c.a);
+    }
+}
