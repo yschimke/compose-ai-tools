@@ -46,9 +46,14 @@ if(WIN32)
   # runtime abstraction (CMP0091) applies it to every target in the build.
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 elseif(NOT APPLE)
-  # Filament's Linux release libs are built against libc++; match the ABI.
+  # Filament's Linux release libs are built against libc++; match the ABI. Link libc++ + libc++abi
+  # STATICALLY so the shipped binary is self-contained — a downloaded release artifact runs on a
+  # stock machine with no libc++ runtime installed (libc++.so.1 is not present by default on most
+  # distros / CI runners, and the CLI auto-provision can't apt-install system libs). The release
+  # smoke caught the dynamic-libc++ dependency failing with "libc++.so.1: cannot open shared object
+  # file" on a clean runner.
   add_compile_options(-stdlib=libc++)
-  add_link_options(-stdlib=libc++)
+  add_link_options(-stdlib=libc++ -static-libstdc++)
 endif()
 
 # ---- Compile materials with matc (CPU tool; no GPU needed) ----
@@ -90,5 +95,7 @@ elseif(WIN32)
   # user, and OpenGL system libs.
   target_link_libraries(xr-composite PRIVATE gdi32 user32 opengl32)
 else()
-  target_link_libraries(xr-composite PRIVATE pthread c++ c++abi dl)
+  # No explicit -lc++ / -lc++abi here: `-static-libstdc++` (with -stdlib=libc++, set above) links the
+  # static libc++ + libc++abi archives, so the binary carries no libc++.so.1 dependency.
+  target_link_libraries(xr-composite PRIVATE pthread dl)
 endif()
