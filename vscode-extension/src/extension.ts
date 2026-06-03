@@ -343,6 +343,27 @@ let refreshQueue: RefreshQueue = new RefreshQueue(
  *  `onPreviewImageReady` for that module. Latest save overwrites any
  *  in-flight entry so the metric tracks the most recent edit. */
 const editJourneyByModule = new Map<string, number>();
+/** Top progress-strip driver for the daemon save path.
+ *
+ *  The Gradle refresh path drives the webview `<progress-bar>` through
+ *  `refresh()`'s `tracker` (it parses Gradle stdout for phase/percent). The
+ *  daemon save path — compile-only + `daemonScheduler.renderNow` — never went
+ *  through that tracker, so saves in the default `full` mode produced **no**
+ *  top-bar feedback at all: the user saw "BUILD SUCCESSFUL" in the output
+ *  channel but nothing in the panel. This lightweight driver posts the same
+ *  `setProgress` / `clearProgress` messages so a save shows "Refreshing
+ *  previews…" until the first rendered image lands (`onPreviewImageReady`),
+ *  the render fails, or a safety timeout fires (covers the daemon
+ *  `unchanged` / stub / no-preview cases where no image is posted). */
+let daemonRefreshActive = false;
+let daemonRefreshLabel = "";
+let daemonRefreshPct = 0;
+let daemonRefreshTick: ReturnType<typeof setInterval> | null = null;
+let daemonRefreshSafety: ReturnType<typeof setTimeout> | null = null;
+/** Hard ceiling on the crawling bar so a render that never posts an image
+ *  (daemon reported `unchanged`, stub path, or zero resolved previews) still
+ *  resolves the strip instead of crawling forever. */
+const DAEMON_REFRESH_SAFETY_MS = 12000;
 /** Module/file scopes that already received a daemon view-open pre-render in
  *  this extension session. Keeps "show this file's previews" warm-up from
  *  re-rendering the same cards on every focus bounce. */
@@ -1058,6 +1079,10 @@ export async function activate(
                           // any pending journey timer has already been cleared, so the
                           // `endEditJourney` no-ops in that path.
                           endEditJourney(moduleId);
+                          // First image after a save resolves the top progress
+                          // strip the daemon save path lit up. No-ops for
+                          // live/interactive stream frames (no save in flight).
+                          finishDaemonRefreshProgress();
                           if (!panel) {
                               return;
                           }
@@ -1103,6 +1128,9 @@ export async function activate(
                           });
                       },
                       onRenderFailed: (_moduleId, previewId, message) => {
+                          // Resolve the save-path progress strip — the per-card
+                          // error banner below now owns the feedback.
+                          finishDaemonRefreshProgress();
                           if (!panel) {
                               return;
                           }
@@ -2438,6 +2466,7 @@ function runVerifyConsistency(): void {
 
 export function deactivate() {
     refreshQueue.dispose();
+    clearDaemonRefreshTimers();
     stopAllDaemonStartupProgress();
     pendingRefresh?.abort();
     // Tell the daemon to release every interactive stream this session opened
@@ -3975,6 +4004,95 @@ function resolveWatcherTarget(filePath: string): string {
  * the user re-renders them on demand via the refresh command, which uses
  * `tier='full'`.
  */
+function postDaemonRefreshProgress(percent: number, phase: string): void {
+    panel?.postMessage({
+        command: "setProgress",
+        phase,
+        label: daemonRefreshLabel,
+        percent,
+        slow: false,
+    });
+}
+
+/** Start (or relabel) the top progress strip for an in-flight daemon save. */
+function beginDaemonRefreshProgress(label: string): void {
+    daemonRefreshLabel = label;
+    if (daemonRefreshActive) {
+        // Already crawling (compile → render relabel): keep the current fill,
+        // just update the caption so the bar doesn't jump backwards.
+        postDaemonRefreshProgress(daemonRefreshPct, "rendering");
+        return;
+    }
+    daemonRefreshActive = true;
+    daemonRefreshPct = 0.08;
+    postDaemonRefreshProgress(daemonRefreshPct, "rendering");
+    daemonRefreshTick = setInterval(() => {
+        // Asymptotic crawl toward 0.9 — always visibly alive, never claims
+        // completion before the rendered image actually arrives.
+        daemonRefreshPct += (0.9 - daemonRefreshPct) * 0.12;
+        postDaemonRefreshProgress(daemonRefreshPct, "rendering");
+    }, 250);
+    // NB: the safety ceiling is armed separately (armDaemonRefreshSafety),
+    // only once the render is in flight — see that function for why.
+}
+
+/** Arm (or re-arm) the hard ceiling that resolves the strip if the daemon
+ *  posts no image (`unchanged` / stub / zero resolved previews).
+ *
+ *  Deliberately NOT armed by `beginDaemonRefreshProgress`: the compile phase
+ *  that precedes the render is unbounded (a cold daemon or large module can
+ *  take most of the budget), and arming the timer there would flash the bar to
+ *  done mid-compile — losing the feedback this whole change adds. Called from
+ *  the save path once `notifyDaemonOfSave` reports the render is queued, so the
+ *  full budget covers the post-render image wait. */
+function armDaemonRefreshSafety(): void {
+    if (!daemonRefreshActive) {
+        return;
+    }
+    if (daemonRefreshSafety !== null) {
+        clearTimeout(daemonRefreshSafety);
+    }
+    daemonRefreshSafety = setTimeout(
+        () => finishDaemonRefreshProgress(),
+        DAEMON_REFRESH_SAFETY_MS,
+    );
+}
+
+function clearDaemonRefreshTimers(): void {
+    if (daemonRefreshTick !== null) {
+        clearInterval(daemonRefreshTick);
+        daemonRefreshTick = null;
+    }
+    if (daemonRefreshSafety !== null) {
+        clearTimeout(daemonRefreshSafety);
+        daemonRefreshSafety = null;
+    }
+}
+
+/** Drive the strip to 100% (the `<progress-bar>` holds the completed state
+ *  briefly, then resets to idle). Called when the first rendered image lands. */
+function finishDaemonRefreshProgress(): void {
+    if (!daemonRefreshActive) {
+        return;
+    }
+    daemonRefreshActive = false;
+    clearDaemonRefreshTimers();
+    daemonRefreshPct = 1;
+    postDaemonRefreshProgress(1, "done");
+}
+
+/** Tear the strip down without a completion flash. Used on the failure /
+ *  fall-through-to-Gradle paths, where either an error banner takes over or
+ *  the Gradle `tracker` is about to drive the same bar. */
+function cancelDaemonRefreshProgress(): void {
+    if (!daemonRefreshActive) {
+        return;
+    }
+    daemonRefreshActive = false;
+    clearDaemonRefreshTimers();
+    panel?.postMessage({ command: "clearProgress" });
+}
+
 async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
     // The journey timer is started by the `onDidSaveTextDocument` handler
     // (not here) so it captures the debounce wait too. Manual refreshes
@@ -3984,8 +4102,13 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
         gradleService?.resolveModule(filePath)?.modulePath ?? null;
     const mode = pickRefreshMode(filePath);
     if (mode === "daemon") {
+        // Light the top progress strip the instant the save starts working —
+        // the daemon path has no Gradle `tracker` to drive it, so without this
+        // a save in the default `full` mode shows zero panel feedback.
+        beginDaemonRefreshProgress("Compiling…");
         const compileOk = await runDaemonCompileOnly(filePath);
         if (!compileOk) {
+            cancelDaemonRefreshProgress();
             if (journeyModuleKey) {
                 editJourneyByModule.delete(journeyModuleKey);
             }
@@ -3994,20 +4117,30 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
             );
             return;
         }
+        beginDaemonRefreshProgress("Refreshing previews…");
         const result = await notifyDaemonOfSave(filePath);
         if (result === "accepted") {
-            // End-of-journey log fires from `onPreviewImageReady` when the
-            // first rendered image arrives. Until then the timer stays in
-            // `editJourneyByModule`.
+            // The render is in flight now — arm the safety ceiling here (not at
+            // "Compiling…") so a long cold compile above doesn't burn the
+            // timeout before rendering even starts. End-of-journey log + the
+            // strip's completion flash fire from `onPreviewImageReady` when the
+            // first rendered image arrives; the safety timeout resolves the
+            // strip if the daemon reported the render `unchanged` / stub (no
+            // image posted). Until then the timer stays in `editJourneyByModule`.
+            armDaemonRefreshSafety();
             return;
         }
         if (result === "disabled") {
+            // Falling through to the Gradle render, which drives the same bar
+            // via its own tracker — hand the strip off cleanly.
+            cancelDaemonRefreshProgress();
             await refresh(true, filePath, "fast");
             if (journeyModuleKey) {
                 endEditJourney(journeyModuleKey);
             }
             return;
         }
+        cancelDaemonRefreshProgress();
         if (journeyModuleKey) {
             editJourneyByModule.delete(journeyModuleKey);
         }
