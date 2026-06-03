@@ -2,6 +2,17 @@
 
 Auto-generated from `main`. Browse inline or compare against PR branches.
 
+> [!WARNING]
+> 1 preview(s) failed to render in the latest update (1 with no prior baseline to retain). See **Render Failures** below.
+
+## Render Failures
+
+The render task completed but no PNG was produced for these previews. Entries with a prior baseline keep their previous image; the rest are absent from the gallery until a successful render lands.
+
+| Preview | Module | Function | Source | Baseline |
+|---------|--------|----------|--------|----------|
+| `samples:xr-spatial/com.example.samplexrspatial.XrSubspacePreviewsKt.NowPlayingSpatialPreview` | samples:xr-spatial | `NowPlayingSpatialPreview` | `src/main/kotlin/com/example/samplexrspatial/XrSubspacePreviews.kt` | none |
+
 ## samples:android
 
 | Preview | Image |
