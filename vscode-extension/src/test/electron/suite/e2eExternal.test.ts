@@ -443,5 +443,119 @@ describeExternal(
             };
             console.log(`[bench] ${JSON.stringify(bench)}`);
         });
+
+        // Warm edit-loop benchmark. Gated by COMPOSE_PREVIEW_E2E_EDITLOOP=1
+        // (set by `npm run test:e2e-editloop`) so the default external e2e
+        // stays a single cold render. Reuses the daemon + continuous-compile
+        // worker the first `it` warmed. Measures the user-perceived
+        // save→preview latency through the production save path
+        // (`triggerSave` → dispatchSave → compile → daemon render), so it
+        // reflects the `compileInProcess` / `continuousCompile` fast-compile
+        // routes when those settings are enabled in the workspace's
+        // `.vscode/settings.json`.
+        const EDITLOOP = process.env.COMPOSE_PREVIEW_E2E_EDITLOOP === "1";
+        (EDITLOOP ? it : it.skip)(
+            "measures warm edit→preview latency over consecutive saves",
+            async function () {
+                const ITERATIONS = 4;
+                // Append a dedicated preview we can mutate deterministically,
+                // independent of upstream's current Background.kt content.
+                const marker = "ComposeAiEditLoopProbe";
+                let src = fs.readFileSync(kotlinFile, "utf-8");
+                if (!src.includes(marker)) {
+                    src +=
+                        `\n\n@androidx.compose.ui.tooling.preview.Preview(name = "${marker}")\n` +
+                        `@androidx.compose.runtime.Composable\n` +
+                        `fun ${marker}() {\n` +
+                        `    ConfettiTheme {\n` +
+                        `        ConfettiBackground(\n` +
+                        `            androidx.compose.ui.Modifier.size(120.dp),\n` +
+                        `            color = androidx.compose.ui.graphics.Color(0xFFE91E63),\n` +
+                        `            content = {},\n` +
+                        `        )\n` +
+                        `    }\n` +
+                        `}\n`;
+                    fs.writeFileSync(kotlinFile, src);
+                    // Land the new preview first so the loop below measures
+                    // pure edit→render, not discovery of a brand-new function.
+                    api.triggerSave(kotlinFile);
+                    await waitFor(
+                        "initial probe-preview render",
+                        this.timeout(),
+                        300,
+                        () =>
+                            api
+                                .getReceivedMessages()
+                                .find(
+                                    (m) =>
+                                        (m as PostedMessage).command ===
+                                        "webviewPreviewsRendered",
+                                ),
+                    );
+                }
+
+                const palette = [
+                    "0xFF4CAF50",
+                    "0xFF2196F3",
+                    "0xFFFF9800",
+                    "0xFF9C27B0",
+                ];
+                const timingsMs: number[] = [];
+                for (let i = 0; i < ITERATIONS; i++) {
+                    api.resetMessages();
+                    src = fs
+                        .readFileSync(kotlinFile, "utf-8")
+                        .replace(
+                            /0xFF[0-9A-Fa-f]{6}/,
+                            palette[i % palette.length],
+                        );
+                    fs.writeFileSync(kotlinFile, src);
+
+                    const t0 = Date.now();
+                    api.triggerSave(kotlinFile);
+                    const rendered = await waitFor(
+                        `edit ${i + 1} → webviewPreviewsRendered`,
+                        this.timeout(),
+                        200,
+                        () => {
+                            const m = api
+                                .getReceivedMessages()
+                                .find(
+                                    (raw) =>
+                                        (raw as PostedMessage).command ===
+                                        "webviewPreviewsRendered",
+                                ) as { count: number } | undefined;
+                            return m && m.count > 0 ? m : undefined;
+                        },
+                    );
+                    const dt = Date.now() - t0;
+                    timingsMs.push(dt);
+                    console.log(
+                        `[editloop] edit ${i + 1}: ${dt}ms (rendered ${rendered.count} cards)`,
+                    );
+                }
+
+                const sorted = [...timingsMs].sort((a, b) => a - b);
+                const median = sorted[Math.floor(sorted.length / 2)];
+                console.log(
+                    `[bench-editloop] ${JSON.stringify({
+                        scenario: "confetti-androidApp-warm-editloop",
+                        schemaVersion: 1,
+                        iterations: ITERATIONS,
+                        perEditMs: timingsMs,
+                        medianMs: median,
+                        minMs: sorted[0],
+                        maxMs: sorted[sorted.length - 1],
+                        continuousCompile:
+                            process.env.COMPOSE_PREVIEW_EDITLOOP_LABEL ?? "",
+                    })}`,
+                );
+
+                assert.ok(
+                    timingsMs.every((t) => t > 0),
+                    "each edit should produce a measurable render",
+                );
+            },
+        );
     },
 );
