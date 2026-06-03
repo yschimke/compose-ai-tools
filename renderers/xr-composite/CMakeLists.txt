@@ -18,17 +18,31 @@ if(NOT FILAMENT_SDK OR NOT EXISTS "${FILAMENT_SDK}/include/filament/Engine.h")
 endif()
 message(STATUS "Using Filament SDK: ${FILAMENT_SDK}")
 
-# Filament ships per-arch static libs under lib/<arch>/.
+# Filament ships per-arch static libs under lib/<arch>/. On Apple Silicon the
+# (universal) macOS tarball reports CMAKE_SYSTEM_PROCESSOR=arm64 -> lib/arm64,
+# which holds the arm64 slice.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
   set(FILAMENT_ARCH "aarch64")
 else()
   set(FILAMENT_ARCH "x86_64")
 endif()
-set(FILAMENT_LIB_DIR "${FILAMENT_SDK}/lib/${FILAMENT_ARCH}")
+if(WIN32)
+  # Filament's Windows libs carry CRT-variant subdirs (mt/md/mtd/mdd); we link
+  # the static-CRT (/MT) variant, so the libs live under lib/<arch>/mt/.
+  set(FILAMENT_LIB_DIR "${FILAMENT_SDK}/lib/${FILAMENT_ARCH}/mt")
+else()
+  set(FILAMENT_LIB_DIR "${FILAMENT_SDK}/lib/${FILAMENT_ARCH}")
+endif()
+# CMake appends the platform tool suffix (.exe on Windows) when the command runs.
 set(MATC "${FILAMENT_SDK}/bin/matc")
 
-# Filament's Linux/macOS release libs are built against libc++; match the ABI.
-if(NOT APPLE)
+if(WIN32)
+  # MSVC uses its own C++ runtime (no -stdlib=libc++). Select the static CRT
+  # (/MT, /MTd for Debug) to match Filament's `mt` library variant; CMake's MSVC
+  # runtime abstraction (CMP0091) applies it to every target in the build.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+elseif(NOT APPLE)
+  # Filament's Linux release libs are built against libc++; match the ABI.
   add_compile_options(-stdlib=libc++)
   add_link_options(-stdlib=libc++)
 endif()
@@ -58,11 +72,16 @@ target_include_directories(xr-composite PRIVATE
 target_link_directories(xr-composite PRIVATE "${FILAMENT_LIB_DIR}")
 
 # Link list extends the SDK README's recipe: + zstd (material shader decompression).
+# CMake resolves these names to lib<name>.a on Unix and <name>.lib on Windows.
 target_link_libraries(xr-composite PRIVATE
   filament backend bluegl bluevk filabridge filaflat utils geometry smol-v ibl abseil zstd)
 if(APPLE)
   target_link_libraries(xr-composite PRIVATE
     "-framework Cocoa" "-framework Metal" "-framework CoreVideo")
+elseif(WIN32)
+  # Per Filament's SDK README Windows recipe: the OpenGL backend needs the GDI,
+  # user, and OpenGL system libs.
+  target_link_libraries(xr-composite PRIVATE gdi32 user32 opengl32)
 else()
   target_link_libraries(xr-composite PRIVATE pthread c++ c++abi dl)
 endif()
