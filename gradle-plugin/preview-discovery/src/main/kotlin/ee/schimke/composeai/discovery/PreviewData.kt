@@ -378,6 +378,14 @@ data class Capture(
   /** Module-relative PNG path, e.g. `renders/<preview id>_TIME_500ms.png`. */
   val renderOutput: String = "",
   /**
+   * `true` → best-effort capture: displayed if its file exists, but NOT required by
+   * `composePreviewRenderAll`'s missing-render gate. Used for artefacts produced by an optional,
+   * out-of-band tool that may be absent (no binary / display / software GL) — for example the XR
+   * subspace composite still baked by the native `xr-composite` renderer. Defaults to `false` so
+   * existing captures stay required and older manifests are unchanged.
+   */
+  val optional: Boolean = false,
+  /**
    * Estimated render cost, normalised so a static `@Preview` is `1.0`. See the cost catalogue at
    * the top of this file ([STATIC_COST], [SCROLL_LONG_COST], [ANIMATION_COST], …) for the figures
    * the discovery task stamps in. Defaults to `1.0` so older manifests (pre-cost field) parse as

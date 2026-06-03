@@ -949,16 +949,26 @@ object PreviewDiscovery {
     // focus owner here — the `:renderer-xr` task drives the whole recover-and-write in one shot.
     // Gate them out of every dimensional fan-out the same way as tile / notification / glance.
     val isXrSubspace = ann.name == XR_SUBSPACE_PREVIEW_FQN
-    // XR subspace previews don't render a PNG — the opt-in `composePreviewRenderXr` task writes a
-    // `scene.json` (keyed off the preview's id/class/function, not these outputs). Emit NO captures
-    // and NO data products so `composePreviewRenderAll`'s missing-render validation expects neither
-    // a
-    // PNG (which is never produced) nor a scene.json (which isn't produced at all when a consumer
-    // declares `@XrSubspacePreview` but leaves `enableXrPreviews` off). The XR render is validated
-    // by
-    // `:renderer-xr`'s own tests + the sample run, not by the standard render gate.
+    // XR subspace previews don't render a PNG through the Robolectric path — the opt-in
+    // `composePreviewRenderXr` task writes a `scene.json` (+ one `<panelId>.png` texture per panel)
+    // into `renders/<sanitizedId>/`, and the optional `composePreviewCompositeXr` task bakes a
+    // single `composite.png` still from that scene via the native `xr-composite` tool. Emit ONE
+    // optional capture pointing at that composite so it shows up in the preview listing when
+    // present, but is NOT required by `composePreviewRenderAll`'s missing-render gate — the
+    // composite is best-effort (it's absent when the binary / display / software GL isn't
+    // available, or when a consumer declares `@XrSubspacePreview` but leaves `enableXrPreviews`
+    // off). The subdir uses the SAME sanitisation as `XrSubspaceRenderTest.sanitize`
+    // (`[^A-Za-z0-9._-]` → `_`, keeping dots) so the path matches the render subdir on disk.
+    // `normalizeRenderOutputs`/`rewriteRenderStem` only rewrite the leaf when it starts with the
+    // preview's stem; the leaf here is the literal `composite.png`, so the per-preview subdir path
+    // stays stable. No data products.
     if (isXrSubspace) {
-      return PreviewOutputPlan(captures = emptyList(), dataProducts = emptyList())
+      val sanitizedId = previewId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+      return PreviewOutputPlan(
+        captures =
+          listOf(Capture(renderOutput = "renders/$sanitizedId/composite.png", optional = true)),
+        dataProducts = emptyList(),
+      )
     }
     val nonComposable = isTile || isNotification || isGlanceAppWidget || isXrSubspace
     val effectiveTimings = if (nonComposable) emptyList() else timings

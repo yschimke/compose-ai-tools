@@ -71,6 +71,12 @@ data class Capture(
   val advanceTimeMillis: Long? = null,
   val scroll: ScrollCapture? = null,
   val renderOutput: String = "",
+  /**
+   * `true` → best-effort capture: displayed if present, but not required by the missing-render gate
+   * (e.g. the XR subspace composite still baked by the native `xr-composite` tool, which may be
+   * absent when the binary / display / software GL isn't available). Defaults to `false`.
+   */
+  val optional: Boolean = false,
 )
 
 @Serializable
