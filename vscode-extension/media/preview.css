@@ -431,6 +431,29 @@ preview-app {
 .focus-stage-legend[hidden] {
     display: none;
 }
+/* 2D ⇄ 3D toggle button — a small control that reveals itself (via the
+ * SpatialToggleController) only once a SpatialScene has been delivered. */
+.spatial-toggle {
+    align-self: flex-end;
+}
+.spatial-toggle[hidden] {
+    display: none;
+}
+/* Host box for the 3D `<spatial-view>`. The element fills it via its own
+ * `:host { width/height: 100% }`, so the mount needs an explicit height. */
+.spatial-mount {
+    position: relative;
+    width: 100%;
+    height: min(70vh, 640px);
+    min-height: 360px;
+    border: 1px solid var(--card-border, rgba(127, 127, 127, 0.2));
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--vscode-editor-background, #16161a);
+}
+.spatial-mount[hidden] {
+    display: none;
+}
 .bundle-legend-panel {
     display: flex;
     flex-direction: column;

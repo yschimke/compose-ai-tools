@@ -5,6 +5,7 @@ plugins {
 }
 
 dependencies {
+  implementation(project(":common-io"))
   // The post-capture processor reads CommonDataProducts.ImageArtifact and emits its own
   // DataProductKey artifacts; both live in :data-render-core. No Compose, no Android — color
   // matrices apply to the captured PNG via java.awt.image.BufferedImage so the same module

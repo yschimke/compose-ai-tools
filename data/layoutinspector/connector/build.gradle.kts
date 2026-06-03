@@ -18,6 +18,7 @@ plugins {
 }
 
 dependencies {
+  implementation(project(":common-io"))
   api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))

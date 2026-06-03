@@ -1,10 +1,13 @@
 package ee.schimke.composeai.data.render
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /** Core producer/model for Perfetto-importable render trace artifacts. */
 object PerfettoTraceDataProducer {
@@ -23,9 +26,16 @@ object PerfettoTraceDataProducer {
   fun recorder(previewId: String, backend: String, enabled: Boolean = enabled()): Recorder =
     Recorder(previewId = previewId, backend = backend, enabled = enabled)
 
-  fun writeArtifacts(rootDir: File, previewId: String, trace: TracePayload) {
+  fun writeArtifacts(
+    rootDir: File,
+    previewId: String,
+    trace: TracePayload,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    previewDir.resolve(FILE).writeText(json.encodeToString(trace))
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(trace))
+    }
   }
 
   class Recorder(

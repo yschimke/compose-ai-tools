@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -44,12 +47,17 @@ object UiAutomatorDataProducer {
    * [`UiAutomatorHierarchyExtractor`][ee.schimke.composeai.renderer.uiautomator.UiAutomatorHierarchyExtractor]
    * so the actionable-filter / `includeNonActionable` / `merged` knobs stay in one place.
    */
-  fun writeArtifacts(rootDir: File, previewId: String, payload: UiAutomatorHierarchyPayload) {
+  fun writeArtifacts(
+    rootDir: File,
+    previewId: String,
+    payload: UiAutomatorHierarchyPayload,
+    fileSystem: FileSystem = SystemFileSystem,
+  ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    previewDir
-      .resolve(FILE_HIERARCHY)
-      .writeText(json.encodeToString(UiAutomatorHierarchyPayload.serializer(), payload))
+    fileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+      writeUtf8(json.encodeToString(UiAutomatorHierarchyPayload.serializer(), payload))
+    }
   }
 }
 

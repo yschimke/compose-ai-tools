@@ -92,6 +92,11 @@
                 "category": "Compose Preview"
             },
             {
+                "command": "composePreview.openSpatialFixture",
+                "title": "Open 3D Spatial Fixture (dev)",
+                "category": "Compose Preview"
+            },
+            {
                 "command": "composePreview.verify",
                 "title": "Verify (cross-check manifest, disk, and panel state)",
                 "category": "Compose Preview"
@@ -254,6 +259,7 @@
         "@happy-dom/global-registrator": "^20.9.0",
         "@types/mocha": "^10.0.0",
         "@types/node": "^24.0.0",
+        "@types/three": "^0.184.1",
         "@types/vscode": "^1.85.0",
         "@vscode/codicons": "^0.0.45",
         "@vscode/test-electron": "^2.5.2",
@@ -269,5 +275,8 @@
     },
     "overrides": {
         "serialize-javascript": "^7.0.5"
+    },
+    "dependencies": {
+        "three": "^0.184.0"
     }
 }

@@ -1,5 +1,8 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import android.os.Build
 import android.view.View
 import com.google.android.apps.common.testing.accessibility.framework.AccessibilityCheckPreset
@@ -253,6 +256,7 @@ object AccessibilityChecker {
         nodes: List<AccessibilityNode>,
         screenshot: File? = null,
         isRound: Boolean = false,
+        fileSystem: FileSystem = SystemFileSystem,
     ) {
         outputDir.mkdirs()
         val hasContent = findings.isNotEmpty() || nodes.isNotEmpty()
@@ -304,9 +308,9 @@ object AccessibilityChecker {
             nodes = nodes,
             annotatedPath = relative,
         )
-        outputDir.resolve("$previewId.json").writeText(
-            json.encodeToString(AccessibilityEntry.serializer(), entry),
-        )
+        fileSystem.write(outputDir.resolve("$previewId.json").path.toPath()) {
+            writeUtf8(json.encodeToString(AccessibilityEntry.serializer(), entry))
+        }
     }
 
     private fun AccessibilityHierarchyCheckResult.toFinding(): AccessibilityFinding? {

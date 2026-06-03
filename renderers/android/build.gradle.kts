@@ -18,6 +18,7 @@ android {
 }
 
 dependencies {
+  implementation(project(":common-io"))
   // D2.2 — `AccessibilityChecker`, `AccessibilityOverlay`, and the
   // `AccessibilityFinding` / `AccessibilityNode` / `AccessibilityEntry` model classes used to
   // live in this module. They moved to `:data-a11y-core` (published as

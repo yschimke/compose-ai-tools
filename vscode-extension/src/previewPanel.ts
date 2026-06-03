@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ExtensionToWebview, WebviewToExtension } from "./types";
+import type { SpatialScene } from "./webview/shared/spatialScene";
 
 export class PreviewPanel implements vscode.WebviewViewProvider {
     public static readonly viewId = "composePreview.panel";
@@ -10,6 +11,9 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private earlyFeaturesEnabled: () => boolean;
     private minimalModeEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
+    /** The scene last handed to {@link showSpatialScene}; re-posted on every
+     *  `webviewReady` so a late-resolving or reloaded webview still gets it. */
+    private currentSpatialScene?: { scene: SpatialScene; sceneDir: vscode.Uri };
 
     constructor(
         extensionUri: vscode.Uri,
@@ -37,6 +41,15 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         };
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.webview.onDidReceiveMessage((msg: WebviewToExtension) => {
+            // The webview's `webviewReady` handshake is the host's cue to
+            // (re)publish stateful messages a just-resolved/reloaded panel
+            // would otherwise miss. The spatial scene is one of those: a
+            // `setSpatialScene` posted before the webview booted (e.g. the
+            // dev command run from the palette before the view existed) is
+            // dropped, so re-post the current one here.
+            if (msg?.command === "webviewReady") {
+                this.postSpatialScene();
+            }
             this.onMessage(msg);
         });
         webviewView.onDidChangeVisibility(() => {
@@ -49,6 +62,37 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
 
     postMessage(msg: ExtensionToWebview): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    /**
+     * Hand the panel's 3D spatial view a scene to render. `sceneDir` is the
+     * directory the scene's relative `texture` paths resolve against (where
+     * the panel PNGs live); it is run through `asWebviewUri` so textures load
+     * under the strict CSP, and must sit inside `localResourceRoots` (the
+     * extension dir covers the committed fixtures). The producer (`:renderer-xr`)
+     * and the dev `openSpatialFixture` command both drive this.
+     */
+    showSpatialScene(scene: SpatialScene, sceneDir: vscode.Uri): void {
+        // Retain as the current scene so it survives a not-yet-resolved view
+        // and a webview reload (hidden → shown): `postSpatialScene` re-sends it
+        // on every `webviewReady`, the same way the host republishes
+        // `setPreviews` et al.
+        this.currentSpatialScene = { scene, sceneDir };
+        this.postSpatialScene();
+    }
+
+    private postSpatialScene(): void {
+        const webview = this.view?.webview;
+        if (!webview || !this.currentSpatialScene) {
+            return;
+        }
+        const { scene, sceneDir } = this.currentSpatialScene;
+        const textureBaseUri = `${webview.asWebviewUri(sceneDir)}/`;
+        webview.postMessage({
+            command: "setSpatialScene",
+            scene,
+            textureBaseUri,
+        });
     }
 
     private getHtml(webview: vscode.Webview): string {
@@ -71,12 +115,25 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
             ),
         );
 
+        // The 3D spatial viewer (three.js) ships as its own bundle, loaded
+        // lazily by the panel only on the first switch to the 3D view. Its
+        // URI + the page nonce ride on `<preview-app>` dataset attributes so
+        // the webview can inject a nonce'd `<script>` under the strict CSP.
+        const spatialUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(
+                this.extensionUri,
+                "media",
+                "webview",
+                "spatial.js",
+            ),
+        );
+
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; img-src data:; font-src ${webview.cspSource} https://fonts.gstatic.com; style-src ${webview.cspSource} https://fonts.googleapis.com 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+          content="default-src 'none'; img-src data: ${webview.cspSource}; font-src ${webview.cspSource} https://fonts.gstatic.com; style-src ${webview.cspSource} https://fonts.googleapis.com 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
     <link href="${codiconUri}" rel="stylesheet">
     <link href="${styleUri}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Roboto+Serif:ital,wght@0,400;0,500;0,700;1,400&family=Roboto+Mono:ital,wght@0,400;0,500;0,700&family=Caveat:wght@400;700&display=swap" rel="stylesheet">
@@ -85,6 +142,8 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     <preview-app
         data-early-features="${earlyFeaturesEnabled ? "true" : "false"}"
         data-minimal-mode="${minimalModeEnabled ? "true" : "false"}"
+        data-spatial-src="${spatialUri}"
+        data-csp-nonce="${nonce}"
     ></preview-app>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

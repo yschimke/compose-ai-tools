@@ -1,11 +1,14 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClientFactory
 import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
 import ee.schimke.composeai.mcp.RegisteredProject
 import ee.schimke.composeai.mcp.SubprocessDaemonClientFactory
 import ee.schimke.composeai.mcp.WorkspaceId
 import java.io.File
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Opt-in liveness probe for the per-module preview daemon. The main `doctor` command runs this when
@@ -74,13 +77,14 @@ internal fun runDaemonSmokeTest(
   modulePath: String,
   workspaceName: String = projectDir.name.ifBlank { "workspace" },
   factory: DaemonClientFactory = SubprocessDaemonClientFactory(),
+  fileSystem: FileSystem = SystemFileSystem,
 ): DaemonSmokeOutcome {
   val descriptorFile = daemonDescriptorFile(projectDir, modulePath)
   if (!descriptorFile.isFile) return DaemonSmokeOutcome.DescriptorMissing(descriptorFile)
 
   val descriptor =
     try {
-      DaemonLaunchDescriptor.parse(descriptorFile.readText())
+      DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
     } catch (e: Exception) {
       return DaemonSmokeOutcome.DescriptorUnreadable(
         descriptorPath = descriptorFile,

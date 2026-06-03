@@ -1,6 +1,7 @@
 package ee.schimke.composeai.render.session.subprocess
 
 import ee.schimke.composeai.daemon.protocol.InitializeResult
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonClient
 import ee.schimke.composeai.mcp.DaemonClientFactory
 import ee.schimke.composeai.mcp.DaemonLaunchDescriptor
@@ -15,6 +16,8 @@ import ee.schimke.composeai.render.session.RenderSessionFactory
 import java.io.File
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * [RenderSessionFactory] singleton for the daemon-subprocess backend. Open a session via
@@ -26,6 +29,8 @@ import kotlin.time.Duration.Companion.seconds
  */
 object SubprocessRenderSessions : RenderSessionFactory {
   override val backendKind: RenderSessionBackend = RenderSessionBackend.Subprocess
+
+  var fileSystem: FileSystem = SystemFileSystem
 
   override fun open(config: RenderSessionConfig): RenderSession =
     open(config = config, factory = SubprocessDaemonClientFactory())
@@ -44,7 +49,7 @@ object SubprocessRenderSessions : RenderSessionFactory {
     }
     val descriptor =
       try {
-        DaemonLaunchDescriptor.parse(descriptorFile.readText())
+        DaemonLaunchDescriptor.parse(fileSystem.read(descriptorFile.path.toPath()) { readUtf8() })
       } catch (e: Exception) {
         throw RenderSessionException(
           "Daemon launch descriptor at ${descriptorFile.path} is unreadable: " +

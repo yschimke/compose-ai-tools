@@ -4,6 +4,8 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
+import okio.Path.Companion.toPath
+import okio.source
 
 /**
  * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
@@ -378,13 +380,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val name = entry.name
         when {
           name == "bundle.json" -> {
-            manifestFile.writeBytes(zin.readBytes())
+            fileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
             sawManifest = true
           }
           !entry.isDirectory && name.startsWith("ir/") -> {
             val dest = File(irDir, File(name).name).canonicalFile
             if (dest.path.startsWith(canonicalIr.path + File.separator)) {
-              dest.outputStream().use { sink -> zin.copyTo(sink) }
+              fileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
             }
           }
         }
@@ -431,12 +433,6 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
               "android/resources.ap_" -> apk = dest
               "android/AndroidManifest.xml" -> mergedManifest = dest
               "android/r-classes.jar" -> rJar = dest
-              "android/diag.txt" ->
-                // Pack-time carriage diagnostic — surface it so a null carriage is explainable
-                // without the (truncated) Gradle pack console.
-                dest.readText().trim().lineSequence().forEach {
-                  System.err.println("[bundle-daemon] pack-diag: $it")
-                }
             }
           }
         }
@@ -494,7 +490,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val entry = zin.nextEntry ?: break
         when (entry.name) {
           "previews.json" -> {
-            previewsJson.writeBytes(zin.readBytes())
+            fileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
             sawPreviewsJson = true
           }
           "classes/app.jar" -> {
@@ -539,7 +535,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          candidate.outputStream().use { sink -> zin.copyTo(sink) }
+          fileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }

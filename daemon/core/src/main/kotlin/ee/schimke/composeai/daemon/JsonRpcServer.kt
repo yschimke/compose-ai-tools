@@ -62,13 +62,13 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.daemon.protocol.StreamStartParams
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.lang.management.ManagementFactory
-import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -83,6 +83,8 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.long
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * JSON-RPC 2.0 server over stdio for the preview daemon.
@@ -235,6 +237,7 @@ class JsonRpcServer(
    * returns `result=fallback` so the editor falls back to stage 1 / 0 without surface churn.
    */
   private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
+  private val fileSystem: FileSystem = SystemFileSystem,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
 ) {
 
@@ -1194,15 +1197,15 @@ class JsonRpcServer(
     val mgr = historyManager ?: return
     if (!mgr.isEnabled) return
     val pngPath = result.pngPath ?: return
-    val pngFile = Path.of(pngPath)
-    if (!Files.exists(pngFile)) {
+    val pngFile = pngPath.toPath()
+    if (!fileSystem.exists(pngFile)) {
       // Stub-host path — pngPath is the deterministic `daemon-stub-${id}.png` placeholder that
       // never actually lands on disk. Skip silently; this is the pre-H1 behaviour for stub hosts.
       return
     }
     val pngBytes =
       try {
-        Files.readAllBytes(pngFile)
+        fileSystem.read(pngFile) { readByteArray() }
       } catch (t: Throwable) {
         System.err.println(
           "compose-ai-daemon: history: failed to read PNG bytes for $previewId at $pngPath " +
@@ -1617,14 +1620,14 @@ class JsonRpcServer(
     if (pngPath == null) return null
     val path =
       try {
-        Path.of(pngPath)
+        pngPath.toPath()
       } catch (_: Throwable) {
         return null
       }
-    if (!Files.exists(path)) return null
+    if (!fileSystem.exists(path)) return null
     val bytes =
       try {
-        Files.readAllBytes(path)
+        fileSystem.read(path) { readByteArray() }
       } catch (_: Throwable) {
         return null
       }

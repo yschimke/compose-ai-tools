@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonMcpMain
 import java.io.File
 import kotlin.system.exitProcess
@@ -11,6 +12,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview mcp <subcommand>`
@@ -29,7 +32,10 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * The CLI bundles `:mcp` so all three run in-process. No second tarball, no manual classpath.
  */
-internal class McpCommand(args: List<String>) {
+internal class McpCommand(
+  args: List<String>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) {
 
   private val parsed = parseSubcommand(args)
   private val sub: String = parsed.first
@@ -468,14 +474,15 @@ internal class McpCommand(args: List<String>) {
   }
 
   private fun enableDescriptor(file: File) {
-    val text = file.readText()
+    val path = file.path.toPath()
+    val text = fileSystem.read(path) { readUtf8() }
     val updated = text.replace(Regex("\"enabled\"\\s*:\\s*false"), "\"enabled\": true")
-    if (updated != text) file.writeText(updated)
+    if (updated != text) fileSystem.write(path) { writeUtf8(updated) }
   }
 
   private fun parseDescriptor(file: File): JsonObject? =
     try {
-      JSON.parseToJsonElement(file.readText()).jsonObject
+      JSON.parseToJsonElement(fileSystem.read(file.path.toPath()) { readUtf8() }).jsonObject
     } catch (_: Exception) {
       null
     }
@@ -501,7 +508,7 @@ internal class McpCommand(args: List<String>) {
     val existing =
       if (file.isFile) {
         try {
-          file.readText()
+          fileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (e: Exception) {
           throw IllegalStateException(
             "Antigravity MCP config unreadable: ${file.absolutePath}: ${e.message}"
@@ -517,21 +524,21 @@ internal class McpCommand(args: List<String>) {
         )
       }
     file.parentFile?.mkdirs()
-    file.writeText(merged)
+    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
   }
 
   private fun writeCodexConfig(file: File, launcher: String, projectDir: File) {
     val existing =
       if (file.isFile) {
         try {
-          file.readText()
+          fileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (e: Exception) {
           throw IllegalStateException("Codex config unreadable: ${file.absolutePath}: ${e.message}")
         }
       } else null
     val merged = AgentMcpConfig.mergeCodexConfig(existing, launcher, projectDir.absolutePath)
     file.parentFile?.mkdirs()
-    file.writeText(merged)
+    fileSystem.write(file.path.toPath()) { writeUtf8(merged) }
   }
 
   /**
@@ -615,7 +622,11 @@ internal data class DoctorFinding(val id: String, val level: String, val message
  * Validate the on-disk daemon descriptor and return findings + a verdict telling the agent what (if
  * anything) to do. Lifted out of [McpCommand] so it's unit-testable without spinning up Gradle.
  */
-internal fun inspectDescriptor(gradlePath: String, descriptor: File): DoctorState {
+internal fun inspectDescriptor(
+  gradlePath: String,
+  descriptor: File,
+  fileSystem: FileSystem = SystemFileSystem,
+): DoctorState {
   val findings = mutableListOf<DoctorFinding>()
 
   if (!descriptor.isFile) {
@@ -632,7 +643,7 @@ internal fun inspectDescriptor(gradlePath: String, descriptor: File): DoctorStat
 
   val obj =
     try {
-      Json.parseToJsonElement(descriptor.readText()).jsonObject
+      Json.parseToJsonElement(fileSystem.read(descriptor.path.toPath()) { readUtf8() }).jsonObject
     } catch (_: Exception) {
       null
     }

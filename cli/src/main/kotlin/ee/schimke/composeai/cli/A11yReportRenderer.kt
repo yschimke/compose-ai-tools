@@ -1,6 +1,9 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /*
  * On-disk shape mirrors the daemon-side aggregation in
@@ -22,7 +25,8 @@ import kotlinx.serialization.json.Json
  * Owned state: [a11yByKey] is the per-preview lookup the [annotate] step reads from. It's built by
  * [load] and cached for the duration of one CLI invocation.
  */
-class A11yReportRenderer : ExtensionReportRenderer {
+class A11yReportRenderer(private val fileSystem: FileSystem = SystemFileSystem) :
+  ExtensionReportRenderer {
   override val id: String = "a11y"
   override val displayName: String = "Accessibility (ATF)"
   override val description: String =
@@ -62,7 +66,8 @@ class A11yReportRenderer : ExtensionReportRenderer {
       enabled += module.gradlePath
       val report =
         try {
-          json.decodeFromString(AccessibilityReport.serializer(), reportFile.readText())
+          val text = fileSystem.read(reportFile.path.toPath()) { readUtf8() }
+          json.decodeFromString(AccessibilityReport.serializer(), text)
         } catch (e: Exception) {
           if (verbose) {
             System.err.println("Warning: unreadable a11y report ${reportFile.path}: ${e.message}")

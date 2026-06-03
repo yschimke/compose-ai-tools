@@ -1,8 +1,11 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Process-static lookup of a bundle's captured **intermediate representations** for IR replay
@@ -46,10 +49,17 @@ object BundleIrReplayStore {
   private fun entries(): Map<String, Entry> = cached ?: load().also { cached = it }
 
   /** Visible for tests — load from explicit paths instead of the system properties. */
-  fun loadFrom(bundleManifestFile: File, irDir: File): Map<String, Entry> {
+  fun loadFrom(
+    bundleManifestFile: File,
+    irDir: File,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): Map<String, Entry> {
     val descriptors =
       runCatching {
-          JSON.decodeFromString(BundleManifestLite.serializer(), bundleManifestFile.readText())
+          JSON.decodeFromString(
+              BundleManifestLite.serializer(),
+              fileSystem.read(bundleManifestFile.path.toPath()) { readUtf8() },
+            )
             .intermediateRepresentations
         }
         .getOrElse { emptyList() }
@@ -61,8 +71,13 @@ object BundleIrReplayStore {
         ir.resourcesPath
           ?.let { File(irDir, it.substringAfterLast('/')) }
           ?.takeIf { it.isFile }
-          ?.readBytes()
-      out[ir.previewId] = Entry(ir.format, bytesFile.readBytes(), resourcesBytes)
+          ?.let { fileSystem.read(it.path.toPath()) { readByteArray() } }
+      out[ir.previewId] =
+        Entry(
+          ir.format,
+          fileSystem.read(bytesFile.path.toPath()) { readByteArray() },
+          resourcesBytes,
+        )
     }
     return out
   }

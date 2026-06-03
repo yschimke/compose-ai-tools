@@ -1,10 +1,13 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.math.abs
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Pixel-diff with a per-pixel threshold *and* an aggregate threshold *and* an absolute cap — the
@@ -104,11 +107,12 @@ object PixelDiff {
     expected: ByteArray,
     outDir: File,
     tolerance: PixelDiffTolerance = PixelDiffTolerance.DEFAULT,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     try {
       outDir.mkdirs()
-      File(outDir, "actual.png").writeBytes(actual)
-      File(outDir, "expected.png").writeBytes(expected)
+      fileSystem.write(File(outDir, "actual.png").path.toPath()) { write(actual) }
+      fileSystem.write(File(outDir, "expected.png").path.toPath()) { write(expected) }
       val actualImg = decode(actual)
       val expectedImg = decode(expected)
       if (
@@ -139,7 +143,9 @@ object PixelDiff {
             }
           }
         }
-        ImageIO.write(diff, "png", File(outDir, "diff.png"))
+        fileSystem.write(File(outDir, "diff.png").path.toPath()) {
+          ImageIO.write(diff, "png", outputStream())
+        }
       }
     } catch (e: Throwable) {
       System.err.println("PixelDiff.writeDiffArtefacts: ${e.message}")

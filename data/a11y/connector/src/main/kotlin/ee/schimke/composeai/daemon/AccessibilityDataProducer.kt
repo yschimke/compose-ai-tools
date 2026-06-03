@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductExtra
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
@@ -89,15 +92,16 @@ object AccessibilityDataProducer {
     density: Float = 1f,
     pngFile: File? = null,
     isRound: Boolean = false,
+    fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    previewDir
-      .resolve(FILE_ATF)
-      .writeText(json.encodeToString(AtfPayload.serializer(), AtfPayload(findings)))
-    previewDir
-      .resolve(FILE_HIERARCHY)
-      .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    fileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
+      writeUtf8(json.encodeToString(AtfPayload.serializer(), AtfPayload(findings)))
+    }
+    fileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+      writeUtf8(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    }
 
     // Typed post-capture pipeline: TouchTargetsExtension always runs; OverlayExtension runs when
     // pngFile is supplied (it requires CommonDataProducts.ImageArtifact). Both write their
@@ -115,9 +119,11 @@ object AccessibilityDataProducer {
         isRound = isRound,
       )
     store.get(AccessibilityDataProducts.TouchTargets)?.let { touchTargets ->
-      previewDir
-        .resolve(FILE_TOUCH_TARGETS)
-        .writeText(json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets))
+      fileSystem.write(previewDir.resolve(FILE_TOUCH_TARGETS).path.toPath()) {
+        writeUtf8(
+          json.encodeToString(AccessibilityTouchTargetsPayload.serializer(), touchTargets)
+        )
+      }
     }
   }
 }

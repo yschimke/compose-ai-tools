@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.render.session.DataProductException
 import ee.schimke.composeai.render.session.RenderSession
 import ee.schimke.composeai.render.session.RenderSessionConfig
@@ -11,6 +12,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Drives a short-lived [RenderSession] for one module, walks every preview through `data/fetch` for
@@ -27,6 +30,7 @@ import kotlinx.serialization.json.JsonObject
 internal class DaemonA11yFetcher(
   private val factory: RenderSessionFactory = SubprocessRenderSessions,
   private val onLog: (String) -> Unit = {},
+  private val fileSystem: FileSystem = SystemFileSystem,
 ) {
   private val json = Json {
     ignoreUnknownKeys = true
@@ -155,7 +159,9 @@ internal class DaemonA11yFetcher(
     val reportFile = projectDir.resolve("build/compose-previews/accessibility.json")
     reportFile.parentFile?.mkdirs()
     val report = AccessibilityReport(module = moduleName, entries = entries, status = status)
-    reportFile.writeText(json.encodeToString(AccessibilityReport.serializer(), report))
+    fileSystem.write(reportFile.path.toPath()) {
+      writeUtf8(json.encodeToString(AccessibilityReport.serializer(), report))
+    }
     return reportFile
   }
 
@@ -179,7 +185,8 @@ internal class DaemonA11yFetcher(
     val file = projectDir.resolve("build/compose-previews/data/$previewId/a11y-hierarchy.json")
     if (!file.isFile) return emptyList()
     return try {
-      val obj = json.parseToJsonElement(file.readText()) as? JsonObject ?: return emptyList()
+      val text = fileSystem.read(file.path.toPath()) { readUtf8() }
+      val obj = json.parseToJsonElement(text) as? JsonObject ?: return emptyList()
       val nodes = obj["nodes"] ?: return emptyList()
       json.decodeFromJsonElement(
         kotlinx.serialization.builtins.ListSerializer(AccessibilityNode.serializer()),

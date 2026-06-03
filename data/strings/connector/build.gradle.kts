@@ -13,6 +13,7 @@ plugins {
 }
 
 dependencies {
+  implementation(project(":common-io"))
   api(project(":data-strings-core"))
   api(project(":daemon:core"))
   api(project(":data-layoutinspector-core"))

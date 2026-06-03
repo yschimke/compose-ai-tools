@@ -1,10 +1,15 @@
 package ee.schimke.composeai.tui
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
+import java.util.UUID
+import okio.FileSystem
+import okio.buffer
 
 /**
  * Argument parser for `compose-preview-tui`. Mirrors the subset of flags `:cli`'s [Command] base
@@ -188,7 +193,7 @@ data class TuiArgs(
  * downloaded to a temp file (delete-on-exit). Self-contained here rather than depending on `:cli`
  * so the opt-in TUI module's graph stays minimal.
  */
-private fun resolveBundleArg(arg: String): File? {
+private fun resolveBundleArg(arg: String, fileSystem: FileSystem = SystemFileSystem): File? {
   val scheme = arg.substringBefore(':', missingDelimiterValue = "").lowercase()
   val isUrl = scheme == "http" || scheme == "https" || scheme == "file"
   if (!isUrl) {
@@ -199,8 +204,8 @@ private fun resolveBundleArg(arg: String): File? {
     if (uri.scheme.equals("file", ignoreCase = true)) {
       return File(uri).takeIf { it.isFile && it.name.endsWith(".png", ignoreCase = true) }
     }
-    val temp = java.nio.file.Files.createTempFile("compose-preview-tui-bundle-", ".png").toFile()
-    temp.deleteOnExit()
+    val tempPath = TemporaryDirectory / "compose-preview-tui-bundle-${UUID.randomUUID()}.png"
+    val temp = tempPath.toFile().apply { deleteOnExit() }
     // Ktor client over the OkHttp engine; stream the body to disk on a 2xx. runBlocking is fine at
     // this one-shot startup parse.
     val ok =
@@ -208,7 +213,9 @@ private fun resolveBundleArg(arg: String): File? {
         kotlinx.coroutines.runBlocking {
           client.prepareGet(uri.toString()).execute { response ->
             if (response.status.isSuccess()) {
-              temp.outputStream().use { out -> response.bodyAsChannel().copyTo(out) }
+              fileSystem.sink(tempPath).buffer().use { out ->
+                response.bodyAsChannel().copyTo(out.outputStream())
+              }
               true
             } else {
               false
@@ -216,9 +223,9 @@ private fun resolveBundleArg(arg: String): File? {
           }
         }
       }
-    if (ok && temp.length() > 0) temp
+    if (ok && (fileSystem.metadataOrNull(tempPath)?.size ?: 0L) > 0L) temp
     else {
-      temp.delete()
+      fileSystem.delete(tempPath, mustExist = false)
       null
     }
   } catch (_: Exception) {

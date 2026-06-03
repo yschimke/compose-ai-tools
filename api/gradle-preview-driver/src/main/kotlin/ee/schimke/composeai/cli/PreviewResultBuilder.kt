@@ -1,7 +1,10 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Pure-function builder that turns a list of `(PreviewModule, PreviewManifest)` pairs into
@@ -24,18 +27,27 @@ object PreviewResultBuilder {
    * Returns `null` when the file doesn't exist — `composePreviewRenderAll` is allowed to skip a
    * module that has no previews discovered yet.
    */
-  fun readManifest(module: PreviewModule): PreviewManifest? {
-    val manifestFile = module.projectDir.resolve("build/compose-previews/previews.json")
-    if (!manifestFile.exists()) return null
-    return manifestJson.decodeFromString(manifestFile.readText())
+  fun readManifest(
+    module: PreviewModule,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): PreviewManifest? {
+    // `projectDir` stays a `File` (it crosses the Gradle Tooling API serialization boundary and
+    // feeds `forProjectDirectory`); the manifest read itself goes through Okio.
+    val manifestPath = module.projectDir.path.toPath() / "build/compose-previews/previews.json"
+    if (!fileSystem.exists(manifestPath)) return null
+    val text = fileSystem.read(manifestPath) { readUtf8() }
+    return manifestJson.decodeFromString(text)
   }
 
   /**
    * Convenience over [readManifest] — drops modules whose manifest file isn't on disk yet.
    * Order-preserving.
    */
-  fun readAllManifests(modules: List<PreviewModule>): List<Pair<PreviewModule, PreviewManifest>> {
-    return modules.mapNotNull { module -> readManifest(module)?.let { module to it } }
+  fun readAllManifests(
+    modules: List<PreviewModule>,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): List<Pair<PreviewModule, PreviewManifest>> {
+    return modules.mapNotNull { module -> readManifest(module, fileSystem)?.let { module to it } }
   }
 
   /**
@@ -49,7 +61,10 @@ object PreviewResultBuilder {
    *
    * No side effects — pure function over the manifest data + on-disk PNG files.
    */
-  fun build(manifests: List<Pair<PreviewModule, PreviewManifest>>): List<PreviewResult> {
+  fun build(
+    manifests: List<Pair<PreviewModule, PreviewManifest>>,
+    fileSystem: FileSystem = SystemFileSystem,
+  ): List<PreviewResult> {
     val results = mutableListOf<PreviewResult>()
     for ((module, manifest) in manifests) {
       // Files owned by non-parameterised siblings — exclude them from the `<stem>_*` glob so a
@@ -69,7 +84,7 @@ object PreviewResultBuilder {
         val captures =
           if (p.params.previewParameterProviderClassName != null) {
             p.captures.flatMap { capture ->
-              expandParamCaptures(module, capture, siblingRenderOutputs)
+              expandParamCaptures(module, capture, siblingRenderOutputs, fileSystem)
             }
           } else {
             p.captures
@@ -147,6 +162,7 @@ object PreviewResultBuilder {
     module: PreviewModule,
     template: Capture,
     siblingRenderOutputs: Set<String>,
+    fileSystem: FileSystem = SystemFileSystem,
   ): List<Capture> {
     val rel =
       template.renderOutput.ifEmpty {
@@ -159,7 +175,7 @@ object PreviewResultBuilder {
     val templateDir = rel.substringBeforeLast('/', "")
     val dirPrefix = if (templateDir.isEmpty()) "" else "$templateDir/"
     val matches =
-      (dir.listFiles() ?: emptyArray())
+      (fileSystem.listOrNull(dir.path.toPath())?.map { it.toFile() } ?: emptyList())
         .filter { f ->
           f.name.startsWith(prefix) &&
             f.name.endsWith(ext) &&

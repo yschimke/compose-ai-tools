@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.AssetManager
@@ -48,12 +51,12 @@ object ResourcesUsedDataProducer {
       override fun getAssets(): AssetManager = resources.assets
     }
 
-  fun writeArtifacts(rootDir: File, previewId: String, recorder: RecordingResources) {
+  fun writeArtifacts(rootDir: File, previewId: String, recorder: RecordingResources, fileSystem: FileSystem = SystemFileSystem) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
     val payload = ResourcesUsedPayload(references = recorder.references())
-    previewDir.resolve(FILE).writeText(
-      json.encodeToString(ResourcesUsedPayload.serializer(), payload)
-    )
+    fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(ResourcesUsedPayload.serializer(), payload))
+    }
   }
 }
 
@@ -233,7 +236,8 @@ private object ResourceSourceIndex {
   }
 
   private fun indexValuesFile(file: File, out: MutableMap<String, String>) {
-    val text = runCatching { file.readText() }.getOrNull() ?: return
+    val text =
+      runCatching { SystemFileSystem.read(file.path.toPath()) { readUtf8() } }.getOrNull() ?: return
     valuesEntry.findAll(text).forEach { match ->
       val type =
         when (match.groupValues[1]) {

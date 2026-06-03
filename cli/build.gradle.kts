@@ -124,6 +124,9 @@ dependencies {
   // slf4j-nop dependencies the CLI used to declare directly.
   api(project(":gradle-preview-driver"))
 
+  // Okio-based file IO (`SystemFileSystem` + suspend helpers) the CLI commands read/write through.
+  implementation(project(":common-io"))
+
   implementation(libs.kotlinx.serialization.json)
 
   // Ktor client (OkHttp engine) for downloading a bundle when the open arg is a URL. The explicit

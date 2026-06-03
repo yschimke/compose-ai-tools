@@ -8,6 +8,7 @@ plugins {
 }
 
 dependencies {
+  implementation(project(":common-io"))
   api(project(":data-render-core"))
   api(project(":data-render-compose"))
 

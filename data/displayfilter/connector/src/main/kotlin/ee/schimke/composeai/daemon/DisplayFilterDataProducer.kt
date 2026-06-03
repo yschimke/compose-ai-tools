@@ -3,9 +3,12 @@ package ee.schimke.composeai.daemon
 import ee.schimke.composeai.data.displayfilter.DisplayFilter
 import ee.schimke.composeai.data.displayfilter.DisplayFilterDataProducts
 import ee.schimke.composeai.data.render.extensions.RenderImageArtifact
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * Writes per-render display-filter artifacts the data-product registry serves.
@@ -46,6 +49,7 @@ object DisplayFilterDataProducer {
     previewId: String,
     pngFile: File,
     filters: List<DisplayFilter>,
+    fileSystem: FileSystem = SystemFileSystem,
   ): List<DisplayFilterArtifactRecord> {
     if (filters.isEmpty()) return emptyList()
     val previewDir = rootDir.resolve(previewId)
@@ -68,9 +72,9 @@ object DisplayFilterDataProducer {
             VariantEntry(filter = it.filter.id, path = it.path, mediaType = it.mediaType)
           }
       )
-    previewDir
-      .resolve(FILE_VARIANTS)
-      .writeText(json.encodeToString(VariantsManifest.serializer(), manifest))
+    fileSystem.write(previewDir.resolve(FILE_VARIANTS).path.toPath()) {
+      writeUtf8(json.encodeToString(VariantsManifest.serializer(), manifest))
+    }
     return records
   }
 }

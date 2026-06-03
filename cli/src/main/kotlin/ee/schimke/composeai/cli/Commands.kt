@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -9,6 +10,8 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.FileSystem
+import okio.Path.Companion.toPath
 
 /**
  * On-disk shape mirrors gradle-plugin/PreviewData.kt (parsed with ignoreUnknownKeys).
@@ -114,7 +117,10 @@ private val briefJson = Json {
   encodeDefaults = false
 }
 
-abstract class Command(protected val args: List<String>) {
+abstract class Command(
+  protected val args: List<String>,
+  protected val fileSystem: FileSystem = SystemFileSystem,
+) {
   protected val explicitModule: String? = args.flagValue("--module")
   protected val filter: String? = args.flagValue("--filter")
   protected val exactId: String? = args.flagValue("--id")
@@ -650,7 +656,8 @@ abstract class Command(protected val args: List<String>) {
     val f = stateFile(module)
     if (!f.exists()) return CliState()
     return try {
-      json.decodeFromString(CliState.serializer(), f.readText())
+      val text = fileSystem.read(f.path.toPath()) { readUtf8() }
+      json.decodeFromString(CliState.serializer(), text)
     } catch (e: Exception) {
       if (verbose)
         System.err.println("Warning: corrupt state file ${f.path}, resetting: ${e.message}")
@@ -661,7 +668,9 @@ abstract class Command(protected val args: List<String>) {
   private fun writeState(module: PreviewModule, state: CliState) {
     val f = stateFile(module)
     f.parentFile?.mkdirs()
-    f.writeText(json.encodeToString(CliState.serializer(), state))
+    fileSystem.write(f.path.toPath()) {
+      writeUtf8(json.encodeToString(CliState.serializer(), state))
+    }
   }
 
   private fun findProjectRoot(): File? {
@@ -802,7 +811,7 @@ class ShowCommand(args: List<String>) : Command(args) {
     if (rendered.isEmpty()) return
     val pngs = rendered.mapNotNull { c -> c.pngPath?.let { File(it) }?.takeIf { it.isFile } }
     if (pngs.size != rendered.size) return // some path didn't exist on disk — skip silently
-    val bytes = pngs.map { it.readBytes() }
+    val bytes = pngs.map { fileSystem.read(it.path.toPath()) { readByteArray() } }
     if (bytes.size == 1) {
       TerminalImages.emitStill(System.out, bytes[0])
     } else {
