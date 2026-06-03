@@ -2896,6 +2896,9 @@ async function notifyDaemonOfSave(filePath: string): Promise<DaemonSaveResult> {
         filePath,
         filePreviews.map((p) => p.id),
     );
+    logLine(
+        `daemon save: ${path.basename(filePath)} manifest=${manifest.length} filePreviews=${filePreviews.length} renderIds=${ids.length}`,
+    );
     if (ids.length === 0) {
         return "accepted";
     }

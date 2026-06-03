@@ -664,25 +664,31 @@ describeExternal(
                     // what proves live mode reflects the edit instead of
                     // re-emitting a stale render. A same-bytes render would time
                     // out here and fail the test loudly.
-                    const shot = await waitFor(
-                        `edit ${i + 1} → CHANGED probe image`,
-                        // Bounded per-edit: a warm incremental edit that can't
-                        // produce a *changed* render within this window is the
-                        // stale-render bug — fail fast and loud rather than
-                        // hanging until the 30-min suite timeout.
-                        PER_EDIT_TIMEOUT_MS,
-                        100,
-                        () => {
-                            const cur = probeImageOf();
-                            if (!cur) return undefined;
-                            if (
-                                prevImage !== null &&
-                                cur.imageData === prevImage
-                            )
-                                return undefined;
-                            return cur;
-                        },
-                    );
+                    let shot: { previewId: string; imageData: string };
+                    try {
+                        shot = await waitFor(
+                            `edit ${i + 1} → CHANGED probe image`,
+                            // Bounded per-edit: a warm incremental edit that can't
+                            // produce a *changed* render within this window is the
+                            // stale-render bug — fail fast and loud rather than
+                            // hanging until the 30-min suite timeout.
+                            PER_EDIT_TIMEOUT_MS,
+                            100,
+                            () => {
+                                const cur = probeImageOf();
+                                if (!cur) return undefined;
+                                if (
+                                    prevImage !== null &&
+                                    cur.imageData === prevImage
+                                )
+                                    return undefined;
+                                return cur;
+                            },
+                        );
+                    } catch (e) {
+                        dumpDaemonDiag(`edit ${i + 1} render TIMED OUT`);
+                        throw e;
+                    }
                     const dt = Date.now() - t0;
                     timingsMs.push(dt);
 
