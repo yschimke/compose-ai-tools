@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.13.0](https://github.com/yschimke/compose-ai-tools/compare/v0.12.5...v0.13.0) (2026-06-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt Okio + Dispatchers.IO for file IO across the codebase ([#1699](https://github.com/yschimke/compose-ai-tools/issues/1699))
+
+### Features
+
+* add progress bar feedback for daemon save path ([#1712](https://github.com/yschimke/compose-ai-tools/issues/1712)) ([a743874](https://github.com/yschimke/compose-ai-tools/commit/a743874179e01663fa5da0ca093c91f4785f8ef9))
+* add Shift+click multi-stream mode for grid card previews ([#1711](https://github.com/yschimke/compose-ai-tools/issues/1711)) ([251aa7a](https://github.com/yschimke/compose-ai-tools/commit/251aa7a92bc475bb59075927b85b4f0f2230c9c1))
+* adopt Okio + Dispatchers.IO for file IO across the codebase ([#1699](https://github.com/yschimke/compose-ai-tools/issues/1699)) ([2256a15](https://github.com/yschimke/compose-ai-tools/commit/2256a157f240c8b795442d4b3fff59a74af6a761))
+* **bundle:** carry Android resources for protolayout tile replay (schema v6) ([#1692](https://github.com/yschimke/compose-ai-tools/issues/1692)) ([e0f747d](https://github.com/yschimke/compose-ai-tools/commit/e0f747dec51706a510a82dfc8b63774937367d11))
+* **plugin:** discover @XrSubspacePreview as PreviewKind.XR_SUBSPACE ([#1707](https://github.com/yschimke/compose-ai-tools/issues/1707)) ([038a7ae](https://github.com/yschimke/compose-ai-tools/commit/038a7aee3ef72b4e026f60e3224b2a13d900ad9a))
+* **renderer-xr:** auto-enumerate tagged subspace panels (recordAll) ([#1706](https://github.com/yschimke/compose-ai-tools/issues/1706)) ([bd21aa9](https://github.com/yschimke/compose-ai-tools/commit/bd21aa992a43bc5226c83c5effa3542fcc3368db))
+* **renderer-xr:** manifest-driven XR render entry (XrSubspaceRenderTest) ([#1716](https://github.com/yschimke/compose-ai-tools/issues/1716)) ([cdec78b](https://github.com/yschimke/compose-ai-tools/commit/cdec78bf39e763e3bf523d4ba43ab5b795db7a40))
+* **renderer-xr:** offline SpatialScene producer (poses + textures + scene.json) ([#1703](https://github.com/yschimke/compose-ai-tools/issues/1703)) ([86eac21](https://github.com/yschimke/compose-ai-tools/commit/86eac2120ddbd06ed296ec0b230cd6ee3375adb4))
+* **renderer-xr:** render an @XrSubspacePreview to scene.json ([#1710](https://github.com/yschimke/compose-ai-tools/issues/1710)) ([5593aca](https://github.com/yschimke/compose-ai-tools/commit/5593aca322e8cbb9cfb19a0c44a46d44c35a7e77))
+* **samples:** add XR spatial preview sample (androidx.xr.compose) ([#1690](https://github.com/yschimke/compose-ai-tools/issues/1690)) ([c929fe2](https://github.com/yschimke/compose-ai-tools/commit/c929fe20b1bf74ee98479c4636b7637837bb4c33))
+* **vscode:** 3D spatial-layout viewer with 2D⇄3D panel toggle ([#1704](https://github.com/yschimke/compose-ai-tools/issues/1704)) ([6ddeabf](https://github.com/yschimke/compose-ai-tools/commit/6ddeabf0b3534394aa00631a8218123a929f0810))
+* **vscode:** define SpatialScene contract for the 3D spatial-layout viewer ([#1697](https://github.com/yschimke/compose-ai-tools/issues/1697)) ([759e1fe](https://github.com/yschimke/compose-ai-tools/commit/759e1fe1b92c379d0cdc88b8cfcd070b2c159283))
+
+
+### Bug Fixes
+
+* **bundle:** walk unit-test config as a file tree so protolayout tile replay carries its resources ([#1694](https://github.com/yschimke/compose-ai-tools/issues/1694)) ([60533ea](https://github.com/yschimke/compose-ai-tools/commit/60533ea18ce153af6913e7e4ce595be6e3d34fd4))
+* **daemon:** use the stub Application on the daemon render path ([#1718](https://github.com/yschimke/compose-ai-tools/issues/1718)) ([35c38d1](https://github.com/yschimke/compose-ai-tools/commit/35c38d1ce2798237a575b602b0da427aa816379b))
+* **plugin:** reject parameterized @XrSubspacePreview at discovery ([#1714](https://github.com/yschimke/compose-ai-tools/issues/1714)) ([8a375d7](https://github.com/yschimke/compose-ai-tools/commit/8a375d7280ff884df07ac8e382195df9b75403ad))
+* render Android bundle-daemon classic previews end-to-end ([#1685](https://github.com/yschimke/compose-ai-tools/issues/1685) wiring + [#1687](https://github.com/yschimke/compose-ai-tools/issues/1687)) ([#1689](https://github.com/yschimke/compose-ai-tools/issues/1689)) ([62a6b30](https://github.com/yschimke/compose-ai-tools/commit/62a6b30b3bd36344ccf06d650b6c872116ddcf35))
+* stamp preview card id synchronously for layout sizing ([#1715](https://github.com/yschimke/compose-ai-tools/issues/1715)) ([34a6b53](https://github.com/yschimke/compose-ai-tools/commit/34a6b537f99bcddb68fed049a49fdbed92dfdb02))
+* **vscode:** collapse duplicate live-mode stop button in focus toolbar ([#1709](https://github.com/yschimke/compose-ai-tools/issues/1709)) ([1e6b627](https://github.com/yschimke/compose-ai-tools/commit/1e6b6271464848dc761340d833d6eed567616b51))
+* **vscode:** don't re-enter focus mode on IDE restart; leave it on editor switch ([#1705](https://github.com/yschimke/compose-ai-tools/issues/1705)) ([c5b0611](https://github.com/yschimke/compose-ai-tools/commit/c5b06110d860674b017220a438165064a1861e16))
+* **vscode:** reject unsupported SpatialScene versions in isSpatialScene ([#1700](https://github.com/yschimke/compose-ai-tools/issues/1700)) ([22991c6](https://github.com/yschimke/compose-ai-tools/commit/22991c6e501b7ef658c278f4eb52f5d6ea1f90d1))
+
 ## [0.12.5](https://github.com/yschimke/compose-ai-tools/compare/v0.12.4...v0.12.5) (2026-06-02)
 
 

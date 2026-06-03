@@ -36,7 +36,7 @@ The plugin is published to
 ```kotlin
 // <module>/build.gradle.kts
 plugins {
-    id("ee.schimke.composeai.preview") version "0.12.5"
+    id("ee.schimke.composeai.preview") version "0.13.0"
 }
 ```
 <!-- x-release-please-end -->
