@@ -27,7 +27,6 @@ export interface FocusToolbarElements {
     btnDiffMain: HTMLButtonElement;
     btnLaunchDevice: HTMLButtonElement;
     btnInteractive: HTMLButtonElement;
-    btnStopInteractive: HTMLButtonElement;
     btnRecording: HTMLButtonElement;
     btnTouchOverlay: HTMLButtonElement;
     btnKeyboardBand: HTMLButtonElement;
@@ -65,9 +64,6 @@ export interface InteractiveButtonState {
      *  switch the title between "click to make this one live too" and
      *  the multi-stream variants. */
     otherLiveCount: number;
-    /** Whether ANY card is currently live (controls the stop-all
-     *  button's hidden / disabled state). */
-    hasLive: boolean;
     /** Daemon readiness for the focused module. */
     daemonReady: boolean;
     /** Whether the focused module supports v2 live mode (vs the v1
@@ -149,8 +145,6 @@ export class FocusToolbarController {
         // hides itself, but this keeps aria-pressed correct for tests
         // that snapshot the button in either layout.
         this.el.btnInteractive.hidden = !s.inFocus;
-        this.el.btnStopInteractive.hidden = !s.inFocus || !s.hasLive;
-        this.el.btnStopInteractive.disabled = !s.hasLive;
         if (!s.inFocus) {
             // Cheap fast-path: applyLayout fires this on every layout
             // change (filter tweaks, focus nav, every setPreviews). In
@@ -205,9 +199,10 @@ export class FocusToolbarController {
                     "Shift+click to add without unsubscribing the rest"
                   : "Enter live mode (stream renders) · Shift+click to add to multi-stream";
         // While live the button doubles as the cancel/stop control, so it
-        // flips to a stop glyph (the `live-on` class keeps it tinted red).
-        // This is the per-card stop in focus mode — the on-image corner stop
-        // is suppressed here by CSS (see `.card-live-stop-btn` in preview.css).
+        // flips from the circle glyph to a stop glyph (the `live-on` class
+        // keeps it tinted red). This is the sole stop affordance in focus mode
+        // — the on-image corner stop is suppressed here by CSS (see
+        // `.card-live-stop-btn` in preview.css).
         this.el.btnInteractive.innerHTML = s.isLive
             ? '<i class="codicon codicon-debug-stop" aria-hidden="true"></i>'
             : '<i class="codicon codicon-circle-large-outline" aria-hidden="true"></i>';

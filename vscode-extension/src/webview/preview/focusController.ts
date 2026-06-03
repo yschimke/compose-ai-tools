@@ -164,7 +164,6 @@ export class FocusController {
             focusedPreviewId: previewId,
             isLive,
             otherLiveCount: this.config.liveState.liveCount - (isLive ? 1 : 0),
-            hasLive: this.config.liveState.liveCount > 0,
             daemonReady: isFocusedModuleReady(
                 this.config.liveState.getModuleDaemonReady(),
             ),
