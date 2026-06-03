@@ -685,6 +685,19 @@ object PreviewDiscovery {
     val isNotificationPreview = isAnyNotificationPreviewAnnotation(annotations, scanResult)
     val isGlanceAppWidgetPreview = isAnyGlanceAppWidgetPreviewAnnotation(annotations, scanResult)
     val isXrSubspacePreview = isAnyXrSubspacePreviewAnnotation(annotations, scanResult)
+    // XR subspace previews are reflected + composed parameterless by the `:renderer-xr` task — it
+    // has no @PreviewParameter argument-injection path (and a parameterized subspace layout is
+    // nonsensical). Reject any @XrSubspacePreview that declares a user parameter (whether
+    // @PreviewParameter or plain) up front, so a parameterized one is skipped here rather than
+    // emitted as an XR_SUBSPACE entry that fails at render time.
+    if (isXrSubspacePreview && userPreviewParameters(method).isNotEmpty()) {
+      warnings.add(
+        "composePreview: skipping @XrSubspacePreview '${classInfo.name}.${method.name}' — " +
+          "XR subspace previews must be parameterless (@PreviewParameter / arguments aren't " +
+          "supported by the XR renderer)."
+      )
+      return
+    }
     val hasUnsupportedParameters =
       !isTilePreview &&
         !isNotificationPreview &&
