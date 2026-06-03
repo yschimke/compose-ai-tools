@@ -163,6 +163,10 @@ fun BigPictureStylePreview() {
  * skip the session — the layout draws identically with or without it because the inflater pulls
  * title / text / icon from the notification's own fields.
  */
+// androidx.media's MediaStyle is deprecated in favour of the media3 MediaSession helper; this
+// sample deliberately demonstrates the legacy androidx.media surface without a MediaSession, so we
+// suppress rather than pull in media3.
+@Suppress("DEPRECATION")
 @Preview(name = "Media style")
 @Composable
 fun MediaStylePreview() {

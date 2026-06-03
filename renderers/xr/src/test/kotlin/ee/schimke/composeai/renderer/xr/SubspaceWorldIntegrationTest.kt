@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
-import androidx.xr.compose.spatial.ContentEdge
 import androidx.xr.compose.spatial.Orbiter
+import androidx.xr.compose.spatial.OrbiterAnchorPoint
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialColumn
 import androidx.xr.compose.subspace.SpatialPanel
@@ -43,6 +43,9 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class SubspaceWorldIntegrationTest {
 
+  // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
+  // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
+  @Suppress("DEPRECATION")
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test
@@ -55,7 +58,7 @@ class SubspaceWorldIntegrationTest {
         SpatialColumn {
           SpatialPanel(SubspaceModifier.testTag("main").width(720.dp).height(360.dp)) {
             Box(Modifier.fillMaxSize().background(Color(0xFF1E3C78)))
-            Orbiter(position = ContentEdge.Bottom) {
+            Orbiter(OrbiterAnchorPoint.Bottom) {
               Box(Modifier.fillMaxSize().background(Color(0xFF333845)))
             }
           }

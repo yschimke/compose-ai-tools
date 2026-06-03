@@ -36,6 +36,9 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class SubspaceSceneRecorderTest {
 
+  // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
+  // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
+  @Suppress("DEPRECATION")
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun enableSpatialFeature() {
