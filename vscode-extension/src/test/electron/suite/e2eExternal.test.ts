@@ -516,14 +516,16 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Land the probe in the daemon's manifest before the loop. A
-                // newly-added preview's *image* doesn't render on the first save
-                // (that save renders the file's already-known previews; the new
-                // one is found by async discovery and only paints a card). So we
-                // wait for the probe's CARD here, then the first loop edit is the
-                // first save where the probe is in-manifest and gets rendered.
+                // Land the probe in the daemon's manifest before the loop via a
+                // full (Gradle) refresh: it discovers + renders every preview —
+                // posting setPreviews with the probe's card AND priming the
+                // daemon's manifest cache — so the first loop edit is a save where
+                // the probe is in-manifest and renders through the daemon. (A bare
+                // triggerSave doesn't suffice: a newly-added preview's image isn't
+                // rendered on the first save, and the daemon's deferred discovery
+                // only runs after a render, so the card never surfaces.)
                 api.resetMessages();
-                api.triggerSave(kotlinFile);
+                await api.triggerRefresh(kotlinFile, /* force */ true, "full");
                 await waitFor(
                     "probe discovered (card present)",
                     5 * 60_000,
