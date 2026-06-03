@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.1](https://github.com/yschimke/compose-ai-tools/compare/v0.13.0...v0.13.1) (2026-06-03)
+
+
+### Features
+
+* **plugin:** composePreviewRenderXr — render @XrSubspacePreview to scene.json ([#1720](https://github.com/yschimke/compose-ai-tools/issues/1720)) ([902dd88](https://github.com/yschimke/compose-ai-tools/commit/902dd883bab61f3c4f59c4334a7bcb9958822af6))
+* **renderer-xr:** capture real per-panel textures for XR previews ([#1722](https://github.com/yschimke/compose-ai-tools/issues/1722)) ([b93bcfd](https://github.com/yschimke/compose-ai-tools/commit/b93bcfd699a5527f912173fa9a61066a3412da35))
+
+
+### Bug Fixes
+
+* **daemon:** re-render on save when the manifest cache was invalidated ([#1723](https://github.com/yschimke/compose-ai-tools/issues/1723)) ([f390bc5](https://github.com/yschimke/compose-ai-tools/commit/f390bc5061eaff41ef8bafb94d849a6c19c77f86))
+
 ## [0.13.0](https://github.com/yschimke/compose-ai-tools/compare/v0.12.5...v0.13.0) (2026-06-03)
 
 
