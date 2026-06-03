@@ -2751,6 +2751,9 @@ function invalidateModuleCache(filePath: string): void {
     if (module) {
         gradleService.invalidateCache(module);
         moduleManifestCache.delete(module.modulePath);
+        logLine(
+            `[daemon] invalidateModuleCache cleared manifest cache for ${module.modulePath} (file=${path.basename(filePath)})`,
+        );
     }
 }
 
@@ -3403,18 +3406,27 @@ async function reconcilePreviewManifest(
     }
     gradleService.invalidateCache(module);
     moduleManifestCache.delete(module.modulePath);
+    logLine(
+        `[daemon] reconcile: cleared manifest cache for ${module.modulePath} (discovering…)`,
+    );
     let manifest;
     try {
         manifest = await gradleService.composePreviewDiscover(module);
     } catch (err) {
         logLine(
-            `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message}`,
+            `[daemon] silent discover failed for ${module.modulePath}: ${(err as Error).message} — manifest cache left cleared`,
         );
         return null;
     }
     if (!manifest) {
+        logLine(
+            `[daemon] reconcile: discover returned null for ${module.modulePath} — manifest cache left cleared`,
+        );
         return null;
     }
+    logLine(
+        `[daemon] reconcile: discover returned ${manifest.previews.length} preview(s) for ${module.modulePath}`,
+    );
 
     const fresh = manifest.previews;
     const moduleKey = module.modulePath;
