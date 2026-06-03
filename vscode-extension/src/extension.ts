@@ -2218,6 +2218,10 @@ export async function activate(
                     () => [...baseGradleArgs, ...initScriptArgs],
                     logFilter,
                 );
+                // The continuous-compile manager captured the activation-time
+                // gradleService; re-point it at the injected one so its workers
+                // register on the service `compileOnly()` actually queries.
+                continuousCompileManager?.rebindGradleService(gradleService);
             },
             triggerRefresh(
                 filePath: string,

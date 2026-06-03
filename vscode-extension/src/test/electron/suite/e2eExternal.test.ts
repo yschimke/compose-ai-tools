@@ -513,26 +513,27 @@ describeExternal(
 
                     const t0 = Date.now();
                     api.triggerSave(kotlinFile);
-                    const rendered = await waitFor(
-                        `edit ${i + 1} → webviewPreviewsRendered`,
+                    // The warm daemon save path renders incrementally and pushes
+                    // `updateImage` per preview (posted to the webview) — it does
+                    // NOT post `webviewPreviewsRendered`, which only fires on the
+                    // full Gradle render path. Wait for the first `updateImage`
+                    // after the save to capture the true edit→pixels latency.
+                    await waitFor(
+                        `edit ${i + 1} → daemon updateImage`,
                         this.timeout(),
-                        200,
-                        () => {
-                            const m = api
-                                .getReceivedMessages()
+                        100,
+                        () =>
+                            api
+                                .getPostedMessages()
                                 .find(
-                                    (raw) =>
-                                        (raw as PostedMessage).command ===
-                                        "webviewPreviewsRendered",
-                                ) as { count: number } | undefined;
-                            return m && m.count > 0 ? m : undefined;
-                        },
+                                    (m) =>
+                                        (m as PostedMessage).command ===
+                                        "updateImage",
+                                ),
                     );
                     const dt = Date.now() - t0;
                     timingsMs.push(dt);
-                    console.log(
-                        `[editloop] edit ${i + 1}: ${dt}ms (rendered ${rendered.count} cards)`,
-                    );
+                    console.log(`[editloop] edit ${i + 1}: ${dt}ms`);
                 }
 
                 const sorted = [...timingsMs].sort((a, b) => a - b);
