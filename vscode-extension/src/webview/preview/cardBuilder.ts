@@ -141,15 +141,22 @@ export function buildPreviewCard(
     const card = document.createElement("preview-card") as PreviewCard;
     card.preview = p;
     card.config = config;
-    // Stamp the filter-critical attributes synchronously so the
-    // `applyFilters` call that handleSetPreviews fires immediately
-    // after renderPreviews can see them — populatePreviewCard runs
-    // from Lit's `firstUpdated()` which is scheduled on a microtask,
-    // so by the time it sets these the first applyFilters has already
-    // run against an empty grid (no `.preview-card` selector match,
-    // no dataset → variant collapse silently no-ops, all cards land
-    // visible until the next manifest reseed).
+    // Stamp the filter- and layout-critical attributes synchronously so
+    // the `applyFilters` / `applyRelativeSizing` calls that
+    // handleSetPreviews fires immediately after renderPreviews can see
+    // them — populatePreviewCard runs from Lit's `firstUpdated()` which is
+    // scheduled on a microtask, so by the time it sets these the first
+    // applyFilters has already run against an empty grid (no
+    // `.preview-card` selector match, no dataset → variant collapse
+    // silently no-ops, all cards land visible until the next manifest
+    // reseed). The `id` is sizing-critical for the same reason:
+    // `applyRelativeSizing` resolves cards via `getElementById("preview-"
+    // + sanitizeId(id))`, so without it the first setPreviews (cache
+    // preload) never stamps `--aspect-ratio` and a tall `@ScrollingPreview`
+    // image renders at its natural height — looking long until a later
+    // render reseeds the (now id'd) card.
     card.classList.add("preview-card");
+    card.id = "preview-" + sanitizeId(p.id);
     card.dataset.previewId = p.id;
     card.dataset.function = p.functionName;
     card.dataset.group = p.params.group || "";
