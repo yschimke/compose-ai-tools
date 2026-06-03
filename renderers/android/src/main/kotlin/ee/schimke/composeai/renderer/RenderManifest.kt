@@ -8,6 +8,7 @@ enum class PreviewKind {
     TILE,
     NOTIFICATION,
     GLANCE_APPWIDGET,
+    XR_SUBSPACE,
 }
 
 /**
