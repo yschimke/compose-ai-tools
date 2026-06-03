@@ -521,16 +521,26 @@ describeExternal(
                     fs.writeFileSync(kotlinFile, src);
                 }
 
-                // Land the probe in the DAEMON before the loop. The probe is a
-                // brand-new @Preview, so the daemon's PreviewIndex (seeded at
-                // warm time) doesn't know it yet; a save's renderNow can only
-                // resolve IDs the daemon already knows. A bare triggerSave or a
-                // Gradle triggerRefresh won't fix that — neither re-runs
-                // composePreviewDiscover into the daemon. Re-warming with
-                // refreshAfterReady=true does: the daemon is already up, so this
-                // just runs the post-warm discover (rewriting previews.json with
-                // the probe) and pre-renders the file's previews through the
-                // daemon, surfacing the probe's card.
+                // Land the probe in the DAEMON before the loop. Two things have
+                // to be true for a save's renderNow to render the probe (rather
+                // than emit a dropped `daemon-stub-*`):
+                //
+                //  1. previews.json must list the probe — the host resolves the
+                //     renderNow's `previewId=` to a class/function via that
+                //     manifest (RobolectricHost.reshapeRenderPayload); unknown
+                //     ids fall through to renderStub.
+                //  2. The daemon process must have LOADED that manifest. The
+                //     daemon binds its PreviewManifestRouter once at startup
+                //     (DaemonMain), and the cold-pass daemon spawned before
+                //     previews.json existed — so it's stuck in the empty-index
+                //     fallback and stubs every render for its whole lifetime.
+                //
+                // triggerWarmDaemon(refreshAfterReady=true) runs the post-warm
+                // composePreviewDiscover that satisfies (1). For (2) we then
+                // restart the daemon and warm again: the daemon's own docs call
+                // this "the next warm after discover picks up the populated
+                // manifest". restartDaemon clears the bootstrap memo, so the
+                // re-warm genuinely re-spawns against the now-written manifest.
                 api.resetMessages();
                 await api.triggerWarmDaemon(
                     kotlinFile,
@@ -553,6 +563,21 @@ describeExternal(
                                 ),
                             );
                         }),
+                );
+                // Re-spawn against the now-populated previews.json so the daemon
+                // leaves stub-render mode and resolves real specs (incl. the
+                // probe) — without this every renderNow returns a dropped
+                // daemon-stub path and no updateImage ever reaches the panel.
+                await vscode.commands.executeCommand(
+                    "composePreview.restartDaemon",
+                );
+                const rewarmed = await api.triggerWarmDaemon(
+                    kotlinFile,
+                    /* refreshAfterReady */ true,
+                );
+                assert.ok(
+                    rewarmed,
+                    "daemon must re-warm after restart so it loads the populated previews.json",
                 );
 
                 const timingsMs: number[] = [];
