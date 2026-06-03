@@ -11,18 +11,18 @@ plugins {
 
 dependencies {
   implementation(compose.desktop.currentOs)
-  implementation(compose.ui)
-  implementation(compose.foundation)
-  implementation(compose.material3)
-  implementation(compose.runtime)
-  implementation(compose.components.uiToolingPreview)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.foundation)
+  implementation(libs.jetbrains.compose.material3)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.components.ui.tooling.preview)
   // JetBrains Compose UI Test — gives the renderer `runComposeUiTest { ... }`, the desktop
   // equivalent of Android's `AndroidComposeTestRule`. Used by `DesktopRendererMain.renderScroll`
   // to drive `@ScrollingPreview` LONG / GIF modes: setContent, mainClock for animation control,
   // semantic queries for finding the scrollable, captureToImage for per-frame PNGs. NOT a test
   // dependency — invoked from production main code (the function name is misleading; it's an
   // entry-point for the test API, not a JUnit-only construct).
-  implementation(compose.uiTest)
+  implementation(libs.jetbrains.compose.ui.test)
   // Pure-JVM scroll primitives: `ScrollAxis` enum, `ScrollLongFramePlan` /
   // `ScrollGifFramePlan` planners, `ScrollSliceStitcher.stitchSlices`, `ScrollGifEncoder.encode`,
   // plus the `buildGifScrollScript` shape function. The Android driver

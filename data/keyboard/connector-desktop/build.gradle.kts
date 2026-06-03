@@ -25,9 +25,9 @@ dependencies {
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
 
-  implementation(compose.runtime)
-  implementation(compose.ui)
-  implementation(compose.foundation)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.foundation)
 
   testImplementation(libs.junit)
 }

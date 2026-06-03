@@ -32,13 +32,13 @@ dependencies {
   api(project(":data-pseudolocale-core"))
   api(project(":daemon:core"))
   api(project(":data-render-compose"))
-  implementation(compose.runtime)
-  implementation(compose.ui)
+  implementation(libs.jetbrains.compose.runtime)
+  implementation(libs.jetbrains.compose.ui)
   // `org.jetbrains.compose.resources.LocalResourceReader` — the byte-level interceptor we wrap so
   // every `stringResource(...)` lookup on desktop returns the pseudolocalised form. The `internal`
   // env-swap path (`LocalComposeEnvironment` / `ComposeEnvironment`) isn't reachable from outside
   // the resources module at CMP 1.10.x, so this is the published handle that actually works.
-  implementation(compose.components.resources)
+  implementation(libs.jetbrains.compose.components.resources)
 
   testImplementation(libs.junit)
 }

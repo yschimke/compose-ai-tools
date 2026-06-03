@@ -11,11 +11,11 @@ plugins {
 
 dependencies {
   implementation(compose.desktop.currentOs)
-  implementation(compose.material3)
-  implementation(compose.foundation)
-  implementation(compose.ui)
-  implementation(compose.uiTooling)
-  implementation(compose.components.uiToolingPreview)
+  implementation(libs.jetbrains.compose.material3)
+  implementation(libs.jetbrains.compose.foundation)
+  implementation(libs.jetbrains.compose.ui)
+  implementation(libs.jetbrains.compose.ui.tooling)
+  implementation(libs.jetbrains.compose.components.ui.tooling.preview)
   // `@ScrollingPreview(modes = [LONG, GIF])` — drives the desktop renderer's scroll path. The
   // gradle plugin's discovery picks up the annotation by FQN even without it on the consumer's
   // compile classpath, but the sample composable references the annotation directly so the
