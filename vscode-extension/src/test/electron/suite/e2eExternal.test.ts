@@ -557,12 +557,42 @@ describeExternal(
                 // (Codex review on #1718).
                 api.resetMessages();
                 api.triggerSave(kotlinFile);
-                const baseline = await waitFor(
-                    "probe baseline image (pre-edit render)",
-                    PER_EDIT_TIMEOUT_MS,
-                    100,
-                    () => probeImageOf() ?? undefined,
-                );
+                // Diagnostic: if the daemon never renders the probe (the save
+                // path falls back to Gradle instead of driving daemon renderNow),
+                // dump the extension's own [refresh]/daemon log tail and the
+                // panel message commands so the cause is visible in CI output
+                // rather than just a bare timeout.
+                const dumpDaemonDiag = (label: string) => {
+                    const tail = api
+                        .getOutputChannelTail(400)
+                        .filter((l) =>
+                            /daemon|render|fileChanged|disabled|focus|ensureModule|compile|manifest|discover/i.test(
+                                l,
+                            ),
+                        );
+                    console.log(
+                        `\n[editloop] ===== ${label}: output-channel tail (${tail.length} relevant lines) =====`,
+                    );
+                    for (const l of tail.slice(-120)) console.log(`  ${l}`);
+                    const cmds = (
+                        api.getPostedMessages() as PostedMessage[]
+                    ).map((m) => m.command);
+                    console.log(
+                        `[editloop] posted commands since reset: ${JSON.stringify(cmds)}`,
+                    );
+                };
+                let baseline: { previewId: string; imageData: string };
+                try {
+                    baseline = await waitFor(
+                        "probe baseline image (pre-edit render)",
+                        PER_EDIT_TIMEOUT_MS,
+                        100,
+                        () => probeImageOf() ?? undefined,
+                    );
+                } catch (e) {
+                    dumpDaemonDiag("baseline render TIMED OUT");
+                    throw e;
+                }
                 let prevImage: string | null = baseline.imageData;
                 {
                     const buf = Buffer.from(baseline.imageData, "base64");
