@@ -349,6 +349,45 @@ abstract class Command(
   }
 
   /**
+   * Auto-provision the native `xr-composite` binary into the shared cache the plugin's
+   * `composePreviewCompositeXr` task discovers, but ONLY when there's XR work to do. Runs
+   * `composePreviewDiscover` first (cheap + UP-TO-DATE on warm builds) so we can read each module's
+   * `previews.json` and gate the network fetch on the presence of an `XR_SUBSPACE` preview — a
+   * non-XR render never touches the network. On any failure (offline, no Release asset for a
+   * `-SNAPSHOT`, 404) the provisioner logs a concise note and returns without failing, so the
+   * render proceeds exactly as before (the composite still is best-effort, like the plugin's
+   * graceful skip).
+   *
+   * Returns the extra Gradle arguments the render should carry —
+   * `-PcomposePreview.xrCompositeBinary =<path>` when a binary was provisioned (so the render uses
+   * it explicitly even if cache discovery misfires), else empty. Discovery via the cache path is
+   * the general mechanism; passing the property is a belt-and-braces handoff.
+   */
+  protected fun provisionXrCompositeArgs(
+    gradle: GradleConnection,
+    modules: List<PreviewModule>,
+    silenceStdout: Boolean,
+  ): List<String> {
+    if (modules.isEmpty()) return emptyList()
+    // Discover first so previews.json exists; renderAll depends on discover anyway, so on a warm
+    // build this is a no-op UP-TO-DATE pass. A discovery failure isn't fatal here — the subsequent
+    // render will surface it; we just can't gate, so we skip provisioning.
+    val discoverOk =
+      withGradleStdout(silenceStdout) {
+        val tasks = modules.map { ":${it.gradlePath}:composePreviewDiscover" }.toTypedArray()
+        runGradle(gradle, *tasks)
+      }
+    if (!discoverOk) return emptyList()
+    val hasXr =
+      readAllManifests(modules).any { (_, manifest) ->
+        manifest.previews.any { it.params.kind == XrCompositeProvision.XR_SUBSPACE_KIND }
+      }
+    if (!hasXr) return emptyList()
+    val binary = XrCompositeProvision.ensureCached(BUNDLE_VERSION) ?: return emptyList()
+    return listOf("-PcomposePreview.xrCompositeBinary=${binary.absolutePath}")
+  }
+
+  /**
    * Outcome of [renderAllModules] — the full result of "discover preview modules, run their
    * `:composePreviewRenderAll` tasks, read each module's manifest, and build the merged
    * [PreviewResult] list." Each subcommand decides what to do with this (filter, format, exit code)
@@ -401,10 +440,11 @@ abstract class Command(
       val buildOk =
         if (modules.isEmpty()) true
         else {
+          val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout)
           val tasks = modules.map(taskFor).toTypedArray()
           val ok =
             withGradleStdout(silenceStdout) {
-              runGradle(gradle, *tasks, arguments = gradleArguments)
+              runGradle(gradle, *tasks, arguments = gradleArguments + xrArgs)
             }
           if (!ok) reportRenderFailures(gradle)
           ok
@@ -883,8 +923,11 @@ class RenderCommand(args: List<String>) : Command(args) {
   override fun run() {
     withGradle { gradle ->
       val modules = resolveModules(gradle)
+      val xrArgs = provisionXrCompositeArgs(gradle, modules, silenceStdout = false)
       val tasks = previewTasksFor(modules.map { it.gradlePath }).toTypedArray()
-      if (!runGradle(gradle, *tasks, arguments = gradleArgsWithForce(bundleGradleArgs()))) {
+      if (
+        !runGradle(gradle, *tasks, arguments = gradleArgsWithForce(bundleGradleArgs()) + xrArgs)
+      ) {
         reportRenderFailures(gradle)
         exitProcess(2)
       }

@@ -64,6 +64,28 @@ Rasterization" section.)
 | `--materials <dir>` | directory with the compiled `.filamat` blobs | `.` |
 | `--width` / `--height` | output size in px | `1280` × `800` |
 
+## Consumer flow — auto-provisioned by the CLI
+
+Consumers do **not** build this tool or run an install step. On each GitHub Release the binary +
+compiled `materials/` are published per OS as `xr-composite-<platform>-<version>.tar.gz`
+(`linux-x86_64` / `macos-arm64` / `windows-x86_64`, see `.github/workflows/release.yml`). When the
+`compose-preview` CLI drives a render and discovers an `XR_SUBSPACE` preview, it **auto-fetches** the
+tarball matching its own released version into a shared, well-known cache:
+
+```
+${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/xr-composite   (+ materials/)
+```
+
+The Gradle plugin's `composePreviewCompositeXr` task then *reads* that cache (resolution order:
+`composePreview.xrCompositeBinary` property → `XR_COMPOSITE_BIN` env → the cache path for the
+plugin's version + host platform). The CLI is the only writer; the plugin never downloads, so a raw
+`./gradlew composePreviewRenderAll` stays explicit (set the property/env or pre-populate the cache).
+
+Everything is best-effort: an offline machine, a missing asset for a local `-SNAPSHOT` build (no
+published release → 404), or an unsupported platform logs a concise note and the composite still is
+simply absent — the render is never failed. Daemon-side auto-provisioning is a follow-up (see
+`docs/design/xr-spatial/RENDERER_SERVICE.md` decision #6).
+
 ## Implementation notes / gotchas
 
 These tripped up the initial implementation and are load-bearing:
@@ -87,4 +109,5 @@ These tripped up the initial implementation and are load-bearing:
 - Embed materials via `resgen` so the binary is self-contained (drop `--materials`).
 - Wire into the render pipeline and fold the composite into the preview manifest;
   degrade gracefully when the binary / display / software GL is unavailable.
-- macOS and Windows builds + a distribution/bootstrap story.
+- ~~macOS and Windows builds + a distribution/bootstrap story.~~ Done: per-OS Release tarballs,
+  CLI auto-provisioning into a shared cache (see "Consumer flow" above).

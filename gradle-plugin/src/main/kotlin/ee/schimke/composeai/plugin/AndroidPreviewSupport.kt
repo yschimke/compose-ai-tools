@@ -38,6 +38,72 @@ internal object AndroidPreviewSupport {
   internal const val RENDERER_COMPOSE_FLOOR_VERSION: String = "1.9.5"
 
   /**
+   * Platform token for the auto-provisioned `xr-composite` cache, matching the Release asset matrix
+   * in `.github/workflows/release.yml` and the CLI writer's `XrCompositeProvision.platformToken`.
+   * `null` for any OS/arch combination that has no published asset (e.g. linux-arm64) — the cache
+   * tier then contributes nothing and the task falls through to its graceful skip. Kept pure
+   * (params rather than `System.getProperty`) so it's unit-testable.
+   */
+  internal fun xrCompositePlatformToken(osName: String, osArch: String): String? {
+    val os = osName.lowercase()
+    val arch = osArch.lowercase()
+    return when {
+      os.contains("linux") && (arch == "x86_64" || arch == "amd64") -> "linux-x86_64"
+      (os.contains("mac") || os.contains("darwin")) && (arch == "aarch64" || arch == "arm64") ->
+        "macos-arm64"
+      os.contains("windows") && (arch == "amd64" || arch == "x86_64") -> "windows-x86_64"
+      else -> null
+    }
+  }
+
+  /**
+   * Config-time provider for the shared auto-provision cache binary path:
+   * `${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/xr-composite`
+   * (`xr-composite.exe` on Windows). This is the WELL-KNOWN PATH CONVENTION shared with the CLI
+   * writer ([XrCompositeProvision.cacheBinary] in `:cli`) — the two derive the identical path from
+   * the same release [version] + host platform, which is how the CLI's fetch and the plugin's read
+   * meet without a runtime handshake. Built entirely from injected providers so it stays IP- and
+   * configuration-cache-safe (no `project.*` / `System.getProperty` at task-action time).
+   *
+   * Returns an absent provider when the host platform has no published asset, when `user.home`
+   * resolves empty and no `XDG_CACHE_HOME` is set — anything that would make the path meaningless —
+   * so the binary chain falls through to the graceful skip.
+   */
+  internal fun xrCompositeCacheBinaryPath(
+    version: String,
+    xdgCacheHome: Provider<String>,
+    userHome: Provider<String>,
+    osName: Provider<String>,
+    osArch: Provider<String>,
+  ): Provider<String> {
+    val platform = osName.zip(osArch) { n, a -> xrCompositePlatformToken(n, a) ?: "" }
+    // Cache root: XDG_CACHE_HOME if set, else <user.home>/.cache. `orElse("")` keeps the chain
+    // resolvable so we can detect "neither available" and drop out.
+    val cacheRoot =
+      xdgCacheHome.orElse("").zip(userHome.orElse("")) { xdg, home ->
+        when {
+          xdg.isNotBlank() -> xdg
+          home.isNotBlank() -> "$home/.cache"
+          else -> ""
+        }
+      }
+    return cacheRoot.zip(platform) { root, plat ->
+      if (root.isBlank() || plat.isBlank()) {
+        null
+      } else {
+        val binName = if (plat.startsWith("windows")) "xr-composite.exe" else "xr-composite"
+        java.io
+          .File(root)
+          .resolve("composeai/xr-composite")
+          .resolve(version)
+          .resolve(plat)
+          .resolve(binName)
+          .path
+      }
+    }
+  }
+
+  /**
    * Modules within `androidx.wear.tiles` whose presence in a consumer's declared deps signals "this
    * project writes Tile previews." When any match, [configure] injects `wear.tiles:tiles-renderer`
    * into the consumer's variant `implementation` so AGP generates R classes for
@@ -1452,15 +1518,34 @@ internal object AndroidPreviewSupport {
 
     // Resolve the optional `xr-composite` native tool location at CONFIG time (Isolated Projects is
     // on / the configuration cache is strict — the task action must not touch `project.*`). The
-    // binary comes from the `composePreview.xrCompositeBinary` Gradle property or the
-    // `XR_COMPOSITE_BIN` env var; the materials dir from `composePreview.xrCompositeMaterials` or,
-    // by default, `<binaryDir>/materials` (where `build.sh` emits it next to the binary). All three
-    // providers may be absent — the task degrades gracefully (logs + skips) when the binary isn't
-    // configured / found.
+    // binary comes, in order, from:
+    //   (a) the `composePreview.xrCompositeBinary` Gradle property (explicit override),
+    //   (b) the `XR_COMPOSITE_BIN` env var,
+    //   (c) the shared auto-provision cache for THIS plugin version + the host platform — the path
+    //       the CLI writes when it fetches the per-OS Release tarball (see
+    //       [xrCompositeCacheBinaryPath] / `XrCompositeProvision` in `:cli`). The plugin only READS
+    //       this cache; it never downloads. Raw `./gradlew` therefore stays
+    // override-or-prepopulated
+    //       — only the CLI populates the cache.
+    // The materials dir comes from `composePreview.xrCompositeMaterials` or, by default,
+    // `<binaryDir>/materials` (where `build.sh` and the Release tarball emit it next to the
+    // binary).
+    // Every tier may be absent — the task degrades gracefully (logs + skips) when the binary isn't
+    // configured / found, and the cache-tier path is only USED when the file actually exists (the
+    // task action's `isFile` check), so an empty cache falls through to the same skip.
+    val xrCompositeCachePath =
+      xrCompositeCacheBinaryPath(
+        version = PluginVersion.value,
+        xdgCacheHome = project.providers.environmentVariable("XDG_CACHE_HOME"),
+        userHome = project.providers.systemProperty("user.home"),
+        osName = project.providers.systemProperty("os.name"),
+        osArch = project.providers.systemProperty("os.arch"),
+      )
     val xrCompositeBinary =
       project.providers
         .gradleProperty("composePreview.xrCompositeBinary")
         .orElse(project.providers.environmentVariable("XR_COMPOSITE_BIN"))
+        .orElse(xrCompositeCachePath)
     val xrCompositeMaterials =
       project.providers
         .gradleProperty("composePreview.xrCompositeMaterials")

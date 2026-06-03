@@ -55,14 +55,28 @@ Implementation gotchas (buffer lifetime, alpha premultiply, readPixels
 orientation) are documented in the tool's
 [README](../../../renderers/xr-composite/README.md#implementation-notes--gotchas).
 
+## Consumer flow (distribution)
+
+Consumers never build the tool. Per-OS Release tarballs
+(`xr-composite-<platform>-<version>.tar.gz`) are **auto-provisioned by the CLI**: when
+`compose-preview` drives a render and sees an `XR_SUBSPACE` preview, it fetches the binary matching
+its own release into a shared cache
+(`${XDG_CACHE_HOME:-~/.cache}/composeai/xr-composite/<version>/<platform>/`), and the Gradle plugin's
+`composePreviewCompositeXr` task reads it from there (after the
+`composePreview.xrCompositeBinary` / `XR_COMPOSITE_BIN` overrides). The plugin only reads; the CLI is
+the writer, so raw `./gradlew` stays explicit. Any fetch failure (offline, no asset for a
+`-SNAPSHOT`, unsupported platform) is a graceful skip. Full notes in the tool
+[README](../../../renderers/xr-composite/README.md#consumer-flow--auto-provisioned-by-the-cli);
+daemon-side auto-provisioning is a follow-up (see [`RENDERER_SERVICE.md`](RENDERER_SERVICE.md)
+decision #6).
+
 ## What's not done yet
 
 This is the renderer half. Still open: visual parity with the WebGL viewer
-(grid / axes / labels), self-contained material embedding (`resgen`), wiring the
-composite into the render pipeline + preview manifest with graceful degradation
-when the binary / display / software GL is unavailable, and macOS/Windows builds
-plus a distribution/bootstrap story. Those are the real remaining cost — the
-GPU-free rendering itself is solved.
+(grid / axes / labels), self-contained material embedding (`resgen`). Wiring the
+composite into the render pipeline + preview manifest (with graceful degradation when the binary /
+display / software GL is unavailable), the macOS/Windows builds, and the distribution/provisioning
+story are now done (see "Consumer flow" above). The GPU-free rendering itself is solved.
 
 The longer-term direction — turning this one-shot CLI into a long-lived,
 extensible, multi-session render *service* behind the daemon (live panel/pose
