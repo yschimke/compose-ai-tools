@@ -1450,6 +1450,26 @@ internal object AndroidPreviewSupport {
     val dataProductsDirectory = previewOutputDir.map { it.dir("data") }
     val rendersDir = rendersDirectory.map { it.asFile.absolutePath }
 
+    // Resolve the optional `xr-composite` native tool location at CONFIG time (Isolated Projects is
+    // on / the configuration cache is strict — the task action must not touch `project.*`). The
+    // binary comes from the `composePreview.xrCompositeBinary` Gradle property or the
+    // `XR_COMPOSITE_BIN` env var; the materials dir from `composePreview.xrCompositeMaterials` or,
+    // by default, `<binaryDir>/materials` (where `build.sh` emits it next to the binary). All three
+    // providers may be absent — the task degrades gracefully (logs + skips) when the binary isn't
+    // configured / found.
+    val xrCompositeBinary =
+      project.providers
+        .gradleProperty("composePreview.xrCompositeBinary")
+        .orElse(project.providers.environmentVariable("XR_COMPOSITE_BIN"))
+    val xrCompositeMaterials =
+      project.providers
+        .gradleProperty("composePreview.xrCompositeMaterials")
+        .orElse(
+          xrCompositeBinary.map {
+            java.io.File(it).absoluteFile.parentFile.resolve("materials").path
+          }
+        )
+
     // ATF / hierarchy data products are produced only by the daemon path
     // (`:daemon:android`'s RenderEngine). The standalone Robolectric `composePreviewRender` Test
     // task
@@ -1818,6 +1838,116 @@ internal object AndroidPreviewSupport {
         )
       }
 
+    // Bake the XR subspace scenes into composite stills via the native `xr-composite` tool. Runs
+    // after `composePreviewRenderXr` (which writes each `renders/<dir>/scene.json` + panel
+    // textures) and BEFORE the renderAll validation/clean step so the gate sees the produced
+    // composites and `cleanStaleRenders` keeps them (they're referenced by the manifest's optional
+    // capture). Degrades gracefully: a missing / unconfigured binary, or no display + no
+    // `xvfb-run`,
+    // logs at lifecycle level and returns without failing — the optional capture simply has no
+    // file.
+    if (xrPreviewsEnabled)
+      project.tasks.register("composePreviewCompositeXr", org.gradle.api.DefaultTask::class.java) {
+        group = "compose preview"
+        description = "Bake XR subspace scene.json files into composite.png stills via xr-composite"
+        // Captured as providers at config time — the doLast body never touches `project.*` (IP /
+        // strict configuration cache).
+        val binaryProvider = xrCompositeBinary
+        val materialsProvider = xrCompositeMaterials
+        val rendersDirProvider = rendersDirectory
+        // The render dir is shared with `composePreviewRender` (PNGs) and `composePreviewRenderXr`
+        // (scene.json + panel textures). This task both reads it (scene.json) and writes into it
+        // (composite.png), so declaring it as a tracked input/output would clash with those
+        // producers' outputs and with this task's own writes. Instead we stay untracked and order
+        // explicitly: depend on the XR render (our real producer) and run after the PNG render
+        // (the other writer to the shared dir). Best-effort + native-shell-out means there's no
+        // useful up-to-date / caching story to gain from tracking anyway.
+        dependsOn("composePreviewRenderXr")
+        mustRunAfter("composePreviewRender")
+        doLast {
+          val binaryPath = binaryProvider.orNull
+          val rendersRoot = rendersDirProvider.get().asFile
+          if (binaryPath.isNullOrBlank()) {
+            logger.lifecycle("xr-composite binary not found; skipping XR composite stills")
+            return@doLast
+          }
+          val binary = java.io.File(binaryPath)
+          if (!binary.isFile) {
+            logger.lifecycle(
+              "xr-composite binary not found at $binaryPath; skipping XR composite stills"
+            )
+            return@doLast
+          }
+          if (!rendersRoot.isDirectory) {
+            logger.lifecycle("no XR renders dir at $rendersRoot; skipping XR composite stills")
+            return@doLast
+          }
+          // `xr-composite` is an OpenGL/Filament tool — it needs a display. When `DISPLAY` is unset
+          // we wrap the invocation in `xvfb-run -a` if available; otherwise we skip gracefully
+          // rather than failing the build (the composite is best-effort).
+          val hasDisplay = !System.getenv("DISPLAY").isNullOrBlank()
+          val xvfbRun =
+            if (hasDisplay) null
+            else
+              sequenceOf("/usr/bin/xvfb-run", "/usr/local/bin/xvfb-run")
+                .map { java.io.File(it) }
+                .firstOrNull { it.isFile }
+                ?.path
+                ?: run {
+                  if (
+                    ProcessBuilder("which", "xvfb-run")
+                      .redirectErrorStream(true)
+                      .start()
+                      .waitFor() == 0
+                  )
+                    "xvfb-run"
+                  else null
+                }
+          if (!hasDisplay && xvfbRun == null) {
+            logger.lifecycle(
+              "DISPLAY unset and xvfb-run not available; skipping XR composite stills"
+            )
+            return@doLast
+          }
+          val materialsDir = materialsProvider.orNull
+          val scenes =
+            rendersRoot
+              .listFiles()
+              ?.filter { it.isDirectory }
+              ?.map { java.io.File(it, "scene.json") }
+              ?.filter { it.isFile }
+              .orEmpty()
+          if (scenes.isEmpty()) {
+            logger.lifecycle("no XR scene.json files under $rendersRoot; nothing to composite")
+            return@doLast
+          }
+          var baked = 0
+          for (scene in scenes) {
+            val outFile = java.io.File(scene.parentFile, "composite.png")
+            val cmd = mutableListOf<String>()
+            if (xvfbRun != null) {
+              cmd += xvfbRun
+              cmd += "-a"
+            }
+            cmd += binary.absolutePath
+            cmd += listOf("--scene", scene.absolutePath, "--out", outFile.absolutePath)
+            if (!materialsDir.isNullOrBlank()) cmd += listOf("--materials", materialsDir)
+            cmd += listOf("--width", "1280", "--height", "800")
+            val process = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            val code = process.waitFor()
+            if (code != 0 || !outFile.isFile) {
+              logger.lifecycle(
+                "xr-composite failed for ${scene.parentFile.name} (exit $code); skipping. Output:\n$output"
+              )
+            } else {
+              baked++
+            }
+          }
+          logger.lifecycle("xr-composite baked $baked of ${scenes.size} XR composite still(s)")
+        }
+      }
+
     // `aggregateAccessibility` was the rollup task that turned per-preview ATF sidecars into a
     // top-level `accessibility.json`. With a11y now produced exclusively by the daemon (which
     // streams findings on demand via `data/fetch`), nothing on the standalone Gradle path
@@ -1825,11 +1955,15 @@ internal object AndroidPreviewSupport {
     // registered.
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
-    // Fold the XR render into the user-facing aggregate so `composePreviewRenderAll` produces
-    // scene.json alongside the PNGs (only when the XR path is enabled / the task exists).
+    // Fold the XR render + composite into the user-facing aggregate so `composePreviewRenderAll`
+    // produces scene.json alongside the PNGs, then bakes the composite stills (only when the XR
+    // path is enabled / the tasks exist). `composePreviewCompositeXr` itself `dependsOn`
+    // `composePreviewRenderXr`, so both run before the renderAll `doLast` validation/clean — the
+    // gate sees the produced composites and `cleanStaleRenders` keeps them.
     if (xrPreviewsEnabled) {
       project.tasks.named("composePreviewRenderAll").configure {
         dependsOn("composePreviewRenderXr")
+        dependsOn("composePreviewCompositeXr")
       }
     }
 

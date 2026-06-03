@@ -1685,10 +1685,16 @@ class DiscoveryFunctionalTest {
     val xrPreviews = manifest.previews.filter { it.functionName == "MySpatialPreview" }
     assertThat(xrPreviews.map { it.functionName }).containsExactly("MySpatialPreview")
     assertThat(xrPreviews.map { it.params.kind }.toSet()).containsExactly(PreviewKind.XR_SUBSPACE)
-    // XR subspace previews emit NO PNG capture (and no data product) — their output is the
-    // scene.json written by composePreviewRenderXr, so composePreviewRenderAll's missing-render
-    // gate must expect nothing for them. Also no target inference (non-composable kind).
-    assertThat(xrPreviews.single().captures).isEmpty()
+    // XR subspace previews emit a SINGLE optional composite capture (and no data product). The
+    // composite.png is baked out-of-band by `composePreviewCompositeXr` from the scene.json
+    // `composePreviewRenderXr` writes; marking it `optional = true` means it shows in the listing
+    // when present but composePreviewRenderAll's missing-render gate never requires it. The subdir
+    // uses the same `[^A-Za-z0-9._-]` → `_` sanitisation as the render task. Also no target
+    // inference (non-composable kind).
+    val xrCapture = xrPreviews.single().captures.single()
+    val sanitizedId = xrPreviews.single().id.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    assertThat(xrCapture.renderOutput).isEqualTo("renders/$sanitizedId/composite.png")
+    assertThat(xrCapture.optional).isTrue()
     assertThat(xrPreviews.single().dataProducts).isEmpty()
     assertThat(xrPreviews.flatMap { it.targets }).isEmpty()
 

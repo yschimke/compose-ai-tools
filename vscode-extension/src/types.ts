@@ -70,6 +70,14 @@ export interface Capture {
     advanceTimeMillis: number | null;
     scroll: ScrollCapture | null;
     renderOutput: string;
+    /**
+     * `true` → best-effort capture: displayed if its file exists, but not
+     * required by the missing-render gate (e.g. the XR subspace composite
+     * still baked by the native `xr-composite` tool, which may be absent
+     * when the binary / display / software GL isn't available). Missing
+     * (older manifests) is treated as `false`.
+     */
+    optional?: boolean;
     /** Human-readable summary of this capture's non-null dimensions —
      *  e.g. `'500ms'`, `'scrolled end'`, `'500ms · scrolled end'`, or `''`
      *  for a plain static preview. Populated extension-side (see

@@ -1243,6 +1243,10 @@ internal object ComposePreviewTasks {
       .filter { p ->
         val captureMissing =
           p.captures.any { c ->
+            // Optional captures are best-effort (e.g. the XR composite still baked out-of-band by
+            // the native `xr-composite` tool): shown when present, never required — so a missing
+            // one is not flagged.
+            if (c.optional) return@any false
             if (isFastTier && isHeavyCost(c.cost)) return@any false
             val rel = c.renderOutput.ifEmpty { "renders/${p.id}.png" }
             outputMissing(

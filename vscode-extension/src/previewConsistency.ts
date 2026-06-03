@@ -136,6 +136,10 @@ export function manifestExpectedFilesMissing(
     for (const preview of manifest.previews) {
         for (const capture of preview.captures) {
             if (!capture.renderOutput) continue;
+            // Optional captures (e.g. the XR `composite.png`, baked only when the native
+            // xr-composite binary + display are available) are best-effort: their absence is
+            // expected, not drift, so it must not escalate a discover-only pass to a full render.
+            if (capture.optional) continue;
             if (!hasOutputOrSidecar(capture.renderOutput)) return true;
         }
         for (const product of preview.dataProducts ?? []) {

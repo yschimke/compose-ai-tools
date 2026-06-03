@@ -110,4 +110,37 @@ class CleanStaleRendersTest {
     assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = true))
       .isEmpty()
   }
+
+  @Test
+  fun `optional capture never counted as missing`() {
+    val outDir = tempDir.root.resolve("build/compose-previews")
+    // The XR composite is an `optional = true` capture: best-effort, baked out-of-band by the
+    // native `xr-composite` tool. When the file is absent (no binary / display / software GL) the
+    // missing-render gate must not flag it — same graceful degradation as before the capture
+    // existed.
+    val manifest =
+      PreviewManifest(
+        module = "app",
+        variant = "debug",
+        previews =
+          listOf(
+            PreviewInfo(
+              id = "com.example.PreviewsKt.SpatialPreview",
+              functionName = "SpatialPreview",
+              className = "com.example.PreviewsKt",
+              params = PreviewParams(kind = PreviewKind.XR_SUBSPACE),
+              captures =
+                listOf(
+                  Capture(
+                    renderOutput = "renders/com.example.PreviewsKt.SpatialPreview/composite.png",
+                    optional = true,
+                  )
+                ),
+            )
+          ),
+      )
+
+    assertThat(ComposePreviewTasks.missingPreviewOutputIds(manifest, outDir, isFastTier = false))
+      .isEmpty()
+  }
 }
