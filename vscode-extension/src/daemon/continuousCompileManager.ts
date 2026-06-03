@@ -37,12 +37,31 @@ export class ContinuousCompileManager {
 
     constructor(
         private readonly workspaceRoot: string,
-        private readonly gradleService: GradleService,
+        private gradleService: GradleService,
         private readonly logger: ContinuousCompileWorkerLogger,
         private readonly extraArgs: ReadonlyArray<string> = [],
         /** Test seam — defaults to node's `child_process.spawn`. */
         private readonly spawnFn?: typeof spawn,
     ) {}
+
+    /**
+     * Re-point the manager at a different [GradleService] and re-register any
+     * live workers on it. The e2e `injectGradleApi` test seam replaces the
+     * extension's `gradleService` instance *after* activation constructed this
+     * manager; without rebinding, workers would be registered on the original
+     * service while `compileOnly()` looks them up on the injected one, silently
+     * degrading every save to the one-shot Gradle path. No-op in production,
+     * where the `gradleService` instance is stable for the manager's lifetime.
+     */
+    rebindGradleService(gradleService: GradleService): void {
+        if (gradleService === this.gradleService) {
+            return;
+        }
+        this.gradleService = gradleService;
+        for (const [key, worker] of this.workers) {
+            gradleService.setContinuousCompileWorker(key, worker);
+        }
+    }
 
     /**
      * Idempotent — a second call for the same module while a worker is
