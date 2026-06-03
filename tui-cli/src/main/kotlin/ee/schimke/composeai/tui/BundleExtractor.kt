@@ -1,8 +1,13 @@
 package ee.schimke.composeai.tui
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.UUID
 import java.util.zip.ZipInputStream
+import okio.Path.Companion.toPath
+import okio.source
 
 /**
  * Extracts the two products a self-contained preview bundle needs to drive its own daemon — the
@@ -29,11 +34,9 @@ object BundleExtractor {
     val zipBytes = BundlePngMetadata.extractZipBytes(bundle) ?: return null
 
     val workDir =
-      File.createTempFile("compose-preview-tui-bundle-", "").let { tmp ->
-        tmp.delete()
-        tmp.mkdirs()
-        tmp
-      }
+      (TemporaryDirectory / "compose-preview-tui-bundle-${UUID.randomUUID()}")
+        .also { SystemFileSystem.createDirectories(it) }
+        .toFile()
     val classesDir = File(workDir, "classes").apply { mkdirs() }
     val previewsJson = File(workDir, "previews.json")
 
@@ -45,7 +48,7 @@ object BundleExtractor {
           val entry = zin.nextEntry ?: break
           when (entry.name) {
             "previews.json" -> {
-              previewsJson.writeBytes(zin.readBytes())
+              SystemFileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
               sawPreviews = true
             }
             "classes/app.jar" -> {
@@ -91,7 +94,7 @@ object BundleExtractor {
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          candidate.outputStream().use { sink -> zin.copyTo(sink) }
+          SystemFileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }

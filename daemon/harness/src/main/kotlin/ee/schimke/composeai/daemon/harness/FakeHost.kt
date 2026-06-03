@@ -4,6 +4,7 @@ import ee.schimke.composeai.daemon.RenderHost
 import ee.schimke.composeai.daemon.RenderRequest
 import ee.schimke.composeai.daemon.RenderResult
 import ee.schimke.composeai.daemon.protocol.RenderMetrics
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toPath
 
 /**
  * Renderer-agnostic [RenderHost] that serves PNGs from a local fixture directory keyed by preview
@@ -165,11 +167,20 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
     val delayFile = File(fixtureDir, "$previewId.delay-ms")
     val metricsFile = File(fixtureDir, "$previewId.metrics.json")
     val error = errorFile.takeIf { it.exists() }?.let { parseErrorSidecar(it) }
-    val delayMs = delayFile.takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull()
+    val delayMs =
+      delayFile
+        .takeIf { it.exists() }
+        ?.let { SystemFileSystem.read(it.path.toPath()) { readUtf8() } }
+        ?.trim()
+        ?.toLongOrNull()
     val metrics: Map<String, Long>? =
       metricsFile
         .takeIf { it.exists() }
-        ?.let { f -> JSON.decodeFromString<Map<String, Long>>(f.readText()) }
+        ?.let { f ->
+          JSON.decodeFromString<Map<String, Long>>(
+            SystemFileSystem.read(f.path.toPath()) { readUtf8() }
+          )
+        }
     return ResolvedSidecars(error = error, delayMs = delayMs, metrics = metrics)
   }
 
@@ -182,7 +193,7 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
    * 2. Plain text — legacy v0 path; treated as a message with `kind="runtime"`.
    */
   private fun parseErrorSidecar(file: File): ErrorSpec {
-    val raw = file.readText().trim()
+    val raw = SystemFileSystem.read(file.path.toPath()) { readUtf8() }.trim()
     return if (raw.startsWith("{")) {
       val obj: JsonObject = JSON.parseToJsonElement(raw).jsonObject
       val kind = obj["kind"]?.jsonPrimitive?.contentOrNull ?: "runtime"
@@ -210,7 +221,10 @@ class FakeHost(private val fixtureDir: File, private val manifest: Map<String, F
      */
     fun loadManifest(file: File): Map<String, FakePreviewSpec> {
       require(file.exists()) { "FakeHost.loadManifest: ${file.absolutePath} does not exist" }
-      val list = JSON.decodeFromString<List<FakePreviewSpec>>(file.readText())
+      val list =
+        JSON.decodeFromString<List<FakePreviewSpec>>(
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+        )
       return list.associateBy { it.id }
     }
 

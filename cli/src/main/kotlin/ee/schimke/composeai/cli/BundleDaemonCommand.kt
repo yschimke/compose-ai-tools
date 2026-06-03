@@ -1,9 +1,12 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
 import kotlin.system.exitProcess
+import okio.Path.Companion.toPath
+import okio.source
 
 /**
  * `compose-preview bundle daemon <bundle.png>` — spawn the preview daemon JVM bound to a packed
@@ -378,13 +381,13 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val name = entry.name
         when {
           name == "bundle.json" -> {
-            manifestFile.writeBytes(zin.readBytes())
+            SystemFileSystem.write(manifestFile.path.toPath()) { write(zin.readBytes()) }
             sawManifest = true
           }
           !entry.isDirectory && name.startsWith("ir/") -> {
             val dest = File(irDir, File(name).name).canonicalFile
             if (dest.path.startsWith(canonicalIr.path + File.separator)) {
-              dest.outputStream().use { sink -> zin.copyTo(sink) }
+              SystemFileSystem.write(dest.path.toPath()) { writeAll(zin.source()) }
             }
           }
         }
@@ -494,7 +497,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
         val entry = zin.nextEntry ?: break
         when (entry.name) {
           "previews.json" -> {
-            previewsJson.writeBytes(zin.readBytes())
+            SystemFileSystem.write(previewsJson.path.toPath()) { write(zin.readBytes()) }
             sawPreviewsJson = true
           }
           "classes/app.jar" -> {
@@ -539,7 +542,7 @@ class BundleDaemonCommand(args: List<String>) : Command(args) {
           candidate.mkdirs()
         } else {
           candidate.parentFile?.mkdirs()
-          candidate.outputStream().use { sink -> zin.copyTo(sink) }
+          SystemFileSystem.write(candidate.path.toPath()) { writeAll(zin.source()) }
         }
         zin.closeEntry()
       }

@@ -1,10 +1,12 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import javax.imageio.ImageIO
+import okio.Path.Companion.toPath
 
 /**
  * Hash used for change detection of a rendered preview file.
@@ -26,10 +28,14 @@ import javax.imageio.ImageIO
  */
 fun previewSha256(file: File): String =
   if (file.extension.equals("gif", ignoreCase = true)) {
-    gifBookendFrameSha256(file) ?: sha256(file.readBytes())
+    gifBookendFrameSha256(file) ?: sha256(readAllBytes(file))
   } else {
-    sha256(file.readBytes())
+    sha256(readAllBytes(file))
   }
+
+/** Read [file]'s bytes through Okio's `FileSystem`. */
+private fun readAllBytes(file: File): ByteArray =
+  SystemFileSystem.read(file.path.toPath()) { readByteArray() }
 
 internal fun sha256(bytes: ByteArray): String {
   val md = MessageDigest.getInstance("SHA-256")

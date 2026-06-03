@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.Path.Companion.toPath
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
@@ -47,9 +49,9 @@ object UiAutomatorDataProducer {
   fun writeArtifacts(rootDir: File, previewId: String, payload: UiAutomatorHierarchyPayload) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    previewDir
-      .resolve(FILE_HIERARCHY)
-      .writeText(json.encodeToString(UiAutomatorHierarchyPayload.serializer(), payload))
+    SystemFileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+      writeUtf8(json.encodeToString(UiAutomatorHierarchyPayload.serializer(), payload))
+    }
   }
 }
 

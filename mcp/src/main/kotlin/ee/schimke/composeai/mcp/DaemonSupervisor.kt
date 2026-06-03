@@ -2,6 +2,7 @@ package ee.schimke.composeai.mcp
 
 import ee.schimke.composeai.daemon.protocol.BackendKind
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
@@ -10,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toPath
 
 /**
  * Owner of every per-(workspace, module) [DaemonClient] in this MCP server process. Multi-workspace
@@ -296,7 +298,7 @@ class DaemonSupervisor(
     if (!file.isFile) return
     val previews =
       runCatching {
-          val text = file.readText()
+          val text = SystemFileSystem.read(file.path.toPath()) { readUtf8() }
           val arr =
             (Json.parseToJsonElement(text) as? JsonObject)?.get("previews")
               as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
@@ -595,7 +597,9 @@ fun interface DescriptorProvider {
         "Missing daemon launch descriptor for $modulePath under ${project.path.absolutePath}. " +
           "Run `./gradlew $modulePath:composePreviewDaemonStart` first."
       }
-      DaemonLaunchDescriptor.parse(descriptorFile.readText())
+      DaemonLaunchDescriptor.parse(
+        SystemFileSystem.read(descriptorFile.path.toPath()) { readUtf8() }
+      )
     }
 
     private fun gradlePathToFile(projectRoot: File, modulePath: String): File {

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.Path.Companion.toPath
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import ee.schimke.composeai.data.navigation.NavigationBackPressedState
@@ -47,7 +49,9 @@ object NavigationDataProducer {
           ),
       )
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    previewDir.resolve(FILE).writeText(json.encodeToString(payload))
+    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(payload))
+    }
   }
 
   internal fun Intent.toWireIntent(): NavigationIntent {

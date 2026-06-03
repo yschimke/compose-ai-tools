@@ -1,5 +1,7 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.Path.Companion.toPath
 import android.app.Notification
 import android.content.Context
 import android.os.Build
@@ -43,7 +45,9 @@ internal object NotificationSidecar {
       val rendersDirPath = System.getProperty("composeai.render.outputDir") ?: return
       val sidecar = pathFor(File(rendersDirPath), previewId)
       sidecar.parentFile?.mkdirs()
-      sidecar.writeText(buildJson(previewId, notification, context))
+      SystemFileSystem.write(sidecar.path.toPath()) {
+        writeUtf8(buildJson(previewId, notification, context))
+      }
     } catch (e: Throwable) {
       System.err.println(
         "Failed to write notification sidecar for $previewId: ${e.message}"

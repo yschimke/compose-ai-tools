@@ -1,6 +1,8 @@
 package ee.schimke.composeai.daemon.harness
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
+import okio.Path.Companion.toPath
 
 /**
  * Propagates the `composeai.history.enabled` sysprop from the test JVM into a spawned daemon
@@ -269,7 +271,11 @@ class RealAndroidHarnessLauncher(
       val path = System.getProperty("composeai.harness.androidDaemonClasspath") ?: return null
       val file = File(path)
       if (!file.isFile) return null
-      return file.readLines().filter { it.isNotBlank() }.map { File(it.trim()) }
+      return SystemFileSystem.read(file.path.toPath()) { readUtf8() }
+        .lineSequence()
+        .filter { it.isNotBlank() }
+        .map { File(it.trim()) }
+        .toList()
     }
   }
 

@@ -2,12 +2,16 @@ package ee.schimke.composeai.viewer
 
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.ByteArrayInputStream
-import java.io.File
 import java.net.URLClassLoader
-import java.nio.file.Files
+import java.util.UUID
 import java.util.zip.ZipInputStream
 import kotlinx.serialization.json.Json
+import okio.Path
+import okio.buffer
+import okio.source
 
 /**
  * Opens a `compose-preview` bundle (PNG+ZIP polyglot) and exposes its `@Preview` composables ready
@@ -38,17 +42,17 @@ import kotlinx.serialization.json.Json
  * long-running sessions.
  */
 data class LoadedBundle(
-  val sourceFile: File,
+  val sourceFile: Path,
   val bundleManifest: BundleManifest,
   val previewManifest: PreviewManifest,
   val previews: List<LoadedPreview>,
   val coverPreview: LoadedPreview,
   private val classLoader: URLClassLoader,
-  private val workDir: File,
+  private val workDir: Path,
 ) : AutoCloseable {
   override fun close() {
     runCatching { classLoader.close() }
-    runCatching { workDir.deleteRecursively() }
+    runCatching { SystemFileSystem.deleteRecursively(workDir) }
   }
 }
 
@@ -73,15 +77,20 @@ data class LoadedPreview(
  * Per-preview resolution failures are recorded inside [LoadedPreview.errorMessage] rather than
  * aborting the whole load.
  */
-fun loadBundle(bundleFile: File): LoadedBundle {
-  require(bundleFile.isFile) { "not a file: ${bundleFile.path}" }
+fun loadBundle(bundleFile: Path): LoadedBundle {
+  require(SystemFileSystem.metadataOrNull(bundleFile)?.isRegularFile == true) {
+    "not a file: $bundleFile"
+  }
 
   val zipBytes = extractZipBytes(bundleFile)
-  val workDir = Files.createTempDirectory("compose-preview-viewer-").toFile()
-  val appJarFile = File(workDir, "app.jar")
+  val workDir =
+    (TemporaryDirectory / "compose-preview-viewer-${UUID.randomUUID()}").also {
+      SystemFileSystem.createDirectories(it)
+    }
+  val appJarPath = workDir / "app.jar"
   // Embedded dep jars, keyed by their posix `libs/<name>.jar` path so order is deterministic and
   // dedupe-safe even if the zip lists them oddly. Extracted under workDir/libs/.
-  val libJarFiles = sortedMapOf<String, File>()
+  val libJarFiles = sortedMapOf<String, Path>()
   var bundleJson: String? = null
   var previewsJson: String? = null
   ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
@@ -91,29 +100,30 @@ fun loadBundle(bundleFile: File): LoadedBundle {
       when {
         name == "bundle.json" -> bundleJson = zin.readBytes().toString(Charsets.UTF_8)
         name == "previews.json" -> previewsJson = zin.readBytes().toString(Charsets.UTF_8)
-        name == "classes/app.jar" -> appJarFile.outputStream().use { sink -> zin.copyTo(sink) }
+        name == "classes/app.jar" ->
+          SystemFileSystem.sink(appJarPath).buffer().use { it.writeAll(zin.source()) }
         !entry.isDirectory && name.startsWith("libs/") && name.endsWith(".jar") -> {
-          // Flatten to a safe basename under workDir/libs/; `libs/` paths in our own bundles never
-          // contain `..` or nested dirs, but guard against a hostile bundle escaping workDir.
-          val safe = File(workDir, "libs/" + File(name).name)
-          safe.parentFile?.mkdirs()
-          safe.outputStream().use { sink -> zin.copyTo(sink) }
+          // Flatten to a safe basename under workDir/libs/; `libs/` paths in our own bundles
+          // never contain `..` or nested dirs, but guard against a hostile bundle escaping
+          // workDir.
+          val safe = workDir / "libs" / name.substringAfterLast('/')
+          safe.parent?.let { SystemFileSystem.createDirectories(it) }
+          SystemFileSystem.sink(safe).buffer().use { it.writeAll(zin.source()) }
           libJarFiles[name] = safe
         }
       }
       zin.closeEntry()
     }
   }
-  val bundleJsonNonNull = requireNotNull(bundleJson) { "bundle.json missing in ${bundleFile.path}" }
-  val previewsJsonNonNull =
-    requireNotNull(previewsJson) { "previews.json missing in ${bundleFile.path}" }
-  check(appJarFile.isFile) { "classes/app.jar missing in ${bundleFile.path}" }
+  val bundleJsonNonNull = requireNotNull(bundleJson) { "bundle.json missing in $bundleFile" }
+  val previewsJsonNonNull = requireNotNull(previewsJson) { "previews.json missing in $bundleFile" }
+  check(SystemFileSystem.exists(appJarPath)) { "classes/app.jar missing in $bundleFile" }
 
   val bundleManifest = JSON.decodeFromString(BundleManifest.serializer(), bundleJsonNonNull)
   val previewManifest = JSON.decodeFromString(PreviewManifest.serializer(), previewsJsonNonNull)
   if (previewManifest.previews.isEmpty()) {
-    workDir.deleteRecursively()
-    throw IllegalStateException("bundle has no previews: ${bundleFile.path}")
+    SystemFileSystem.deleteRecursively(workDir)
+    throw IllegalStateException("bundle has no previews: $bundleFile")
   }
 
   // Default (coordinate-mode) bundles reference their deps by `maven` coordinate rather than
@@ -127,8 +137,12 @@ fun loadBundle(bundleFile: File): LoadedBundle {
   // viewer's
   // bundled Compose still wins on shared symbols because it sits on the parent loader; these jars
   // only supply classes the parent doesn't have (the preview's own third-party deps).
+  // URLClassLoader is a hard `java.io.File` boundary (it wants `file:` URLs) — bridge each Okio
+  // path to a File here.
   val classpathUrls =
-    (listOf(appJarFile) + libJarFiles.values + resolvedCoordJars).map { it.toURI().toURL() }
+    (listOf(appJarPath) + libJarFiles.values + resolvedCoordJars).map {
+      it.toFile().toURI().toURL()
+    }
   val classLoader = URLClassLoader(classpathUrls.toTypedArray(), parentLoader)
 
   val loadedPreviews = previewManifest.previews.map { info -> resolvePreview(info, classLoader) }
@@ -211,14 +225,13 @@ private fun resolvePreview(info: PreviewInfo, classLoader: ClassLoader): LoadedP
  * Mirrors the same routine in `:cli/BundleCommand.kt` — duplicated rather than depended on to keep
  * the viewer's module graph clean.
  */
-private fun extractZipBytes(file: File): ByteArray {
-  val bytes = file.readBytes()
-  require(bytes.size >= 8) { "not a bundle: ${file.path} is too small (${bytes.size} bytes)" }
+private fun extractZipBytes(file: Path): ByteArray {
+  val bytes = SystemFileSystem.read(file) { readByteArray() }
+  require(bytes.size >= 8) { "not a bundle: $file is too small (${bytes.size} bytes)" }
   if (bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) return bytes
   if (!isPngSignature(bytes)) {
     throw IllegalArgumentException(
-      "not a bundle: ${file.path} — leading bytes match neither PNG (\\x89PNG…) nor ZIP " +
-        "(PK\\x03\\x04)"
+      "not a bundle: $file — leading bytes match neither PNG (\\x89PNG…) nor ZIP (PK\\x03\\x04)"
     )
   }
   val zipStart = pngLength(bytes)

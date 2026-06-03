@@ -1,5 +1,7 @@
 package ee.schimke.composeai.preview.notification
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.Path.Companion.toPath
 import android.app.Notification
 import android.content.Context
 import android.content.res.Configuration
@@ -215,7 +217,9 @@ private object NotificationSidecar {
           sanitize(previewId) + ".notification.json",
         )
       sidecar.parentFile?.mkdirs()
-      sidecar.writeText(buildJson(previewId, notification, context))
+      SystemFileSystem.write(sidecar.path.toPath()) {
+        writeUtf8(buildJson(previewId, notification, context))
+      }
     } catch (e: Throwable) {
       System.err.println("Failed to write notification sidecar for $previewId: ${e.message}")
     }

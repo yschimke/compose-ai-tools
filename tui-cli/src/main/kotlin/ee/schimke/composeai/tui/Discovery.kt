@@ -3,8 +3,10 @@ package ee.schimke.composeai.tui
 import ee.schimke.composeai.cli.PreviewInfo
 import ee.schimke.composeai.cli.PreviewManifest
 import ee.schimke.composeai.cli.PreviewModule
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * One row in the TUI's preview list — a (module, preview) pair plus the resolved PNG path that the
@@ -128,7 +130,10 @@ class PreviewIndex(
             ?: continue
         val manifest =
           try {
-            json.decodeFromString(PreviewManifest.serializer(), manifestFile.readText())
+            json.decodeFromString(
+              PreviewManifest.serializer(),
+              SystemFileSystem.read(manifestFile.path.toPath()) { readUtf8() },
+            )
           } catch (_: Throwable) {
             continue
           }

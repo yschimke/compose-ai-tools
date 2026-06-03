@@ -1,12 +1,14 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.io.TemporaryDirectory
 import java.io.File
-import java.nio.file.Files
+import java.util.UUID
 import java.util.concurrent.TimeUnit
-import kotlin.io.path.copyTo
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview share-gist <markdown> [--public|--secret] [--desc TEXT] [--json] <image>...`
@@ -70,16 +72,18 @@ class ShareGistCommand(args: List<String>) {
     val gistId = parseGistId(gistUrl)
     val rawBase = parseRawBase(gistUrl)
 
-    val tmp = Files.createTempDirectory("compose-preview-gist-")
+    val tmp = TemporaryDirectory / "compose-preview-gist-${UUID.randomUUID()}"
+    SystemFileSystem.createDirectories(tmp)
     try {
-      val clone = tmp.resolve("g").toFile()
+      val clonePath = tmp / "g"
+      val clone = clonePath.toFile()
       runOrFail(
         listOf("git", "clone", "--quiet", "https://gist.github.com/$gistId.git", clone.path),
         "git clone of the new gist failed (gist exists at $gistUrl)",
       )
 
       for (img in images) {
-        img.toPath().copyTo(clone.toPath().resolve(img.name), overwrite = true)
+        SystemFileSystem.copy(img.path.toPath(), clonePath / img.name)
       }
 
       runOrFail(
@@ -107,7 +111,7 @@ class ShareGistCommand(args: List<String>) {
         "git push to gist failed (gist exists at $gistUrl)",
       )
     } finally {
-      tmp.toFile().deleteRecursively()
+      SystemFileSystem.deleteRecursively(tmp)
     }
 
     emit(gistUrl, rawBase, images)

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.plugin.tooling.ModuleInfo
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -11,6 +12,7 @@ import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview doctor`
@@ -437,15 +439,46 @@ class DoctorCommand(private val args: List<String>) {
     )
 
     appliedPluginVersion?.let { applied ->
+      // The CLI ships the daemon + renderer at its own BUNDLE_VERSION; the applied Gradle plugin is
+      // independent. A *major* mismatch is the real "mixing incompatible versions" hazard — major
+      // releases change the render/daemon wire format and the published okio.Path / suspend APIs —
+      // so surface that as a warning rather than the soft align hint used for minor/patch skew.
+      val incompatible = versionsIncompatible(applied, BUNDLE_VERSION)
       val skew = applied != recommendedPluginVersion
       addCheck(
         DoctorCheck(
           id = "project.plugin-version",
           category = "project",
-          status = "ok",
-          message = "compose-preview plugin v$applied",
+          status = if (incompatible) "warning" else "ok",
+          message =
+            if (incompatible)
+              "compose-preview plugin v$applied is incompatible with CLI v$BUNDLE_VERSION"
+            else "compose-preview plugin v$applied",
           detail =
-            if (skew) "CLI is on $recommendedPluginVersion — bump the plugin to align" else null,
+            when {
+              incompatible ->
+                "The applied Gradle plugin (v$applied) and this CLI (v$BUNDLE_VERSION) are on " +
+                  "different major versions. A major release changes the render/daemon wire format " +
+                  "and the published APIs, so mixing them can fail to render or behave unexpectedly " +
+                  "— align both to the same major version."
+              skew -> "CLI is on $recommendedPluginVersion — bump the plugin to align"
+              else -> null
+            },
+          remediation =
+            if (incompatible)
+              DoctorRemediation(
+                summary =
+                  "Align the compose-preview Gradle plugin and CLI to the same major version",
+                commands =
+                  listOf(
+                    "# bump the plugin to match the CLI:",
+                    "compose-preview init-script --plugin-version $BUNDLE_VERSION",
+                    "# …or update the CLI to match the plugin (see install.sh):",
+                    "compose-preview update",
+                  ),
+                docs = "https://github.com/$REPO/blob/main/docs/RELEASING.md",
+              )
+            else null,
         )
       )
     }
@@ -687,7 +720,7 @@ class DoctorCommand(private val args: List<String>) {
         .asSequence()
         .mapNotNull {
           try {
-            it.readText()
+            SystemFileSystem.read(it.path.toPath()) { readUtf8() }
           } catch (_: Exception) {
             null
           }
@@ -835,7 +868,7 @@ class DoctorCommand(private val args: List<String>) {
     fun scanTextFile(file: File) {
       val text =
         try {
-          file.readText()
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (_: Exception) {
           return
         }
@@ -1214,7 +1247,9 @@ class DoctorCommand(private val args: List<String>) {
     val release = File(javaHome, "release").takeIf { it.isFile } ?: return null
     val line =
       try {
-        release.readLines().firstOrNull { it.startsWith("JAVA_VERSION=") }
+        SystemFileSystem.read(release.path.toPath()) { readUtf8() }
+          .lineSequence()
+          .firstOrNull { it.startsWith("JAVA_VERSION=") }
       } catch (_: Exception) {
         return null
       } ?: return null

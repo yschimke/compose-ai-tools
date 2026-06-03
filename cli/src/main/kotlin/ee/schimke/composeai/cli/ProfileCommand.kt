@@ -1,9 +1,11 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlin.system.exitProcess
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview profile <path.json>` — runs a saved [Profile] by translating its fields into the
@@ -54,7 +56,10 @@ class ProfileCommand(private val rawArgs: List<String>) {
     }
     val parsed =
       try {
-        json.decodeFromString(Profile.serializer(), file.readText())
+        json.decodeFromString(
+          Profile.serializer(),
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+        )
       } catch (e: SerializationException) {
         System.err.println("Could not parse profile ${file.path}: ${e.message}")
         exitProcess(1)

@@ -1,5 +1,6 @@
 package ee.schimke.composeai.cli
 
+import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.mcp.DaemonMcpMain
 import java.io.File
 import kotlin.system.exitProcess
@@ -11,6 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toPath
 
 /**
  * `compose-preview mcp <subcommand>`
@@ -468,14 +470,15 @@ internal class McpCommand(args: List<String>) {
   }
 
   private fun enableDescriptor(file: File) {
-    val text = file.readText()
+    val path = file.path.toPath()
+    val text = SystemFileSystem.read(path) { readUtf8() }
     val updated = text.replace(Regex("\"enabled\"\\s*:\\s*false"), "\"enabled\": true")
-    if (updated != text) file.writeText(updated)
+    if (updated != text) SystemFileSystem.write(path) { writeUtf8(updated) }
   }
 
   private fun parseDescriptor(file: File): JsonObject? =
     try {
-      JSON.parseToJsonElement(file.readText()).jsonObject
+      JSON.parseToJsonElement(SystemFileSystem.read(file.path.toPath()) { readUtf8() }).jsonObject
     } catch (_: Exception) {
       null
     }
@@ -501,7 +504,7 @@ internal class McpCommand(args: List<String>) {
     val existing =
       if (file.isFile) {
         try {
-          file.readText()
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (e: Exception) {
           throw IllegalStateException(
             "Antigravity MCP config unreadable: ${file.absolutePath}: ${e.message}"
@@ -517,21 +520,21 @@ internal class McpCommand(args: List<String>) {
         )
       }
     file.parentFile?.mkdirs()
-    file.writeText(merged)
+    SystemFileSystem.write(file.path.toPath()) { writeUtf8(merged) }
   }
 
   private fun writeCodexConfig(file: File, launcher: String, projectDir: File) {
     val existing =
       if (file.isFile) {
         try {
-          file.readText()
+          SystemFileSystem.read(file.path.toPath()) { readUtf8() }
         } catch (e: Exception) {
           throw IllegalStateException("Codex config unreadable: ${file.absolutePath}: ${e.message}")
         }
       } else null
     val merged = AgentMcpConfig.mergeCodexConfig(existing, launcher, projectDir.absolutePath)
     file.parentFile?.mkdirs()
-    file.writeText(merged)
+    SystemFileSystem.write(file.path.toPath()) { writeUtf8(merged) }
   }
 
   /**
@@ -632,7 +635,8 @@ internal fun inspectDescriptor(gradlePath: String, descriptor: File): DoctorStat
 
   val obj =
     try {
-      Json.parseToJsonElement(descriptor.readText()).jsonObject
+      Json.parseToJsonElement(SystemFileSystem.read(descriptor.path.toPath()) { readUtf8() })
+        .jsonObject
     } catch (_: Exception) {
       null
     }

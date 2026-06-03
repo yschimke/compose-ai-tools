@@ -10,6 +10,7 @@ import ee.schimke.composeai.data.history.HistoryDiffAverageDelta
 import ee.schimke.composeai.data.history.HistoryDiffPayload
 import ee.schimke.composeai.data.history.HistoryDiffRegion
 import ee.schimke.composeai.data.history.HistoryDiffRegionsProduct
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
@@ -17,6 +18,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okio.Path.Companion.toPath
 
 /**
  * `history/diff/regions` — compares the latest render for a preview against an explicit history
@@ -97,12 +99,17 @@ class HistoryDiffRegionsDataProductRegistry(private val historyManager: HistoryM
       )
     }
     val latestImage =
-      ImageIO.read(File(latest.pngPath))
+      ImageIO.read(
+        SystemFileSystem.read(File(latest.pngPath).path.toPath()) { readByteArray() }.inputStream()
+      )
         ?: return DataProductRegistry.Outcome.FetchFailed(
           "could not decode latest PNG ${latest.pngPath}"
         )
     val baselineImage =
-      ImageIO.read(File(baseline.pngPath))
+      ImageIO.read(
+        SystemFileSystem.read(File(baseline.pngPath).path.toPath()) { readByteArray() }
+          .inputStream()
+      )
         ?: return DataProductRegistry.Outcome.FetchFailed(
           "could not decode baseline PNG ${baseline.pngPath}"
         )

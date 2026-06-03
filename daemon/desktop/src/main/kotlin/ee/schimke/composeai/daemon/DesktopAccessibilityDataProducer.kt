@@ -2,9 +2,11 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.cli.AccessibilityFinding
 import ee.schimke.composeai.cli.AccessibilityNode
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /**
  * Desktop counterpart of `:data-a11y-connector`'s `AccessibilityDataProducer` — writes the
@@ -60,12 +62,12 @@ object DesktopAccessibilityDataProducer {
   ) {
     val previewDir = rootDir.resolve(previewId)
     previewDir.mkdirs()
-    previewDir
-      .resolve(FILE_ATF)
-      .writeText(json.encodeToString(AtfPayload.serializer(), AtfPayload(emptyList())))
-    previewDir
-      .resolve(FILE_HIERARCHY)
-      .writeText(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    SystemFileSystem.write(previewDir.resolve(FILE_ATF).path.toPath()) {
+      writeUtf8(json.encodeToString(AtfPayload.serializer(), AtfPayload(emptyList())))
+    }
+    SystemFileSystem.write(previewDir.resolve(FILE_HIERARCHY).path.toPath()) {
+      writeUtf8(json.encodeToString(HierarchyPayload.serializer(), HierarchyPayload(nodes)))
+    }
 
     val overlayDest = previewDir.resolve(FILE_OVERLAY)
     val written =

@@ -1,5 +1,7 @@
 package ee.schimke.composeai.renderer
 
+import ee.schimke.composeai.io.SystemFileSystem
+import okio.Path.Companion.toPath
 import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 import java.net.HttpURLConnection
@@ -160,7 +162,7 @@ internal fun downloadFromGoogleFonts(key: GoogleFontKey, destination: File): Boo
     val bytes = httpGetBytes(url, userAgent = TTF_USER_AGENT) ?: return false
     if (bytes.isEmpty()) return false
     destination.parentFile?.mkdirs()
-    destination.writeBytes(bytes)
+    SystemFileSystem.write(destination.path.toPath()) { write(bytes) }
     return true
 }
 

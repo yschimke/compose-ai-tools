@@ -87,6 +87,9 @@ val androidFunctionalTestPublishTargets =
     ":data-render-compose",
     ":data-scroll-core",
     ":data-scroll-android",
+    // The renderer + data modules read/write files through Okio's `:common-io` (its file-IO
+    // foundation), so it's part of the closure the synthetic project must resolve from mavenLocal.
+    ":common-io",
   )
 
 tasks.register("functionalTestWithAndroid") {
@@ -121,6 +124,7 @@ tasks.register("functionalTestWithAndroid") {
 //     implementation :data-displayfilter-connector
 //       api :data-displayfilter-core
 //       api :daemon:core
+//   plus :common-io (the Okio file-IO foundation those modules read/write through).
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
     ":renderer-desktop",
@@ -131,6 +135,7 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-displayfilter-connector",
     ":data-displayfilter-core",
     ":daemon:core",
+    ":common-io",
   )
 
 tasks.register("functionalTestWithBundleRender") {

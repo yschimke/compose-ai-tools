@@ -1,8 +1,10 @@
 package ee.schimke.composeai.data.fonts
 
+import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okio.Path.Companion.toPath
 
 /** Path-backed producer for `fonts/used`, written by backend render loops in default mode. */
 object FontsUsedDataProducer {
@@ -19,12 +21,17 @@ object FontsUsedDataProducer {
   fun readPayload(rootDir: File, previewId: String): FontsUsedPayload? {
     val file = rootDir.resolve(previewId).resolve(FILE)
     if (!file.exists()) return null
-    return json.decodeFromString(FontsUsedPayload.serializer(), file.readText())
+    return json.decodeFromString(
+      FontsUsedPayload.serializer(),
+      SystemFileSystem.read(file.path.toPath()) { readUtf8() },
+    )
   }
 
   fun writeArtifacts(rootDir: File, previewId: String, payload: FontsUsedPayload) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    previewDir.resolve(FILE).writeText(json.encodeToString(FontsUsedPayload.serializer(), payload))
+    SystemFileSystem.write(previewDir.resolve(FILE).path.toPath()) {
+      writeUtf8(json.encodeToString(FontsUsedPayload.serializer(), payload))
+    }
   }
 }
 
