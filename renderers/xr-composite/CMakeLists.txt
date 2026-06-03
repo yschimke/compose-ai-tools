@@ -18,11 +18,15 @@ if(NOT FILAMENT_SDK OR NOT EXISTS "${FILAMENT_SDK}/include/filament/Engine.h")
 endif()
 message(STATUS "Using Filament SDK: ${FILAMENT_SDK}")
 
-# Filament ships per-arch static libs under lib/<arch>/. On Apple Silicon the
-# (universal) macOS tarball reports CMAKE_SYSTEM_PROCESSOR=arm64 -> lib/arm64,
-# which holds the arm64 slice.
+# Filament ships per-arch static libs under lib/<arch>/, but the 64-bit ARM dir
+# is spelled differently per platform: the macOS tarball uses lib/arm64 while
+# the Linux ARM tarball uses lib/aarch64. x86_64 is consistent everywhere.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-  set(FILAMENT_ARCH "aarch64")
+  if(APPLE)
+    set(FILAMENT_ARCH "arm64")
+  else()
+    set(FILAMENT_ARCH "aarch64")
+  endif()
 else()
   set(FILAMENT_ARCH "x86_64")
 endif()

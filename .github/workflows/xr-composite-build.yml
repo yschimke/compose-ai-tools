@@ -99,6 +99,12 @@ jobs:
         run: |
           set -euo pipefail
           sdk="$PWD/filament-sdk/filament"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # CMake here is a native Windows binary; hand it a Windows-style path
+            # (C:/...) rather than the Git-bash MSYS path (/d/a/...) so the SDK
+            # EXISTS check in CMakeLists resolves.
+            sdk="$(cygpath -m "$sdk")"
+          fi
           common=(-S renderers/xr-composite -B renderers/xr-composite/build
                   -DCMAKE_BUILD_TYPE=Release "-DFILAMENT_SDK=${sdk}")
           if [ "$RUNNER_OS" = "Windows" ]; then
