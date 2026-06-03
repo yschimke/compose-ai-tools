@@ -7,6 +7,8 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.jvm.javaio.copyTo
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 
@@ -116,6 +118,21 @@ object XrCompositeProvision {
   }
 
   /**
+   * Whether [dir] holds a *complete* provisioned layout — the [binaryName] executable AND a
+   * non-empty `materials/` directory (the `.filamat` blobs the binary loads, and which the plugin
+   * task passes as the sibling `--materials` dir). A partial extraction (binary written but
+   * `materials/` missing/empty — e.g. an interrupted or failed `tar`) is deliberately NOT complete,
+   * so it is re-provisioned rather than trusted forever. Without this, a partial cache would short-
+   * circuit every future run and make composites fail until the user manually wiped the cache.
+   */
+  internal fun isComplete(dir: File, binaryName: String): Boolean {
+    val materials = File(dir, "materials")
+    return File(dir, binaryName).isFile &&
+      materials.isDirectory &&
+      (materials.listFiles()?.isNotEmpty() == true)
+  }
+
+  /**
    * Fetch + unpack seam, injectable so tests exercise the "already cached" / "download failure"
    * branches without hitting GitHub. [fetchTo] downloads [url] to a destination file, throwing on a
    * non-2xx / network error.
@@ -164,30 +181,50 @@ object XrCompositeProvision {
           )
           return null
         }
-    val binary = cacheBinary(version, platform, env, userHome)
-    if (binary.isFile) return binary // already provisioned — the common case after first run.
+    val binaryName = if (platform.startsWith("windows")) "xr-composite.exe" else "xr-composite"
+    val dir = cacheDir(version, platform, env, userHome)
+    val binary = File(dir, binaryName)
+    // Fast path: only short-circuit on a COMPLETE cache. A partial layout (e.g. an earlier
+    // interrupted unpack that left the binary but no materials/) falls through and re-provisions.
+    if (isComplete(dir, binaryName)) return binary
 
     val url = assetUrl(version, platform)
-    val dir = cacheDir(version, platform, env, userHome)
-    val tmp = File(dir.parentFile, ".${dir.name}.dl-${UUID.randomUUID()}.tar.gz")
+    val parent = dir.parentFile
+    val tmp = File(parent, ".${dir.name}.dl-${UUID.randomUUID()}.tar.gz")
+    // Unpack into a staging dir and only swap it into place once validated, so the live cache path
+    // is never observed half-written — readers see either a complete layout or nothing.
+    val stage = File(parent, ".${dir.name}.stage-${UUID.randomUUID()}")
     return try {
-      dir.parentFile?.mkdirs()
+      parent?.mkdirs()
       fetcher.fetchTo(url, tmp)
-      unpackTarGz(tmp, dir)
-      if (binary.isFile) {
-        binary.setExecutable(true, false)
-        log("xr-composite: provisioned $version/$platform into ${binary.parentFile}")
-        binary
-      } else {
-        log("xr-composite: tarball $url unpacked but no binary at ${binary.name}; skipping")
-        null
+      stage.deleteRecursively()
+      unpackTarGz(tmp, stage)
+      if (!isComplete(stage, binaryName)) {
+        log(
+          "xr-composite: tarball $url unpacked but layout incomplete (binary or materials/ missing); skipping"
+        )
+        return null
       }
+      File(stage, binaryName).setExecutable(true, false)
+      // Atomically replace any prior (incomplete) cache dir with the validated staging dir. We only
+      // get here when `dir` wasn't complete, so removing it first is safe; the move is atomic on
+      // the
+      // shared cache filesystem so a concurrent reader never sees a partial swap.
+      dir.deleteRecursively()
+      try {
+        Files.move(stage.toPath(), dir.toPath(), StandardCopyOption.ATOMIC_MOVE)
+      } catch (_: Exception) {
+        Files.move(stage.toPath(), dir.toPath()) // fall back to a non-atomic move if unsupported
+      }
+      log("xr-composite: provisioned $version/$platform into $dir")
+      binary
     } catch (e: Exception) {
       // Offline / 404 (SNAPSHOT or missing asset) / corrupt archive — all best-effort skips.
       log("xr-composite: could not provision from $url (${e.message}); skipping composite stills")
       null
     } finally {
       tmp.delete()
+      stage.deleteRecursively()
     }
   }
 
