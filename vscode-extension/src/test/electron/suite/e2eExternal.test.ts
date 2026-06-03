@@ -463,44 +463,10 @@ describeExternal(
                 // under this; exceeding it means no *changed* image arrived =
                 // stale render.
                 const PER_EDIT_TIMEOUT_MS = 120_000;
-                // Append a dedicated preview we can mutate deterministically,
-                // independent of upstream's current Background.kt content.
-                const marker = "ComposeAiEditLoopProbe";
-                let src = fs.readFileSync(kotlinFile, "utf-8");
-                if (!src.includes(marker)) {
-                    src +=
-                        `\n\n@androidx.compose.ui.tooling.preview.Preview(name = "${marker}")\n` +
-                        `@androidx.compose.runtime.Composable\n` +
-                        `fun ${marker}() {\n` +
-                        `    ConfettiTheme {\n` +
-                        `        ConfettiBackground(\n` +
-                        `            androidx.compose.ui.Modifier.size(120.dp),\n` +
-                        `            color = androidx.compose.ui.graphics.Color(0xFFE91E63),\n` +
-                        `            content = {},\n` +
-                        `        )\n` +
-                        `    }\n` +
-                        `}\n`;
-                    fs.writeFileSync(kotlinFile, src);
-                    // Land the new preview first so the loop below measures
-                    // pure edit→render, not discovery of a brand-new function.
-                    api.triggerSave(kotlinFile);
-                    await waitFor(
-                        "initial probe-preview render",
-                        this.timeout(),
-                        300,
-                        () =>
-                            api
-                                .getReceivedMessages()
-                                .find(
-                                    (m) =>
-                                        (m as PostedMessage).command ===
-                                        "webviewPreviewsRendered",
-                                ),
-                    );
-                }
-
                 // Distinct, visually-obvious fills so a stale render (same
                 // bytes) is provable, not just plausible.
+                const marker = "ComposeAiEditLoopProbe";
+                const baselineColor = "0xFFE91E63"; // pink
                 const palette = [
                     "0xFF4CAF50", // green
                     "0xFF2196F3", // blue
@@ -530,9 +496,55 @@ describeExternal(
                     return null;
                 };
 
+                // Append a dedicated preview we can mutate deterministically,
+                // independent of upstream's current Background.kt content.
+                let src = fs.readFileSync(kotlinFile, "utf-8");
+                if (!src.includes(marker)) {
+                    src +=
+                        `\n\n@androidx.compose.ui.tooling.preview.Preview(name = "${marker}")\n` +
+                        `@androidx.compose.runtime.Composable\n` +
+                        `fun ${marker}() {\n` +
+                        `    ConfettiTheme {\n` +
+                        `        ConfettiBackground(\n` +
+                        `            androidx.compose.ui.Modifier.size(120.dp),\n` +
+                        `            color = androidx.compose.ui.graphics.Color(${baselineColor}),\n` +
+                        `            content = {},\n` +
+                        `        )\n` +
+                        `    }\n` +
+                        `}\n`;
+                    fs.writeFileSync(kotlinFile, src);
+                }
+
+                // Establish the baseline by waiting for the probe's first actual
+                // IMAGE (`updateImage`), not just the card — a newly-discovered
+                // preview paints its card (`webviewPreviewsRendered`) before the
+                // daemon renders its pixels, so keying the baseline off the card
+                // makes the first loop edit absorb the slow first-image render.
+                // Generous window: this one pays the discovery + first-render
+                // cost so each loop edit measures a pure body change.
+                api.resetMessages();
+                api.triggerSave(kotlinFile);
+                const baseline = await waitFor(
+                    "probe baseline image (first updateImage)",
+                    5 * 60_000,
+                    300,
+                    () => probeImageOf() ?? undefined,
+                );
+                const baselineBuf = Buffer.from(baseline.imageData, "base64");
+                fs.writeFileSync(
+                    path.join(
+                        dumpDir,
+                        `probe-baseline-${baselineColor.slice(2)}.png`,
+                    ),
+                    baselineBuf,
+                );
+                console.log(
+                    `[editloop] baseline ${baselineColor} captured bytes=${baselineBuf.length}`,
+                );
+
                 const timingsMs: number[] = [];
                 const imageHashes: string[] = [];
-                let prevImage: string | null = null;
+                let prevImage: string | null = baseline.imageData;
                 for (let i = 0; i < ITERATIONS; i++) {
                     api.resetMessages();
                     src = fs
