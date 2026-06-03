@@ -35,6 +35,9 @@ class SubspaceSceneWriterTest {
 
   // roborazzi's standalone view capture re-parents the view into its Activity, so the view must be
   // created with an Activity context (real panels are). The compose rule supplies one.
+  // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
+  // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
+  @Suppress("DEPRECATION")
   @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
   private fun tempDir(): File =

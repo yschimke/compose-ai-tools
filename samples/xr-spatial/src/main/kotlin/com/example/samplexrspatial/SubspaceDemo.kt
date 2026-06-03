@@ -2,8 +2,8 @@ package com.example.samplexrspatial
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
-import androidx.xr.compose.spatial.ContentEdge
 import androidx.xr.compose.spatial.Orbiter
+import androidx.xr.compose.spatial.OrbiterAnchorPoint
 import androidx.xr.compose.spatial.Subspace
 import androidx.xr.compose.subspace.SpatialPanel
 import androidx.xr.compose.subspace.layout.SubspaceModifier
@@ -34,7 +34,7 @@ fun SubspaceXrLayout() {
   Subspace {
     SpatialPanel(SubspaceModifier.width(560.dp).height(360.dp)) {
       NowPlayingPanel()
-      Orbiter(position = ContentEdge.Top) { TransportControls() }
+      Orbiter(OrbiterAnchorPoint.Top) { TransportControls() }
     }
   }
 }

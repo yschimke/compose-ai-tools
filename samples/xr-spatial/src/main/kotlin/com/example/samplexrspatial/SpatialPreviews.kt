@@ -12,7 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.xr.compose.spatial.ContentEdge
+import androidx.xr.compose.spatial.OrbiterAnchorPoint
 import androidx.xr.compose.spatial.Orbiter
 import androidx.xr.compose.spatial.SpatialElevation
 import androidx.xr.compose.spatial.SpatialElevationLevel
@@ -57,7 +57,7 @@ fun OrbiterControlsPreview() {
   MaterialTheme {
     Surface {
       Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-        Orbiter(position = ContentEdge.Top) { TransportControls() }
+        Orbiter(OrbiterAnchorPoint.Top) { TransportControls() }
         NowPlayingPanel(Modifier.width(560.dp))
       }
     }

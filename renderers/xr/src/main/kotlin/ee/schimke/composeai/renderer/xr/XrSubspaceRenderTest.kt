@@ -24,6 +24,9 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(ParameterizedRobolectricTestRunner::class)
 public class XrSubspaceRenderTest(private val preview: XrManifestReader.XrPreview) {
 
+  // v2 rule API (StandardTestDispatcher) is not on the compat compile classpath yet;
+  // suppress until the floor moves up. See renderer-android RobolectricRenderTest.
+  @Suppress("DEPRECATION")
   @get:Rule public val rule = createAndroidComposeRule<ComponentActivity>()
 
   @Test

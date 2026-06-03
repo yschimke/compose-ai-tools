@@ -307,7 +307,7 @@ class S3_5RecompileSaveLoopRealModeTest {
     val reader = ClassReader(sourceBytes)
     val writer = ClassWriter(reader, ClassWriter.COMPUTE_MAXS or ClassWriter.COMPUTE_FRAMES)
     val remapper =
-      object : Remapper() {
+      object : Remapper(Opcodes.ASM9) {
         override fun map(internalName: String): String =
           if (internalName == sourceInternal) targetInternal else super.map(internalName)
       }

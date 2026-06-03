@@ -18,7 +18,6 @@ import org.jetbrains.kotlin.buildtools.api.arguments.JvmCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.enums.JvmTarget
 import org.jetbrains.kotlin.buildtools.api.getToolchain
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain
-import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 
 /**
@@ -85,9 +84,9 @@ class BtaCompileSession(
     outputDir.toFile().mkdirs()
     val jvm = toolchains.getToolchain<JvmPlatformToolchain>()
     toolchains.createBuildSession().use { session ->
-      val op = jvm.createJvmCompilationOperation(sources, outputDir)
-      configureCompilerArgs(op, compileClasspath, compilerPlugins)
-      executeOrThrow(session, op)
+      val builder = jvm.jvmCompilationOperationBuilder(sources, outputDir)
+      configureCompilerArgs(builder.compilerArguments, compileClasspath, compilerPlugins)
+      executeOrThrow(session, builder.build())
     }
     return collectClassFiles(outputDir)
   }
@@ -132,36 +131,35 @@ class BtaCompileSession(
         val sha = sha256OfFile(jar)
         val cached = cpSnapshotsDir.resolve("$sha.bin")
         if (!cached.exists()) {
-          val snapshotOp = jvm.createClasspathSnapshottingOperation(jar)
+          val snapshotOp = jvm.classpathSnapshottingOperationBuilder(jar).build()
           val snapshot = session.executeOperation(snapshotOp)
           snapshot.saveSnapshot(cached)
         }
         cached
       }
 
-      val op = jvm.createJvmCompilationOperation(sources, outputDir)
-      val icOptions = op.createSnapshotBasedIcOptions()
+      val builder = jvm.jvmCompilationOperationBuilder(sources, outputDir)
       val icConfig =
-        JvmSnapshotBasedIncrementalCompilationConfiguration(
-          icDir,
-          sourcesChanges,
-          snapshotFiles,
-          shrunkClasspathSnapshot,
-          icOptions,
-        )
-      op.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
-      configureCompilerArgs(op, compileClasspath, compilerPlugins)
-      executeOrThrow(session, op, diagnosticListener ?: logger)
+        builder
+          .snapshotBasedIcConfigurationBuilder(
+            icDir,
+            sourcesChanges,
+            snapshotFiles,
+            shrunkClasspathSnapshot,
+          )
+          .build()
+      builder.set(JvmCompilationOperation.INCREMENTAL_COMPILATION, icConfig)
+      configureCompilerArgs(builder.compilerArguments, compileClasspath, compilerPlugins)
+      executeOrThrow(session, builder.build(), diagnosticListener ?: logger)
     }
     return collectClassFiles(outputDir)
   }
 
   private fun configureCompilerArgs(
-    op: JvmCompilationOperation,
+    args: JvmCompilerArguments.Builder,
     compileClasspath: List<Path>,
     compilerPlugins: List<CompilerPlugin>,
   ) {
-    val args = op.compilerArguments
     args.set(
       JvmCompilerArguments.CLASSPATH,
       compileClasspath.joinToString(separator = java.io.File.pathSeparator) { it.toString() },
