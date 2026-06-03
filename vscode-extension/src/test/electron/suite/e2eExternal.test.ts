@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -494,13 +495,40 @@ describeExternal(
                     );
                 }
 
+                // Distinct, visually-obvious fills so a stale render (same
+                // bytes) is provable, not just plausible.
                 const palette = [
-                    "0xFF4CAF50",
-                    "0xFF2196F3",
-                    "0xFFFF9800",
-                    "0xFF9C27B0",
+                    "0xFF4CAF50", // green
+                    "0xFF2196F3", // blue
+                    "0xFFFF9800", // orange
+                    "0xFF9C27B0", // purple
                 ];
+                const dumpDir =
+                    process.env.COMPOSE_PREVIEW_EDITLOOP_DUMP ??
+                    "/tmp/editloop-images";
+                fs.mkdirSync(dumpDir, { recursive: true });
+                const probeImageOf = (): {
+                    previewId: string;
+                    imageData: string;
+                } | null => {
+                    // Latest updateImage for the probe preview, posted since the
+                    // last resetMessages.
+                    const msgs = api.getPostedMessages();
+                    for (let j = msgs.length - 1; j >= 0; j--) {
+                        const m = msgs[j] as PostedMessage;
+                        if (m.command !== "updateImage") continue;
+                        const pid = String(m.previewId ?? "");
+                        if (!/ComposeAiEditLoopProbe/.test(pid)) continue;
+                        const data = m.imageData as string | undefined;
+                        if (data && data.length > 0)
+                            return { previewId: pid, imageData: data };
+                    }
+                    return null;
+                };
+
                 const timingsMs: number[] = [];
+                const imageHashes: string[] = [];
+                let prevImage: string | null = null;
                 for (let i = 0; i < ITERATIONS; i++) {
                     api.resetMessages();
                     src = fs
@@ -513,28 +541,57 @@ describeExternal(
 
                     const t0 = Date.now();
                     api.triggerSave(kotlinFile);
-                    // The warm daemon save path renders incrementally and pushes
-                    // `updateImage` per preview (posted to the webview) — it does
-                    // NOT post `webviewPreviewsRendered`, which only fires on the
-                    // full Gradle render path. Wait for the first `updateImage`
-                    // after the save to capture the true edit→pixels latency.
-                    await waitFor(
-                        `edit ${i + 1} → daemon updateImage`,
+                    // Wait for the probe's daemon render whose pixels actually
+                    // CHANGED from the previous edit. The daemon streams the PNG
+                    // as base64 in `updateImage` (no disk write). Requiring a
+                    // *different* image — not merely an updateImage event — is
+                    // what proves live mode reflects the edit instead of
+                    // re-emitting a stale render. A same-bytes render would time
+                    // out here and fail the test loudly.
+                    const shot = await waitFor(
+                        `edit ${i + 1} → CHANGED probe image`,
                         this.timeout(),
                         100,
-                        () =>
-                            api
-                                .getPostedMessages()
-                                .find(
-                                    (m) =>
-                                        (m as PostedMessage).command ===
-                                        "updateImage",
-                                ),
+                        () => {
+                            const cur = probeImageOf();
+                            if (!cur) return undefined;
+                            if (
+                                prevImage !== null &&
+                                cur.imageData === prevImage
+                            )
+                                return undefined;
+                            return cur;
+                        },
                     );
                     const dt = Date.now() - t0;
                     timingsMs.push(dt);
-                    console.log(`[editloop] edit ${i + 1}: ${dt}ms`);
+
+                    const buf = Buffer.from(shot.imageData, "base64");
+                    const hash = createHash("sha256")
+                        .update(buf)
+                        .digest("hex")
+                        .slice(0, 12);
+                    imageHashes.push(hash);
+                    const outPath = path.join(
+                        dumpDir,
+                        `probe-edit-${i + 1}-${palette[i % palette.length].slice(2)}.png`,
+                    );
+                    fs.writeFileSync(outPath, buf);
+                    console.log(
+                        `[editloop] edit ${i + 1}: ${dt}ms color=${palette[i % palette.length]} ` +
+                            `bytes=${buf.length} sha=${hash} -> ${outPath}`,
+                    );
+                    prevImage = shot.imageData;
                 }
+
+                // Every edit must have produced a distinct render — identical
+                // bytes anywhere means the daemon re-served a stale image.
+                assert.strictEqual(
+                    new Set(imageHashes).size,
+                    imageHashes.length,
+                    `expected ${imageHashes.length} distinct probe renders, got hashes ${imageHashes.join(", ")} — ` +
+                        "a duplicate means live mode rendered a stale image, not the edit",
+                );
 
                 const sorted = [...timingsMs].sort((a, b) => a - b);
                 const median = sorted[Math.floor(sorted.length / 2)];
