@@ -1,0 +1,139 @@
+name: xr-composite build
+
+# Build the native xr-composite tool (renderers/xr-composite) against the pinned
+# Filament desktop SDK on Linux x86_64, macOS arm64, and Windows x86_64, and
+# upload each platform's binary + compiled materials as a CI artifact. Build-only:
+# no rendering, so no Xvfb / Mesa needed. Path-scoped so it never runs on
+# unrelated PRs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'renderers/xr-composite/**'
+      - '.github/workflows/xr-composite-build.yml'
+  pull_request:
+    paths:
+      - 'renderers/xr-composite/**'
+      - '.github/workflows/xr-composite-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per-PR group so concurrent PRs don't cancel each other; push + dispatch
+  # share one slot per ref.
+  group: xr-composite-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FILAMENT_VERSION: v1.71.5
+
+jobs:
+  build:
+    name: build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64
+            platform: linux
+            artifact: xr-composite-linux-x86_64
+          - os: macos-14
+            label: macos-arm64
+            platform: mac
+            artifact: xr-composite-macos-arm64
+          - os: windows-2022
+            label: windows-x86_64
+            platform: windows
+            artifact: xr-composite-windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # Linux: Filament's release libs are built against libc++, so we build the
+      # tool with clang + libc++ to match the ABI. macOS (AppleClang) and Windows
+      # (MSVC) ship their toolchains preinstalled on the runner images.
+      - name: Install clang + libc++ (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang libc++-dev libc++abi-dev ninja-build
+        shell: bash
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+        shell: bash
+
+      # Cache the unpacked SDK keyed on version + platform so repeat runs skip the
+      # ~50-730 MB download. The download step below is a no-op on a cache hit.
+      - name: Cache Filament SDK
+        id: cache-sdk
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: filament-sdk
+          key: filament-${{ env.FILAMENT_VERSION }}-${{ matrix.platform }}
+
+      - name: Download Filament SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p filament-sdk
+          tgz="filament-${FILAMENT_VERSION}-${{ matrix.platform }}.tgz"
+          url="https://github.com/google/filament/releases/download/${FILAMENT_VERSION}/${tgz}"
+          echo "Downloading ${url}"
+          curl -fL --retry 4 --retry-delay 2 -o "${tgz}" "${url}"
+          tar xzf "${tgz}" -C filament-sdk
+          rm -f "${tgz}"
+
+      # filament-sdk/filament/ is the unpacked SDK root (include/, lib/, bin/).
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$PWD/filament-sdk/filament"
+          common=(-S renderers/xr-composite -B renderers/xr-composite/build
+                  -DCMAKE_BUILD_TYPE=Release "-DFILAMENT_SDK=${sdk}")
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # MSVC multi-config generator; CMakeLists pins the static /MT runtime.
+            cmake "${common[@]}" -G "Visual Studio 17 2022" -A x64
+          else
+            cmake "${common[@]}" -G Ninja \
+              -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          fi
+
+      - name: Build
+        shell: bash
+        run: cmake --build renderers/xr-composite/build --config Release
+
+      # The Visual Studio generator nests outputs under a per-config subdir; Ninja
+      # writes them at the build root. Stage both the binary and materials/ into a
+      # flat dist/ so the artifact layout is identical across platforms.
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          build=renderers/xr-composite/build
+          dist=dist
+          rm -rf "$dist"
+          mkdir -p "$dist"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$build/Release/xr-composite.exe" "$dist/"
+          else
+            cp "$build/xr-composite" "$dist/"
+          fi
+          cp -r "$build/materials" "$dist/materials"
+          ls -lR "$dist"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+          if-no-files-found: error
