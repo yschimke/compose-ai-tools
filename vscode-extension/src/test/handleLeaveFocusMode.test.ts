@@ -65,6 +65,7 @@ function buildContextStub(): ContextWithSpy {
         refreshBundleState: noop,
         promoteErrorsBundle: noop,
         toggleBundle: noop,
+        setSpatialScene: noop,
     };
     return { ctx, leaveCalls: () => calls.leave };
 }

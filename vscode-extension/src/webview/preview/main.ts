@@ -2871,6 +2871,18 @@ export class PreviewApp extends LitElement {
             const fallback = state.previousLayout ?? "grid";
             filterToolbar.setLayoutValue(fallback);
             state.layout = fallback;
+            // Seed the scope-publish dedupe with the previously focused
+            // preview so the `applyLayout()` below actually emits
+            // `previewScopeChanged(null)` and the host widens the History
+            // panel back to the whole module. Without this the dedupe
+            // swallows the null (a fresh `lastScopedPreviewId` starts null,
+            // so `null === null` short-circuits) and a History panel still
+            // scoped to the just-left preview — e.g. after a sidebar
+            // hide/show recreated the webview while the host kept running —
+            // stays pinned to a preview the UI no longer shows.
+            previewStore.setState({
+                lastScopedPreviewId: state.focusedPreviewId ?? null,
+            });
             // Drop the persisted focus marker so nothing downstream
             // tries to re-enter focus mode for this boot.
             state.focusedPreviewId = null;
