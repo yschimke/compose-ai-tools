@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.13.2](https://github.com/yschimke/compose-ai-tools/compare/v0.13.1...v0.13.2) (2026-06-03)
+
+
+### Features
+
+* **cli:** auto-provision the xr-composite binary from releases ([#1732](https://github.com/yschimke/compose-ai-tools/issues/1732)) ([99aa4d0](https://github.com/yschimke/compose-ai-tools/commit/99aa4d0e4b8b4960e21aa8df2cc46f9a3077b3dc))
+* **plugin:** show XR subspace composites in the preview manifest ([#1730](https://github.com/yschimke/compose-ai-tools/issues/1730)) ([2acccb8](https://github.com/yschimke/compose-ai-tools/commit/2acccb8169e586e5680d9744fe70782aaf9c59bd))
+* **xr-composite:** native Filament tool to bake spatial scenes to a composite PNG ([#1725](https://github.com/yschimke/compose-ai-tools/issues/1725)) ([abe831f](https://github.com/yschimke/compose-ai-tools/commit/abe831f943519925e2ed6ace3930d3b93a3c7e2b))
+
+
+### Bug Fixes
+
+* **cli:** re-provision partial xr-composite caches instead of trusting them ([#1733](https://github.com/yschimke/compose-ai-tools/issues/1733)) ([278e620](https://github.com/yschimke/compose-ai-tools/commit/278e620b5b6f217f99c3c8b94cf385d5a768cb7d))
+* **xr-composite:** statically link libc++ so the Linux binary is self-contained ([#1737](https://github.com/yschimke/compose-ai-tools/issues/1737)) ([23d2fc2](https://github.com/yschimke/compose-ai-tools/commit/23d2fc295226f28fb3d458fe82262a7ca79439ed))
+
+
+### Performance Improvements
+
+* **daemon:** keep the manifest snapshot across identity saves ([#1724](https://github.com/yschimke/compose-ai-tools/issues/1724)) ([75b62e1](https://github.com/yschimke/compose-ai-tools/commit/75b62e1d6494c73cfee9dcc1807a21fd6be311af))
+
 ## [0.13.1](https://github.com/yschimke/compose-ai-tools/compare/v0.13.0...v0.13.1) (2026-06-03)
 
 
