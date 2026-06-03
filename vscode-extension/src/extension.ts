@@ -3987,6 +3987,26 @@ function beginDaemonRefreshProgress(label: string): void {
         daemonRefreshPct += (0.9 - daemonRefreshPct) * 0.12;
         postDaemonRefreshProgress(daemonRefreshPct, "rendering");
     }, 250);
+    // NB: the safety ceiling is armed separately (armDaemonRefreshSafety),
+    // only once the render is in flight — see that function for why.
+}
+
+/** Arm (or re-arm) the hard ceiling that resolves the strip if the daemon
+ *  posts no image (`unchanged` / stub / zero resolved previews).
+ *
+ *  Deliberately NOT armed by `beginDaemonRefreshProgress`: the compile phase
+ *  that precedes the render is unbounded (a cold daemon or large module can
+ *  take most of the budget), and arming the timer there would flash the bar to
+ *  done mid-compile — losing the feedback this whole change adds. Called from
+ *  the save path once `notifyDaemonOfSave` reports the render is queued, so the
+ *  full budget covers the post-render image wait. */
+function armDaemonRefreshSafety(): void {
+    if (!daemonRefreshActive) {
+        return;
+    }
+    if (daemonRefreshSafety !== null) {
+        clearTimeout(daemonRefreshSafety);
+    }
     daemonRefreshSafety = setTimeout(
         () => finishDaemonRefreshProgress(),
         DAEMON_REFRESH_SAFETY_MS,
@@ -4055,11 +4075,14 @@ async function runRefreshExclusiveImpl(filePath: string): Promise<void> {
         beginDaemonRefreshProgress("Refreshing previews…");
         const result = await notifyDaemonOfSave(filePath);
         if (result === "accepted") {
-            // End-of-journey log + the progress strip's completion flash fire
-            // from `onPreviewImageReady` when the first rendered image arrives.
-            // The safety timeout resolves the strip if the daemon reported the
-            // render `unchanged` / stub (no image posted). Until then the timer
-            // stays in `editJourneyByModule`.
+            // The render is in flight now — arm the safety ceiling here (not at
+            // "Compiling…") so a long cold compile above doesn't burn the
+            // timeout before rendering even starts. End-of-journey log + the
+            // strip's completion flash fire from `onPreviewImageReady` when the
+            // first rendered image arrives; the safety timeout resolves the
+            // strip if the daemon reported the render `unchanged` / stub (no
+            // image posted). Until then the timer stays in `editJourneyByModule`.
+            armDaemonRefreshSafety();
             return;
         }
         if (result === "disabled") {
