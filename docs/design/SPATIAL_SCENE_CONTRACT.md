@@ -8,6 +8,7 @@ they can be developed in parallel and meet here.
 - **TypeScript source of truth:** [`vscode-extension/src/webview/shared/spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)
 - **Sample fixture:** [`vscode-extension/preview-harness/fixtures/spatial-scene/`](../../vscode-extension/preview-harness/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`)
 - **Background:** [`XR_SPATIAL_PREVIEW.md`](XR_SPATIAL_PREVIEW.md) (how poses are recovered offline)
+- **Still-image consumer:** [`xr-spatial/COMPOSITOR.md`](xr-spatial/COMPOSITOR.md) (the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free)
 
 This is a **WebGL** viewer contract (Three.js/Babylon), **not** WebXR — VS Code ships stock Electron
 with WebXR disabled, so there is no `navigator.xr` and no immersive session. The viewer is an inline
