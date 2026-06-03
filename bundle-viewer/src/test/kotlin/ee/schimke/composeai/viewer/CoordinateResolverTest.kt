@@ -9,7 +9,9 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import okio.ByteString.Companion.toByteString
 import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 import org.junit.After
 import org.junit.Test
 
@@ -245,5 +247,35 @@ class CoordinateResolverTest {
 
     assertThat(out).isEmpty()
     assertThat(warnings.any { it.contains("could not resolve") }).isTrue()
+  }
+
+  @Test
+  fun `resolves against an injected FakeFileSystem with no disk access`() {
+    // The whole point of injecting the FileSystem: a local-repo resolve runs entirely in memory,
+    // touching no real disk. Lay out a Maven-style repo inside a FakeFileSystem and resolve from
+    // it.
+    val fakeFs = FakeFileSystem()
+    val repoRoot = "/repo".toPath()
+    val cacheDir = "/cache".toPath()
+    val bytes = byteArrayOf(3, 1, 4, 1, 5, 9)
+    val jar = repoRoot / "com/example/foo/widgets/1.2.3/widgets-1.2.3.jar"
+    fakeFs.createDirectories(jar.parent!!)
+    fakeFs.write(jar) { write(bytes.toByteString()) }
+
+    val out =
+      CoordinateResolver.resolve(
+        listOf(maven(sha = sha256(bytes))),
+        warn = { warnings += it },
+        repositoryRoots = listOf(repoRoot),
+        networkEnabled = false,
+        downloadCacheDir = cacheDir,
+        fileSystem = fakeFs,
+      )
+
+    assertThat(out).containsExactly(jar)
+    assertThat(warnings).isEmpty()
+    // Nothing leaked onto the real filesystem — the fake recorded every handle and none stayed
+    // open.
+    fakeFs.checkNoOpenFiles()
   }
 }
