@@ -5177,9 +5177,13 @@ async function refresh(
                                     captureIndex: idx,
                                     imageData,
                                 });
-                            } else if (forceRender) {
+                            } else if (forceRender && !capture.optional) {
                                 // Render task completed but produced no PNG for this
-                                // capture. Look for the per-preview error sidecar
+                                // capture. (Optional captures — e.g. the XR composite,
+                                // baked only when the native xr-composite binary + display
+                                // are available — are best-effort: a missing one is expected,
+                                // never a render failure, so don't surface an error for it.)
+                                // Look for the per-preview error sidecar
                                 // the renderer drops next to the would-be PNG; if
                                 // found, surface the structured exception detail
                                 // (class, message, top app frame). Falls back to

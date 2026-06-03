@@ -537,6 +537,33 @@ describe("manifestExpectedFilesMissing", () => {
         );
     });
 
+    it("returns false when only an optional capture is missing", () => {
+        // The XR composite is an optional, best-effort capture — baked only when the native
+        // xr-composite binary + display are available — so its absence must not read as drift
+        // and escalate a discover-only pass into a full render.
+        const p = {
+            ...preview("com.example.XrPreview", "renders/XrPreview.png"),
+            captures: [
+                {
+                    advanceTimeMillis: null,
+                    scroll: null,
+                    renderOutput: "renders/XrPreview/composite.png",
+                    optional: true,
+                },
+            ],
+        } as unknown as PreviewInfo;
+        const disk = new Set<string>(); // composite.png absent on disk
+        assert.strictEqual(
+            manifestExpectedFilesMissing(
+                "/ws",
+                module,
+                { previews: [p] } as PreviewManifest,
+                (path) => disk.has(path),
+            ),
+            false,
+        );
+    });
+
     it("returns true when a data-product output is missing even if the static capture exists", () => {
         // The scenario from the original drift report: discover returned a manifest with new-
         // shape data-product paths under `data/render-scroll-long/`, but the renderer never
