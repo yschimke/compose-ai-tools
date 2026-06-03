@@ -46,13 +46,16 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <unistd.h>
 
 using namespace filament;
 using namespace filament::math;
 using json = nlohmann::json;
 
 namespace {
+
+// MSVC's <cmath> only defines M_PI when _USE_MATH_DEFINES is set before the
+// include; a local constant keeps the source portable across compilers.
+constexpr double kPi = 3.14159265358979323846;
 
 struct Args {
   std::string sceneDir;
@@ -243,8 +246,8 @@ int main(int argc, char** argv) {
   float3 target = {cam["target"].value("x", 0.0f), cam["target"].value("y", 0.0f),
                    cam["target"].value("z", 0.0f)};
   double distance = cam.value("distance", 1200.0);
-  double yaw = cam.value("yawDeg", 0.0) * M_PI / 180.0;
-  double pitch = cam.value("pitchDeg", -10.0) * M_PI / 180.0;
+  double yaw = cam.value("yawDeg", 0.0) * kPi / 180.0;
+  double pitch = cam.value("pitchDeg", -10.0) * kPi / 180.0;
   float3 dir = {(float)(std::cos(pitch) * std::sin(yaw)), (float)std::sin(pitch),
                 (float)(std::cos(pitch) * std::cos(yaw))};
   float3 eye = target + dir * (float)distance;
@@ -285,5 +288,7 @@ int main(int argc, char** argv) {
 
   // Spike: skip explicit Filament teardown (asserts on destroy order); the process exits here.
   fflush(stderr);
-  _exit(0);
+  // std::_Exit terminates without running destructors/atexit (portable equivalent
+  // of POSIX _exit); avoids Filament's teardown-order asserts on all platforms.
+  std::_Exit(0);
 }
