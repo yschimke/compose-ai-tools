@@ -173,4 +173,65 @@ class XrCompositeProvisionTest {
       )
     assertFalse(expected.isFile)
   }
+
+  /** A `.tar.gz` with ONLY `xr-composite` (no `materials/`) — simulates an interrupted unpack. */
+  private fun makeBinaryOnlyTarball(dest: File) {
+    val staging = File(tmp, "stage-bin-${dest.name}").apply { mkdirs() }
+    File(staging, "xr-composite").writeText("#!/bin/sh\necho fake\n")
+    val p =
+      ProcessBuilder("tar", "-czf", dest.absolutePath, "-C", staging.absolutePath, ".")
+        .redirectErrorStream(true)
+        .start()
+    check(p.waitFor() == 0) { "tar pack failed" }
+  }
+
+  @Test
+  fun `ensureCached re-provisions a partial cache instead of trusting it`() {
+    if (XrCompositeProvision.currentPlatformToken() == null) return
+    val platform = XrCompositeProvision.currentPlatformToken()!!
+    val env: (String) -> String? = { if (it == "XDG_CACHE_HOME") tmp.absolutePath else null }
+    // Pre-seed a partial cache: the binary, but no materials/ (an earlier interrupted unpack).
+    val binary = XrCompositeProvision.cacheBinary("0.13.1", platform, env, tmp.absolutePath)
+    binary.parentFile.mkdirs()
+    binary.writeText("stale partial")
+    var fetches = 0
+    val result =
+      XrCompositeProvision.ensureCached(
+        version = "0.13.1",
+        fetcher = { _, dst ->
+          fetches++
+          makeTarball(dst)
+        },
+        env = env,
+        userHome = tmp.absolutePath,
+        log = {},
+      )
+    assertEquals(1, fetches, "a partial cache must NOT short-circuit — it re-provisions")
+    assertTrue(result != null && result.isFile)
+    assertTrue(File(result!!.parentFile, "materials").isDirectory, "materials/ is now present")
+  }
+
+  @Test
+  fun `ensureCached leaves no partial cache when the unpack is incomplete`() {
+    if (XrCompositeProvision.currentPlatformToken() == null) return
+    val platform = XrCompositeProvision.currentPlatformToken()!!
+    val env: (String) -> String? = { if (it == "XDG_CACHE_HOME") tmp.absolutePath else null }
+    val logs = mutableListOf<String>()
+    val result =
+      XrCompositeProvision.ensureCached(
+        version = "0.13.1",
+        fetcher = { _, dst -> makeBinaryOnlyTarball(dst) }, // no materials/ → incomplete layout
+        env = env,
+        userHome = tmp.absolutePath,
+        log = { logs.add(it) },
+      )
+    assertNull(result, "an incomplete unpack must not report a usable binary")
+    assertTrue(
+      logs.any { it.contains("incomplete") },
+      "should log the incomplete-layout skip: $logs",
+    )
+    // The live cache path must NOT be left half-populated for the next run to trust.
+    val cached = XrCompositeProvision.cacheBinary("0.13.1", platform, env, tmp.absolutePath)
+    assertFalse(cached.isFile, "no partial binary should remain in the live cache path")
+  }
 }
