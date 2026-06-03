@@ -47,6 +47,11 @@ dependencies {
   compileOnly(libs.xr.compose)
   compileOnly(libs.xr.compose.testing)
   compileOnly("androidx.compose.ui:ui-test-junit4")
+  // `XrSubspaceRenderTest` (the render entry the plugin's task runs) references Robolectric's
+  // parameterised runner + shadows and JUnit annotations; both are provided at render time by the
+  // task classpath (same model as `:renderer-android`'s `RobolectricRenderTest`).
+  compileOnly(libs.robolectric)
+  compileOnly(libs.junit)
   // Per-panel texture capture (captureRoboImage). compileOnly — provided by the render runtime.
   compileOnly(libs.roborazzi)
   compileOnly(libs.roborazzi.compose)
