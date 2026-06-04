@@ -42,6 +42,13 @@ describe("composeFontSnippet", () => {
         });
         // Downloadable Google Fonts provider — not a bundled R.font resource.
         assert.ok(out.includes("GoogleFont.Provider("));
+        // Certs array is fully-qualified to the ui-text-google-fonts R so the
+        // snippet compiles under non-transitive R (the AGP default).
+        assert.ok(
+            out.includes(
+                "androidx.compose.ui.text.googlefonts.R.array.com_google_android_gms_fonts_certs",
+            ),
+        );
         assert.ok(out.includes("val LoraFontFamily = FontFamily("));
         assert.ok(out.includes('googleFont = GoogleFont("Lora")'));
         assert.ok(out.includes("fontProvider = provider"));

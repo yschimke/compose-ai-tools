@@ -53,7 +53,12 @@ const PROVIDER_BLOCK = [
     "val provider = GoogleFont.Provider(",
     '    providerAuthority = "com.google.android.gms.fonts",',
     '    providerPackage = "com.google.android.gms",',
-    "    certificates = R.array.com_google_android_gms_fonts_certs,",
+    // The certs array ships in androidx.compose.ui:ui-text-google-fonts, so
+    // fully-qualify its R — an unqualified `R` resolves to the app module
+    // (which lacks it) under non-transitive R, the AGP default.
+    "    certificates =",
+    "        androidx.compose.ui.text.googlefonts.R.array" +
+        ".com_google_android_gms_fonts_certs,",
     ")",
 ].join("\n");
 
