@@ -159,18 +159,32 @@ public object SubspaceSceneRecorder {
     val t = node.poseInRoot.translation
     val r = node.poseInRoot.rotation
     val size = node.size
+    // A modifier can resolve to a degenerate pose — e.g. `rotateToLookAtUser` when the head pose
+    // coincides with the panel position gives a zero-length look direction and a NaN quaternion.
+    // JSON has no NaN/Infinity, so emitting one fails scene.json serialization and breaks the whole
+    // render; sanitise to a finite pose (identity rotation, dropped non-finite offset) so one bad
+    // panel degrades to facing forward instead of taking down the scene.
+    val rot =
+      if (r.x.isFinite() && r.y.isFinite() && r.z.isFinite() && r.w.isFinite()) {
+        Quat(r.x.toDouble(), r.y.toDouble(), r.z.toDouble(), r.w.toDouble())
+      } else {
+        Quat(0.0, 0.0, 0.0, 1.0)
+      }
     return SpatialPanel(
       id = id,
       poseInRoot =
         SpatialPose(
-          translation = Vec3(t.x.toDouble(), t.y.toDouble(), t.z.toDouble()),
-          rotation = Quat(r.x.toDouble(), r.y.toDouble(), r.z.toDouble(), r.w.toDouble()),
+          translation = Vec3(t.x.finiteOrZero(), t.y.finiteOrZero(), t.z.finiteOrZero()),
+          rotation = rot,
         ),
       sizeDp = SizeDp(width = size.width, height = size.height),
       texture = "$id.png",
       parentId = parentId,
     )
   }
+
+  /** A finite value as a [Double], or `0.0` for `NaN`/`Infinity` (which JSON can't represent). */
+  private fun Float.finiteOrZero(): Double = if (isFinite()) toDouble() else 0.0
 
   /**
    * A neutral orbit camera framing the panels near head-on: look at the centre of their combined
