@@ -116,6 +116,44 @@ fun lottieIntrinsicDurationMillis(asset: String, default: Int = DEFAULT_LOTTIE_D
 const val DEFAULT_LOTTIE_DURATION_MS: Int = 1000
 
 /**
+ * The timeline shape of a Lottie asset — what an interactive scrubber needs to label its slider
+ * (total frames, frame rate, wall-clock duration) and size the canvas. [durationMillis] is
+ * `durationFrames / frameRate` rounded to whole milliseconds (clamped ≥ 1).
+ */
+data class LottieTimelineInfo(
+  val durationFrames: Float,
+  val frameRate: Float,
+  val durationMillis: Int,
+  val widthPx: Int,
+  val heightPx: Int,
+)
+
+/**
+ * Parse [asset] off the render classpath (same loader resolution as [LottiePreview]) and report its
+ * [LottieTimelineInfo], or `null` when the asset can't be parsed. Backs the `animation/lottie` data
+ * product the daemon surfaces so a VS Code timeline slider knows the frame range.
+ */
+fun lottieTimelineInfo(asset: String): LottieTimelineInfo? {
+  val composition =
+    runCatching { LottieComposition.parse(loadLottieAsset(asset)) }.getOrNull() ?: return null
+  val frameRate = composition.frameRate
+  val durationFrames = composition.durationFrames
+  val durationMillis =
+    if (frameRate > 0f && durationFrames > 0f) {
+      (durationFrames / frameRate * 1000f).roundToInt().coerceAtLeast(1)
+    } else {
+      DEFAULT_LOTTIE_DURATION_MS
+    }
+  return LottieTimelineInfo(
+    durationFrames = durationFrames,
+    frameRate = frameRate,
+    durationMillis = durationMillis,
+    widthPx = composition.width.toInt(),
+    heightPx = composition.height.toInt(),
+  )
+}
+
+/**
  * Reads a Lottie asset from the classpath as a UTF-8 string. Tries the thread context classloader
  * first (the render subprocess installs the consumer's classes/resources there), then this class's
  * own loader as a fallback for plain JVM unit tests. A leading slash is tolerated.
