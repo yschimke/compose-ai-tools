@@ -217,6 +217,7 @@ internal object ComposePreviewTasks {
       extension,
       previewOutputDir,
       sourceClassDirs,
+      sourceResourceDirs,
       resolveDependencyConfigName,
     )
   }
@@ -430,6 +431,7 @@ internal object ComposePreviewTasks {
     extension: PreviewExtension,
     previewOutputDir: Provider<Directory>,
     sourceClassDirs: FileCollection,
+    sourceResourceDirs: FileCollection,
     dependencyConfigName: () -> String,
   ) {
     val daemonProjectDir = project.rootDir.resolve("daemon/desktop")
@@ -535,6 +537,11 @@ internal object ComposePreviewTasks {
       // User's compiled classes — keeps the Kotlin classloader's class-data-sharing intact for
       // the parent classloader before `UserClassLoaderHolder` constructs its child URL loader.
       classpath.from(sourceClassDirs)
+      // Consumer's processed resources so a daemon/VS Code render can load classpath assets (a
+      // Lottie `.json`, a font, an image) — same as the one-shot `composePreviewRender` path. These
+      // land on the daemon's parent `-cp`; the `userClassDirs` filter below excludes them (they
+      // don't match the `build/classes/...` markers), so they stay parent-loaded, not child-first.
+      classpath.from(sourceResourceDirs)
       // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
       project.configurations.findByName(dependencyConfigName())?.let { classpath.from(it) }
 
@@ -616,6 +623,9 @@ internal object ComposePreviewTasks {
       )
       outputFile.set(outputFileProvider)
       dependsOn(daemonClasspathGuard)
+      // Stage the consumer's resources (so `sourceResourceDirs` on the daemon `-cp` is populated)
+      // before the descriptor is emitted — mirrors the one-shot render task.
+      dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       group = "compose preview"
       description =
         "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
