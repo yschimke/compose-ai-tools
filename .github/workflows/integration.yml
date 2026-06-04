@@ -1257,22 +1257,25 @@ jobs:
           GITHUB_TOKEN_INLINE: ${{ github.token }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          dirs=(_staged/integration-previews-*/)
-          if [ "${#dirs[@]}" -eq 0 ]; then
+          push_helper="$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
+          # Locate every staged gallery by its `_push_branch` marker rather
+          # than a fixed `_staged/integration-previews-*/` glob. When only one
+          # artifact matches the download pattern, actions/download-artifact@v8
+          # extracts it straight into `_staged` with no per-artifact subdir
+          # (`artifacts.length === 1 ? path : path/<name>`), so a name-keyed
+          # glob would miss the lone gallery and we'd drop the one cell that
+          # succeeded — exactly the case the job is meant to still publish.
+          mapfile -t markers < <(find _staged -type f -name _push_branch 2>/dev/null | sort)
+          if [ "${#markers[@]}" -eq 0 ]; then
             echo "No staged integration preview galleries — nothing to publish."
             exit 0
           fi
-          push_helper="$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
           rc=0
-          for dir in "${dirs[@]}"; do
-            if [ ! -f "${dir}_push_branch" ]; then
-              echo "Skipping ${dir} — no _push_branch metadata."
-              continue
-            fi
-            branch=$(cat "${dir}_push_branch")
-            msg=$(cat "${dir}_push_msg")
-            skip=$(cat "${dir}_skip_if_unchanged" 2>/dev/null || echo 1)
+          for marker in "${markers[@]}"; do
+            dir=$(dirname "$marker")
+            branch=$(cat "$dir/_push_branch")
+            msg=$(cat "$dir/_push_msg")
+            skip=$(cat "$dir/_skip_if_unchanged" 2>/dev/null || echo 1)
             echo "::group::Publishing ${branch}"
             # Subshell so push-branch.sh's `git init` stays scoped to the
             # staged gallery dir. Strip the metadata files first so they
