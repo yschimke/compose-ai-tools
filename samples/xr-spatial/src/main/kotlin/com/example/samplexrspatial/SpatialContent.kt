@@ -1,21 +1,38 @@
 package com.example.samplexrspatial
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
@@ -67,5 +84,170 @@ fun TransportControls(modifier: Modifier = Modifier) {
       FilledTonalButton(onClick = {}) { Text("Play") }
       FilledTonalButton(onClick = {}) { Text("Next") }
     }
+  }
+}
+
+// The composables below give the showcase spatial previews (SpatialShowcasePreviews.kt) visually
+// distinct panel bodies, so the baked composite stills read as a real multi-panel app rather than
+// the same card repeated. All ordinary Material3 — no XR dependency.
+
+/** A grid of album tiles — the kind of 2D content you'd host in a "library" panel. */
+@Composable
+fun LibraryGrid(modifier: Modifier = Modifier) {
+  val albums =
+    listOf(
+      "Aurora" to Color(0xFF6750A4),
+      "Drift" to Color(0xFF1E88E5),
+      "Lumen" to Color(0xFF00897B),
+      "Pulse" to Color(0xFFD81B60),
+      "Halcyon" to Color(0xFFF4511E),
+      "Vesper" to Color(0xFF5E35B1),
+    )
+  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Library", style = MaterialTheme.typography.titleLarge)
+      LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        items(albums) { (title, color) ->
+          Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+              Modifier.fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Brush.linearGradient(listOf(color, color.copy(alpha = 0.55f))))
+            )
+            Text(
+              title,
+              style = MaterialTheme.typography.labelLarge,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+/** A scrollable track list — the kind of 2D content you'd host in a "queue" panel. */
+@Composable
+fun QueueList(modifier: Modifier = Modifier) {
+  val tracks =
+    listOf(
+      "Slow Light" to "Aurora",
+      "Tidal" to "Drift",
+      "Glass Fields" to "Lumen",
+      "Resonance" to "Pulse",
+      "Soft Static" to "Halcyon",
+      "Nightfall" to "Vesper",
+      "Undertow" to "Drift",
+      "Embers" to "Pulse",
+    )
+  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Up Next", style = MaterialTheme.typography.titleLarge)
+      LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(tracks) { (title, artist) ->
+          Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Box(
+              Modifier.size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+            )
+            Column(Modifier.weight(1f)) {
+              Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+              )
+              Text(
+                artist,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/** A large album-art card with a gradient cover — the "detail"/foreground panel body. */
+@Composable
+fun AlbumArtCard(modifier: Modifier = Modifier) {
+  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Column(
+      Modifier.padding(20.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      Box(
+        Modifier.fillMaxWidth()
+          .aspectRatio(1f)
+          .clip(RoundedCornerShape(16.dp))
+          .background(
+            Brush.linearGradient(listOf(Color(0xFF6750A4), Color(0xFF1E88E5), Color(0xFF00897B)))
+          )
+      )
+      Text("Aurora", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+      Text(
+        "Spatial Sessions",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+  }
+}
+
+/** A search bar — the content you'd float in a top `Orbiter`. */
+@Composable
+fun SearchBar(modifier: Modifier = Modifier) {
+  Card(modifier = modifier) {
+    Row(
+      Modifier.padding(horizontal = 20.dp, vertical = 14.dp).fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Box(
+        Modifier.size(20.dp)
+          .clip(RoundedCornerShape(50))
+          .background(MaterialTheme.colorScheme.primary)
+      )
+      Text(
+        "Search your library",
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+  }
+}
+
+/** A small equalizer / settings card with sliders — a distinct "controls" panel body. */
+@Composable
+fun EqualizerCard(modifier: Modifier = Modifier) {
+  Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text("Equalizer", style = MaterialTheme.typography.titleLarge)
+      EqBand("Bass", 0.75f)
+      EqBand("Mid", 0.45f)
+      EqBand("Treble", 0.6f)
+    }
+  }
+}
+
+@Composable
+private fun EqBand(label: String, value: Float) {
+  Column {
+    Text(label, style = MaterialTheme.typography.labelMedium)
+    Slider(value = value, onValueChange = {})
   }
 }
