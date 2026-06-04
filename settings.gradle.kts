@@ -151,6 +151,10 @@ include(":splash-preview-runtime")
 
 project(":splash-preview-runtime").projectDir = file("runtimes/splash")
 
+include(":lottie-preview-runtime")
+
+project(":lottie-preview-runtime").projectDir = file("runtimes/lottie")
+
 include(":samples:android")
 
 include(":samples:android-alpha")

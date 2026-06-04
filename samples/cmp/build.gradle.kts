@@ -21,4 +21,7 @@ dependencies {
   // compile classpath, but the sample composable references the annotation directly so the
   // dependency is needed for compilation.
   implementation(project(":preview-annotations"))
+  // `LottiePreview(...)` — renders a Lottie `.json` asset (from src/main/resources) at a fixed
+  // progress through the desktop renderer. Brings Compottie transitively.
+  implementation(project(":lottie-preview-runtime"))
 }

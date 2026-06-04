@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.IntSize
 import ee.schimke.composeai.daemon.DisplayFilterConfig
 import ee.schimke.composeai.daemon.DisplayFilterDataProducer
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.preview.lottie.LottiePreview
 import ee.schimke.composeai.scroll.ScrollAxis as ProductScrollAxis
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -120,6 +121,48 @@ fun main(args: Array<String>) {
       "GIF" -> DesktopScrollMode.GIF
       else -> null
     }
+
+  // kind=LOTTIE — a directly-discovered Lottie asset, not a `@Composable`. There is no class /
+  // function to reflect; inflate the asset (arg 20, a classpath-relative path) via Compottie and
+  // capture a single frame. Short-circuits the whole `@PreviewParameter` / scroll machinery below.
+  val previewKind = args.getOrNull(18)?.takeIf { it.isNotBlank() }?.uppercase() ?: "COMPOSE"
+  if (previewKind == "LOTTIE") {
+    val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
+    val sidecar = errorSidecarFor(outputFile)
+    if (sidecar.exists()) sidecar.delete()
+    try {
+      requireNotNull(assetPath) {
+        "kind=LOTTIE preview is missing its asset path (renderer arg 20)"
+      }
+      // The output extension selects the artefact: `.gif` → the animated capture spanning the
+      // asset's intrinsic timeline (discovery emits this as the Lottie preview's animated
+      // companion); anything else → the single still frame.
+      if (outputFile.extension.equals("gif", ignoreCase = true)) {
+        renderLottieGif(
+          assetPath = assetPath,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = outputFile,
+        )
+      } else {
+        renderLottieAsset(
+          assetPath = assetPath,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = outputFile,
+        )
+      }
+    } catch (e: Throwable) {
+      writeErrorSidecar(outputFile, className, functionName, e)
+    }
+    return
+  }
 
   // Provider enumeration is fatal to the whole subprocess — we can't
   // render anything if values can't be loaded. Per-value render failures
@@ -588,6 +631,49 @@ private fun renderPreview(
   }
 
   scene.close()
+}
+
+/**
+ * Render a directly-discovered Lottie asset to a single PNG frame. No consumer composable is
+ * involved — [LottiePreview] loads [assetPath] off the render classpath (the plugin links the
+ * processed-resources dir there) and inflates it via Compottie. Same two-`render()` settle + encode
+ * path as [renderPreview], minus the wrap/crop logic (the animation fills the fixed sandbox).
+ */
+private fun renderLottieAsset(
+  assetPath: String,
+  widthPx: Int,
+  heightPx: Int,
+  density: Float,
+  showBackground: Boolean,
+  backgroundColor: Long,
+  outputFile: File,
+  fileSystem: FileSystem = SystemFileSystem,
+) {
+  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(density))
+  try {
+    scene.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) {
+        val bgColor =
+          when {
+            backgroundColor != 0L -> Color(backgroundColor.toInt())
+            showBackground -> Color.White
+            else -> Color.Transparent
+          }
+        Box(modifier = Modifier.fillMaxSize().background(bgColor)) {
+          LottiePreview(asset = assetPath, modifier = Modifier.fillMaxSize())
+        }
+      }
+    }
+    scene.render()
+    val image = scene.render()
+    val pngData =
+      image.encodeToData(EncodedImageFormat.PNG)
+        ?: throw IllegalStateException("Failed to encode Lottie frame to PNG")
+    outputFile.parentFile?.mkdirs()
+    fileSystem.write(outputFile.path.toPath()) { write(pngData.bytes) }
+  } finally {
+    scene.close()
+  }
 }
 
 @Composable

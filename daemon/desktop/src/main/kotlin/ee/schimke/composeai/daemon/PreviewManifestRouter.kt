@@ -142,6 +142,14 @@ class PreviewManifestRouter(
             resolved.wrapperClassName
               ?.takeIf { it.isNotBlank() }
               ?.let { append("wrapperClassName=").append(it).append(';') }
+            // kind=LOTTIE + the asset path so `DesktopHost` builds a `RenderSpec` that inflates the
+            // asset instead of reflecting a (non-existent) class. Plain Compose previews omit both.
+            resolved.kind
+              ?.takeIf { it.isNotBlank() && it != "COMPOSE" }
+              ?.let { append("kind=").append(it).append(';') }
+            resolved.assetPath
+              ?.takeIf { it.isNotBlank() }
+              ?.let { append("assetPath=").append(it).append(';') }
             append("outputBaseName=").append(resolved.outputBaseName)
           },
       )
@@ -196,6 +204,8 @@ class PreviewManifestRouter(
           backgroundColor = resolved.backgroundColor,
           device = resolved.device,
           wrapperClassName = resolved.wrapperClassName,
+          kind = resolved.kind,
+          assetPath = resolved.assetPath,
         )
       }
     }
@@ -261,6 +271,8 @@ data class PreviewManifestEntry(
       device = device,
       outputBaseName = outputBaseName ?: id,
       wrapperClassName = wrapperClassName,
+      kind = p?.kind,
+      assetPath = p?.assetPath,
     )
   }
 }
@@ -279,6 +291,10 @@ data class PreviewParamsEntry(
   val density: Float? = null,
   val showBackground: Boolean = false,
   val backgroundColor: Long = 0L,
+  /** Preview flavour mirror of `PreviewKind`; `"LOTTIE"` drives the asset-inflate render path. */
+  val kind: String? = null,
+  /** For `kind="LOTTIE"`: the classpath-relative Lottie asset path. */
+  val assetPath: String? = null,
   /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
@@ -302,4 +318,6 @@ data class ResolvedRenderParams(
   val device: String?,
   val outputBaseName: String,
   val wrapperClassName: String? = null,
+  val kind: String? = null,
+  val assetPath: String? = null,
 )

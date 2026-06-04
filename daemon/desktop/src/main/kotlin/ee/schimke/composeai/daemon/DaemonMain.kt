@@ -472,6 +472,8 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     uiMode = uiMode,
     orientation = defaults.orientation,
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    kind = params.kind ?: defaults.kind,
+    assetPath = params.assetPath ?: defaults.assetPath,
   )
 }
 

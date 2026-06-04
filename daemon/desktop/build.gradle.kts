@@ -124,6 +124,10 @@ dependencies {
   // function's `compose.uiTest` machinery stays internal to `:renderer-desktop` (that module's
   // `implementation` dep) and rides along on the runtime classpath transitively.
   implementation(project(":renderer-desktop"))
+  // `kind=LOTTIE` live render: RenderEngine inflates a discovered Lottie asset via `LottiePreview`
+  // (brings Compottie transitively). Direct dep — `:renderer-desktop` carries it only as
+  // `implementation`, so it isn't on this module's compile classpath otherwise.
+  implementation(project(":lottie-preview-runtime"))
 
   // Compose runtime / foundation / ui — the B-desktop.1.4 RenderEngine body
   // imports `ImageComposeScene`, `@Composable`, `currentComposer`,

@@ -192,7 +192,7 @@ data class BundleAndroidResources(
 data class BundleIr(
   /** Preview id this IR renders; matches an entry in [BundleManifest.previewIds]. */
   val previewId: String,
-  /** IR flavour: [IR_FORMAT_REMOTECOMPOSE] or [IR_FORMAT_PROTOLAYOUT]. */
+  /** IR flavour: [IR_FORMAT_REMOTECOMPOSE], [IR_FORMAT_PROTOLAYOUT], or [IR_FORMAT_LOTTIE]. */
   val format: String,
   /** Posix zip path of the IR bytes, e.g. `ir/<id>.rcdoc` or `ir/<id>.tilelayout`. */
   val path: String,
@@ -298,6 +298,14 @@ const val RESOLUTION_MIXED: String = "mixed"
 const val IR_FORMAT_REMOTECOMPOSE: String = "remotecompose"
 
 const val IR_FORMAT_PROTOLAYOUT: String = "protolayout"
+
+/**
+ * [BundleIr.format] for a Lottie animation asset. Unlike Remote Compose / protolayout — whose IR is
+ * *captured* by running a composable — a Lottie preview's IR is the asset file itself, read
+ * straight off the module resources at pack time. The zip entry keeps the asset's own extension
+ * (`ir/<id>.json` or `ir/<id>.lottie`); `format` is what the replayer keys on.
+ */
+const val IR_FORMAT_LOTTIE: String = "lottie"
 
 /** Well-known directory inside the bundle zip holding per-preview IR bytes (`ir/<id>.<ext>`). */
 const val BUNDLE_IR_DIR: String = "ir"

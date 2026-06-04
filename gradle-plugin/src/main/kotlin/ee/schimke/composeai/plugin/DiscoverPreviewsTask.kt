@@ -42,6 +42,15 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val sourceFiles: ConfigurableFileCollection
 
+  /**
+   * Processed-resource roots (`build/resources/main`, `build/processedResources/<target>/main`)
+   * scanned for Lottie animation assets — each becomes a `kind=LOTTIE` preview with no consumer
+   * composable. Optional: empty on modules without resources, which simply skips the asset scan.
+   */
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val resourceDirs: ConfigurableFileCollection
+
   @get:Input abstract val moduleName: Property<String>
 
   @get:Input abstract val variantName: Property<String>
@@ -82,6 +91,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         variantName = variantName.get(),
         projectDirectory = File(projectDirectory.get()),
         failOnEmpty = failOnEmpty.get(),
+        resourceDirs = resourceDirs.files.toList(),
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {
