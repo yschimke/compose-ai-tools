@@ -52,7 +52,16 @@ class LottieAssetDiscoveryTest {
     // Id + render output are filename-safe (no `:` / `/` to corrupt zip paths).
     assertThat(p.id).doesNotContain("/")
     assertThat(p.id).doesNotContain(":")
-    assertThat(p.captures.single().renderOutput).endsWith(".png")
+    // A Lottie preview ships two captures by default: the still PNG baseline plus the animated
+    // companion GIF spanning the asset's intrinsic timeline.
+    assertThat(p.captures.map { it.renderOutput.substringAfterLast('.') })
+      .containsExactly("png", "gif")
+    val still = p.captures.first { it.renderOutput.endsWith(".png") }
+    val animated = p.captures.first { it.renderOutput.endsWith(".gif") }
+    // The still PNG is the required baseline; the GIF is best-effort so a headless env that can't
+    // encode it never fails the required-render gate.
+    assertThat(still.optional).isFalse()
+    assertThat(animated.optional).isTrue()
   }
 
   @Test

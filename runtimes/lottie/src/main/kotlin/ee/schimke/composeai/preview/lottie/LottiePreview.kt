@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import io.github.alexzhirkevich.compottie.LottieComposition
 import io.github.alexzhirkevich.compottie.rememberLottiePainter
+import kotlin.math.roundToInt
 
 /**
  * Renders a Lottie animation [asset] at a fixed [progress] inside a regular Compose `@Preview`.
@@ -39,15 +40,62 @@ fun LottiePreview(
   progress: Float = 0f,
   contentScale: ContentScale = ContentScale.Fit,
 ) {
-  val composition = remember(asset) { LottieComposition.parse(loadLottieAsset(asset)) }
   val clamped = progress.coerceIn(0f, 1f)
+  LottiePreview(asset = asset, modifier = modifier, contentScale = contentScale) { clamped }
+}
+
+/**
+ * Progress-provider overload: [progress] is read at draw time, so a caller that drives a
+ * snapshot-backed state (e.g. `mutableFloatStateOf`) between renders sweeps the Lottie timeline
+ * without rebuilding the composition. This is the animated-capture path — the desktop renderer's
+ * `renderLottieGif` holds a single [androidx.compose.ui.ImageComposeScene] and flips the backing
+ * state across the intrinsic-duration frame window, re-`render()`ing each step into a GIF frame.
+ *
+ * Parses the composition **synchronously** (see the class-level note) and clamps the provided
+ * progress into `0f..1f`, so callers can hand back an un-normalised sweep value.
+ *
+ * @param asset classpath resource path of the Lottie JSON (leading slash optional).
+ * @param progress timeline position provider; evaluated each draw, coerced into `0f..1f`.
+ * @param contentScale how the animation is fitted into [modifier]'s bounds. Defaults to
+ *   [ContentScale.Fit].
+ */
+@Composable
+fun LottiePreview(
+  asset: String,
+  modifier: Modifier = Modifier,
+  contentScale: ContentScale = ContentScale.Fit,
+  progress: () -> Float,
+) {
+  val composition = remember(asset) { LottieComposition.parse(loadLottieAsset(asset)) }
   Image(
-    painter = rememberLottiePainter(composition = composition, progress = { clamped }),
+    painter =
+      rememberLottiePainter(composition = composition, progress = { progress().coerceIn(0f, 1f) }),
     contentDescription = asset,
     modifier = modifier,
     contentScale = contentScale,
   )
 }
+
+/**
+ * The Lottie asset's intrinsic timeline length in milliseconds — `durationFrames / frameRate` (e.g.
+ * a 60-frame clip authored at 30fps is 2000ms). This is the "default duration" the animated preview
+ * path captures across when no explicit window is requested.
+ *
+ * Parses [asset] off the render classpath (same loader resolution as [LottiePreview]). Returns
+ * [default] when the asset can't be parsed or declares a non-positive frame rate / length (a
+ * degenerate single-frame document), so callers always get a usable, positive window.
+ */
+fun lottieIntrinsicDurationMillis(asset: String, default: Int = DEFAULT_LOTTIE_DURATION_MS): Int {
+  val composition =
+    runCatching { LottieComposition.parse(loadLottieAsset(asset)) }.getOrNull() ?: return default
+  val frameRate = composition.frameRate
+  val durationFrames = composition.durationFrames
+  if (frameRate <= 0f || durationFrames <= 0f) return default
+  return (durationFrames / frameRate * 1000f).roundToInt().coerceAtLeast(1)
+}
+
+/** Fallback intrinsic duration for a Lottie asset whose timeline can't be read. */
+const val DEFAULT_LOTTIE_DURATION_MS: Int = 1000
 
 /**
  * Reads a Lottie asset from the classpath as a UTF-8 string. Tries the thread context classloader

@@ -134,15 +134,30 @@ fun main(args: Array<String>) {
       requireNotNull(assetPath) {
         "kind=LOTTIE preview is missing its asset path (renderer arg 20)"
       }
-      renderLottieAsset(
-        assetPath = assetPath,
-        widthPx = widthPx,
-        heightPx = heightPx,
-        density = density,
-        showBackground = showBackground,
-        backgroundColor = backgroundColor,
-        outputFile = outputFile,
-      )
+      // The output extension selects the artefact: `.gif` → the animated capture spanning the
+      // asset's intrinsic timeline (discovery emits this as the Lottie preview's animated
+      // companion); anything else → the single still frame.
+      if (outputFile.extension.equals("gif", ignoreCase = true)) {
+        renderLottieGif(
+          assetPath = assetPath,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = outputFile,
+        )
+      } else {
+        renderLottieAsset(
+          assetPath = assetPath,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          density = density,
+          showBackground = showBackground,
+          backgroundColor = backgroundColor,
+          outputFile = outputFile,
+        )
+      }
     } catch (e: Throwable) {
       writeErrorSidecar(outputFile, className, functionName, e)
     }

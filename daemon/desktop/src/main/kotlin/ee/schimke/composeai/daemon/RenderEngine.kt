@@ -138,6 +138,13 @@ class RenderEngine(
     if (spec.renderMode == SCROLL_LONG_RENDER_MODE || spec.renderMode == SCROLL_GIF_RENDER_MODE) {
       return runScrollScenario(spec = spec, requestId = requestId, classLoader = classLoader)
     }
+    // kind=LOTTIE animated capture — sweep the asset's intrinsic timeline into a looping GIF
+    // instead of capturing one still frame. Routed here (before the reflection-based setUp) because
+    // a Lottie asset has no class to resolve; the render body lives in `:renderer-desktop`'s
+    // `renderLottieGif`, mirroring how `runScrollScenario` delegates to `renderScrollPreview`.
+    if (spec.kind == "LOTTIE" && spec.renderMode == LOTTIE_GIF_RENDER_MODE) {
+      return runLottieGifScenario(spec = spec, requestId = requestId, classLoader = classLoader)
+    }
     val trace = PerfettoTraceDataProducer.recorder(spec.outputBaseName, backend = "desktop")
     val state =
       trace.section("compose:setUp") {
@@ -642,6 +649,67 @@ class RenderEngine(
   }
 
   /**
+   * Live-daemon `kind=LOTTIE` animated capture. Sweeps the discovered Lottie asset's intrinsic
+   * timeline into a looping GIF at `<outputDir>/<outputBaseName>.gif` by delegating to
+   * `:renderer-desktop`'s [ee.schimke.composeai.renderer.renderLottieGif]. The default window is
+   * the asset's own `durationFrames / frameRate`, so "animate for the preview's default duration"
+   * needs no extra payload — a 2s clip plays for 2s.
+   *
+   * The asset is resolved by [LottiePreview]/`renderLottieGif` off the **context classloader**
+   * (which `loadLottieAsset` consults first), so we install [classLoader] for the duration of the
+   * capture — the disposable child loader carries the consumer's processed resources
+   * (CLASSLOADER.md § Risks 2). Mirrors [runScrollScenario]'s shape: returns a [RenderResult] whose
+   * `pngPath` points at the produced GIF (the field is the generic artefact path, same as the
+   * scroll-GIF path).
+   *
+   * Throws [IllegalStateException] when the spec carries no `assetPath`, or when the GIF writer
+   * declined (never on a standard JRE) — the dispatcher surfaces it like any other render failure.
+   */
+  private fun runLottieGifScenario(
+    spec: RenderSpec,
+    requestId: Long,
+    classLoader: ClassLoader,
+  ): RenderResult {
+    val asset =
+      spec.assetPath?.takeIf { it.isNotBlank() }
+        ?: error(
+          "RenderEngine: kind=LOTTIE renderMode='$LOTTIE_GIF_RENDER_MODE' requires an assetPath on " +
+            "the RenderSpec so the Lottie document can be inflated"
+        )
+    val outputFile = File(outputDir, "${spec.outputBaseName}.gif")
+    outputFile.parentFile?.mkdirs()
+
+    val previousContext = Thread.currentThread().contextClassLoader
+    Thread.currentThread().contextClassLoader = classLoader
+    val startNs = System.nanoTime()
+    try {
+      ee.schimke.composeai.renderer.renderLottieGif(
+        assetPath = asset,
+        widthPx = spec.widthPx,
+        heightPx = spec.heightPx,
+        density = spec.density,
+        showBackground = spec.showBackground,
+        backgroundColor = spec.backgroundColor,
+        outputFile = outputFile,
+      )
+        ?: error(
+          "RenderEngine: Lottie GIF encode produced no output for asset '$asset' (GIF writer " +
+            "plugin unavailable?)"
+        )
+    } finally {
+      Thread.currentThread().contextClassLoader = previousContext
+    }
+    val tookMs = (System.nanoTime() - startNs) / 1_000_000L
+    return RenderResult(
+      id = requestId,
+      classLoaderHashCode = System.identityHashCode(classLoader),
+      classLoaderName = classLoader.javaClass.name,
+      pngPath = outputFile.absolutePath,
+      metrics = mapOf("tookMs" to tookMs),
+    )
+  }
+
+  /**
    * Lazily reads the daemon's `previews.json` via [PreviewIndex.loadFromFile] using the
    * `composeai.daemon.previewsJsonPath` system property the gradle plugin populates. Falls back to
    * [PreviewIndex.empty] when the property is unset (harness / fake-mode tests) —
@@ -680,6 +748,13 @@ class RenderEngine(
     const val SCROLL_LONG_RENDER_MODE: String = "scroll-long"
 
     const val SCROLL_GIF_RENDER_MODE: String = "scroll-gif"
+
+    /**
+     * Render mode requesting the animated Lottie capture (looping GIF spanning the asset's
+     * intrinsic timeline). Paired with `kind=LOTTIE` + an `assetPath`; [render] routes it into
+     * [runLottieGifScenario]. The still-frame Lottie path uses the default (null) render mode.
+     */
+    const val LOTTIE_GIF_RENDER_MODE: String = "lottie-gif"
 
     fun supportsLocaleTagOverride(): Boolean = localProvidableLocaleListOrNull() != null
 

@@ -454,7 +454,20 @@ object PreviewDiscovery {
                   widthDp = dims.width,
                   heightDp = dims.height,
                 ),
-              captures = listOf(Capture(renderOutput = "renders/$stem.png")),
+              captures =
+                listOf(
+                  Capture(renderOutput = "renders/$stem.png"),
+                  // Animated companion: the asset's intrinsic timeline encoded as a looping GIF
+                  // (the renderer dispatches `.gif` Lottie outputs to `renderLottieGif`). Marked
+                  // `optional` so a missing GIF — e.g. a headless env without the GIF writer —
+                  // never trips `composePreviewRenderAll`'s required-render gate; the still PNG
+                  // stays the baseline artefact. Cost mirrors the scroll-GIF frame-loop + encode.
+                  Capture(
+                    renderOutput = "renders/$stem.gif",
+                    optional = true,
+                    cost = SCROLL_GIF_COST,
+                  ),
+                ),
             )
         }
     }

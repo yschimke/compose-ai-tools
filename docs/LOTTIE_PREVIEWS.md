@@ -12,6 +12,10 @@ runtime). Two authoring paths, both rendering with **no Android Studio**:
 2. **A `@Preview` that calls `LottiePreview(...)`** when you want a *configured* frame (a fixed
    `progress`) or to compose the animation into a larger layout.
 
+A discovered file renders **two** artefacts by default: the still PNG baseline *and* an animated,
+looping GIF that sweeps the asset's own timeline — so "having the file is enough" gives you a moving
+preview, not just a frozen frame. See [Animated capture](#animated-capture--the-looping-gif).
+
 The interactive daemon / VS Code timeline-scrubbing layer (live re-render at a chosen frame), the
 Android backend, and Rive are tracked as follow-ups below.
 
@@ -25,10 +29,34 @@ inflates the asset via Compottie with no consumer class to reflect, and the bund
 bytes as `ir/<id>.<ext>` + a `BundleIr(format="lottie")`, dropping any enclosing bytecode.
 
 ```
-src/main/resources/lottie/loading.json   →   renders/lottie__lottie_loading.png
+src/main/resources/lottie/loading.json   →   renders/lottie__lottie_loading.png   (still baseline)
+                                          →   renders/lottie__lottie_loading.gif   (animated, intrinsic duration)
 ```
 
 Discovery is Desktop-only today (the Android discover task doesn't wire the resource scan).
+
+## Animated capture — the looping GIF
+
+The animated companion sweeps the Lottie's **intrinsic timeline** — `durationFrames / frameRate`,
+so a 60-frame clip authored at 30fps plays for 2000ms — sampled at ≈25fps into a looping GIF.
+Progress is stepped `i / frameCount` (exclusive of `1.0`) so the last frame wraps seamlessly back to
+the first with no end-of-cycle stutter. The window is capped at 5000ms so a long ambient loop still
+yields a small artefact (truncated, not slowed). No annotation or duration is required — *the file's
+own timeline is the default*.
+
+Mechanically (`renderer-desktop`'s `renderLottieGif`) a single `ImageComposeScene` is held and a
+snapshot-backed `progress` state is swept across it, re-`render()`ing each step — so the Compottie
+parse and Skia surface allocation happen once, not once per frame. Frames are encoded via the shared
+`ScrollGifEncoder` (`javax.imageio`, no extra deps).
+
+The GIF capture is **optional** in discovery: if a headless env can't encode it, the missing-GIF
+never trips `composePreviewRenderAll`'s required-render gate — the still PNG remains the required
+baseline.
+
+**Live daemon / VS Code.** The desktop daemon's `RenderEngine` accepts `renderMode = "lottie-gif"`
+(alongside the default still-frame path) and dispatches it to the same `renderLottieGif` body, so a
+file-discovered Lottie animates through the live daemon — and therefore VS Code — not just the
+one-shot Gradle task.
 
 ## 2. `LottiePreview` helper — configured frames
 
@@ -63,7 +91,8 @@ multiple `@Preview`s at different `progress` values to review keyframes. Worked 
 | --- | --- |
 | **Discovery (file path)** | `PreviewDiscovery` scans the resource dirs; a Lottie `.json` (sniffed by `v`+`layers`) or `.lottie` becomes a `kind=LOTTIE` `PreviewInfo` with the asset's resource-relative path on `PreviewParams.assetPath` and dimensions read from the document's `w`/`h`. Wired only on the Desktop discover task. |
 | **Discovery (`@Preview` path)** | Standard `@Preview` discovery of a function calling `LottiePreview(asset, progress)`. |
-| **Render** | Desktop renderer (`ImageComposeScene`). For `kind=LOTTIE`, `DesktopRendererMain` skips class reflection and renders the asset via `LottiePreview` directly. Compottie's `LottieComposition.parse(json)` is **synchronous**, so the composition is ready on the first composed frame — critical because the renderer captures after two `scene.render()` passes and does not pump coroutines, so the async `rememberLottieComposition` would render blank. |
+| **Render (still)** | Desktop renderer (`ImageComposeScene`). For `kind=LOTTIE`, `DesktopRendererMain` skips class reflection and renders the asset via `LottiePreview` directly. Compottie's `LottieComposition.parse(json)` is **synchronous**, so the composition is ready on the first composed frame — critical because the renderer captures after two `scene.render()` passes and does not pump coroutines, so the async `rememberLottieComposition` would render blank. |
+| **Render (animated)** | `renderer-desktop`'s `renderLottieGif` (selected by a `.gif` output extension in the CLI, or `renderMode="lottie-gif"` in the daemon). Holds one `ImageComposeScene`, sweeps a snapshot-backed `progress` state across the intrinsic-duration frame window, and encodes the frames via `ScrollGifEncoder`. |
 | **Asset loading** | The asset is a classpath resource. The plugin links the consumer's processed-resources dir onto the **render** *and* **daemon** classpaths (previously only the bundle task saw it), so the asset resolves via the classloader at render time. Generic — any preview reading a classpath resource (fonts, images) benefits. |
 | **Bundle** | Self-contained. A `kind=LOTTIE` preview packs the asset bytes as `ir/<id>.<ext>` + a `BundleIr(format="lottie")` and contributes **no** bytecode — the bundle replays the asset with zero consumer source, like a Remote Compose / protolayout IR. A `@Preview`-authored Lottie instead packs the asset (under module resources) + the `@Preview` bytecode into `classes/app.jar`. |
 
@@ -98,8 +127,10 @@ interactive editing + a VS Code presenter.
 2. **Data product + VS Code scrubber.** A `animation/lottie` `DataProductRegistry` surfacing the
    composition's frame count / duration / markers, plus a `lottieBundlePresenter.ts` with a progress
    slider that posts `interactive/setLottie` (mirrors `remoteComposeBundlePresenter.ts` +
-   `interactive/setRemoteCompose`). The existing `@AnimatedPreview` GIF path can also emit a scrubbed
-   animation.
+   `interactive/setRemoteCompose`). *Done as a first step:* the default animated capture (a looping
+   GIF spanning the intrinsic duration) is emitted by discovery and available live via
+   `renderMode="lottie-gif"` — the remaining work is the *interactive* scrubber (pick an arbitrary
+   frame), not a fixed-cadence sweep.
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
 4. **Rive.** Tracked separately — Rive's Kotlin runtime is Android/JNI-only with **no** JVM/Desktop
