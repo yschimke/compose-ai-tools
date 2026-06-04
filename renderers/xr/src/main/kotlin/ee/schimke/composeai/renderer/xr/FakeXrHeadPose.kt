@@ -97,6 +97,21 @@ public object FakeXrHeadPose {
     val arDeviceClass = Class.forName("androidx.xr.arcore.ArDevice")
     val arDevice = arDeviceClass.getMethod("getInstance", Session::class.java).invoke(null, session)
 
+    // Seed the underlying fake *runtime* device's pose, not just the ArDevice state flow below: the
+    // perception runtime's update cycle (which runs during waitForIdle in the multi-preview render
+    // task) refreshes ArDevice.state FROM the runtime device, and would otherwise overwrite a
+    // directly-set state back to the runtime's default identity pose — leaving the panel looking at
+    // the origin instead of the viewer. Setting both makes the seed survive a refresh AND be present
+    // immediately on attach.
+    val runtimeArDevice = arDeviceClass.getMethod("getRuntimeArDevice\$arcore").invoke(arDevice)
+    runtimeArDevice.javaClass
+      .getMethod("setDevicePose", Pose::class.java)
+      .invoke(runtimeArDevice, headPose)
+    val runtimeTrackingClass = Class.forName("androidx.xr.arcore.runtime.TrackingState")
+    runtimeArDevice.javaClass
+      .getMethod("setTrackingState", runtimeTrackingClass)
+      .invoke(runtimeArDevice, runtimeTrackingClass.getField("TRACKING").get(null))
+
     val trackingStateClass = Class.forName("androidx.xr.runtime.TrackingState")
     val tracking = trackingStateClass.getField("TRACKING").get(null)
     val stateClass = Class.forName("androidx.xr.arcore.ArDevice\$State")
