@@ -3,7 +3,6 @@
 import * as assert from "assert";
 import {
     fontIdentifier,
-    fontResourceName,
     generateComposeSnippet,
 } from "../webview/fonts/composeFontSnippet";
 import type { FontAxis } from "../googleFontsCatalog";
@@ -24,14 +23,12 @@ const opsz: FontAxis = {
 };
 
 describe("composeFontSnippet", () => {
-    it("derives resource names and identifiers", () => {
-        assert.strictEqual(fontResourceName("Open Sans"), "open_sans");
-        assert.strictEqual(fontResourceName("IBM Plex Mono"), "ibm_plex_mono");
+    it("derives PascalCase identifiers", () => {
         assert.strictEqual(fontIdentifier("Open Sans"), "OpenSans");
         assert.strictEqual(fontIdentifier("roboto-flex"), "RobotoFlex");
     });
 
-    it("emits a static FontFamily without variation settings", () => {
+    it("emits a downloadable static FontFamily without variation settings", () => {
         const out = generateComposeSnippet({
             family: "Lora",
             weight: 700,
@@ -43,8 +40,19 @@ describe("composeFontSnippet", () => {
             letterSpacingSp: 0.5,
             lineHeightSp: 24,
         });
+        // Downloadable Google Fonts provider — not a bundled R.font resource.
+        assert.ok(out.includes("GoogleFont.Provider("));
+        // Certs array is fully-qualified to the ui-text-google-fonts R so the
+        // snippet compiles under non-transitive R (the AGP default).
+        assert.ok(
+            out.includes(
+                "androidx.compose.ui.text.googlefonts.R.array.com_google_android_gms_fonts_certs",
+            ),
+        );
         assert.ok(out.includes("val LoraFontFamily = FontFamily("));
-        assert.ok(out.includes("resId = R.font.lora"));
+        assert.ok(out.includes('googleFont = GoogleFont("Lora")'));
+        assert.ok(out.includes("fontProvider = provider"));
+        assert.ok(!out.includes("R.font."));
         assert.ok(out.includes("weight = FontWeight(700)"));
         assert.ok(out.includes("style = FontStyle.Italic"));
         assert.ok(!out.includes("FontVariation"));
@@ -53,7 +61,7 @@ describe("composeFontSnippet", () => {
         assert.ok(out.includes("fontStyle = FontStyle.Italic"));
     });
 
-    it("emits FontVariation.Settings for variable fonts", () => {
+    it("emits FontVariation.Settings for downloadable variable fonts", () => {
         const out = generateComposeSnippet({
             family: "Roboto Flex",
             weight: 500,
@@ -65,10 +73,13 @@ describe("composeFontSnippet", () => {
             letterSpacingSp: 0,
             lineHeightSp: 40,
         });
+        assert.ok(out.includes('googleFont = GoogleFont("Roboto Flex")'));
         assert.ok(out.includes("variationSettings = FontVariation.Settings("));
         assert.ok(out.includes("FontVariation.weight(500)"));
         assert.ok(out.includes('FontVariation.Setting("opsz", 40f)'));
         // wght goes through the dedicated helper, not a generic Setting.
         assert.ok(!out.includes('FontVariation.Setting("wght"'));
+        // The variation-on-downloadable-font core requirement is called out.
+        assert.ok(out.includes("androidx.core:core:1.19.0"));
     });
 });

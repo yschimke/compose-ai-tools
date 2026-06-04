@@ -1,8 +1,13 @@
 // Pure Compose-snippet codegen for the font browser's customiser.
 //
-// Given the live attribute selections (weight, italic, and — for
-// variable fonts — the per-axis values) this emits a Kotlin
-// `FontFamily` + `TextStyle` the user can paste into a Compose project.
+// Everything the browser lists is a Google **downloadable** font, so the
+// emitted Kotlin uses the Google Fonts provider API
+// (`androidx.compose.ui.text.googlefonts`) rather than a bundled
+// `R.font.<name>` resource: a `GoogleFont.Provider` plus
+// `Font(googleFont = …, fontProvider = …)`. For variable fonts we also
+// emit `variationSettings` — downloadable variable fonts gained
+// variation support in `androidx.core:core:1.19.0`.
+//
 // No DOM / node deps so it's unit-tested directly and shared by the
 // webview bundle.
 
@@ -22,16 +27,6 @@ export interface SnippetOptions {
     lineHeightSp: number;
 }
 
-/** Android `res/font` resource name (lowercase, underscores only). */
-export function fontResourceName(family: string): string {
-    return (
-        family
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_+|_+$/g, "") || "font"
-    );
-}
-
 /** PascalCase identifier prefix for the generated `val`s. */
 export function fontIdentifier(family: string): string {
     const parts = family
@@ -47,25 +42,46 @@ function fmt(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
+/** Escape a family name for embedding in a Kotlin string literal. */
+function kotlinString(value: string): string {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+// The standard Google Fonts downloadable-font provider — the same
+// `com.google.android.gms.fonts` authority every consumer declares once.
+const PROVIDER_BLOCK = [
+    "val provider = GoogleFont.Provider(",
+    '    providerAuthority = "com.google.android.gms.fonts",',
+    '    providerPackage = "com.google.android.gms",',
+    // The certs array ships in androidx.compose.ui:ui-text-google-fonts, so
+    // fully-qualify its R — an unqualified `R` resolves to the app module
+    // (which lacks it) under non-transitive R, the AGP default.
+    "    certificates =",
+    "        androidx.compose.ui.text.googlefonts.R.array" +
+        ".com_google_android_gms_fonts_certs,",
+    ")",
+].join("\n");
+
 /**
- * Generate the Compose `FontFamily` + `TextStyle` snippet reflecting the
- * current customiser selections.
+ * Generate the Compose downloadable-`FontFamily` + `TextStyle` snippet
+ * reflecting the current customiser selections.
  */
 export function generateComposeSnippet(opts: SnippetOptions): string {
-    const res = fontResourceName(opts.family);
     const id = fontIdentifier(opts.family);
     const styleEnum = opts.italic ? "FontStyle.Italic" : "FontStyle.Normal";
 
     const fontArgs: string[] = [
-        `resId = R.font.${res}`,
+        `googleFont = GoogleFont("${kotlinString(opts.family)}")`,
+        `fontProvider = provider`,
         `weight = FontWeight(${opts.weight})`,
         `style = ${styleEnum}`,
     ];
 
     if (opts.isVariable) {
         const settings: string[] = [];
-        // Always pin weight + italic through the variation API so the
-        // variable file renders exactly what the customiser shows.
+        // Pin weight (+ italic) through the variation API so the
+        // downloadable variable font renders exactly what the
+        // customiser shows.
         settings.push(`FontVariation.weight(${opts.weight})`);
         if (opts.italic) settings.push(`FontVariation.italic(1f)`);
         for (const axis of opts.axes) {
@@ -84,7 +100,17 @@ export function generateComposeSnippet(opts: SnippetOptions): string {
 
     const fontArgsBlock = fontArgs.map((a) => `        ${a},`).join("\n");
 
-    return [
+    const lines: string[] = [];
+    if (opts.isVariable) {
+        // variationSettings on a downloadable font needs core 1.19.0+.
+        lines.push(
+            "// Variable-axis variationSettings on downloadable fonts requires",
+            "// androidx.core:core:1.19.0+ and ui-text-google-fonts.",
+        );
+    }
+    lines.push(
+        PROVIDER_BLOCK,
+        "",
         `val ${id}FontFamily = FontFamily(`,
         `    Font(`,
         fontArgsBlock,
@@ -99,5 +125,6 @@ export function generateComposeSnippet(opts: SnippetOptions): string {
         `    letterSpacing = ${fmt(opts.letterSpacingSp)}.sp,`,
         `    lineHeight = ${fmt(opts.lineHeightSp)}.sp,`,
         `)`,
-    ].join("\n");
+    );
+    return lines.join("\n");
 }
