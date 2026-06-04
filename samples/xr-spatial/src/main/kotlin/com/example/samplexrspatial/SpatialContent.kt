@@ -251,3 +251,31 @@ private fun EqBand(label: String, value: Float) {
     Slider(value = value, onValueChange = {})
   }
 }
+
+/**
+ * A label/title card on a very dark surface — a precise reproduction of the panel body in the
+ * Android XR "spatial panels" reference (developer.android.com/develop/xr). The panel fills its
+ * `SpatialPanel` edge-to-edge with no corner rounding of its own: the `xr-composite` compositor
+ * rounds panel corners when it bakes, so a flat dark fill here becomes the reference's rounded dark
+ * card. Colours are sampled straight from the reference shot — surface `#0F0C13`, near-white title
+ * `#EFEAF1`, muted-grey eyebrow.
+ */
+@Composable
+fun ReferencePanel(title: String, eyebrow: String = "Panel", modifier: Modifier = Modifier) {
+  Surface(modifier = modifier.fillMaxSize(), color = Color(0xFF0F0C13)) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+      ) {
+        Text(eyebrow, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB6B1BD))
+        Text(
+          title,
+          style = MaterialTheme.typography.headlineSmall,
+          fontWeight = FontWeight.Bold,
+          color = Color(0xFFEFEAF1),
+        )
+      }
+    }
+  }
+}
