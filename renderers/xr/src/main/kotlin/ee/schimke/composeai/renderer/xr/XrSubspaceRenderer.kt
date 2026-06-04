@@ -40,6 +40,12 @@ public object XrSubspaceRenderer {
     runCatching { method.asMethod().isAccessible = true }
     val receiver = resolveReceiver(clazz)
 
+    // Pre-create + configure the offline XR Session with device tracking + a seeded viewer head pose
+    // BEFORE setContent, so `rotateToLookAtUser` (the billboard modifier) can source a head pose and
+    // face the viewer instead of crashing on an uninitialised `arDevice`. Harmless for previews that
+    // don't use it — it just hands `Subspace` a ready-configured session. See FakeXrHeadPose.
+    FakeXrHeadPose.install(rule)
+
     rule.setContent { method.invoke(currentComposer, receiver) }
     rule.waitForIdle()
 

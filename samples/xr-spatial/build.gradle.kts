@@ -85,6 +85,10 @@ dependencies {
   testImplementation(libs.xr.compose.testing)
   testImplementation("androidx.xr.runtime:runtime-testing:1.0.0-alpha14")
   testImplementation("androidx.xr.scenecore:scenecore-testing:1.0.0-alpha15")
+  // Fake ARCore perception runtime + settable head pose, so `SubspaceModifierPoseTest` can drive
+  // `rotateToLookAtUser` offline (registered for `ServiceLoader` in
+  // src/test/resources/META-INF/services alongside the scene/rendering fakes).
+  testImplementation(libs.xr.arcore.testing)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
 }
