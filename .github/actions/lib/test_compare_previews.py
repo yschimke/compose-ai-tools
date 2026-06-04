@@ -428,6 +428,43 @@ class GenerateTest(unittest.TestCase):
         # PNG copied under renders/<module>/<id>.png.
         self.assertTrue((self.out / "renders" / "m" / "A.png").exists())
 
+    def test_title_intro_and_notes_file_customise_readme(self):
+        # The integration matrix overrides the README heading / blurb and
+        # splices a per-project notes file (workarounds applied / known
+        # issues) in under the intro. Defaults stay backward-compatible
+        # (other tests omit these attrs entirely).
+        from types import SimpleNamespace
+
+        notes = self.tmp / "notes.md"
+        notes.write_text(
+            "## CI notes\n\n- Consumer patch applied: `xr-alpha14.patch`.\n"
+        )
+        rc = cp.cmd_generate(SimpleNamespace(
+            cli_json=str(self.cli_path),
+            output_dir=str(self.out),
+            repo="owner/repo",
+            branch="compose-preview/integration/jetstream-xr",
+            prior_baselines=None,
+            prior_renders=None,
+            title="AdaptiveJetStream — Compose previews",
+            intro="Auto-rendered from `android/adaptive-apps-samples@main`.",
+            notes_file=str(notes),
+        ))
+        self.assertEqual(rc, 0)
+
+        readme = (self.out / "README.md").read_text()
+        self.assertIn("# AdaptiveJetStream — Compose previews", readme)
+        self.assertIn("Auto-rendered from `android/adaptive-apps-samples@main`.", readme)
+        self.assertIn("## CI notes", readme)
+        self.assertIn("Consumer patch applied: `xr-alpha14.patch`.", readme)
+        # Notes land above the module gallery, not after it.
+        self.assertLess(readme.index("## CI notes"), readme.index("## m"))
+        # Raw URLs still point at the per-project integration branch.
+        self.assertIn(
+            "raw.githubusercontent.com/owner/repo/compose-preview/integration/jetstream-xr",
+            readme,
+        )
+
     def test_failed_render_carries_prior_baseline_forward(self):
         # When a single preview fails on this run and `--prior-baselines`
         # plus `--prior-renders` point at the existing baseline branch,

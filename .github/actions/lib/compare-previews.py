@@ -372,6 +372,18 @@ def cmd_generate(args: argparse.Namespace) -> int:
         getattr(args, "intro", None)
         or "Auto-generated from `main`. Browse inline or compare against PR branches."
     )
+    # Optional markdown blob spliced in right under the intro — used by the
+    # integration matrix to record the per-project workarounds / known
+    # issues (CI patches applied, credentials stubbed out, non-blocking
+    # status) next to that project's rendered gallery. Empty / missing =
+    # omitted entirely (the in-repo `compose-preview/main` baseline doesn't
+    # pass one).
+    notes = ""
+    notes_path = getattr(args, "notes_file", None)
+    if notes_path:
+        p = Path(notes_path)
+        if p.exists():
+            notes = p.read_text().strip()
     prior_baselines_path = (
         Path(args.prior_baselines) if getattr(args, "prior_baselines", None) else None
     )
@@ -461,6 +473,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
         intro,
         "",
     ]
+    if notes:
+        lines.append(notes)
+        lines.append("")
     if failures:
         retained = sum(1 for key, _ in failures if key in carried_over)
         dropped = len(failures) - retained
@@ -1268,6 +1283,9 @@ def main() -> int:
     gen.add_argument("--title", help="README H1 (default: 'Preview Baselines').")
     gen.add_argument("--intro",
                      help="README intro paragraph (default: the compose-preview/main blurb).")
+    gen.add_argument("--notes-file",
+                     help="Path to a markdown file spliced into the README under the "
+                          "intro (per-project workarounds / known issues). Omitted = none.")
     # Optional. When the render task produced no PNG for some previews,
     # pull their prior entry from this `baselines.json` instead of dropping
     # them — keeps `compose-preview/main` complete across flaky single-preview
