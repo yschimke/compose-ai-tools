@@ -386,6 +386,36 @@ class RenderEngine(
       }
     }
 
+    // Compose semantics wireframe — derive the standalone 2D schematic (SVG + baked PNG) from the
+    // held scene's unmerged semantics root, matching the unmerged tree the Android producer uses so
+    // both backends emit the same diagram. Always-on (requiresRerender = false) like the Android
+    // post-capture extension, and wrapped in try/catch so a walk/bake failure never strands the
+    // PNG.
+    try {
+      val root = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode
+      if (root != null) {
+        trace.section("wireframe") {
+          val previewId = state.spec.previewId ?: state.spec.outputBaseName
+          val payload = ComposeSemanticsDataProducer.buildPayload(root)
+          ComposeSemanticsWireframeDataProducer.writeSvg(
+            rootDir = dataDir,
+            previewId = previewId,
+            payload = payload,
+          )
+          DesktopSemanticsWireframe.generate(
+            payload = payload,
+            destPng =
+              dataDir.resolve(previewId).resolve(ComposeSemanticsWireframeDataProducer.FILE_PNG),
+          )
+        }
+      }
+    } catch (t: Throwable) {
+      System.err.println(
+        "RenderEngine: wireframe write failed for ${state.spec.outputBaseName}: " +
+          "${t.javaClass.simpleName}: ${t.message}"
+      )
+    }
+
     // Accessibility (desktop, overlay-only) — extract Compose semantics from the held scene and
     // write the a11y artefacts (empty findings + node hierarchy + Paparazzi-style overlay PNG).
     // ATF is Android-only, so there are no findings here. Gated on `renderMode == "a11y"` so the

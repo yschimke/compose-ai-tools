@@ -725,6 +725,13 @@ internal fun buildDesktopExtensions(
         dataProductRegistry = ComposeSemanticsDataProductRegistry(rootDir = dataRoot),
       )
     }
+    tryAdd("compose/semantics-wireframe") {
+      Extension(
+        id = "compose/semantics-wireframe",
+        displayName = "Compose semantics wireframe",
+        dataProductRegistry = ComposeSemanticsWireframeDataProductRegistry(rootDir = dataRoot),
+      )
+    }
     tryAdd("layout/inspector") {
       Extension(
         id = "layout/inspector",

@@ -14,6 +14,22 @@ object LayoutInspectorProduct {
   const val FILE: String = "layout-inspector.json"
 }
 
+/**
+ * `compose/semantics-wireframe` — a standalone 2D schematic of the semantics tree, derived from the
+ * same captured root as [ComposeSemanticsProduct]. Two files per preview: the SVG (the primary,
+ * path-transported artifact) and a baked PNG (rides as a [DataProductExtra][name=[PNG_EXTRA_NAME]]
+ * for raster-only consumers).
+ */
+object ComposeSemanticsWireframeProduct {
+  const val KIND: String = "compose/semantics-wireframe"
+  const val SCHEMA_VERSION: Int = 1
+  const val FILE_SVG: String = "compose-semantics-wireframe.svg"
+  const val FILE_PNG: String = "compose-semantics-wireframe.png"
+  const val PNG_EXTRA_NAME: String = "png"
+  const val MEDIA_TYPE_SVG: String = "image/svg+xml"
+  const val MEDIA_TYPE_PNG: String = "image/png"
+}
+
 @Serializable data class ComposeSemanticsPayload(val root: ComposeSemanticsNode)
 
 @Serializable

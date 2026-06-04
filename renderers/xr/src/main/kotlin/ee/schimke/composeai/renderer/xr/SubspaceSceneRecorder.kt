@@ -1,19 +1,27 @@
 package ee.schimke.composeai.renderer.xr
 
 import android.view.View
+import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.xr.compose.subspace.node.SubspaceSemanticsInfo
 import androidx.xr.compose.testing.SubspaceTestContext
 import androidx.xr.compose.testing.onSubspaceNodeWithTag
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.xr.OrbitCamera
 import ee.schimke.composeai.xr.Quat
 import ee.schimke.composeai.xr.SizeDp
+import ee.schimke.composeai.xr.Size3dDp
 import ee.schimke.composeai.xr.SpatialPanel
 import ee.schimke.composeai.xr.SpatialPose
 import ee.schimke.composeai.xr.SpatialScene
+import ee.schimke.composeai.xr.SpatialSemanticsKind
+import ee.schimke.composeai.xr.SpatialSemanticsNode
+import ee.schimke.composeai.xr.SpatialSemanticsTree
 import ee.schimke.composeai.xr.Vec3
 
 /**
@@ -111,6 +119,92 @@ public object SubspaceSceneRecorder {
     val views = tagged.mapNotNull { (tag, node) -> contentView(node)?.let { tag to it } }.toMap()
     val scene = SpatialScene(previewId = previewId, camera = defaultCamera(panels), panels = panels)
     return RecordedSubspace(scene, views)
+  }
+
+  /**
+   * Records the unified **3D-over-2D** [SpatialSemanticsTree]: the subspace layout (a `subspaceRoot`
+   * with one `panel` child per tagged `SpatialPanel`, each carrying the recovered pose/size) with
+   * every panel's 2D content tree attached as [SpatialSemanticsNode.panelContent].
+   *
+   * The 2D tree is recovered from each panel's live content [View]: a `SpatialPanel` composes its
+   * content into a view whose Compose root implements [RootForTest], so its
+   * `semanticsOwner.unmergedRootSemanticsNode` is the ordinary 2D semantics root (proven by
+   * `SubspacePanelSemanticsSpikeTest`). That [SemanticsNode] is handed to [projectSemantics] — the
+   * same projection `compose/semantics` and the wireframe use, injected rather than imported so this
+   * renderer module stays free of the daemon-side connector that owns it (the daemon passes
+   * `ComposeSemanticsDataProducer.buildPayload(it).root`). A panel whose view or semantics can't be
+   * recovered simply gets a null [SpatialSemanticsNode.panelContent] — its geometry still lands, so
+   * one unreadable panel degrades to a face without an overlay rather than failing the tree.
+   */
+  public fun recordTree(
+    rule: AndroidComposeTestRule<*, ComponentActivity>,
+    previewId: String? = null,
+    projectSemantics: (SemanticsNode) -> ComposeSemanticsNode,
+  ): SpatialSemanticsTree {
+    val recorded = recordAllWithViews(rule, previewId)
+    val panelNodes =
+      recorded.scene.panels.map { panel ->
+        val content =
+          recorded.panelViews[panel.id]?.findRootForTest()?.let { rootForTest ->
+            runCatching { projectSemantics(rootForTest.semanticsOwner.unmergedRootSemanticsNode) }
+              .getOrNull()
+          }
+        SpatialSemanticsNode(
+          id = panel.id,
+          kind = SpatialSemanticsKind.PANEL,
+          poseInRoot = panel.poseInRoot,
+          sizeDp = Size3dDp(width = panel.sizeDp.width, height = panel.sizeDp.height),
+          panelContent = content,
+        )
+      }
+    return SpatialSemanticsTree(previewId = previewId, root = subspaceRootOf(panelNodes))
+  }
+
+  /**
+   * The degenerate **non-XR** case: an ordinary preview is a single `panel` at identity pose whose
+   * [SpatialSemanticsNode.panelContent] is the whole 2D tree. Pure (no subspace / Robolectric), so
+   * the daemon's normal 2D render path can wrap its `compose/semantics` payload into the same tree
+   * shape the XR path produces — making the per-panel wireframe the leaf renderer for every preview.
+   */
+  public fun singlePanelTree(
+    content: ComposeSemanticsNode,
+    sizeDp: Size3dDp,
+    previewId: String? = null,
+    panelId: String = "panel",
+  ): SpatialSemanticsTree {
+    val panel =
+      SpatialSemanticsNode(
+        id = panelId,
+        kind = SpatialSemanticsKind.PANEL,
+        poseInRoot = identityPose(),
+        sizeDp = sizeDp,
+        panelContent = content,
+      )
+    return SpatialSemanticsTree(previewId = previewId, root = subspaceRootOf(listOf(panel)))
+  }
+
+  /** Wraps [panelNodes] under a `subspaceRoot` at identity pose (poses on children are absolute). */
+  private fun subspaceRootOf(panelNodes: List<SpatialSemanticsNode>): SpatialSemanticsNode =
+    SpatialSemanticsNode(
+      id = "subspaceRoot",
+      kind = SpatialSemanticsKind.SUBSPACE_ROOT,
+      poseInRoot = identityPose(),
+      sizeDp = Size3dDp(width = 0, height = 0),
+      children = panelNodes,
+    )
+
+  private fun identityPose(): SpatialPose =
+    SpatialPose(translation = Vec3(0.0, 0.0, 0.0), rotation = Quat(0.0, 0.0, 0.0, 1.0))
+
+  /** First [RootForTest] (the Compose `AndroidComposeView`) in this view's subtree, or null. */
+  private fun View.findRootForTest(): RootForTest? {
+    if (this is RootForTest) return this
+    if (this is ViewGroup) {
+      for (i in 0 until childCount) {
+        getChildAt(i).findRootForTest()?.let { return it }
+      }
+    }
+    return null
   }
 
   /**

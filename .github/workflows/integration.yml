@@ -395,6 +395,13 @@ jobs:
             ref: main
             workdir: AdaptiveJetStream
             module: ":jetstream"
+            # AdaptiveJetStream's Hilt-generated Java targets source release 21,
+            # so its `:jetstream:hiltJavaCompileDebug` fails on the matrix-default
+            # JDK 17 with `error: invalid source release: 21`. Build this entry on
+            # JDK 21 (mirrors the Samples-SDK21 lane). The compose-ai preview
+            # daemon's own 17 toolchain is still resolved from the runner's
+            # preinstalled JDKs via Gradle toolchain detection, so render still works.
+            java_version: "21"
             # Upstream tracks androidx.xr.compose 1.0.0-alpha07, whose
             # `ApplicationSubspace` / `MovePolicy` / `SpatialConfiguration`
             # APIs were removed or deprecated by alpha14 — the version our XR
