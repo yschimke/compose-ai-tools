@@ -61,4 +61,74 @@ class MissingRendersPolicyTest {
     assertEquals("warn", p.policy())
     assertFalse(p.shouldFail())
   }
+
+  private fun result(
+    id: String,
+    kind: String = "COMPOSE",
+    captures: List<CaptureResult>,
+  ): PreviewResult =
+    PreviewResult(
+      id = id,
+      module = "samples:demo",
+      functionName = id.substringAfterLast('.'),
+      className = id.substringBeforeLast('.'),
+      params = PreviewParams(kind = kind),
+      captures = captures,
+      pngPath = captures.firstOrNull()?.pngPath,
+    )
+
+  @Test
+  fun `previewsMissingPng flags a compose preview with a null-PNG capture`() {
+    val results =
+      listOf(
+        result("p.Ok", captures = listOf(CaptureResult(pngPath = "/r/ok.png", sha256 = "a"))),
+        result("p.Broken", captures = listOf(CaptureResult(pngPath = null))),
+      )
+    assertEquals(listOf("p.Broken"), previewsMissingPng(results).map { it.id })
+  }
+
+  @Test
+  fun `previewsMissingPng excludes XR subspace previews whose composite still is absent`() {
+    // XR subspace renders to scene.json; the composite PNG only lands when the xr-composite
+    // binary is provisioned (it 404s on most CI runners), so a null pngPath is expected, not a
+    // failure — mirrors NON_PNG_PREVIEW_KINDS in compare-previews.py.
+    val results =
+      listOf(
+        result("p.Spatial", kind = "XR_SUBSPACE", captures = listOf(CaptureResult(pngPath = null)))
+      )
+    assertTrue(previewsMissingPng(results).isEmpty())
+    assertTrue("XR_SUBSPACE" in NON_PNG_PREVIEW_KINDS)
+  }
+
+  @Test
+  fun `previewsMissingPng catches a partially-rendered fan-out`() {
+    val results =
+      listOf(
+        result(
+          "p.FanOut",
+          captures =
+            listOf(
+              CaptureResult(advanceTimeMillis = 0, pngPath = "/r/a.png", sha256 = "a"),
+              CaptureResult(advanceTimeMillis = 500, pngPath = null),
+            ),
+        )
+      )
+    assertEquals(listOf("p.FanOut"), previewsMissingPng(results).map { it.id })
+  }
+
+  @Test
+  fun `captureCoordLabel renders static, time, and scroll coordinates`() {
+    assertEquals("default", captureCoordLabel(CaptureResult()))
+    assertEquals("500ms", captureCoordLabel(CaptureResult(advanceTimeMillis = 500)))
+    assertEquals(
+      "scroll long",
+      captureCoordLabel(CaptureResult(scroll = ScrollCapture(mode = "LONG"))),
+    )
+    assertEquals(
+      "500ms · scroll end",
+      captureCoordLabel(
+        CaptureResult(advanceTimeMillis = 500, scroll = ScrollCapture(mode = "END"))
+      ),
+    )
+  }
 }
