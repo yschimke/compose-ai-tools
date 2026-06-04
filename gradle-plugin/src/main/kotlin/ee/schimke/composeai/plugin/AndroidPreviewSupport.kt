@@ -369,6 +369,14 @@ internal object AndroidPreviewSupport {
    * exactly what AGP gives the test JVM, so any coord that would actually be on the renderer's
    * classpath gets seen.
    *
+   * **Why XR modules pass.** A module that declares `androidx.xr.compose` (see
+   * [moduleDeclaresXrCompose]) hosts `@XrSubspacePreview` spatial previews even when it declares no
+   * traditional `@Preview` tooling coord — `androidx.xr.compose` is the standalone signal that the
+   * module has XR preview surface, the same way `ui-tooling-preview` is the signal for flat
+   * `@Preview`. Without this tier a pure-XR module would fail the gate, `onVariants` would return
+   * before [registerAndroidTasks], and the `androidx.xr.compose`-driven auto-enable of
+   * `composePreviewRenderXr` would never run — defeating the documented zero-config XR path.
+   *
    * The `variantName` argument is unused but kept on the public signature for test-fixture
    * compatibility.
    */
@@ -377,6 +385,7 @@ internal object AndroidPreviewSupport {
     @Suppress("UNUSED_PARAMETER") variantName: String,
   ): Boolean =
     hasDirectPreviewDependency(project) ||
+      moduleDeclaresXrCompose(project) ||
       (isComposeModule(project) && hasAnyProjectDependency(project))
 
   /**
