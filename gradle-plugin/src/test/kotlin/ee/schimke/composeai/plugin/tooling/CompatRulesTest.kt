@@ -281,6 +281,64 @@ class CompatRulesTest {
   }
 
   @Test
+  fun `library minSdk higher than module fires error with overrideLibrary remediation`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+        moduleMinSdk = 26,
+        libraryMinSdks = listOf(LibraryMinSdk("ai.koog:koog-agents-android", "ai.koog.agents", 35)),
+      )
+    val f = findings.single { it.id == "library-minsdk-exceeds-module" }
+    assertEquals("error", f.severity)
+    assertTrue("ai.koog:koog-agents-android (minSdk 35)" in f.message)
+    assertTrue("26" in f.message)
+    assertTrue(f.remediationCommands.any { "tools:overrideLibrary=\"ai.koog.agents\"" in it })
+  }
+
+  @Test
+  fun `library minSdk equal to or below module is quiet`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+        moduleMinSdk = 35,
+        libraryMinSdks =
+          listOf(
+            LibraryMinSdk("ai.koog:koog-agents-android", "ai.koog.agents", 35),
+            LibraryMinSdk("com.example:legacy", "com.example.legacy", 21),
+          ),
+      )
+    assertNull(findings.firstOrNull { it.id == "library-minsdk-exceeds-module" })
+  }
+
+  @Test
+  fun `unknown module minSdk skips the library-minSdk check`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+        moduleMinSdk = null,
+        libraryMinSdks = listOf(LibraryMinSdk("ai.koog:koog-agents-android", "ai.koog.agents", 35)),
+      )
+    assertNull(findings.firstOrNull { it.id == "library-minsdk-exceeds-module" })
+  }
+
+  @Test
+  fun `library minSdk finding without a parsed package falls back to placeholder`() {
+    val findings =
+      CompatRules.evaluate(
+        mainWithBom(),
+        mainWithBom() + ("androidx.compose.ui:ui-test-manifest" to "1.10.6"),
+        moduleMinSdk = 24,
+        libraryMinSdks = listOf(LibraryMinSdk("com.example:lib", null, 30)),
+      )
+    val f = findings.single { it.id == "library-minsdk-exceeds-module" }
+    assertTrue(f.remediationCommands.any { "<library.package.name>" in it })
+    assertTrue(f.remediationSummary!!.contains(">= 30"))
+  }
+
+  @Test
   fun `semver parses and compares`() {
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16.0"))
     assertEquals(Semver(1, 16, 0), Semver.parseOrNull("1.16"))

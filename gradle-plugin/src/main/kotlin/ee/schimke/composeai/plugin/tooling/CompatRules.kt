@@ -90,6 +90,8 @@ internal object CompatRules {
     previewToolingDeclared: Boolean? = null,
     enforcePreviewToolingDependency: Boolean? = null,
     transitivePreviewToolingDetected: Boolean? = null,
+    moduleMinSdk: Int? = null,
+    libraryMinSdks: List<LibraryMinSdk> = emptyList(),
   ): List<ModuleFindingData> {
     val findings = mutableListOf<ModuleFindingData>()
     val mainV = parseVersions(main)
@@ -101,6 +103,7 @@ internal object CompatRules {
     checkComposeBom(main)?.let(findings::add)
     checkHamcrestSkew(test)?.let(findings::add)
     checkKmpAndroidSiblingMismatch(test)?.let(findings::add)
+    checkLibraryMinSdk(moduleMinSdk, libraryMinSdks)?.let(findings::add)
     checkUndeclaredPreviewTooling(
         previewToolingDeclared,
         enforcePreviewToolingDependency,
@@ -284,6 +287,59 @@ internal object CompatRules {
   }
 
   /**
+   * Fires when a transitive library on the unit-test classpath declares a higher `minSdkVersion`
+   * than the consumer module. compose-preview renders inside a Robolectric **unit test**, which
+   * makes AGP merge the unit-test `AndroidManifest.xml` (`process<Variant>UnitTestManifest`) — and
+   * the merger rejects any library whose `uses-sdk:minSdkVersion` exceeds the module's. Absent the
+   * plugin many modules never trigger this merge (it only runs when `isIncludeAndroidResources` is
+   * on), so the opaque AGP "minSdkVersion N cannot be smaller than version M declared in library …"
+   * failure is something compose-preview surfaces; this rule turns it into an actionable finding.
+   *
+   * minSdk is meaningless for a host-side Robolectric run, so the recommended fix is the unit-test-
+   * only `tools:overrideLibrary` escape hatch (named with the exact library packages we parsed from
+   * the AAR manifests), with "raise the module minSdk" offered as the on-device alternative.
+   * Returns `null` when the module minSdk is unknown (non-Android / unset) or no library exceeds
+   * it.
+   */
+  private fun checkLibraryMinSdk(
+    moduleMinSdk: Int?,
+    libraryMinSdks: List<LibraryMinSdk>,
+  ): ModuleFindingData? {
+    if (moduleMinSdk == null) return null
+    val offenders =
+      libraryMinSdks.filter { it.minSdk > moduleMinSdk }.sortedByDescending { it.minSdk }
+    if (offenders.isEmpty()) return null
+    val highest = offenders.first().minSdk
+    val packages = offenders.mapNotNull { it.packageName }.distinct()
+    val overrideValue =
+      if (packages.isNotEmpty()) packages.joinToString(", ") else "<library.package.name>"
+    val offenderList = offenders.joinToString(", ") { "${it.coordinate} (minSdk ${it.minSdk})" }
+    return ModuleFindingData(
+      id = "library-minsdk-exceeds-module",
+      severity = "error",
+      message = "library minSdk exceeds module minSdk ($moduleMinSdk): $offenderList",
+      detail =
+        "compose-preview renders inside a Robolectric unit test, so AGP merges the unit-test " +
+          "AndroidManifest (`process<Variant>UnitTestManifest`). That merge fails when a library " +
+          "declares a higher `minSdkVersion` than this module ($moduleMinSdk) — here $offenderList. " +
+          "minSdk has no meaning for a host-side unit test, so the `tools:overrideLibrary` escape " +
+          "hatch clears the merge for the test variant without changing the minSdk you ship. Use " +
+          "it unless you actually intend to raise this module's on-device minSdk to >= $highest.",
+      remediationSummary =
+        "Add tools:overrideLibrary to the unit-test AndroidManifest, or raise the module minSdk to >= $highest.",
+      remediationCommands =
+        listOf(
+          "<!-- src/test/AndroidManifest.xml (or src/androidUnitTest/ for a KMP/CMP module) -->",
+          "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"",
+          "    xmlns:tools=\"http://schemas.android.com/tools\">",
+          "    <uses-sdk tools:overrideLibrary=\"$overrideValue\" />",
+          "</manifest>",
+        ),
+      docsUrl = DOCS_LIBRARY_MINSDK,
+    )
+  }
+
+  /**
    * Flags Gradle versions below [GRADLE_MIN]. Parameter is the raw version string from
    * `GradleVersion.current().version` (e.g. `"9.3.1"`, `"9.4.1"`, `"9.5.0-rc-1"`). `null` means the
    * caller didn't plumb the version through — keeps the pre-existing call sites and tests working
@@ -456,6 +512,8 @@ internal object CompatRules {
   private const val DOCS_COMPOSE_UI_VS_CORE =
     "$DOCS_ROOT#compose-ui-110-on-a-consumer-with-older-androidxcore"
   private const val DOCS_HAMCREST_SKEW = "$DOCS_ROOT#hamcrest-2x-on-the-unit-test-classpath"
+  private const val DOCS_LIBRARY_MINSDK =
+    "$DOCS_ROOT#a-library-declares-a-higher-minsdk-than-the-module"
 }
 
 /**

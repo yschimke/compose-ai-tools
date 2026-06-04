@@ -188,6 +188,10 @@ internal object AndroidPreviewSupport {
     // otherwise `PackageParser` rejects the manifest with "Requires newer sdk
     // version" at sandbox bootstrap (issue #1248).
     val consumerCompileSdk = project.objects.property(Int::class.java)
+    // The module's `defaultConfig.minSdk`, captured here so the doctor task can compare it against
+    // transitive libraries' declared minSdk (the `process<Variant>UnitTestManifest` merge conflict
+    // CompatRules.checkLibraryMinSdk surfaces). Left unset when the consumer omits minSdk.
+    val consumerMinSdk = project.objects.property(Int::class.java)
 
     androidComponents.finalizeDsl { android: Any ->
       val common = android as CommonExtension
@@ -201,6 +205,10 @@ internal object AndroidPreviewSupport {
       val resolvedCompileSdk: Int? = common.compileSdk
       if (resolvedCompileSdk != null) {
         consumerCompileSdk.set(resolvedCompileSdk)
+      }
+      val resolvedMinSdk: Int? = common.defaultConfig.minSdk
+      if (resolvedMinSdk != null) {
+        consumerMinSdk.set(resolvedMinSdk)
       }
     }
 
@@ -249,6 +257,7 @@ internal object AndroidPreviewSupport {
         variant,
         androidComponents.sdkComponents.bootClasspath,
         consumerCompileSdk,
+        consumerMinSdk,
       )
       registerAndroidResourcePreviewTasks(project, extension, variant)
     }
@@ -443,6 +452,7 @@ internal object AndroidPreviewSupport {
     variant: Variant,
     bootClasspath: org.gradle.api.provider.Provider<List<org.gradle.api.file.RegularFile>>,
     consumerCompileSdk: org.gradle.api.provider.Provider<Int>,
+    consumerMinSdk: org.gradle.api.provider.Provider<Int>,
   ) {
     val variantName = variant.name
     val capVariant = variantName.cap()
@@ -616,6 +626,19 @@ internal object AndroidPreviewSupport {
         ?.incoming
         ?.resolutionResult
         ?.rootComponent
+    // AAR `AndroidManifest.xml`s on the unit-test classpath — resolved lazily so the doctor task
+    // can read each library's declared `minSdkVersion` (CompatRules.checkLibraryMinSdk) without
+    // forcing artifact resolution at configuration time.
+    val testManifestArtifacts =
+      project.configurations
+        .findByName("${variantName}UnitTestRuntimeClasspath")
+        ?.incoming
+        ?.artifactView {
+          lenient(true)
+          attributes.attribute(artifactType, "android-manifest")
+        }
+        ?.artifacts
+        ?.resolvedArtifacts
 
     // Capture the running Gradle version at configuration time so the
     // task action stays config-cache safe (GradleVersion.current() is a
@@ -648,6 +671,8 @@ internal object AndroidPreviewSupport {
       this.outputFile.set(previewOutputDir.map { it.file("doctor.json") })
       mainRuntimeRoot?.let { this.mainRuntimeRoot.set(it) }
       testRuntimeRoot?.let { this.testRuntimeRoot.set(it) }
+      this.moduleMinSdk.set(consumerMinSdk)
+      testManifestArtifacts?.let { this.testManifestArtifacts.set(it) }
       this.previewToolingDeclared.set(previewToolingDeclaredAtRegistration)
       this.enforcePreviewToolingDependency.set(extension.enforcePreviewToolingDependency)
       this.injectedDependenciesJson.set(
