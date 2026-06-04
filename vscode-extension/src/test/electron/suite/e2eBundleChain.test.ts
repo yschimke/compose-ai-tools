@@ -46,8 +46,17 @@ import { RealGradleApi } from "../realGradleApi";
  * side of the chain.
  */
 
-const E2E = process.env.COMPOSE_PREVIEW_E2E === "1";
-const describeE2E = E2E ? describe : describe.skip;
+// Normally this suite is gated on `COMPOSE_PREVIEW_E2E=1`
+// (`E2E ? describe : describe.skip`), but TODO(#1473) forces the WHOLE
+// suite skipped, not just the two `it()`s below. Mocha runs a suite's
+// `before`/`after` hooks even when every test in it is pending, so the
+// per-test `.skip`s still paid the cost of the `before()` hook's cold
+// full-tier `:samples:wear` render. On CI that render ran past the 15-min
+// suite ceiling and failed the job with a "before all" hook timeout — pure
+// waste, since neither test runs. Skipping at the describe level skips the
+// expensive setup too. Restore the `E2E ? describe : describe.skip` gate
+// when the chip-activation path lands.
+const describeE2E = describe.skip;
 
 interface PostedMessage {
     command: string;
