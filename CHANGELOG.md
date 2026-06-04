@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.13.4](https://github.com/yschimke/compose-ai-tools/compare/v0.13.3...v0.13.4) (2026-06-04)
+
+
+### Features
+
+* **doctor:** flag transitive libraries whose minSdk exceeds the module ([#1750](https://github.com/yschimke/compose-ai-tools/issues/1750)) ([3c51b72](https://github.com/yschimke/compose-ai-tools/commit/3c51b72637f6d18499c6891080685289910acf4d))
+* **spatial-viewer:** render the gradient backdrop in the WebGL viewer ([#1749](https://github.com/yschimke/compose-ai-tools/issues/1749)) ([bd128a1](https://github.com/yschimke/compose-ai-tools/commit/bd128a1e0bf5422851ebe961dd44541728466a63))
+* **xr-composite:** rounded panels, soft shadow, edge rim + tighter framing ([#1745](https://github.com/yschimke/compose-ai-tools/issues/1745)) ([c088506](https://github.com/yschimke/compose-ai-tools/commit/c08850633c7bae17218b55b7dbeed456c5d83303))
+* **xr-spatial:** reference-grid repro + pose-modifier previews & test ([#1751](https://github.com/yschimke/compose-ai-tools/issues/1751)) ([b78d804](https://github.com/yschimke/compose-ai-tools/commit/b78d8042e7bfad9d0c0fec161641cea06dbd3788))
+* **xr:** bake rotateToLookAtUser billboarding offline via fake perception runtime ([#1752](https://github.com/yschimke/compose-ai-tools/issues/1752)) ([1991842](https://github.com/yschimke/compose-ai-tools/commit/1991842bf41dd3b9ddc2a573a531dd0241e8357d))
+
+
+### Bug Fixes
+
+* **cli:** don't fail --missing-renders on non-PNG preview kinds; list offenders ([#1748](https://github.com/yschimke/compose-ai-tools/issues/1748)) ([ad879ef](https://github.com/yschimke/compose-ai-tools/commit/ad879ef1c698920ef44b650a44a6161d265af724))
+* **samples:** pin android-alpha activity-compose &gt;= 1.11 for navigationevent ([#1744](https://github.com/yschimke/compose-ai-tools/issues/1744)) ([1937dbe](https://github.com/yschimke/compose-ai-tools/commit/1937dbe52518358eb0763282b860dec3391cf97d))
+* **xr:** seed rotateToLookAtUser head pose in the render task + guard NaN poses ([#1753](https://github.com/yschimke/compose-ai-tools/issues/1753)) ([eac2a37](https://github.com/yschimke/compose-ai-tools/commit/eac2a37c0c613fcacccf12b9f9758010e49728f9))
+
 ## [0.13.3](https://github.com/yschimke/compose-ai-tools/compare/v0.13.2...v0.13.3) (2026-06-04)
 
 
