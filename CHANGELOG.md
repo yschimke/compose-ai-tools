@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.3](https://github.com/yschimke/compose-ai-tools/compare/v0.13.2...v0.13.3) (2026-06-04)
+
+
+### Features
+
+* **samples:** showcase spatial Compose previews + gradient composite backdrop ([#1741](https://github.com/yschimke/compose-ai-tools/issues/1741)) ([ed4b7fd](https://github.com/yschimke/compose-ai-tools/commit/ed4b7fd4781b2945b5189ea708e4e0529a5f78e6))
+
+
+### Bug Fixes
+
+* **daemon:** render private @Preview composables via setAccessible ([#1739](https://github.com/yschimke/compose-ai-tools/issues/1739)) ([bcd255a](https://github.com/yschimke/compose-ai-tools/commit/bcd255a414c836de646d8f20fb040114eb46513a))
+
 ## [0.13.2](https://github.com/yschimke/compose-ai-tools/compare/v0.13.1...v0.13.2) (2026-06-03)
 
 
