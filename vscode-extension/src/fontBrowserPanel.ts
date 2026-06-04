@@ -153,7 +153,7 @@ export class FontBrowserPanel {
                 });
                 return;
             }
-            const cached = await this.readCachedCatalog();
+            const cached = await this.readCachedCatalog(false);
             if (cached) {
                 this.catalog = cached;
                 this.postToWebview({ command: "catalog", catalog: cached });
@@ -168,8 +168,11 @@ export class FontBrowserPanel {
         } catch (err) {
             const message = (err as Error).message;
             this.deps.logLine(`${CHANNEL} catalog fetch failed: ${message}`);
-            // Fall back to a stale cache if we have one before erroring.
-            const stale = this.catalog ?? (await this.readCachedCatalog());
+            // Fall back to any cached catalog if we have one before
+            // erroring — here we deliberately ignore the TTL: a stale
+            // catalog is far more useful than an empty error state when
+            // the network is unavailable.
+            const stale = this.catalog ?? (await this.readCachedCatalog(true));
             if (stale) {
                 this.catalog = stale;
                 this.postToWebview({ command: "catalog", catalog: stale });
@@ -179,12 +182,23 @@ export class FontBrowserPanel {
         }
     }
 
-    private async readCachedCatalog(): Promise<FontCatalog | null> {
+    /**
+     * Read the on-disk catalog cache. With [ignoreTtl] false (the normal
+     * pre-fetch path) a catalog older than [CATALOG_TTL_MS] is rejected
+     * so we refresh from the network; with it true (the network-failure
+     * fallback) any parseable cache is returned — stale data beats an
+     * error screen when we're offline.
+     */
+    private async readCachedCatalog(
+        ignoreTtl: boolean,
+    ): Promise<FontCatalog | null> {
         try {
             const raw = await fsp.readFile(this.catalogCachePath, "utf8");
             const catalog = JSON.parse(raw) as FontCatalog;
-            const age = Date.now() - Date.parse(catalog.fetchedAt);
-            if (!Number.isFinite(age) || age > CATALOG_TTL_MS) return null;
+            if (!ignoreTtl) {
+                const age = Date.now() - Date.parse(catalog.fetchedAt);
+                if (!Number.isFinite(age) || age > CATALOG_TTL_MS) return null;
+            }
             return catalog;
         } catch {
             return null;
