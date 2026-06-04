@@ -423,6 +423,13 @@ jobs:
             # Compose app once it's on the alpha14 baseline.
             render: true
             extra_gradle_args: ""
+            # AdaptiveJetStream's `:jetstream` module compiles with Java 21
+            # source/target (Hilt's `hiltJavaCompileDebug` fails with
+            # `invalid source release: 21` on the workflow-default JDK 17).
+            # Pin this cell to 21 — same override the androidchka entry uses.
+            # 21 is also what Robolectric needs once the consumer's compileSdk
+            # reaches 36, so it keeps the render step viable too.
+            java_version: "21"
             notes: |
               - XR spatial Compose. Upstream tracks `androidx.xr.compose`
                 alpha07, whose `ApplicationSubspace` / `MovePolicy` /
