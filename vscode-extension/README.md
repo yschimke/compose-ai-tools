@@ -104,12 +104,30 @@ to `minimal` when the daemon's memory cost isn't worth it for your project.
 3. Use the **Previews** panel to browse discovered `@Preview` functions and
    their rendered images.
 
+### Google Fonts browser
+
+Run **Compose Preview: Browse Google Fonts** from the command palette to open a
+font browser backed by the keyless Google Fonts catalog (no API key required):
+
+- **Search** the full catalog by name and filter by category. Each result row
+  is painted in its own real typeface.
+- **Download** a family — its files are cached under the extension's global
+  storage (nothing is written to your workspace).
+- Downloaded fonts appear on a shelf rendered in their actual face. Select one
+  to **live-customise** it: weight, italic, size, letter-spacing, line-height,
+  and — for variable fonts — a slider per registered variation axis (`opsz`,
+  `slnt`, `GRAD`, …).
+- The customiser generates a ready-to-paste Compose `FontFamily` / `TextStyle`
+  snippet (with `FontVariation.Settings` for variable axes) and a **Copy**
+  button.
+
 ### Commands
 
 | Command                                | Description                                                                      |
 | -------------------------------------- | -------------------------------------------------------------------------------- |
 | `Compose Preview: Refresh Previews`    | Re-read `previews.json` and rendered PNGs from `build/compose-previews/`.        |
 | `Compose Preview: Render All Previews` | Run the `composePreviewRenderAll` Gradle task to discover and render everything. |
+| `Compose Preview: Browse Google Fonts` | Open the Google Fonts browser: search, download, and live-customise fonts.       |
 
 ### Settings
 

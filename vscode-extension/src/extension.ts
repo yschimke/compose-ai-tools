@@ -15,6 +15,7 @@ import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import { PreviewPanel } from "./previewPanel";
 import { parseSpatialSceneJson } from "./webview/spatial/sceneLoader";
 import { BundleViewerPanel } from "./bundleViewerPanel";
+import { FontBrowserPanel } from "./fontBrowserPanel";
 import { isLikelyBundle } from "./bundleFormat";
 import { PreviewRegistry } from "./previewRegistry";
 import { PreviewGutterDecorations } from "./previewGutterDecorations";
@@ -2000,6 +2001,16 @@ export async function activate(
                 }
                 const fsPath = resource?.fsPath ?? "";
                 void handleBundleDropped(fsPath, path.basename(fsPath) || "");
+            },
+        ),
+        vscode.commands.registerCommand(
+            "composePreview.openFontBrowser",
+            () => {
+                FontBrowserPanel.open({
+                    extensionUri: context.extensionUri,
+                    globalStorageUri: context.globalStorageUri,
+                    logLine,
+                });
             },
         ),
     );

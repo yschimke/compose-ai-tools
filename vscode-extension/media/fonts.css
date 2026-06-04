@@ -1,0 +1,292 @@
+/* Styling for the Google Fonts browser webview (`font-browser-app`). */
+
+body {
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    margin: 0;
+    padding: 12px;
+}
+
+.gfb-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    background: var(--vscode-editor-background);
+    padding-bottom: 8px;
+    z-index: 2;
+}
+
+.gfb-search {
+    flex: 1;
+    min-width: 120px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    padding: 5px 8px;
+    border-radius: 3px;
+}
+
+.gfb-category {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, transparent);
+    padding: 4px 6px;
+    border-radius: 3px;
+}
+
+.gfb-btn {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 0;
+    padding: 5px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.gfb-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.gfb-btn[disabled] {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.gfb-primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.gfb-primary:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.gfb-link {
+    background: none;
+    border: 0;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 90%;
+}
+
+.gfb-link:hover {
+    text-decoration: underline;
+}
+
+.gfb-section-title {
+    font-size: 1em;
+    font-weight: 600;
+    margin: 16px 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.gfb-count {
+    font-size: 80%;
+    font-weight: 400;
+    color: var(--vscode-descriptionForeground);
+}
+
+.gfb-message {
+    padding: 16px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.gfb-error {
+    color: var(--vscode-errorForeground);
+}
+
+.gfb-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.gfb-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.gfb-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.gfb-row-main {
+    min-width: 0;
+    flex: 1;
+}
+
+.gfb-specimen-line {
+    font-size: 24px;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gfb-row-meta {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+    flex-wrap: wrap;
+}
+
+.gfb-tag {
+    font-size: 75%;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.gfb-variable {
+    background: var(--vscode-charts-blue, #3794ff);
+    color: #fff;
+}
+
+.gfb-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.gfb-downloaded-pill {
+    font-size: 80%;
+    color: var(--vscode-descriptionForeground);
+    padding: 4px 8px;
+}
+
+.gfb-downloaded {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.gfb-chip {
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-widget-border, transparent);
+    border-radius: 14px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.gfb-chip-active {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.gfb-customiser {
+    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+    background: var(--vscode-editorWidget-background);
+}
+
+.gfb-customiser-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.gfb-customiser-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gfb-warn {
+    color: var(--vscode-editorWarning-foreground);
+    font-size: 85%;
+}
+
+.gfb-specimen-input {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    resize: vertical;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 3px;
+    padding: 6px 8px;
+    font-family: var(--vscode-font-family);
+}
+
+.gfb-preview {
+    margin: 12px 0;
+    padding: 16px;
+    background: var(--vscode-editor-background);
+    border-radius: 4px;
+    overflow-wrap: anywhere;
+    min-height: 48px;
+}
+
+.gfb-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px 16px;
+}
+
+.gfb-control {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 85%;
+}
+
+.gfb-control-label {
+    display: flex;
+    justify-content: space-between;
+    color: var(--vscode-descriptionForeground);
+}
+
+.gfb-control-value {
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-foreground);
+}
+
+.gfb-control input[type="range"] {
+    width: 100%;
+}
+
+.gfb-checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    align-self: end;
+}
+
+.gfb-snippet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.gfb-snippet {
+    margin: 0;
+    padding: 10px;
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 4px;
+    overflow: auto;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 90%;
+    white-space: pre;
+}

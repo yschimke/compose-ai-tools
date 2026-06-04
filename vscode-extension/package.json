@@ -131,6 +131,12 @@
                 "category": "Compose Preview",
                 "icon": "$(package)",
                 "enablement": "config.composePreview.earlyFeatures.enabled"
+            },
+            {
+                "command": "composePreview.openFontBrowser",
+                "title": "Browse Google Fonts",
+                "category": "Compose Preview",
+                "icon": "$(text-size)"
             }
         ],
         "menus": {
