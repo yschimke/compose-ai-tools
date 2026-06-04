@@ -45,6 +45,8 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         gradleVersion,
         previewToolingDeclared = toolingDeclared,
         enforcePreviewToolingDependency = enforceTooling,
+        moduleMinSdk = resolveModuleMinSdk(project),
+        libraryMinSdks = resolveLibraryMinSdks(project, "${variant}UnitTestRuntimeClasspath"),
       )
     val info: ModuleInfo =
       ModuleInfoData(
@@ -181,6 +183,43 @@ internal class ComposePreviewModelBuilder : ToolingModelBuilder {
         ?: return null to null
     val enforce = ext.enforcePreviewToolingDependency.getOrElse(true)
     return declared to enforce
+  }
+
+  /**
+   * Reads the module's `android.defaultConfig.minSdk` reflectively (same no-hard-AGP-dep approach
+   * as [resolveAgpVersion]). Returns `null` for non-Android modules, unset minSdk, or any
+   * reflection failure — [CompatRules.checkLibraryMinSdk] treats `null` as "not checkable".
+   */
+  private fun resolveModuleMinSdk(project: Project): Int? =
+    runCatching {
+        val android = project.extensions.findByName("android") ?: return null
+        val defaultConfig = android.javaClass.getMethod("getDefaultConfig").invoke(android)
+        defaultConfig?.javaClass?.getMethod("getMinSdk")?.invoke(defaultConfig) as? Int
+      }
+      .getOrNull()
+
+  /**
+   * Resolves the `android-manifest` artifacts on [configName] (the AAR `AndroidManifest.xml`s) and
+   * reads each library's declared `minSdkVersion`. Lenient + failure-swallowing so a single
+   * unresolvable artifact doesn't sink doctor; empty list means "nothing to check".
+   */
+  private fun resolveLibraryMinSdks(project: Project, configName: String): List<LibraryMinSdk> {
+    val config = project.configurations.findByName(configName) ?: return emptyList()
+    if (!config.isCanBeResolved) return emptyList()
+    return runCatching {
+        val artifactType =
+          org.gradle.api.attributes.Attribute.of("artifactType", String::class.java)
+        val artifacts =
+          config.incoming
+            .artifactView {
+              lenient(true)
+              attributes.attribute(artifactType, "android-manifest")
+            }
+            .artifacts
+            .artifacts
+        LibraryMinSdkCollector.collect(artifacts)
+      }
+      .getOrElse { emptyList() }
   }
 
   /**

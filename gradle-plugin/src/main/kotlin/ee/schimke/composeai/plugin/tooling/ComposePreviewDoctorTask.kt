@@ -7,12 +7,15 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
@@ -55,6 +58,21 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
   @get:Internal abstract val mainRuntimeRoot: Property<ResolvedComponentResult>
 
   @get:Internal abstract val testRuntimeRoot: Property<ResolvedComponentResult>
+
+  /**
+   * The module's `android.defaultConfig.minSdk`, captured in `finalizeDsl`. Optional because it's
+   * unset for non-Android modules and consumers who omit it; [CompatRules.checkLibraryMinSdk]
+   * treats `null` as "not checkable".
+   */
+  @get:Input @get:Optional abstract val moduleMinSdk: Property<Int>
+
+  /**
+   * The `android-manifest` artifacts (AAR `AndroidManifest.xml`s) on
+   * `${variant}UnitTestRuntimeClasspath`. Wired as a lazy `Provider<Set<ResolvedArtifactResult>>`
+   * so resolution happens at execution, not configuration. Feeds [CompatRules.checkLibraryMinSdk]
+   * via each AAR's declared `minSdkVersion`.
+   */
+  @get:Internal abstract val testManifestArtifacts: SetProperty<ResolvedArtifactResult>
 
   /**
    * JSON-encoded `List<InjectedDependency>` captured at plugin-apply time (populated inside
@@ -100,6 +118,9 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
       mainRoot?.let {
         ee.schimke.composeai.plugin.ValidatePreviewToolingPresentTask.containsPreviewTooling(it)
       } ?: false
+    val libraryMinSdks =
+      runCatching { LibraryMinSdkCollector.collect(testManifestArtifacts.getOrElse(emptySet())) }
+        .getOrElse { emptyList() }
     val findings =
       CompatRules.evaluate(
         main,
@@ -108,6 +129,8 @@ abstract class ComposePreviewDoctorTask : DefaultTask() {
         previewToolingDeclared = previewToolingDeclared.getOrElse(true),
         enforcePreviewToolingDependency = enforcePreviewToolingDependency.getOrElse(true),
         transitivePreviewToolingDetected = transitivePreviewToolingDetected,
+        moduleMinSdk = moduleMinSdk.orNull,
+        libraryMinSdks = libraryMinSdks,
       )
     val injections = decodeInjectedDependencys(injectedDependenciesJson.getOrElse("[]"))
     val report =
