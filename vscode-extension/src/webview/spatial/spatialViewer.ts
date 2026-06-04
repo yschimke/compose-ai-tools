@@ -59,6 +59,39 @@ const PANEL_OUTLINE_COLOR = 0x5a5a6a;
 const FOCUS_OUTLINE_COLOR = 0x4a9eff;
 const DEFAULT_BACKGROUND = 0x16161a;
 
+/**
+ * A named gradient backdrop, mirroring the offline compositor's `kPresets`
+ * (`renderers/xr-composite/src/main.cpp`) so the interactive viewer and the
+ * baked still agree. `floor` (straight down) is only present for 3-stop,
+ * room-like presets; without it the lower hemisphere mirrors the 2-stop
+ * horizon→sky look. `glow` scales the horizon glow band.
+ */
+interface GradientPreset {
+    readonly sky: string;
+    readonly horizon: string;
+    readonly floor?: string;
+    readonly glow: number;
+}
+
+const GRADIENT_PRESETS: Record<string, GradientPreset> = {
+    // Softly-lit warm room: warm-taupe ceiling, warm wall at the horizon, deep
+    // warm-brown floor — the default, matching the compositor.
+    "warm-room": {
+        sky: "#332e27",
+        horizon: "#5a4d40",
+        floor: "#1e1a16",
+        glow: 0.3,
+    },
+    // The original cold 2-stop gradient (no floor), kept selectable.
+    "studio-dark": { sky: "#05070d", horizon: "#1a1f2b", glow: 0.35 },
+};
+const DEFAULT_PRESET = "warm-room";
+
+// Radius of the camera-centred gradient skydome. Comfortably inside the
+// camera's far plane (100000) and outside its near plane; `depthTest` is off so
+// the exact value only needs to avoid clip-space culling.
+const SKYDOME_RADIUS = 50000;
+
 export class SpatialViewer {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
@@ -73,6 +106,8 @@ export class SpatialViewer {
 
     private readonly quadGroup = new THREE.Group();
     private readonly helperGroup = new THREE.Group();
+    /** Camera-centred gradient backdrop; `applyEnvironment` drives its uniforms. */
+    private readonly skydome: THREE.Mesh;
     private quadObjects: QuadObject[] = [];
     private focusedId: string | null = null;
 
@@ -104,6 +139,8 @@ export class SpatialViewer {
         container.appendChild(this.renderer.domElement);
 
         this.scene.background = new THREE.Color(DEFAULT_BACKGROUND);
+        this.skydome = createSkydome();
+        this.scene.add(this.skydome);
         this.scene.add(this.quadGroup);
         this.scene.add(this.helperGroup);
         // Flat unlit quads need no lights, but a soft ambient term keeps any
@@ -183,6 +220,8 @@ export class SpatialViewer {
         this.renderer.domElement.removeEventListener("click", this.handleClick);
         this.clearQuads();
         this.helperGroup.clear();
+        this.scene.remove(this.skydome);
+        disposeObject(this.skydome);
         this.controls.dispose();
         this.renderer.dispose();
         this.renderer.domElement.remove();
@@ -311,12 +350,35 @@ export class SpatialViewer {
     private applyEnvironment(scene: SpatialScene): void {
         const env = scene.environment;
         if (env && env.kind === "color" && env.color) {
+            // Flat-colour backdrop: hide the gradient dome behind it.
+            this.skydome.visible = false;
             this.scene.background = new THREE.Color(env.color);
-        } else {
-            this.scene.background = new THREE.Color(DEFAULT_BACKGROUND);
+            return;
         }
-        // `skybox` backdrops are a later-phase concern; fall back to the flat
-        // background colour rather than failing to render.
+        // Gradient backdrop (the default, and the fallback for any non-`color`
+        // kind including a not-yet-supported `skybox` texture). Mirror the
+        // compositor's precedence: start from a named preset (the scene's
+        // `preset`, else the default `warm-room`), then let explicit
+        // `sky`/`horizon`/`floor` stops override it. A resolved `floor` turns
+        // the gradient into a 3-stop, room-like one.
+        const preset =
+            (env?.preset && GRADIENT_PRESETS[env.preset]) ||
+            GRADIENT_PRESETS[DEFAULT_PRESET];
+        const sky = env?.sky ?? preset.sky;
+        const horizon = env?.horizon ?? preset.horizon;
+        const floor = env?.floor ?? preset.floor;
+
+        const uniforms = (this.skydome.material as THREE.ShaderMaterial)
+            .uniforms;
+        uniforms.uSky.value.set(sky);
+        uniforms.uHorizon.value.set(horizon);
+        uniforms.uFloor.value.set(floor ?? horizon);
+        uniforms.uHasFloor.value = floor !== undefined ? 1 : 0;
+        uniforms.uGlow.value = preset.glow;
+        this.skydome.visible = true;
+        // The dome covers every direction, but clear to the horizon so any
+        // uncovered corner blends in (mirrors the compositor's clear colour).
+        this.scene.background = new THREE.Color(horizon);
     }
 
     private applyCamera(scene: SpatialScene): void {
@@ -391,6 +453,9 @@ export class SpatialViewer {
             if (this.disposed) return;
             this.frameHandle = requestAnimationFrame(tick);
             this.controls.update();
+            // Keep the gradient dome centred on the camera so its object-space
+            // directions equal world view directions (horizon stays at y = 0).
+            this.skydome.position.copy(this.camera.position);
             this.renderer.render(this.scene, this.camera);
         };
         this.frameHandle = requestAnimationFrame(tick);
@@ -399,6 +464,79 @@ export class SpatialViewer {
 
 function vecToThree(v: Vec3): THREE.Vector3 {
     return new THREE.Vector3(v.x, v.y, v.z);
+}
+
+/**
+ * Build the camera-centred gradient backdrop: a back-faced sphere whose shader
+ * reproduces the offline compositor's vertical gradient (`buildGradientSkybox`
+ * in `main.cpp`). The gradient is computed from the world view direction's `y`
+ * — horizon→sky above, horizon→floor below (3-stop) — plus a soft horizon glow
+ * band. Colour stops arrive as `THREE.Color` uniforms (linear-light under
+ * three's colour management, like the compositor's `hexToLinear`); the standard
+ * tonemapping + colour-space chunks encode the linear result to the canvas,
+ * matching the compositor's `LinearToneMapper` + sRGB output.
+ *
+ * `depthTest`/`depthWrite` are off and it draws first (`renderOrder = -1`) so it
+ * always sits behind the panels regardless of the dome radius.
+ */
+function createSkydome(): THREE.Mesh {
+    const material = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthTest: false,
+        depthWrite: false,
+        fog: false,
+        uniforms: {
+            uSky: { value: new THREE.Color(0x000000) },
+            uHorizon: { value: new THREE.Color(0x000000) },
+            uFloor: { value: new THREE.Color(0x000000) },
+            uHasFloor: { value: 0 },
+            uGlow: { value: 0 },
+        },
+        vertexShader: /* glsl */ `
+            varying vec3 vDir;
+            void main() {
+                // Object space == world direction: the dome is only translated
+                // (to the camera), never rotated, so this is the view ray.
+                vDir = normalize(position);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: /* glsl */ `
+            varying vec3 vDir;
+            uniform vec3 uSky;
+            uniform vec3 uHorizon;
+            uniform vec3 uFloor;
+            uniform float uHasFloor;
+            uniform float uGlow;
+            void main() {
+                vec3 dir = normalize(vDir);
+                vec3 c;
+                if (uHasFloor > 0.5 && dir.y < 0.0) {
+                    // Lower hemisphere: horizon (wall) -> floor (straight down).
+                    float t = smoothstep(0.0, 1.0, -dir.y);
+                    c = mix(uHorizon, uFloor, t);
+                } else {
+                    // Upper hemisphere (and the whole sphere in 2-stop mode).
+                    float t = smoothstep(0.0, 1.0, dir.y * 0.5 + 0.5);
+                    c = mix(uHorizon, uSky, t);
+                }
+                // Soft glow band centred on the horizon (dir.y == 0).
+                float glowBand = exp(-(dir.y * dir.y) / (2.0 * 0.06 * 0.06));
+                c += uHorizon * (glowBand * uGlow);
+                gl_FragColor = vec4(c, 1.0);
+                #include <tonemapping_fragment>
+                #include <colorspace_fragment>
+            }
+        `,
+    });
+    const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(SKYDOME_RADIUS, 32, 16),
+        material,
+    );
+    mesh.renderOrder = -1;
+    mesh.frustumCulled = false;
+    mesh.visible = false; // until the first applyEnvironment
+    return mesh;
 }
 
 function findPanelId(object: THREE.Object3D): string | null {
