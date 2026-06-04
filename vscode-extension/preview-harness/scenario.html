@@ -12,6 +12,10 @@
         <link rel="stylesheet" href="../media/codicon.css" />
         <link rel="stylesheet" href="./vscode-theme.css" />
         <link rel="stylesheet" href="../media/preview.css" />
+        <!-- Extra per-fixture stylesheets (e.g. the font browser's
+             media/fonts.css) are appended at boot from the fixture's
+             `styles` array, so a non-preview app can bring its own CSS
+             without this page hard-coding every panel's sheet. -->
 
         <!-- The shim must run before preview.js loads, so getVsCodeApi()
              finds window.acquireVsCodeApi on its first call. -->
@@ -60,14 +64,41 @@
                 const data = await res.json();
                 harness.fixtureData = data;
 
-                const app = document.createElement("preview-app");
+                // App/bundle/styles are fixture-driven so non-preview
+                // panels (e.g. the Google Fonts browser's
+                // `<font-browser-app>` from `fonts.js`) can be captured
+                // through the same loop. Defaults keep every existing
+                // preview-app fixture working untouched.
+                const appTag = data.app ?? "preview-app";
+                const bundle = data.bundle ?? "../media/webview/preview.js";
+                // Await each fixture stylesheet before rendering — a
+                // dynamically inserted <link> doesn't block this module
+                // script, so without this the screenshot can race a
+                // still-loading sheet (e.g. media/fonts.css) and capture
+                // unstyled chrome. Resolve on error too so an offline /
+                // 404 sheet doesn't hang the harness.
+                await Promise.all(
+                    (data.styles ?? []).map(
+                        (href) =>
+                            new Promise((res) => {
+                                const link = document.createElement("link");
+                                link.rel = "stylesheet";
+                                link.href = href;
+                                link.onload = res;
+                                link.onerror = res;
+                                document.head.appendChild(link);
+                            }),
+                    ),
+                );
+
+                const app = document.createElement(appTag);
                 for (const [k, v] of Object.entries(data.dataset ?? {})) {
                     app.dataset[k] = v;
                 }
                 document.body.appendChild(app);
 
-                await loadScript("../media/webview/preview.js");
-                await customElements.whenDefined("preview-app");
+                await loadScript(bundle);
+                await customElements.whenDefined(appTag);
                 await app.updateComplete;
 
                 for (const msg of data.messages ?? []) {

@@ -1,0 +1,154 @@
+{
+    "description": "Google Fonts browser: search/browse list, a downloaded variable font, and the live customiser (weight/italic/size/spacing + per-axis sliders + Compose snippet). app/bundle/styles point the harness at the font-browser bundle instead of preview-app.",
+    "app": "font-browser-app",
+    "bundle": "../media/webview/fonts.js",
+    "styles": ["../media/fonts.css"],
+    "dataset": {},
+    "messages": [
+        {
+            "command": "catalog",
+            "catalog": {
+                "fetchedAt": "2026-06-04T00:00:00.000Z",
+                "categories": ["Display", "Sans Serif", "Serif"],
+                "families": [
+                    {
+                        "family": "Roboto",
+                        "category": "Sans Serif",
+                        "subsets": ["latin"],
+                        "popularity": 1,
+                        "axes": [],
+                        "instances": [
+                            { "weight": 400, "italic": false },
+                            { "weight": 400, "italic": true },
+                            { "weight": 700, "italic": false }
+                        ],
+                        "weights": [400, 700],
+                        "hasItalic": true,
+                        "isVariable": false
+                    },
+                    {
+                        "family": "Roboto Flex",
+                        "category": "Sans Serif",
+                        "subsets": ["latin"],
+                        "popularity": 12,
+                        "axes": [
+                            {
+                                "tag": "wght",
+                                "displayName": "Weight",
+                                "min": 100,
+                                "max": 1000,
+                                "defaultValue": 400
+                            },
+                            {
+                                "tag": "opsz",
+                                "displayName": "Optical Size",
+                                "min": 8,
+                                "max": 144,
+                                "defaultValue": 14
+                            },
+                            {
+                                "tag": "GRAD",
+                                "displayName": "Grade",
+                                "min": -200,
+                                "max": 150,
+                                "defaultValue": 0
+                            }
+                        ],
+                        "instances": [{ "weight": 400, "italic": false }],
+                        "weights": [400],
+                        "hasItalic": false,
+                        "isVariable": true
+                    },
+                    {
+                        "family": "Inter",
+                        "category": "Sans Serif",
+                        "subsets": ["latin"],
+                        "popularity": 8,
+                        "axes": [
+                            {
+                                "tag": "wght",
+                                "displayName": "Weight",
+                                "min": 100,
+                                "max": 900,
+                                "defaultValue": 400
+                            }
+                        ],
+                        "instances": [{ "weight": 400, "italic": false }],
+                        "weights": [400],
+                        "hasItalic": false,
+                        "isVariable": true
+                    },
+                    {
+                        "family": "Lora",
+                        "category": "Serif",
+                        "subsets": ["latin"],
+                        "popularity": 30,
+                        "axes": [],
+                        "instances": [
+                            { "weight": 400, "italic": false },
+                            { "weight": 700, "italic": false }
+                        ],
+                        "weights": [400, 700],
+                        "hasItalic": false,
+                        "isVariable": false
+                    },
+                    {
+                        "family": "Bebas Neue",
+                        "category": "Display",
+                        "subsets": ["latin"],
+                        "popularity": 40,
+                        "axes": [],
+                        "instances": [{ "weight": 400, "italic": false }],
+                        "weights": [400],
+                        "hasItalic": false,
+                        "isVariable": false
+                    }
+                ]
+            }
+        },
+        {
+            "command": "downloaded",
+            "fonts": [
+                {
+                    "family": "Roboto Flex",
+                    "familyId": "roboto-flex",
+                    "category": "Sans Serif",
+                    "isVariable": true,
+                    "axes": [
+                        {
+                            "tag": "wght",
+                            "displayName": "Weight",
+                            "min": 100,
+                            "max": 1000,
+                            "defaultValue": 400
+                        },
+                        {
+                            "tag": "opsz",
+                            "displayName": "Optical Size",
+                            "min": 8,
+                            "max": 144,
+                            "defaultValue": 14
+                        },
+                        {
+                            "tag": "GRAD",
+                            "displayName": "Grade",
+                            "min": -200,
+                            "max": 150,
+                            "defaultValue": 0
+                        }
+                    ],
+                    "faces": [
+                        {
+                            "style": "normal",
+                            "weightMin": 100,
+                            "weightMax": 1000,
+                            "uri": "/media/codicon.ttf",
+                            "format": "ttf"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "actions": [{ "click": ".gfb-chip" }]
+}
