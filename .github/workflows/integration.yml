@@ -105,6 +105,10 @@ jobs:
           cp -R "$HOME/.m2/repository/ee" bundle/m2/
           cp -R cli/build/install/compose-preview/. bundle/cli/
           cp .github/ci/daemon-roundtrip.py bundle/ci/
+          # Ship consumer patches (e.g. the adaptive-apps-samples XR
+          # alpha14 upgrade) so the integration matrix can apply them to
+          # the checked-out external repo before Gradle configures it.
+          cp .github/ci/patches/*.patch bundle/ci/
           tar -czf compose-ai-bundle.tar.gz -C bundle .
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -354,6 +358,33 @@ jobs:
             # the existing matrix entries don't already cover.
             continue_on_error: true
             extra_gradle_args: ""
+          - name: adaptive-apps-samples (AdaptiveJetStream — XR spatial Compose)
+            slug: jetstream-xr
+            repo: android/adaptive-apps-samples
+            ref: main
+            workdir: AdaptiveJetStream
+            module: ":jetstream"
+            # Upstream tracks androidx.xr.compose 1.0.0-alpha07, whose
+            # `ApplicationSubspace` / `MovePolicy` / `SpatialConfiguration`
+            # APIs were removed or deprecated by alpha14 — the version our XR
+            # render path compiles against. Apply the in-repo alpha14 upgrade
+            # patch to the freshly-checked-out tree before Gradle configures
+            # the build (see "Apply consumer patch" step below).
+            #
+            # Idempotent by design: the apply step runs `git apply
+            # --reverse --check` first, so once the same upgrade lands in
+            # `android/adaptive-apps-samples@main` the patch is detected as
+            # already-present and skipped rather than failing on a no-op. If
+            # upstream instead drifts such that the patch no longer applies,
+            # the step fails loudly so we re-cut it against the new baseline.
+            patch_file: adaptive-apps-samples-xr-alpha14.patch
+            # :jetstream carries 12 device-targeted previews via custom
+            # multi-preview annotations (@PhonePreview/@TvPreview/etc.), so
+            # discovery has real coverage. Render end-to-end too — this entry
+            # exists to prove the renderer-android pipeline survives a real XR
+            # Compose app once it's on the alpha14 baseline.
+            render: true
+            extra_gradle_args: ""
           # PeopleInSpace is a KMP project — the :app module is a thin Android
           # wrapper with no @Preview functions; all Compose UI lives in the
           # :common KMP module. Targeting :common needs KMP-Android-target
@@ -501,6 +532,30 @@ jobs:
       - name: Make external gradlew executable
         working-directory: external/${{ matrix.workdir }}
         run: chmod +x ./gradlew
+
+      - name: Apply consumer patch (idempotent)
+        if: matrix.patch_file != ''
+        # Runs from the external checkout root so the patch's
+        # repo-root-relative paths (e.g. AdaptiveJetStream/jetstream/...)
+        # line up with `git apply -p1`. The bundle was extracted into
+        # $GITHUB_WORKSPACE/bundle by the "Install plugin and CLI" step.
+        working-directory: external
+        run: |
+          set -euo pipefail
+          patch="$GITHUB_WORKSPACE/bundle/ci/${{ matrix.patch_file }}"
+          if [ ! -f "$patch" ]; then
+            echo "::error::patch file not found in bundle: $patch"
+            exit 1
+          fi
+          if git apply --reverse --check "$patch" 2>/dev/null; then
+            echo "${{ matrix.patch_file }} is already applied upstream — skipping."
+          elif git apply --check "$patch" 2>/dev/null; then
+            git apply "$patch"
+            echo "Applied ${{ matrix.patch_file }}."
+          else
+            echo "::error::${{ matrix.patch_file }} does not apply cleanly against ${{ matrix.repo }}@${{ matrix.ref }} (upstream likely drifted). Re-cut the patch against the new baseline."
+            exit 1
+          fi
 
       - name: Repo-specific pre-Gradle patches
         if: matrix.pre_gradle_script != ''
