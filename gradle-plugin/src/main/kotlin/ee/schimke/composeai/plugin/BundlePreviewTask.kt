@@ -476,6 +476,22 @@ abstract class BundlePreviewTask : DefaultTask() {
    * path there's no sibling search.
    */
   private fun resolvePreviewIr(preview: PreviewInfo): ResolvedIr? {
+    // kind=LOTTIE: the IR is the discovered asset file itself (no render-time capture). Read it
+    // straight off the module resources by the path discovery recorded, so the bundle carries the
+    // animation and replays it with zero consumer bytecode — same self-contained shape as a
+    // captured Remote Compose document.
+    if (preview.params.kind == PreviewKind.LOTTIE) {
+      val assetPath = preview.params.assetPath ?: return null
+      val resourcesRoot = moduleResourcesDir.orNull?.asFile ?: return null
+      val assetFile = File(resourcesRoot, assetPath)
+      if (!assetFile.isFile || assetFile.length() == 0L) return null
+      return ResolvedIr(
+        format = IR_FORMAT_LOTTIE,
+        ext = assetPath.substringAfterLast('.', missingDelimiterValue = "json"),
+        bytes = assetFile.readBytes(),
+      )
+    }
+
     val rendersRoot = rendersDir.orNull?.asFile ?: return null
     val rel =
       preview.captures.firstOrNull()?.renderOutput?.takeIf { it.isNotEmpty() } ?: return null

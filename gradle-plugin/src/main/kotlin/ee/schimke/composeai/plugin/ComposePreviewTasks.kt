@@ -116,6 +116,11 @@ internal object ComposePreviewTasks {
         // compile under the hood). Use lazy matching so compile tasks registered after this plugin
         // block are still wired into discovery.
         dependsOn(project.tasks.matching { it.name in DESKTOP_COMPILE_TASK_CANDIDATES })
+        // Lottie asset discovery scans the consumer's processed resources. Desktop-only for now —
+        // the Android discover task (AndroidPreviewSupport) doesn't wire this, so `.json`/`.lottie`
+        // assets surface as previews on the JVM/Desktop backend where Compottie renders them.
+        resourceDirs.from(sourceResourceDirs)
+        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 

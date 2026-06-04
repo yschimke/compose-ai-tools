@@ -1,15 +1,39 @@
 # Lottie previews
 
-Render [Lottie](https://airbnb.io/lottie/) animation assets through the compose-preview pipeline.
-This is the first slice of the "Lottie & Rive previews end to end" work — it covers authoring,
-discovery, the Desktop render path, and self-contained bundles (**asset + configured values**). The
-interactive daemon / VS Code timeline-scrubbing layer and the Android + Rive backends are tracked as
-follow-ups below.
+Render [Lottie](https://airbnb.io/lottie/) animation assets through the compose-preview pipeline on
+the Desktop backend, via [Compottie](https://github.com/alexzhirkevich/compottie) (the KMP Lottie
+runtime). Two authoring paths, both rendering with **no Android Studio**:
 
-## What's implemented
+1. **Drop the file in — no `@Preview` needed.** A `.json` Lottie document (detected by structure) or
+   a `.lottie` archive under the module's resources is discovered directly and rendered. This is the
+   "just having the file is enough" path; the asset *is* the preview's intermediate representation,
+   so the bundle replays it with **zero consumer bytecode** — exactly like Remote Compose /
+   protolayout IR.
+2. **A `@Preview` that calls `LottiePreview(...)`** when you want a *configured* frame (a fixed
+   `progress`) or to compose the animation into a larger layout.
 
-A `:lottie-preview-runtime` composable helper, rendered through the existing Desktop renderer via
-[Compottie](https://github.com/alexzhirkevich/compottie) (the KMP Lottie runtime).
+The interactive daemon / VS Code timeline-scrubbing layer (live re-render at a chosen frame), the
+Android backend, and Rive are tracked as follow-ups below.
+
+## 1. File discovery — "just having the file is enough"
+
+Drop a Lottie asset under `src/main/resources/` (e.g. `lottie/loading.json`). The plugin's discovery
+step scans the processed-resources dirs, recognises Lottie `.json` files by their `v`+`layers`
+fingerprint (ordinary config JSON is ignored) and `.lottie` archives by extension, and emits a
+`kind=LOTTIE` preview entry in `previews.json` — no annotation, no Kotlin. The Desktop renderer
+inflates the asset via Compottie with no consumer class to reflect, and the bundle packs the asset
+bytes as `ir/<id>.<ext>` + a `BundleIr(format="lottie")`, dropping any enclosing bytecode.
+
+```
+src/main/resources/lottie/loading.json   →   renders/lottie__lottie_loading.png
+```
+
+Discovery is Desktop-only today (the Android discover task doesn't wire the resource scan).
+
+## 2. `LottiePreview` helper — configured frames
+
+A `:lottie-preview-runtime` composable helper, for when you want a `@Preview` with a fixed progress
+or the animation embedded in a larger composable.
 
 ```kotlin
 import ee.schimke.composeai.preview.lottie.LottiePreview
@@ -37,11 +61,11 @@ multiple `@Preview`s at different `progress` values to review keyframes. Worked 
 
 | Stage | Mechanism |
 | --- | --- |
-| **Authoring** | `LottiePreview(asset, progress)` in [`:lottie-preview-runtime`](../runtimes/lottie) — a standalone JVM/Compose helper, sibling to `:splash-preview-runtime` / `:notification-preview-runtime`. No dependency on the renderer. |
-| **Discovery** | Standard `@Preview` discovery — no new annotation or discovery strategy. |
-| **Render** | Desktop renderer (`ImageComposeScene`). Compottie's `LottieComposition.parse(json)` is **synchronous**, so the composition is ready on the first composed frame — critical because the renderer captures after two `scene.render()` passes and does not pump coroutines, so the async `rememberLottieComposition` would render blank. |
-| **Asset loading** | The asset is a classpath resource (`src/main/resources/lottie/…`). The preview plugin now links the consumer's processed-resources dir onto the **render** classpath (previously only the *bundle* task saw it), so `LottiePreview` resolves the asset via the classloader at render time. This is a generic fix — any preview reading a classpath resource (fonts, images) benefits. |
-| **Bundle** | Self-contained: the asset (`lottie/spin.json`) and the `@Preview` bytecode carrying the configured `progress` literals are both packed into `classes/app.jar`, alongside the rendered PNGs. A bundle replay re-runs the same code against the same asset. |
+| **Discovery (file path)** | `PreviewDiscovery` scans the resource dirs; a Lottie `.json` (sniffed by `v`+`layers`) or `.lottie` becomes a `kind=LOTTIE` `PreviewInfo` with the asset's resource-relative path on `PreviewParams.assetPath` and dimensions read from the document's `w`/`h`. Wired only on the Desktop discover task. |
+| **Discovery (`@Preview` path)** | Standard `@Preview` discovery of a function calling `LottiePreview(asset, progress)`. |
+| **Render** | Desktop renderer (`ImageComposeScene`). For `kind=LOTTIE`, `DesktopRendererMain` skips class reflection and renders the asset via `LottiePreview` directly. Compottie's `LottieComposition.parse(json)` is **synchronous**, so the composition is ready on the first composed frame — critical because the renderer captures after two `scene.render()` passes and does not pump coroutines, so the async `rememberLottieComposition` would render blank. |
+| **Asset loading** | The asset is a classpath resource. The plugin links the consumer's processed-resources dir onto the **render** *and* **daemon** classpaths (previously only the bundle task saw it), so the asset resolves via the classloader at render time. Generic — any preview reading a classpath resource (fonts, images) benefits. |
+| **Bundle** | Self-contained. A `kind=LOTTIE` preview packs the asset bytes as `ir/<id>.<ext>` + a `BundleIr(format="lottie")` and contributes **no** bytecode — the bundle replays the asset with zero consumer source, like a Remote Compose / protolayout IR. A `@Preview`-authored Lottie instead packs the asset (under module resources) + the `@Preview` bytecode into `classes/app.jar`. |
 
 ### Compottie version pin
 
@@ -58,6 +82,13 @@ backends. The blueprint for each is the existing **Remote Compose** feature
 (`data/remotecompose/`), which already does asset-byte + named-value overrides + a data product +
 interactive editing + a VS Code presenter.
 
+0. **Live daemon render of `kind=LOTTIE` (prerequisite for VS Code).** The desktop daemon's
+   `RenderEngine` reflects `spec.className` and has no `kind` branch, so a *file-discovered* Lottie
+   preview can render through the one-shot `composePreviewRender` task and bundles, but not yet
+   through the live daemon (VS Code). Thread `kind` + `assetPath` from `PreviewManifestRouter` into
+   the `RenderSpec` and add a `kind=LOTTIE` branch that inflates via `LottiePreview` — plus a
+   `BundleIrReplayStore.FORMAT_LOTTIE` replay path for opening Lottie-IR bundles in the desktop
+   daemon (today only the Android `RenderEngine` replays IR).
 1. **Interactive timeline (daemon).** Add a `lottie` field to `PreviewOverrides`
    (`daemon/core/.../protocol/Messages.kt`) carrying `progress` (and later `marker`/`speed`), a
    `LottieController` process-static holder + a `LottieOverrideExtension`

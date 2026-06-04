@@ -20,6 +20,15 @@ enum class PreviewKind {
   NOTIFICATION,
   GLANCE_APPWIDGET,
   XR_SUBSPACE,
+  /**
+   * A Lottie animation asset discovered directly as a file (no `@Preview`, no consumer composable):
+   * a `.json` Lottie document (detected by structure) or a `.lottie` dotLottie archive under the
+   * module's resources. The asset bytes *are* the preview's intermediate representation — the
+   * renderer inflates them via Compottie, and a bundle carries the bytes (`ir/<id>.lottie`) and
+   * replays them with zero consumer bytecode. The asset's classpath-relative path travels on
+   * [PreviewParams.assetPath].
+   */
+  LOTTIE,
 }
 
 /**
@@ -332,6 +341,13 @@ data class PreviewParams(
    */
   val previewParameterLimit: Int = Int.MAX_VALUE,
   val kind: PreviewKind = PreviewKind.COMPOSE,
+  /**
+   * For [PreviewKind.LOTTIE] only: the module-resource-relative path of the discovered Lottie asset
+   * (e.g. `lottie/loading.json`). The renderer loads it via the classloader (the plugin links the
+   * processed-resources dir onto the render classpath), and the bundle reads the same path off the
+   * module resources to pack the IR. `null` for every other kind.
+   */
+  val assetPath: String? = null,
 )
 
 /**
