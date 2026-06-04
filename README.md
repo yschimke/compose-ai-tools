@@ -18,6 +18,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![a11y-wear/dark](renders/a11y-wear.dark.png) |
 | `light` | ![a11y-wear/light](renders/a11y-wear.light.png) |
 
+## fonts-browser
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![fonts-browser/dark](renders/fonts-browser.dark.png) |
+| `light` | ![fonts-browser/light](renders/fonts-browser.light.png) |
+
 ## grid-default
 
 | Theme | Capture |

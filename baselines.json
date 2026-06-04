@@ -25,6 +25,18 @@
       "sha256": "aeaf03537c5abcb6828ca3338fccbc21cf19be18b6504f80357672532fef807a",
       "size": 126016
     },
+    "fonts-browser.dark.png": {
+      "fixture": "fonts-browser",
+      "theme": "dark",
+      "sha256": "71724554ef8292017816255839b851ad236d33bdf5b30d69fb887b9cf394ca24",
+      "size": 112546
+    },
+    "fonts-browser.light.png": {
+      "fixture": "fonts-browser",
+      "theme": "light",
+      "sha256": "ff6368a83e60d7cbdbebd84adc6df84a40c36013737532c28f2b7c8c7a988c29",
+      "size": 107850
+    },
     "grid-default.dark.png": {
       "fixture": "grid-default",
       "theme": "dark",
