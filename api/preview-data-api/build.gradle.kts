@@ -24,6 +24,11 @@ dependencies {
   // their compile classpath without re-declaring it.
   api(libs.kotlinx.serialization.json)
 
+  // `SpatialSemanticsTree` embeds the 2D `ComposeSemanticsNode` as each panel's content, so the
+  // node type is part of this module's public wire shape — `api`, not `implementation`. Both are
+  // pure `@Serializable` DTO jars (no cycle: `:data-layoutinspector-core` doesn't depend back).
+  api(project(":data-layoutinspector-core"))
+
   testImplementation(libs.junit)
   testImplementation(kotlin("test"))
 }

@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "units": "dp",
+  "previewId": "NowPlayingSpatialPreview",
+  "root": {
+    "id": "column",
+    "kind": "column",
+    "poseInRoot": {
+      "translation": { "x": 0, "y": 0, "z": 0 },
+      "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+    },
+    "sizeDp": { "width": 560, "height": 360, "depth": 0 },
+    "children": [
+      {
+        "id": "now-playing",
+        "kind": "panel",
+        "label": "Now Playing",
+        "poseInRoot": {
+          "translation": { "x": 0, "y": 80, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        "sizeDp": { "width": 560, "height": 200, "depth": 0 },
+        "panelContent": {
+          "nodeId": "10",
+          "boundsInRoot": "0,0,560,200",
+          "children": [
+            { "nodeId": "11", "boundsInRoot": "16,16,300,52", "text": "Midnight City" },
+            { "nodeId": "12", "boundsInRoot": "16,60,200,88", "text": "M83" }
+          ]
+        }
+      },
+      {
+        "id": "transport",
+        "kind": "panel",
+        "label": "Transport",
+        "poseInRoot": {
+          "translation": { "x": 0, "y": -100, "z": 0 },
+          "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        "sizeDp": { "width": 560, "height": 96, "depth": 0 },
+        "panelContent": {
+          "nodeId": "20",
+          "boundsInRoot": "0,0,560,96",
+          "mergeMode": "mergeDescendants",
+          "children": [
+            { "nodeId": "21", "boundsInRoot": "24,24,88,72", "label": "Play", "role": "Button", "clickable": true }
+          ]
+        }
+      }
+    ]
+  }
+}
