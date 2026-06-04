@@ -112,6 +112,39 @@ class AppliedMarkerFunctionalTest {
   }
 
   @Test
+  fun `warns when Isolated Projects is enabled`() {
+    // createBareProject() sets org.gradle.unsafe.isolated-projects=true, so applying the plugin
+    // must surface the IP-incompatibility warning (the CLI / MCP / VS Code auto-inject workflow
+    // can't run under IP — see ComposePreviewPlugin.warnIfIsolatedProjectsEnabled).
+    val projectDir = createBareProject()
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewApplied")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.output).contains("Isolated Projects is enabled")
+  }
+
+  @Test
+  fun `does not warn about Isolated Projects when it is disabled`() {
+    val projectDir = createBareProject()
+    // Override the property file's IP=true with a plain configuration-cache-only setup.
+    File(projectDir, "gradle.properties").writeText("org.gradle.configuration-cache=true")
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewApplied")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.output).doesNotContain("Isolated Projects is enabled")
+  }
+
+  @Test
   fun `configuration cache is reused across runs`() {
     val projectDir = createBareProject()
 

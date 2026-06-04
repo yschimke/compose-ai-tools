@@ -110,6 +110,9 @@ internal fun renderInitScript(pluginVersion: String): String =
 // approach keeps the plugin on the project's buildscript classloader so
 // AGP visibility stays intact.
 
+import org.gradle.api.configuration.BuildFeatures
+import org.gradle.kotlin.dsl.support.serviceOf
+
 val pluginVersion = "$pluginVersion"
 val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
     System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
@@ -387,6 +390,29 @@ val composeAiPreviewIsIncludedBuild = gradle.parent != null
 
 gradle.settingsEvaluated {
     if (composeAiPreviewIsIncludedBuild) return@settingsEvaluated
+
+    // This init script's `allprojects { buildscript { … } }` injection (below) is a cross-project
+    // configuration that Isolated Projects forbids: under IP the build aborts with "Project ':'
+    // cannot access 'Project.buildscript' functionality on subprojects via 'allprojects'". There
+    // is no IP-safe init-script mechanism that puts an AGP-aware plugin on every project's
+    // buildscript classloader, so auto-inject simply can't run under IP. settingsEvaluated fires
+    // BEFORE the allprojects violation, so a warning here is the one place reliably delivered to
+    // the user driving the CLI / MCP / VS Code workflow. `BuildFeatures` (Gradle 8.5+) is the
+    // supported active-IP probe; runCatching keeps older Gradle from breaking the script.
+    val composeAiPreviewIpActive =
+        runCatching { gradle.serviceOf<BuildFeatures>().isolatedProjects.active.get() }
+            .getOrDefault(false)
+    if (composeAiPreviewIpActive) {
+        logger.warn(
+            "compose-preview: Isolated Projects is enabled " +
+                "(org.gradle.unsafe.isolated-projects=true). Auto-inject configures projects via " +
+                "`allprojects { }`, which Isolated Projects rejects, so discovery/render will fail. " +
+                "Disable Isolated Projects for compose-preview runs " +
+                "(e.g. -Dorg.gradle.unsafe.isolated-projects=false), or apply " +
+                "id(\"ee.schimke.composeai.preview\") manually in each module's build script."
+        )
+    }
+
     val projectDirs = mutableListOf<java.io.File>()
     fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
         projectDirs.add(descriptor.projectDir)
