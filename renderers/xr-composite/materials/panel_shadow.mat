@@ -1,0 +1,38 @@
+material {
+    name : panelShadow,
+    shadingModel : unlit,
+    blending : transparent,
+    culling : none,
+    parameters : [
+        // A soft, rounded contact shadow cast behind/below a panel so it reads as floating. The
+        // shadow quad is larger than the panel (the host inflates it by `blur`); the shader fills a
+        // rounded rect matching the panel's silhouette and feathers its edge across `blur`.
+        // All extents are in the same aspect-corrected rect space the panel material uses.
+        { type : float2, name : halfSize },     // panel half-extents (aspect-corrected)
+        { type : float,  name : cornerRadius }, // panel corner radius
+        { type : float,  name : blur },         // feather distance of the shadow edge
+        { type : float4, name : color }         // straight-alpha shadow colour (rgb, peak alpha)
+    ],
+    requires : [ uv0 ]
+}
+fragment {
+    float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
+        vec2 q = abs(p) - halfSize + vec2(radius);
+        return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        // The shadow quad spans the inflated rect; remap UV to the inflated half-extents.
+        float blur = max(materialParams.blur, 1e-4);
+        vec2 outerHalf = materialParams.halfSize + vec2(blur);
+        vec2 p = (getUV0() - 0.5) * 2.0 * outerHalf;
+        float dist = roundedBoxSdf(p, materialParams.halfSize, materialParams.cornerRadius);
+        // Solid (alpha=1) inside the panel silhouette, feathering to 0 across `blur` outside it.
+        float fall = 1.0 - smoothstep(0.0, blur, dist);
+        // Square the falloff for a softer, more gaussian-looking penumbra.
+        fall = fall * fall;
+        float a = materialParams.color.a * fall;
+        material.baseColor = vec4(materialParams.color.rgb * a, a);
+    }
+}

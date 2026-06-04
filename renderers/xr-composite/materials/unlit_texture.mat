@@ -4,15 +4,52 @@ material {
     blending : transparent,
     culling : none,
     parameters : [
-        { type : sampler2d, name : albedo }
+        { type : sampler2d, name : albedo },
+        // Corner rounding + edge rim are evaluated in an aspect-corrected "rect space" where the
+        // panel is centred on the origin and its half-extents are `halfSize`. The host scales by the
+        // panel aspect so the rounded corners stay circular (not stretched) on a wide panel:
+        // (aspect, 1.0) for w>=h, (1.0, 1/aspect) otherwise. `cornerRadius`, `rimWidth` and
+        // `edgeSoftness` are in those same aspect-corrected units.
+        { type : float2, name : halfSize },
+        { type : float,  name : cornerRadius },
+        { type : float,  name : rimWidth },
+        { type : float,  name : rimStrength },
+        { type : float,  name : edgeSoftness }
     ],
     requires : [ uv0 ]
 }
 fragment {
+    // Signed distance to a rounded rectangle centred at the origin (negative inside).
+    float roundedBoxSdf(vec2 p, vec2 halfSize, float radius) {
+        vec2 q = abs(p) - halfSize + vec2(radius);
+        return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+    }
+
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
         vec4 c = texture(materialParams_albedo, getUV0());
-        // straight alpha from the PNG -> premultiplied for Filament's transparent blending
-        material.baseColor = vec4(c.rgb * c.a, c.a);
+
+        // Map UV (0..1) into aspect-corrected rect space centred on the origin.
+        vec2 p = (getUV0() - 0.5) * 2.0 * materialParams.halfSize;
+        float dist = roundedBoxSdf(p, materialParams.halfSize, materialParams.cornerRadius);
+
+        // Rounded-corner alpha mask: 1 inside, fading to 0 across `edgeSoftness` at the boundary.
+        float soft = max(materialParams.edgeSoftness, 1e-4);
+        float mask = 1.0 - smoothstep(-soft, soft, dist);
+
+        // Faint bright rim just inside the edge so the panel reads as floating glass. Peaks a touch
+        // inboard of the boundary and fades toward the centre; never a hard border.
+        float rim = 0.0;
+        if (materialParams.rimWidth > 0.0) {
+            float inset = -dist; // distance inside the panel (>=0 inside)
+            rim = (1.0 - smoothstep(0.0, materialParams.rimWidth, inset))
+                  * smoothstep(0.0, soft, inset)
+                  * materialParams.rimStrength;
+        }
+        vec3 rgb = c.rgb + vec3(rim);
+
+        float a = c.a * mask;
+        // straight alpha -> premultiplied for Filament's transparent blending
+        material.baseColor = vec4(rgb * a, a);
     }
 }

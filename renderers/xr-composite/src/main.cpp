@@ -66,6 +66,7 @@ struct Args {
   std::string materialsDir;
   uint32_t width = 1280;
   uint32_t height = 800;
+  std::string environment;  // CLI override: a preset name, or "color:#RRGGBB"
 };
 
 std::vector<uint8_t> readFile(const std::string& path) {
@@ -112,11 +113,15 @@ float3 cubeDir(int face, float u, float v) {
 
 // Build a vertical-gradient environment cubemap emulating an HDRI sky/horizon, and install it as the
 // scene's skybox. `sky` is the colour straight up, `horizon` the colour at eye level; a soft glow
-// band brightens the horizon to read as atmospheric haze. RGBA16F (half) texels, one face at a time
-// via Texture::FaceOffsets. The texel buffer is heap-allocated and freed in the PixelBufferDescriptor
-// callback — Filament reads it on the driver thread during flushAndWait, so it must outlive this call
-// (same idiom as the panel textures below).
-Skybox* buildGradientSkybox(Engine& engine, float3 sky, float3 horizon) {
+// band brightens the horizon to read as atmospheric haze. `floor` (when set, i.e. `hasFloor`) colours
+// the lower hemisphere (dir.y < 0), turning the 2-stop gradient into a 3-stop room-like environment
+// with a ceiling, wall, and floor; when unset the lower hemisphere mirrors the original 2-stop
+// horizon→sky interpolation so the legacy look is byte-for-byte preserved. `glow` scales the horizon
+// glow band. RGBA16F (half) texels, one face at a time via Texture::FaceOffsets. The texel buffer is
+// heap-allocated and freed in the PixelBufferDescriptor callback — Filament reads it on the driver
+// thread during flushAndWait, so it must outlive this call (same idiom as the panel textures below).
+Skybox* buildGradientSkybox(Engine& engine, float3 sky, float3 horizon, float3 floor, bool hasFloor,
+                            float glow) {
   constexpr uint32_t kFace = 128;
   constexpr uint32_t kTexelsPerFace = kFace * kFace;
   constexpr uint32_t kChannels = 4;
@@ -132,11 +137,19 @@ Skybox* buildGradientSkybox(Engine& engine, float3 sky, float3 horizon) {
         float u = ((x + 0.5f) / kFace) * 2.0f - 1.0f;
         float v = ((y + 0.5f) / kFace) * 2.0f - 1.0f;
         float3 dir = normalize(cubeDir(face, u, v));
-        float t = smoothstep01(dir.y * 0.5f + 0.5f);
-        float3 c = mix(horizon, sky, t);
+        float3 c;
+        if (hasFloor && dir.y < 0.0f) {
+          // Lower hemisphere: interpolate horizon (at the wall) → floor (straight down).
+          float t = smoothstep01(-dir.y);  // 0 at horizon, 1 straight down
+          c = mix(horizon, floor, t);
+        } else {
+          // Upper hemisphere (and the whole sphere in legacy 2-stop mode): horizon → sky.
+          float t = smoothstep01(dir.y * 0.5f + 0.5f);
+          c = mix(horizon, sky, t);
+        }
         // Soft horizon glow: a gentle band centred on dir.y == 0, fading above and below.
-        float glow = std::exp(-(dir.y * dir.y) / (2.0f * 0.06f * 0.06f));
-        c = c + horizon * (glow * 0.35f);
+        float glowBand = std::exp(-(dir.y * dir.y) / (2.0f * 0.06f * 0.06f));
+        c = c + horizon * (glowBand * glow);
         size_t i = ((size_t)y * kFace + x) * kChannels;
         dst[i + 0] = half(c.r);
         dst[i + 1] = half(c.g);
@@ -162,6 +175,33 @@ Skybox* buildGradientSkybox(Engine& engine, float3 sky, float3 horizon) {
   return Skybox::Builder().environment(cube).showSun(false).build(engine);
 }
 
+// A named gradient-skybox preset. `floor` is only used when `hasFloor` is true (a 3-stop, room-like
+// environment); otherwise the lower hemisphere mirrors the upper one (the classic 2-stop look).
+struct GradientPreset {
+  const char* name;
+  const char* sky;      // colour straight up (#RRGGBB)
+  const char* horizon;  // colour at eye level (#RRGGBB)
+  const char* floor;    // colour straight down (#RRGGBB); ignored unless hasFloor
+  bool hasFloor;
+  float glow;  // horizon glow-band strength
+};
+
+// Built-in backdrops. `warm-room` is the default: a softly-lit, muted warm passthrough room
+// (warm-taupe ceiling, warm wall at the horizon with a gentle glow, deep warm-brown floor) tuned to
+// echo real Android XR rooms while keeping the light panel surfaces popping. `studio-dark` preserves
+// the original cold 2-stop gradient byte-for-byte (no floor, glow 0.35).
+constexpr GradientPreset kPresets[] = {
+    {"warm-room", "#332e27", "#5a4d40", "#1e1a16", true, 0.30f},
+    {"studio-dark", "#05070d", "#1a1f2b", "", false, 0.35f},
+};
+constexpr const char* kDefaultPreset = "warm-room";
+
+const GradientPreset* findPreset(const std::string& name) {
+  for (const auto& p : kPresets)
+    if (name == p.name) return &p;
+  return nullptr;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -174,6 +214,7 @@ int main(int argc, char** argv) {
     else if (a == "--materials") args.materialsDir = next();
     else if (a == "--width") args.width = std::stoul(next());
     else if (a == "--height") args.height = std::stoul(next());
+    else if (a == "--environment") args.environment = next();
   }
   if (args.scenePath.empty()) { fprintf(stderr, "usage: --scene scene.json --out out.png\n"); return 2; }
   // A bare filename (no '/') means the scene lives in the current directory; find_last_of
@@ -216,30 +257,87 @@ int main(int argc, char** argv) {
   }
 
   // ---- background ----
-  // Default: a tasteful dark vertical-gradient environment cubemap (HDRI-style sky/horizon) so the
-  // light Material panels pop. `environment.kind=="color"` keeps the legacy flat skybox; an explicit
-  // `kind=="gradient"` may override the `sky`/`horizon` hex defaults. `bg` doubles as the clear
-  // colour for the readback path, so we always pick a sensible solid even in gradient mode.
-  std::string envKind = "gradient";
-  float3 gradSky = hexToLinear("#05070d");
-  float3 gradHorizon = hexToLinear("#1a1f2b");
+  // The backdrop is a swappable, room-like vertical-gradient environment cubemap (HDRI-style
+  // ceiling/wall/floor) so the light Material panels pop. Selection precedence, most → least
+  // specific:
+  //   1. CLI `--environment <name>`     → a named preset (see kPresets)
+  //      CLI `--environment color:#RRGGBB` → a flat-colour skybox
+  //   2. scene.json `environment`:
+  //        kind=="color"                 → flat colour (uses `color`)
+  //        else                          → `preset` selects a named preset; explicit
+  //                                        `sky`/`horizon`/`floor`/`glow` OVERRIDE its values
+  //        (legacy scenes with kind=="gradient" + sky/horizon still render: a custom-gradient
+  //         override on top of the default preset)
+  //   3. Built-in default = `warm-room`.
+  // `bg` doubles as the clear colour for the readback path: it mirrors the horizon in gradient mode
+  // and the colour in colour mode, so any uncovered edge blends with the backdrop.
+  bool wantColor = false;       // resolved as a flat-colour skybox?
+  float3 colorBg = {0.06f, 0.06f, 0.08f};
+
+  // Start from the default preset, then layer overrides on top.
+  const GradientPreset* preset = findPreset(kDefaultPreset);
+  float3 gradSky = hexToLinear(preset->sky);
+  float3 gradHorizon = hexToLinear(preset->horizon);
+  float3 gradFloor = hexToLinear(preset->floor);
+  bool gradHasFloor = preset->hasFloor;
+  float gradGlow = preset->glow;
+
+  // Applies a named preset's params over the current gradient state.
+  auto applyPreset = [&](const GradientPreset* p) {
+    gradSky = hexToLinear(p->sky);
+    gradHorizon = hexToLinear(p->horizon);
+    gradFloor = hexToLinear(p->floor);
+    gradHasFloor = p->hasFloor;
+    gradGlow = p->glow;
+  };
+
+  // (2) scene.json environment.
   if (scene.contains("environment") && scene["environment"].is_object()) {
     auto& env = scene["environment"];
-    envKind = env.value("kind", "gradient");
-    if (env.contains("sky")) gradSky = hexToLinear(env["sky"].get<std::string>());
-    if (env.contains("horizon")) gradHorizon = hexToLinear(env["horizon"].get<std::string>());
+    std::string kind = env.value("kind", "gradient");
+    if (kind == "color") {
+      wantColor = true;
+      if (env.contains("color")) colorBg = hexToLinear(env["color"].get<std::string>());
+    } else {
+      if (env.contains("preset")) {
+        if (const GradientPreset* p = findPreset(env["preset"].get<std::string>())) applyPreset(p);
+        else fprintf(stderr, "unknown environment preset '%s'; using default\n",
+                     env["preset"].get<std::string>().c_str());
+      }
+      // Explicit fields override the chosen preset (custom gradient).
+      if (env.contains("sky")) gradSky = hexToLinear(env["sky"].get<std::string>());
+      if (env.contains("horizon")) gradHorizon = hexToLinear(env["horizon"].get<std::string>());
+      if (env.contains("floor")) {
+        gradFloor = hexToLinear(env["floor"].get<std::string>());
+        gradHasFloor = true;
+      }
+      if (env.contains("glow")) gradGlow = env["glow"].get<float>();
+    }
   }
 
-  float3 bg = {0.06f, 0.06f, 0.08f};
+  // (1) CLI override — highest precedence, wins over scene.json.
+  if (!args.environment.empty()) {
+    const std::string& e = args.environment;
+    if (e.rfind("color:", 0) == 0) {
+      wantColor = true;
+      colorBg = hexToLinear(e.substr(6));
+    } else if (const GradientPreset* p = findPreset(e)) {
+      wantColor = false;
+      applyPreset(p);
+    } else {
+      fprintf(stderr, "unknown --environment '%s'; using scene/default backdrop\n", e.c_str());
+    }
+  }
+
+  float3 bg;
   Skybox* skybox = nullptr;
-  if (envKind == "color") {
-    if (scene.contains("environment") && scene["environment"].contains("color"))
-      bg = hexToLinear(scene["environment"]["color"].get<std::string>());
+  if (wantColor) {
+    bg = colorBg;
     skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
   } else {
     // Clear colour mirrors the horizon so any uncovered edge blends with the gradient.
     bg = gradHorizon;
-    skybox = buildGradientSkybox(*engine, gradSky, gradHorizon);
+    skybox = buildGradientSkybox(*engine, gradSky, gradHorizon, gradFloor, gradHasFloor, gradGlow);
     if (!skybox) {
       // Fall back to a flat horizon-coloured skybox if the cubemap couldn't be built.
       fprintf(stderr, "gradient skybox build failed; falling back to solid\n");
@@ -252,10 +350,49 @@ int main(int argc, char** argv) {
   auto unlitPkg = readFile(args.materialsDir + "/unlit_texture.filamat");
   Material* unlit = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine);
 
+  // Soft contact shadow behind each panel — a separate transparent quad that feathers a rounded-rect
+  // silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we composite a baked
+  // soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
+  auto shadowPkg = readFile(args.materialsDir + "/panel_shadow.filamat");
+  Material* shadowMat =
+      Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine);
+
   TextureSampler sampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
                          TextureSampler::MagFilter::LINEAR);
 
   auto& tcm = engine->getTransformManager();
+
+  // Build a textured/coloured quad renderable spanning [-hw,hw] x [-hh,hh] in the XY plane, UV0
+  // running (0,0) bottom-left to (1,1) top-right. Heap-allocates the vertex/index buffers and frees
+  // them in the descriptor callbacks (Filament reads them on the driver thread during flushAndWait).
+  auto buildQuad = [&](float hw, float hh, MaterialInstance* mi) -> utils::Entity {
+    auto* verts = new Vertex[4]{
+        {-hw, -hh, 0, 0, 0},
+        { hw, -hh, 0, 1, 0},
+        { hw,  hh, 0, 1, 1},
+        {-hw,  hh, 0, 0, 1},
+    };
+    auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
+    VertexBuffer* vb = VertexBuffer::Builder()
+        .vertexCount(4).bufferCount(1)
+        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
+        .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
+        .build(*engine);
+    vb->setBufferAt(*engine, 0, VertexBuffer::BufferDescriptor(
+        verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
+    IndexBuffer* ib = IndexBuffer::Builder()
+        .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine);
+    ib->setBuffer(*engine, IndexBuffer::BufferDescriptor(
+        idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
+    utils::Entity e = utils::EntityManager::get().create();
+    RenderableManager::Builder(1)
+        .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
+        .material(0, mi)
+        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
+        .culling(false).castShadows(false).receiveShadows(false)
+        .build(*engine, e);
+    return e;
+  };
 
   // ---- panels ----
   int placed = 0;
@@ -285,50 +422,66 @@ int main(int argc, char** argv) {
     tex->setImage(*engine, 0, std::move(pbd));
     tex->generateMipmaps(*engine);
 
-    MaterialInstance* mi = unlit->createInstance();
-    mi->setParameter("albedo", tex, sampler);
-
     float wDp = p["sizeDp"].value("width", 100);
     float hDp = p["sizeDp"].value("height", 100);
     float hw = wDp * 0.5f, hh = hDp * 0.5f;
 
-    // Heap-allocate: Filament reads the BufferDescriptor pointer on the driver thread during
-    // flushAndWait (after this loop), so the data must outlive the iteration — free in the callback.
-    auto* verts = new Vertex[4]{
-        {-hw, -hh, 0, 0, 0},
-        { hw, -hh, 0, 1, 0},
-        { hw,  hh, 0, 1, 1},
-        {-hw,  hh, 0, 0, 1},
-    };
-    auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
+    // Fidelity params evaluated in an aspect-corrected "rect space" where the panel spans
+    // [-halfSize, halfSize] and rounded corners stay circular regardless of aspect (see the .mat).
+    // For w>=h: halfSize=(aspect,1); else (1,1/aspect). Radius/rim/softness are fractions of the
+    // shorter half-extent (always 1.0), so they read consistently across panel shapes.
+    float aspect = (hDp > 0.0f) ? (wDp / hDp) : 1.0f;
+    float2 halfSize = (wDp >= hDp) ? float2{aspect, 1.0f} : float2{1.0f, 1.0f / aspect};
+    // ~24-32dp corner radius on a typical ~320dp-tall panel ≈ 0.16-0.20 of the half-extent.
+    const float kCornerRadius = 0.18f;
+    const float kRimWidth = 0.06f;     // rim band width inside the edge
+    const float kRimStrength = 0.10f;  // subtle additive highlight
+    const float kEdgeSoftness = 0.012f;  // AA feather of the rounded edge
 
-    VertexBuffer* vb = VertexBuffer::Builder()
-        .vertexCount(4).bufferCount(1)
-        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
-        .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
-        .build(*engine);
-    vb->setBufferAt(*engine, 0, VertexBuffer::BufferDescriptor(
-        verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
-
-    IndexBuffer* ib = IndexBuffer::Builder()
-        .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine);
-    ib->setBuffer(*engine, IndexBuffer::BufferDescriptor(
-        idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
-
-    utils::Entity re = utils::EntityManager::get().create();
-    RenderableManager::Builder(1)
-        .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
-        .material(0, mi)
-        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
-        .culling(false).castShadows(false).receiveShadows(false)
-        .build(*engine, re);
+    MaterialInstance* mi = unlit->createInstance();
+    mi->setParameter("albedo", tex, sampler);
+    mi->setParameter("halfSize", halfSize);
+    mi->setParameter("cornerRadius", kCornerRadius);
+    mi->setParameter("rimWidth", kRimWidth);
+    mi->setParameter("rimStrength", kRimStrength);
+    mi->setParameter("edgeSoftness", kEdgeSoftness);
 
     // transform: translate * rotate(quat)
     auto& T = p["poseInRoot"]["translation"];
     auto& R = p["poseInRoot"]["rotation"];
     float3 t = {T.value("x", 0.0f), T.value("y", 0.0f), T.value("z", 0.0f)};
     quatf q = {R.value("w", 1.0f), R.value("x", 0.0f), R.value("y", 0.0f), R.value("z", 0.0f)};
-    mat4f model = mat4f::translation(t) * mat4f(q);
+    mat4f rot(q);
+
+    // ---- soft drop/contact shadow behind+below the panel ----
+    // Mirror the panel's rect-space metrics so the shadow silhouette matches the rounded panel, then
+    // map the aspect-corrected units back to dp via the per-axis dp-per-unit scale. The shadow quad
+    // is inflated by `blur` so its feathered penumbra has room; it sits slightly behind the panel
+    // (toward -Z in panel-local space) and is offset down a touch for a grounded, floating look.
+    {
+      float dpPerUnitX = hw / halfSize.x;   // == hh / halfSize.y
+      float blurUnits = 0.22f;              // penumbra width in rect-space units
+      float2 outerHalf = halfSize + float2{blurUnits, blurUnits};
+      float shw = outerHalf.x * dpPerUnitX;
+      float shh = outerHalf.y * dpPerUnitX;
+
+      MaterialInstance* smi = shadowMat->createInstance();
+      smi->setParameter("halfSize", halfSize);
+      smi->setParameter("cornerRadius", kCornerRadius);
+      smi->setParameter("blur", blurUnits);
+      // Soft near-black shadow; peak alpha kept subtle so it reads as a contact shadow, not a slab.
+      smi->setParameter("color", float4{0.0f, 0.0f, 0.0f, 0.42f});
+
+      utils::Entity se = buildQuad(shw, shh, smi);
+      // Offset: down by ~6% of panel height and back behind the panel so it never z-fights the quad.
+      float3 shadowOffset = {0.0f, -0.06f * hDp, -2.0f};
+      mat4f shadowModel = mat4f::translation(t) * rot * mat4f::translation(shadowOffset);
+      tcm.setTransform(tcm.getInstance(se), shadowModel);
+      fscene->addEntity(se);
+    }
+
+    utils::Entity re = buildQuad(hw, hh, mi);
+    mat4f model = mat4f::translation(t) * rot;
     tcm.setTransform(tcm.getInstance(re), model);
 
     fscene->addEntity(re);

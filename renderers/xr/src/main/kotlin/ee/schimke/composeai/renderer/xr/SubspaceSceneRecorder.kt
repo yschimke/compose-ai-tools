@@ -173,21 +173,57 @@ public object SubspaceSceneRecorder {
   }
 
   /**
-   * A neutral orbit camera framing the panels: look at the vertical centre of their bounds from a
-   * distance scaled to the layout, at a slight downward pitch. Producers/consumers may override.
+   * A neutral orbit camera framing the panels near head-on: look at the centre of their combined
+   * bounds from the distance that makes the layout fill most of the frame, at a gentle downward
+   * pitch. Producers/consumers may override.
+   *
+   * Framing matches the Android XR reference shots, where a panel sits large and roughly head-on
+   * rather than small in a sea of void. We fit the layout's full XY bounds (not just one panel's
+   * largest side) into the compositor's 45° vertical / 16:10 (1280x800) frame, leave a small margin
+   * so corners and the soft shadow aren't clipped, and clamp the distance so a tiny single panel
+   * doesn't pull the camera implausibly close. Generic across one panel and a multi-panel row.
    */
   internal fun defaultCamera(panels: List<SpatialPanel>): OrbitCamera {
     if (panels.isEmpty()) {
-      return OrbitCamera(target = Vec3(0.0, 0.0, 0.0), distance = 1200.0, yawDeg = 0.0, pitchDeg = -10.0)
+      return OrbitCamera(target = Vec3(0.0, 0.0, 0.0), distance = 1200.0, yawDeg = 0.0, pitchDeg = -6.0)
     }
-    val ys = panels.map { it.poseInRoot.translation.y }
+    // Combined axis-aligned bounds of every panel (centre ± half-size on each axis).
+    val xs = panels.flatMap { listOf(it.poseInRoot.translation.x - it.sizeDp.width / 2.0, it.poseInRoot.translation.x + it.sizeDp.width / 2.0) }
+    val ys = panels.flatMap { listOf(it.poseInRoot.translation.y - it.sizeDp.height / 2.0, it.poseInRoot.translation.y + it.sizeDp.height / 2.0) }
+    val boundsW = xs.max() - xs.min()
+    val boundsH = ys.max() - ys.min()
+    val centreX = (xs.min() + xs.max()) / 2.0
     val centreY = (ys.min() + ys.max()) / 2.0
-    val span = panels.maxOf { maxOf(it.sizeDp.width, it.sizeDp.height).toDouble() }
+
+    // Compositor frame: 45° vertical FOV, 1280x800 (aspect 1.6). Distance to fit a given extent:
+    //   verticalFit  -> halfH / tan(vFov/2)
+    //   horizontalFit-> halfW / (tan(vFov/2) * aspect)
+    // Take the larger so the whole layout fits, then divide by FILL so it occupies ~FILL of the
+    // frame (margin for rounded corners + soft shadow).
+    val vFovRad = Math.toRadians(VERTICAL_FOV_DEG)
+    val aspect = COMPOSITE_WIDTH.toDouble() / COMPOSITE_HEIGHT.toDouble()
+    val tanHalf = Math.tan(vFovRad / 2.0)
+    val distForHeight = (boundsH / 2.0) / tanHalf
+    val distForWidth = (boundsW / 2.0) / (tanHalf * aspect)
+    val fit = maxOf(distForHeight, distForWidth)
+    val distance = (fit / FRAME_FILL).coerceAtLeast(MIN_DISTANCE)
+
     return OrbitCamera(
-      target = Vec3(0.0, centreY, 0.0),
-      distance = (span * 2.0).coerceAtLeast(600.0),
+      target = Vec3(centreX, centreY, 0.0),
+      distance = distance,
       yawDeg = 0.0,
-      pitchDeg = -10.0,
+      // Near head-on, with just a hint of downward tilt so panels read as floating in front of you.
+      pitchDeg = -6.0,
     )
   }
+
+  // Compositor framing constants — kept in sync with renderers/xr-composite (45° vertical FOV) and
+  // the bake size the Gradle `composePreviewCompositeXr` task passes (--width 1280 --height 800).
+  private const val VERTICAL_FOV_DEG = 45.0
+  private const val COMPOSITE_WIDTH = 1280
+  private const val COMPOSITE_HEIGHT = 800
+  // Fraction of the frame the layout should fill (the rest is margin for corners + shadow).
+  private const val FRAME_FILL = 0.82
+  // Don't let a single small panel pull the camera implausibly close.
+  private const val MIN_DISTANCE = 600.0
 }

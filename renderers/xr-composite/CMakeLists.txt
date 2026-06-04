@@ -60,7 +60,7 @@ endif()
 set(MATERIALS_OUT "${CMAKE_BINARY_DIR}/materials")
 file(MAKE_DIRECTORY "${MATERIALS_OUT}")
 set(MATERIAL_BLOBS "")
-foreach(mat unlit_texture flat_color)
+foreach(mat unlit_texture flat_color panel_shadow)
   set(src "${CMAKE_CURRENT_SOURCE_DIR}/materials/${mat}.mat")
   set(out "${MATERIALS_OUT}/${mat}.filamat")
   add_custom_command(

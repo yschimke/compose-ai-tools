@@ -60,9 +60,26 @@ See `spatialScene.ts` for the authoritative types. In brief:
         },
     ],
     "orbiters": [], // optional: edge-anchored control strips (same shape + "edge")
-    "environment": { "kind": "color", "color": "#101014" }, // optional backdrop
+    "environment": { "kind": "gradient", "preset": "warm-room" }, // optional backdrop (see below)
 }
 ```
+
+## Environment (backdrop)
+
+The optional `environment` selects the scene backdrop and is **swappable**:
+
+- `kind: "color"` — a flat solid skybox using `color` (`#RRGGBB`).
+- `kind: "skybox"` — an image-based skybox from `texture` (consumer-defined).
+- otherwise (e.g. `kind: "gradient"`, the default) — a **vertical-gradient, room-like** backdrop.
+  An optional `preset` names a built-in look; the offline compositor ships `"warm-room"` (the
+  default: a softly-lit warm passthrough room) and `"studio-dark"` (the legacy cold gradient).
+  Explicit `sky` (straight up), `horizon` (eye level), and `floor` (straight down — its presence
+  upgrades the 2-stop gradient to a 3-stop, room-like one) **override** the chosen preset, giving a
+  custom gradient. Omit `environment` entirely to take the compositor's default `warm-room`.
+
+The compositor also accepts a `--environment <preset | color:#RRGGBB>` CLI flag that **overrides**
+whatever the scene specifies (see the [compositor](xr-spatial/COMPOSITOR.md) and its
+[README](../../renderers/xr-composite/README.md)).
 
 ## Producer mapping (`:renderer-xr`, Phase A)
 
