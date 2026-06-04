@@ -42,6 +42,10 @@ const entries = [
         in: resolve(root, "src/webview/spatial/main.ts"),
         out: resolve(root, "media/webview/spatial.js"),
     },
+    {
+        in: resolve(root, "src/webview/fonts/main.ts"),
+        out: resolve(root, "media/webview/fonts.js"),
+    },
 ];
 
 if (watch) {
