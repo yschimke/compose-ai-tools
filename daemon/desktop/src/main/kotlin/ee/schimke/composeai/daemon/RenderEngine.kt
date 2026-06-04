@@ -37,6 +37,7 @@ import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCom
 import ee.schimke.composeai.data.render.extensions.loadPreviewWrapperClass
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.preview.lottie.LottiePreview
 import java.io.File
 import java.util.Base64
 import java.util.Collections
@@ -182,28 +183,45 @@ class RenderEngine(
     outputDir.mkdirs()
     val outputFile = File(outputDir, "${spec.outputBaseName}.png")
 
-    val clazz = Class.forName(spec.className, true, classLoader)
-    val composableMethod: ComposableMethod = clazz.getDeclaredComposableMethod(spec.functionName)
-    // Kotlin `private fun` previews compile to JVM-private methods. `getDeclaredComposableMethod`
-    // still resolves them (it scans `declaredMethods`), but the reflective `invoke` in
-    // [InvokeComposable] would throw IllegalAccessException, so open the method up first — mirrors
-    // `:renderer-android`'s ComposePreviewStrategy. Guarded with `runCatching`: a SecurityManager
-    // or strong module encapsulation can refuse, in which case we still attempt the invoke
-    // (which succeeds for public/internal previews) rather than failing resolution outright.
-    runCatching { composableMethod.asMethod().isAccessible = true }
+    // kind=LOTTIE has no class to reflect — the asset is rendered directly via Compottie below.
+    val isLottie = spec.kind == "LOTTIE"
+    val composableMethod: ComposableMethod? =
+      if (isLottie) {
+        null
+      } else {
+        val clazz = Class.forName(spec.className, true, classLoader)
+        clazz.getDeclaredComposableMethod(spec.functionName).also {
+          // Kotlin `private fun` previews compile to JVM-private methods.
+          // `getDeclaredComposableMethod` still resolves them (it scans `declaredMethods`), but the
+          // reflective `invoke` in [InvokeComposable] would throw IllegalAccessException, so open
+          // the method up first — mirrors `:renderer-android`'s ComposePreviewStrategy. Guarded
+          // with
+          // `runCatching`: a SecurityManager or strong module encapsulation can refuse, in which
+          // case we still attempt the invoke (which succeeds for public/internal previews) rather
+          // than failing resolution outright.
+          runCatching { it.asMethod().isAccessible = true }
+        }
+      }
 
     // Self-diagnostic — surfaces in the VS Code extension's output channel as `[daemon stderr] …`.
     // Pairs with `[classloader] swap requested` / `allocate child loader` lines from
     // [UserClassLoaderHolder]. If `classFile` doesn't advance across saves the daemon is
     // re-rendering against bytecode that wasn't actually recompiled.
-    val fingerprint =
-      UserClassLoaderHolder.classFileFingerprint(classLoader, spec.className)
-        ?: "fingerprint unavailable (class not on a file: URL)"
-    System.err.println(
-      "compose-ai-daemon: [setUp] ${spec.className}#${spec.functionName} " +
-        "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint " +
-        "inspectionMode=$inspectionMode"
-    )
+    if (isLottie) {
+      System.err.println(
+        "compose-ai-daemon: [setUp] lottie asset '${spec.assetPath}' " +
+          "loaderId=${System.identityHashCode(classLoader).toString(16)}"
+      )
+    } else {
+      val fingerprint =
+        UserClassLoaderHolder.classFileFingerprint(classLoader, spec.className)
+          ?: "fingerprint unavailable (class not on a file: URL)"
+      System.err.println(
+        "compose-ai-daemon: [setUp] ${spec.className}#${spec.functionName} " +
+          "loaderId=${System.identityHashCode(classLoader).toString(16)} classFile=$fingerprint " +
+          "inspectionMode=$inspectionMode"
+      )
+    }
 
     // Install the child classloader as the context classloader for the duration the scene is
     // alive (one render for the wrapper path, many renders for the interactive path). Compose's
@@ -287,7 +305,14 @@ class RenderEngine(
                   // Trampoline through a @Composable so the reflective invocation lands inside the
                   // running composition. Mirrors `:renderer-desktop`'s InvokeComposable. Honours
                   // `@PreviewWrapper(SomeProvider::class)` by routing through the wrapper's `Wrap`.
-                  InvokeWithOptionalWrapper(composableMethod, spec.wrapperClassName)
+                  if (isLottie) {
+                    LottiePreview(
+                      asset = spec.assetPath.orEmpty(),
+                      modifier = Modifier.fillMaxSize(),
+                    )
+                  } else {
+                    InvokeWithOptionalWrapper(composableMethod!!, spec.wrapperClassName)
+                  }
                 }
               }
             }
@@ -702,6 +727,15 @@ data class RenderSpec(
   val className: String,
   /** Method name of the @Preview function (parameterless overload). */
   val functionName: String,
+  /**
+   * Preview flavour mirror of `PreviewKind` (string-typed). `null` / `"COMPOSE"` take the normal
+   * class-reflection path; `"LOTTIE"` skips reflection entirely and inflates [assetPath] via
+   * Compottie, so a file-discovered Lottie asset renders through the live daemon (and VS Code) with
+   * no consumer composable.
+   */
+  val kind: String? = null,
+  /** For `kind="LOTTIE"`: the classpath-relative Lottie asset path. */
+  val assetPath: String? = null,
   val widthPx: Int = 320,
   val heightPx: Int = 320,
   val density: Float = 2.0f,
