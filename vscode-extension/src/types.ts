@@ -1,4 +1,5 @@
 import type { SpatialScene } from "./webview/shared/spatialScene";
+import type { SpatialSemanticsTree } from "./webview/shared/spatialSemanticsTree";
 
 export interface PreviewParams {
     name: string | null;
@@ -731,6 +732,13 @@ export type ExtensionToWebview =
            * arbitrary disk paths, so textures must be addressed this way.
            */
           textureBaseUri: string;
+          /**
+           * Optional companion 3D-over-2D semantics tree (see
+           * `webview/shared/spatialSemanticsTree.ts`). When present, the viewer
+           * overlays each panel's 2D wireframe boxes onto its screenshot face,
+           * matched to the scene by panel id. Omitted until a producer emits it.
+           */
+          semanticsTree?: SpatialSemanticsTree;
       };
 
 /**

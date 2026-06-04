@@ -25,6 +25,8 @@ import type {
     Vec3,
 } from "../shared/spatialScene";
 import { renderableQuads } from "./sceneLoader";
+import { type PanelWireframe } from "./semanticsTreeLoader";
+import { composePanelTexture } from "./wireframeCompositor";
 
 /** Optional injection points for the viewer. */
 export interface SpatialViewerOptions {
@@ -110,6 +112,8 @@ export class SpatialViewer {
     private readonly skydome: THREE.Mesh;
     private quadObjects: QuadObject[] = [];
     private focusedId: string | null = null;
+    /** Per-panel 2D wireframe overlays, keyed by panel id; empty when no semantics tree is loaded. */
+    private wireframes = new Map<string, PanelWireframe>();
 
     private disposed = false;
     private frameHandle: number | null = null;
@@ -176,9 +180,17 @@ export class SpatialViewer {
         this.startLoop();
     }
 
-    /** Replace the rendered scene. Tears down the previous quads/textures. */
-    load(scene: SpatialScene): void {
+    /**
+     * Replace the rendered scene. Tears down the previous quads/textures. The optional
+     * [wireframes] map (keyed by panel id, from `panelWireframesById`) overlays each matching
+     * panel's 2D semantics boxes onto its screenshot face; omit it for a plain textured scene.
+     */
+    load(
+        scene: SpatialScene,
+        wireframes: Map<string, PanelWireframe> = new Map(),
+    ): void {
         this.clearQuads();
+        this.wireframes = wireframes;
         this.applyEnvironment(scene);
 
         for (const quad of renderableQuads(scene)) {
@@ -259,6 +271,7 @@ export class SpatialViewer {
         mesh.add(edges);
 
         const url = this.resolveTextureUrl(quad.texture);
+        const wireframe = this.wireframes.get(quad.id);
         this.textureLoader.load(
             url,
             (texture) => {
@@ -267,7 +280,24 @@ export class SpatialViewer {
                     return;
                 }
                 texture.colorSpace = THREE.SRGBColorSpace;
-                material.map = texture;
+                // "screenshot + wireframe overlay" face: when this panel carries a 2D semantics
+                // tree, composite its boxes over the screenshot. Falls back to the plain texture
+                // when there's no overlay or compositing isn't possible (no DOM / sized image).
+                let map: THREE.Texture = texture;
+                if (wireframe) {
+                    const composed = composePanelTexture(
+                        texture.image as CanvasImageSource & {
+                            width?: number;
+                            height?: number;
+                        },
+                        wireframe,
+                    );
+                    if (composed) {
+                        texture.dispose();
+                        map = composed;
+                    }
+                }
+                material.map = map;
                 material.color.set(0xffffff);
                 material.needsUpdate = true;
             },
