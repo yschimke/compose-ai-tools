@@ -363,6 +363,27 @@ def cmd_generate(args: argparse.Namespace) -> int:
     out_dir = Path(args.output_dir)
     repo = args.repo
     branch = args.branch
+    # README heading / blurb. Defaulted so the in-repo `compose-preview/main`
+    # baseline (and its tests) keep the historical text; the integration
+    # matrix overrides them to name the consumer repo on its own browsable
+    # `compose-preview/integration/<slug>` branch.
+    title = getattr(args, "title", None) or "Preview Baselines"
+    intro = (
+        getattr(args, "intro", None)
+        or "Auto-generated from `main`. Browse inline or compare against PR branches."
+    )
+    # Optional markdown blob spliced in right under the intro — used by the
+    # integration matrix to record the per-project workarounds / known
+    # issues (CI patches applied, credentials stubbed out, non-blocking
+    # status) next to that project's rendered gallery. Empty / missing =
+    # omitted entirely (the in-repo `compose-preview/main` baseline doesn't
+    # pass one).
+    notes = ""
+    notes_path = getattr(args, "notes_file", None)
+    if notes_path:
+        p = Path(notes_path)
+        if p.exists():
+            notes = p.read_text().strip()
     prior_baselines_path = (
         Path(args.prior_baselines) if getattr(args, "prior_baselines", None) else None
     )
@@ -447,11 +468,14 @@ def cmd_generate(args: argparse.Namespace) -> int:
 
     # --- README.md (browsable gallery) ---
     lines = [
-        "# Preview Baselines",
+        f"# {title}",
         "",
-        "Auto-generated from `main`. Browse inline or compare against PR branches.",
+        intro,
         "",
     ]
+    if notes:
+        lines.append(notes)
+        lines.append("")
     if failures:
         retained = sum(1 for key, _ in failures if key in carried_over)
         dropped = len(failures) - retained
@@ -1254,6 +1278,14 @@ def main() -> int:
     gen.add_argument("--output-dir", required=True)
     gen.add_argument("--repo", required=True, help="owner/repo")
     gen.add_argument("--branch", default="compose-preview/main")
+    # README customisation for non-`main` baseline branches (the integration
+    # matrix names each consumer repo). Omitted = historical defaults.
+    gen.add_argument("--title", help="README H1 (default: 'Preview Baselines').")
+    gen.add_argument("--intro",
+                     help="README intro paragraph (default: the compose-preview/main blurb).")
+    gen.add_argument("--notes-file",
+                     help="Path to a markdown file spliced into the README under the "
+                          "intro (per-project workarounds / known issues). Omitted = none.")
     # Optional. When the render task produced no PNG for some previews,
     # pull their prior entry from this `baselines.json` instead of dropping
     # them — keeps `compose-preview/main` complete across flaky single-preview

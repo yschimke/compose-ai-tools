@@ -105,6 +105,14 @@ jobs:
           cp -R "$HOME/.m2/repository/ee" bundle/m2/
           cp -R cli/build/install/compose-preview/. bundle/cli/
           cp .github/ci/daemon-roundtrip.py bundle/ci/
+          # Ship the baseline-branch tooling so the integration matrix can
+          # publish a browsable `compose-preview/integration/<slug>` branch
+          # (renders/ + baselines.json + README gallery) for each render
+          # entry — the same layout the in-repo `compose-preview/main`
+          # baseline uses. The integration job has no checkout of this repo,
+          # so these scripts ride in via the bundle like daemon-roundtrip.py.
+          cp .github/actions/lib/compare-previews.py bundle/ci/
+          cp .github/actions/apply/lib/push-branch.sh bundle/ci/
           # Ship consumer patches (e.g. the adaptive-apps-samples XR
           # alpha14 upgrade) so the integration matrix can apply them to
           # the checked-out external repo before Gradle configures it.
@@ -159,6 +167,20 @@ jobs:
             # that the standalone `composePreviewRender` task can't see. See
             # .github/ci/daemon-roundtrip.py.
             daemon: true
+            # Surfaced in the published compose-preview/integration/<slug>
+            # branch README so browsers see what this cell exercises +
+            # any caveats. Hand-written; auto-derived facts (patch / build
+            # stubs / non-blocking) are appended by the staging step.
+            notes: |
+              - Exercises the full Android render pipeline end-to-end
+                (renderer-android AAR resolution + Robolectric launch) plus
+                the daemon round-trip (spawn → render → edit → re-render).
+              - Runs with isolated-projects + configuration-cache enabled, so
+                it doubles as the IP/CC end-to-end cell. No build-script
+                workarounds applied.
+              - The gallery below is the clean baseline render, captured
+                *before* the daemon round-trip edits a source file, so the
+                images reflect upstream `main` rather than the test edit.
           - name: wear-os-samples (WearTilesKotlin)
             slug: wear-tiles
             repo: android/wear-os-samples
@@ -182,6 +204,15 @@ jobs:
             # — e.g. if `@androidx.wear.tiles.tooling.preview.Preview` stopped
             # being recognized during discovery.
             require_tile_render: true
+            notes: |
+              - Tiles-focused cell: at least one `kind: TILE` preview must
+                render, guarding the `TilePreviewComposable` →
+                `TileRenderer.inflateAsync` path.
+              - Pins an older Compose BOM than our renderer, which previously
+                surfaced a transitive-dependency gap (activity-compose 1.13 →
+                missing `androidx.navigationevent.R` resources crashed
+                Robolectric at Activity bootstrap). Kept rendering so the
+                regression can't return silently.
           # Confetti: dropped for now. :androidApp has @Preview functions but
           # discovery returned 0 (same bug we see in PeopleInSpace — track as a
           # follow-up). Render also fails on a :common:car KMP variant
@@ -385,6 +416,16 @@ jobs:
             # Compose app once it's on the alpha14 baseline.
             render: true
             extra_gradle_args: ""
+            notes: |
+              - XR spatial Compose. Upstream tracks `androidx.xr.compose`
+                alpha07, whose `ApplicationSubspace` / `MovePolicy` /
+                `SpatialConfiguration` APIs were removed or deprecated by
+                alpha14 — the version our XR render path compiles against. The
+                integration run therefore applies the in-repo
+                `adaptive-apps-samples-xr-alpha14.patch` before configuring the
+                build.
+              - 12 device-targeted previews via custom multi-preview
+                annotations (`@PhonePreview` / `@TvPreview` / …).
           # PeopleInSpace is a KMP project — the :app module is a thin Android
           # wrapper with no @Preview functions; all Compose UI lives in the
           # :common KMP module. Targeting :common needs KMP-Android-target
@@ -654,6 +695,118 @@ jobs:
           fi
           echo "Rendered ${#pngs[@]} PNG file(s):"
           printf '  %s\n' "${pngs[@]}"
+
+      - name: Stage browsable preview gallery
+        # Build the `compose-preview/integration/<slug>` payload (renders/ +
+        # baselines.json + README gallery) so the rendered previews are
+        # browsable on GitHub rather than only living in a 7-day artifact.
+        #
+        # Gated to trusted events: on fork PRs the token is read-only and
+        # can't push anyway, and we don't want PR runs racing the shared
+        # branches. Staging runs in THIS job (read-only token) so the
+        # untrusted consumer build never sees a write token; the actual push
+        # is a separate `publish-previews` job that runs no external code.
+        #
+        # Staged before the daemon round-trip below: that step edits a
+        # source file and re-renders, which would otherwise leak into the
+        # published gallery.
+        if: matrix.render && github.event_name != 'pull_request'
+        working-directory: external/${{ matrix.workdir }}
+        # Matrix-derived strings go through env, not inline `${{ }}` in the
+        # script body: `pre_gradle_script` / `notes` are multi-line and
+        # contain quotes + backticks, which would break (or worse, inject
+        # into) the shell if interpolated directly. (zizmor: template-injection)
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+          REPO: ${{ github.repository }}
+          PREVIEW_BRANCH: compose-preview/integration/${{ matrix.slug }}
+          SLUG: ${{ matrix.slug }}
+          MATRIX_NAME: ${{ matrix.name }}
+          MATRIX_REPO: ${{ matrix.repo }}
+          MATRIX_REF: ${{ matrix.ref }}
+          MATRIX_NOTES: ${{ matrix.notes }}
+          MATRIX_PATCH_FILE: ${{ matrix.patch_file }}
+          MATRIX_PRE_GRADLE: ${{ matrix.pre_gradle_script }}
+          MATRIX_CONTINUE_ON_ERROR: ${{ matrix.continue_on_error }}
+          MATRIX_EXTRA_ARGS: ${{ matrix.extra_gradle_args }}
+        run: |
+          set -euo pipefail
+          # Re-aggregate the previews we just rendered into the canonical
+          # `compose-preview show --json` envelope. Gradle's up-to-date
+          # checks mean nothing re-renders — this just collects the PNGs +
+          # metadata the standalone render task already produced into the
+          # one shape `compare-previews.py generate` consumes. Tolerate a
+          # non-zero exit (e.g. a stray missing render) so a partial gallery
+          # still publishes.
+          compose-preview show --json > "$GITHUB_WORKSPACE/_previews.json" || true
+          if [ ! -s "$GITHUB_WORKSPACE/_previews.json" ]; then
+            echo "::warning::compose-preview show produced no envelope; skipping gallery staging."
+            exit 0
+          fi
+
+          # Assemble the per-project CI notes spliced into the branch README:
+          # the hand-written matrix `notes`, then auto-derived facts about the
+          # workarounds this harness applied for the consumer (consumer patch,
+          # build-script credential/plugin stubs, non-blocking status, extra
+          # Gradle args). Browsers see exactly what was done to make the
+          # project render in CI.
+          notes_file="$GITHUB_WORKSPACE/_integration_notes.md"
+          {
+            echo "## CI notes"
+            echo
+            if [ -n "${MATRIX_NOTES:-}" ]; then
+              printf '%s\n\n' "$MATRIX_NOTES"
+            fi
+            echo "### Workarounds applied by the integration harness"
+            echo
+            echo "- Source: [\`${MATRIX_REPO}@${MATRIX_REF}\`](https://github.com/${MATRIX_REPO}/tree/${MATRIX_REF})"
+            if [ -n "${MATRIX_PATCH_FILE:-}" ]; then
+              echo "- Consumer patch applied before configuring the build: \`${MATRIX_PATCH_FILE}\` (idempotent — auto-skipped once the change lands upstream)."
+            fi
+            if [ -n "${MATRIX_PRE_GRADLE:-}" ]; then
+              echo "- Build script patched before Gradle to stub out CI-unavailable plugins / credentials (e.g. Firebase Crashlytics, Google Services, Play Publisher)."
+            fi
+            if [ "${MATRIX_CONTINUE_ON_ERROR:-}" = "true" ]; then
+              echo "- Non-blocking cell (\`continue_on_error\`): failures surface as warnings rather than gating PRs."
+            fi
+            if [ -n "${MATRIX_EXTRA_ARGS:-}" ]; then
+              echo "- Extra Gradle args: \`${MATRIX_EXTRA_ARGS}\`."
+            fi
+            if [ -z "${MATRIX_PATCH_FILE:-}" ] && [ -z "${MATRIX_PRE_GRADLE:-}" ]; then
+              echo "- No source or build-script workarounds — the project renders against the locally-built plugin snapshot as-is."
+            fi
+          } > "$notes_file"
+
+          # Turn the envelope into the same renders/ + baselines.json +
+          # README.md layout the in-repo compose-preview/main branch uses.
+          intro="Auto-rendered by the integration matrix from [\`${MATRIX_REPO}@${MATRIX_REF}\`](https://github.com/${MATRIX_REPO}/tree/${MATRIX_REF}). Updated on every push to \`main\`."
+          if ! python3 "$GITHUB_WORKSPACE/bundle/ci/compare-previews.py" generate \
+              "$GITHUB_WORKSPACE/_previews.json" \
+              --output-dir "$GITHUB_WORKSPACE/_integration_baselines" \
+              --repo "$REPO" \
+              --branch "$PREVIEW_BRANCH" \
+              --title "${MATRIX_NAME} — Compose previews" \
+              --intro "$intro" \
+              --notes-file "$notes_file"; then
+            echo "::warning::baseline generate failed; skipping gallery staging."
+            exit 0
+          fi
+          # Push metadata the publish-previews job consumes (mirrors the
+          # apply action's staging convention).
+          echo "$PREVIEW_BRANCH" > "$GITHUB_WORKSPACE/_integration_baselines/_push_branch"
+          echo "Update ${SLUG} integration previews from ${GITHUB_SHA::8}" \
+            > "$GITHUB_WORKSPACE/_integration_baselines/_push_msg"
+          echo "1" > "$GITHUB_WORKSPACE/_integration_baselines/_skip_if_unchanged"
+
+      - name: Upload browsable preview gallery payload
+        if: matrix.render && github.event_name != 'pull_request' && hashFiles('_integration_baselines/baselines.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-previews-${{ matrix.slug }}
+          path: _integration_baselines
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Configure daemon in consumer build
         if: matrix.daemon
@@ -1067,3 +1220,76 @@ jobs:
             ${{ runner.temp }}/fixture/**/build/compose-previews/renders/*.error.json
           if-no-files-found: warn
           retention-days: 7
+
+  publish-previews:
+    name: Publish integration preview branches
+    needs: integration
+    # Trusted-context only: skip on PRs (fork tokens are read-only and we
+    # don't want PR runs racing the shared branches). `always()` so a single
+    # failed / flaky matrix cell doesn't stop us publishing the ones that did
+    # render and stage a gallery.
+    #
+    # This job is the *only* place a write token is exposed, and it runs NO
+    # external consumer code — it just downloads the staged galleries from
+    # the matrix job and `git push` them. The untrusted external builds all
+    # ran in the `integration` job under a read-only token.
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout this repo (for push-branch.sh)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The push uses an explicit token in the remote URL (push-branch.sh),
+          # so the default git credentials don't need persisting. (zizmor: artipacked)
+          persist-credentials: false
+
+      - name: Download staged preview galleries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: integration-previews-*
+          path: _staged
+
+      - name: Push each integration preview branch
+        env:
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN_INLINE: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          push_helper="$GITHUB_WORKSPACE/.github/actions/apply/lib/push-branch.sh"
+          # Locate every staged gallery by its `_push_branch` marker rather
+          # than a fixed `_staged/integration-previews-*/` glob. When only one
+          # artifact matches the download pattern, actions/download-artifact@v8
+          # extracts it straight into `_staged` with no per-artifact subdir
+          # (`artifacts.length === 1 ? path : path/<name>`), so a name-keyed
+          # glob would miss the lone gallery and we'd drop the one cell that
+          # succeeded — exactly the case the job is meant to still publish.
+          mapfile -t markers < <(find _staged -type f -name _push_branch 2>/dev/null | sort)
+          if [ "${#markers[@]}" -eq 0 ]; then
+            echo "No staged integration preview galleries — nothing to publish."
+            exit 0
+          fi
+          rc=0
+          for marker in "${markers[@]}"; do
+            dir=$(dirname "$marker")
+            branch=$(cat "$dir/_push_branch")
+            msg=$(cat "$dir/_push_msg")
+            skip=$(cat "$dir/_skip_if_unchanged" 2>/dev/null || echo 1)
+            echo "::group::Publishing ${branch}"
+            # Subshell so push-branch.sh's `git init` stays scoped to the
+            # staged gallery dir. Strip the metadata files first so they
+            # don't land in the committed tree.
+            (
+              cd "$dir"
+              rm -f _push_branch _push_msg _skip_if_unchanged
+              TARGET_BRANCH="$branch" \
+              MSG="$msg" \
+              SKIP_IF_UNCHANGED="$skip" \
+              REPO="$REPO" \
+              GITHUB_TOKEN_INLINE="$GITHUB_TOKEN_INLINE" \
+                bash "$push_helper"
+            ) || rc=$?
+            echo "::endgroup::"
+          done
+          exit "$rc"
