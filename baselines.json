@@ -1,0 +1,947 @@
+{
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.BackButtonScreenshot": {
+    "captureLabel": "",
+    "functionName": "BackButtonScreenshot",
+    "renderBasename": "BackButtonScreenshot.png",
+    "sha256": "cc2289a5b796b4c5b3c3ca4db6c08603f788fd0a271f4e42cfb4e4c259e4fce3",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.ErrorScreenshot": {
+    "captureLabel": "",
+    "functionName": "ErrorScreenshot",
+    "renderBasename": "ErrorScreenshot.png",
+    "sha256": "f26933744b0e0b18f5d211dcbb04b3d910b69b9de9b9b20faf695153f9378c77",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.LoadingScreenshot": {
+    "captureLabel": "",
+    "functionName": "LoadingScreenshot",
+    "renderBasename": "LoadingScreenshot.png",
+    "sha256": "b46cd46be81ed735254e0c72396904275b5254d558563c807fcf83eaa59830a8",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.MovieCardScreenshot": {
+    "captureLabel": "",
+    "functionName": "MovieCardScreenshot",
+    "renderBasename": "MovieCardScreenshot.png",
+    "sha256": "dc55ea53557aebb9a5e38f00bbc936ccc4d64106758dbda54eb73a469d225b2b",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.RequestFullSpaceModeItemPreview": {
+    "captureLabel": "",
+    "functionName": "RequestFullSpaceModeItemPreview",
+    "renderBasename": "RequestFullSpaceModeItemPreview.png",
+    "sha256": "2a202b7116c8803a4e40facbca0f6a71e08bfe56acc3affc2d78876eadac12bf",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.TopAppBarPreview": {
+    "captureLabel": "",
+    "functionName": "TopAppBarPreview",
+    "renderBasename": "TopAppBarPreview.png",
+    "sha256": "8800cb69c2a51a39f3e20215ee73cac833f14b9ce986b1dafa41d8bc70e12357",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.UserAvatarScreenshot": {
+    "captureLabel": "",
+    "functionName": "UserAvatarScreenshot",
+    "renderBasename": "UserAvatarScreenshot.png",
+    "sha256": "4ead366797c2cb8860685ad7493094729d73a7751b8c094af1df352d9699e990",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.components.ComponentScreenshotTestsKt.WatchNowButtonScreenshot": {
+    "captureLabel": "",
+    "functionName": "WatchNowButtonScreenshot",
+    "renderBasename": "WatchNowButtonScreenshot.png",
+    "sha256": "d9ed843b0491b76582df163c3727fdf9eba55a0a00519e4cf8ea6e86b9a3aadf",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_Auto.png",
+    "sha256": "d412da364f3ce33f04a6480dada18b66ec4cb97caedf7d48a1e40b4997077b87",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_Desktop.png",
+    "sha256": "a7d9ea141e50a815e40f2da9aaf50b23a6736b109fa2e34d67bd59b2553e32c1",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_Foldable.png",
+    "sha256": "edaf9c6d4f9e66453343eb765570684de216ba09a8f6c8ec0c0fcc0014985a50",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_Phone.png",
+    "sha256": "902c445b0b57c52c023ea62bb0c996ef2b8b52f058878d008cc07c771e1d55bc",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_TV.png",
+    "sha256": "17777fd2dad9a3351440078c2193e597dd04c5ee5de5b44d3d7d9638612eb6ad",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoriesScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenScreenshot",
+    "renderBasename": "CategoriesScreenScreenshot_Tablet.png",
+    "sha256": "e223794e0c7c98323a495db0fadd0f6525243a46da120c215079cb4f08466e8b",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_Auto.png",
+    "sha256": "f488297266150b1f71ab3dc0dbc5f822edb469a0e8f5b676e227f7d1e36f2808",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_Desktop.png",
+    "sha256": "89e0caa0ec901d9326a045e7c357f01da281c54d8ed2e7a93894f54ac435f8e1",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_Foldable.png",
+    "sha256": "45a1934b8b43e729f3b2a1d7b9c3e1646c4809c55149881c402995d111f4ade5",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_Phone.png",
+    "sha256": "0c57f3285f5dba128a53fd18a23f1b9a253b635d20577c0ca50de7baf9bf832d",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_TV.png",
+    "sha256": "72793272effcef740337ece18a8c7b07161d987f84dc37edbbc620de8fd9edae",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.CategoryMovieListScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "CategoryMovieListScreenScreenshot",
+    "renderBasename": "CategoryMovieListScreenScreenshot_Tablet.png",
+    "sha256": "34f2c93befe767e28a9b8676c06f854e77fe7337a982ae40370c2443c3d0a032",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_Auto.png",
+    "sha256": "31f3e313e56a6bfc662970231e4efe0d1e69568c86458c5dc921417073abdee7",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_Desktop.png",
+    "sha256": "81a1ab0329792467f9aaf87e87f92e9e4ef49246dc7403b0203dcd10163e6ebd",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_Foldable.png",
+    "sha256": "7a8c7fe02c34b97663716c17ae21a3fe3b354bb2f4022c40830bbed79c02777e",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_Phone.png",
+    "sha256": "42449276929bddb7af17d2a14373145ac985e57d9112d4f5adaa017fcc345398",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_TV.png",
+    "sha256": "ac0c3f3d7db87dc0496d00d79565635e1c7a09e200fa1bd85f8500f3e555bcb3",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.FavouritesScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "FavouritesScreenScreenshot",
+    "renderBasename": "FavouritesScreenScreenshot_Tablet.png",
+    "sha256": "8d4a3a03aa1d6dbdd788070ff4a678126c66ec737cc2143425c8fe971d0c9bbf",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_Auto.png",
+    "sha256": "3e51d1c1d7d14f0d3ac6548d9598e0aaba860cba446607a9f837f89c794a8ace",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_Desktop.png",
+    "sha256": "76b84cf6a347de22cfc29c76290c246058426523fd78cc5bdaa151129d929cbe",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_Foldable.png",
+    "sha256": "58c09986fd0b03c8542f2edc73d6b304ddc221eac0b942eb576e47020b33a343",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_Phone.png",
+    "sha256": "c08c9ad571a0b18a4595793d6af82d2de24dec81d59cfe699e360c5b227de65a",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_TV.png",
+    "sha256": "0367ce97bffc7d7845bc08885243afed562ecc23e60a6e66ac3361d28a579151",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.HomeScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "HomeScreenScreenshot",
+    "renderBasename": "HomeScreenScreenshot_Tablet.png",
+    "sha256": "a3380ac8e7d4ae193ab73ab71a095cf39e25d5d3c7d2918ba1f8f07958e5a420",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_Auto.png",
+    "sha256": "92fd6e14f65bff71be3d6e8688e51ae3078bbe61e051eb5ced4de2d299142c2c",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_Desktop.png",
+    "sha256": "f97da7e87b1a9c33e40fe7a4f552918051b4c05dc52e500a912202485349e642",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_Foldable.png",
+    "sha256": "529e2fffa50d72e1ddaad89f0fdd18b4454a1ddc545b28fcc7d5097c2d516271",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_Phone.png",
+    "sha256": "14cc0dac86b9271b89e8627e71903a00a32bb74c2ea6ce0d6b36d7167edf6617",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_TV.png",
+    "sha256": "307e0637cca9fb773c1016298b4c080c8b8881381e992d889177ee3df2e6f998",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MovieDetailsScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "MovieDetailsScreenScreenshot",
+    "renderBasename": "MovieDetailsScreenScreenshot_Tablet.png",
+    "sha256": "c45d59c5ae2a2f6325ec22fdb8d5a7e377b6faefdbb4de72cfad97a21d9a77f4",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_Auto.png",
+    "sha256": "7bf5726d48c26463f7f9dacea5eefecc185fd88c9d611a71c31b4c8918acc81f",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_Desktop.png",
+    "sha256": "a7760a5c6359e1f8ad5c9e8b84566c3f43c0deacecd5a6a6805c19acf0b62ac8",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_Foldable.png",
+    "sha256": "4fbe05a0cab88a19dbbde8aeb27db5fb8f89947193a61c6e67ec9044f370d273",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_Phone.png",
+    "sha256": "7c7426f9465e2d6441405d0a26db31cfe0b4b3f9e15f040610ef7f631aeeff38",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_TV.png",
+    "sha256": "3f6011694585081ac7214481c9ece4f9598e73c12c6500d9ca01d5a613e29d7b",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.MoviesScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "MoviesScreenScreenshot",
+    "renderBasename": "MoviesScreenScreenshot_Tablet.png",
+    "sha256": "115e59bacde127505b88c5e7ebb422e533352552f2cf689b61ec0b155f08d414",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.NavigationSuiteScaffoldLayoutPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "NavigationSuiteScaffoldLayoutPreview",
+    "renderBasename": "NavigationSuiteScaffoldLayoutPreview_Foldable.png",
+    "sha256": "88e42ab664920c5ba76c955901c7924aa6b8732541d78bce038f50badd4e103a",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.NavigationSuiteScaffoldLayoutPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "NavigationSuiteScaffoldLayoutPreview",
+    "renderBasename": "NavigationSuiteScaffoldLayoutPreview_Phone.png",
+    "sha256": "ccee575b619d50a18aae0c6bf92c59e3edb6198aea980e9e86a276b2aedd51db",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.NavigationSuiteScaffoldLayoutPreview_Tablet": {
+    "captureLabel": "",
+    "functionName": "NavigationSuiteScaffoldLayoutPreview",
+    "renderBasename": "NavigationSuiteScaffoldLayoutPreview_Tablet.png",
+    "sha256": "098033bd53b1782632f1ee41165d8d980d91a3a7a8abf24bc3d237031d9f2457",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_Auto.png",
+    "sha256": "042cb2e4d39b76d62fa27eb5b8b88e1ae47d64704012105ca59b3994cde8db44",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_Desktop.png",
+    "sha256": "b3fb0de51b79e091b6957f12dacc1c3e49faa80adbeeaad5939eff4a2611b6d8",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_Foldable.png",
+    "sha256": "49b4ead29c43ec413e3ec8061e7ee3f2101fef22f7f786e22b16fb8b0d8b9b4a",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_Phone.png",
+    "sha256": "fb739368e113d7fe2dc0423f2da63eb06170097774fbddd22aa1ce7b8d469e17",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_TV.png",
+    "sha256": "30ab71d1b305bcbc45c746a5e8056fa45e5a75d424a0a5b2df4bf3eef0a4b995",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.SearchScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "SearchScreenScreenshot",
+    "renderBasename": "SearchScreenScreenshot_Tablet.png",
+    "sha256": "e76f34aced56c5bac36f6f6c642be87d37e24754f8e77abb5cad5133f90b5a20",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_Auto.png",
+    "sha256": "9e00bf39e9e67e3b6c4f7f4ba3dbbc45947bdf4e1e01cea0e1759583bbd31ecb",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_Desktop.png",
+    "sha256": "4e84bd977ed09753924e5c9c6702a34037562caa8004ffabd9d832da4705debd",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_Foldable.png",
+    "sha256": "9a4ce31b76f35c1e2944a255d6ac0a50ee283527d165bc802535881d2d15b8b1",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_Phone.png",
+    "sha256": "b215e8f3ae77264ddc0c3882f0798c6d94ec22e6e52cbc069d1c051a1630f848",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_TV.png",
+    "sha256": "927b0e67f0bffd53463283a10a8115644dc825e400e596a987d2bc18d5425a46",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.ShowsScreenScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "ShowsScreenScreenshot",
+    "renderBasename": "ShowsScreenScreenshot_Tablet.png",
+    "sha256": "e929b27c9ff6c45bb6e4d7425c5e66e0cac56dfd40590692f72aa96ac7a2559e",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.TopBarWithNavigationLayoutPreview_Auto": {
+    "captureLabel": "",
+    "functionName": "TopBarWithNavigationLayoutPreview",
+    "renderBasename": "TopBarWithNavigationLayoutPreview_Auto.png",
+    "sha256": "2a3c5bff8b638ac25ff3d4e09515c1aa63ad762e1657318fd3b59ea50a551620",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.TopBarWithNavigationLayoutPreview_Desktop": {
+    "captureLabel": "",
+    "functionName": "TopBarWithNavigationLayoutPreview",
+    "renderBasename": "TopBarWithNavigationLayoutPreview_Desktop.png",
+    "sha256": "5a73ec1143f0f9dd4e7fc6eb45c634b2f8ca0e75ae4209cbe84f2d094faca8f6",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.ScreenScreenshotTestsKt.TopBarWithNavigationLayoutPreview_TV": {
+    "captureLabel": "",
+    "functionName": "TopBarWithNavigationLayoutPreview",
+    "renderBasename": "TopBarWithNavigationLayoutPreview_TV.png",
+    "sha256": "87ae853524b5f4cede10493fc40a477d3c181d740a4eff6169da8297d5c2a358",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/ScreenScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.categories.CategoriesScreenKt.CategoriesScreenFoldablePreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenFoldablePreview",
+    "renderBasename": "CategoriesScreenFoldablePreview_Foldable.png",
+    "sha256": "9f73ec9828897aa4ea324e0491fb749bb1d6c7c5165d6c58dda278f7f1a41dcd",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/categories/CategoriesScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.categories.CategoriesScreenKt.CategoriesScreenPhonePreview_Phone": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenPhonePreview",
+    "renderBasename": "CategoriesScreenPhonePreview_Phone.png",
+    "sha256": "6f0d122e8d8884b7be26db475642e328c3e7b9a91b5423cf385c4a928abc525d",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/categories/CategoriesScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.categories.CategoriesScreenKt.CategoriesScreenTvPreview_TV": {
+    "captureLabel": "",
+    "functionName": "CategoriesScreenTvPreview",
+    "renderBasename": "CategoriesScreenTvPreview_TV.png",
+    "sha256": "1fe07f77156e336ed7f7ba7c657443c7d8a397f6e4b4e7a41e68b783270568e2",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/categories/CategoriesScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenKt.ProfileScreenFoldablePreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "ProfileScreenFoldablePreview",
+    "renderBasename": "ProfileScreenFoldablePreview_Foldable.png",
+    "sha256": "78fcf2cee4b2a65e21d6f94ddd675822f0724a4c066c7b21cb1a6a28135b82b3",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/ProfileScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenKt.ProfileScreenPhonePreview_Phone": {
+    "captureLabel": "",
+    "functionName": "ProfileScreenPhonePreview",
+    "renderBasename": "ProfileScreenPhonePreview_Phone.png",
+    "sha256": "b009573c9489b191396369f309ff8bf21180805a4536d127fdf903740453181a",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/ProfileScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenKt.ProfileScreenTvPreview_TV": {
+    "captureLabel": "",
+    "functionName": "ProfileScreenTvPreview",
+    "renderBasename": "ProfileScreenTvPreview_TV.png",
+    "sha256": "98ad2b4eb43ed57e00250172e347f186f463cbeae3dacec099eab80be8542c59",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/ProfileScreen.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_Auto.png",
+    "sha256": "5db01b37e221a3aa27554c2d90a5e27e86f89afabf3747bdaeb43b89c3dcf234",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_Desktop.png",
+    "sha256": "21af3a8a926f88fea97679b3451f59e159e213fd3ddea9a6d93ed12f95086f08",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_Foldable.png",
+    "sha256": "3933f2c3381fa76da9607b5e9e554a99736d8157f9195c3afdd539a6397a9aa6",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_Phone.png",
+    "sha256": "82db9b4267fecc1299768d818b2df4024e3e40c914e54269900082cdc0565376",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_TV.png",
+    "sha256": "2049d89d9f6d74f999f7d5729d2f696c863fc56f41af8bbc09ae50d8abbfe12c",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AboutSectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "AboutSectionScreenshot",
+    "renderBasename": "AboutSectionScreenshot_Tablet.png",
+    "sha256": "3c583fb8d3620419fc1e9322637a4e63f9a6766eac7b7e8f73b70a4cd4bf5d78",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_Auto.png",
+    "sha256": "1f8307438464296ac47a515bc9c2bfdfc51f2259c567b3cf2221529e969b8ddb",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_Desktop.png",
+    "sha256": "2ea9ab2f81b2b3faa7260d3ab321e87c63007e2f8a95d5f451823b5d6afaffc8",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_Foldable.png",
+    "sha256": "55e6a35f2027ea237d3fa50579cdf476f2d396dba53a550c3e81de59e70a2f67",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_Phone.png",
+    "sha256": "dc624faf87b7378860d5a69b30c1e8c7ff79020ec896bca12efa427017192e97",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_TV.png",
+    "sha256": "218a8654436d2956dc191da947b3c1b93f5d6feb5dac2ec79982093c11b79c29",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.AccountsSectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "AccountsSectionScreenshot",
+    "renderBasename": "AccountsSectionScreenshot_Tablet.png",
+    "sha256": "ea3e286585719a3a05c7c2584adaf5c5d6df824bc242d63fc74b56ee5e432d44",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_Auto.png",
+    "sha256": "dd58ec302df05998bfe69c0e1ec8227811b879fd8629c75a10cdb50e6613d2f7",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_Desktop.png",
+    "sha256": "3e146a6b2acf461d64da5e50bdc55d3182de91f28e116c1ef423a900789d0a02",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_Foldable.png",
+    "sha256": "1aa85d4ad4a33651f159d314092ba5cef78cbdcc0085a55d4224c4d2e4806acf",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_Phone.png",
+    "sha256": "35c5fc8b016b71aad0f64a19069f37c083293b15b72f170c63495143109755e0",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_TV.png",
+    "sha256": "158be656a759465ff5e106e5e9d1210782471333f96b160f54e9e42369c4cb0a",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.HelpAndSupportSectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "HelpAndSupportSectionScreenshot",
+    "renderBasename": "HelpAndSupportSectionScreenshot_Tablet.png",
+    "sha256": "7ca5641be982ae1df3cbb7b5916d7fe2db7ad411f834e2a131f40465b217869e",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_Auto.png",
+    "sha256": "f681722fcb86b314d074e729991ef7ef3fe0bda1fa078a3930072476797d5835",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_Desktop.png",
+    "sha256": "39ce339719b06c0fcdc30af9c2fee9bf4291e6eac0ef06bc0d3f8629751ddc7c",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_Foldable.png",
+    "sha256": "7d3612bbf9a3f35d8fbf2e0e748ceed8dd27cf20a0b0668b27ab6f0c838f9814",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_Phone.png",
+    "sha256": "dc7c881fc0726690942480b39d10393b0996409d436fefdefc6e73b2e5cf9683",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_TV.png",
+    "sha256": "eabc6808a47c3c4c00d0fd8bb7a0e505670b434703ffee04decdfd9ecd67621b",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.LanguageSectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "LanguageSectionScreenshot",
+    "renderBasename": "LanguageSectionScreenshot_Tablet.png",
+    "sha256": "f879bc9ab08c4d4373cbf7380999ab4259293948fa5f5067d42588fc1d788af2",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_Auto.png",
+    "sha256": "c750909223a273950eaf63deb177dd313d52709eb1090f1096626d5283f42350",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_Desktop.png",
+    "sha256": "949db3cf58b8a16f769f49d460ee4dfad1a9000983cbcc4a9e8f27345dc68e1f",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_Foldable.png",
+    "sha256": "98bfa912fd1e663611c4505fc28ae3007c72870bc0b56b0d6f75e166f6aa5d10",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_Phone.png",
+    "sha256": "1f361053ce59592db5f479e6c72100bd9177085ff4b22165528b0d47630ad2a9",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_TV.png",
+    "sha256": "0c5d1c8447822a6dd85e6162a7e90b6383558f6f29aed5ebf351dd5d30abb996",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SearchHistorySectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionScreenshot",
+    "renderBasename": "SearchHistorySectionScreenshot_Tablet.png",
+    "sha256": "488262a2c8b228d9078276ed24f06b7c4a16f6bb3bf7fb4aa5b4f0defdfcdcd1",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_Auto": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_Auto.png",
+    "sha256": "c944357d1955f148d8cb8dfc27e4f1396ce787056fd1946606698f81de752018",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_Desktop": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_Desktop.png",
+    "sha256": "4d0cd5ebe3b5cf558072c0e4d5c8feb1872b35b5a03b16d6bb4f667120e49d26",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_Foldable": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_Foldable.png",
+    "sha256": "5b5f086c52a91d8bff35af073cd40ae77ce512e968d3c341924235108e2da956",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_Phone": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_Phone.png",
+    "sha256": "51d54d543f2cd42996f7b47e1006ba446adf1ad4e9ff685344aab4273330136d",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_TV": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_TV.png",
+    "sha256": "d7fb39f85b08ae2002d9081b578f714501be4e0a9a4633ee58b76922c795b247",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.ProfileScreenshotTestsKt.SubtitlesSectionScreenshot_Tablet": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionScreenshot",
+    "renderBasename": "SubtitlesSectionScreenshot_Tablet.png",
+    "sha256": "75a7e6615a1c46c84023b5111494eea1a0b8b419727bf432ae9f2a346b17bc58",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/profile/ProfileScreenshotTests.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AboutSectionKt.AboutSectionCompactPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "AboutSectionCompactPreview",
+    "renderBasename": "AboutSectionCompactPreview_Foldable.png",
+    "sha256": "ab00bbb78a4c16aa282cbd0597522fb976f4276bdbdfe92f9ce580db22a34657",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AboutSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AboutSectionKt.AboutSectionCompactPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "AboutSectionCompactPreview",
+    "renderBasename": "AboutSectionCompactPreview_Phone.png",
+    "sha256": "9ad7c3da7c7774df2d489a437f031d8c7e3c8493eec1ac677705de8dcb901c3c",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AboutSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AboutSectionKt.AboutSectionExpandedPreview_TV": {
+    "captureLabel": "",
+    "functionName": "AboutSectionExpandedPreview",
+    "renderBasename": "AboutSectionExpandedPreview_TV.png",
+    "sha256": "9c993cb701a6a76931e23fd95d33af11d2ac678ac69f8ab30facd1a908b69d6d",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AboutSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.SingleColumnAccountPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "SingleColumnAccountPreview",
+    "renderBasename": "SingleColumnAccountPreview_Foldable.png",
+    "sha256": "f843e6679ee18441dbe9b4190b3939d9a583cbe8c6ca7885776e7f1c4bd2691e",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSectionKt.SingleColumnAccountPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "SingleColumnAccountPreview",
+    "renderBasename": "SingleColumnAccountPreview_Phone.png",
+    "sha256": "69b91fe2db550a7444f9aadbcb376a344f9f50d823558623322ebc22c8d9df8a",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSelectionItemKt.AccountSelectionItemPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "AccountSelectionItemPreview",
+    "renderBasename": "AccountSelectionItemPreview_Foldable.png",
+    "sha256": "f227d595668c5e6978e30d4649b1e8706ba132cbf7835ea86888d74b927ffb74",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSelectionItem.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSelectionItemKt.AccountSelectionItemPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "AccountSelectionItemPreview",
+    "renderBasename": "AccountSelectionItemPreview_Phone.png",
+    "sha256": "9dafe55daa1d7bc8f2e1afd756cf5543ef6ef48b4836c8460eb80593f4b96459",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSelectionItem.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.AccountsSelectionItemKt.AccountSelectionItemTvPreview_TV": {
+    "captureLabel": "",
+    "functionName": "AccountSelectionItemTvPreview",
+    "renderBasename": "AccountSelectionItemTvPreview_TV.png",
+    "sha256": "52ba11884dc65638f0620b179544e4e59a11e16edefff30bcddcb24e213c35c3",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/AccountsSelectionItem.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.HelpAndSupportSectionKt.HelpSectionCompactPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "HelpSectionCompactPreview",
+    "renderBasename": "HelpSectionCompactPreview_Foldable.png",
+    "sha256": "76f7c9f95f302075eeb3d192fe94f81f9ac97d942c5e598475196f172b20fa51",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/HelpAndSupportSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.HelpAndSupportSectionKt.HelpSectionCompactPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "HelpSectionCompactPreview",
+    "renderBasename": "HelpSectionCompactPreview_Phone.png",
+    "sha256": "051b0657d07647739caa84606877fc8fff9f7bd3bb45f82faf14cc6733056fb4",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/HelpAndSupportSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.HelpAndSupportSectionKt.HelpSectionExpandedPreview_TV": {
+    "captureLabel": "",
+    "functionName": "HelpSectionExpandedPreview",
+    "renderBasename": "HelpSectionExpandedPreview_TV.png",
+    "sha256": "4c62a1d99e54966f6e1dd09fb7a8f772b04beb58884814e68048d4bd2cbf9636",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/HelpAndSupportSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.LanguageSectionKt.LanguageScreenCompactPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "LanguageScreenCompactPreview",
+    "renderBasename": "LanguageScreenCompactPreview_Foldable.png",
+    "sha256": "98c6a78cb3f153739a7b4c021ed1f2fd95ff12923ecda2f282212036415a097a",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/LanguageSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.LanguageSectionKt.LanguageScreenCompactPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "LanguageScreenCompactPreview",
+    "renderBasename": "LanguageScreenCompactPreview_Phone.png",
+    "sha256": "c17ecb05de036241452ec82006bb84beb92d2ef3950c8428640092d37e949195",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/LanguageSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.LanguageSectionKt.LanguageScreenExpandedPreview_TV": {
+    "captureLabel": "",
+    "functionName": "LanguageScreenExpandedPreview",
+    "renderBasename": "LanguageScreenExpandedPreview_TV.png",
+    "sha256": "49933b0999645922ecc5b3e4a19d22484b00f52874ec702921e7da552be898ea",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/LanguageSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SearchHistorySectionKt.SearchHistorySectionCompactPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionCompactPreview",
+    "renderBasename": "SearchHistorySectionCompactPreview_Foldable.png",
+    "sha256": "144fb70e5fb2d739b9df2270e4210f427cd86fe82b597da52c3efffecd6d64f8",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SearchHistorySection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SearchHistorySectionKt.SearchHistorySectionCompactPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionCompactPreview",
+    "renderBasename": "SearchHistorySectionCompactPreview_Phone.png",
+    "sha256": "02ae64491de04cd1cffc832356773030d5a124ec8f5d11f4fe6fb821770fb0a4",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SearchHistorySection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SearchHistorySectionKt.SearchHistorySectionExpandedPreview_TV": {
+    "captureLabel": "",
+    "functionName": "SearchHistorySectionExpandedPreview",
+    "renderBasename": "SearchHistorySectionExpandedPreview_TV.png",
+    "sha256": "fefe97edb98262175ecd55524a1c0d47bba5103a558ad03c91348ea77892baec",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SearchHistorySection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SubtitlesSectionKt.SubtitlesSectionCompactPreview_Foldable": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionCompactPreview",
+    "renderBasename": "SubtitlesSectionCompactPreview_Foldable.png",
+    "sha256": "3eb0fec6cc603f06c79622a49bd156c319510c9fdd9a1816ef97f368241f6257",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SubtitlesSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SubtitlesSectionKt.SubtitlesSectionCompactPreview_Phone": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionCompactPreview",
+    "renderBasename": "SubtitlesSectionCompactPreview_Phone.png",
+    "sha256": "3047bd9c2300f477f59f342675564aa944caf7763c2a2a1381247de6870641f8",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SubtitlesSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.profile.compoents.SubtitlesSectionKt.SubtitlesSectionExpandedPreview_TV": {
+    "captureLabel": "",
+    "functionName": "SubtitlesSectionExpandedPreview",
+    "renderBasename": "SubtitlesSectionExpandedPreview_TV.png",
+    "sha256": "fd7e5dec255d3c06cdc2516bd504e217dec06a5f3048b3968c58ea504dcb1194",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/profile/compoents/SubtitlesSection.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMainFrameKt.MediaPlayerMainFramePreviewLayoutOnPhone_Phone": {
+    "captureLabel": "",
+    "functionName": "MediaPlayerMainFramePreviewLayoutOnPhone",
+    "renderBasename": "MediaPlayerMainFramePreviewLayoutOnPhone_Phone.png",
+    "sha256": "71ebcec58f547181eff4d15ec512266b5a6956254fa3044f1683fbd13467658a",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMainFrame.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMainFrameKt.MediaPlayerMainFramePreviewLayoutWithoutMore_tv_4k": {
+    "captureLabel": "",
+    "functionName": "MediaPlayerMainFramePreviewLayoutWithoutMore",
+    "renderBasename": "MediaPlayerMainFramePreviewLayoutWithoutMore_tv_4k.png",
+    "sha256": "891f244471885d86b869660988c4e02467c5750f6f66f645302137b7dab29dfb",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMainFrame.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMainFrameKt.MediaPlayerMainFramePreviewLayout_tv_4k": {
+    "captureLabel": "",
+    "functionName": "MediaPlayerMainFramePreviewLayout",
+    "renderBasename": "MediaPlayerMainFramePreviewLayout_tv_4k.png",
+    "sha256": "80a1a0a671d7069d93b9a8735527cd63cbb4da761ffde5e7aa2ab71c0e47fc0e",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMainFrame.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleKt.VideoPlayerMediaTitlePreviewAd_Ads": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewAd",
+    "renderBasename": "VideoPlayerMediaTitlePreviewAd_Ads.png",
+    "sha256": "56afb7d34b73f35a743b3ee5d3d1a6f1c0653a27490b2eefde377c256ee12560",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitle.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleKt.VideoPlayerMediaTitlePreviewLive_Live": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewLive",
+    "renderBasename": "VideoPlayerMediaTitlePreviewLive_Live.png",
+    "sha256": "1754966043bf89229443e2d3bf6c145ba8463fa328e7a7c237d3704f78871760",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitle.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleKt.VideoPlayerMediaTitlePreviewSeries_TV Series": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewSeries",
+    "renderBasename": "VideoPlayerMediaTitlePreviewSeries_TV_Series.png",
+    "sha256": "4c174939f0ef7198c23ecec727a13394f83e6e8678c825825fc2abeb00c3866a",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitle.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleScreenshotTestKt.VideoPlayerMediaTitlePreviewAdScreenshot_Ads": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewAdScreenshot",
+    "renderBasename": "VideoPlayerMediaTitlePreviewAdScreenshot_Ads.png",
+    "sha256": "56afb7d34b73f35a743b3ee5d3d1a6f1c0653a27490b2eefde377c256ee12560",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitleScreenshotTest.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleScreenshotTestKt.VideoPlayerMediaTitlePreviewLiveScreenshot_Live": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewLiveScreenshot",
+    "renderBasename": "VideoPlayerMediaTitlePreviewLiveScreenshot_Live.png",
+    "sha256": "1754966043bf89229443e2d3bf6c145ba8463fa328e7a7c237d3704f78871760",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitleScreenshotTest.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerMediaTitleScreenshotTestKt.VideoPlayerMediaTitlePreviewSeriesScreenshot_TV Series": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerMediaTitlePreviewSeriesScreenshot",
+    "renderBasename": "VideoPlayerMediaTitlePreviewSeriesScreenshot_TV_Series.png",
+    "sha256": "4c174939f0ef7198c23ecec727a13394f83e6e8678c825825fc2abeb00c3866a",
+    "sourceFile": "src/screenshotTest/kotlin/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerMediaTitleScreenshotTest.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerOverlayKt.VideoPlayerOverlayPreviewForPhone_Phone": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerOverlayPreviewForPhone",
+    "renderBasename": "VideoPlayerOverlayPreviewForPhone_Phone.png",
+    "sha256": "6d40057761beef034988fbdb7fad147d77174b781f113e974db15db65a837cad",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerOverlay.kt"
+  },
+  "jetstream/com.google.jetstream.presentation.screens.videoPlayer.components.VideoPlayerOverlayKt.VideoPlayerOverlayPreview_tv_4k": {
+    "captureLabel": "",
+    "functionName": "VideoPlayerOverlayPreview",
+    "renderBasename": "VideoPlayerOverlayPreview_tv_4k.png",
+    "sha256": "993af1928b66a2b214c87e03b45c639203c8135fa0da4a747aa6931da6e20b2e",
+    "sourceFile": "src/main/java/com/google/jetstream/presentation/screens/videoPlayer/components/VideoPlayerOverlay.kt"
+  }
+}
