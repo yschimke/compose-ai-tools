@@ -37,7 +37,9 @@
 #include <math/vec3.h>
 #include <math/vec4.h>
 #include <math/quat.h>
+#include <math/half.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -87,6 +89,78 @@ float3 hexToLinear(const std::string& hex) {
 }
 
 struct Vertex { float x, y, z, u, v; };
+
+// GLSL-style smoothstep on a single scalar (Filament's math headers don't export one for floats).
+float smoothstep01(float x) {
+  x = std::clamp(x, 0.0f, 1.0f);
+  return x * x * (3.0f - 2.0f * x);
+}
+
+// Direction (unnormalized) for a cubemap texel. `face` follows Filament's FaceOffsets order
+// (+X,-X,+Y,-Y,+Z,-Z); (u,v) are in [-1,1] across the face. Matches the standard GL cubemap
+// convention so the +Y face points straight up (dir.y == 1).
+float3 cubeDir(int face, float u, float v) {
+  switch (face) {
+    case 0: return { 1.0f,  -v,   -u};  // +X
+    case 1: return {-1.0f,  -v,    u};  // -X
+    case 2: return {  u,  1.0f,    v};  // +Y
+    case 3: return {  u, -1.0f,   -v};  // -Y
+    case 4: return {  u,   -v,  1.0f};  // +Z
+    default:return { -u,   -v, -1.0f};  // -Z
+  }
+}
+
+// Build a vertical-gradient environment cubemap emulating an HDRI sky/horizon, and install it as the
+// scene's skybox. `sky` is the colour straight up, `horizon` the colour at eye level; a soft glow
+// band brightens the horizon to read as atmospheric haze. RGBA16F (half) texels, one face at a time
+// via Texture::FaceOffsets. The texel buffer is heap-allocated and freed in the PixelBufferDescriptor
+// callback — Filament reads it on the driver thread during flushAndWait, so it must outlive this call
+// (same idiom as the panel textures below).
+Skybox* buildGradientSkybox(Engine& engine, float3 sky, float3 horizon) {
+  constexpr uint32_t kFace = 128;
+  constexpr uint32_t kTexelsPerFace = kFace * kFace;
+  constexpr uint32_t kChannels = 4;
+  const size_t faceBytes = (size_t)kTexelsPerFace * kChannels * sizeof(half);
+  // 6 faces packed back-to-back; FaceOffsets(faceBytes/elem≈) indexes by element count below.
+  auto* texels = new half[(size_t)kTexelsPerFace * kChannels * 6];
+
+  for (int face = 0; face < 6; ++face) {
+    half* dst = texels + (size_t)face * kTexelsPerFace * kChannels;
+    for (uint32_t y = 0; y < kFace; ++y) {
+      for (uint32_t x = 0; x < kFace; ++x) {
+        // texel centre in [-1, 1]
+        float u = ((x + 0.5f) / kFace) * 2.0f - 1.0f;
+        float v = ((y + 0.5f) / kFace) * 2.0f - 1.0f;
+        float3 dir = normalize(cubeDir(face, u, v));
+        float t = smoothstep01(dir.y * 0.5f + 0.5f);
+        float3 c = mix(horizon, sky, t);
+        // Soft horizon glow: a gentle band centred on dir.y == 0, fading above and below.
+        float glow = std::exp(-(dir.y * dir.y) / (2.0f * 0.06f * 0.06f));
+        c = c + horizon * (glow * 0.35f);
+        size_t i = ((size_t)y * kFace + x) * kChannels;
+        dst[i + 0] = half(c.r);
+        dst[i + 1] = half(c.g);
+        dst[i + 2] = half(c.b);
+        dst[i + 3] = half(1.0f);
+      }
+    }
+  }
+
+  Texture* cube = Texture::Builder()
+      .width(kFace).height(kFace).levels(1)
+      .format(Texture::InternalFormat::RGBA16F)
+      .sampler(Texture::Sampler::SAMPLER_CUBEMAP)
+      .build(engine);
+
+  Texture::FaceOffsets offsets(faceBytes);  // per-face offset in bytes, +X,-X,+Y,-Y,+Z,-Z
+  Texture::PixelBufferDescriptor pbd(
+      texels, (size_t)kTexelsPerFace * kChannels * 6 * sizeof(half),
+      Texture::Format::RGBA, Texture::Type::HALF,
+      [](void* buf, size_t, void*) { delete[] (half*)buf; }, nullptr);
+  cube->setImage(engine, 0, std::move(pbd), offsets);
+
+  return Skybox::Builder().environment(cube).showSun(false).build(engine);
+}
 
 }  // namespace
 
@@ -142,13 +216,36 @@ int main(int argc, char** argv) {
   }
 
   // ---- background ----
-  float3 bg = {0.06f, 0.06f, 0.08f};
+  // Default: a tasteful dark vertical-gradient environment cubemap (HDRI-style sky/horizon) so the
+  // light Material panels pop. `environment.kind=="color"` keeps the legacy flat skybox; an explicit
+  // `kind=="gradient"` may override the `sky`/`horizon` hex defaults. `bg` doubles as the clear
+  // colour for the readback path, so we always pick a sensible solid even in gradient mode.
+  std::string envKind = "gradient";
+  float3 gradSky = hexToLinear("#05070d");
+  float3 gradHorizon = hexToLinear("#1a1f2b");
   if (scene.contains("environment") && scene["environment"].is_object()) {
     auto& env = scene["environment"];
-    if (env.value("kind", "") == "color" && env.contains("color"))
-      bg = hexToLinear(env["color"].get<std::string>());
+    envKind = env.value("kind", "gradient");
+    if (env.contains("sky")) gradSky = hexToLinear(env["sky"].get<std::string>());
+    if (env.contains("horizon")) gradHorizon = hexToLinear(env["horizon"].get<std::string>());
   }
-  Skybox* skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
+
+  float3 bg = {0.06f, 0.06f, 0.08f};
+  Skybox* skybox = nullptr;
+  if (envKind == "color") {
+    if (scene.contains("environment") && scene["environment"].contains("color"))
+      bg = hexToLinear(scene["environment"]["color"].get<std::string>());
+    skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
+  } else {
+    // Clear colour mirrors the horizon so any uncovered edge blends with the gradient.
+    bg = gradHorizon;
+    skybox = buildGradientSkybox(*engine, gradSky, gradHorizon);
+    if (!skybox) {
+      // Fall back to a flat horizon-coloured skybox if the cubemap couldn't be built.
+      fprintf(stderr, "gradient skybox build failed; falling back to solid\n");
+      skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
+    }
+  }
   fscene->setSkybox(skybox);
 
   // ---- material ----
