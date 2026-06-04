@@ -12,6 +12,7 @@ import androidx.xr.compose.subspace.layout.absoluteOffset
 import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.offset
 import androidx.xr.compose.subspace.layout.rotate
+import androidx.xr.compose.subspace.layout.rotateToLookAtUser
 import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.semantics.testTag
 import androidx.xr.runtime.math.Quaternion
@@ -29,9 +30,11 @@ import ee.schimke.composeai.preview.XrSubspacePreview
  * perspective foreshortening in the compositor is obvious in the bake (and asserted in
  * `SubspaceModifierPoseTest`). Each `SpatialPanel` carries a unique `testTag`.
  *
- * `rotateToLookAtUser` (the "face the viewer" / billboard modifier) is deliberately **not** here: it
- * sources the user's head pose from live ARCore tracking, which doesn't exist offline, so it can't
- * be rendered to a meaningful scene — see `SubspaceModifierPoseTest` for the empirical demonstration.
+ * `rotateToLookAtUser` (the "face the viewer" / billboard modifier) is here too: it sources the
+ * user's head pose from an ARCore `ArDevice`, which the offline render path now supplies via a fake
+ * perception runtime seeded with a viewer head pose in front of the panels (see `:renderer-xr`'s
+ * `FakeXrHeadPose`, and `SubspaceModifierPoseTest` for the empirical recovery). Side panels visibly
+ * angle inward to face the viewer.
  */
 
 /** One tagged [SpatialPanel] with the dark [ReferencePanel] body — the unit these previews repeat. */
@@ -125,6 +128,41 @@ fun OffsetModifiersPreview() {
         modifier =
           SubspaceModifier.width(300.dp).height(200.dp).absoluteOffset(x = (-360).dp, y = (-280).dp),
         title = "absoluteOffset",
+      )
+    }
+  }
+}
+
+/**
+ * The "face the viewer" / billboard modifier: three panels offset left / centre / right, each
+ * `.rotateToLookAtUser()`. The modifier rotates each panel to face the user's head pose. Offline the
+ * render path seeds that head pose in front of the panels (see `:renderer-xr`'s `FakeXrHeadPose`), so
+ * on bake the centre panel faces head-on while the side panels visibly **angle inward** toward the
+ * viewer — the billboard behaviour, recovered offline. `SubspaceModifierPoseTest` asserts the
+ * recovered rotations (centre ≈ identity, sides turned about the vertical Y axis, never the old 180°
+ * flip).
+ */
+@XrSubspacePreview
+@Composable
+fun RotateToLookAtUserPreview() {
+  Subspace {
+    SpatialBox {
+      RefPanel(
+        tag = "look-left",
+        modifier =
+          SubspaceModifier.width(300.dp).height(380.dp).offset(x = (-520).dp).rotateToLookAtUser(),
+        title = "Look at user (L)",
+      )
+      RefPanel(
+        tag = "look-center",
+        modifier = SubspaceModifier.width(300.dp).height(380.dp).rotateToLookAtUser(),
+        title = "Look at user (C)",
+      )
+      RefPanel(
+        tag = "look-right",
+        modifier =
+          SubspaceModifier.width(300.dp).height(380.dp).offset(x = 520.dp).rotateToLookAtUser(),
+        title = "Look at user (R)",
       )
     }
   }

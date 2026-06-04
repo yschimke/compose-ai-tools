@@ -210,6 +210,13 @@ xr-glimmer = { module = "androidx.xr.glimmer:glimmer", version.ref = "xr-glimmer
 xr-glimmer-google-fonts = { module = "androidx.xr.glimmer:glimmer-google-fonts", version.ref = "xr-glimmer" }
 xr-compose = { module = "androidx.xr.compose:compose", version.ref = "xr-compose" }
 xr-compose-testing = { module = "androidx.xr.compose:compose-testing", version.ref = "xr-compose" }
+# Fake ARCore perception runtime (`FakePerceptionRuntimeFactory` + settable
+# `FakeRuntimeArDevice` head pose). Registered via `ServiceLoader` alongside the
+# scenecore/rendering fakes so the offline XR render/test path can drive
+# `rotateToLookAtUser` (the "face the viewer" billboard modifier reads the head
+# pose from an `ArDevice` perception job). Pinned literally like the other XR
+# `*-testing` artifacts; bump alongside `xr-compose`.
+xr-arcore-testing = { module = "androidx.xr.arcore:arcore-testing", version = "1.0.0-alpha14" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling-preview" }
 wear = { module = "androidx.wear:wear", version.ref = "wear" }
 horologist-compose-layout = { module = "com.google.android.horologist:horologist-compose-layout", version.ref = "horologist" }

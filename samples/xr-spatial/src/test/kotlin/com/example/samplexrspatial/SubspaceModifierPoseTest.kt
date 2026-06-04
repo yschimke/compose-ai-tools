@@ -33,14 +33,10 @@ import org.robolectric.annotation.Config
  *  - `rotate(...)` (Euler / axis-angle / quaternion) is recovered faithfully as the panel's
  *    `poseInRoot.rotation`, and the three forms agree. So rotation flows end-to-end into `scene.json`
  *    and the `xr-composite` bake (it's what [RotatedYawRowPreview] / [RotationFormsPreview] exercise).
- *  - `rotateToLookAtUser()` (the "face the viewer" / billboard modifier) is **not offline-viable**,
- *    so it gets no test here and no `@XrSubspacePreview`. It's driven by **live ARCore head
- *    tracking**: `RotateToLookAtUserNode` reads the head pose from an `ArDevice` job. Composed under
- *    the fake runtime (empirically, alpha14) it (a) sees only the default identity head pose, so it
- *    degenerates to a 180° Y-flip — `quat=(0, 1, 0, 0)` — rather than facing the camera, and (b)
- *    crashes on disposal with `UninitializedPropertyAccessException: lateinit property arDevice has
- *    not been initialized`. So it can't be baked, and a preview using it would break the render — a
- *    real offline limitation, like `SpatialElevation`'s z-depth.
+ *  - `rotateToLookAtUser()` (the "face the viewer" / billboard modifier) **also works offline** now —
+ *    its recovery has its own test, [RotateToLookAtUserPoseTest], because it needs a seeded head pose
+ *    and a PAUSED looper. A centred panel ends up facing the viewer and side panels turn inward, which
+ *    is what [RotateToLookAtUserPreview] bakes.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])

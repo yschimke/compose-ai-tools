@@ -1358,6 +1358,15 @@ internal object AndroidPreviewSupport {
         rendererConfig.name,
         "androidx.xr.compose:compose-testing:1.0.0-alpha14",
       )
+      // Fake ARCore perception runtime so `rotateToLookAtUser` (the billboard modifier, which reads
+      // the head pose from an `ArDevice`) renders offline. `:renderer-xr`'s `FakeXrHeadPose` seeds
+      // a
+      // viewer head pose into it; the `FakePerceptionRuntimeFactory` ServiceLoader registration
+      // ships in `:renderer-xr`'s main resources, alongside the scene/rendering fakes.
+      project.dependencies.add(
+        rendererConfig.name,
+        "androidx.xr.arcore:arcore-testing:1.0.0-alpha14",
+      )
     }
 
     // Mirror of rendererConfig for `:daemon:android`. The daemon
