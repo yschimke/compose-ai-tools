@@ -36,6 +36,25 @@ class AutoInjectTest {
   }
 
   @Test
+  fun `init script warns when Isolated Projects is enabled`() {
+    val script = renderInitScript("1.0.0")
+    // The allprojects-based injection can't run under IP, so the script must detect IP at
+    // settingsEvaluated (before the violation aborts the build) and warn the user.
+    assertTrue(
+      script.contains("import org.gradle.kotlin.dsl.support.serviceOf"),
+      "expected the serviceOf import used to probe BuildFeatures",
+    )
+    assertTrue(
+      script.contains("serviceOf<BuildFeatures>().isolatedProjects.active"),
+      "expected the script to probe whether Isolated Projects is active",
+    )
+    assertTrue(
+      script.contains("Isolated Projects is enabled"),
+      "expected a warning message when IP is on",
+    )
+  }
+
+  @Test
   fun `init script applies on each injectable host plugin`() {
     val script = renderInitScript("1.0.0")
     for (id in listOf("com.android.application", "com.android.library", "org.jetbrains.compose")) {

@@ -6,6 +6,7 @@ import javax.inject.Inject
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.configuration.BuildFeatures
 import org.gradle.tooling.provider.model.ToolingModelBuilderRegistry
 import org.gradle.util.GradleVersion
 
@@ -15,10 +16,16 @@ constructor(
   // Gradle injects build-scoped services into plugin constructors. This is
   // the documented way to get at `ToolingModelBuilderRegistry`; accessing
   // `project.services` directly is internal API and not stable.
-  private val toolingRegistry: ToolingModelBuilderRegistry
+  private val toolingRegistry: ToolingModelBuilderRegistry,
+  // `BuildFeatures` (Gradle 8.5+) is the supported way to ask whether Isolated
+  // Projects / the configuration cache are active for this build, without
+  // reading internal start-parameter state. Used to warn when IP is on (see
+  // `warnIfIsolatedProjectsEnabled`).
+  private val buildFeatures: BuildFeatures,
 ) : Plugin<Project> {
   override fun apply(project: Project) {
     GradleVersionCheck.problem(GradleVersion.current())?.let { throw GradleException(it) }
+    warnIfIsolatedProjectsEnabled(project)
 
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
 
@@ -155,5 +162,30 @@ constructor(
       }
       desktopHandler()
     }
+  }
+
+  /**
+   * Surfaces a warning when the build runs with Isolated Projects active.
+   *
+   * IP is fundamentally incompatible with the compose-preview CLI / MCP server / VS Code extension:
+   * those auto-inject this plugin through an init script that configures every project via
+   * `allprojects { buildscript { … } }`, which IP rejects ("Project ':' cannot access
+   * 'Project.buildscript' functionality on subprojects via 'allprojects'"). Manual application —
+   * this code path — stays IP-clean for discovery, but the broader tooling cannot run, so we make
+   * the misconfiguration loud the moment the plugin is applied under IP rather than letting a
+   * downstream `compose-preview` invocation fail with a raw Gradle IP error.
+   *
+   * `buildFeatures.isolatedProjects.active` is a CC-safe provider; reading it at apply time does
+   * not itself trip IP. The warning is intentionally per-applying-project — it only ever fires when
+   * someone has (re-)enabled IP, which is a misconfiguration we want to be hard to miss.
+   */
+  private fun warnIfIsolatedProjectsEnabled(project: Project) {
+    if (!buildFeatures.isolatedProjects.active.get()) return
+    project.logger.warn(
+      "compose-preview: Isolated Projects is enabled (org.gradle.unsafe.isolated-projects=true). " +
+        "The compose-preview CLI, MCP server, and VS Code extension auto-inject this plugin through " +
+        "an init script that configures projects via `allprojects { }`, which Isolated Projects " +
+        "rejects — those runs will fail. Disable Isolated Projects when using compose-preview tooling."
+    )
   }
 }

@@ -48,6 +48,26 @@ describe("renderInitScript", () => {
         );
     });
 
+    it("warns when Isolated Projects is enabled", () => {
+        const script = renderInitScript();
+        // The allprojects-based injection can't run under IP, so the script detects IP at
+        // settingsEvaluated (before the violation aborts the build) and warns the user.
+        assert.ok(
+            script.includes("import org.gradle.kotlin.dsl.support.serviceOf"),
+            "expected the serviceOf import used to probe BuildFeatures",
+        );
+        assert.ok(
+            script.includes(
+                "serviceOf<BuildFeatures>().isolatedProjects.active",
+            ),
+            "expected the script to probe whether Isolated Projects is active",
+        );
+        assert.ok(
+            script.includes("Isolated Projects is enabled"),
+            "expected a warning message when IP is on",
+        );
+    });
+
     it("applies the plugin via withPlugin on each injectable host id", () => {
         const script = renderInitScript();
         for (const id of [

@@ -83,6 +83,9 @@ export function renderInitScript(
 // \`settings.pluginManagement.repositories\`, so the \`allprojects { buildscript {
 // ... } }\` injection below would fail every project's configuration.
 
+import org.gradle.api.configuration.BuildFeatures
+import org.gradle.kotlin.dsl.support.serviceOf
+
 val pluginVersion = "${pluginVersion}"
 val useMavenLocal = pluginVersion.endsWith("-SNAPSHOT") ||
     System.getenv("COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL") == "1"
@@ -270,6 +273,25 @@ val composeAiPreviewIsIncludedBuild = gradle.parent != null
 
 gradle.settingsEvaluated {
     if (composeAiPreviewIsIncludedBuild) return@settingsEvaluated
+
+    // The \`allprojects { buildscript { … } }\` injection below is a cross-project configuration
+    // that Isolated Projects forbids ("Project ':' cannot access 'Project.buildscript' … via
+    // 'allprojects'"), so auto-inject can't run under IP. settingsEvaluated fires before that
+    // violation, so this is the one place a warning is reliably delivered to the user.
+    val composeAiPreviewIpActive =
+        runCatching { gradle.serviceOf<BuildFeatures>().isolatedProjects.active.get() }
+            .getOrDefault(false)
+    if (composeAiPreviewIpActive) {
+        logger.warn(
+            "compose-preview: Isolated Projects is enabled " +
+                "(org.gradle.unsafe.isolated-projects=true). Auto-inject configures projects via " +
+                "\`allprojects { }\`, which Isolated Projects rejects, so discovery/render will fail. " +
+                "Disable Isolated Projects for compose-preview runs " +
+                "(e.g. -Dorg.gradle.unsafe.isolated-projects=false), or apply " +
+                "id(\\"ee.schimke.composeai.preview\\") manually in each module's build script."
+        )
+    }
+
     val projectDirs = mutableListOf<java.io.File>()
     fun collect(descriptor: org.gradle.api.initialization.ProjectDescriptor) {
         projectDirs.add(descriptor.projectDir)
