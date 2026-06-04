@@ -2,12 +2,23 @@ package ee.schimke.composeai.preview.lottie
 
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import io.github.alexzhirkevich.compottie.LottieComposition
 import io.github.alexzhirkevich.compottie.rememberLottiePainter
 import kotlin.math.roundToInt
+
+/**
+ * Daemon-driven timeline override for [LottiePreview]. When non-null, it wins over the composable's
+ * authored `progress` — the interactive "scrub the animation" path: the preview daemon provides
+ * this around the rendered content from `renderNow.overrides.lottie.progress`, so a VS Code
+ * timeline slider can land the captured frame anywhere on `0f..1f` without editing source. Defaults
+ * to `null` (no override), so a plain `@Preview` render keeps its authored progress.
+ */
+val LocalLottieProgress: ProvidableCompositionLocal<Float?> = compositionLocalOf { null }
 
 /**
  * Renders a Lottie animation [asset] at a fixed [progress] inside a regular Compose `@Preview`.
@@ -67,9 +78,16 @@ fun LottiePreview(
   progress: () -> Float,
 ) {
   val composition = remember(asset) { LottieComposition.parse(loadLottieAsset(asset)) }
+  val override = LocalLottieProgress.current
   Image(
     painter =
-      rememberLottiePainter(composition = composition, progress = { progress().coerceIn(0f, 1f) }),
+      rememberLottiePainter(
+        composition = composition,
+        // The daemon's timeline override wins over the authored progress when present — the
+        // interactive scrub path. Read inside the draw lambda so a fresh override (a new render
+        // with a different `LocalLottieProgress`) repaints at the new frame.
+        progress = { (override ?: progress()).coerceIn(0f, 1f) },
+      ),
     contentDescription = asset,
     modifier = modifier,
     contentScale = contentScale,
