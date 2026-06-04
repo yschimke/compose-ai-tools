@@ -23,7 +23,13 @@ class ComposeSemanticsWireframeExtension : PostCaptureProcessor {
 
   override fun process(context: ExtensionPostCaptureContext) {
     val rootDir = context.require(RenderDataArtifactContextKeys.RootDir)
-    val previewId = context.require(RenderDataArtifactContextKeys.OutputBaseName)
+    // Key the per-preview directory off the protocol `previewId` when present, falling back to the
+    // renderer output base name — matching the file-backed registry lookup (renderFinished
+    // attachments and `data/fetch` resolve `<dataDir>/<protocol previewId>/`), the desktop wireframe
+    // producer, and the `FontsRecorderExtension` precedent. They coincide on the common path; this
+    // keeps the SVG/PNG findable when a render carries a previewId distinct from the output name.
+    val outputBaseName = context.require(RenderDataArtifactContextKeys.OutputBaseName)
+    val previewId = context.get(RenderDataArtifactContextKeys.PreviewId) ?: outputBaseName
     val semanticsRoot = context.require(RenderDataArtifactContextKeys.SemanticsRoot)
     val payload = ComposeSemanticsDataProducer.buildPayload(semanticsRoot)
     ComposeSemanticsWireframeDataProducer.writeSvg(
