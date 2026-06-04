@@ -107,6 +107,20 @@ ATF a11y findings for the same samples are on the
 [`compose-preview/a11y/main`](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/a11y/main)
 branch.
 
+## Integration previews
+
+The [integration matrix](.github/workflows/integration.yml) renders the
+plugin against real-world external Compose projects on every push to `main`.
+Each render-enabled project publishes its own browsable
+`compose-preview/integration/<slug>` branch — same gallery layout as
+`compose-preview/main`, with a **CI notes** section recording any
+workarounds the harness applied (consumer patches, stubbed credentials,
+non-blocking status):
+
+- [`wear-os-samples` (ComposeStarter)](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/integration/wear-os-samples) — full Android render + daemon round-trip, isolated-projects + configuration-cache.
+- [`wear-os-samples` (WearTilesKotlin)](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/integration/wear-tiles) — Wear Tiles render path (`kind: TILE`).
+- [`adaptive-apps-samples` (AdaptiveJetStream)](https://github.com/yschimke/compose-ai-tools/tree/compose-preview/integration/jetstream-xr) — XR spatial Compose, rendered on the `androidx.xr.compose` alpha14 baseline.
+
 ## Agent PR hall of fame
 
 Real-world PRs opened by AI coding agents that used `compose-preview` to
