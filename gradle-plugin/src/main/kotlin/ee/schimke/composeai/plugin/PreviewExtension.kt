@@ -149,14 +149,22 @@ abstract class PreviewExtension @Inject constructor(private val objects: ObjectF
     objects.property(Boolean::class.java).convention(false)
 
   /**
-   * Opt-in for the XR subspace render path. When true, the plugin registers
+   * Forces the XR subspace render path on. When the effective value is true, the plugin registers
    * `composePreviewRenderXr` (and folds it into `composePreviewRenderAll`), pulling
    * `:renderer-xr` + the fake XR runtime onto a dedicated render configuration to render
    * `@XrSubspacePreview` functions to `scene.json`.
    *
-   * Off by default — `androidx.xr.compose` declares `minCompileSdk = 36` and the XR `*-testing`
-   * fakes are heavyweight, so a non-XR consumer (especially below compileSdk 36) must never pay for
-   * them on its render classpath. Enable it only in modules that actually use `@XrSubspacePreview`.
+   * Usually you don't set this: the plugin **auto-enables** the XR path for any module that
+   * declares an `androidx.xr.compose` dependency (see
+   * `AndroidPreviewSupport.moduleDeclaresXrCompose`), the same declared-dependency signal it uses
+   * to auto-inject the Wear Tiles renderer — so `@XrSubspacePreview`s render with zero
+   * `composePreview { }` configuration. Set this to true only to force the path on for a module
+   * that pulls `androidx.xr.compose` in transitively rather than declaring it directly.
+   *
+   * The auto-detect is gated on the declared dependency (not always-on) because
+   * `androidx.xr.compose` declares `minCompileSdk = 36` and the XR `*-testing` fakes are
+   * heavyweight, so a non-XR consumer (especially below compileSdk 36) must never pay for them on
+   * its render classpath.
    */
   val enableXrPreviews: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
 
