@@ -133,6 +133,10 @@ interactive editing + a VS Code presenter.
    frame), not a fixed-cadence sweep.
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
-4. **Rive.** Tracked separately — Rive's Kotlin runtime is Android/JNI-only with **no** JVM/Desktop
-   renderer, so it needs a feasibility spike before a design (JNI under Robolectric, or Rive's newer
-   Skia/WebGL path).
+4. **Rive.** ✅ *Spike done — see [`RIVE_PREVIEWS_SPIKE.md`](RIVE_PREVIEWS_SPIKE.md).* Rive has no
+   JVM/Desktop/headless runtime (only Android JNI + a GPU-bound C++ core + a WASM/WebGL web runtime),
+   so unlike Lottie there's no in-process Kotlin renderer. The spike recommends rendering `.riv` via
+   Rive's **web runtime inside a headless browser** (reusing the extension's existing Chromium
+   snapshot harness), mapped onto the same discovery + animated-GIF + interactive-scrub patterns —
+   with state-machine inputs as the richer analogue of Lottie's `progress` scalar. Out of scope until
+   scheduled.
