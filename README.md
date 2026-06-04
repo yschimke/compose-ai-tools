@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 118 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/main`. 120 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -531,6 +531,18 @@ _No findings._
 ### `KeyboardDemoPreview`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/KeyboardDemoPreview_Keyboard_Demo.a11y.png" width="400" />
+
+_No findings._
+
+### `LottieSpinQuarterPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/LottieSpinQuarterPreview.a11y.png" width="400" />
+
+_No findings._
+
+### `LottieSpinStartPreview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/LottieSpinStartPreview.a11y.png" width="400" />
 
 _No findings._
 

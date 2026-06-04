@@ -1007,6 +1007,26 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "LottieSpinQuarterPreview.a11y.png",
+      "cleanBasename": "LottieSpinQuarterPreview.png",
+      "findings": [],
+      "functionName": "LottieSpinQuarterPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinQuarterPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "LottieSpinStartPreview.a11y.png",
+      "cleanBasename": "LottieSpinStartPreview.png",
+      "findings": [],
+      "functionName": "LottieSpinStartPreview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "",
       "cleanBasename": "MultiTouchDrawingPreview_Multi_Touch_Drawing.png",
       "findings": [],
