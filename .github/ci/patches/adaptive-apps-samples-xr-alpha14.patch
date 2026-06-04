@@ -1,0 +1,287 @@
+diff --git a/AdaptiveJetStream/gradle/libs.versions.toml b/AdaptiveJetStream/gradle/libs.versions.toml
+index f1b27b2..62a1d0a 100644
+--- a/AdaptiveJetStream/gradle/libs.versions.toml
++++ b/AdaptiveJetStream/gradle/libs.versions.toml
+@@ -27,8 +27,8 @@ profileinstaller = "1.4.1"
+ uiautomator = "2.3.0"
+ rules = "1.7.0"
+ window = "1.5.0"
+-xr = "1.0.0-alpha07"
+-xr-material3 = "1.0.0-alpha11"
++xr = "1.0.0-alpha14"
++xr-material3 = "1.0.0-alpha14"
+ screenshot = "0.0.1-alpha13"
+ ui-tooling-preview = "1.10.0"
+ ui-tooling = "1.10.0"
+diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt
+index 40dfcd5..2983d16 100644
+--- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt
++++ b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withNavigationSuiteScaffold/navigationSuiteItems.kt
+@@ -16,21 +16,24 @@
+ 
+ package com.google.jetstream.presentation.app.withNavigationSuiteScaffold
+ 
++import androidx.activity.ComponentActivity
++import androidx.activity.compose.LocalActivity
+ import androidx.compose.foundation.layout.size
+ import androidx.compose.material3.Icon
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItem
+ import androidx.compose.runtime.Composable
++import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.res.vectorResource
+ import androidx.compose.ui.unit.dp
+-import androidx.xr.compose.platform.LocalSpatialConfiguration
+-import androidx.xr.compose.platform.SpatialConfiguration
++import androidx.xr.compose.platform.requestFullSpace
+ import com.google.jetstream.R
+ import com.google.jetstream.presentation.screens.Screens
++import kotlinx.coroutines.launch
+ 
+ @Composable
+ fun AdaptiveAppNavigationItems(
+@@ -58,12 +61,16 @@ fun AdaptiveAppNavigationItems(
+ }
+ 
+ @Composable
+-fun RequestFullSpaceModeItem(
+-    spatialConfiguration: SpatialConfiguration = LocalSpatialConfiguration.current
+-) {
++fun RequestFullSpaceModeItem() {
++    val activity = LocalActivity.current
++    val coroutineScope = rememberCoroutineScope()
+     NavigationSuiteItem(
+         selected = false,
+-        onClick = spatialConfiguration::requestFullSpaceMode,
++        onClick = {
++            (activity as? ComponentActivity)?.let { componentActivity ->
++                coroutineScope.launch { componentActivity.requestFullSpace() }
++            }
++        },
+         icon = {
+             Icon(
+                 imageVector = ImageVector.vectorResource(R.drawable.ic_expand_content),
+diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
+index ac01039..579b08f 100644
+--- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
++++ b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/app/withSpatialNavigation/AppWithSpatialNavigation.kt
+@@ -16,6 +16,8 @@
+ 
+ package com.google.jetstream.presentation.app.withSpatialNavigation
+ 
++import androidx.activity.ComponentActivity
++import androidx.activity.compose.LocalActivity
+ import androidx.compose.animation.AnimatedVisibility
+ import androidx.compose.animation.slideInVertically
+ import androidx.compose.animation.slideOutVertically
+@@ -29,7 +31,7 @@ import androidx.compose.material3.NavigationRailItem
+ import androidx.compose.material3.Scaffold
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+-import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.focus.onFocusChanged
+ import androidx.compose.ui.graphics.Color
+@@ -40,14 +42,13 @@ import androidx.compose.ui.unit.dp
+ import androidx.navigation.NavHostController
+ import androidx.xr.compose.material3.ExperimentalMaterial3XrApi
+ import androidx.xr.compose.material3.NavigationRail
+-import androidx.xr.compose.platform.LocalSpatialConfiguration
+-import androidx.xr.compose.platform.SpatialConfiguration
+-import androidx.xr.compose.spatial.ApplicationSubspace
+-import androidx.xr.compose.subspace.MovePolicy
+-import androidx.xr.compose.subspace.ResizePolicy
++import androidx.xr.compose.platform.requestHomeSpace
++import androidx.xr.compose.spatial.Subspace
+ import androidx.xr.compose.subspace.SpatialPanel
+ import androidx.xr.compose.subspace.layout.SubspaceModifier
+ import androidx.xr.compose.subspace.layout.height
++import androidx.xr.compose.subspace.layout.resizable
++import androidx.xr.compose.subspace.layout.transformingMovable
+ import androidx.xr.compose.subspace.layout.width
+ import androidx.xr.compose.unit.DpVolumeSize
+ import com.google.jetstream.R
+@@ -57,6 +58,7 @@ import com.google.jetstream.presentation.app.withNavigationSuiteScaffold.TopAppB
+ import com.google.jetstream.presentation.components.KeyboardShortcut
+ import com.google.jetstream.presentation.components.handleKeyboardShortcuts
+ import com.google.jetstream.presentation.screens.Screens
++import kotlinx.coroutines.launch
+ 
+ @Composable
+ fun AppWithSpatialNavigation(
+@@ -96,18 +98,13 @@ fun SpatialNavigationLayout(
+     modifier: Modifier = Modifier,
+     content: @Composable (PaddingValues) -> Unit
+ ) {
+-    val resizePolicy = remember {
+-        ResizePolicy(minimumSize = DpVolumeSize(800.dp, 800.dp, 0.dp))
+-    }
+-    val dragPolicy = remember {
+-        MovePolicy()
+-    }
+-
+-    ApplicationSubspace {
++    Subspace {
+         SpatialPanel(
+-            resizePolicy = resizePolicy,
+-            dragPolicy = dragPolicy,
+-            modifier = SubspaceModifier.width(1280.dp).height(900.dp)
++            modifier = SubspaceModifier
++                .width(1280.dp)
++                .height(900.dp)
++                .transformingMovable()
++                .resizable(minimumSize = DpVolumeSize(800.dp, 800.dp, 0.dp))
+         ) {
+             Scaffold(
+                 topBar = {
+@@ -149,13 +146,11 @@ fun SpatialNavigationLayout(
+ private fun NavigationInObiter(
+     screens: List<Screens>,
+     currentScreen: Screens,
+-    spatialConfiguration: SpatialConfiguration = LocalSpatialConfiguration.current,
+     onScreenSelected: (Screens) -> Unit = {}
+ ) {
+     NavigationRailInObiter(
+         screens = screens,
+         currentScreen = currentScreen,
+-        spatialConfiguration = spatialConfiguration,
+         onScreenSelected = onScreenSelected
+     )
+ }
+@@ -165,9 +160,10 @@ private fun NavigationInObiter(
+ private fun NavigationRailInObiter(
+     screens: List<Screens>,
+     currentScreen: Screens,
+-    spatialConfiguration: SpatialConfiguration = LocalSpatialConfiguration.current,
+     onScreenSelected: (Screens) -> Unit = {}
+ ) {
++    val activity = LocalActivity.current
++    val coroutineScope = rememberCoroutineScope()
+     NavigationRail {
+         screens.forEach { screen ->
+             val isSelected = screen == currentScreen
+@@ -192,7 +188,11 @@ private fun NavigationRailInObiter(
+         }
+         NavigationRailItem(
+             selected = false,
+-            onClick = spatialConfiguration::requestHomeSpaceMode,
++            onClick = {
++                (activity as? ComponentActivity)?.let { componentActivity ->
++                    coroutineScope.launch { componentActivity.requestHomeSpace() }
++                }
++            },
+             icon = {
+                 Icon(
+                     imageVector = ImageVector.vectorResource(R.drawable.ic_collapse_content),
+diff --git a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
+index 47f4195..58dc2a4 100644
+--- a/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
++++ b/AdaptiveJetStream/jetstream/src/main/java/com/google/jetstream/presentation/screens/videoPlayer/VideoPlayerScreen.kt
+@@ -16,6 +16,7 @@
+ 
+ package com.google.jetstream.presentation.screens.videoPlayer
+ 
++import androidx.activity.ComponentActivity
+ import androidx.activity.compose.BackHandler
+ import androidx.activity.compose.LocalActivity
+ import androidx.compose.animation.AnimatedVisibility
+@@ -35,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+ import androidx.compose.runtime.remember
++import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+@@ -57,9 +59,10 @@ import androidx.media3.common.Player
+ import androidx.media3.common.util.UnstableApi
+ import androidx.media3.ui.compose.PlayerSurface
+ import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+-import androidx.xr.compose.platform.LocalSpatialConfiguration
+-import androidx.xr.compose.spatial.ContentEdge
++import androidx.xr.compose.platform.requestFullSpace
++import androidx.xr.compose.platform.requestHomeSpace
+ import androidx.xr.compose.spatial.Orbiter
++import androidx.xr.compose.spatial.OrbiterAnchorPoint
+ import androidx.xr.compose.spatial.Subspace
+ import androidx.xr.compose.subspace.SpatialExternalSurface
+ import androidx.xr.compose.subspace.SpatialPanel
+@@ -68,6 +71,7 @@ import androidx.xr.compose.subspace.layout.fillMaxSize
+ import androidx.xr.compose.subspace.layout.height
+ import androidx.xr.compose.subspace.layout.offset
+ import androidx.xr.compose.subspace.layout.width
++import androidx.xr.compose.unit.DpVolumeOffset
+ import com.google.jetstream.R
+ import com.google.jetstream.data.entities.MovieDetails
+ import com.google.jetstream.data.entities.StereoscopicVisionType
+@@ -94,6 +98,7 @@ import com.google.jetstream.presentation.screens.videoPlayer.components.remember
+ import com.google.jetstream.presentation.screens.videoPlayer.components.rememberVideoPlayerState
+ import com.google.jetstream.presentation.screens.videoPlayer.components.toggleImmersiveMode
+ import com.google.jetstream.presentation.utils.handleDPadKeyEvents
++import kotlinx.coroutines.launch
+ 
+ object VideoPlayerScreen {
+     const val MOVIE_ID_BUNDLE_KEY = "movieId"
+@@ -208,7 +213,7 @@ private fun VideoPlayer(
+ 
+     val hasXrSpatialFeature = hasXrSpatialFeature()
+     val isSpatialUiEnabled = isSpatialUiEnabled()
+-    val spatialConfiguration = LocalSpatialConfiguration.current
++    val coroutineScope = rememberCoroutineScope()
+ 
+     val focusRequester = remember { FocusRequester() }
+ 
+@@ -223,11 +228,15 @@ private fun VideoPlayer(
+                         }
+ 
+                         isSpatialUiEnabled -> {
+-                            spatialConfiguration.requestHomeSpaceMode()
++                            (activity as? ComponentActivity)?.let { componentActivity ->
++                                coroutineScope.launch { componentActivity.requestHomeSpace() }
++                            }
+                         }
+ 
+                         else -> {
+-                            spatialConfiguration.requestFullSpaceMode()
++                            (activity as? ComponentActivity)?.let { componentActivity ->
++                                coroutineScope.launch { componentActivity.requestFullSpace() }
++                            }
+                         }
+                     }
+                 }
+@@ -529,8 +538,8 @@ private fun SpatialVideoPlayerControls(
+         videoPlayerState.isControlsVisible
+     ) {
+         Orbiter(
+-            position = ContentEdge.Bottom,
+-            offset = 200.dp
++            anchorPoint = OrbiterAnchorPoint.Bottom,
++            offset = DpVolumeOffset(y = (-200).dp)
+         ) {
+             Box(
+                 modifier = Modifier
+diff --git a/AdaptiveJetStream/jetstream/src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt b/AdaptiveJetStream/jetstream/src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt
+index dde0cb9..59e8102 100644
+--- a/AdaptiveJetStream/jetstream/src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt
++++ b/AdaptiveJetStream/jetstream/src/screenshotTest/kotlin/com/google/jetstream/presentation/components/ComponentScreenshotTests.kt
+@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.tooling.preview.Preview
+ import androidx.compose.ui.unit.dp
+-import androidx.xr.compose.platform.SpatialConfiguration
+ import com.android.tools.screenshot.PreviewTest
+ import com.google.jetstream.presentation.app.UserAvatar
+ import com.google.jetstream.presentation.app.withNavigationSuiteScaffold.RequestFullSpaceModeItem
+@@ -137,6 +136,6 @@ fun TopAppBarPreview(){
+ @Preview
+ @Composable
+ fun RequestFullSpaceModeItemPreview(){
+-    RequestFullSpaceModeItem(spatialConfiguration = object : SpatialConfiguration {})
++    RequestFullSpaceModeItem()
+ }
+ 
