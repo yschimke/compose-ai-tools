@@ -41,6 +41,7 @@ import type {
     PreviewInfo,
 } from "../shared/types";
 import type { SpatialScene } from "../shared/spatialScene";
+import type { SpatialSemanticsTree } from "../shared/spatialSemanticsTree";
 import type { VsCodeApi } from "../shared/vscode";
 import { safeArrayIndex } from "../shared/safeIndex";
 import { sanitizeId } from "./cardData";
@@ -169,7 +170,11 @@ export interface PreviewMessageContext {
      * `SpatialToggleController`, which mounts the (separately-bundled) viewer
      * lazily — so this can land before or after the user toggles to 3D.
      */
-    setSpatialScene(scene: SpatialScene, textureBaseUri: string): void;
+    setSpatialScene(
+        scene: SpatialScene,
+        textureBaseUri: string,
+        semanticsTree?: SpatialSemanticsTree,
+    ): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -241,7 +246,11 @@ export function handleExtensionMessage(
             );
             return;
         case "setSpatialScene":
-            ctx.setSpatialScene(msg.scene, msg.textureBaseUri);
+            ctx.setSpatialScene(
+                msg.scene,
+                msg.textureBaseUri,
+                msg.semanticsTree,
+            );
             return;
         case "triggerBundleToggle":
             ctx.toggleBundle(msg.bundleId);

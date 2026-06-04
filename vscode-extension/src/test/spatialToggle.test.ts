@@ -9,7 +9,27 @@ import {
     type SpatialToggleEffects,
 } from "../webview/preview/spatialToggle";
 import { SPATIAL_SCENE_VERSION } from "../webview/shared/spatialScene";
+import {
+    SPATIAL_SEMANTICS_TREE_VERSION,
+    type SpatialSemanticsTree,
+} from "../webview/shared/spatialSemanticsTree";
 import { parseSpatialScene } from "../webview/spatial/sceneLoader";
+
+function semanticsTree(): SpatialSemanticsTree {
+    return {
+        version: SPATIAL_SEMANTICS_TREE_VERSION,
+        units: "dp",
+        root: {
+            id: "subspaceRoot",
+            kind: "subspaceRoot",
+            poseInRoot: {
+                translation: { x: 0, y: 0, z: 0 },
+                rotation: { x: 0, y: 0, z: 0, w: 1 },
+            },
+            sizeDp: { width: 0, height: 0 },
+        },
+    };
+}
 
 function scene() {
     return parseSpatialScene({
@@ -198,6 +218,27 @@ describe("SpatialToggleController", () => {
         const first = view.scene;
         h.controller.setScene(scene(), "https://other/");
         assert.notStrictEqual(view.scene, first, "view scene re-applied");
+    });
+
+    it("threads an optional semantics tree to the view for wireframe overlays", async () => {
+        const h = makeHarness();
+        const tree = semanticsTree();
+        h.controller.setScene(scene(), "https://base/", tree);
+        await h.controller.setMode("3d");
+        const view = h.mount.children[0] as HTMLElement & {
+            semanticsTree?: unknown;
+        };
+        assert.strictEqual(view.semanticsTree, tree, "tree applied to view");
+    });
+
+    it("leaves the view's semantics tree null when none is supplied", async () => {
+        const h = makeHarness();
+        h.controller.setScene(scene(), "https://base/");
+        await h.controller.setMode("3d");
+        const view = h.mount.children[0] as HTMLElement & {
+            semanticsTree?: unknown;
+        };
+        assert.strictEqual(view.semanticsTree, null);
     });
 
     it("throws on 3D entry when no bundle source is configured", async () => {

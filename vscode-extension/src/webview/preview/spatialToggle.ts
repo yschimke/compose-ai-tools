@@ -12,10 +12,13 @@
 // button stays hidden until a scene arrives so non-XR panels look unchanged.
 
 import type { SpatialScene } from "../shared/spatialScene";
+import type { SpatialSemanticsTree } from "../shared/spatialSemanticsTree";
 
 /** The `<spatial-view>` element's public surface this controller drives. */
 interface SpatialViewElement extends HTMLElement {
     scene: SpatialScene | null;
+    /** Optional companion semantics tree — overlays wireframes on the panel faces. */
+    semanticsTree?: SpatialSemanticsTree | null;
     resolveTextureUrl?: (texture: string) => string;
     focusPanel?(panelId: string): void;
 }
@@ -75,6 +78,7 @@ export class SpatialToggleController {
     private readonly effects: SpatialToggleEffects;
     private mode: "2d" | "3d" = "2d";
     private scene: SpatialScene | null = null;
+    private semanticsTree: SpatialSemanticsTree | null = null;
     private textureBaseUri = "";
     private view: SpatialViewElement | null = null;
     private bundlePromise: Promise<void> | null = null;
@@ -102,10 +106,17 @@ export class SpatialToggleController {
 
     /**
      * Install a scene + the base URI its relative texture paths resolve
-     * against. Reveals the toggle button and, if already in 3D, repaints.
+     * against. Reveals the toggle button and, if already in 3D, repaints. The
+     * optional [semanticsTree] companion overlays each panel's 2D wireframe onto
+     * its screenshot face (matched to the scene by panel id).
      */
-    setScene(scene: SpatialScene, textureBaseUri: string): void {
+    setScene(
+        scene: SpatialScene,
+        textureBaseUri: string,
+        semanticsTree: SpatialSemanticsTree | null = null,
+    ): void {
         this.scene = scene;
+        this.semanticsTree = semanticsTree;
         this.textureBaseUri = textureBaseUri;
         this.deps.toggleButton.hidden = false;
         if (this.mode === "3d" && this.view) {
@@ -185,6 +196,7 @@ export class SpatialToggleController {
 
     private applyScene(): void {
         if (this.view) {
+            this.view.semanticsTree = this.semanticsTree;
             this.view.scene = this.scene;
         }
     }

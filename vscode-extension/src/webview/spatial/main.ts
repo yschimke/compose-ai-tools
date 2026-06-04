@@ -16,7 +16,12 @@
 import { LitElement, html, css, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { SpatialScene } from "../shared/spatialScene";
+import type { SpatialSemanticsTree } from "../shared/spatialSemanticsTree";
 import { parseSpatialSceneJson } from "./sceneLoader";
+import {
+    panelWireframesById,
+    parseSpatialSemanticsTreeJson,
+} from "./semanticsTreeLoader";
 import { SpatialViewer } from "./spatialViewer";
 
 @customElement("spatial-view")
@@ -57,6 +62,14 @@ export class SpatialView extends LitElement {
     @property({ attribute: false })
     resolveTextureUrl?: (texture: string) => string;
 
+    /**
+     * Optional companion 2D-over-3D semantics tree. When present, each panel's wireframe boxes are
+     * composited onto its screenshot face (matched to the scene by panel id). Set directly, or via
+     * `setSemanticsTreeJson`.
+     */
+    @property({ attribute: false })
+    semanticsTree: SpatialSemanticsTree | null = null;
+
     private viewer?: SpatialViewer;
     private stage?: HTMLDivElement;
 
@@ -76,15 +89,22 @@ export class SpatialView extends LitElement {
             this.renderRoot.querySelector<HTMLDivElement>(".spatial-stage") ??
             undefined;
         this.ensureViewer();
-        if (this.scene) {
-            this.viewer?.load(this.scene);
-        }
+        this.loadIntoViewer();
     }
 
     protected updated(changed: Map<string, unknown>): void {
-        if (changed.has("scene") && this.viewer && this.scene) {
-            this.viewer.load(this.scene);
+        if (changed.has("scene") || changed.has("semanticsTree")) {
+            this.loadIntoViewer();
         }
+    }
+
+    /** (Re)load the current scene + derived wireframe overlays into the viewer. */
+    private loadIntoViewer(): void {
+        if (!this.viewer || !this.scene) return;
+        const wireframes = this.semanticsTree
+            ? panelWireframesById(this.semanticsTree)
+            : undefined;
+        this.viewer.load(this.scene, wireframes);
     }
 
     disconnectedCallback(): void {
@@ -96,6 +116,14 @@ export class SpatialView extends LitElement {
     /** Parse + load a scene from raw JSON text (throws on contract violation). */
     setSceneJson(text: string): void {
         this.scene = parseSpatialSceneJson(text);
+    }
+
+    /**
+     * Parse + apply a companion semantics tree from raw JSON text (throws on contract violation).
+     * Overlays the per-panel wireframes on the next viewer load.
+     */
+    setSemanticsTreeJson(text: string): void {
+        this.semanticsTree = parseSpatialSemanticsTreeJson(text);
     }
 
     /**

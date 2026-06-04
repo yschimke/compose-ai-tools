@@ -3425,8 +3425,8 @@ export class PreviewApp extends LitElement {
                 bundleController.handleExternalKindToggle("test/failure", true),
             toggleBundle: (bundleId) =>
                 bundleController.toggleBundle(bundleId as BundleId),
-            setSpatialScene: (scene, textureBaseUri) =>
-                spatialToggle.setScene(scene, textureBaseUri),
+            setSpatialScene: (scene, textureBaseUri, semanticsTree) =>
+                spatialToggle.setScene(scene, textureBaseUri, semanticsTree),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);
