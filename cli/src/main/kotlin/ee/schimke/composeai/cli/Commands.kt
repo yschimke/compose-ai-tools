@@ -680,7 +680,13 @@ abstract class Command(
       total = results.size,
       changed = results.count { it.anyChanged() },
       unchanged = results.count { !it.anyChanged() && it.captures.any { c -> c.pngPath != null } },
-      missing = results.count { it.captures.all { c -> c.pngPath == null } },
+      // Exclude kinds that never emit a PNG (see [NON_PNG_PREVIEW_KINDS]) so `counts.missing`
+      // matches what `--missing-renders` actually gates on — an `@XrSubspacePreview` with no
+      // composite still isn't a render failure.
+      missing =
+        results.count {
+          it.params.kind !in NON_PNG_PREVIEW_KINDS && it.captures.all { c -> c.pngPath == null }
+        },
     )
 
   protected fun matchesRequest(result: PreviewResult): Boolean {
@@ -722,6 +728,42 @@ abstract class Command(
     return null
   }
 }
+
+/**
+ * Preview kinds whose render legitimately never emits a PNG, so a null `pngPath` is expected rather
+ * than a render failure. Currently just XR subspace previews: they render to a `scene.json`, and
+ * the composite still PNG is an optional extra that only materialises when the `xr-composite`
+ * binary is provisioned (it 404s on most CI runners). Gating `--missing-renders fail` on their
+ * absent PNG would fail every run that ships an `@XrSubspacePreview`.
+ *
+ * Keep this in sync with `NON_PNG_PREVIEW_KINDS` in `.github/actions/lib/compare-previews.py`,
+ * which already excludes the same kinds from its PR-comment "Render Failures" section. When the two
+ * disagree the CLI fails the job while the comparison tool reports nothing — a red check with no
+ * comment explaining it.
+ */
+internal val NON_PNG_PREVIEW_KINDS = setOf("XR_SUBSPACE")
+
+/**
+ * Previews that finished rendering but produced no PNG for at least one capture — the set
+ * `--missing-renders` gates on and the diagnostic enumerates. Excludes [NON_PNG_PREVIEW_KINDS],
+ * whose empty `pngPath` is by design. Pulled out as a pure function so the policy is unit-testable
+ * without standing up a Gradle render.
+ */
+internal fun previewsMissingPng(results: List<PreviewResult>): List<PreviewResult> =
+  results.filter { r ->
+    r.params.kind !in NON_PNG_PREVIEW_KINDS && r.captures.any { it.pngPath == null }
+  }
+
+/**
+ * Human-readable coordinate for a capture: `default`, `500ms`, `scroll long`, `500ms · scroll end`.
+ */
+internal fun captureCoordLabel(c: CaptureResult): String =
+  listOfNotNull(
+      c.advanceTimeMillis?.let { "${it}ms" },
+      c.scroll?.let { "scroll ${it.mode.lowercase()}" },
+    )
+    .joinToString(" · ")
+    .ifEmpty { "default" }
 
 class ShowCommand(args: List<String>) : Command(args) {
   private val jsonOutput = "--json" in args
@@ -801,22 +843,16 @@ class ShowCommand(args: List<String>) : Command(args) {
                 c.changed == true -> " [changed]"
                 else -> ""
               }
-            val coord =
-              listOfNotNull(
-                  c.advanceTimeMillis?.let { "${it}ms" },
-                  c.scroll?.let { "scroll ${it.mode.lowercase()}" },
-                )
-                .joinToString(" · ")
-                .ifEmpty { "default" }
-            println("  [$coord]$tag ${c.pngPath ?: ""}")
+            println("  [${captureCoordLabel(c)}]$tag ${c.pngPath ?: ""}")
           }
         }
         emitInlineImage(r)
       }
     }
 
-    // "Missing" = at least one capture failed to produce a PNG.
-    val missing = filtered.filter { r -> r.captures.any { it.pngPath == null } }
+    // "Missing" = at least one capture failed to produce a PNG, excluding kinds that never emit
+    // one (see [previewsMissingPng] / [NON_PNG_PREVIEW_KINDS]).
+    val missing = previewsMissingPng(filtered)
     if (missing.isNotEmpty()) {
       // Diagnostic stays under warn/ignore so CI logs remain grep-able — only the exit code
       // changes. `--missing-renders warn|ignore` is the explicit opt-down; everything else
@@ -825,12 +861,25 @@ class ShowCommand(args: List<String>) : Command(args) {
       val prefix =
         if (policy in setOf("warn", "ignore")) "missing-renders policy=$policy — " else ""
       System.err.println(
-        "${prefix}Render task completed but produced no PNG for ${missing.size} of ${filtered.size} preview(s)."
+        "${prefix}Render task completed but produced no PNG for ${missing.size} of " +
+          "${filtered.size} preview(s):"
       )
+      // List the offenders so the CI log is self-diagnosing — no need to download the
+      // `composePreviewRender-reports` artifact just to learn *which* previews failed.
+      for (r in missing) {
+        val nullCoords =
+          r.captures
+            .filter { it.pngPath == null }
+            .joinToString(", ") { captureCoordLabel(it) }
+            .ifEmpty { "default" }
+        val moduleTag = if (r.module.isNotBlank()) " (${r.module})" else ""
+        System.err.println("  - ${r.id}$moduleTag — no PNG for: $nullCoords")
+      }
       System.err.println(
         "Check the Gradle output above — a common cause is the `composePreviewRender` task " +
           "reporting NO-SOURCE, which means the renderer test class wasn't found on " +
-          "testClassesDirs."
+          "testClassesDirs. Per-preview stack traces are in the `composePreviewRender-reports` " +
+          "artifact attached to the run."
       )
       System.out.flush()
       if (shouldFailOnMissingRenders()) exitProcess(2)
