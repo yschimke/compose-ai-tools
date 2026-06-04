@@ -811,6 +811,20 @@
     "sha256": "963c64c0a428c8bc78cbd22c659002ff31d940d5131ab40cb4e94a6776f215be",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/KeyboardDemoPreview.kt"
   },
+  "samples:cmp/com.example.samplecmp.LottiePreviewsKt.LottieSpinQuarterPreview": {
+    "captureLabel": "",
+    "functionName": "LottieSpinQuarterPreview",
+    "renderBasename": "LottieSpinQuarterPreview.png",
+    "sha256": "8207b14377a0b0bf54dd98cf788d574ca0198be329c4d4f634df7b2eaea04b76",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.LottiePreviewsKt.LottieSpinStartPreview": {
+    "captureLabel": "",
+    "functionName": "LottieSpinStartPreview",
+    "renderBasename": "LottieSpinStartPreview.png",
+    "sha256": "29148d553cc7831a6441fd2216dadf892e857a86e03067d90113161896275a8d",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/LottiePreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.MultiTouchDrawingPreviewKt.MultiTouchDrawingPreview_Multi-Touch Drawing": {
     "captureLabel": "",
     "functionName": "MultiTouchDrawingPreview",
@@ -915,6 +929,20 @@
     "renderBasename": "ScrollingListPreview_Scrolling_List_SCROLL_gif.gif",
     "sha256": "df71c44b8ee4bd79dc28aa517a31d64a10936e8a108056ca9d774993a667a057",
     "sourceFile": "src/main/kotlin/com/example/samplecmp/ScrollingPreviews.kt"
+  },
+  "samples:cmp/lottie__lottie_spin": {
+    "captureLabel": "",
+    "functionName": "lottie/spin.json",
+    "renderBasename": "lottie__lottie_spin.png",
+    "sha256": "854c8ead2f4c35f34b9f3f00c0a62888f70a44dea360fa10717fc4f94bf16a5b",
+    "sourceFile": null
+  },
+  "samples:cmp/lottie__lottie_spin#1": {
+    "captureLabel": "",
+    "functionName": "lottie/spin.json",
+    "renderBasename": "lottie__lottie_spin.gif",
+    "sha256": "d2c90315835a6f85fb3dd3ae57a3c0c71e01321d22cecdb42b475f96131b45ff",
+    "sourceFile": null
   },
   "samples:desktop-daemon-bench/com.example.desktopdaemonbench.BenchPreviewsKt.BlueLabelPreview_BlueLabel": {
     "captureLabel": "",
@@ -1053,7 +1081,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {

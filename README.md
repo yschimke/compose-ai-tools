@@ -145,6 +145,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | Preview | Image |
 |---------|-------|
 | `KeyboardDemoPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/KeyboardDemoPreview_Keyboard_Demo.png" width="150" /> |
+| `LottieSpinQuarterPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/LottieSpinQuarterPreview.png" width="150" /> |
+| `LottieSpinStartPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/LottieSpinStartPreview.png" width="150" /> |
 | `MultiTouchDrawingPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingPreview_Multi_Touch_Drawing.png" width="150" /> |
 | `MultiTouchDrawingSeededPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/MultiTouchDrawingSeededPreview_Multi_Touch_Drawing_seeded.png" width="150" /> |
 | `PinchToZoomPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/PinchToZoomPreview_Pinch_To_Zoom.png" width="150" /> |
@@ -160,6 +162,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `CmpPseudoDefault` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/CmpPseudoDefault_default.png" width="150" /> |
 | `ScrollingListPreview · scroll long` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_long.png" width="150" /> |
 | `ScrollingListPreview · scroll gif` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/ScrollingListPreview_Scrolling_List_SCROLL_gif.gif" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.png" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:cmp/lottie__lottie_spin.gif" width="150" /> |
 
 ## samples:cmp-shared
 
