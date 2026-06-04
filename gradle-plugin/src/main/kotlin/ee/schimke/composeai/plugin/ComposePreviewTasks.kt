@@ -28,6 +28,18 @@ internal object ComposePreviewTasks {
   private val DESKTOP_COMPILE_TASK_CANDIDATES: List<String> =
     listOf("compileKotlinJvm", "compileKotlinDesktop", "compileAndroidMain", "compileKotlin")
 
+  /**
+   * Candidate resource-processing task names for the desktop / KMP side. The render path links the
+   * consumer's processed resources onto the renderer classpath (so a `@Preview` can load a
+   * classpath resource — a Lottie `.json`/`.lottie` asset, a bundled font, an image — via the
+   * classloader), and those tasks are what stage `src/main/resources/` into `build/resources/main`
+   * (kotlin("jvm")) or `build/processedResources/<target>/main` (KMP). Mirrors
+   * [DESKTOP_COMPILE_TASK_CANDIDATES]; missing names are ignored by the lazy `tasks.matching`
+   * wiring.
+   */
+  private val DESKTOP_RESOURCE_TASK_CANDIDATES: List<String> =
+    listOf("jvmProcessResources", "desktopProcessResources", "processResources")
+
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
 
@@ -47,6 +59,18 @@ internal object ComposePreviewTasks {
         project.layout.buildDirectory.dir("classes/kotlin/jvm/main"),
         project.layout.buildDirectory.dir("classes/kotlin/desktop/main"),
         project.layout.buildDirectory.dir("classes/kotlin/android/main"),
+      )
+
+    // Processed-resources output dirs, in the same priority order as [sourceClassDirs]. Linked onto
+    // the render classpath so a `@Preview` can load a classpath resource (e.g. a Lottie `.json`
+    // asset) at render time. Non-existent dirs resolve to nothing — harmless on resource-free
+    // modules. The resource-processing tasks are wired as render dependencies below so the dirs are
+    // populated before the render subprocess launches.
+    val sourceResourceDirs =
+      project.files(
+        project.layout.buildDirectory.dir("resources/main"),
+        project.layout.buildDirectory.dir("processedResources/jvm/main"),
+        project.layout.buildDirectory.dir("processedResources/desktop/main"),
       )
 
     // Same single-variant story for the runtime classpath: KMP-Android
@@ -157,6 +181,9 @@ internal object ComposePreviewTasks {
         tier.set(tierProperty(project))
         displayFilterFilters.set(AndroidPreviewSupport.resolveDisplayFilterFilters(project))
         renderClasspath.from(sourceClassDirs)
+        // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
+        // fonts, images) at render time. Depend on the resource-processing task that stages them.
+        renderClasspath.from(sourceResourceDirs)
         project.configurations.findByName(resolveDependencyConfigName())?.let {
           renderClasspath.from(it)
         }
@@ -165,6 +192,7 @@ internal object ComposePreviewTasks {
         description = "Render all previews to PNG"
         dependsOn(discoverTask)
         dependsOn(renderClasspathGuard)
+        dependsOn(project.tasks.matching { it.name in DESKTOP_RESOURCE_TASK_CANDIDATES })
       }
     registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
 
