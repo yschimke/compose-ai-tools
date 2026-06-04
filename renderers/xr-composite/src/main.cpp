@@ -252,10 +252,49 @@ int main(int argc, char** argv) {
   auto unlitPkg = readFile(args.materialsDir + "/unlit_texture.filamat");
   Material* unlit = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine);
 
+  // Soft contact shadow behind each panel — a separate transparent quad that feathers a rounded-rect
+  // silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we composite a baked
+  // soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
+  auto shadowPkg = readFile(args.materialsDir + "/panel_shadow.filamat");
+  Material* shadowMat =
+      Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine);
+
   TextureSampler sampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
                          TextureSampler::MagFilter::LINEAR);
 
   auto& tcm = engine->getTransformManager();
+
+  // Build a textured/coloured quad renderable spanning [-hw,hw] x [-hh,hh] in the XY plane, UV0
+  // running (0,0) bottom-left to (1,1) top-right. Heap-allocates the vertex/index buffers and frees
+  // them in the descriptor callbacks (Filament reads them on the driver thread during flushAndWait).
+  auto buildQuad = [&](float hw, float hh, MaterialInstance* mi) -> utils::Entity {
+    auto* verts = new Vertex[4]{
+        {-hw, -hh, 0, 0, 0},
+        { hw, -hh, 0, 1, 0},
+        { hw,  hh, 0, 1, 1},
+        {-hw,  hh, 0, 0, 1},
+    };
+    auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
+    VertexBuffer* vb = VertexBuffer::Builder()
+        .vertexCount(4).bufferCount(1)
+        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
+        .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
+        .build(*engine);
+    vb->setBufferAt(*engine, 0, VertexBuffer::BufferDescriptor(
+        verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
+    IndexBuffer* ib = IndexBuffer::Builder()
+        .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine);
+    ib->setBuffer(*engine, IndexBuffer::BufferDescriptor(
+        idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
+    utils::Entity e = utils::EntityManager::get().create();
+    RenderableManager::Builder(1)
+        .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
+        .material(0, mi)
+        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
+        .culling(false).castShadows(false).receiveShadows(false)
+        .build(*engine, e);
+    return e;
+  };
 
   // ---- panels ----
   int placed = 0;
@@ -285,50 +324,66 @@ int main(int argc, char** argv) {
     tex->setImage(*engine, 0, std::move(pbd));
     tex->generateMipmaps(*engine);
 
-    MaterialInstance* mi = unlit->createInstance();
-    mi->setParameter("albedo", tex, sampler);
-
     float wDp = p["sizeDp"].value("width", 100);
     float hDp = p["sizeDp"].value("height", 100);
     float hw = wDp * 0.5f, hh = hDp * 0.5f;
 
-    // Heap-allocate: Filament reads the BufferDescriptor pointer on the driver thread during
-    // flushAndWait (after this loop), so the data must outlive the iteration — free in the callback.
-    auto* verts = new Vertex[4]{
-        {-hw, -hh, 0, 0, 0},
-        { hw, -hh, 0, 1, 0},
-        { hw,  hh, 0, 1, 1},
-        {-hw,  hh, 0, 0, 1},
-    };
-    auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
+    // Fidelity params evaluated in an aspect-corrected "rect space" where the panel spans
+    // [-halfSize, halfSize] and rounded corners stay circular regardless of aspect (see the .mat).
+    // For w>=h: halfSize=(aspect,1); else (1,1/aspect). Radius/rim/softness are fractions of the
+    // shorter half-extent (always 1.0), so they read consistently across panel shapes.
+    float aspect = (hDp > 0.0f) ? (wDp / hDp) : 1.0f;
+    float2 halfSize = (wDp >= hDp) ? float2{aspect, 1.0f} : float2{1.0f, 1.0f / aspect};
+    // ~24-32dp corner radius on a typical ~320dp-tall panel ≈ 0.16-0.20 of the half-extent.
+    const float kCornerRadius = 0.18f;
+    const float kRimWidth = 0.06f;     // rim band width inside the edge
+    const float kRimStrength = 0.10f;  // subtle additive highlight
+    const float kEdgeSoftness = 0.012f;  // AA feather of the rounded edge
 
-    VertexBuffer* vb = VertexBuffer::Builder()
-        .vertexCount(4).bufferCount(1)
-        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
-        .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
-        .build(*engine);
-    vb->setBufferAt(*engine, 0, VertexBuffer::BufferDescriptor(
-        verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
-
-    IndexBuffer* ib = IndexBuffer::Builder()
-        .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine);
-    ib->setBuffer(*engine, IndexBuffer::BufferDescriptor(
-        idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
-
-    utils::Entity re = utils::EntityManager::get().create();
-    RenderableManager::Builder(1)
-        .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
-        .material(0, mi)
-        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
-        .culling(false).castShadows(false).receiveShadows(false)
-        .build(*engine, re);
+    MaterialInstance* mi = unlit->createInstance();
+    mi->setParameter("albedo", tex, sampler);
+    mi->setParameter("halfSize", halfSize);
+    mi->setParameter("cornerRadius", kCornerRadius);
+    mi->setParameter("rimWidth", kRimWidth);
+    mi->setParameter("rimStrength", kRimStrength);
+    mi->setParameter("edgeSoftness", kEdgeSoftness);
 
     // transform: translate * rotate(quat)
     auto& T = p["poseInRoot"]["translation"];
     auto& R = p["poseInRoot"]["rotation"];
     float3 t = {T.value("x", 0.0f), T.value("y", 0.0f), T.value("z", 0.0f)};
     quatf q = {R.value("w", 1.0f), R.value("x", 0.0f), R.value("y", 0.0f), R.value("z", 0.0f)};
-    mat4f model = mat4f::translation(t) * mat4f(q);
+    mat4f rot(q);
+
+    // ---- soft drop/contact shadow behind+below the panel ----
+    // Mirror the panel's rect-space metrics so the shadow silhouette matches the rounded panel, then
+    // map the aspect-corrected units back to dp via the per-axis dp-per-unit scale. The shadow quad
+    // is inflated by `blur` so its feathered penumbra has room; it sits slightly behind the panel
+    // (toward -Z in panel-local space) and is offset down a touch for a grounded, floating look.
+    {
+      float dpPerUnitX = hw / halfSize.x;   // == hh / halfSize.y
+      float blurUnits = 0.22f;              // penumbra width in rect-space units
+      float2 outerHalf = halfSize + float2{blurUnits, blurUnits};
+      float shw = outerHalf.x * dpPerUnitX;
+      float shh = outerHalf.y * dpPerUnitX;
+
+      MaterialInstance* smi = shadowMat->createInstance();
+      smi->setParameter("halfSize", halfSize);
+      smi->setParameter("cornerRadius", kCornerRadius);
+      smi->setParameter("blur", blurUnits);
+      // Soft near-black shadow; peak alpha kept subtle so it reads as a contact shadow, not a slab.
+      smi->setParameter("color", float4{0.0f, 0.0f, 0.0f, 0.42f});
+
+      utils::Entity se = buildQuad(shw, shh, smi);
+      // Offset: down by ~6% of panel height and back behind the panel so it never z-fights the quad.
+      float3 shadowOffset = {0.0f, -0.06f * hDp, -2.0f};
+      mat4f shadowModel = mat4f::translation(t) * rot * mat4f::translation(shadowOffset);
+      tcm.setTransform(tcm.getInstance(se), shadowModel);
+      fscene->addEntity(se);
+    }
+
+    utils::Entity re = buildQuad(hw, hh, mi);
+    mat4f model = mat4f::translation(t) * rot;
     tcm.setTransform(tcm.getInstance(re), model);
 
     fscene->addEntity(re);

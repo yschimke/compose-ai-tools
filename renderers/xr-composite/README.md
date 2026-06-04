@@ -118,6 +118,14 @@ These tripped up the initial implementation and are load-bearing:
   written without a vertical flip and textures are loaded top-down (no stb flip).
 - **Color:** panel textures are `SRGB8_A8`; the view uses a `LinearToneMapper`
   (no filmic curve) so panel colors stay faithful.
+- **Floating-panel fidelity:** to match Android XR's floating glass panels, each
+  panel quad rounds its corners and adds a faint edge rim in `unlit_texture.mat`
+  (a rounded-rect SDF drives the alpha mask + rim), and a separate soft
+  rounded-rect **shadow quad** (`panel_shadow.mat`) is composited behind/below it.
+  Corner radius / rim / shadow are computed in an **aspect-corrected rect space**
+  (half-extents `(aspect,1)` or `(1,1/aspect)`) so corners stay circular on wide
+  panels. Real Filament shadow maps are unstable/expensive on llvmpipe, so the
+  contact shadow is a baked transparent quad — deterministic and GPU-cheap.
 
 ## Roadmap
 
