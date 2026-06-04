@@ -1570,6 +1570,7 @@ open class RobolectricHost(
               FontsRecorderExtension.factory,
               ResourcesRecorderExtension.factory,
               ComposeSemanticsExtension.factory,
+              ComposeSemanticsWireframeExtension.factory,
               LayoutInspectorExtension.factory,
               I18nTranslationsExtension.factory,
               NavigationExtension.factory,

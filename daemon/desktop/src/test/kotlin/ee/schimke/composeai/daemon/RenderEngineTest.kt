@@ -90,6 +90,39 @@ class RenderEngineTest {
   }
 
   @Test
+  fun renderAlsoProducesSemanticsWireframe() {
+    // End-to-end: a real desktop render must drop the always-on `compose/semantics-wireframe`
+    // artefacts (SVG + baked PNG) into the data dir, keyed by the preview id, alongside the PNG.
+    val outputDir = tempFolder.newFolder("renders-wireframe")
+    val dataDir = tempFolder.newFolder("data-wireframe")
+    val engine = RenderEngine(outputDir = outputDir, dataDir = dataDir)
+    val host = DesktopHost(engine = engine)
+    host.start()
+    try {
+      val request =
+        RenderRequest.Render(
+          payload =
+            "className=ee.schimke.composeai.daemon.RedFixturePreviewsKt;" +
+              "functionName=RedSquare;" +
+              "widthPx=64;heightPx=64;density=1.0;" +
+              "showBackground=true;" +
+              "outputBaseName=wireframe-red"
+        )
+      host.submit(request, timeoutMs = 60_000)
+
+      val previewDir = File(dataDir, "wireframe-red")
+      val svg = File(previewDir, "compose-semantics-wireframe.svg")
+      val png = File(previewDir, "compose-semantics-wireframe.png")
+      assertTrue("wireframe SVG must be produced: ${svg.absolutePath}", svg.exists())
+      assertTrue("wireframe SVG must be valid", svg.readText().trimStart().startsWith("<svg"))
+      assertTrue("wireframe PNG must be produced: ${png.absolutePath}", png.exists())
+      assertTrue("wireframe PNG must be non-empty", png.length() > 0)
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  @Test
   fun privateComposableRendersToValidPng() {
     // Regression: Kotlin `private fun` previews compile to JVM-private static methods. The daemon
     // resolves them via `getDeclaredComposableMethod` but the reflective `invoke` threw

@@ -50,11 +50,19 @@ object ComposeSemanticsDataProducer {
     fileSystem: FileSystem = SystemFileSystem,
   ) {
     val previewDir = rootDir.resolve(previewId).also { it.mkdirs() }
-    val payload = ComposeSemanticsPayload(root = root.toWireNode())
+    val payload = buildPayload(root)
     fileSystem.write(previewDir.resolve(FILE).path.toPath()) {
       writeUtf8(json.encodeToString(ComposeSemanticsPayload.serializer(), payload))
     }
   }
+
+  /**
+   * Projects a captured semantics [root] into the stable wire model. Public so the wireframe
+   * producer (and any other derived view) reuses the exact same projection — label precedence,
+   * bounds formatting, merge-mode mapping — rather than re-walking the tree with different rules.
+   */
+  fun buildPayload(root: SemanticsNode): ComposeSemanticsPayload =
+    ComposeSemanticsPayload(root = root.toWireNode())
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
     val cfg = config
