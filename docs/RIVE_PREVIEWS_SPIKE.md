@@ -69,15 +69,22 @@ Build the C++ core + write JNI bindings + render offscreen on a headless GPU (Me
 - **Verdict:** most "native-correct" and backend-agnostic, but by far the most expensive. Defer.
 
 ### Option C — Rive web runtime in a headless browser (**recommended**)
-Render `.riv` with `@rive-app/canvas` (WASM) inside a headless Chromium, screenshot the canvas to
+Render `.riv` with `@rive-app/webgl2` (WASM) inside a headless Chromium, screenshot the canvas to
 PNG, and frame-step for the GIF — exactly mirroring the Lottie still + GIF pair.
 
+- **Use the WebGL2 runtime, not Canvas2D, for fidelity.** `@rive-app/webgl2` drives the **Rive
+  Renderer**, which is required for Renderer-only features (e.g. vector feathering); `@rive-app/canvas`
+  (Canvas2D) is simpler but renders those features with lower fidelity or not at all. Since the whole
+  point is a *faithful* asset-as-IR preview, the harness should target `@rive-app/webgl2`. Headless
+  Chromium provides WebGL2 via ANGLE's software backend (SwiftShader), so no physical GPU is needed —
+  the same way the existing WebGL viewer renders in CI. `@rive-app/canvas` stays a documented fallback
+  only for environments where WebGL2 is genuinely unavailable, with the fidelity caveat called out to
+  the user.
 - **Precedent in-repo:** the VS Code extension already runs a **headless-browser snapshot harness**
   ([`vscode-extension/preview-harness/snapshot.mjs`](../vscode-extension/preview-harness/snapshot.mjs),
   Playwright/Chromium per `vscode-extension/package.json`) and a WebGL viewer
-  ([`vscode-extension/src/webview/spatial/spatialViewer.ts`](../vscode-extension/src/webview/spatial/spatialViewer.ts)).
-  Rive's web runtime is its **best-supported, GPU-optional** runtime (canvas2d fallback), so a headless
-  Chromium renders it without a native GL stack.
+  ([`vscode-extension/src/webview/spatial/spatialViewer.ts`](../vscode-extension/src/webview/spatial/spatialViewer.ts)),
+  so a headless Chromium renders Rive's WebGL2 runtime without a native GL stack.
 - **How it maps onto existing patterns:**
   - *Discovery* — scan `src/main/resources/` for `.riv` (binary magic / extension), emit `kind=RIVE`
     with the asset path, mirroring `discoverLottieAssets`. Asset-as-IR, zero consumer bytecode.
@@ -104,7 +111,7 @@ Not viable: there is no JVM `.riv` decoder, so even a single static frame requir
 
 Pursue **Option C** when Rive support is scheduled. Concretely, a v1 slice:
 
-1. A small Node + `@rive-app/canvas` render harness (`rive-render/`) that takes a `.riv` + width/height
+1. A small Node + `@rive-app/webgl2` render harness (`rive-render/`) that takes a `.riv` + width/height
    + optional `{ animation | stateMachine, inputs, timeMs }` and writes `out.png` (and a frames dir
    for the GIF), run under the headless Chromium the extension tests already provision.
 2. Discovery: `.riv` → `kind=RIVE` preview (asset-as-IR), sibling to `discoverLottieAssets`.
