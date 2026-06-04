@@ -56,6 +56,15 @@ dependencies {
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)
+  // material3 1.5.0-alphaNN drags activity 1.11+ onto the test classpath, which
+  // transitively pulls androidx.navigationevent:1.0.0. AGP builds the merged
+  // test resource APK from the *main* variant, so unless the main variant also
+  // resolves activity >= 1.11 the `androidx.navigationevent.R$id.*` resources
+  // never get merged and previews crash at render time with
+  // `NoClassDefFoundError: androidx/navigationevent/R$id`. This is the
+  // `activity-vs-navigationevent` finding `compose-preview doctor` reports;
+  // pinning activity-compose here keeps the main variant ahead of the floor.
+  implementation(libs.activity.compose)
   // `@AnimatedPreview` and `@FocusedPreview` live here — source-retained
   // metadata read by `DiscoverPreviewsTask` at FQN.
   implementation(project(":preview-annotations"))
