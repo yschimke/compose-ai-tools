@@ -69,12 +69,33 @@ public data class OrbitCamera(
   val pitchDeg: Double,
 )
 
-/** Optional scene backdrop. `kind` is "color" (`#RRGGBB` in [color]) or "skybox" ([texture]). */
+/**
+ * Optional scene backdrop. `kind` is "color" (`#RRGGBB` in [color]) or "skybox" ([texture]).
+ *
+ * For gradient backdrops (any `kind` other than "color"), the offline compositor supports **named
+ * presets** ([preset], e.g. `"warm-room"` — the default — or `"studio-dark"`) plus explicit
+ * gradient stops that **override** the chosen preset: [sky] (straight up), [horizon] (eye level),
+ * and [floor] (straight down; its presence turns the 2-stop gradient into a 3-stop, room-like one).
+ * These knobs are optional; omit them to take the compositor's default `warm-room` backdrop. The
+ * compositor's `--environment` CLI flag overrides whatever the scene specifies.
+ */
 @Serializable
 public data class SpatialEnvironment(
   val kind: String,
   val color: String? = null,
   val texture: String? = null,
+  /**
+   * Named gradient preset (e.g. `"warm-room"`, `"studio-dark"`); ignored when `kind == "color"`.
+   */
+  val preset: String? = null,
+  /** Gradient colour straight up (`#RRGGBB`); overrides the preset. */
+  val sky: String? = null,
+  /**
+   * Gradient colour at eye level (`#RRGGBB`); overrides the preset. Doubles as the clear colour.
+   */
+  val horizon: String? = null,
+  /** Gradient colour straight down (`#RRGGBB`); overrides the preset and enables a 3-stop floor. */
+  val floor: String? = null,
 )
 
 /** The full scene the 3D viewer renders. [version] must equal [SPATIAL_SCENE_VERSION]. */

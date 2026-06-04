@@ -49,7 +49,12 @@ convention, so the transform is essentially identity.
   black, and a `LinearToneMapper` so colors stay faithful.
 - `camera` (orbit) → eye = `target + distance · dir(yaw, pitch)`, `lookAt`,
   45° vertical FoV.
-- `environment.color` → skybox / clear color (defaults to a neutral dark).
+- `environment` → a **swappable** backdrop. `kind=="color"` → a flat skybox / clear
+  color (`color`). Otherwise a **vertical-gradient, room-like** backdrop chosen by a
+  named **preset** (`warm-room`, the softly-lit warm default, or `studio-dark`, the
+  legacy cold look), with optional explicit `sky`/`horizon`/`floor` stops overriding
+  the preset. The `--environment <preset|color:#RRGGBB>` CLI flag overrides the scene's
+  choice; the default is `warm-room`. The horizon doubles as the readback clear color.
 
 Implementation gotchas (buffer lifetime, alpha premultiply, readPixels
 orientation) are documented in the tool's

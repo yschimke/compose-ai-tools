@@ -80,13 +80,30 @@ export interface OrbitCamera {
     pitchDeg: number;
 }
 
-/** Optional scene backdrop. */
+/**
+ * Optional scene backdrop.
+ *
+ * For gradient backdrops (any `kind` other than `"color"`), the offline compositor supports named
+ * `preset`s (e.g. `"warm-room"` — the default — or `"studio-dark"`) plus explicit gradient stops
+ * that override the chosen preset: `sky` (straight up), `horizon` (eye level), and `floor`
+ * (straight down; its presence turns the 2-stop gradient into a 3-stop, room-like one). All are
+ * optional; omit them to take the compositor's default `warm-room` backdrop. The compositor's
+ * `--environment` CLI flag overrides whatever the scene specifies.
+ */
 export interface SpatialEnvironment {
-    kind: "color" | "skybox";
+    kind: "color" | "skybox" | "gradient";
     /** `#RRGGBB` for `kind: "color"`. */
     color?: string;
     /** Texture path/URI for `kind: "skybox"`. */
     texture?: string;
+    /** Named gradient preset (e.g. `"warm-room"`, `"studio-dark"`); ignored when `kind: "color"`. */
+    preset?: string;
+    /** Gradient colour straight up (`#RRGGBB`); overrides the preset. */
+    sky?: string;
+    /** Gradient colour at eye level (`#RRGGBB`); overrides the preset. Doubles as the clear colour. */
+    horizon?: string;
+    /** Gradient colour straight down (`#RRGGBB`); overrides the preset and enables a 3-stop floor. */
+    floor?: string;
 }
 
 /** The full scene the 3D viewer renders. */

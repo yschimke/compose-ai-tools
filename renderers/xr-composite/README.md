@@ -80,6 +80,40 @@ never fails and the interactive viewer + `scene.json` are unaffected.
 | `--out <path>` | output PNG | `composite.png` |
 | `--materials <dir>` | directory with the compiled `.filamat` blobs | `.` |
 | `--width` / `--height` | output size in px | `1280` × `800` |
+| `--environment <preset\|color:#RRGGBB>` | backdrop override (see "Background"): a named preset, or `color:#RRGGBB` for a flat skybox. Overrides the scene's `environment`. | `warm-room` |
+
+## Background (swappable presets)
+
+The backdrop is a **vertical-gradient, room-like environment cubemap** (an HDRI-style
+ceiling / wall / floor) so the light Material panels pop. It is **swappable** via named
+presets:
+
+| preset | look |
+|--------|------|
+| `warm-room` *(default)* | a softly-lit, muted warm passthrough room — warm-taupe ceiling (`#332e27`), a warm wall at the horizon with a gentle glow (`#5a4d40`), and a deep warm-brown floor (`#1e1a16`). Echoes a real Android XR room while staying mid-dark so panels read clearly. |
+| `studio-dark` | the legacy cold gradient — sky `#05070d` → horizon `#1a1f2b`, no floor (2-stop), preserved byte-for-byte. |
+
+The gradient is built as a cubemap: the upper hemisphere interpolates horizon → sky, the
+lower hemisphere interpolates horizon → floor (when the preset has one), with a soft glow
+band on the horizon. The horizon colour also doubles as the readback **clear colour**.
+
+**How to swap.** Selection precedence, most → least specific:
+
+1. **CLI** `--environment <name>` picks a preset; `--environment color:#RRGGBB` forces a
+   flat-colour skybox. This overrides whatever the scene says.
+2. **`scene.json` `environment`**: `kind:"color"` → flat colour (`color`); otherwise a
+   `preset` field selects a named preset, and explicit `sky` / `horizon` / `floor`
+   fields override the preset's stops (a custom gradient). Legacy scenes with
+   `kind:"gradient"` + `sky`/`horizon` still render (a custom-gradient override on the
+   default). A `floor` enables the 3-stop room look.
+3. **Built-in default** = `warm-room`.
+
+```sh
+# swap to the legacy cold look:
+./build/xr-composite --scene scene.json --out studio.png --environment studio-dark
+# force a flat backdrop:
+./build/xr-composite --scene scene.json --out flat.png   --environment color:#101014
+```
 
 ## Consumer flow — auto-provisioned by the CLI
 
