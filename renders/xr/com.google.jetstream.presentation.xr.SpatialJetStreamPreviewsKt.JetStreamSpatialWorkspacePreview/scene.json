@@ -1,0 +1,89 @@
+{
+    "version": 1,
+    "units": "dp",
+    "previewId": "com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview",
+    "camera": {
+        "kind": "orbit",
+        "target": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+        },
+        "distance": 1111.4214875559067,
+        "yawDeg": 0.0,
+        "pitchDeg": -6.0
+    },
+    "panels": [
+        {
+            "id": "browse",
+            "label": null,
+            "poseInRoot": {
+                "translation": {
+                    "x": -424.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 1.0
+                }
+            },
+            "sizeDp": {
+                "width": 360,
+                "height": 520
+            },
+            "texture": "browse.png",
+            "parentId": null
+        },
+        {
+            "id": "detail",
+            "label": null,
+            "poseInRoot": {
+                "translation": {
+                    "x": 20.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 1.0
+                }
+            },
+            "sizeDp": {
+                "width": 480,
+                "height": 520
+            },
+            "texture": "detail.png",
+            "parentId": null
+        },
+        {
+            "id": "profile",
+            "label": null,
+            "poseInRoot": {
+                "translation": {
+                    "x": 444.0,
+                    "y": 0.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 1.0
+                }
+            },
+            "sizeDp": {
+                "width": 320,
+                "height": 520
+            },
+            "texture": "profile.png",
+            "parentId": null
+        }
+    ],
+    "orbiters": [],
+    "environment": null
+}

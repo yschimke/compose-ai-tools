@@ -1,0 +1,66 @@
+{
+    "version": 1,
+    "units": "dp",
+    "previewId": "com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview",
+    "camera": {
+        "kind": "orbit",
+        "target": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+        },
+        "distance": 694.8224399025005,
+        "yawDeg": 0.0,
+        "pitchDeg": -6.0
+    },
+    "panels": [
+        {
+            "id": "appbar",
+            "label": null,
+            "poseInRoot": {
+                "translation": {
+                    "x": 0.0,
+                    "y": 188.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 1.0
+                }
+            },
+            "sizeDp": {
+                "width": 720,
+                "height": 96
+            },
+            "texture": "appbar.png",
+            "parentId": null
+        },
+        {
+            "id": "queue",
+            "label": null,
+            "poseInRoot": {
+                "translation": {
+                    "x": 0.0,
+                    "y": -56.0,
+                    "z": 0.0
+                },
+                "rotation": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0,
+                    "w": 1.0
+                }
+            },
+            "sizeDp": {
+                "width": 720,
+                "height": 360
+            },
+            "texture": "queue.png",
+            "parentId": null
+        }
+    ],
+    "orbiters": [],
+    "environment": null
+}

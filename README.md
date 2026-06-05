@@ -164,3 +164,24 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 | `VideoPlayerOverlayPreviewForPhone` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/VideoPlayerOverlayPreviewForPhone_Phone.png" width="150" /> |
 | `VideoPlayerOverlayPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/integration/jetstream-xr/renders/jetstream/VideoPlayerOverlayPreview_tv_4k.png" width="150" /> |
 
+
+<!-- xr-spatial-previews -->
+## XR spatial previews
+
+Each `@XrSubspacePreview` renders to a `scene.json` (the framework-computed spatial panel layout) plus one texture per `SpatialPanel`, recovered offline by `composePreviewRenderXr` — no headset, no OpenXR.
+
+### `com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview` — 2 panel(s)
+
+[`scene.json`](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview/scene.json)
+
+| `appbar` (720×96) | `queue` (720×360) |
+| --- | --- |
+| ![appbar](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview/appbar.png) | ![queue](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialStackPreview/queue.png) |
+
+### `com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview` — 3 panel(s)
+
+[`scene.json`](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview/scene.json)
+
+| `browse` (360×520) | `detail` (480×520) | `profile` (320×520) |
+| --- | --- | --- |
+| ![browse](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview/browse.png) | ![detail](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview/detail.png) | ![profile](renders/xr/com.google.jetstream.presentation.xr.SpatialJetStreamPreviewsKt.JetStreamSpatialWorkspacePreview/profile.png) |
