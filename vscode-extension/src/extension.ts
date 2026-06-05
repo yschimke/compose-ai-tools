@@ -551,6 +551,27 @@ export interface ComposePreviewTestApi {
      */
     triggerSave(filePath: string): void;
     /**
+     * Drive the editor-scope teardown a test needs for the "last preview
+     * source editor closed" regression (#1566).
+     *
+     * The interactive e2e suite never opens a real editor — it drives
+     * refreshes by path — so the production `onDidChangeActiveTextEditor` /
+     * `onDidChangeVisibleTextEditors` focus handlers never fire on their own.
+     * This exposes the same teardown deterministically:
+     *
+     *   * A preview-source path routes through {@link transitionToFile},
+     *     exactly like the Kotlin branch of the focus-change handler.
+     *   * `null` (or a non-preview path) mirrors the "sticky source file is
+     *     gone, no fallback editor" branch: it flushes interactive/recording
+     *     streams, leaves focus mode, and runs `refresh(false)`. With no
+     *     preview-source tab open, `refresh` lands on its no-module
+     *     empty-state clear — posting `clearAll` + the empty `showMessage`
+     *     rather than holding the previous module's stale cards.
+     *
+     * Resolves once the underlying transition / refresh settles.
+     */
+    triggerEditorScopeChange(filePath: string | null): Promise<void>;
+    /**
      * Drive a focus-inspector data-extension chip toggle from a test, by
      * calling the same `handleSetDataExtensionEnabled` path the webview
      * postMessage hits. Used by the a11y e2e tests to exercise the
@@ -2366,6 +2387,26 @@ export async function activate(
                     allowImmediate: true,
                     debounceMs: refreshDebounceMsFor(filePath),
                 });
+            },
+            triggerEditorScopeChange(filePath: string | null): Promise<void> {
+                if (filePath && isPreviewSourceFile(filePath)) {
+                    // Same path the focus handler takes when the user moves
+                    // to a different preview-source `.kt`.
+                    return transitionToFile(filePath);
+                }
+                // Mirror the "sticky source file is gone" teardown the
+                // onDidChangeActiveTextEditor / onDidChangeVisibleTextEditors
+                // handlers run (extension.ts focus branch): drop the live
+                // streams + focus mode, then re-resolve. With no preview tab
+                // open the refresh resolves to the empty state rather than
+                // holding stale cards (#1566).
+                void flushInteractiveStreams();
+                void flushRecordingSessions({ encode: true });
+                panel?.postMessage({ command: "clearInteractive" });
+                panel?.postMessage({ command: "clearRecording" });
+                panel?.postMessage({ command: "leaveFocusMode" });
+                clearHeavyRefreshOptIns();
+                return refresh(false).then(() => {});
             },
             triggerSetDataExtensionEnabled(
                 previewId: string,
