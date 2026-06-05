@@ -11,6 +11,10 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
   integration run therefore applies the in-repo
   `adaptive-apps-samples-xr-alpha14.patch` before configuring the
   build.
+- Poster art is loaded from remote URLs that can't resolve under
+  the offline Robolectric render, so a second CI patch installs a
+  Coil `FakeImageLoaderEngine` singleton that serves bundled
+  local posters — otherwise the cards render blank.
 - 12 device-targeted previews via custom multi-preview
   annotations (`@PhonePreview` / `@TvPreview` / …).
 
@@ -18,7 +22,7 @@ Auto-rendered by the integration matrix from [`android/adaptive-apps-samples@mai
 ### Workarounds applied by the integration harness
 
 - Source: [`android/adaptive-apps-samples@main`](https://github.com/android/adaptive-apps-samples/tree/main)
-- Consumer patch applied before configuring the build: `adaptive-apps-samples-xr-alpha14.patch` (idempotent — auto-skipped once the change lands upstream).
+- Consumer patch(es) applied before configuring the build: `adaptive-apps-samples-xr-alpha14.patch adaptive-apps-samples-xr-spatial-previews.patch adaptive-apps-samples-coil-fake-images.patch` (idempotent — auto-skipped once the change lands upstream).
 
 ## jetstream
 
