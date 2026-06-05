@@ -11,9 +11,9 @@ rotation, orbiter affordances, and an environment colour.
 
 ```
 spatial-fixtures/
-  spatial-rich.gen.mjs   # generator: emits spatial-rich/scene.json + panel PNGs
   spatial-rich/
-    scene.json           # a SpatialScene (see shared/spatialScene.ts)
+    scene.json            # a SpatialScene (see shared/spatialScene.ts)
+    semantics-tree.json   # a SpatialSemanticsTree harvested alongside the renders
     panels/*.png          # one PNG per panel + orbiter
   index.html             # standalone dev page (orbit/pan/zoom + fixture picker)
   snapshot.mjs           # headless Playwright capture → out/<name>.png (gitignored)
@@ -21,8 +21,15 @@ spatial-fixtures/
 
 ## Regenerate
 
+The panel PNGs **and** the companion `semantics-tree.json` come from real Compose:
+the desktop `RenderEngine` renders each panel composable
+([`SpatialPanelFixtures.kt`](../../daemon/desktop/src/test/kotlin/ee/schimke/composeai/daemon/SpatialPanelFixtures.kt))
+to a texture and harvests its real Compose semantics for the wireframe, so the two
+can't drift. Regenerate (writes `scene.json` + `semantics-tree.json` + `panels/*.png`):
+
 ```sh
-node spatial-fixtures/spatial-rich.gen.mjs
+SPATIAL_FIXTURES_DIR="$PWD/vscode-extension/spatial-fixtures/spatial-rich" \
+  ./gradlew :daemon:desktop:test --tests '*SpatialRichFixtureGeneratorTest' --rerun-tasks
 ```
 
 ## Preview
