@@ -790,6 +790,20 @@
     "sha256": "c3360b02a2e133ab7cc4e174fb4081b197bd6f4e4b0c6e4e9972b395ac7d4617",
     "sourceFile": "src/main/kotlin/com/example/sampleandroid/TypographyGallery.kt"
   },
+  "samples:android/lottie__lottie_spin": {
+    "captureLabel": "",
+    "functionName": "lottie/spin.json",
+    "renderBasename": "lottie__lottie_spin.png",
+    "sha256": "854c8ead2f4c35f34b9f3f00c0a62888f70a44dea360fa10717fc4f94bf16a5b",
+    "sourceFile": null
+  },
+  "samples:android/lottie__lottie_spin#1": {
+    "captureLabel": "",
+    "functionName": "lottie/spin.json",
+    "renderBasename": "lottie__lottie_spin.gif",
+    "sha256": "d2c90315835a6f85fb3dd3ae57a3c0c71e01321d22cecdb42b475f96131b45ff",
+    "sourceFile": null
+  },
   "samples:cmp-shared/com.example.cmpshared.SharedPreviewsKt.SharedBlueBoxPreview_Blue": {
     "captureLabel": "",
     "functionName": "SharedBlueBoxPreview",

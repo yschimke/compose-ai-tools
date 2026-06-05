@@ -97,6 +97,8 @@ Auto-generated from `main`. Browse inline or compare against PR branches.
 | `FallbackCoverageSpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FallbackCoverageSpecimenPreview_Fallback_coverage_specimen.png" width="150" /> |
 | `FontFamilySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/FontFamilySpecimenPreview_FontFamily_specimen.png" width="150" /> |
 | `TypographySpecimenPreview` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/TypographySpecimenPreview_Typography_specimen.png" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.png" width="150" /> |
+| `lottie/spin.json` | <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/main/renders/samples:android/lottie__lottie_spin.gif" width="150" /> |
 
 ## samples:android-alpha
 
