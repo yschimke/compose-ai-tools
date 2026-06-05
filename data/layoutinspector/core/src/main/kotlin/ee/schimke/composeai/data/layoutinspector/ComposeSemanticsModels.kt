@@ -35,6 +35,15 @@ object ComposeSemanticsWireframeProduct {
 @Serializable
 data class ComposeSemanticsNode(
   val nodeId: String,
+  /**
+   * Stable, content-independent handle for this node within the tree, assigned by [SemanticsRefs].
+   *
+   * Unlike [nodeId] (Compose's per-composition `SemanticsNode.id`, which is reassigned on every
+   * fresh render) this survives content edits, so it is the handle agents target for interaction
+   * (issue #1784) and the key the semantics differ matches on (issue #1785). Null only when the
+   * payload was built without running ref assignment.
+   */
+  val ref: String? = null,
   val boundsInRoot: String,
   val label: String? = null,
   val text: String? = null,
