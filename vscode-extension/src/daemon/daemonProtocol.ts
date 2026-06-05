@@ -1044,6 +1044,20 @@ export interface InteractiveSetRemoteComposeParams {
 }
 
 /**
+ * `interactive/setLottie` notification params — scrub a held Lottie scene's timeline in place. The
+ * Lottie analogue of {@link InteractiveSetRemoteComposeParams}: the panel's timeline slider sends
+ * this on every drag tick when a live session is up, and the daemon coalesces ticks to the latest
+ * before recomposing the held scene to that frame — no fresh `renderNow.overrides.lottie.progress`
+ * round-trip. Hosts without a live Lottie binding silently drop it and the panel falls back to
+ * `renderNow`.
+ */
+export interface InteractiveSetLottieParams {
+    frameStreamId: string;
+    /** Timeline position in 0..1 (the daemon clamps). */
+    progress: number;
+}
+
+/**
  * Discriminated edit shape carried by `interactive/setRemoteCompose`. Mirrors the
  * `RemoteComposeChange` Kotlin sealed class on the daemon wire side and the
  * `RemoteComposeChangeDetail` discriminated union the VS Code panel emits. Single shape across

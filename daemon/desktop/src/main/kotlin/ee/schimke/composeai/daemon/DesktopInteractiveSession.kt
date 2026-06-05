@@ -189,6 +189,21 @@ class DesktopInteractiveSession(
     }
   }
 
+  override fun dispatchLottieProgress(progress: Float): Boolean {
+    if (closed) return false
+    val clamped = progress.coerceIn(0f, 1f)
+    runOnSceneThread {
+      if (closed) return@runOnSceneThread
+      // Mutate the snapshot state `LocalLottieProgress` reads inside the held composition → the
+      // scene recomposes to the new frame; the `interactive/setLottie` handler requests the
+      // [render] that paints it. Also remember it per preview so a later fresh render (a save /
+      // warmup re-render that bypasses this session) stays pinned at the scrubbed position.
+      state.lottieProgressState.value = clamped
+      state.spec.previewId?.let { LottieProgressController.remember(it, clamped) }
+    }
+    return !closed
+  }
+
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
     check(!closed) { "DesktopInteractiveSession.render() called after close()" }
     return runOnSceneThreadForResult {

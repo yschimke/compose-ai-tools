@@ -306,6 +306,24 @@ describe("DaemonClient", () => {
         client.exit();
     });
 
+    it("interactiveSetLottie emits a notification carrying the scrub progress", async () => {
+        const { toServer, toClient } = bidiPair();
+        const frames = captureFrames(toServer);
+        const client = new DaemonClient(toServer, toClient, {});
+        client.interactiveSetLottie({
+            frameStreamId: "stream-42",
+            progress: 0.42,
+        });
+        const sent = (await frames.take()) as JsonRpcRequest;
+        assert.strictEqual(sent.method, "interactive/setLottie");
+        assert.strictEqual((sent as unknown as { id?: number }).id, undefined);
+        assert.deepStrictEqual(sent.params, {
+            frameStreamId: "stream-42",
+            progress: 0.42,
+        });
+        client.exit();
+    });
+
     it("issues monotonically increasing ids", async () => {
         const { toServer, toClient } = bidiPair();
         const frames = captureFrames(toServer);

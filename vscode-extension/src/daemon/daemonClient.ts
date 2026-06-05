@@ -27,6 +27,7 @@ import {
     InitializeParams,
     InitializeResult,
     InteractiveInputParams,
+    InteractiveSetLottieParams,
     InteractiveSetRemoteComposeParams,
     InteractiveStartParams,
     InteractiveStartResult,
@@ -323,6 +324,18 @@ export class DaemonClient {
         params: InteractiveSetRemoteComposeParams,
     ): void {
         this.notify("interactive/setRemoteCompose", params);
+    }
+
+    /**
+     * Notification — scrub a held Lottie scene's timeline in place. The
+     * daemon mutates the held composition's snapshot progress state, so the
+     * next streaming frame paints the new timeline position without a fresh
+     * `renderNow.overrides.lottie.progress` round-trip. Backends without a
+     * live Lottie binding silently drop it; the caller falls back to
+     * `renderNow`.
+     */
+    interactiveSetLottie(params: InteractiveSetLottieParams): void {
+        this.notify("interactive/setLottie", params);
     }
 
     /**
