@@ -545,6 +545,33 @@ export interface PreviewOverrides {
      * "size: 4×2 (312×152 dp)" badge.
      */
     launcherWidget?: LauncherWidgetOverride;
+    /**
+     * Lottie timeline override. A non-null `progress` (0..1) re-renders a `kind=LOTTIE` preview at
+     * that timeline position — the interactive scrub the panel's Lottie slider drives. The desktop
+     * renderer provides it as `LocalLottieProgress`, winning over the composable's authored
+     * progress. Desktop-only; other backends ignore it.
+     */
+    lottie?: LottieOverride;
+}
+
+/** Lottie timeline override. See `PreviewOverrides.lottie`. */
+export interface LottieOverride {
+    /** Timeline position in `0..1` (`0` = first frame, `1` = last). */
+    progress?: number | null;
+}
+
+/**
+ * Wire shape of the `animation/lottie` data product (see
+ * `LottieTimelineDataProductRegistry`). Read off the asset with no render, so it's available
+ * before the first frame lands; the panel's scrubber uses it to label the slider (frame N / total)
+ * and size its range.
+ */
+export interface LottieTimelineMetadata {
+    totalFrames: number;
+    frameRate: number;
+    durationMillis: number;
+    width: number;
+    height: number;
 }
 
 /** Whole-cell size on a launcher's grid, expressed as integer cell counts. */

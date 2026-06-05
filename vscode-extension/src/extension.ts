@@ -5721,6 +5721,14 @@ function handleWebviewMessage(msg: WebviewToExtension) {
                 );
             }
             break;
+        case "setLottieProgress":
+            // Panel-side Lottie timeline scrub. Re-renders the held preview at the requested
+            // 0..1 position via `renderNow.overrides.lottie.progress`. Gated behind early features
+            // like the other data-extension override edits.
+            if (earlyFeaturesEnabled()) {
+                void handleSetLottieProgress(msg.previewId, msg.progress);
+            }
+            break;
         case "setPermissionsOverride":
             // Panel-side permissions tab body edit (Grant / Deny / Clear button
             // or "Add permission" / "Clear overrides" action). Merges into the
@@ -6066,6 +6074,40 @@ async function handleSetRemoteComposeNamedValue(
         "fast",
         "remotecompose-edit",
         { remoteCompose: next },
+    );
+}
+
+/**
+ * Apply one scrub from the panel's Lottie timeline slider. Unlike Remote Compose / permissions
+ * there's no override bag to merge — the override is a single scalar — so we just dispatch a fresh
+ * `renderNow.overrides.lottie.progress`. The desktop renderer provides it as `LocalLottieProgress`,
+ * re-rendering the held `kind=LOTTIE` preview at that 0..1 position. (A held-session
+ * `interactive/setLottie` for sub-frame scrubbing is a future optimisation; `renderNow` is the
+ * canonical path today.)
+ */
+async function handleSetLottieProgress(
+    previewId: string,
+    progress: number,
+): Promise<void> {
+    if (!daemonScheduler) {
+        return;
+    }
+    const moduleInfo = previewModuleIndex.get(previewId);
+    if (!moduleInfo) {
+        return;
+    }
+    const clamped = Math.min(1, Math.max(0, progress));
+    logInfo(
+        `[panel] lottie progress=${clamped.toFixed(3)} for ${previewId} via renderNow`,
+    );
+    void daemonScheduler.renderNow(
+        moduleInfo,
+        [previewId],
+        "fast",
+        "lottie-scrub",
+        {
+            lottie: { progress: clamped },
+        },
     );
 }
 
