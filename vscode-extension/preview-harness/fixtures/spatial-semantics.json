@@ -226,23 +226,23 @@
                 "children": [
                   {
                     "nodeId": "np-thumb",
-                    "boundsInRoot": "20,24,116,120",
+                    "boundsInRoot": "20,24,140,144",
                     "label": "Album thumbnail",
                     "role": "Image"
                   },
                   {
                     "nodeId": "np-title",
-                    "boundsInRoot": "136,30,430,66",
+                    "boundsInRoot": "160,38,524,80",
                     "text": "Midnight City"
                   },
                   {
                     "nodeId": "np-artist",
-                    "boundsInRoot": "136,78,320,106",
-                    "text": "M83"
+                    "boundsInRoot": "160,86,544,116",
+                    "text": "M83 · Hurry Up, We're Dreaming"
                   },
                   {
                     "nodeId": "np-scrubber",
-                    "boundsInRoot": "20,142,540,158",
+                    "boundsInRoot": "20,150,540,166",
                     "label": "Seek",
                     "role": "Slider"
                   }
@@ -277,7 +277,7 @@
                 "children": [
                   {
                     "nodeId": "art-image",
-                    "boundsInRoot": "20,20,440,440",
+                    "boundsInRoot": "16,16,444,444",
                     "label": "Album cover",
                     "role": "Image"
                   }
@@ -312,33 +312,33 @@
                 "children": [
                   {
                     "nodeId": "q-header",
-                    "boundsInRoot": "16,16,200,44",
+                    "boundsInRoot": "20,16,200,50",
                     "text": "Up Next"
                   },
                   {
                     "nodeId": "q-row1",
-                    "boundsInRoot": "16,60,284,128",
+                    "boundsInRoot": "16,62,284,134",
                     "text": "Outro",
                     "role": "Button",
                     "clickable": true
                   },
                   {
                     "nodeId": "q-row2",
-                    "boundsInRoot": "16,140,284,208",
+                    "boundsInRoot": "16,146,284,218",
                     "text": "Reunion",
                     "role": "Button",
                     "clickable": true
                   },
                   {
                     "nodeId": "q-row3",
-                    "boundsInRoot": "16,220,284,288",
+                    "boundsInRoot": "16,230,284,302",
                     "text": "Wait",
                     "role": "Button",
                     "clickable": true
                   },
                   {
                     "nodeId": "q-row4",
-                    "boundsInRoot": "16,300,284,368",
+                    "boundsInRoot": "16,314,284,386",
                     "text": "Solitude",
                     "role": "Button",
                     "clickable": true
@@ -374,32 +374,32 @@
                 "children": [
                   {
                     "nodeId": "ly-1",
-                    "boundsInRoot": "20,28,280,60",
+                    "boundsInRoot": "20,28,280,64",
                     "text": "Waiting for the sun"
                   },
                   {
                     "nodeId": "ly-2",
-                    "boundsInRoot": "20,72,250,104",
+                    "boundsInRoot": "20,76,270,112",
                     "text": "to set over the city"
                   },
                   {
                     "nodeId": "ly-3",
-                    "boundsInRoot": "20,116,270,148",
+                    "boundsInRoot": "20,124,280,160",
                     "text": "the lights go down"
                   },
                   {
                     "nodeId": "ly-4",
-                    "boundsInRoot": "20,160,230,192",
+                    "boundsInRoot": "20,172,248,208",
                     "text": "and we drive"
                   },
                   {
                     "nodeId": "ly-5",
-                    "boundsInRoot": "20,204,262,236",
+                    "boundsInRoot": "20,220,272,256",
                     "text": "into the neon haze"
                   },
                   {
                     "nodeId": "ly-6",
-                    "boundsInRoot": "20,248,210,280",
+                    "boundsInRoot": "20,268,224,304",
                     "text": "of midnight"
                   }
                 ]
@@ -434,7 +434,7 @@
                 "children": [
                   {
                     "nodeId": "tp-prev",
-                    "boundsInRoot": "188,24,244,72",
+                    "boundsInRoot": "180,24,236,72",
                     "label": "Previous",
                     "role": "Button",
                     "clickable": true
@@ -448,7 +448,7 @@
                   },
                   {
                     "nodeId": "tp-next",
-                    "boundsInRoot": "316,24,372,72",
+                    "boundsInRoot": "324,24,380,72",
                     "label": "Next",
                     "role": "Button",
                     "clickable": true
@@ -484,7 +484,7 @@
                 "children": [
                   {
                     "nodeId": "vol-track",
-                    "boundsInRoot": "34,24,46,296",
+                    "boundsInRoot": "34,28,46,292",
                     "label": "Volume",
                     "role": "Slider"
                   }

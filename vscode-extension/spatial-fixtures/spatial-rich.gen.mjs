@@ -1,143 +1,31 @@
 // Generator for the `spatial-rich` SpatialScene fixture. Run with:
 //   node vscode-extension/spatial-fixtures/spatial-rich.gen.mjs
 //
-// The canonical contract fixture (preview-harness/fixtures/spatial-scene) is
-// two coplanar panels — perfect for the wire format, but it doesn't exercise
-// rotation, orbiter affordances, or a coloured environment. This fixture does:
-// angled side panels, two edge-anchored orbiters, and a backdrop colour, so the
-// viewer's pose/quaternion mapping and orbiter handling have something to show.
+// The canonical contract fixture (preview-harness/fixtures/spatial-scene) is two coplanar panels —
+// perfect for the wire format, but it doesn't exercise rotation, orbiter affordances, or a coloured
+// environment. This fixture does: angled side panels, two edge-anchored orbiters, and a backdrop
+// colour, so the viewer's pose/quaternion mapping and orbiter handling have something to show.
 // Emitted against the real contract in src/webview/shared/spatialScene.ts.
+//
+// Panel textures are rendered as real HTML/CSS surfaces (see panel-render.mjs) with headless
+// Chromium, so each face shows actual text + Material cards/controls — and the `spatial-semantics`
+// preview's wireframe overlays land on the elements they describe (shared layout in
+// panel-content.mjs). Regenerating therefore needs a browser: Playwright's bundled Chromium, or one
+// pointed at by `HARNESS_CHROMIUM` (same override the preview-harness snapshot honours).
 
-import { deflateSync } from "node:zlib";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
 import { PANEL_CONTENT } from "./panel-content.mjs";
+import { panelHtml } from "./panel-render.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "spatial-rich");
 const panelsDir = join(outDir, "panels");
 
-// --- minimal PNG encoder (RGB, no deps) ----------------------------------
-
-function crc32(buf) {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++)
-            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-        t[n] = c >>> 0;
-    }
-    let c = 0xffffffff;
-    for (const b of buf) c = t[(c ^ b) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-}
-
-function chunk(type, payload) {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(payload.length, 0);
-    const tb = Buffer.from(type, "ascii");
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(Buffer.concat([tb, payload])), 0);
-    return Buffer.concat([len, tb, payload, crc]);
-}
-
-function encodePng(w, h, rgb) {
-    const raw = Buffer.alloc(h * (1 + w * 3));
-    for (let y = 0; y < h; y++) {
-        raw[y * (1 + w * 3)] = 0; // scanline filter: None
-        Buffer.from(rgb.subarray(y * w * 3, (y + 1) * w * 3)).copy(
-            raw,
-            y * (1 + w * 3) + 1,
-        );
-    }
-    const ihdr = Buffer.alloc(13);
-    ihdr.writeUInt32BE(w, 0);
-    ihdr.writeUInt32BE(h, 4);
-    ihdr[8] = 8; // bit depth
-    ihdr[9] = 2; // colour type RGB
-    return Buffer.concat([
-        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-        chunk("IHDR", ihdr),
-        chunk("IDAT", deflateSync(raw)),
-        chunk("IEND", Buffer.alloc(0)),
-    ]);
-}
-
-// --- content drawing -------------------------------------------------------
-
-const clamp8 = (v) => Math.max(0, Math.min(255, Math.round(v)));
-/** Multiply a base colour to lighten (k>1) or darken (k<1) it. */
-const tint = ([r, g, b], k) => [clamp8(r * k), clamp8(g * k), clamp8(b * k)];
-
-function fillRect(rgb, w, h, x0, y0, x1, y1, [r, g, b]) {
-    const lx = Math.max(0, x0);
-    const ly = Math.max(0, y0);
-    const hx = Math.min(w, x1);
-    const hy = Math.min(h, y1);
-    for (let y = ly; y < hy; y++) {
-        for (let x = lx; x < hx; x++) {
-            const i = (y * w + x) * 3;
-            rgb[i] = r;
-            rgb[i + 1] = g;
-            rgb[i + 2] = b;
-        }
-    }
-}
-
-function strokeRect(rgb, w, h, x0, y0, x1, y1, color) {
-    fillRect(rgb, w, h, x0, y0, x1, y0 + 1, color); // top
-    fillRect(rgb, w, h, x0, y1 - 1, x1, y1, color); // bottom
-    fillRect(rgb, w, h, x0, y0, x0 + 1, y1, color); // left
-    fillRect(rgb, w, h, x1 - 1, y0, x1, y1, color); // right
-}
-
-// Shade each widget kind a different amount from the panel's base colour so the
-// painted block reads as a UI element (a card / button / image / track) under
-// the wireframe overlay — not just a flat fill.
-const KIND_FILL = { text: 1.45, button: 1.85, image: 0.7, slider: 0.55 };
-
-function drawWidget(rgb, w, h, scale, base, wgt) {
-    const x0 = Math.round(wgt.bounds[0] * scale);
-    const y0 = Math.round(wgt.bounds[1] * scale);
-    const x1 = Math.round(wgt.bounds[2] * scale);
-    const y1 = Math.round(wgt.bounds[3] * scale);
-    const k = KIND_FILL[wgt.kind] ?? 1.3;
-    fillRect(rgb, w, h, x0, y0, x1, y1, tint(base, k));
-    strokeRect(rgb, w, h, x0, y0, x1, y1, tint(base, k * 0.55));
-    if (wgt.kind === "slider") {
-        // A brighter knob at the track's midpoint.
-        const cx = Math.round((x0 + x1) / 2);
-        const cy = Math.round((y0 + y1) / 2);
-        const rk = Math.max(3, Math.round(6 * scale));
-        fillRect(rgb, w, h, cx - rk, cy - rk, cx + rk, cy + rk, tint(base, 1.9));
-    } else if (wgt.kind === "text") {
-        // A darker baseline line so the block reads as a line of text.
-        fillRect(rgb, w, h, x0 + 1, y1 - 2, x1 - 1, y1 - 1, tint(base, 0.7));
-    }
-}
-
-// A colour field with a lighter top band + thin border (so texture orientation
-// is obvious), then the panel's mock-UI widgets painted on top.
-function panelTexture(w, h, base, widgets = [], scale = 1) {
-    const [r, g, b] = base;
-    const rgb = Buffer.alloc(w * h * 3);
-    const band = Math.floor(h * 0.22);
-    const border = 6;
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const i = (y * w + x) * 3;
-            const edge =
-                x < border || y < border || x >= w - border || y >= h - border;
-            const k = edge ? 0.45 : y < band ? 1.35 : 1.0;
-            rgb[i] = clamp8(r * k);
-            rgb[i + 1] = clamp8(g * k);
-            rgb[i + 2] = clamp8(b * k);
-        }
-    }
-    for (const wgt of widgets) drawWidget(rgb, w, h, scale, base, wgt);
-    return encodePng(w, h, rgb);
-}
+// ~2 px/dp — crisp text without bloating the committed PNGs.
+const DENSITY = 2;
 
 // --- quaternion helpers ----------------------------------------------------
 
@@ -168,7 +56,7 @@ const panels = [
         translation: { x: 0, y: -40, z: 0 },
         rotation: identity,
         sizeDp: { width: 460, height: 460 },
-        rgb: [33, 150, 243],
+        rgb: [33, 120, 200],
     },
     {
         id: "queue",
@@ -176,7 +64,7 @@ const panels = [
         translation: { x: -520, y: 40, z: 160 },
         rotation: yaw(32),
         sizeDp: { width: 300, height: 520 },
-        rgb: [0, 150, 136],
+        rgb: [0, 130, 120],
     },
     {
         id: "lyrics",
@@ -184,7 +72,7 @@ const panels = [
         translation: { x: 520, y: 40, z: 160 },
         rotation: yaw(-32),
         sizeDp: { width: 300, height: 520 },
-        rgb: [244, 67, 54],
+        rgb: [150, 60, 70],
     },
 ];
 
@@ -196,7 +84,7 @@ const orbiters = [
         translation: { x: 0, y: -340, z: 80 },
         rotation: pitch(-18),
         sizeDp: { width: 560, height: 96 },
-        rgb: [55, 71, 79],
+        rgb: [48, 56, 68],
     },
     {
         id: "volume",
@@ -205,31 +93,67 @@ const orbiters = [
         translation: { x: 360, y: -40, z: 40 },
         rotation: yaw(-20),
         sizeDp: { width: 80, height: 320 },
-        rgb: [120, 144, 156],
+        rgb: [96, 110, 124],
     },
 ];
 
+// --- texture rendering -----------------------------------------------------
+
+/** Locate a Chromium: explicit override, then any installed pw-browsers build, then the default. */
+function resolveChromium() {
+    if (process.env.HARNESS_CHROMIUM) return process.env.HARNESS_CHROMIUM;
+    const root = "/opt/pw-browsers";
+    if (existsSync(root)) {
+        const dir = readdirSync(root)
+            .filter((d) => d.startsWith("chromium-"))
+            .sort()
+            .pop();
+        if (dir) {
+            const exe = join(root, dir, "chrome-linux", "chrome");
+            if (existsSync(exe)) return exe;
+        }
+    }
+    try {
+        return chromium.executablePath();
+    } catch {
+        return undefined;
+    }
+}
+
+async function renderTexture(browser, item) {
+    const w = Math.round(item.sizeDp.width * DENSITY);
+    const h = Math.round(item.sizeDp.height * DENSITY);
+    const html = panelHtml({
+        baseRgb: item.rgb,
+        sizeDp: item.sizeDp,
+        widgets: PANEL_CONTENT[item.id]?.widgets ?? [],
+        density: DENSITY,
+    });
+    const page = await browser.newPage({
+        viewport: { width: w, height: h },
+        deviceScaleFactor: 1,
+    });
+    await page.setContent(html, { waitUntil: "load" });
+    const buf = await page.screenshot({
+        type: "png",
+        clip: { x: 0, y: 0, width: w, height: h },
+    });
+    await page.close();
+    writeFileSync(join(outDir, `panels/${item.id}.png`), buf);
+}
+
 mkdirSync(panelsDir, { recursive: true });
 
-const PX_PER_DP = 0.5;
-
-function writeTexture(item) {
-    const file = `panels/${item.id}.png`;
-    const widgets = PANEL_CONTENT[item.id]?.widgets ?? [];
-    writeFileSync(
-        join(outDir, file),
-        // ~0.5 px/dp — crisp enough to read, light enough for a committed fixture.
-        // Widgets are authored in content-space dp and scaled by the same factor,
-        // so they land where the semantics wireframe expects them.
-        panelTexture(
-            Math.round(item.sizeDp.width * PX_PER_DP),
-            Math.round(item.sizeDp.height * PX_PER_DP),
-            item.rgb,
-            widgets,
-            PX_PER_DP,
-        ),
-    );
-    return file;
+const browser = await chromium.launch({
+    executablePath: resolveChromium(),
+    args: ["--no-sandbox", "--force-color-profile=srgb"],
+});
+try {
+    for (const item of [...panels, ...orbiters]) {
+        await renderTexture(browser, item);
+    }
+} finally {
+    await browser.close();
 }
 
 const scene = {
@@ -248,7 +172,7 @@ const scene = {
         label: p.label,
         poseInRoot: { translation: p.translation, rotation: p.rotation },
         sizeDp: p.sizeDp,
-        texture: writeTexture(p),
+        texture: `panels/${p.id}.png`,
         parentId: null,
     })),
     orbiters: orbiters.map((o) => ({
@@ -257,7 +181,7 @@ const scene = {
         edge: o.edge,
         poseInRoot: { translation: o.translation, rotation: o.rotation },
         sizeDp: o.sizeDp,
-        texture: writeTexture(o),
+        texture: `panels/${o.id}.png`,
     })),
     environment: { kind: "color", color: "#101014" },
 };
