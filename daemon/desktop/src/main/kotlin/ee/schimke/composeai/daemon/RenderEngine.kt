@@ -287,6 +287,11 @@ class RenderEngine(
             LocalInspectionMode provides inspectionMode,
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
+            // Interactive Lottie scrubbing: a non-null `overrides.lottie.progress` lands the
+            // captured frame at that timeline position, winning over the composable's authored
+            // progress (file-discovered `LottiePreview` below, or any `@Preview` calling it).
+            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides
+              spec.overrides?.lottie?.progress,
             *localeProviders,
           ) {
             if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {

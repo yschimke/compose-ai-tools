@@ -608,6 +608,34 @@ data class PreviewOverrides(
    * [resizeOrder] is the protocol hook for that orchestration.
    */
   val launcherWidget: LauncherWidgetOverride? = null,
+  /**
+   * Optional Lottie timeline override. A non-null [LottieOverride.progress] re-renders a
+   * `kind=LOTTIE` preview (or any `@Preview` calling `LottiePreview(...)`) at that timeline
+   * position — the interactive scrubbing path the VS Code slider drives via
+   * `renderNow.overrides.lottie`. Desktop-only today; the Android backend ignores it.
+   */
+  val lottie: LottieOverride? = null,
+)
+
+/**
+ * Optional Lottie timeline override. Drives the interactive "scrub the animation" path for
+ * `kind=LOTTIE` previews (and any `@Preview` that calls `LottiePreview(...)`): a non-null
+ * [progress] is provided as `LocalLottieProgress` around the rendered content, so the captured
+ * frame lands at that timeline position instead of the composable's authored `progress` argument.
+ * Sending a fresh `lottie` on a subsequent `renderNow` re-renders the held preview at the new frame
+ * — the VS Code timeline slider posts exactly this.
+ *
+ * Desktop today (the Lottie runtime is Compottie-desktop); the Android backend has no Lottie render
+ * path yet and ignores the field.
+ */
+@Serializable
+data class LottieOverride(
+  /**
+   * Timeline position in `0f..1f` (`0f` = first frame, `1f` = last). Coerced into range by the
+   * runtime. Null leaves the composable's authored `progress` untouched — so an override carrying
+   * no progress is a no-op, mirroring the other "all fields null does nothing" override shapes.
+   */
+  val progress: Float? = null
 )
 
 /**
