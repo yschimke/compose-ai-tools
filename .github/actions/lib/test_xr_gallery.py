@@ -110,6 +110,41 @@ class FoldTest(unittest.TestCase):
         # Texture wasn't on disk, so it isn't copied, but the section still renders.
         self.assertFalse((self.gallery / "renders" / "xr" / "P" / "ghost.png").exists())
 
+    def test_traversal_texture_is_rejected_not_copied(self) -> None:
+        # A crafted scene.json points `texture` outside the render dir; the fold must
+        # neither copy the target into the gallery nor emit an image link to it.
+        secret = self.root / "secret.txt"
+        secret.write_text("do not publish me")
+        d = self.root / "consumer" / "build" / "compose-previews" / "renders" / "Evil"
+        d.mkdir(parents=True)
+        panels = [
+            {"id": "abs", "sizeDp": {"width": 1, "height": 1},
+             "texture": str(secret)},
+            {"id": "dotdot", "sizeDp": {"width": 1, "height": 1},
+             "texture": "../../secret.txt"},
+            {"id": "subdir", "sizeDp": {"width": 1, "height": 1},
+             "texture": "nested/x.png"},
+        ]
+        (d / "scene.json").write_text(json.dumps(_scene(panels)))
+
+        self.assertEqual(xg.fold(self.gallery, self.root), 1)
+
+        dest = self.gallery / "renders" / "xr" / "Evil"
+        # Nothing escaped into the gallery, regardless of basename collisions.
+        copied = {p.name for p in dest.glob("*") if p.is_file()}
+        self.assertEqual(copied, {"scene.json"})
+        readme = (self.gallery / "README.md").read_text()
+        self.assertNotIn("secret.txt", readme)
+        self.assertNotIn("../", readme)
+        # Each unsafe panel still appears as a header cell, just without an image.
+        self.assertIn("`abs`", readme)
+        self.assertIn("_(no texture)_", readme)
+
+    def test_safe_texture_name(self) -> None:
+        self.assertEqual(xg._safe_texture_name("browse.png"), "browse.png")
+        for bad in ("../x.png", "a/b.png", "/abs/x.png", "..", ".", "", None, 5):
+            self.assertIsNone(xg._safe_texture_name(bad), bad)
+
     def test_excludes_external_build_paths(self) -> None:
         # A scene under */external/build/* (the integration checkout's own build) must be ignored.
         d = self.root / "external" / "build" / "compose-previews" / "renders" / "Stray"

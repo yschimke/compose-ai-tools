@@ -39,6 +39,26 @@ _SECTION_MARKER = "<!-- xr-spatial-previews -->"
 _SCENE_GLOB = "**/build/compose-previews/renders/*/scene.json"
 
 
+def _safe_texture_name(texture: object) -> str | None:
+    """Return [texture] iff it's a plain basename safe to copy/link, else None.
+
+    `texture` comes from a `scene.json` the renderer wrote, but the staged gallery
+    is later pushed to a shared branch by the `publish-previews` job, so a crafted
+    scene must not be able to pull files from outside the render directory into the
+    published tree (path traversal). The renderer only ever emits a bare
+    `<panelId>.png` sibling of scene.json, so we accept *only* a basename: anything
+    with a directory component, an absolute path, or a `..` segment is rejected.
+    """
+    if not isinstance(texture, str) or not texture:
+        return None
+    name = Path(texture).name
+    # `Path(texture).name` strips any directory part, so a value that survives
+    # unchanged has no `/`, no leading `/`, and isn't `.`/`..`.
+    if name != texture or name in (".", ".."):
+        return None
+    return name
+
+
 def _panel_rows(panels: list[dict], rel_dir: str, columns: int = 3) -> list[str]:
     """Markdown tables (one per `columns`-wide chunk) embedding each panel texture.
 
@@ -58,7 +78,7 @@ def _panel_rows(panels: list[dict], rel_dir: str, columns: int = 3) -> list[str]
             w, h = size.get("width"), size.get("height")
             dims = f" ({w}×{h})" if w is not None and h is not None else ""
             headers.append(f"`{pid}`{dims}")
-            texture = panel.get("texture")
+            texture = _safe_texture_name(panel.get("texture"))
             if texture:
                 cells.append(f"![{pid}]({rel_dir}/{texture})")
             else:
@@ -116,14 +136,20 @@ def fold(gallery_dir: Path, search_root: Path) -> int:
             print(f"::warning::could not parse {scene}: {exc}; linking raw only")
             data = {}
         panels = data.get("panels") if isinstance(data.get("panels"), list) else []
-        # Copy the textures the scene references (siblings of scene.json).
+        # Copy the textures the scene references (must be basenames living next
+        # to scene.json — see _safe_texture_name for why traversal is rejected).
         for panel in panels:
-            texture = panel.get("texture")
+            texture = _safe_texture_name(panel.get("texture"))
             if not texture:
+                if panel.get("texture"):
+                    print(
+                        f"::warning::ignoring unsafe texture path "
+                        f"{panel.get('texture')!r} in {scene}"
+                    )
                 continue
             src = scene.parent / texture
             if src.is_file():
-                shutil.copy2(src, dest / src.name)
+                shutil.copy2(src, dest / texture)
         rel_dir = f"renders/xr/{name}"
         lines.append(f"### `{name}` — {len(panels)} panel(s)")
         lines.append("")
