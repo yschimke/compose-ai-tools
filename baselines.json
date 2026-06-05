@@ -28,14 +28,14 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "000d97cf1d62d1e453399cdd4a5d3d470dd9219b5b09b2fe8c344980d6815732",
-      "size": 140495
+      "sha256": "1ccff6fe707496b12ffa102ba57a9dc1dec7ab2d54af0b98258a33699163618b",
+      "size": 140116
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
       "theme": "light",
-      "sha256": "c08508bfd1e81d65032174ddde49c65cf39929b1f6986c7a238e45d4e3811084",
-      "size": 133472
+      "sha256": "c3700ea9508ad202f3c48a2f852702e707e94e8ab8dcd1df9a316cc58122bf54",
+      "size": 133121
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
@@ -112,26 +112,26 @@
     "spatial-semantics.dark.png": {
       "fixture": "spatial-semantics",
       "theme": "dark",
-      "sha256": "9d0e523ce921a67bac0fe896e4b71faa3e9c34228769ab0bd94336b28f220d29",
-      "size": 53158
+      "sha256": "bfbbd661468db5377082e61a49394af131df2ed0b6c90cb4aa07ee227af135a9",
+      "size": 77722
     },
     "spatial-semantics.light.png": {
       "fixture": "spatial-semantics",
       "theme": "light",
-      "sha256": "455ffc2ae1452fac9e0877bd8b27a2d6939e5c9b5e44da528b205b7af98fe7a0",
-      "size": 53162
+      "sha256": "c6c92fcd73be77f53176ca157eda7a79f98ebc8417021a428400d6c8824279f2",
+      "size": 77727
     },
     "spatial-view.dark.png": {
       "fixture": "spatial-view",
       "theme": "dark",
-      "sha256": "371de136d4ff953ed83c2707f9ec30a61c294d09e35c4aae170bf4356bd9113a",
-      "size": 38645
+      "sha256": "d2e427eea63bb83fb13bd8e62886f0b2fb2a1aa3dc1186cef06b64da58a6febb",
+      "size": 60312
     },
     "spatial-view.light.png": {
       "fixture": "spatial-view",
       "theme": "light",
-      "sha256": "6cfeac9a47949b2da8cb023aa69d2d015d653b6c9be6292f5236a382523f6e87",
-      "size": 38647
+      "sha256": "3ba17e4c62a2f7b897119809459095cd5f7558a46fda388575daa27917a5ddcf",
+      "size": 60302
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
