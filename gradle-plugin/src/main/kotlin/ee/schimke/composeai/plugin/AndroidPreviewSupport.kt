@@ -574,6 +574,15 @@ internal object AndroidPreviewSupport {
         // don't crash whole-project listings at task-graph-build time. See issue #1492.
         dependsOn(project.tasks.matching { it.name in mainCompileTaskNames })
         // No opt-in-extension wiring on `composePreviewDiscover` — a11y is daemon-only.
+        // Lottie asset discovery: scan the module's Java-resource *source* dirs (the documented
+        // `src/main/resources` convention — classpath-loadable and rendered via the desktop
+        // Compottie path, so no Android/Robolectric Lottie player is needed). Source dirs are used
+        // rather than AGP's `java_res` intermediates because the latter's path is AGP-version- and
+        // module-type-specific; the same source dirs are linked onto the Lottie render task's
+        // classpath (`composePreviewRenderLottie`) so `loadLottieAsset`'s `getResourceAsStream`
+        // resolves the asset at render time. Non-existent dirs resolve to nothing — harmless on
+        // resource-free modules and on classic-AGP modules that only ship `src/main/res`.
+        resourceDirs.from(androidLottieResourceDirs(project))
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->
@@ -2105,7 +2114,37 @@ internal object AndroidPreviewSupport {
     // writes those sidecars — so there is nothing to roll up and the task is no longer
     // registered.
 
+    // Lottie previews discovered in this Android module render through the JVM desktop Compottie
+    // path — the asset is portable IR, so no Android/Robolectric Lottie player is needed. The
+    // Robolectric `composePreviewRender` skips `kind=LOTTIE` (it can't inflate Compottie — see
+    // `RobolectricRenderTest`); this task renders just those entries via `DesktopRendererMain` on a
+    // `:renderer-desktop` classpath plus the module's Java-resource source dirs (where the `.json`
+    // /
+    // `.lottie` asset lives, matching the path `composePreviewDiscover` recorded). It's folded into
+    // `composePreviewRenderAll` so the still PNG is present when the missing-render gate validates.
+    val lottieRendererConfig =
+      ComposePreviewTasks.ensureRendererDesktopConfig(project, "composePreviewLottieRenderer")
+    val lottieRenderTask =
+      project.tasks.register("composePreviewRenderLottie", RenderPreviewsTask::class.java) {
+        group = "compose preview"
+        description = "Render kind=LOTTIE previews via the desktop Compottie renderer"
+        onlyIf { extension.enabled.get() }
+        previewsJson.set(previewOutputDir.map { it.file("previews.json") })
+        renderBackend.set("desktop")
+        tier.set(resolveTier(project))
+        displayFilterFilters.set(resolveDisplayFilterFilters(project))
+        includeKinds.add(PreviewKind.LOTTIE.name)
+        renderClasspath.from(lottieRendererConfig)
+        renderClasspath.from(androidLottieResourceDirs(project))
+        outputDir.set(rendersDirectory)
+        dataProductsDir.set(dataProductsDirectory)
+        dependsOn(discoverTask)
+      }
+
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
+    // Fold the JVM Lottie render into the aggregate so a `kind=LOTTIE` asset's PNG is produced
+    // before the missing-render gate validates the manifest.
+    project.tasks.named("composePreviewRenderAll").configure { dependsOn(lottieRenderTask) }
     // Fold the XR render + composite into the user-facing aggregate so `composePreviewRenderAll`
     // produces scene.json alongside the PNGs, then bakes the composite stills (only when the XR
     // path is enabled / the tasks exist). `composePreviewCompositeXr` itself `dependsOn`
@@ -2418,6 +2457,23 @@ internal object AndroidPreviewSupport {
     project: org.gradle.api.Project
   ): org.gradle.api.provider.Provider<String> =
     project.providers.gradleProperty("composePreview.displayFilter.filters").orElse("")
+
+  /**
+   * Java-resource *source* roots scanned for Lottie assets in an Android module, and linked onto
+   * the `composePreviewRenderLottie` render classpath so the desktop renderer resolves the asset by
+   * classpath name. Covers the classic-AGP `src/main/resources` and the KMP source-set layout
+   * (`src/commonMain/resources`, `src/androidMain/resources`). Non-existent dirs are skipped by
+   * discovery and contribute nothing to the classpath, so this is safe on modules that ship no Java
+   * resources.
+   */
+  internal fun androidLottieResourceDirs(
+    project: org.gradle.api.Project
+  ): org.gradle.api.file.FileCollection =
+    project.files(
+      project.layout.projectDirectory.dir("src/main/resources"),
+      project.layout.projectDirectory.dir("src/commonMain/resources"),
+      project.layout.projectDirectory.dir("src/androidMain/resources"),
+    )
 
   private fun parseCheckList(raw: String): Set<String> =
     raw.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.toSet()

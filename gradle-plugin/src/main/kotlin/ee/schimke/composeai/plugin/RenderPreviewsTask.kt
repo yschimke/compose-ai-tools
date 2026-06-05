@@ -28,6 +28,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Input abstract val renderBackend: Property<String>
 
   /**
+   * Restricts rendering to previews whose `params.kind.name` is in this set. Empty (the default)
+   * renders every kind — the historical behaviour. The Android path uses this to run a Lottie-only
+   * desktop-renderer pass (`composePreviewRenderLottie`) for `kind=LOTTIE` assets, which the
+   * Robolectric `composePreviewRender` deliberately skips (it can't inflate Compottie). Kept
+   * generic (a set of kind names) rather than a Lottie-specific flag so other JVM-renderable kinds
+   * can reuse it.
+   */
+  @get:Input abstract val includeKinds: org.gradle.api.provider.SetProperty<String>
+
+  /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
    * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
    * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
@@ -86,14 +96,21 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // `cleanStaleRenders`) so VS Code can still display the stale image
     // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
-    val previews =
+    val tierFiltered =
       if (!isFastTier) rawManifest.previews
       else
         rawManifest.previews.filter {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
-    val manifest = if (isFastTier) rawManifest.copy(previews = previews) else rawManifest
+    // Kind filter — when set, render only the named kinds (e.g. the Android Lottie-only pass).
+    // Empty
+    // keeps every kind.
+    val kinds = includeKinds.getOrElse(emptySet())
+    val previews =
+      if (kinds.isEmpty()) tierFiltered else tierFiltered.filter { it.params.kind.name in kinds }
+    val manifest =
+      if (isFastTier || kinds.isNotEmpty()) rawManifest.copy(previews = previews) else rawManifest
 
     if (manifest.previews.isEmpty()) {
       logger.lifecycle("No previews to render.")
