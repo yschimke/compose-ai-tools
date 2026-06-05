@@ -117,9 +117,17 @@ internal constructor(
   override fun close() {
     try {
       if (process?.isAlive == true) {
+        // Graceful (exit) → SIGTERM (destroy) → SIGKILL (destroyForcibly), waiting at each rung so
+        // a
+        // hung native child (e.g. Filament stuck mid-render) can't survive close() and leak across
+        // daemon sessions. Mirrors HarnessClient's shutdown ladder.
         exit()
-        process.waitFor(2, TimeUnit.SECONDS)
-        if (process.isAlive) process.destroy()
+        if (!process.waitFor(2, TimeUnit.SECONDS)) {
+          process.destroy()
+          if (!process.waitFor(2, TimeUnit.SECONDS)) {
+            process.destroyForcibly().waitFor(2, TimeUnit.SECONDS)
+          }
+        }
       }
     } catch (_: Exception) {
       process?.destroyForcibly()
