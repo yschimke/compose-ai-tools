@@ -971,6 +971,11 @@ internal object ComposePreviewTasks {
       moduleName.set(project.name)
       variantName.set(extension.variant)
       projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
+      // Default Lottie captures into the shared `renders/` dir (desktop, where the desktop renderer
+      // is the only writer). The Android task overrides this in [configureDeps] to a disjoint dir
+      // so
+      // its JVM Lottie render doesn't share `renders/` with the Robolectric render.
+      lottieRenderSubdir.convention("renders")
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as

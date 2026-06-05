@@ -169,11 +169,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // produce N captures with different `renderOutput` paths. Skipping all but the first (the
       // old behaviour) silently dropped those extra files.
       for (capture in preview.captures) {
-        val relRender =
-          capture.renderOutput.substringAfter("renders/", missingDelimiterValue = "").ifEmpty {
-            "${preview.id}.png"
-          }
-        val outputFile = outDir.resolve(relRender)
+        // Resolve `renderOutput` (e.g. `renders/<id>.png`, or `lottie-renders/<id>.png` for the
+        // Android Lottie pass) relative to the compose-previews root — same convention the
+        // data-product outputs and the missing-render gate use. For the normal `renders/<id>.png`
+        // this is identical to the old `outDir.resolve(<id>.png)` (outDir == previewsRoot/renders),
+        // but it also lets a task whose `outputDir` is a disjoint sibling (lottie-renders/) write
+        // there without an output-dir overlap.
+        val outputFile =
+          if (capture.renderOutput.isNotEmpty()) previewsRoot.resolve(capture.renderOutput)
+          else outDir.resolve("${preview.id}.png")
         invokeRenderer(
           mainClass = mainClass,
           preview = preview,

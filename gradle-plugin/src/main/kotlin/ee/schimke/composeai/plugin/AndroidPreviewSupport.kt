@@ -26,6 +26,15 @@ import org.gradle.api.tasks.testing.Test
  */
 internal object AndroidPreviewSupport {
   /**
+   * Output subdirectory (under `build/compose-previews/`) for `kind=LOTTIE` renders on the Android
+   * backend, kept disjoint from the Robolectric `renders/` so the two render tasks don't share an
+   * output directory (overlapping outputs disable Gradle's build cache). Used both as the discovery
+   * `lottieRenderSubdir` (so each Lottie capture's `renderOutput` points here) and as the
+   * `composePreviewRenderLottie` task's output dir.
+   */
+  internal const val LOTTIE_RENDER_SUBDIR: String = "lottie-renders"
+
+  /**
    * Floor version pinned on every plugin-injected `androidx.compose.*` coordinate that doesn't have
    * its own version source (`ui-test-manifest`, `ui-test-junit4`). Matches the Compose line that
    * `:renderer-android` compiles against (`compose-bom-compat` 2025.11.01 → Compose 1.9.5); the
@@ -583,6 +592,10 @@ internal object AndroidPreviewSupport {
         // resolves the asset at render time. Non-existent dirs resolve to nothing — harmless on
         // resource-free modules and on classic-AGP modules that only ship `src/main/res`.
         resourceDirs.from(androidLottieResourceDirs(project))
+        // Place Lottie captures in a dir disjoint from `renders/` so the JVM Lottie render task
+        // (`composePreviewRenderLottie`) doesn't share an output directory with the Robolectric
+        // `composePreviewRender` — overlapping task outputs disable Gradle's build cache for both.
+        lottieRenderSubdir.set(LOTTIE_RENDER_SUBDIR)
         if (screenshotTestEnabled) {
           dependsOn(project.tasks.matching { it.name in screenshotCompileTaskNames })
           screenshotTestRuntimeConfig?.let { stConfig ->
@@ -2136,22 +2149,14 @@ internal object AndroidPreviewSupport {
         includeKinds.add(PreviewKind.LOTTIE.name)
         renderClasspath.from(lottieRendererConfig)
         renderClasspath.from(androidLottieResourceDirs(project))
-        outputDir.set(rendersDirectory)
+        // Disjoint output dir (matching the `lottieRenderSubdir` discovery stamps into each Lottie
+        // capture's `renderOutput`) so this task and the Robolectric `composePreviewRender` never
+        // share an output directory — both stay build-cacheable (overlapping task outputs disable
+        // Gradle's build cache). The missing-render gate resolves `renderOutput` relative to the
+        // compose-previews root, so the carousel / validation find the PNG here just the same.
+        outputDir.set(previewOutputDir.map { it.dir(LOTTIE_RENDER_SUBDIR) })
         dataProductsDir.set(dataProductsDirectory)
         dependsOn(discoverTask)
-        // This task shares the `renders/` output dir with the Robolectric `composePreviewRender`
-        // but writes only the `kind=LOTTIE` files. Build-cache participation would be unsafe: a
-        // cache hit could restore a Lottie-only snapshot of the shared dir and delete the
-        // composable
-        // PNGs the Robolectric pass wrote. Opt out of caching (an up-to-date check still no-ops a
-        // clean re-run) and order this *after* the Robolectric render so the Lottie files are
-        // (re)written last, surviving any restore/clean the Robolectric task performs on the dir.
-        outputs.cacheIf(
-          "shares renders/ with composePreviewRender — caching risks a partial restore"
-        ) {
-          false
-        }
-        mustRunAfter(renderTask)
       }
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)

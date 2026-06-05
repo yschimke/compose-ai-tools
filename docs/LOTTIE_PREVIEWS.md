@@ -38,8 +38,10 @@ by the JVM/Compottie *desktop* renderer — the `.json`/`.lottie` is portable IR
 Android (Robolectric) Lottie player**. Discovery scans the Android module's Java-resource source dirs
 (`src/main/resources`, plus the KMP `src/commonMain/resources` / `src/androidMain/resources`), and a
 dedicated `composePreviewRenderLottie` task renders just the `kind=LOTTIE` entries through
-`DesktopRendererMain` on a `:renderer-desktop` classpath (the Robolectric pass skips them). Put your
-Lottie files under `src/main/resources/` in either module type.
+`DesktopRendererMain` on a `:renderer-desktop` classpath (the Robolectric pass skips them). On
+Android those renders land in a dir disjoint from `renders/` (`lottie-renders/`) so the two render
+tasks don't share an output directory — overlapping outputs would disable Gradle's build cache for
+both. Put your Lottie files under `src/main/resources/` in either module type.
 
 ## Animated capture — the looping GIF
 

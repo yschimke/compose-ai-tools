@@ -62,6 +62,16 @@ object PreviewDiscovery {
      * enough". Empty (the default) skips the scan entirely. Paths are absolute.
      */
     val resourceDirs: List<File> = emptyList(),
+    /**
+     * Subdirectory (under the `compose-previews` root) that Lottie capture `renderOutput` paths are
+     * placed in. Defaults to `"renders"` — the shared primary carousel dir, used on the desktop
+     * backend where the desktop renderer is the only writer. The Android backend overrides it to a
+     * disjoint dir (e.g. `"lottie-renders"`) so the JVM Lottie render task doesn't share the
+     * `renders/` output with the Robolectric render — keeping both tasks cacheable (overlapping
+     * task outputs disable Gradle's build cache). The missing-render gate resolves `renderOutput`
+     * relative to the `compose-previews` root, so any subdir validates uniformly.
+     */
+    val lottieRenderSubdir: String = "renders",
   )
 
   /** Outcome of a [discover] call. */
@@ -456,14 +466,14 @@ object PreviewDiscovery {
                 ),
               captures =
                 listOf(
-                  Capture(renderOutput = "renders/$stem.png"),
+                  Capture(renderOutput = "${input.lottieRenderSubdir}/$stem.png"),
                   // Animated companion: the asset's intrinsic timeline encoded as a looping GIF
                   // (the renderer dispatches `.gif` Lottie outputs to `renderLottieGif`). Marked
                   // `optional` so a missing GIF — e.g. a headless env without the GIF writer —
                   // never trips `composePreviewRenderAll`'s required-render gate; the still PNG
                   // stays the baseline artefact. Cost mirrors the scroll-GIF frame-loop + encode.
                   Capture(
-                    renderOutput = "renders/$stem.gif",
+                    renderOutput = "${input.lottieRenderSubdir}/$stem.gif",
                     optional = true,
                     cost = SCROLL_GIF_COST,
                   ),
