@@ -70,6 +70,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Inject abstract val execOperations: ExecOperations
 
   init {
+    // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
+    // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
+    // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
+    // and self-documents it.
+    includeKinds.convention(emptySet())
     // Caching is intentionally gated on `tier=full`: a `tier=fast` run
     // only writes a subset of captures (fast ones), so a build-cache
     // restore from a fast snapshot would *wipe* the previous full run's

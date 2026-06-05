@@ -2139,6 +2139,19 @@ internal object AndroidPreviewSupport {
         outputDir.set(rendersDirectory)
         dataProductsDir.set(dataProductsDirectory)
         dependsOn(discoverTask)
+        // This task shares the `renders/` output dir with the Robolectric `composePreviewRender`
+        // but writes only the `kind=LOTTIE` files. Build-cache participation would be unsafe: a
+        // cache hit could restore a Lottie-only snapshot of the shared dir and delete the
+        // composable
+        // PNGs the Robolectric pass wrote. Opt out of caching (an up-to-date check still no-ops a
+        // clean re-run) and order this *after* the Robolectric render so the Lottie files are
+        // (re)written last, surviving any restore/clean the Robolectric task performs on the dir.
+        outputs.cacheIf(
+          "shares renders/ with composePreviewRender — caching risks a partial restore"
+        ) {
+          false
+        }
+        mustRunAfter(renderTask)
       }
 
     ComposePreviewTasks.registerRenderAllPreviews(project, extension, renderTask, previewOutputDir)
