@@ -20,6 +20,7 @@ import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
+import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.extensions.compose.ExtensionSlotTables
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
@@ -62,7 +63,7 @@ object ComposeSemanticsDataProducer {
    * bounds formatting, merge-mode mapping — rather than re-walking the tree with different rules.
    */
   fun buildPayload(root: SemanticsNode): ComposeSemanticsPayload =
-    ComposeSemanticsPayload(root = root.toWireNode())
+    SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode()))
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
     val cfg = config

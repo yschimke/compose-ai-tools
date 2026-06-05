@@ -276,7 +276,7 @@ A `data/fetch` that needs a re-render:
 | `a11y/overlay` | a11y | low | Path to annotated PNG. Pure-image. |
 | `a11y/touchTargets` | a11y | low | 48dp + overlap detection. |
 | `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. |
-| `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. |
+| `compose/semantics` | default | low | SemanticsNode projection — testTag, role, mergeMode, bounds. Each node also carries a stable, content-independent `ref` (assigned by `SemanticsRefs`) used for ref/testTag/role targeting (#1784) and as the match key for the semantics text diff (#1785). Adding `ref` is additive — `schemaVersion` stays 2. |
 | `compose/semantics-wireframe` | default | low | Standalone 2D wireframe of the semantics tree, derived from the same captured root. SVG primary (path); baked PNG rides as a `png` extra. Depth-cycled stroke hue, accent fill/stroke for clickable stops, dashed stroke for `clearAndSet`, top-left labels. |
 | `compose/recomposition` | instrumented | medium | schemaVersion 2: `[{nodeId, count, reason, bounds?, sourceFile?…}]` + `sinceFrameStreamId`/`inputSeq`. `reason` (PARAMETER_CHANGE/STATE_READ/BOTH/UNKNOWN) attributes each scope; `bounds`/source markers nullable until their joins land (#1605). Heat map. Snapshot or click-delta. |
 | `compose/theme` | default | medium | Resolved `MaterialTheme.*` values + which nodes consumed them. |
@@ -382,7 +382,8 @@ Compose runtime, daemon, or AndroidX:
 | `a11y/touchTargets` | `:data-a11y-core` | `AccessibilityTouchTargetsPayload`, `AccessibilityTouchTarget` |
 | `a11y/overlay` | `:data-a11y-core` | `AccessibilityOverlayArtifact` (path-only) |
 | `compose/recomposition` | `:data-recomposition-core` | `RecompositionPayload`, `RecompositionNode` |
-| `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` |
+| `compose/semantics` | `:data-layoutinspector-core` | `ComposeSemanticsPayload`, `ComposeSemanticsNode` (carries stable `ref`) |
+| _(semantics diff, derived)_ | `:data-layoutinspector-core` | `SemanticsDelta`, `SemanticsNodeChange`, `SemanticsFieldChange` (schema `compose-semantics-diff/v1`) |
 | `compose/theme` | `:data-theme-core` | `ThemePayload`, `ResolvedThemeTokens`, `TypographyToken` |
 | `compose/wallpaper` | `:data-wallpaper-core` | `WallpaperPayload` |
 | `compose/permissions` | `:data-permissions-core` | `PermissionsPayload`, `PermissionGrantWire` |
