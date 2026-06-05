@@ -10,10 +10,12 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.InternalComposeApi
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.ProvidedValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.currentComposer
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.reflect.ComposableMethod
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.runtime.remember
@@ -259,6 +261,20 @@ class RenderEngine(
     // as `LocalDensity` below since a few ui-text/text-foundation paths read it directly during
     // composition rather than going through the scene density.
     val density = Density(spec.density, spec.fontScale ?: 1.0f)
+
+    // Resolve the effective Lottie timeline position and hold it in snapshot state so a held
+    // session can live-scrub it. An explicit `overrides.lottie.progress` (a panel scrub) wins and
+    // is remembered per preview; a render with no override (a save / warmup re-render through the
+    // fresh-scene path) re-uses the last scrub so the captured frame — and the slider — stay pinned
+    // at the scrubbed position. `LocalLottieProgress` reads `.value` inside the composition below,
+    // so [DesktopInteractiveSession.dispatchLottieProgress] mutating this state recomposes the held
+    // scene without a fresh setUp — the held-scene scrub path. See [LottieProgressController].
+    val lottieProgressState: MutableState<Float?> =
+      mutableStateOf(
+        spec.overrides?.lottie?.progress?.also { p ->
+          spec.previewId?.let { LottieProgressController.remember(it, p) }
+        } ?: spec.previewId?.let { LottieProgressController.progressFor(it) }
+      )
     val scene =
       try {
         ImageComposeScene(width = spec.widthPx, height = spec.heightPx, density = density)
@@ -283,24 +299,17 @@ class RenderEngine(
               RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
               null -> SystemTheme.Unknown
             }
-          // Resolve the effective Lottie timeline position. An explicit `overrides.lottie.progress`
-          // (a panel scrub) wins and is remembered per preview; a render that carries no override
-          // (a save / warmup re-render through this fresh-scene path) re-uses the last scrub so the
-          // captured frame — and the slider — stay pinned at the scrubbed position. See
-          // [LottieProgressController].
-          val lottieProgress: Float? =
-            spec.overrides?.lottie?.progress?.also { p ->
-              spec.previewId?.let { LottieProgressController.remember(it, p) }
-            } ?: spec.previewId?.let { LottieProgressController.progressFor(it) }
           CompositionLocalProvider(
             LocalInspectionMode provides inspectionMode,
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
             // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
             // timeline position, winning over the composable's authored progress (file-discovered
-            // `LottiePreview` below, or any `@Preview` calling it). Sticky across renders via
-            // [LottieProgressController] so an unrelated re-render keeps the scrubbed frame.
-            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides lottieProgress,
+            // `LottiePreview` below, or any `@Preview` calling it). Read from snapshot state so a
+            // held session's `dispatchLottieProgress` recomposes live; sticky across fresh renders
+            // via [LottieProgressController] so an unrelated re-render keeps the scrubbed frame.
+            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides
+              lottieProgressState.value,
             *localeProviders,
           ) {
             if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {
@@ -327,10 +336,24 @@ class RenderEngine(
                   // running composition. Mirrors `:renderer-desktop`'s InvokeComposable. Honours
                   // `@PreviewWrapper(SomeProvider::class)` by routing through the wrapper's `Wrap`.
                   if (isLottie) {
-                    LottiePreview(
-                      asset = spec.assetPath.orEmpty(),
-                      modifier = Modifier.fillMaxSize(),
-                    )
+                    // Drive the file-discovered Lottie through the draw-time `progress` lambda
+                    // reading the snapshot state, so a held-session scrub (mutating
+                    // `lottieProgressState`) repaints on the next `render()` by redraw alone — no
+                    // recomposition required. This is the same redraw-only path `renderLottieGif`
+                    // uses to sweep a single held scene into GIF frames. Shadow
+                    // `LocalLottieProgress`
+                    // to null here so the overload's draw-time `progress()` wins; the outer provide
+                    // still targets user `@Preview`s that call `LottiePreview` themselves.
+                    CompositionLocalProvider(
+                      ee.schimke.composeai.preview.lottie.LocalLottieProgress provides null
+                    ) {
+                      LottiePreview(
+                        asset = spec.assetPath.orEmpty(),
+                        modifier = Modifier.fillMaxSize(),
+                      ) {
+                        lottieProgressState.value ?: 0f
+                      }
+                    }
                   } else {
                     InvokeWithOptionalWrapper(composableMethod!!, spec.wrapperClassName)
                   }
@@ -364,6 +387,7 @@ class RenderEngine(
       previousContext = previousContext,
       slotTableCapture = slotTableCapture,
       themeFallbackCapture = themeFallbackCapture,
+      lottieProgressState = lottieProgressState,
     )
   }
 
@@ -389,6 +413,19 @@ class RenderEngine(
     useWallClockFrameTime: Boolean = false,
   ): RenderResult {
     val startNs = System.nanoTime()
+
+    // Flush snapshot state written out-of-composition since the last render so the held scene
+    // observes it before painting. The held-session scrub path mutates `lottieProgressState` from
+    // the scene thread *between* renderOnce calls
+    // (DesktopInteractiveSession.dispatchLottieProgress);
+    // the file-Lottie content reads it in its draw-time `progress` lambda, but that read only
+    // invalidates once apply-notifications fire. Same pairing `:renderers:desktop`'s
+    // `renderLottieGif`
+    // uses (`sendApplyNotifications()` after each write, before `render()`). Event-driven writes
+    // (clicks) are flushed by the scene's own pointer processing; this covers the out-of-band
+    // write.
+    // Harmless for the one-shot path — nothing is pending right after setUp.
+    androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
 
     // Render two frames so any LaunchedEffect / animations have a tick to settle. Same reasoning
     // as `:renderer-desktop`'s renderPreview.
@@ -549,6 +586,14 @@ class RenderEngine(
     internal val previousContext: ClassLoader?,
     internal val slotTableCapture: PreviewSlotTableCapture?,
     internal val themeFallbackCapture: MaterialThemeFallbackCapture?,
+    /**
+     * Snapshot-backed Lottie timeline position read by `LocalLottieProgress` inside the held
+     * composition. Mutating it on the scene thread (via
+     * [DesktopInteractiveSession.dispatchLottieProgress]) recomposes the scene to the new frame
+     * without a fresh [setUp] — the live-scrub path. `null` for non-Lottie previews / renders that
+     * never carried a progress.
+     */
+    internal val lottieProgressState: MutableState<Float?> = mutableStateOf(null),
   ) {
     internal fun previewContext(): PreviewContext {
       val slotTables = slotTableCapture?.snapshot().orEmpty()

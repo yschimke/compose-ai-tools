@@ -1549,6 +1549,27 @@ data class InteractiveSetRemoteComposeParams(
 )
 
 /**
+ * `interactive/setLottie` notification — push one Lottie timeline scrub into a held session so the
+ * scene recomposes to the new frame via snapshot state, no fresh `renderNow`. The Lottie analogue
+ * of [InteractiveSetRemoteComposeParams]: the panel's timeline slider sends this on every drag tick
+ * when a live session is up, and the daemon coalesces ticks to the latest before painting.
+ *
+ * Distinct from `renderNow.overrides.lottie.progress` (which still works and re-renders from a
+ * fresh scene): this is the snappy live-session path that scrubs the held scene in place. Backends
+ * without a live Lottie binding silently drop the notification and the panel falls back to
+ * `renderNow`.
+ */
+@Serializable
+data class InteractiveSetLottieParams(
+  /**
+   * Routing key — same `frameStreamId` `interactive/start` allocated and `interactive/input` uses.
+   */
+  val frameStreamId: String,
+  /** Timeline position in `0f..1f` (the daemon clamps). */
+  val progress: Float,
+)
+
+/**
  * Discriminated edit shape for `interactive/setRemoteCompose`. Mirrors the VS Code panel's
  * `RemoteComposeChangeDetail` so the wire shape is the same on both sides — the host can forward
  * the panel's payload verbatim without restructuring.
