@@ -283,15 +283,24 @@ class RenderEngine(
               RenderSpec.SpecUiMode.LIGHT -> SystemTheme.Light
               null -> SystemTheme.Unknown
             }
+          // Resolve the effective Lottie timeline position. An explicit `overrides.lottie.progress`
+          // (a panel scrub) wins and is remembered per preview; a render that carries no override
+          // (a save / warmup re-render through this fresh-scene path) re-uses the last scrub so the
+          // captured frame — and the slider — stay pinned at the scrubbed position. See
+          // [LottieProgressController].
+          val lottieProgress: Float? =
+            spec.overrides?.lottie?.progress?.also { p ->
+              spec.previewId?.let { LottieProgressController.remember(it, p) }
+            } ?: spec.previewId?.let { LottieProgressController.progressFor(it) }
           CompositionLocalProvider(
             LocalInspectionMode provides inspectionMode,
             androidx.compose.ui.LocalSystemTheme provides systemTheme,
             LocalDensity provides density,
-            // Interactive Lottie scrubbing: a non-null `overrides.lottie.progress` lands the
-            // captured frame at that timeline position, winning over the composable's authored
-            // progress (file-discovered `LottiePreview` below, or any `@Preview` calling it).
-            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides
-              spec.overrides?.lottie?.progress,
+            // Interactive Lottie scrubbing: a non-null progress lands the captured frame at that
+            // timeline position, winning over the composable's authored progress (file-discovered
+            // `LottiePreview` below, or any `@Preview` calling it). Sticky across renders via
+            // [LottieProgressController] so an unrelated re-render keeps the scrubbed frame.
+            ee.schimke.composeai.preview.lottie.LocalLottieProgress provides lottieProgress,
             *localeProviders,
           ) {
             if (previewContextCapture?.shouldCapture(spec.previewId, spec.renderMode) == true) {

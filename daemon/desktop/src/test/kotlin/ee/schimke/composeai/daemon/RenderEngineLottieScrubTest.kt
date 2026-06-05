@@ -7,6 +7,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -14,22 +15,31 @@ import org.junit.rules.TemporaryFolder
 /**
  * Verifies the interactive Lottie timeline scrub: `overrides.lottie.progress` lands the captured
  * frame at the requested timeline position for a `kind=LOTTIE` preview, winning over the default
- * (frame 0). The fixture `lottie/spin.json` rotates 0°→360° over its timeline, so two distinct
- * progress positions produce visibly different frames — proof the override reached `LottiePreview`
- * via `LocalLottieProgress`.
+ * (frame 0), and that the scrub **persists** across a later render that carries no override (a save
+ * / warmup re-render) via [LottieProgressController]. The fixture `lottie/spin.json` rotates
+ * 0°→360° over its timeline, so two distinct progress positions produce visibly different frames.
  *
- * Kept to a single two-render comparison (small canvas) so the shared-JVM Skiko render budget stays
- * low; the null-is-a-no-op contract is covered without rendering in [LottieOverrideDecodeTest].
+ * Kept to a small number of renders (small canvas) so the shared-JVM Skiko render budget stays low;
+ * the null-is-a-no-op decode contract is covered without rendering in [LottieOverrideDecodeTest].
  */
 class RenderEngineLottieScrubTest {
 
   @get:Rule val tempFolder: TemporaryFolder = TemporaryFolder()
 
-  private fun renderAt(progress: Float, name: String): File {
+  @Before
+  fun resetController() {
+    // Process-static sticky-scrub state — clear it so each test starts from a clean slate.
+    LottieProgressController.resetForTest()
+  }
+
+  /**
+   * Render `lottie/spin.json` for [previewId] at [progress] (null = no override), return the PNG.
+   */
+  private fun render(previewId: String, progress: Float?, name: String): File {
     val engine = RenderEngine(outputDir = tempFolder.newFolder(name))
     val spec =
       RenderSpec(
-        previewId = "lottie__spin",
+        previewId = previewId,
         className = "",
         functionName = "spin.json",
         kind = "LOTTIE",
@@ -39,7 +49,7 @@ class RenderEngineLottieScrubTest {
         density = 1.0f,
         showBackground = true,
         outputBaseName = "spin",
-        overrides = PreviewOverrides(lottie = LottieOverride(progress = progress)),
+        overrides = progress?.let { PreviewOverrides(lottie = LottieOverride(progress = it)) },
       )
     val result = engine.render(spec, requestId = 1L, classLoader = javaClass.classLoader)
     return File(result.pngPath!!)
@@ -47,14 +57,27 @@ class RenderEngineLottieScrubTest {
 
   @Test
   fun scrubProgressChangesRenderedFrame() {
-    val early = renderAt(0.0f, "early")
-    val mid = renderAt(0.25f, "mid")
+    val early = render("lottie__spin", 0.0f, "early")
+    val mid = render("lottie__spin", 0.25f, "mid")
 
     assertTrue("early frame should exist", early.exists() && early.length() > 0)
     assertTrue("mid frame should exist", mid.exists() && mid.length() > 0)
     assertFalse(
       "scrubbing progress 0.0 → 0.25 must change the rotated frame",
       pixelsEqual(early, mid),
+    )
+  }
+
+  @Test
+  fun scrubPersistsAcrossRenderWithoutOverride() {
+    // Scrub to 0.25, then re-render the SAME preview with no override — the controller re-applies
+    // the last scrub, so the frame stays at 0.25 rather than snapping back to frame 0.
+    val scrubbed = render("lottie__persist", 0.25f, "persist-scrub")
+    val reRendered = render("lottie__persist", null, "persist-rerender")
+
+    assertTrue(
+      "a no-override re-render of a scrubbed preview must keep the scrubbed frame",
+      pixelsEqual(scrubbed, reRendered),
     )
   }
 

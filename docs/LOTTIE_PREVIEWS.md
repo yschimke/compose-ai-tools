@@ -133,8 +133,11 @@ interactive editing + a VS Code presenter.
    `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`). The VS Code
    panel ships a **Lottie** bundle (`lottieScrubberPresenter.ts`): a timeline slider that reads that
    metadata for its range/labels and, on drag, posts `setLottieProgress` → the host re-renders via
-   `renderNow.overrides.lottie.progress` (the wire path from #1). Follow-on polish: markers, and a
-   held-scene `interactive/setLottie` that scrubs via snapshot recomposition instead of a fresh
+   `renderNow.overrides.lottie.progress` (the wire path from #1). The scrub is **sticky per preview**:
+   `LottieProgressController` remembers the last position, and `RenderEngine` re-applies it on any
+   later render that carries no override (a save / warmup re-render), so the frame — and the slider —
+   stay pinned instead of snapping back to frame 0. Follow-on polish: markers, and a held-scene
+   `interactive/setLottie` for sub-frame scrubbing via snapshot recomposition instead of a fresh
    render (mirrors `interactive/setRemoteCompose`).
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
