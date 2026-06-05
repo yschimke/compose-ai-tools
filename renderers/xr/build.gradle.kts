@@ -1,6 +1,17 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.SourcesJar
+
 plugins {
   id("composeai.base-conventions")
-  id("composeai.android-conventions")
+  // Published so external consumers can resolve `ee.schimke.composeai:renderer-xr:<version>` —
+  // the gradle plugin adds it to a consumer's render configuration when it auto-enables the XR
+  // path (AndroidPreviewSupport, the `xrPreviewsEnabled` branch). `composeai.maven-publishing`
+  // brings the android/jvm/kotlin conventions too, so the explicit `android-conventions` apply is
+  // dropped here (mirrors `:renderer-android`). Without this the XR render path resolves nowhere
+  // for an external consumer — only the in-repo `includeBuild` path (the `Render XR composite`
+  // sample job) worked before.
+  id("composeai.maven-publishing")
   alias(libs.plugins.android.library)
   alias(libs.plugins.compose.compiler)
 }
@@ -79,4 +90,32 @@ dependencies {
   testImplementation(libs.roborazzi.compose)
   testImplementation(libs.junit)
   testImplementation(libs.truth)
+}
+
+// Single `release` variant publication — `XrSubspaceRenderTest` (the render entry the plugin's
+// composePreviewRenderXr task runs) and the fake-runtime ServiceLoader registrations both live in
+// `src/main`, so the release AAR carries everything the plugin needs; no testFixtures publication.
+// The heavy XR / compose-test libs are `compileOnly`, so they stay out of the published POM and the
+// plugin supplies the `*-testing` fakes on the render configuration itself (mirrors
+// `:renderer-android`).
+mavenPublishing {
+  configure(
+    AndroidSingleVariantLibrary(
+      javadocJar = JavadocJar.Empty(),
+      sourcesJar = SourcesJar.Sources(),
+      variant = "release",
+    )
+  )
+}
+
+composeAiMavenPublishing {
+  coordinates(
+    artifactId = "renderer-xr",
+    displayName = "Compose Preview — XR Renderer",
+    description =
+      "Offline producer of the SpatialScene wire format — recovers a Compose-XR Subspace layout " +
+        "under a fake XR runtime and maps each tagged panel's pose/size into the SpatialScene DTO. " +
+        "Consumed by the compose-preview Gradle plugin's composePreviewRenderXr task.",
+  )
+  inceptionYear.set("2025")
 }

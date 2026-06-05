@@ -63,12 +63,17 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
+      - name: Publish plugin + renderer-android + renderer-xr + data-* + daemon-* to mavenLocal
         # Both `gradle-plugin` and `renderer-android` are needed end-to-end:
         # the plugin resolves through the init script's buildscript classpath
         # injection from mavenLocal, and at render time it wires
         # `ee.schimke.composeai:renderer-android:<version>` into the consumer's
         # `composePreviewAndroidRenderer<Variant>` configuration.
+        # `renderer-xr` rides the same fan-out: the plugin wires it onto the
+        # same render configuration when it auto-enables the XR path for a
+        # consumer that depends on `androidx.xr.compose` (the jetstream-xr cell),
+        # so it must resolve from mavenLocal too — otherwise the XR render fails
+        # with `Could not find ee.schimke.composeai:renderer-xr`.
         # Publishing only the plugin here would mean the render path silently
         # falls back to whatever's on the consumer's remote repos (or fails
         # resolution) — exactly the kind of release-vs-source drift these tests
