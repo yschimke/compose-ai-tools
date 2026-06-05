@@ -4,6 +4,7 @@
 // Third-party headers FIRST: Filament's utils/debug.h defines an `assert_invariant`
 // macro that otherwise clobbers nlohmann::json's member function of the same name.
 #include "json.hpp"
+#include "spatial_scene.hpp"  // generated typed mirror of the SpatialScene wire contract
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -223,9 +224,14 @@ int main(int argc, char** argv) {
   args.sceneDir = (slash == std::string::npos) ? "." : args.scenePath.substr(0, slash);
   if (args.materialsDir.empty()) args.materialsDir = ".";
 
-  // ---- parse scene.json ----
-  json scene;
-  { std::ifstream f(args.scenePath); f >> scene; }
+  // ---- parse scene.json (typed via the generated SpatialScene mirror) ----
+  xrcomposite::SpatialScene scene;
+  {
+    std::ifstream f(args.scenePath);
+    json raw;
+    f >> raw;
+    scene = raw.get<xrcomposite::SpatialScene>();
+  }
 
   const uint32_t W = args.width, H = args.height;
 
@@ -292,26 +298,25 @@ int main(int argc, char** argv) {
   };
 
   // (2) scene.json environment.
-  if (scene.contains("environment") && scene["environment"].is_object()) {
-    auto& env = scene["environment"];
-    std::string kind = env.value("kind", "gradient");
-    if (kind == "color") {
+  if (scene.environment) {
+    const auto& env = *scene.environment;
+    if (env.kind == "color") {
       wantColor = true;
-      if (env.contains("color")) colorBg = hexToLinear(env["color"].get<std::string>());
+      if (env.color) colorBg = hexToLinear(*env.color);
     } else {
-      if (env.contains("preset")) {
-        if (const GradientPreset* p = findPreset(env["preset"].get<std::string>())) applyPreset(p);
+      if (env.preset) {
+        if (const GradientPreset* p = findPreset(*env.preset)) applyPreset(p);
         else fprintf(stderr, "unknown environment preset '%s'; using default\n",
-                     env["preset"].get<std::string>().c_str());
+                     env.preset->c_str());
       }
       // Explicit fields override the chosen preset (custom gradient).
-      if (env.contains("sky")) gradSky = hexToLinear(env["sky"].get<std::string>());
-      if (env.contains("horizon")) gradHorizon = hexToLinear(env["horizon"].get<std::string>());
-      if (env.contains("floor")) {
-        gradFloor = hexToLinear(env["floor"].get<std::string>());
+      if (env.sky) gradSky = hexToLinear(*env.sky);
+      if (env.horizon) gradHorizon = hexToLinear(*env.horizon);
+      if (env.floor) {
+        gradFloor = hexToLinear(*env.floor);
         gradHasFloor = true;
       }
-      if (env.contains("glow")) gradGlow = env["glow"].get<float>();
+      if (env.glow) gradGlow = static_cast<float>(*env.glow);
     }
   }
 
@@ -396,9 +401,9 @@ int main(int argc, char** argv) {
 
   // ---- panels ----
   int placed = 0;
-  for (auto& p : scene["panels"]) {
-    std::string id = p.value("id", "panel");
-    std::string texRel = p.value("texture", id + ".png");
+  for (const auto& panel : scene.panels) {
+    const std::string& id = panel.id;
+    std::string texRel = panel.texture.empty() ? (id + ".png") : panel.texture;
     std::string texPath = args.sceneDir + "/" + texRel;
 
     // Filament readPixels on this swapchain is top-origin and UV0 (0,0) maps to the quad's
@@ -422,8 +427,8 @@ int main(int argc, char** argv) {
     tex->setImage(*engine, 0, std::move(pbd));
     tex->generateMipmaps(*engine);
 
-    float wDp = p["sizeDp"].value("width", 100);
-    float hDp = p["sizeDp"].value("height", 100);
+    float wDp = static_cast<float>(panel.sizeDp.width);
+    float hDp = static_cast<float>(panel.sizeDp.height);
     float hw = wDp * 0.5f, hh = hDp * 0.5f;
 
     // Fidelity params evaluated in an aspect-corrected "rect space" where the panel spans
@@ -447,10 +452,11 @@ int main(int argc, char** argv) {
     mi->setParameter("edgeSoftness", kEdgeSoftness);
 
     // transform: translate * rotate(quat)
-    auto& T = p["poseInRoot"]["translation"];
-    auto& R = p["poseInRoot"]["rotation"];
-    float3 t = {T.value("x", 0.0f), T.value("y", 0.0f), T.value("z", 0.0f)};
-    quatf q = {R.value("w", 1.0f), R.value("x", 0.0f), R.value("y", 0.0f), R.value("z", 0.0f)};
+    const auto& T = panel.poseInRoot.translation;
+    const auto& R = panel.poseInRoot.rotation;
+    float3 t = {static_cast<float>(T.x), static_cast<float>(T.y), static_cast<float>(T.z)};
+    quatf q = {static_cast<float>(R.w), static_cast<float>(R.x), static_cast<float>(R.y),
+               static_cast<float>(R.z)};
     mat4f rot(q);
 
     // ---- soft drop/contact shadow behind+below the panel ----
@@ -492,12 +498,12 @@ int main(int argc, char** argv) {
   fprintf(stderr, "placed %d panel(s)\n", placed);
 
   // ---- camera (orbit) ----
-  auto& cam = scene["camera"];
-  float3 target = {cam["target"].value("x", 0.0f), cam["target"].value("y", 0.0f),
-                   cam["target"].value("z", 0.0f)};
-  double distance = cam.value("distance", 1200.0);
-  double yaw = cam.value("yawDeg", 0.0) * kPi / 180.0;
-  double pitch = cam.value("pitchDeg", -10.0) * kPi / 180.0;
+  const auto& cam = scene.camera;
+  float3 target = {static_cast<float>(cam.target.x), static_cast<float>(cam.target.y),
+                   static_cast<float>(cam.target.z)};
+  double distance = cam.distance;
+  double yaw = cam.yawDeg * kPi / 180.0;
+  double pitch = cam.pitchDeg * kPi / 180.0;
   float3 dir = {(float)(std::cos(pitch) * std::sin(yaw)), (float)std::sin(pitch),
                 (float)(std::cos(pitch) * std::cos(yaw))};
   float3 eye = target + dir * (float)distance;
