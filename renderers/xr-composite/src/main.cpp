@@ -1,5 +1,12 @@
 // xr-composite — render a SpatialScene (scene.json + panel PNGs) to a composite PNG, headless.
 // Spike: Filament OpenGL backend on llvmpipe under Xvfb. No GPU required.
+//
+// Two modes:
+//   * one-shot (default): --scene scene.json --out composite.png → render once, exit.
+//   * server (--serve): a long-lived JSON-RPC peer over stdio (LSP-style Content-Length framing,
+//     the same framing the daemon's subprocess backend speaks). Holds one Filament Engine/Scene
+//     across frames so panels can be updated per-frame (`xr/updatePanels`) and rendered frames
+//     streamed back out (`streamFrame`). See docs/design/xr-spatial/RENDERER_SERVICE.md.
 
 // Third-party headers FIRST: Filament's utils/debug.h defines an `assert_invariant`
 // macro that otherwise clobbers nlohmann::json's member function of the same name.
@@ -42,10 +49,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -68,6 +78,7 @@ struct Args {
   uint32_t width = 1280;
   uint32_t height = 800;
   std::string environment;  // CLI override: a preset name, or "color:#RRGGBB"
+  bool serve = false;       // long-lived JSON-RPC server over stdio
 };
 
 std::vector<uint8_t> readFile(const std::string& path) {
@@ -203,6 +214,620 @@ const GradientPreset* findPreset(const std::string& name) {
   return nullptr;
 }
 
+// Standard base64 (RFC 4648) — the wire encoding for `streamFrame` PNG payloads. No padding tricks,
+// no line wrapping; small and dependency-free.
+std::string base64Encode(const uint8_t* data, size_t len) {
+  static const char* kT = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((len + 2) / 3) * 4);
+  size_t i = 0;
+  for (; i + 2 < len; i += 3) {
+    uint32_t n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    out.push_back(kT[(n >> 18) & 63]);
+    out.push_back(kT[(n >> 12) & 63]);
+    out.push_back(kT[(n >> 6) & 63]);
+    out.push_back(kT[n & 63]);
+  }
+  if (i < len) {
+    uint32_t n = data[i] << 16;
+    bool two = (i + 1 < len);
+    if (two) n |= data[i + 1] << 8;
+    out.push_back(kT[(n >> 18) & 63]);
+    out.push_back(kT[(n >> 12) & 63]);
+    out.push_back(two ? kT[(n >> 6) & 63] : '=');
+    out.push_back('=');
+  }
+  return out;
+}
+
+// Encode an RGBA buffer to PNG bytes in memory (stb writes via a callback rather than to a file).
+std::vector<uint8_t> encodePng(const std::vector<uint8_t>& rgba, uint32_t w, uint32_t h) {
+  std::vector<uint8_t> bytes;
+  stbi_write_png_to_func(
+      [](void* ctx, void* data, int size) {
+        auto* v = static_cast<std::vector<uint8_t>*>(ctx);
+        v->insert(v->end(), (uint8_t*)data, (uint8_t*)data + size);
+      },
+      &bytes, (int)w, (int)h, 4, rgba.data(), (int)w * 4);
+  return bytes;
+}
+
+// Holds the Filament render state across frames. Built once; `setScene` (re)builds the whole scene,
+// `applyPanelUpdates` mutates panel poses/textures in place and rebuilds just the panels, and
+// `renderPixels` reads back one frame. The one-shot path uses it for a single render; the server
+// reuses one instance for the life of the process.
+class Compositor {
+ public:
+  bool init(uint32_t w, uint32_t h, const std::string& materialsDir);
+  // Replace the whole scene (background + panels + camera). `envOverride` is the CLI `--environment`
+  // value (empty = none).
+  void setScene(const xrcomposite::SpatialScene& scene, const std::string& sceneDir,
+                const std::string& envOverride);
+  // Per-frame panel mutation: each entry is `{id, texture?, poseInRoot?, sizeDp?}`. Unknown ids are
+  // logged and skipped. Rebuilds the panel renderables (background/camera untouched).
+  void applyPanelUpdates(const json& panels);
+  std::vector<uint8_t> renderPixels();
+  bool writePng(const std::string& path);
+  uint32_t width() const { return W_; }
+  uint32_t height() const { return H_; }
+
+ private:
+  void resolveBackground(const std::string& envOverride);
+  void rebuildPanels();
+  void setupCamera();
+  void clearPanels();
+  utils::Entity buildQuad(float hw, float hh, MaterialInstance* mi);
+  Texture* loadTexture(const std::string& relTexture, const std::string& fallbackId);
+
+  Engine* engine_ = nullptr;
+  SwapChain* swapChain_ = nullptr;
+  Renderer* renderer_ = nullptr;
+  Scene* scene_ = nullptr;
+  View* view_ = nullptr;
+  Camera* camera_ = nullptr;
+  utils::Entity camEntity_;
+  Material* unlit_ = nullptr;
+  Material* shadowMat_ = nullptr;
+  Skybox* skybox_ = nullptr;
+  uint32_t W_ = 0, H_ = 0;
+  std::string materialsDir_;
+  std::string sceneDir_ = ".";
+  float3 bg_ = {0.06f, 0.06f, 0.08f};
+
+  xrcomposite::SpatialScene model_;  // current logical scene
+
+  // Per-rebuild Filament resources, torn down on the next rebuild.
+  std::vector<utils::Entity> panelEntities_;
+  std::vector<VertexBuffer*> vbs_;
+  std::vector<IndexBuffer*> ibs_;
+  std::vector<MaterialInstance*> mis_;
+  // Panel textures cached by resolved path so per-frame re-renders don't re-decode unchanged images.
+  std::map<std::string, Texture*> texCache_;
+};
+
+bool Compositor::init(uint32_t w, uint32_t h, const std::string& materialsDir) {
+  W_ = w;
+  H_ = h;
+  materialsDir_ = materialsDir.empty() ? "." : materialsDir;
+
+  engine_ = Engine::Builder().backend(backend::Backend::OPENGL).build();
+  if (!engine_) { fprintf(stderr, "engine create failed\n"); return false; }
+  swapChain_ = engine_->createSwapChain(W_, H_);
+  renderer_ = engine_->createRenderer();
+  scene_ = engine_->createScene();
+  view_ = engine_->createView();
+  camEntity_ = utils::EntityManager::get().create();
+  camera_ = engine_->createCamera(camEntity_);
+
+  view_->setScene(scene_);
+  view_->setCamera(camera_);
+  view_->setViewport({0, 0, W_, H_});
+
+  // faithful colors: linear tonemap (no filmic curve), keep post-processing for sRGB output + MSAA
+  static LinearToneMapper toneMapper;
+  ColorGrading* colorGrading = ColorGrading::Builder().toneMapper(&toneMapper).build(*engine_);
+  view_->setColorGrading(colorGrading);
+  view_->setPostProcessingEnabled(true);
+  {
+    MultiSampleAntiAliasingOptions msaa;
+    msaa.enabled = true;
+    msaa.sampleCount = 4;
+    view_->setMultiSampleAntiAliasingOptions(msaa);
+    view_->setAntiAliasing(View::AntiAliasing::FXAA);
+  }
+
+  auto unlitPkg = readFile(materialsDir_ + "/unlit_texture.filamat");
+  unlit_ = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine_);
+
+  // Soft contact shadow behind each panel — a separate transparent quad that feathers a rounded-rect
+  // silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we composite a baked
+  // soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
+  auto shadowPkg = readFile(materialsDir_ + "/panel_shadow.filamat");
+  shadowMat_ = Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine_);
+  return true;
+}
+
+void Compositor::resolveBackground(const std::string& envOverride) {
+  // The backdrop is a swappable, room-like vertical-gradient environment cubemap (HDRI-style
+  // ceiling/wall/floor) so the light Material panels pop. Selection precedence, most → least
+  // specific:
+  //   1. CLI `--environment <name>`     → a named preset (see kPresets)
+  //      CLI `--environment color:#RRGGBB` → a flat-colour skybox
+  //   2. scene `environment`:
+  //        kind=="color"                 → flat colour (uses `color`)
+  //        else                          → `preset` selects a named preset; explicit
+  //                                        `sky`/`horizon`/`floor`/`glow` OVERRIDE its values
+  //   3. Built-in default = `warm-room`.
+  // `bg_` doubles as the clear colour for the readback path.
+  bool wantColor = false;
+  float3 colorBg = {0.06f, 0.06f, 0.08f};
+
+  const GradientPreset* preset = findPreset(kDefaultPreset);
+  float3 gradSky = hexToLinear(preset->sky);
+  float3 gradHorizon = hexToLinear(preset->horizon);
+  float3 gradFloor = hexToLinear(preset->floor);
+  bool gradHasFloor = preset->hasFloor;
+  float gradGlow = preset->glow;
+
+  auto applyPreset = [&](const GradientPreset* p) {
+    gradSky = hexToLinear(p->sky);
+    gradHorizon = hexToLinear(p->horizon);
+    gradFloor = hexToLinear(p->floor);
+    gradHasFloor = p->hasFloor;
+    gradGlow = p->glow;
+  };
+
+  // (2) scene environment.
+  if (model_.environment) {
+    const auto& env = *model_.environment;
+    if (env.kind == "color") {
+      wantColor = true;
+      if (env.color) colorBg = hexToLinear(*env.color);
+    } else {
+      if (env.preset) {
+        if (const GradientPreset* p = findPreset(*env.preset)) applyPreset(p);
+        else fprintf(stderr, "unknown environment preset '%s'; using default\n", env.preset->c_str());
+      }
+      if (env.sky) gradSky = hexToLinear(*env.sky);
+      if (env.horizon) gradHorizon = hexToLinear(*env.horizon);
+      if (env.floor) {
+        gradFloor = hexToLinear(*env.floor);
+        gradHasFloor = true;
+      }
+      if (env.glow) gradGlow = static_cast<float>(*env.glow);
+    }
+  }
+
+  // (1) CLI override — highest precedence.
+  if (!envOverride.empty()) {
+    if (envOverride.rfind("color:", 0) == 0) {
+      wantColor = true;
+      colorBg = hexToLinear(envOverride.substr(6));
+    } else if (const GradientPreset* p = findPreset(envOverride)) {
+      wantColor = false;
+      applyPreset(p);
+    } else {
+      fprintf(stderr, "unknown --environment '%s'; using scene/default backdrop\n",
+              envOverride.c_str());
+    }
+  }
+
+  if (skybox_) {
+    scene_->setSkybox(nullptr);
+    engine_->destroy(skybox_);
+    skybox_ = nullptr;
+  }
+  if (wantColor) {
+    bg_ = colorBg;
+    skybox_ = Skybox::Builder().color({bg_.r, bg_.g, bg_.b, 1.0f}).build(*engine_);
+  } else {
+    bg_ = gradHorizon;  // clear colour mirrors the horizon so uncovered edges blend in
+    skybox_ = buildGradientSkybox(*engine_, gradSky, gradHorizon, gradFloor, gradHasFloor, gradGlow);
+    if (!skybox_) {
+      fprintf(stderr, "gradient skybox build failed; falling back to solid\n");
+      skybox_ = Skybox::Builder().color({bg_.r, bg_.g, bg_.b, 1.0f}).build(*engine_);
+    }
+  }
+  scene_->setSkybox(skybox_);
+}
+
+Texture* Compositor::loadTexture(const std::string& relTexture, const std::string& fallbackId) {
+  std::string texRel = relTexture.empty() ? (fallbackId + ".png") : relTexture;
+  std::string texPath = sceneDir_ + "/" + texRel;
+  auto it = texCache_.find(texPath);
+  if (it != texCache_.end()) return it->second;
+
+  // Filament readPixels on this swapchain is top-origin and UV0 (0,0) maps to the quad's
+  // bottom-left, so loading the PNG top-down (no stb flip) keeps panel content upright.
+  stbi_set_flip_vertically_on_load(false);
+  int tw, th, tn;
+  unsigned char* pix = stbi_load(texPath.c_str(), &tw, &th, &tn, 4);
+  if (!pix) {
+    fprintf(stderr, "  panel %s: no texture %s (skipped)\n", fallbackId.c_str(), texPath.c_str());
+    return nullptr;
+  }
+  size_t texBytes = (size_t)tw * th * 4;
+  Texture* tex = Texture::Builder()
+      .width(tw).height(th).levels(0xff)
+      .format(Texture::InternalFormat::SRGB8_A8)
+      .usage(Texture::Usage::SAMPLEABLE | Texture::Usage::UPLOADABLE |
+             Texture::Usage::GEN_MIPMAPPABLE)
+      .sampler(Texture::Sampler::SAMPLER_2D)
+      .build(*engine_);
+  Texture::PixelBufferDescriptor pbd(
+      pix, texBytes, Texture::Format::RGBA, Texture::Type::UBYTE,
+      [](void* buf, size_t, void*) { stbi_image_free(buf); }, nullptr);
+  tex->setImage(*engine_, 0, std::move(pbd));
+  tex->generateMipmaps(*engine_);
+  texCache_[texPath] = tex;
+  return tex;
+}
+
+// Build a textured/coloured quad renderable spanning [-hw,hw] x [-hh,hh] in the XY plane, UV0
+// running (0,0) bottom-left to (1,1) top-right. The GPU vertex/index buffers are tracked for teardown
+// on the next rebuild; their CPU backing is freed in the descriptor callbacks.
+utils::Entity Compositor::buildQuad(float hw, float hh, MaterialInstance* mi) {
+  auto* verts = new Vertex[4]{
+      {-hw, -hh, 0, 0, 0},
+      { hw, -hh, 0, 1, 0},
+      { hw,  hh, 0, 1, 1},
+      {-hw,  hh, 0, 0, 1},
+  };
+  auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
+  VertexBuffer* vb = VertexBuffer::Builder()
+      .vertexCount(4).bufferCount(1)
+      .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
+      .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
+      .build(*engine_);
+  vb->setBufferAt(*engine_, 0, VertexBuffer::BufferDescriptor(
+      verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
+  IndexBuffer* ib = IndexBuffer::Builder()
+      .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine_);
+  ib->setBuffer(*engine_, IndexBuffer::BufferDescriptor(
+      idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
+  utils::Entity e = utils::EntityManager::get().create();
+  RenderableManager::Builder(1)
+      .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
+      .material(0, mi)
+      .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
+      .culling(false).castShadows(false).receiveShadows(false)
+      .build(*engine_, e);
+  vbs_.push_back(vb);
+  ibs_.push_back(ib);
+  return e;
+}
+
+void Compositor::clearPanels() {
+  for (auto e : panelEntities_) {
+    scene_->remove(e);
+    engine_->destroy(e);
+    utils::EntityManager::get().destroy(e);
+  }
+  for (auto* m : mis_) engine_->destroy(m);
+  for (auto* v : vbs_) engine_->destroy(v);
+  for (auto* i : ibs_) engine_->destroy(i);
+  panelEntities_.clear();
+  mis_.clear();
+  vbs_.clear();
+  ibs_.clear();
+}
+
+void Compositor::rebuildPanels() {
+  clearPanels();
+  auto& tcm = engine_->getTransformManager();
+  static TextureSampler sampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
+                                TextureSampler::MagFilter::LINEAR);
+  int placed = 0;
+  for (const auto& panel : model_.panels) {
+    Texture* tex = loadTexture(panel.texture, panel.id);
+    if (!tex) continue;
+
+    float wDp = static_cast<float>(panel.sizeDp.width);
+    float hDp = static_cast<float>(panel.sizeDp.height);
+    float hw = wDp * 0.5f, hh = hDp * 0.5f;
+
+    // Fidelity params evaluated in an aspect-corrected "rect space" where the panel spans
+    // [-halfSize, halfSize] and rounded corners stay circular regardless of aspect (see the .mat).
+    float aspect = (hDp > 0.0f) ? (wDp / hDp) : 1.0f;
+    float2 halfSize = (wDp >= hDp) ? float2{aspect, 1.0f} : float2{1.0f, 1.0f / aspect};
+    const float kCornerRadius = 0.18f;
+    const float kRimWidth = 0.06f;
+    const float kRimStrength = 0.10f;
+    const float kEdgeSoftness = 0.012f;
+
+    MaterialInstance* mi = unlit_->createInstance();
+    mi->setParameter("albedo", tex, sampler);
+    mi->setParameter("halfSize", halfSize);
+    mi->setParameter("cornerRadius", kCornerRadius);
+    mi->setParameter("rimWidth", kRimWidth);
+    mi->setParameter("rimStrength", kRimStrength);
+    mi->setParameter("edgeSoftness", kEdgeSoftness);
+    mis_.push_back(mi);
+
+    // transform: translate * rotate(quat)
+    const auto& T = panel.poseInRoot.translation;
+    const auto& R = panel.poseInRoot.rotation;
+    float3 t = {static_cast<float>(T.x), static_cast<float>(T.y), static_cast<float>(T.z)};
+    quatf q = {static_cast<float>(R.w), static_cast<float>(R.x), static_cast<float>(R.y),
+               static_cast<float>(R.z)};
+    mat4f rot(q);
+
+    // ---- soft drop/contact shadow behind+below the panel ----
+    {
+      float dpPerUnitX = hw / halfSize.x;
+      float blurUnits = 0.22f;
+      float2 outerHalf = halfSize + float2{blurUnits, blurUnits};
+      float shw = outerHalf.x * dpPerUnitX;
+      float shh = outerHalf.y * dpPerUnitX;
+
+      MaterialInstance* smi = shadowMat_->createInstance();
+      smi->setParameter("halfSize", halfSize);
+      smi->setParameter("cornerRadius", kCornerRadius);
+      smi->setParameter("blur", blurUnits);
+      smi->setParameter("color", float4{0.0f, 0.0f, 0.0f, 0.42f});
+      mis_.push_back(smi);
+
+      utils::Entity se = buildQuad(shw, shh, smi);
+      float3 shadowOffset = {0.0f, -0.06f * hDp, -2.0f};
+      mat4f shadowModel = mat4f::translation(t) * rot * mat4f::translation(shadowOffset);
+      tcm.setTransform(tcm.getInstance(se), shadowModel);
+      scene_->addEntity(se);
+      panelEntities_.push_back(se);
+    }
+
+    utils::Entity re = buildQuad(hw, hh, mi);
+    mat4f model = mat4f::translation(t) * rot;
+    tcm.setTransform(tcm.getInstance(re), model);
+    scene_->addEntity(re);
+    panelEntities_.push_back(re);
+    placed++;
+    fprintf(stderr, "  panel %s: pos(%.0f,%.0f,%.0f) size %.0fx%.0f\n",
+            panel.id.c_str(), t.x, t.y, t.z, wDp, hDp);
+  }
+  fprintf(stderr, "placed %d panel(s)\n", placed);
+}
+
+void Compositor::setupCamera() {
+  const auto& cam = model_.camera;
+  float3 target = {static_cast<float>(cam.target.x), static_cast<float>(cam.target.y),
+                   static_cast<float>(cam.target.z)};
+  double distance = cam.distance;
+  double yaw = cam.yawDeg * kPi / 180.0;
+  double pitch = cam.pitchDeg * kPi / 180.0;
+  float3 dir = {(float)(std::cos(pitch) * std::sin(yaw)), (float)std::sin(pitch),
+                (float)(std::cos(pitch) * std::cos(yaw))};
+  float3 eye = target + dir * (float)distance;
+  camera_->lookAt(eye, target, {0, 1, 0});
+  double aspect = (double)W_ / (double)H_;
+  camera_->setProjection(45.0, aspect, 1.0, distance * 10.0 + 10000.0, Camera::Fov::VERTICAL);
+}
+
+void Compositor::setScene(const xrcomposite::SpatialScene& scene, const std::string& sceneDir,
+                          const std::string& envOverride) {
+  model_ = scene;
+  sceneDir_ = sceneDir.empty() ? "." : sceneDir;
+  resolveBackground(envOverride);
+  rebuildPanels();
+  setupCamera();
+}
+
+void Compositor::applyPanelUpdates(const json& panels) {
+  if (!panels.is_array()) return;
+  for (const auto& u : panels) {
+    if (!u.contains("id")) continue;
+    std::string id = u.at("id").get<std::string>();
+    auto it = std::find_if(model_.panels.begin(), model_.panels.end(),
+                           [&](const xrcomposite::SpatialPanel& p) { return p.id == id; });
+    if (it == model_.panels.end()) {
+      // A new panel: parse the whole entry and append (must carry the required fields).
+      try {
+        model_.panels.push_back(u.get<xrcomposite::SpatialPanel>());
+      } catch (const std::exception& e) {
+        fprintf(stderr, "updatePanels: unknown panel '%s' and not a full panel (%s)\n",
+                id.c_str(), e.what());
+      }
+      continue;
+    }
+    if (u.contains("texture")) it->texture = u.at("texture").get<std::string>();
+    if (u.contains("poseInRoot")) it->poseInRoot = u.at("poseInRoot").get<xrcomposite::SpatialPose>();
+    if (u.contains("sizeDp")) it->sizeDp = u.at("sizeDp").get<xrcomposite::SizeDp>();
+  }
+  rebuildPanels();
+}
+
+std::vector<uint8_t> Compositor::renderPixels() {
+  Renderer::ClearOptions co;
+  co.clear = true;
+  co.clearColor = {bg_.r, bg_.g, bg_.b, 1.0f};
+  renderer_->setClearOptions(co);
+
+  std::vector<uint8_t> pixels((size_t)W_ * H_ * 4);
+  struct Capture { bool done; } capture{false};
+  if (renderer_->beginFrame(swapChain_)) {
+    renderer_->render(view_);
+    backend::PixelBufferDescriptor pb(
+        pixels.data(), pixels.size(),
+        backend::PixelDataFormat::RGBA, backend::PixelDataType::UBYTE,
+        [](void*, size_t, void* user) { ((Capture*)user)->done = true; }, &capture);
+    renderer_->readPixels(0, 0, W_, H_, std::move(pb));
+    renderer_->endFrame();
+  } else {
+    fprintf(stderr, "beginFrame returned false\n");
+  }
+  engine_->flushAndWait();
+  return pixels;
+}
+
+bool Compositor::writePng(const std::string& path) {
+  auto pixels = renderPixels();
+  // Filament's readPixels here returns top-origin rows, matching PNG's top-left origin — no flip.
+  if (!stbi_write_png(path.c_str(), W_, H_, 4, pixels.data(), W_ * 4)) {
+    fprintf(stderr, "png write failed\n");
+    return false;
+  }
+  fprintf(stderr, "wrote %s (%ux%u)\n", path.c_str(), W_, H_);
+  return true;
+}
+
+// Directory containing a scene file (for resolving relative panel textures). A bare filename has no
+// '/', so default to ".".
+std::string dirOf(const std::string& path) {
+  auto slash = path.find_last_of('/');
+  return (slash == std::string::npos) ? "." : path.substr(0, slash);
+}
+
+// ---- JSON-RPC over stdio (LSP-style Content-Length framing) ----
+
+bool readMessage(std::string& body) {
+  size_t contentLength = 0;
+  std::string line;
+  bool sawHeader = false;
+  while (std::getline(std::cin, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) {
+      if (sawHeader) break;  // blank line terminates headers
+      continue;              // tolerate leading blank lines
+    }
+    sawHeader = true;
+    auto colon = line.find(':');
+    if (colon != std::string::npos) {
+      std::string key = line.substr(0, colon);
+      std::string val = line.substr(colon + 1);
+      // trim leading spaces
+      size_t s = val.find_first_not_of(" \t");
+      if (s != std::string::npos) val = val.substr(s);
+      std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+      if (key == "content-length") contentLength = std::stoul(val);
+    }
+  }
+  if (contentLength == 0) return false;  // EOF or framing end
+  body.resize(contentLength);
+  std::cin.read(&body[0], (std::streamsize)contentLength);
+  return (size_t)std::cin.gcount() == contentLength;
+}
+
+void writeMessage(const json& msg) {
+  std::string s = msg.dump();
+  std::cout << "Content-Length: " << s.size() << "\r\n\r\n" << s;
+  std::cout.flush();
+}
+
+void writeResult(const json& id, const json& result) {
+  writeMessage({{"jsonrpc", "2.0"}, {"id", id}, {"result", result}});
+}
+
+void writeError(const json& id, int code, const std::string& message) {
+  writeMessage({{"jsonrpc", "2.0"}, {"id", id}, {"error", {{"code", code}, {"message", message}}}});
+}
+
+// Emit one rendered frame as a `streamFrame` notification (base64 PNG), reusing the daemon's
+// composestream/1 shape. `seq` is a monotonic frame counter.
+void emitStreamFrame(Compositor& comp, uint64_t seq, const std::string& frameStreamId) {
+  auto pixels = comp.renderPixels();
+  auto png = encodePng(pixels, comp.width(), comp.height());
+  json params = {
+      {"encoding", "png"},
+      {"width", comp.width()},
+      {"height", comp.height()},
+      {"seq", seq},
+      {"data", base64Encode(png.data(), png.size())},
+  };
+  if (!frameStreamId.empty()) params["frameStreamId"] = frameStreamId;
+  writeMessage({{"jsonrpc", "2.0"}, {"method", "streamFrame"}, {"params", params}});
+}
+
+int runServer(const Args& args) {
+  Compositor comp;
+  if (!comp.init(args.width, args.height, args.materialsDir)) return 3;
+  fprintf(stderr, "xr-composite: serving on stdio (%ux%u)\n", args.width, args.height);
+
+  bool haveScene = false;
+  uint64_t seq = 0;
+  std::string frameStreamId;
+  std::string body;
+  while (readMessage(body)) {
+    json msg;
+    try {
+      msg = json::parse(body);
+    } catch (const std::exception& e) {
+      writeError(nullptr, -32700, std::string("parse error: ") + e.what());
+      continue;
+    }
+    json id = msg.contains("id") ? msg["id"] : json(nullptr);
+    std::string method = msg.value("method", "");
+    const json& params = msg.contains("params") ? msg["params"] : json::object();
+
+    if (method == "initialize") {
+      frameStreamId = params.value("frameStreamId", "");
+      writeResult(id, {
+          {"serverInfo", {{"name", "xr-composite"}, {"version", 1}}},
+          {"capabilities", {
+              {"render", true},
+              {"updatePanels", true},
+              {"streamFrame", true},
+              {"spatialSceneVersion", xrcomposite::SPATIAL_SCENE_VERSION},
+              {"dataProducts", json::array({"xr/composite"})},
+          }},
+      });
+    } else if (method == "render" || method == "xr/render") {
+      try {
+        auto scene = params.at("scene").get<xrcomposite::SpatialScene>();
+        std::string sceneDir = params.value("sceneDir", ".");
+        std::string envOverride = params.value("environment", "");
+        comp.setScene(scene, sceneDir, envOverride);
+        haveScene = true;
+        if (params.contains("out")) comp.writePng(params.at("out").get<std::string>());
+        emitStreamFrame(comp, ++seq, frameStreamId);
+        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq},
+                                            {"width", comp.width()}, {"height", comp.height()}});
+      } catch (const std::exception& e) {
+        if (!id.is_null()) writeError(id, -32602, std::string("render failed: ") + e.what());
+      }
+    } else if (method == "xr/updatePanels") {
+      if (!haveScene) {
+        if (!id.is_null()) writeError(id, -32002, "no scene: call render first");
+        continue;
+      }
+      try {
+        if (params.contains("panels")) comp.applyPanelUpdates(params.at("panels"));
+        if (params.contains("out")) comp.writePng(params.at("out").get<std::string>());
+        emitStreamFrame(comp, ++seq, frameStreamId);
+        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq}});
+      } catch (const std::exception& e) {
+        if (!id.is_null()) writeError(id, -32602, std::string("updatePanels failed: ") + e.what());
+      }
+    } else if (method == "shutdown") {
+      if (!id.is_null()) writeResult(id, json::object());
+    } else if (method == "exit") {
+      break;
+    } else if (!method.empty()) {
+      if (!id.is_null()) writeError(id, -32601, "unknown method: " + method);
+    }
+  }
+  fprintf(stderr, "xr-composite: stdio closed, exiting\n");
+  fflush(stderr);
+  // Skip Filament teardown (asserts on destroy order); the process exits here.
+  std::_Exit(0);
+}
+
+int runOneShot(const Args& args) {
+  xrcomposite::SpatialScene scene;
+  {
+    std::ifstream f(args.scenePath);
+    json raw;
+    f >> raw;
+    scene = raw.get<xrcomposite::SpatialScene>();
+  }
+  Compositor comp;
+  if (!comp.init(args.width, args.height, args.materialsDir)) return 3;
+  comp.setScene(scene, dirOf(args.scenePath), args.environment);
+  if (!comp.writePng(args.outPath)) return 4;
+  fflush(stderr);
+  // std::_Exit terminates without running destructors/atexit (portable equivalent of POSIX _exit);
+  // avoids Filament's teardown-order asserts on all platforms.
+  std::_Exit(0);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -216,335 +841,15 @@ int main(int argc, char** argv) {
     else if (a == "--width") args.width = std::stoul(next());
     else if (a == "--height") args.height = std::stoul(next());
     else if (a == "--environment") args.environment = next();
+    else if (a == "--serve") args.serve = true;
   }
-  if (args.scenePath.empty()) { fprintf(stderr, "usage: --scene scene.json --out out.png\n"); return 2; }
-  // A bare filename (no '/') means the scene lives in the current directory; find_last_of
-  // returns npos there, so default to "." rather than treating the filename as the directory.
-  auto slash = args.scenePath.find_last_of('/');
-  args.sceneDir = (slash == std::string::npos) ? "." : args.scenePath.substr(0, slash);
   if (args.materialsDir.empty()) args.materialsDir = ".";
 
-  // ---- parse scene.json (typed via the generated SpatialScene mirror) ----
-  xrcomposite::SpatialScene scene;
-  {
-    std::ifstream f(args.scenePath);
-    json raw;
-    f >> raw;
-    scene = raw.get<xrcomposite::SpatialScene>();
+  if (args.serve) return runServer(args);
+
+  if (args.scenePath.empty()) {
+    fprintf(stderr, "usage: --scene scene.json --out out.png   (or --serve for JSON-RPC stdio)\n");
+    return 2;
   }
-
-  const uint32_t W = args.width, H = args.height;
-
-  // ---- engine / render targets ----
-  Engine* engine = Engine::Builder().backend(backend::Backend::OPENGL).build();
-  if (!engine) { fprintf(stderr, "engine create failed\n"); return 3; }
-  SwapChain* swapChain = engine->createSwapChain(W, H);
-  Renderer* renderer = engine->createRenderer();
-  Scene* fscene = engine->createScene();
-  View* view = engine->createView();
-  utils::Entity camEntity = utils::EntityManager::get().create();
-  Camera* camera = engine->createCamera(camEntity);
-
-  view->setScene(fscene);
-  view->setCamera(camera);
-  view->setViewport({0, 0, W, H});
-
-  // faithful colors: linear tonemap (no filmic curve), keep post-processing for sRGB output + MSAA
-  LinearToneMapper toneMapper;
-  ColorGrading* colorGrading = ColorGrading::Builder().toneMapper(&toneMapper).build(*engine);
-  view->setColorGrading(colorGrading);
-  view->setPostProcessingEnabled(true);
-  {
-    MultiSampleAntiAliasingOptions msaa;
-    msaa.enabled = true;
-    msaa.sampleCount = 4;
-    view->setMultiSampleAntiAliasingOptions(msaa);
-    view->setAntiAliasing(View::AntiAliasing::FXAA);
-  }
-
-  // ---- background ----
-  // The backdrop is a swappable, room-like vertical-gradient environment cubemap (HDRI-style
-  // ceiling/wall/floor) so the light Material panels pop. Selection precedence, most → least
-  // specific:
-  //   1. CLI `--environment <name>`     → a named preset (see kPresets)
-  //      CLI `--environment color:#RRGGBB` → a flat-colour skybox
-  //   2. scene.json `environment`:
-  //        kind=="color"                 → flat colour (uses `color`)
-  //        else                          → `preset` selects a named preset; explicit
-  //                                        `sky`/`horizon`/`floor`/`glow` OVERRIDE its values
-  //        (legacy scenes with kind=="gradient" + sky/horizon still render: a custom-gradient
-  //         override on top of the default preset)
-  //   3. Built-in default = `warm-room`.
-  // `bg` doubles as the clear colour for the readback path: it mirrors the horizon in gradient mode
-  // and the colour in colour mode, so any uncovered edge blends with the backdrop.
-  bool wantColor = false;       // resolved as a flat-colour skybox?
-  float3 colorBg = {0.06f, 0.06f, 0.08f};
-
-  // Start from the default preset, then layer overrides on top.
-  const GradientPreset* preset = findPreset(kDefaultPreset);
-  float3 gradSky = hexToLinear(preset->sky);
-  float3 gradHorizon = hexToLinear(preset->horizon);
-  float3 gradFloor = hexToLinear(preset->floor);
-  bool gradHasFloor = preset->hasFloor;
-  float gradGlow = preset->glow;
-
-  // Applies a named preset's params over the current gradient state.
-  auto applyPreset = [&](const GradientPreset* p) {
-    gradSky = hexToLinear(p->sky);
-    gradHorizon = hexToLinear(p->horizon);
-    gradFloor = hexToLinear(p->floor);
-    gradHasFloor = p->hasFloor;
-    gradGlow = p->glow;
-  };
-
-  // (2) scene.json environment.
-  if (scene.environment) {
-    const auto& env = *scene.environment;
-    if (env.kind == "color") {
-      wantColor = true;
-      if (env.color) colorBg = hexToLinear(*env.color);
-    } else {
-      if (env.preset) {
-        if (const GradientPreset* p = findPreset(*env.preset)) applyPreset(p);
-        else fprintf(stderr, "unknown environment preset '%s'; using default\n",
-                     env.preset->c_str());
-      }
-      // Explicit fields override the chosen preset (custom gradient).
-      if (env.sky) gradSky = hexToLinear(*env.sky);
-      if (env.horizon) gradHorizon = hexToLinear(*env.horizon);
-      if (env.floor) {
-        gradFloor = hexToLinear(*env.floor);
-        gradHasFloor = true;
-      }
-      if (env.glow) gradGlow = static_cast<float>(*env.glow);
-    }
-  }
-
-  // (1) CLI override — highest precedence, wins over scene.json.
-  if (!args.environment.empty()) {
-    const std::string& e = args.environment;
-    if (e.rfind("color:", 0) == 0) {
-      wantColor = true;
-      colorBg = hexToLinear(e.substr(6));
-    } else if (const GradientPreset* p = findPreset(e)) {
-      wantColor = false;
-      applyPreset(p);
-    } else {
-      fprintf(stderr, "unknown --environment '%s'; using scene/default backdrop\n", e.c_str());
-    }
-  }
-
-  float3 bg;
-  Skybox* skybox = nullptr;
-  if (wantColor) {
-    bg = colorBg;
-    skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
-  } else {
-    // Clear colour mirrors the horizon so any uncovered edge blends with the gradient.
-    bg = gradHorizon;
-    skybox = buildGradientSkybox(*engine, gradSky, gradHorizon, gradFloor, gradHasFloor, gradGlow);
-    if (!skybox) {
-      // Fall back to a flat horizon-coloured skybox if the cubemap couldn't be built.
-      fprintf(stderr, "gradient skybox build failed; falling back to solid\n");
-      skybox = Skybox::Builder().color({bg.r, bg.g, bg.b, 1.0f}).build(*engine);
-    }
-  }
-  fscene->setSkybox(skybox);
-
-  // ---- material ----
-  auto unlitPkg = readFile(args.materialsDir + "/unlit_texture.filamat");
-  Material* unlit = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine);
-
-  // Soft contact shadow behind each panel — a separate transparent quad that feathers a rounded-rect
-  // silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we composite a baked
-  // soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
-  auto shadowPkg = readFile(args.materialsDir + "/panel_shadow.filamat");
-  Material* shadowMat =
-      Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine);
-
-  TextureSampler sampler(TextureSampler::MinFilter::LINEAR_MIPMAP_LINEAR,
-                         TextureSampler::MagFilter::LINEAR);
-
-  auto& tcm = engine->getTransformManager();
-
-  // Build a textured/coloured quad renderable spanning [-hw,hw] x [-hh,hh] in the XY plane, UV0
-  // running (0,0) bottom-left to (1,1) top-right. Heap-allocates the vertex/index buffers and frees
-  // them in the descriptor callbacks (Filament reads them on the driver thread during flushAndWait).
-  auto buildQuad = [&](float hw, float hh, MaterialInstance* mi) -> utils::Entity {
-    auto* verts = new Vertex[4]{
-        {-hw, -hh, 0, 0, 0},
-        { hw, -hh, 0, 1, 0},
-        { hw,  hh, 0, 1, 1},
-        {-hw,  hh, 0, 0, 1},
-    };
-    auto* idx = new uint16_t[6]{0, 1, 2, 0, 2, 3};
-    VertexBuffer* vb = VertexBuffer::Builder()
-        .vertexCount(4).bufferCount(1)
-        .attribute(VertexAttribute::POSITION, 0, VertexBuffer::AttributeType::FLOAT3, 0, sizeof(Vertex))
-        .attribute(VertexAttribute::UV0, 0, VertexBuffer::AttributeType::FLOAT2, offsetof(Vertex, u), sizeof(Vertex))
-        .build(*engine);
-    vb->setBufferAt(*engine, 0, VertexBuffer::BufferDescriptor(
-        verts, sizeof(Vertex) * 4, [](void* p, size_t, void*) { delete[] (Vertex*)p; }));
-    IndexBuffer* ib = IndexBuffer::Builder()
-        .indexCount(6).bufferType(IndexBuffer::IndexType::USHORT).build(*engine);
-    ib->setBuffer(*engine, IndexBuffer::BufferDescriptor(
-        idx, sizeof(uint16_t) * 6, [](void* p, size_t, void*) { delete[] (uint16_t*)p; }));
-    utils::Entity e = utils::EntityManager::get().create();
-    RenderableManager::Builder(1)
-        .boundingBox({{-hw, -hh, -1.0f}, {hw, hh, 1.0f}})
-        .material(0, mi)
-        .geometry(0, RenderableManager::PrimitiveType::TRIANGLES, vb, ib, 0, 6)
-        .culling(false).castShadows(false).receiveShadows(false)
-        .build(*engine, e);
-    return e;
-  };
-
-  // ---- panels ----
-  int placed = 0;
-  for (const auto& panel : scene.panels) {
-    const std::string& id = panel.id;
-    std::string texRel = panel.texture.empty() ? (id + ".png") : panel.texture;
-    std::string texPath = args.sceneDir + "/" + texRel;
-
-    // Filament readPixels on this swapchain is top-origin and UV0 (0,0) maps to the quad's
-    // bottom-left, so loading the PNG top-down (no stb flip) keeps panel content upright.
-    stbi_set_flip_vertically_on_load(false);
-    int tw, th, tn;
-    unsigned char* pix = stbi_load(texPath.c_str(), &tw, &th, &tn, 4);
-    if (!pix) { fprintf(stderr, "  panel %s: no texture %s (skipped)\n", id.c_str(), texPath.c_str()); continue; }
-
-    size_t texBytes = (size_t)tw * th * 4;
-    Texture* tex = Texture::Builder()
-        .width(tw).height(th).levels(0xff)
-        .format(Texture::InternalFormat::SRGB8_A8)
-        .usage(Texture::Usage::SAMPLEABLE | Texture::Usage::UPLOADABLE |
-               Texture::Usage::GEN_MIPMAPPABLE)
-        .sampler(Texture::Sampler::SAMPLER_2D)
-        .build(*engine);
-    Texture::PixelBufferDescriptor pbd(
-        pix, texBytes, Texture::Format::RGBA, Texture::Type::UBYTE,
-        [](void* buf, size_t, void*) { stbi_image_free(buf); }, nullptr);
-    tex->setImage(*engine, 0, std::move(pbd));
-    tex->generateMipmaps(*engine);
-
-    float wDp = static_cast<float>(panel.sizeDp.width);
-    float hDp = static_cast<float>(panel.sizeDp.height);
-    float hw = wDp * 0.5f, hh = hDp * 0.5f;
-
-    // Fidelity params evaluated in an aspect-corrected "rect space" where the panel spans
-    // [-halfSize, halfSize] and rounded corners stay circular regardless of aspect (see the .mat).
-    // For w>=h: halfSize=(aspect,1); else (1,1/aspect). Radius/rim/softness are fractions of the
-    // shorter half-extent (always 1.0), so they read consistently across panel shapes.
-    float aspect = (hDp > 0.0f) ? (wDp / hDp) : 1.0f;
-    float2 halfSize = (wDp >= hDp) ? float2{aspect, 1.0f} : float2{1.0f, 1.0f / aspect};
-    // ~24-32dp corner radius on a typical ~320dp-tall panel ≈ 0.16-0.20 of the half-extent.
-    const float kCornerRadius = 0.18f;
-    const float kRimWidth = 0.06f;     // rim band width inside the edge
-    const float kRimStrength = 0.10f;  // subtle additive highlight
-    const float kEdgeSoftness = 0.012f;  // AA feather of the rounded edge
-
-    MaterialInstance* mi = unlit->createInstance();
-    mi->setParameter("albedo", tex, sampler);
-    mi->setParameter("halfSize", halfSize);
-    mi->setParameter("cornerRadius", kCornerRadius);
-    mi->setParameter("rimWidth", kRimWidth);
-    mi->setParameter("rimStrength", kRimStrength);
-    mi->setParameter("edgeSoftness", kEdgeSoftness);
-
-    // transform: translate * rotate(quat)
-    const auto& T = panel.poseInRoot.translation;
-    const auto& R = panel.poseInRoot.rotation;
-    float3 t = {static_cast<float>(T.x), static_cast<float>(T.y), static_cast<float>(T.z)};
-    quatf q = {static_cast<float>(R.w), static_cast<float>(R.x), static_cast<float>(R.y),
-               static_cast<float>(R.z)};
-    mat4f rot(q);
-
-    // ---- soft drop/contact shadow behind+below the panel ----
-    // Mirror the panel's rect-space metrics so the shadow silhouette matches the rounded panel, then
-    // map the aspect-corrected units back to dp via the per-axis dp-per-unit scale. The shadow quad
-    // is inflated by `blur` so its feathered penumbra has room; it sits slightly behind the panel
-    // (toward -Z in panel-local space) and is offset down a touch for a grounded, floating look.
-    {
-      float dpPerUnitX = hw / halfSize.x;   // == hh / halfSize.y
-      float blurUnits = 0.22f;              // penumbra width in rect-space units
-      float2 outerHalf = halfSize + float2{blurUnits, blurUnits};
-      float shw = outerHalf.x * dpPerUnitX;
-      float shh = outerHalf.y * dpPerUnitX;
-
-      MaterialInstance* smi = shadowMat->createInstance();
-      smi->setParameter("halfSize", halfSize);
-      smi->setParameter("cornerRadius", kCornerRadius);
-      smi->setParameter("blur", blurUnits);
-      // Soft near-black shadow; peak alpha kept subtle so it reads as a contact shadow, not a slab.
-      smi->setParameter("color", float4{0.0f, 0.0f, 0.0f, 0.42f});
-
-      utils::Entity se = buildQuad(shw, shh, smi);
-      // Offset: down by ~6% of panel height and back behind the panel so it never z-fights the quad.
-      float3 shadowOffset = {0.0f, -0.06f * hDp, -2.0f};
-      mat4f shadowModel = mat4f::translation(t) * rot * mat4f::translation(shadowOffset);
-      tcm.setTransform(tcm.getInstance(se), shadowModel);
-      fscene->addEntity(se);
-    }
-
-    utils::Entity re = buildQuad(hw, hh, mi);
-    mat4f model = mat4f::translation(t) * rot;
-    tcm.setTransform(tcm.getInstance(re), model);
-
-    fscene->addEntity(re);
-    placed++;
-    fprintf(stderr, "  panel %s: pos(%.0f,%.0f,%.0f) size %.0fx%.0f tex %dx%d\n",
-            id.c_str(), t.x, t.y, t.z, wDp, hDp, tw, th);
-  }
-  fprintf(stderr, "placed %d panel(s)\n", placed);
-
-  // ---- camera (orbit) ----
-  const auto& cam = scene.camera;
-  float3 target = {static_cast<float>(cam.target.x), static_cast<float>(cam.target.y),
-                   static_cast<float>(cam.target.z)};
-  double distance = cam.distance;
-  double yaw = cam.yawDeg * kPi / 180.0;
-  double pitch = cam.pitchDeg * kPi / 180.0;
-  float3 dir = {(float)(std::cos(pitch) * std::sin(yaw)), (float)std::sin(pitch),
-                (float)(std::cos(pitch) * std::cos(yaw))};
-  float3 eye = target + dir * (float)distance;
-  fprintf(stderr, "camera eye(%.0f,%.0f,%.0f) -> target(%.0f,%.0f,%.0f) dist %.0f\n",
-          eye.x, eye.y, eye.z, target.x, target.y, target.z, distance);
-  camera->lookAt(eye, target, {0, 1, 0});
-  double aspect = (double)W / (double)H;
-  camera->setProjection(45.0, aspect, 1.0, distance * 10.0 + 10000.0, Camera::Fov::VERTICAL);
-
-  // ---- render + readback ----
-  Renderer::ClearOptions co;
-  co.clear = true;
-  co.clearColor = {bg.r, bg.g, bg.b, 1.0f};
-  renderer->setClearOptions(co);
-
-  std::vector<uint8_t> pixels(W * H * 4);
-  struct Capture { uint8_t* dst; size_t size; bool done; } capture{pixels.data(), pixels.size(), false};
-
-  if (renderer->beginFrame(swapChain)) {
-    renderer->render(view);
-    backend::PixelBufferDescriptor pb(
-        pixels.data(), pixels.size(),
-        backend::PixelDataFormat::RGBA, backend::PixelDataType::UBYTE,
-        [](void*, size_t, void* user) { ((Capture*)user)->done = true; }, &capture);
-    renderer->readPixels(0, 0, W, H, std::move(pb));
-    renderer->endFrame();
-  } else {
-    fprintf(stderr, "beginFrame returned false\n");
-  }
-  engine->flushAndWait();
-
-  // Filament's readPixels here returns top-origin rows, matching PNG's top-left origin — no flip.
-  if (!stbi_write_png(args.outPath.c_str(), W, H, 4, pixels.data(), W * 4)) {
-    fprintf(stderr, "png write failed\n");
-    return 4;
-  }
-  fprintf(stderr, "wrote %s (%ux%u)\n", args.outPath.c_str(), W, H);
-
-  // Spike: skip explicit Filament teardown (asserts on destroy order); the process exits here.
-  fflush(stderr);
-  // std::_Exit terminates without running destructors/atexit (portable equivalent
-  // of POSIX _exit); avoids Filament's teardown-order asserts on all platforms.
-  std::_Exit(0);
+  return runOneShot(args);
 }

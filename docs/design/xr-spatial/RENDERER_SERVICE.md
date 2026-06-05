@@ -1,10 +1,17 @@
 # RFC: the XR renderer as a streaming, extensible service behind the daemon
 
-**Status: accepted (design only).** Captures the agreed direction and the settled decisions (see
-[Decisions](#decisions)) for evolving `renderers/xr-composite` from a one-shot CLI into a long-lived,
-extensible render service. Nothing here is built yet; the
-[one-shot tool](../../../renderers/xr-composite/README.md) and the
-[panels-in-previews increment](COMPOSITOR.md) land first and are unaffected.
+**Status: accepted; native-side prototype landed.** Captures the agreed direction and the settled
+decisions (see [Decisions](#decisions)) for evolving `renderers/xr-composite` from a one-shot CLI
+into a long-lived, extensible render service.
+
+> **Implemented so far:** `xr-composite --serve` is a working long-lived native process speaking the
+> daemon's JSON-RPC + `Content-Length` framing (`initialize`, `render`, `xr/updatePanels`,
+> `streamFrame` base64 frames), holding one Filament engine across frames — i.e. "what is genuinely
+> new" items #1 and #3 (native JSON-RPC peer + a held, mutable session) in prototype form, plus
+> migration steps #2–#3 on the native side. **Still to do:** the daemon fronting it (a
+> `RenderSession`-style backend that spawns/proxies the child — item #2), native multi-session
+> concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds. See
+> [renderers/xr-composite/README.md → Server mode](../../../renderers/xr-composite/README.md#server-mode---serve).
 
 ## Motivation
 
