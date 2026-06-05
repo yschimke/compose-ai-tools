@@ -1403,6 +1403,7 @@ export async function activate(
                                   params.frameStreamId,
                               );
                               activeStreamFrameStreams.delete(previewId);
+                              heldSessionStreams.delete(previewId);
                           }
                       },
                       onChannelClosed: (moduleId) => {
@@ -1426,6 +1427,7 @@ export async function activate(
                           }
                           for (const previewId of stale) {
                               activeInteractiveStreams.delete(previewId);
+                              heldSessionStreams.delete(previewId);
                           }
                           // Same hygiene for `composestream/1` streams — frameStreamIds don't survive
                           // a daemon respawn either, so a `requestStreamStop` against a stale id would
@@ -1442,6 +1444,7 @@ export async function activate(
                               const sid =
                                   activeStreamFrameStreams.get(previewId);
                               activeStreamFrameStreams.delete(previewId);
+                              heldSessionStreams.delete(previewId);
                               if (sid) streamFrameIdToPreviewId.delete(sid);
                               panel?.postMessage({
                                   command: "streamStopped",
@@ -6080,18 +6083,19 @@ async function handleSetRemoteComposeNamedValue(
 /**
  * Apply one scrub from the panel's Lottie timeline slider.
  *
- * When a live session is up for the preview (LIVE mode), prefer the held-session path:
- * `interactive/setLottie` mutates the held scene's snapshot progress and recomposes in place, so a
- * slider drag paints sub-frame without standing up a fresh `ImageComposeScene` per tick — efficient
- * live scrubbing. The daemon coalesces rapid ticks to the latest, and the held render persists the
- * scrub via `LottieProgressController` so a later save/warmup render stays pinned. The bundled
- * daemon ships `interactive/setLottie` alongside the live-stream surface, so a live streamId implies
- * support — we don't also fire `renderNow` per tick (that would defeat the point).
+ * When a **held-session-backed** live stream is up for the preview (LIVE mode on a daemon that
+ * returned `heldSession: true`), prefer the held-session path: `interactive/setLottie` mutates the
+ * held scene's snapshot progress and recomposes in place, so a slider drag paints sub-frame without
+ * standing up a fresh `ImageComposeScene` per tick — efficient live scrubbing. The daemon coalesces
+ * rapid ticks to the latest, and the held render persists the scrub via `LottieProgressController`
+ * so a later save/warmup render stays pinned. Only in that case do we skip the `renderNow` fallback.
  *
- * No live session → `renderNow.overrides.lottie.progress` re-renders the held `kind=LOTTIE` preview
- * at that 0..1 position (itself sticky per preview via the controller). Auto-starting a session just
- * for the duration of a scrub — so the efficient path applies even without LIVE mode — is a noted
- * follow-on.
+ * Otherwise — no live stream, or a live stream with no held session (`heldSession: false`, an older
+ * daemon, or a backend lacking the Lottie binding, where `interactive/setLottie` would be silently
+ * dropped) — fall back to `renderNow.overrides.lottie.progress`, which re-renders the held
+ * `kind=LOTTIE` preview at that 0..1 position (itself sticky per preview via the controller).
+ * Auto-starting a held session just for the duration of a scrub — so the efficient path applies even
+ * without LIVE mode — is a noted follow-on.
  */
 async function handleSetLottieProgress(
     previewId: string,
@@ -6106,10 +6110,15 @@ async function handleSetLottieProgress(
     }
     const clamped = Math.min(1, Math.max(0, progress));
 
+    // Only skip the renderNow fallback when a daemon-side held session backs the live stream — that
+    // is the only context where `interactive/setLottie` is guaranteed to paint. For a live stream
+    // without a held session (`heldSession: false`, older daemon, or a backend lacking the Lottie
+    // binding) the notification is silently dropped, so we must fall through to renderNow or the
+    // slider would go dead (PR #1781 review P2).
     const liveStreamId =
         activeStreamFrameStreams.get(previewId) ??
         activeInteractiveStreams.get(previewId);
-    if (liveStreamId && daemonGate) {
+    if (liveStreamId && heldSessionStreams.has(previewId) && daemonGate) {
         const client = await daemonGate.getOrSpawn(
             moduleInfo,
             daemonScheduler.daemonEvents(moduleInfo.modulePath),
@@ -7120,6 +7129,7 @@ async function handleSetInteractive(
         const stream = activeInteractiveStreams.get(previewId);
         if (stream) {
             activeInteractiveStreams.delete(previewId);
+            heldSessionStreams.delete(previewId);
             updateInteractiveStatus();
             const client = await daemonGate?.getOrSpawn(
                 module,
@@ -7170,6 +7180,9 @@ async function handleSetInteractive(
             return;
         }
         activeInteractiveStreams.set(previewId, result.frameStreamId);
+        // This path already returned above when `heldSession === false`, so reaching here means a
+        // held session backs the stream — eligible for the `interactive/setLottie` scrub path.
+        heldSessionStreams.add(previewId);
         updateInteractiveStatus();
         logLine(
             `[interactive] live mode on for ${previewId} (module=${module.modulePath}, ` +
@@ -7242,6 +7255,14 @@ async function handleRequestStreamStart(
         // `lookupActiveStreamId`. See PR #847 reviewer P1.
         activeStreamFrameStreams.set(previewId, result.frameStreamId);
         streamFrameIdToPreviewId.set(result.frameStreamId, previewId);
+        // Only a held-session-backed stream can be scrubbed via `interactive/setLottie`; without
+        // one the notification is dropped and the scrub must renderNow. `activeStreamFrameStreams`
+        // is set regardless, so track the held-session capability separately.
+        if (result.heldSession === true) {
+            heldSessionStreams.add(previewId);
+        } else {
+            heldSessionStreams.delete(previewId);
+        }
         updateInteractiveStatus();
         panel?.postMessage({
             command: "streamStarted",
@@ -7277,6 +7298,7 @@ async function handleRequestStreamStop(previewId: string): Promise<void> {
     }
     activeStreamFrameStreams.delete(previewId);
     streamFrameIdToPreviewId.delete(sid);
+    heldSessionStreams.delete(previewId);
     updateInteractiveStatus();
     const module = previewModuleIndex.get(previewId);
     if (!daemonGate || !daemonScheduler || !module) {
@@ -7334,6 +7356,18 @@ const activeInteractiveStreams = new Map<string, string>();
  */
 const activeStreamFrameStreams = new Map<string, string>();
 const streamFrameIdToPreviewId = new Map<string, string>();
+
+/**
+ * previewIds whose live stream is backed by a daemon-side **held session** (`streamStart` /
+ * `interactiveStart` returned `heldSession: true`). Only these can be scrubbed purely via
+ * `interactive/setLottie`: the daemon mutates the held scene and emits a frame. For a live stream
+ * with no held session (`heldSession: false`, an older daemon, or a backend that inherits
+ * `dispatchLottieProgress()`'s default `false`) the notification is silently dropped, so a scrub
+ * must fall back to `renderNow.overrides.lottie.progress`. Gating the skip-renderNow path on this
+ * set keeps the efficient path correct (PR #1781 review P2). `activeStreamFrameStreams` is populated
+ * even when `heldSession` is false, so membership here — not in that map — is the authority.
+ */
+const heldSessionStreams = new Set<string>();
 
 const activeRecordingSessions = new Map<string, string>();
 
