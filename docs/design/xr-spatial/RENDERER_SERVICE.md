@@ -161,7 +161,11 @@ panels-in-previews increment.
 5. **IDL — hand-mirror the C++ types + shared fixtures for now**, consistent with the existing
    Kotlin↔TS approach. Moving to a single-source IDL with codegen (e.g. protobuf) is tracked as
    follow-up in [#1729](https://github.com/yschimke/compose-ai-tools/issues/1729) — worthwhile once
-   the third (C++) mirror actually exists.
+   the third (C++) mirror actually exists. That follow-up has been evaluated: see
+   [WIRE_IDL_CODEGEN.md](../WIRE_IDL_CODEGEN.md). Conclusion: keep the JSON wire and the hand-mirror +
+   fixture approach until the C++ mirror is real; when it is, prefer a **JSON-preserving** IDL
+   (JSON-Schema codegen, or proto3-with-canonical-JSON), migrated one message family at a time with
+   the fixture corpus as the conformance ratchet — not a binary wire swap.
 6. **Distribution — auto-provisioned by the CLI (daemon to follow).** The
    `xr-composite-<platform>-<ver>.tar.gz` binaries published on each GitHub Release (see
    `.github/workflows/release.yml`) are fetched automatically by the CLI into a shared, well-known
