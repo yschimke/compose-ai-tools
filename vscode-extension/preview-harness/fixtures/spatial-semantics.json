@@ -1,0 +1,505 @@
+{
+  "description": "Spatial 3D view with 2D wireframe overlays: setSpatialScene carries a companion semantics tree, so the viewer draws each panel's semantics boxes over its screenshot face. Click the toggle to switch to 3D.",
+  "dataset": {
+    "earlyFeatures": "false",
+    "minimalMode": "false",
+    "spatialSrc": "/media/webview/spatial.js",
+    "cspNonce": "harness"
+  },
+  "messages": [
+    {
+      "command": "setSpatialScene",
+      "scene": {
+        "version": 1,
+        "units": "dp",
+        "previewId": "spatial-fixtures.spatial-rich",
+        "camera": {
+          "kind": "orbit",
+          "target": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "distance": 1700,
+          "yawDeg": 0,
+          "pitchDeg": -8
+        },
+        "panels": [
+          {
+            "id": "now-playing",
+            "label": "Now Playing",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": 340,
+                "z": -120
+              },
+              "rotation": {
+                "x": 0.0697564737441253,
+                "y": 0,
+                "z": 0,
+                "w": 0.9975640502598242
+              }
+            },
+            "sizeDp": {
+              "width": 560,
+              "height": 180
+            },
+            "texture": "panels/now-playing.png",
+            "parentId": null
+          },
+          {
+            "id": "album-art",
+            "label": "Album Art",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": -40,
+                "z": 0
+              },
+              "rotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+                "w": 1
+              }
+            },
+            "sizeDp": {
+              "width": 460,
+              "height": 460
+            },
+            "texture": "panels/album-art.png",
+            "parentId": null
+          },
+          {
+            "id": "queue",
+            "label": "Up Next",
+            "poseInRoot": {
+              "translation": {
+                "x": -520,
+                "y": 40,
+                "z": 160
+              },
+              "rotation": {
+                "x": 0,
+                "y": 0.27563735581699916,
+                "z": 0,
+                "w": 0.9612616959383189
+              }
+            },
+            "sizeDp": {
+              "width": 300,
+              "height": 520
+            },
+            "texture": "panels/queue.png",
+            "parentId": null
+          },
+          {
+            "id": "lyrics",
+            "label": "Lyrics",
+            "poseInRoot": {
+              "translation": {
+                "x": 520,
+                "y": 40,
+                "z": 160
+              },
+              "rotation": {
+                "x": 0,
+                "y": -0.27563735581699916,
+                "z": 0,
+                "w": 0.9612616959383189
+              }
+            },
+            "sizeDp": {
+              "width": 300,
+              "height": 520
+            },
+            "texture": "panels/lyrics.png",
+            "parentId": null
+          }
+        ],
+        "orbiters": [
+          {
+            "id": "transport",
+            "label": "Transport",
+            "edge": "bottom",
+            "poseInRoot": {
+              "translation": {
+                "x": 0,
+                "y": -340,
+                "z": 80
+              },
+              "rotation": {
+                "x": -0.15643446504023087,
+                "y": 0,
+                "z": 0,
+                "w": 0.9876883405951378
+              }
+            },
+            "sizeDp": {
+              "width": 560,
+              "height": 96
+            },
+            "texture": "panels/transport.png"
+          },
+          {
+            "id": "volume",
+            "label": "Volume",
+            "edge": "end",
+            "poseInRoot": {
+              "translation": {
+                "x": 360,
+                "y": -40,
+                "z": 40
+              },
+              "rotation": {
+                "x": 0,
+                "y": -0.17364817766693033,
+                "z": 0,
+                "w": 0.984807753012208
+              }
+            },
+            "sizeDp": {
+              "width": 80,
+              "height": 320
+            },
+            "texture": "panels/volume.png"
+          }
+        ],
+        "environment": {
+          "kind": "color",
+          "color": "#101014"
+        }
+      },
+      "textureBaseUri": "/spatial-fixtures/spatial-rich/",
+      "semanticsTree": {
+        "version": 1,
+        "units": "dp",
+        "previewId": "spatial-fixtures.spatial-rich",
+        "root": {
+          "id": "subspaceRoot",
+          "kind": "subspaceRoot",
+          "poseInRoot": {
+            "translation": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "rotation": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            }
+          },
+          "sizeDp": {
+            "width": 0,
+            "height": 0,
+            "depth": 0
+          },
+          "children": [
+            {
+              "id": "now-playing",
+              "kind": "panel",
+              "label": "Now Playing",
+              "poseInRoot": {
+                "translation": {
+                  "x": 0,
+                  "y": 340,
+                  "z": -120
+                },
+                "rotation": {
+                  "x": 0.0697564737441253,
+                  "y": 0,
+                  "z": 0,
+                  "w": 0.9975640502598242
+                }
+              },
+              "sizeDp": {
+                "width": 560,
+                "height": 180,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "now-playing-root",
+                "boundsInRoot": "0,0,560,180",
+                "children": [
+                  {
+                    "nodeId": "np-thumb",
+                    "boundsInRoot": "20,24,116,120",
+                    "label": "Album thumbnail",
+                    "role": "Image"
+                  },
+                  {
+                    "nodeId": "np-title",
+                    "boundsInRoot": "136,30,430,66",
+                    "text": "Midnight City"
+                  },
+                  {
+                    "nodeId": "np-artist",
+                    "boundsInRoot": "136,78,320,106",
+                    "text": "M83"
+                  },
+                  {
+                    "nodeId": "np-scrubber",
+                    "boundsInRoot": "20,142,540,158",
+                    "label": "Seek",
+                    "role": "Slider"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "album-art",
+              "kind": "panel",
+              "label": "Album Art",
+              "poseInRoot": {
+                "translation": {
+                  "x": 0,
+                  "y": -40,
+                  "z": 0
+                },
+                "rotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                }
+              },
+              "sizeDp": {
+                "width": 460,
+                "height": 460,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "album-art-root",
+                "boundsInRoot": "0,0,460,460",
+                "children": [
+                  {
+                    "nodeId": "art-image",
+                    "boundsInRoot": "20,20,440,440",
+                    "label": "Album cover",
+                    "role": "Image"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "queue",
+              "kind": "panel",
+              "label": "Up Next",
+              "poseInRoot": {
+                "translation": {
+                  "x": -520,
+                  "y": 40,
+                  "z": 160
+                },
+                "rotation": {
+                  "x": 0,
+                  "y": 0.27563735581699916,
+                  "z": 0,
+                  "w": 0.9612616959383189
+                }
+              },
+              "sizeDp": {
+                "width": 300,
+                "height": 520,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "queue-root",
+                "boundsInRoot": "0,0,300,520",
+                "children": [
+                  {
+                    "nodeId": "q-header",
+                    "boundsInRoot": "16,16,200,44",
+                    "text": "Up Next"
+                  },
+                  {
+                    "nodeId": "q-row1",
+                    "boundsInRoot": "16,60,284,128",
+                    "text": "Outro",
+                    "role": "Button",
+                    "clickable": true
+                  },
+                  {
+                    "nodeId": "q-row2",
+                    "boundsInRoot": "16,140,284,208",
+                    "text": "Reunion",
+                    "role": "Button",
+                    "clickable": true
+                  },
+                  {
+                    "nodeId": "q-row3",
+                    "boundsInRoot": "16,220,284,288",
+                    "text": "Wait",
+                    "role": "Button",
+                    "clickable": true
+                  },
+                  {
+                    "nodeId": "q-row4",
+                    "boundsInRoot": "16,300,284,368",
+                    "text": "Solitude",
+                    "role": "Button",
+                    "clickable": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "lyrics",
+              "kind": "panel",
+              "label": "Lyrics",
+              "poseInRoot": {
+                "translation": {
+                  "x": 520,
+                  "y": 40,
+                  "z": 160
+                },
+                "rotation": {
+                  "x": 0,
+                  "y": -0.27563735581699916,
+                  "z": 0,
+                  "w": 0.9612616959383189
+                }
+              },
+              "sizeDp": {
+                "width": 300,
+                "height": 520,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "lyrics-root",
+                "boundsInRoot": "0,0,300,520",
+                "children": [
+                  {
+                    "nodeId": "ly-1",
+                    "boundsInRoot": "20,28,280,60",
+                    "text": "Waiting for the sun"
+                  },
+                  {
+                    "nodeId": "ly-2",
+                    "boundsInRoot": "20,72,250,104",
+                    "text": "to set over the city"
+                  },
+                  {
+                    "nodeId": "ly-3",
+                    "boundsInRoot": "20,116,270,148",
+                    "text": "the lights go down"
+                  },
+                  {
+                    "nodeId": "ly-4",
+                    "boundsInRoot": "20,160,230,192",
+                    "text": "and we drive"
+                  },
+                  {
+                    "nodeId": "ly-5",
+                    "boundsInRoot": "20,204,262,236",
+                    "text": "into the neon haze"
+                  },
+                  {
+                    "nodeId": "ly-6",
+                    "boundsInRoot": "20,248,210,280",
+                    "text": "of midnight"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "transport",
+              "kind": "orbiter",
+              "label": "Transport",
+              "poseInRoot": {
+                "translation": {
+                  "x": 0,
+                  "y": -340,
+                  "z": 80
+                },
+                "rotation": {
+                  "x": -0.15643446504023087,
+                  "y": 0,
+                  "z": 0,
+                  "w": 0.9876883405951378
+                }
+              },
+              "sizeDp": {
+                "width": 560,
+                "height": 96,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "transport-root",
+                "boundsInRoot": "0,0,560,96",
+                "mergeMode": "mergeDescendants",
+                "children": [
+                  {
+                    "nodeId": "tp-prev",
+                    "boundsInRoot": "188,24,244,72",
+                    "label": "Previous",
+                    "role": "Button",
+                    "clickable": true
+                  },
+                  {
+                    "nodeId": "tp-play",
+                    "boundsInRoot": "252,14,308,82",
+                    "label": "Play",
+                    "role": "Button",
+                    "clickable": true
+                  },
+                  {
+                    "nodeId": "tp-next",
+                    "boundsInRoot": "316,24,372,72",
+                    "label": "Next",
+                    "role": "Button",
+                    "clickable": true
+                  }
+                ]
+              }
+            },
+            {
+              "id": "volume",
+              "kind": "orbiter",
+              "label": "Volume",
+              "poseInRoot": {
+                "translation": {
+                  "x": 360,
+                  "y": -40,
+                  "z": 40
+                },
+                "rotation": {
+                  "x": 0,
+                  "y": -0.17364817766693033,
+                  "z": 0,
+                  "w": 0.984807753012208
+                }
+              },
+              "sizeDp": {
+                "width": 80,
+                "height": 320,
+                "depth": 0
+              },
+              "panelContent": {
+                "nodeId": "volume-root",
+                "boundsInRoot": "0,0,80,320",
+                "children": [
+                  {
+                    "nodeId": "vol-track",
+                    "boundsInRoot": "34,24,46,296",
+                    "label": "Volume",
+                    "role": "Slider"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "click": "#btn-spatial-toggle"
+    }
+  ],
+  "settleMs": 1600
+}

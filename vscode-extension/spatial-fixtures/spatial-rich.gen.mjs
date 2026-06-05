@@ -12,6 +12,7 @@ import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PANEL_CONTENT } from "./panel-content.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "spatial-rich");
@@ -63,9 +64,63 @@ function encodePng(w, h, rgb) {
     ]);
 }
 
-// A colour field with a lighter top band + thin border, so texture orientation
-// (top vs bottom) is obvious in the viewer.
-function panelTexture(w, h, [r, g, b]) {
+// --- content drawing -------------------------------------------------------
+
+const clamp8 = (v) => Math.max(0, Math.min(255, Math.round(v)));
+/** Multiply a base colour to lighten (k>1) or darken (k<1) it. */
+const tint = ([r, g, b], k) => [clamp8(r * k), clamp8(g * k), clamp8(b * k)];
+
+function fillRect(rgb, w, h, x0, y0, x1, y1, [r, g, b]) {
+    const lx = Math.max(0, x0);
+    const ly = Math.max(0, y0);
+    const hx = Math.min(w, x1);
+    const hy = Math.min(h, y1);
+    for (let y = ly; y < hy; y++) {
+        for (let x = lx; x < hx; x++) {
+            const i = (y * w + x) * 3;
+            rgb[i] = r;
+            rgb[i + 1] = g;
+            rgb[i + 2] = b;
+        }
+    }
+}
+
+function strokeRect(rgb, w, h, x0, y0, x1, y1, color) {
+    fillRect(rgb, w, h, x0, y0, x1, y0 + 1, color); // top
+    fillRect(rgb, w, h, x0, y1 - 1, x1, y1, color); // bottom
+    fillRect(rgb, w, h, x0, y0, x0 + 1, y1, color); // left
+    fillRect(rgb, w, h, x1 - 1, y0, x1, y1, color); // right
+}
+
+// Shade each widget kind a different amount from the panel's base colour so the
+// painted block reads as a UI element (a card / button / image / track) under
+// the wireframe overlay — not just a flat fill.
+const KIND_FILL = { text: 1.45, button: 1.85, image: 0.7, slider: 0.55 };
+
+function drawWidget(rgb, w, h, scale, base, wgt) {
+    const x0 = Math.round(wgt.bounds[0] * scale);
+    const y0 = Math.round(wgt.bounds[1] * scale);
+    const x1 = Math.round(wgt.bounds[2] * scale);
+    const y1 = Math.round(wgt.bounds[3] * scale);
+    const k = KIND_FILL[wgt.kind] ?? 1.3;
+    fillRect(rgb, w, h, x0, y0, x1, y1, tint(base, k));
+    strokeRect(rgb, w, h, x0, y0, x1, y1, tint(base, k * 0.55));
+    if (wgt.kind === "slider") {
+        // A brighter knob at the track's midpoint.
+        const cx = Math.round((x0 + x1) / 2);
+        const cy = Math.round((y0 + y1) / 2);
+        const rk = Math.max(3, Math.round(6 * scale));
+        fillRect(rgb, w, h, cx - rk, cy - rk, cx + rk, cy + rk, tint(base, 1.9));
+    } else if (wgt.kind === "text") {
+        // A darker baseline line so the block reads as a line of text.
+        fillRect(rgb, w, h, x0 + 1, y1 - 2, x1 - 1, y1 - 1, tint(base, 0.7));
+    }
+}
+
+// A colour field with a lighter top band + thin border (so texture orientation
+// is obvious), then the panel's mock-UI widgets painted on top.
+function panelTexture(w, h, base, widgets = [], scale = 1) {
+    const [r, g, b] = base;
     const rgb = Buffer.alloc(w * h * 3);
     const band = Math.floor(h * 0.22);
     const border = 6;
@@ -75,11 +130,12 @@ function panelTexture(w, h, [r, g, b]) {
             const edge =
                 x < border || y < border || x >= w - border || y >= h - border;
             const k = edge ? 0.45 : y < band ? 1.35 : 1.0;
-            rgb[i] = Math.min(255, Math.round(r * k));
-            rgb[i + 1] = Math.min(255, Math.round(g * k));
-            rgb[i + 2] = Math.min(255, Math.round(b * k));
+            rgb[i] = clamp8(r * k);
+            rgb[i + 1] = clamp8(g * k);
+            rgb[i + 2] = clamp8(b * k);
         }
     }
+    for (const wgt of widgets) drawWidget(rgb, w, h, scale, base, wgt);
     return encodePng(w, h, rgb);
 }
 
@@ -155,15 +211,22 @@ const orbiters = [
 
 mkdirSync(panelsDir, { recursive: true });
 
+const PX_PER_DP = 0.5;
+
 function writeTexture(item) {
     const file = `panels/${item.id}.png`;
+    const widgets = PANEL_CONTENT[item.id]?.widgets ?? [];
     writeFileSync(
         join(outDir, file),
         // ~0.5 px/dp — crisp enough to read, light enough for a committed fixture.
+        // Widgets are authored in content-space dp and scaled by the same factor,
+        // so they land where the semantics wireframe expects them.
         panelTexture(
-            Math.round(item.sizeDp.width * 0.5),
-            Math.round(item.sizeDp.height * 0.5),
+            Math.round(item.sizeDp.width * PX_PER_DP),
+            Math.round(item.sizeDp.height * PX_PER_DP),
             item.rgb,
+            widgets,
+            PX_PER_DP,
         ),
     );
     return file;
