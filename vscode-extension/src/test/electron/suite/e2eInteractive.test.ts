@@ -856,9 +856,34 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         const observations: Record<string, unknown> = {};
         const cmpNeedle = path.join("samples", "cmp");
 
+        // Unlike the other scenarios, F drives `triggerEditorScopeChange(null)`,
+        // which routes through `refresh(false)` with NO caller file — so
+        // `resolveScopeFile()` falls back to `vscode.window.visibleTextEditors`.
+        // Earlier e2e suites (`e2eCachedPreloadOnSwitch`, which sorts before
+        // this file under the `e2e*.test.js` loader) open preview-source `.kt`
+        // editors via `showTextDocument` and never close them. A leftover
+        // visible editor would make `refresh(false)` re-scope to that file and
+        // render it instead of resolving to empty, so F would pass/fail on
+        // prior-suite state rather than on #1566. Close every editor and wait
+        // for the visible set to actually drain before we start.
+        await vscode.commands.executeCommand(
+            "workbench.action.closeAllEditors",
+        );
+        await waitFor(
+            "all text editors closed before dropping scope",
+            30_000,
+            100,
+            () =>
+                vscode.window.visibleTextEditors.length === 0
+                    ? true
+                    : undefined,
+        );
+
         // Warm cmp so there are real cards on screen — the buggy behaviour is
         // "stale cards stay after the last editor closes", so we have to start
-        // from a loaded panel for the assertion to mean anything.
+        // from a loaded panel for the assertion to mean anything. The caller
+        // path (`triggerRefresh(cmpFile, …)`) scopes by argument, not by a
+        // visible editor, so the warm stays deterministic without reopening one.
         await api.triggerRefresh(cmpFile, true, "full");
         const loaded = await waitFor(
             "cmp setPreviews before dropping scope",
