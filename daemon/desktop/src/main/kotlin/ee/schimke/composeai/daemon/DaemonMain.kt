@@ -472,6 +472,8 @@ internal fun renderSpecFromInfo(info: PreviewInfoDto): RenderSpec {
     uiMode = uiMode,
     orientation = defaults.orientation,
     wrapperClassName = params.wrapperClassName ?: defaults.wrapperClassName,
+    kind = params.kind ?: defaults.kind,
+    assetPath = params.assetPath ?: defaults.assetPath,
   )
 }
 
@@ -573,6 +575,13 @@ internal fun buildDesktopExtensions(
       id = "render/test-failure",
       displayName = "Test failure",
       dataProductRegistry = TestFailureDataProductRegistry(),
+    )
+  }
+  tryAdd("animation/lottie") {
+    Extension(
+      id = "animation/lottie",
+      displayName = "Lottie timeline",
+      dataProductRegistry = LottieTimelineDataProductRegistry(previewIndex = previewIndex),
     )
   }
   tryAdd("render/overlay-legend") {

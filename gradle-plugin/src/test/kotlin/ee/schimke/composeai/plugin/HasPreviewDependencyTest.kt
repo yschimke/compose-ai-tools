@@ -54,6 +54,20 @@ class HasPreviewDependencyTest {
   }
 
   @Test
+  fun `pure-XR module passes the gate via the androidx_xr_compose signal`() {
+    // An @XrSubspacePreview-only module declares androidx.xr.compose but no traditional
+    // ui-tooling-preview coord and no project deps. It must still pass the registration gate, or
+    // onVariants returns before registerAndroidTasks and composePreviewRenderXr never registers —
+    // defeating the zero-config XR path.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+
+    project.configurations.create("implementation")
+    project.dependencies.add("implementation", "androidx.xr.compose:compose:1.0.0-alpha14")
+
+    assertThat(AndroidPreviewSupport.hasPreviewDependency(project, "debug")).isTrue()
+  }
+
+  @Test
   fun `module without any declarable buckets returns false without throwing`() {
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     // Mirrors a fresh module before AGP has wired its variant configurations — the gate must

@@ -43,6 +43,12 @@ compose-multiplatform = "1.10.3"
 # must use this version rather than `compose-multiplatform`. Mirrors what the
 # deprecated `compose.material3` accessor resolved to.
 compose-multiplatform-material3 = "1.9.0"
+# Compottie — the KMP Lottie runtime that powers `:lottie-preview-runtime`. Pinned to 2.1.0
+# because it is built against JetBrains Compose foundation 1.10.1 (same minor as our
+# `compose-multiplatform = 1.10.3`); 2.2.x jumps to foundation 1.11.0, which would drag a
+# *newer* Compose onto the renderer classpath — the failure direction `docs/RENDERER_COMPATIBILITY.md`
+# warns about. Bump only in lockstep with `compose-multiplatform`.
+compottie = "2.1.0"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -195,6 +201,7 @@ jetbrains-compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling",
 jetbrains-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-multiplatform-material3" }
 jetbrains-compose-components-ui-tooling-preview = { module = "org.jetbrains.compose.components:components-ui-tooling-preview", version.ref = "compose-multiplatform" }
 jetbrains-compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
+compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance-appwidget" }

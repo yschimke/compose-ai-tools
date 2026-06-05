@@ -54,6 +54,7 @@ class BuildDesktopExtensionsTest {
     assertTrue("device/background" in ids)
     assertTrue("render/trace" in ids)
     assertTrue("render/test-failure" in ids)
+    assertTrue("animation/lottie" in ids)
     assertTrue("render/overlay-legend" in ids)
     assertTrue("data/theme" in ids)
     assertTrue("data/wallpaper" in ids)

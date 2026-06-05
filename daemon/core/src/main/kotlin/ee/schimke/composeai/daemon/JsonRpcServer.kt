@@ -1019,11 +1019,16 @@ class JsonRpcServer(
           material3Theme = overrides.material3Theme,
           wallpaper = overrides.wallpaper,
           permissions = overrides.permissions,
+          // `lottie` rides the same bag so `renderNow.overrides.lottie.progress` reaches the
+          // desktop `RenderEngine`, which provides it as `LocalLottieProgress` — the interactive
+          // Lottie timeline scrub path. No new wire token needed.
+          lottie = overrides.lottie,
         )
       if (
         extensionBag.material3Theme != null ||
           extensionBag.wallpaper != null ||
-          extensionBag.permissions != null
+          extensionBag.permissions != null ||
+          extensionBag.lottie != null
       ) {
         if (isNotEmpty()) append(';')
         append("overrides=")

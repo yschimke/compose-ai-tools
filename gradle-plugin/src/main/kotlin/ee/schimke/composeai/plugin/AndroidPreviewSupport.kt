@@ -369,6 +369,14 @@ internal object AndroidPreviewSupport {
    * exactly what AGP gives the test JVM, so any coord that would actually be on the renderer's
    * classpath gets seen.
    *
+   * **Why XR modules pass.** A module that declares `androidx.xr.compose` (see
+   * [moduleDeclaresXrCompose]) hosts `@XrSubspacePreview` spatial previews even when it declares no
+   * traditional `@Preview` tooling coord — `androidx.xr.compose` is the standalone signal that the
+   * module has XR preview surface, the same way `ui-tooling-preview` is the signal for flat
+   * `@Preview`. Without this tier a pure-XR module would fail the gate, `onVariants` would return
+   * before [registerAndroidTasks], and the `androidx.xr.compose`-driven auto-enable of
+   * `composePreviewRenderXr` would never run — defeating the documented zero-config XR path.
+   *
    * The `variantName` argument is unused but kept on the public signature for test-fixture
    * compatibility.
    */
@@ -377,6 +385,7 @@ internal object AndroidPreviewSupport {
     @Suppress("UNUSED_PARAMETER") variantName: String,
   ): Boolean =
     hasDirectPreviewDependency(project) ||
+      moduleDeclaresXrCompose(project) ||
       (isComposeModule(project) && hasAnyProjectDependency(project))
 
   /**
@@ -409,6 +418,28 @@ internal object AndroidPreviewSupport {
         if (g != null && previewArtifactSignals.any { (sg, sn) -> g == sg && dep.name == sn }) {
           return true
         }
+      }
+    }
+    return false
+  }
+
+  /**
+   * True when this module declares a dependency on Jetpack XR Compose (`androidx.xr.compose:*`) in
+   * any declarable `*Implementation` / `*Api` / `*RuntimeOnly` bucket.
+   *
+   * Drives auto-enablement of the XR subspace render path so a module's `@XrSubspacePreview`s
+   * render with zero `composePreview { }` configuration — the same declared-dependency-signal
+   * approach the Wear Tiles renderer auto-injection uses. Declarative-only (no classpath
+   * resolution), so it's cheap and IP-safe, mirroring [hasDirectPreviewDependency]. The
+   * `androidx.xr.compose` group is the signal because that artifact is what provides `Subspace` /
+   * `SpatialPanel` — a module with no XR Compose dependency can't host an `@XrSubspacePreview`, and
+   * gating the (minCompileSdk-36, heavyweight) XR `*-testing` fakes on it keeps non-XR consumers
+   * off that classpath.
+   */
+  internal fun moduleDeclaresXrCompose(project: Project): Boolean {
+    for (config in declarableBucketsOf(project)) {
+      for (dep in config.allDependencies) {
+        if (dep.group == "androidx.xr.compose") return true
       }
     }
     return false
@@ -1321,15 +1352,22 @@ internal object AndroidPreviewSupport {
       )
     }
 
-    // XR render backend (opt-in via `composePreview.enableXrPreviews`). Adds `:renderer-xr`'s
-    // `XrSubspaceRenderTest` + the fake XR runtime to the render config so `composePreviewRenderXr`
-    // (below) can render `@XrSubspacePreview` to `scene.json`. Gated because `androidx.xr.compose`
-    // declares `minCompileSdk = 36` and the `*-testing` fakes are heavyweight — a non-XR consumer
-    // (especially below compileSdk 36) must never get them on its render classpath. The fakes are
-    // inert for compose/tile/notification/glance renders anyway (they only engage when a `Subspace`
-    // reaches `Session.create`); the fake `SceneRuntimeFactory` / `RenderingRuntimeFactory`
-    // ServiceLoader registration ships in `:renderer-xr`'s main resources.
-    val xrPreviewsEnabled = extension.enableXrPreviews.get()
+    // XR render backend. Adds `:renderer-xr`'s `XrSubspaceRenderTest` + the fake XR runtime to the
+    // render config so `composePreviewRenderXr` (below) can render `@XrSubspacePreview` to
+    // `scene.json`. Auto-enabled for any module that declares an `androidx.xr.compose` dependency
+    // (the same declared-dependency signal the Wear Tiles renderer auto-injection uses), so XR
+    // previews render with zero `composePreview { }` configuration; `enableXrPreviews = true` still
+    // forces it on for the transitive-only case. Gated on that signal rather than always-on because
+    // `androidx.xr.compose` declares `minCompileSdk = 36` and the `*-testing` fakes are heavyweight
+    // —
+    // a non-XR consumer (especially below compileSdk 36) must never get them on its render
+    // classpath.
+    // The fakes are inert for compose/tile/notification/glance renders anyway (they only engage
+    // when
+    // a `Subspace` reaches `Session.create`); the fake `SceneRuntimeFactory` /
+    // `RenderingRuntimeFactory` ServiceLoader registration ships in `:renderer-xr`'s main
+    // resources.
+    val xrPreviewsEnabled = extension.enableXrPreviews.get() || moduleDeclaresXrCompose(project)
     if (xrPreviewsEnabled) {
       if (useLocalRenderer) {
         try {

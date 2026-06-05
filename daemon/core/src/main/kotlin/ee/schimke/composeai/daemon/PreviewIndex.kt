@@ -192,6 +192,11 @@ data class PreviewParamsDto(
    */
   val kind: String? = null,
   /**
+   * For `kind="LOTTIE"`: the module-resource-relative path of the discovered Lottie asset, mirrored
+   * from the plugin's `PreviewParams.assetPath`. The daemon loads it off the render classpath.
+   */
+  val assetPath: String? = null,
+  /**
    * FQN of the `PreviewWrapperProvider` from `@PreviewWrapper(SomeProvider::class)` when the source
    * preview is annotated. Read at discovery time by `extractWrapperFqn` against the class-file
    * annotation tables (the upstream annotation has `AnnotationRetention.BINARY`, so

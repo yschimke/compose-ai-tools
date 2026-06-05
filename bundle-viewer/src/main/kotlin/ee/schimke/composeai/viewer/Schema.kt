@@ -39,7 +39,10 @@ data class BundleManifest(
 @Serializable
 data class BundleIr(
   val previewId: String,
-  /** `remotecompose` (RC doc) or `protolayout` (Wear tile Layout proto). */
+  /**
+   * `remotecompose` (RC doc), `protolayout` (Wear tile Layout proto), or `lottie` (a Lottie
+   * animation asset packed straight from the module resources).
+   */
   val format: String,
   val path: String,
   val resourcesPath: String? = null,

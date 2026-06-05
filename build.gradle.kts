@@ -124,6 +124,7 @@ tasks.register("functionalTestWithAndroid") {
 //     implementation :data-displayfilter-connector
 //       api :data-displayfilter-core
 //       api :daemon:core
+//     implementation :lottie-preview-runtime (Compottie-backed kind=LOTTIE render path)
 //   plus :common-io (the Okio file-IO foundation those modules read/write through).
 val bundleRenderFunctionalTestPublishTargets =
   listOf(
@@ -135,6 +136,7 @@ val bundleRenderFunctionalTestPublishTargets =
     ":data-displayfilter-connector",
     ":data-displayfilter-core",
     ":daemon:core",
+    ":lottie-preview-runtime",
     ":common-io",
   )
 

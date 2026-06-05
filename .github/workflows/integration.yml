@@ -63,12 +63,17 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
+      - name: Publish plugin + renderer-android + renderer-xr + data-* + daemon-* to mavenLocal
         # Both `gradle-plugin` and `renderer-android` are needed end-to-end:
         # the plugin resolves through the init script's buildscript classpath
         # injection from mavenLocal, and at render time it wires
         # `ee.schimke.composeai:renderer-android:<version>` into the consumer's
         # `composePreviewAndroidRenderer<Variant>` configuration.
+        # `renderer-xr` rides the same fan-out: the plugin wires it onto the
+        # same render configuration when it auto-enables the XR path for a
+        # consumer that depends on `androidx.xr.compose` (the jetstream-xr cell),
+        # so it must resolve from mavenLocal too — otherwise the XR render fails
+        # with `Could not find ee.schimke.composeai:renderer-xr`.
         # Publishing only the plugin here would mean the render path silently
         # falls back to whatever's on the consumer's remote repos (or fails
         # resolution) — exactly the kind of release-vs-source drift these tests
@@ -402,34 +407,52 @@ jobs:
             # daemon's own 17 toolchain is still resolved from the runner's
             # preinstalled JDKs via Gradle toolchain detection, so render still works.
             java_version: "21"
-            # Upstream tracks androidx.xr.compose 1.0.0-alpha07, whose
-            # `ApplicationSubspace` / `MovePolicy` / `SpatialConfiguration`
-            # APIs were removed or deprecated by alpha14 — the version our XR
-            # render path compiles against. Apply the in-repo alpha14 upgrade
-            # patch to the freshly-checked-out tree before Gradle configures
-            # the build (see "Apply consumer patch" step below).
+            # Three patches are applied in order to the freshly-checked-out
+            # tree before Gradle configures it (see "Apply consumer patches"):
+            #   1. adaptive-apps-samples-xr-alpha14.patch — the upstreamable
+            #      alpha14 upgrade. Upstream tracks alpha07, whose
+            #      `ApplicationSubspace` / `MovePolicy` / `SpatialConfiguration`
+            #      APIs were removed or deprecated by alpha14, the version our
+            #      XR render path compiles against.
+            #   2. adaptive-apps-samples-xr-spatial-previews.patch — a CI-only
+            #      overlay adding two @XrSubspacePreview functions that lay
+            #      JetStream's real components (MovieCard / WatchNowButton /
+            #      UserAvatar / TopAppBar) across a Subspace, so the XR render
+            #      path has genuine spatial coverage. Kept separate so patch #1
+            #      stays clean for upstream submission to android/adaptive-apps-
+            #      samples. The overlay needs no plugin configuration: the plugin
+            #      auto-enables the XR render path from JetStream's existing
+            #      androidx.xr.compose dependency, and the only CI-side wiring is
+            #      adding the preview-annotations library so @XrSubspacePreview
+            #      resolves (see "Add preview-annotations dependency" step).
+            #   3. adaptive-apps-samples-coil-fake-images.patch — CI-only. The
+            #      app's poster art is loaded from remote URLs that never
+            #      resolve under the offline Robolectric render, so the rendered
+            #      cards came out blank. Sets the Coil singleton on
+            #      `JetStreamApplication` (via `ImageLoaderFactory`, which
+            #      Robolectric instantiates) to a `FakeImageLoaderEngine` that
+            #      serves three bundled `ci_fake_poster_*` drawables. Also kept
+            #      separate from patch #1 so the alpha14 upgrade stays clean for
+            #      upstream submission.
             #
-            # Idempotent by design: the apply step runs `git apply
-            # --reverse --check` first, so once the same upgrade lands in
-            # `android/adaptive-apps-samples@main` the patch is detected as
-            # already-present and skipped rather than failing on a no-op. If
-            # upstream instead drifts such that the patch no longer applies,
-            # the step fails loudly so we re-cut it against the new baseline.
-            patch_file: adaptive-apps-samples-xr-alpha14.patch
+            # Each apply is idempotent: the step runs `git apply --reverse
+            # --check` first, so once a patch lands upstream it's detected as
+            # already-present and skipped rather than failing on a no-op; if
+            # upstream drifts so a patch no longer applies, the step fails
+            # loudly so we re-cut it against the new baseline.
+            patch_file: >-
+              adaptive-apps-samples-xr-alpha14.patch
+              adaptive-apps-samples-xr-spatial-previews.patch
+              adaptive-apps-samples-coil-fake-images.patch
             # :jetstream carries 12 device-targeted previews via custom
-            # multi-preview annotations (@PhonePreview/@TvPreview/etc.), so
-            # discovery has real coverage. Render end-to-end too — this entry
-            # exists to prove the renderer-android pipeline survives a real XR
-            # Compose app once it's on the alpha14 baseline.
+            # multi-preview annotations (@PhonePreview/@TvPreview/etc.) plus the
+            # two @XrSubspacePreview functions from the overlay. Render the 2D
+            # previews to PNG (render) AND the subspace layouts to scene.json
+            # (render_xr) — proving the renderer-android and renderer-xr paths
+            # both survive a real XR Compose app on the alpha14 baseline.
             render: true
+            render_xr: true
             extra_gradle_args: ""
-            # AdaptiveJetStream's `:jetstream` module compiles with Java 21
-            # source/target (Hilt's `hiltJavaCompileDebug` fails with
-            # `invalid source release: 21` on the workflow-default JDK 17).
-            # Pin this cell to 21 — same override the androidchka entry uses.
-            # 21 is also what Robolectric needs once the consumer's compileSdk
-            # reaches 36, so it keeps the render step viable too.
-            java_version: "21"
             notes: |
               - XR spatial Compose. Upstream tracks `androidx.xr.compose`
                 alpha07, whose `ApplicationSubspace` / `MovePolicy` /
@@ -438,6 +461,10 @@ jobs:
                 integration run therefore applies the in-repo
                 `adaptive-apps-samples-xr-alpha14.patch` before configuring the
                 build.
+              - Poster art is loaded from remote URLs that can't resolve under
+                the offline Robolectric render, so a second CI patch installs a
+                Coil `FakeImageLoaderEngine` singleton that serves bundled
+                local posters — otherwise the cards render blank.
               - 12 device-targeted previews via custom multi-preview
                 annotations (`@PhonePreview` / `@TvPreview` / …).
           # PeopleInSpace is a KMP project — the :app module is a thin Android
@@ -588,29 +615,86 @@ jobs:
         working-directory: external/${{ matrix.workdir }}
         run: chmod +x ./gradlew
 
-      - name: Apply consumer patch (idempotent)
+      - name: Apply consumer patches (idempotent)
         if: matrix.patch_file != ''
-        # Runs from the external checkout root so the patch's
+        # Runs from the external checkout root so each patch's
         # repo-root-relative paths (e.g. AdaptiveJetStream/jetstream/...)
         # line up with `git apply -p1`. The bundle was extracted into
         # $GITHUB_WORKSPACE/bundle by the "Install plugin and CLI" step.
+        # matrix.patch_file may name several patches (whitespace-separated);
+        # they're applied in the listed order.
         working-directory: external
+        env:
+          PATCH_FILES: ${{ matrix.patch_file }}
         run: |
           set -euo pipefail
-          patch="$GITHUB_WORKSPACE/bundle/ci/${{ matrix.patch_file }}"
-          if [ ! -f "$patch" ]; then
-            echo "::error::patch file not found in bundle: $patch"
+          for name in $PATCH_FILES; do
+            patch="$GITHUB_WORKSPACE/bundle/ci/$name"
+            if [ ! -f "$patch" ]; then
+              echo "::error::patch file not found in bundle: $patch"
+              exit 1
+            fi
+            if git apply --reverse --check "$patch" 2>/dev/null; then
+              echo "$name is already applied upstream — skipping."
+            elif git apply --check "$patch" 2>/dev/null; then
+              git apply "$patch"
+              echo "Applied $name."
+            else
+              echo "::error::$name does not apply cleanly against ${{ matrix.repo }}@${{ matrix.ref }} (upstream likely drifted). Re-cut the patch against the new baseline."
+              exit 1
+            fi
+          done
+
+      - name: Add preview-annotations dependency for the XR overlay
+        if: matrix.render_xr
+        # The @XrSubspacePreview overlay needs the preview-annotations artifact
+        # (which defines @XrSubspacePreview) on the module's compile classpath.
+        # That's an ordinary library dependency, not plugin configuration: the
+        # plugin auto-enables the XR render path on its own once it sees the
+        # module's androidx.xr.compose dependency (AndroidPreviewSupport
+        # .moduleDeclaresXrCompose), so no composePreview { } block is appended
+        # to the consumer build. Must run BEFORE discovery, since the overlay
+        # source won't compile without preview-annotations.
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          MATRIX_MODULE: ${{ matrix.module }}
+        run: |
+          set -euo pipefail
+          # preview-annotations publishes at the repo's release-please version
+          # (changes every release), so read it from the mavenLocal snapshot the
+          # "Install plugin and CLI" step seeded rather than hardcoding a version
+          # that rots.
+          ann_dir="$HOME/.m2/repository/ee/schimke/composeai/preview-annotations"
+          version=$(ls -1 "$ann_dir" 2>/dev/null | grep -E '^[0-9]' | sort -V | tail -1 || true)
+          if [ -z "$version" ]; then
+            echo "::error::preview-annotations not found in mavenLocal ($ann_dir) — the build-plugin job must publish it."
             exit 1
           fi
-          if git apply --reverse --check "$patch" 2>/dev/null; then
-            echo "${{ matrix.patch_file }} is already applied upstream — skipping."
-          elif git apply --check "$patch" 2>/dev/null; then
-            git apply "$patch"
-            echo "Applied ${{ matrix.patch_file }}."
-          else
-            echo "::error::${{ matrix.patch_file }} does not apply cleanly against ${{ matrix.repo }}@${{ matrix.ref }} (upstream likely drifted). Re-cut the patch against the new baseline."
-            exit 1
-          fi
+          echo "Using ee.schimke.composeai:preview-annotations:$version"
+          ANN_VERSION="$version" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          module = os.environ["MATRIX_MODULE"].lstrip(":").replace(":", "/")
+          version = os.environ["ANN_VERSION"]
+          build = Path(module) / "build.gradle.kts"
+          if not build.exists():
+              raise SystemExit(f"expected module build script not found: {build}")
+          text = build.read_text()
+          if "ee.schimke.composeai:preview-annotations" in text:
+              print(f"preview-annotations dependency already present in {build}")
+          else:
+              block = (
+                  "\n\n// compose-preview integration CI: put the @XrSubspacePreview annotation on\n"
+                  "// the compile classpath so the overlay's spatial previews compile. The plugin\n"
+                  "// auto-enables the XR render path from the module's androidx.xr.compose\n"
+                  "// dependency, so no composePreview { } configuration is needed here.\n"
+                  "dependencies {\n"
+                  f'  implementation("ee.schimke.composeai:preview-annotations:{version}")\n'
+                  "}\n"
+              )
+              build.write_text(text + block)
+              print(f"appended preview-annotations:{version} dependency to {build}")
+          PY
 
       - name: Repo-specific pre-Gradle patches
         if: matrix.pre_gradle_script != ''
@@ -710,6 +794,39 @@ jobs:
           echo "Rendered ${#pngs[@]} PNG file(s):"
           printf '  %s\n' "${pngs[@]}"
 
+      - name: Render XR subspace previews (composePreviewRenderXr)
+        if: matrix.render_xr
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL: "1"
+          GRADLE_OPTS: -Xmx4g -Dfile.encoding=UTF-8
+        run: |
+          # composePreviewRenderXr is registered automatically once the plugin
+          # sees the module's androidx.xr.compose dependency (no composePreview
+          # { } opt-in). It composes each @XrSubspacePreview under the fake XR
+          # runtime on the :renderer-xr render configuration and writes
+          # renders/<preview>/scene.json plus a <testTag>.png texture per
+          # SpatialPanel.
+          ./gradlew --init-script "$COMPOSE_AI_INIT_SCRIPT" composePreviewRenderXr \
+            ${{ matrix.extra_gradle_args }} \
+            --stacktrace
+
+      - name: Verify XR scene.json was produced
+        if: matrix.render_xr
+        working-directory: external/${{ matrix.workdir }}
+        run: |
+          set -euo pipefail
+          mapfile -t scenes < <(find . -path '*/build/compose-previews/renders/*/scene.json' -not -path '*/external/build/*' 2>/dev/null)
+          if [ "${#scenes[@]}" -eq 0 ]; then
+            echo "::error::composePreviewRenderXr ran but no scene.json was produced. The @XrSubspacePreview functions either failed to render or were not discovered (check the overlay patch applied and preview-annotations is on the classpath)."
+            exit 1
+          fi
+          echo "Produced ${#scenes[@]} XR scene(s):"
+          for s in "${scenes[@]}"; do
+            textures=$(find "$(dirname "$s")" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+            echo "  $s → $textures panel texture(s)"
+          done
+
       - name: Stage browsable preview gallery
         # Build the `compose-preview/integration/<slug>` payload (renders/ +
         # baselines.json + README gallery) so the rendered previews are
@@ -776,7 +893,7 @@ jobs:
             echo
             echo "- Source: [\`${MATRIX_REPO}@${MATRIX_REF}\`](https://github.com/${MATRIX_REPO}/tree/${MATRIX_REF})"
             if [ -n "${MATRIX_PATCH_FILE:-}" ]; then
-              echo "- Consumer patch applied before configuring the build: \`${MATRIX_PATCH_FILE}\` (idempotent — auto-skipped once the change lands upstream)."
+              echo "- Consumer patch(es) applied before configuring the build: \`${MATRIX_PATCH_FILE}\` (idempotent — auto-skipped once the change lands upstream)."
             fi
             if [ -n "${MATRIX_PRE_GRADLE:-}" ]; then
               echo "- Build script patched before Gradle to stub out CI-unavailable plugins / credentials (e.g. Firebase Crashlytics, Google Services, Play Publisher)."
@@ -963,13 +1080,15 @@ jobs:
           retention-days: 7
 
       - name: Upload rendered PNGs
-        if: always() && matrix.render
+        if: always() && (matrix.render || matrix.render_xr)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: renders-${{ matrix.slug }}
           path: |
             external/**/build/compose-previews/renders/*.png
             external/**/build/compose-previews/renders/*.error.json
+            external/**/build/compose-previews/renders/*/scene.json
+            external/**/build/compose-previews/renders/*/*.png
           if-no-files-found: warn
           retention-days: 7
 

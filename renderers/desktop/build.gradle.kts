@@ -31,6 +31,9 @@ dependencies {
   // `ComposeUiTest`'s semantic owner directly.
   implementation(project(":data-scroll-core"))
   implementation(project(":common-io"))
+  // `kind=LOTTIE` previews: DesktopRendererMain inflates a discovered Lottie asset via the
+  // `LottiePreview` helper (brings Compottie + Compose foundation transitively).
+  implementation(project(":lottie-preview-runtime"))
   // Pure-JVM accent / bidi transforms + the `Pseudolocale` enum used to detect `en-XA` / `ar-XB`
   // tags. Renderer applies the around-composable inline (LocalLayoutDirection.Rtl for ar-XB) and
   // rewrites the locale tag before it reaches `LocaleList`.

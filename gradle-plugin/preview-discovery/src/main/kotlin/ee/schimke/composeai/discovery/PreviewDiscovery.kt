@@ -9,6 +9,10 @@ import io.github.classgraph.MethodInfo
 import io.github.classgraph.MethodParameterInfo
 import io.github.classgraph.ScanResult
 import java.io.File
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.floatOrNull
 
 /**
  * Pure-JVM library that scans compiled Kotlin classes for `@Preview`-annotated functions and
@@ -51,6 +55,13 @@ object PreviewDiscovery {
      * diagnostics block.
      */
     val failOnEmpty: Boolean,
+    /**
+     * Processed-resource roots (e.g. `build/resources/main`) scanned for Lottie animation assets.
+     * Each `.json` file whose structure looks like a Lottie document, and each `.lottie` archive,
+     * becomes a [PreviewKind.LOTTIE] preview with no consumer composable — "just having the file is
+     * enough". Empty (the default) skips the scan entirely. Paths are absolute.
+     */
+    val resourceDirs: List<File> = emptyList(),
   )
 
   /** Outcome of a [discover] call. */
@@ -283,7 +294,9 @@ object PreviewDiscovery {
     // "tile light (light)")`. Keeps `PreviewInfo.id` untouched — consumers
     // that key by id (history folders, CLI state, test names) are
     // unaffected.
-    val normalized = normalizeRenderOutputs(deduped)
+    // Lottie asset previews are appended after normalization with their render outputs already
+    // shell-safe, so they bypass the package-prefix stripping (they have no class/package).
+    val normalized = normalizeRenderOutputs(deduped) + discoverLottieAssets(input)
 
     // The generic per-extension reports map is empty on the standalone Gradle path — a11y
     // (today's only canned-report producer) writes its artefacts exclusively through the
@@ -379,6 +392,104 @@ object PreviewDiscovery {
       warnings = warnings.toList(),
       infoMessages = infoMessages.toList(),
     )
+  }
+
+  /**
+   * Characters replaced with `_` when turning a resource path into a shell-safe render-file stem.
+   */
+  private val SANITIZE_RENDER_STEM = Regex("[^A-Za-z0-9._-]")
+
+  /** Lenient JSON reader for Lottie structure-sniffing — tolerant of comments / trailing commas. */
+  private val LOTTIE_JSON = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+  }
+
+  /**
+   * Scan [Input.resourceDirs] for Lottie animation assets and turn each into a [PreviewKind.LOTTIE]
+   * preview — no `@Preview`, no consumer composable. A `.json` file qualifies when it parses as a
+   * JSON object carrying the Lottie marker keys (`v` version + `layers`); a `.lottie` file
+   * qualifies by extension (a dotLottie archive). The asset's resource-relative path is recorded on
+   * [PreviewParams.assetPath] so the renderer can load it off the classpath and the bundle can pack
+   * it as IR.
+   *
+   * Best-effort and side-effect-free: unreadable / non-Lottie files are skipped silently. Returns a
+   * list deduped by preview id and ordered by relative path for stable output.
+   */
+  private fun discoverLottieAssets(input: Input): List<PreviewInfo> {
+    if (input.resourceDirs.isEmpty()) return emptyList()
+    val found = LinkedHashMap<String, PreviewInfo>()
+    for (root in input.resourceDirs) {
+      if (!root.isDirectory) continue
+      root
+        .walkTopDown()
+        .filter { it.isFile }
+        .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+        .forEach { file ->
+          val relPath = file.relativeTo(root).invariantSeparatorsPath
+          val ext = file.extension.lowercase()
+          val dims =
+            when (ext) {
+              "json" -> lottieDimensionsOrNull(file) ?: return@forEach
+              "lottie" -> LottieDims(null, null) // dotLottie archive — accept by extension
+              else -> return@forEach
+            }
+          // Filename-safe id: it lands verbatim in zip entry paths (`previews/<id>.png`,
+          // `ir/<id>.<ext>`) and render filenames, so `:` / `/` from the resource path can't
+          // survive. The `lottie__` prefix keeps it from colliding with a class-derived preview id.
+          val safe = relPath.removeSuffix(".$ext").replace(SANITIZE_RENDER_STEM, "_")
+          val stem = "lottie__$safe"
+          val id = stem
+          if (found.containsKey(id)) return@forEach
+          found[id] =
+            PreviewInfo(
+              id = id,
+              functionName = relPath,
+              className = "",
+              params =
+                PreviewParams(
+                  name = file.nameWithoutExtension,
+                  kind = PreviewKind.LOTTIE,
+                  assetPath = relPath,
+                  widthDp = dims.width,
+                  heightDp = dims.height,
+                ),
+              captures =
+                listOf(
+                  Capture(renderOutput = "renders/$stem.png"),
+                  // Animated companion: the asset's intrinsic timeline encoded as a looping GIF
+                  // (the renderer dispatches `.gif` Lottie outputs to `renderLottieGif`). Marked
+                  // `optional` so a missing GIF — e.g. a headless env without the GIF writer —
+                  // never trips `composePreviewRenderAll`'s required-render gate; the still PNG
+                  // stays the baseline artefact. Cost mirrors the scroll-GIF frame-loop + encode.
+                  Capture(
+                    renderOutput = "renders/$stem.gif",
+                    optional = true,
+                    cost = SCROLL_GIF_COST,
+                  ),
+                ),
+            )
+        }
+    }
+    return found.values.toList()
+  }
+
+  private data class LottieDims(val width: Int?, val height: Int?)
+
+  /**
+   * Parse [file] as a Lottie document, returning its declared canvas dimensions when it carries the
+   * Lottie marker keys, or `null` when the file is not a Lottie JSON (an ordinary config / data
+   * `.json`, or unparseable). The `v`+`layers` pair is the cheapest reliable Lottie fingerprint —
+   * every Bodymovin/Lottie export has a schema version string and a layers array.
+   */
+  private fun lottieDimensionsOrNull(file: File): LottieDims? {
+    val obj =
+      runCatching { LOTTIE_JSON.parseToJsonElement(file.readText()) as? JsonObject }.getOrNull()
+        ?: return null
+    val looksLikeLottie = obj.containsKey("v") && obj.containsKey("layers")
+    if (!looksLikeLottie) return null
+    fun dim(key: String) = (obj[key] as? JsonPrimitive)?.floatOrNull?.toInt()?.takeIf { it > 0 }
+    return LottieDims(width = dim("w"), height = dim("h"))
   }
 
   private fun buildEmptyDiagnostics(

@@ -243,6 +243,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
           scroll?.axis?.name.orEmpty(),
           (scroll?.maxScrollPx ?: 0).toString(),
           (scroll?.frameIntervalMs ?: 0).toString(),
+          // 19th/20th — preview kind + (for kind=LOTTIE) the resource-relative asset path. Empty
+          // 19th defaults to COMPOSE on the renderer side. A LOTTIE entry has no class/function to
+          // reflect; the renderer inflates the asset at arg 20 via Compottie instead.
+          preview.params.kind.name,
+          preview.params.assetPath.orEmpty(),
         )
     }
   }
