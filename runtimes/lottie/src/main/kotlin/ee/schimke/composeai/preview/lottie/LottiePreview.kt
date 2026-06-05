@@ -2,12 +2,23 @@ package ee.schimke.composeai.preview.lottie
 
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import io.github.alexzhirkevich.compottie.LottieComposition
 import io.github.alexzhirkevich.compottie.rememberLottiePainter
 import kotlin.math.roundToInt
+
+/**
+ * Daemon-driven timeline override for [LottiePreview]. When non-null, it wins over the composable's
+ * authored `progress` — the interactive "scrub the animation" path: the preview daemon provides
+ * this around the rendered content from `renderNow.overrides.lottie.progress`, so a VS Code
+ * timeline slider can land the captured frame anywhere on `0f..1f` without editing source. Defaults
+ * to `null` (no override), so a plain `@Preview` render keeps its authored progress.
+ */
+val LocalLottieProgress: ProvidableCompositionLocal<Float?> = compositionLocalOf { null }
 
 /**
  * Renders a Lottie animation [asset] at a fixed [progress] inside a regular Compose `@Preview`.
@@ -67,9 +78,16 @@ fun LottiePreview(
   progress: () -> Float,
 ) {
   val composition = remember(asset) { LottieComposition.parse(loadLottieAsset(asset)) }
+  val override = LocalLottieProgress.current
   Image(
     painter =
-      rememberLottiePainter(composition = composition, progress = { progress().coerceIn(0f, 1f) }),
+      rememberLottiePainter(
+        composition = composition,
+        // The daemon's timeline override wins over the authored progress when present — the
+        // interactive scrub path. Read inside the draw lambda so a fresh override (a new render
+        // with a different `LocalLottieProgress`) repaints at the new frame.
+        progress = { (override ?: progress()).coerceIn(0f, 1f) },
+      ),
     contentDescription = asset,
     modifier = modifier,
     contentScale = contentScale,
@@ -96,6 +114,44 @@ fun lottieIntrinsicDurationMillis(asset: String, default: Int = DEFAULT_LOTTIE_D
 
 /** Fallback intrinsic duration for a Lottie asset whose timeline can't be read. */
 const val DEFAULT_LOTTIE_DURATION_MS: Int = 1000
+
+/**
+ * The timeline shape of a Lottie asset — what an interactive scrubber needs to label its slider
+ * (total frames, frame rate, wall-clock duration) and size the canvas. [durationMillis] is
+ * `durationFrames / frameRate` rounded to whole milliseconds (clamped ≥ 1).
+ */
+data class LottieTimelineInfo(
+  val durationFrames: Float,
+  val frameRate: Float,
+  val durationMillis: Int,
+  val widthPx: Int,
+  val heightPx: Int,
+)
+
+/**
+ * Parse [asset] off the render classpath (same loader resolution as [LottiePreview]) and report its
+ * [LottieTimelineInfo], or `null` when the asset can't be parsed. Backs the `animation/lottie` data
+ * product the daemon surfaces so a VS Code timeline slider knows the frame range.
+ */
+fun lottieTimelineInfo(asset: String): LottieTimelineInfo? {
+  val composition =
+    runCatching { LottieComposition.parse(loadLottieAsset(asset)) }.getOrNull() ?: return null
+  val frameRate = composition.frameRate
+  val durationFrames = composition.durationFrames
+  val durationMillis =
+    if (frameRate > 0f && durationFrames > 0f) {
+      (durationFrames / frameRate * 1000f).roundToInt().coerceAtLeast(1)
+    } else {
+      DEFAULT_LOTTIE_DURATION_MS
+    }
+  return LottieTimelineInfo(
+    durationFrames = durationFrames,
+    frameRate = frameRate,
+    durationMillis = durationMillis,
+    widthPx = composition.width.toInt(),
+    heightPx = composition.height.toInt(),
+  )
+}
 
 /**
  * Reads a Lottie asset from the classpath as a UTF-8 string. Tries the thread context classloader

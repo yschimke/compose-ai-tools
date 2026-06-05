@@ -577,6 +577,13 @@ internal fun buildDesktopExtensions(
       dataProductRegistry = TestFailureDataProductRegistry(),
     )
   }
+  tryAdd("animation/lottie") {
+    Extension(
+      id = "animation/lottie",
+      displayName = "Lottie timeline",
+      dataProductRegistry = LottieTimelineDataProductRegistry(previewIndex = previewIndex),
+    )
+  }
   tryAdd("render/overlay-legend") {
     Extension(
       id = "render/overlay-legend",

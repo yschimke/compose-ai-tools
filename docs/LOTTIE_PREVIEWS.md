@@ -118,19 +118,25 @@ interactive editing + a VS Code presenter.
    the `RenderSpec` and add a `kind=LOTTIE` branch that inflates via `LottiePreview` — plus a
    `BundleIrReplayStore.FORMAT_LOTTIE` replay path for opening Lottie-IR bundles in the desktop
    daemon (today only the Android `RenderEngine` replays IR).
-1. **Interactive timeline (daemon).** Add a `lottie` field to `PreviewOverrides`
-   (`daemon/core/.../protocol/Messages.kt`) carrying `progress` (and later `marker`/`speed`), a
-   `LottieController` process-static holder + a `LottieOverrideExtension`
-   (`DataExtension<PreviewOverrides>`) mirroring `RemoteComposeController` /
-   `RemoteComposeOverrideExtension`, so `renderNow.overrides.lottie.progress` re-renders at a new
-   frame. `LottiePreview` reads the controller's progress when present, falling back to its param.
-2. **Data product + VS Code scrubber.** A `animation/lottie` `DataProductRegistry` surfacing the
-   composition's frame count / duration / markers, plus a `lottieBundlePresenter.ts` with a progress
-   slider that posts `interactive/setLottie` (mirrors `remoteComposeBundlePresenter.ts` +
-   `interactive/setRemoteCompose`). *Done as a first step:* the default animated capture (a looping
-   GIF spanning the intrinsic duration) is emitted by discovery and available live via
-   `renderMode="lottie-gif"` — the remaining work is the *interactive* scrubber (pick an arbitrary
-   frame), not a fixed-cadence sweep.
+1. **Interactive timeline (daemon).** ✅ *Done (progress scrub).* `PreviewOverrides` carries a
+   `lottie: LottieOverride(progress)` field (`daemon/core/.../protocol/Messages.kt`); the desktop
+   `RenderEngine` provides it as `LocalLottieProgress` around the rendered content, and
+   `LottiePreview` honours that override over its authored `progress` argument. So
+   `renderNow.overrides.lottie.progress = 0.42` re-renders the file-discovered Lottie (or any
+   `@Preview` calling `LottiePreview`) at frame 42% — no controller needed because, unlike Remote
+   Compose, the override is a single scalar read at draw time rather than a bag of named values
+   user code writes back. Follow-on: `marker` / `speed` fields, and a held-scene
+   `interactive/setLottie` that scrubs via snapshot recomposition instead of a fresh render.
+2. **Data product + VS Code scrubber.** ✅ *Data product done.* The desktop daemon advertises an
+   `animation/lottie` metadata product (`LottieTimelineDataProductRegistry`) that reads a
+   `kind=LOTTIE` preview's timeline straight from the asset — `totalFrames`, `frameRate`,
+   `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`), so a client can
+   fetch the slider range before the first frame lands. Remaining: the `lottieBundlePresenter.ts`
+   slider UI that fetches `animation/lottie` for its bounds and posts
+   `renderNow.overrides.lottie.progress` (the wire path from #1 already lands the frame), and
+   optionally markers + a held-scene `interactive/setLottie` that scrubs via snapshot recomposition
+   instead of a fresh render (mirrors `remoteComposeBundlePresenter.ts` +
+   `interactive/setRemoteCompose`).
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
 4. **Rive.** ✅ *Spike done — see [`RIVE_PREVIEWS_SPIKE.md`](RIVE_PREVIEWS_SPIKE.md).* Rive has no
