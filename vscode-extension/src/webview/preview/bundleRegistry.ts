@@ -8,6 +8,9 @@
 //
 // See `docs/design/EXTENSION_DATA_EXPOSURE.md` for the full design.
 
+import type { PreviewInfo } from "../shared/types";
+import { isWearPreview } from "./cardData";
+
 export type BundleId =
     | "a11y"
     | "theming"
@@ -32,6 +35,20 @@ export interface BundleKind {
     defaultOn: boolean;
 }
 
+/**
+ * The slice of a focused preview a bundle's `appliesTo` predicate reads to decide whether its chip
+ * is relevant. Kept to plain, serialisable signals (no DOM, no `PreviewInfo`) so the predicates stay
+ * pure and unit-testable.
+ */
+export interface BundlePreviewContext {
+    /** `PreviewInfo.params.kind` — e.g. `"LOTTIE"`, `"COMPOSE"`, `"TILE"`, or `null`. */
+    kind: string | null;
+    /** Whether the preview is a Wear preview (`isWearPreview` — wear device or square ≤260dp). */
+    isWear: boolean;
+    /** Data-product kinds attached to this preview (e.g. `"animation/lottie"`). */
+    dataProductKinds: ReadonlySet<string>;
+}
+
 export interface BundleDescriptor {
     id: BundleId;
     /** Chip label and tab title. */
@@ -40,6 +57,13 @@ export interface BundleDescriptor {
     icon: string;
     /** Kinds in this bundle, in display order. */
     kinds: readonly BundleKind[];
+    /**
+     * Optional per-preview relevance gate. When present and it returns `false` for the focused
+     * preview, the bundle's chip is hidden in focus mode — so e.g. the Lottie scrubber only shows
+     * for Lottie previews and the Watch/ambient bundle only for Wear previews. Absent ⇒ the bundle
+     * is universal (shown for every preview, subject to the early-features gate).
+     */
+    appliesTo?: (ctx: BundlePreviewContext) => boolean;
 }
 
 /**
@@ -173,6 +197,8 @@ export const BUNDLES: readonly BundleDescriptor[] = [
         label: "Watch",
         icon: "device-mobile",
         kinds: [{ kind: "compose/ambient", label: "Ambient", defaultOn: true }],
+        // Ambient / always-on-display only makes sense for Wear surfaces.
+        appliesTo: (ctx) => ctx.isWear,
     },
     {
         id: "history",
@@ -221,6 +247,12 @@ export const BUNDLES: readonly BundleDescriptor[] = [
                 defaultOn: true,
             },
         ],
+        // A timeline scrubber only applies to a Lottie preview — a file-discovered `kind=LOTTIE`
+        // entry, or any preview the daemon attached an `animation/lottie` product to (e.g. a
+        // `@Preview` calling `LottiePreview`).
+        appliesTo: (ctx) =>
+            ctx.kind === "LOTTIE" ||
+            ctx.dataProductKinds.has("animation/lottie"),
     },
 ];
 
@@ -254,6 +286,48 @@ export function defaultOnKindsFor(bundleId: BundleId): readonly string[] {
     const b = BY_ID.get(bundleId);
     if (!b) return [];
     return b.kinds.filter((k) => k.defaultOn).map((k) => k.kind);
+}
+
+/** Build the {@link BundlePreviewContext} a bundle's `appliesTo` predicate reads from a preview. */
+export function previewBundleContext(p: PreviewInfo): BundlePreviewContext {
+    return {
+        kind: p.params?.kind ?? null,
+        isWear: isWearPreview(p),
+        dataProductKinds: new Set((p.dataProducts ?? []).map((dp) => dp.kind)),
+    };
+}
+
+/**
+ * Whether [bundle] is relevant to [preview]. A bundle with no `appliesTo` predicate is universal.
+ * A gated bundle (Lottie, Watch) needs a focused preview it can act on — `preview == null` (nothing
+ * focused) therefore hides it.
+ */
+export function bundleAppliesToPreview(
+    bundle: BundleDescriptor,
+    preview: PreviewInfo | null,
+): boolean {
+    if (!bundle.appliesTo) return true;
+    if (!preview) return false;
+    return bundle.appliesTo(previewBundleContext(preview));
+}
+
+/**
+ * The bundle ids whose chip should be visible in focus mode for [preview]. Starts from the
+ * early-features base set — every bundle when on, or just the graduated `a11y` when off — and drops
+ * bundles that don't apply to the focused preview (so Lottie only shows for Lottie previews, Watch
+ * only for Wear). Mirrors the existing `availableBundles` filtering the chip bar already honours.
+ */
+export function availableBundleIdsForPreview(
+    preview: PreviewInfo | null,
+    opts: { earlyFeatures: boolean },
+): BundleId[] {
+    const base: BundleId[] = opts.earlyFeatures
+        ? BUNDLES.map((b) => b.id)
+        : ["a11y"];
+    return base.filter((id) => {
+        const bundle = BY_ID.get(id);
+        return bundle ? bundleAppliesToPreview(bundle, preview) : false;
+    });
 }
 
 // Internal correctness check — duplicate kinds across bundles would

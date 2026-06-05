@@ -63,7 +63,11 @@ import {
 } from "./cardBundleOverlay";
 import type { OverlayBox } from "./components/BoxOverlay";
 import { BundleController, type BundleSnapshot } from "./bundleController";
-import { getBundle, type BundleId } from "./bundleRegistry";
+import {
+    availableBundleIdsForPreview,
+    getBundle,
+    type BundleId,
+} from "./bundleRegistry";
 import { createBundleExpander } from "./bundleExpanderWiring";
 import { a11yTableColumns, computeA11yBundleData } from "./a11yBundlePresenter";
 import { buildA11yRowDetail } from "./a11yRowDetail";
@@ -2476,12 +2480,24 @@ export class PreviewApp extends LitElement {
                 }
                 lastActiveTab = s.activeTab;
             }
-            // Without early features only the graduated bundles (a11y for
-            // now) show their chip — the rest are still in-progress and
-            // shouldn't surface from the always-visible chip bar.
-            const availableBundles: BundleId[] = earlyFeatures()
-                ? s.bundles.map((b) => b.id)
-                : ["a11y"];
+            // Which chips show is gated two ways: the early-features flag
+            // (without it only the graduated `a11y` bundle surfaces) AND the
+            // focused preview's type — Lottie only shows for Lottie previews,
+            // Watch only for Wear previews, etc. (see `appliesTo` in the
+            // bundle registry). The chip bar is focus-only, so there is always
+            // a focused preview when it is visible; a null preview (pre-init /
+            // empty focus set) hides the preview-gated bundles.
+            const pstate = previewStore.getState();
+            const focusedPreview =
+                pstate.focusedPreviewId != null
+                    ? (pstate.allPreviews.find(
+                          (p) => p.id === pstate.focusedPreviewId,
+                      ) ?? null)
+                    : null;
+            const availableBundles: BundleId[] = availableBundleIdsForPreview(
+                focusedPreview,
+                { earlyFeatures: earlyFeatures() },
+            );
             // Grey out inactive chips while the preview daemon is still
             // spawning. A click during that window queues subscriptions
             // whose follow-up renderNow races the warm-up render and
@@ -2514,10 +2530,26 @@ export class PreviewApp extends LitElement {
                 availableBundles,
                 daemonReady,
             });
+            // An active bundle that no longer applies to the focused preview
+            // (e.g. Lottie was toggled on, then the user navigated to a
+            // non-Lottie preview) keeps its subscription but must not leave a
+            // stale tab behind — its chip is already hidden above. Filter the
+            // tab row to the available set so the tab disappears with the chip,
+            // and reappears (still active) when the user returns to a preview
+            // the bundle applies to. Non-destructive: the controller's active
+            // set is untouched.
+            const availableSet = new Set<BundleId>(availableBundles);
+            const visibleActiveBundles = s.activeBundles.filter((id) =>
+                availableSet.has(id),
+            );
+            const visibleActiveTab =
+                s.activeTab && availableSet.has(s.activeTab)
+                    ? s.activeTab
+                    : (visibleActiveBundles[0] ?? null);
             dataTabs.setState({
                 bundles: s.bundles,
-                activeBundles: s.activeBundles,
-                activeTab: s.activeTab,
+                activeBundles: visibleActiveBundles,
+                activeTab: visibleActiveTab,
             });
             if (s.activeBundles.includes("a11y")) {
                 refreshA11yBundle();
