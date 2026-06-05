@@ -67,6 +67,13 @@ rendered in dark and light themes. Updated on every push to `main`.
 | `dark` | ![remotecompose-state/dark](renders/remotecompose-state.dark.png) |
 | `light` | ![remotecompose-state/light](renders/remotecompose-state.light.png) |
 
+## spatial-semantics
+
+| Theme | Capture |
+| --- | --- |
+| `dark` | ![spatial-semantics/dark](renders/spatial-semantics.dark.png) |
+| `light` | ![spatial-semantics/light](renders/spatial-semantics.light.png) |
+
 ## spatial-view
 
 | Theme | Capture |

@@ -28,14 +28,14 @@
     "fonts-browser.dark.png": {
       "fixture": "fonts-browser",
       "theme": "dark",
-      "sha256": "1ccff6fe707496b12ffa102ba57a9dc1dec7ab2d54af0b98258a33699163618b",
-      "size": 140116
+      "sha256": "000d97cf1d62d1e453399cdd4a5d3d470dd9219b5b09b2fe8c344980d6815732",
+      "size": 140495
     },
     "fonts-browser.light.png": {
       "fixture": "fonts-browser",
       "theme": "light",
-      "sha256": "df5cc212b266692cb635e66a9163230a93a2fb72031f5fe5995391eb172f7d79",
-      "size": 132980
+      "sha256": "c08508bfd1e81d65032174ddde49c65cf39929b1f6986c7a238e45d4e3811084",
+      "size": 133472
     },
     "grid-default.dark.png": {
       "fixture": "grid-default",
@@ -109,17 +109,29 @@
       "sha256": "2ca14b392f71b46a6854cfe7a2c44fb2ae401eb08634d9c0ee70fcd6718eedd4",
       "size": 91645
     },
+    "spatial-semantics.dark.png": {
+      "fixture": "spatial-semantics",
+      "theme": "dark",
+      "sha256": "9d0e523ce921a67bac0fe896e4b71faa3e9c34228769ab0bd94336b28f220d29",
+      "size": 53158
+    },
+    "spatial-semantics.light.png": {
+      "fixture": "spatial-semantics",
+      "theme": "light",
+      "sha256": "455ffc2ae1452fac9e0877bd8b27a2d6939e5c9b5e44da528b205b7af98fe7a0",
+      "size": 53162
+    },
     "spatial-view.dark.png": {
       "fixture": "spatial-view",
       "theme": "dark",
-      "sha256": "12f3e4a7591c11b659f9f1e417b19713b177e6cf3e5fe3c28b99792b53d01454",
-      "size": 26260
+      "sha256": "371de136d4ff953ed83c2707f9ec30a61c294d09e35c4aae170bf4356bd9113a",
+      "size": 38645
     },
     "spatial-view.light.png": {
       "fixture": "spatial-view",
       "theme": "light",
-      "sha256": "4b8d13f74893d7d2a146da729586c44174f9c75c4644bd819bf58769e86422b1",
-      "size": 26252
+      "sha256": "6cfeac9a47949b2da8cb023aa69d2d015d653b6c9be6292f5236a382523f6e87",
+      "size": 38647
     },
     "text-strings.dark.png": {
       "fixture": "text-strings",
