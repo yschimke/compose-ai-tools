@@ -4,14 +4,20 @@
 decisions (see [Decisions](#decisions)) for evolving `renderers/xr-composite` from a one-shot CLI
 into a long-lived, extensible render service.
 
-> **Implemented so far:** `xr-composite --serve` is a working long-lived native process speaking the
-> daemon's JSON-RPC + `Content-Length` framing (`initialize`, `render`, `xr/updatePanels`,
-> `streamFrame` base64 frames), holding one Filament engine across frames — i.e. "what is genuinely
-> new" items #1 and #3 (native JSON-RPC peer + a held, mutable session) in prototype form, plus
-> migration steps #2–#3 on the native side. **Still to do:** the daemon fronting it (a
-> `RenderSession`-style backend that spawns/proxies the child — item #2), native multi-session
-> concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds. See
-> [renderers/xr-composite/README.md → Server mode](../../../renderers/xr-composite/README.md#server-mode---serve).
+> **Implemented so far:**
+> - `xr-composite --serve` — a working long-lived native process speaking the daemon's JSON-RPC +
+>   `Content-Length` framing (`initialize`, `render`, `xr/updatePanels`, `streamFrame` base64
+>   frames), holding one Filament engine across frames (items #1 and #3 — native JSON-RPC peer + a
+>   held, mutable session — in prototype form). See
+>   [renderers/xr-composite/README.md → Server mode](../../../renderers/xr-composite/README.md#server-mode---serve).
+> - `:renderer-xr-client` — the JVM side: `XrServerClient` (the framed JSON-RPC transport),
+>   `XrCompositeBinary` (binary/materials resolution), and `XrRenderServer` (resolve → spawn →
+>   `initialize` → render/updatePanels → close), the single entry point the daemon backend will hold.
+>   A real-binary integration test drives the loop end-to-end in the XR CI job.
+>
+> **Still to do:** the daemon fronting `XrRenderServer` (a `RenderSession`-style backend + JSON-RPC
+> surface + frame proxying through `FrameStreamRegistry` — item #2), native multi-session
+> concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
 
 ## Motivation
 

@@ -210,6 +210,19 @@ jobs:
             python3 renderers/xr-composite/test/serve_smoke.py \
               "$PWD/dist/xr-composite" "$PWD/dist/materials" \
               "$PWD/vscode-extension/preview-harness/fixtures/spatial-scene"
+      # Exercise the JVM client (:renderer-xr-client) against the real native server: unit tests
+      # plus the XR_COMPOSITE_BIN-gated XrRenderServerIntegrationTest, which spawns the dist binary
+      # and asserts a per-frame panel update changes the image. Mirrors the python smoke from Kotlin.
+      - name: Integration-test the JVM client against the native server
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          XR_COMPOSITE_BIN: ${{ github.workspace }}/dist/xr-composite
+          XR_COMPOSITE_MATERIALS: ${{ github.workspace }}/dist/materials
+        run: |
+          xvfb-run -a -s "-screen 0 2000x1400x24" \
+            ./gradlew --no-daemon :renderer-xr-client:test --stacktrace
       - name: Upload XR composite
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
