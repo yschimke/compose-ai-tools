@@ -1190,6 +1190,16 @@ export type WebviewToExtension =
           change: RemoteComposeChangeDetail;
       }
     /**
+     * Scrub dispatched from the panel's Lottie timeline slider (`animation/lottie` bundle). Carries
+     * the new timeline position in `0..1`; the host turns it into a fresh
+     * `renderNow.overrides.lottie.progress` so the held Lottie preview re-renders at that frame.
+     */
+    | {
+          command: "setLottieProgress";
+          previewId: string;
+          progress: number;
+      }
+    /**
      * Edit dispatched from the panel's permissions tab body (Inspection bundle,
      * `compose/permissions` chip). The presenter's per-row Grant / Deny / Clear
      * buttons, the "Add permission" input, and the "Clear overrides" action all

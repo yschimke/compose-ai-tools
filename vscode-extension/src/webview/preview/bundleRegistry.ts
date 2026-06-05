@@ -19,7 +19,8 @@ export type BundleId =
     | "watch"
     | "history"
     | "errors"
-    | "remotecompose";
+    | "remotecompose"
+    | "lottie";
 
 export interface BundleKind {
     /** Wire `kind` advertised by the daemon catalogue. */
@@ -205,6 +206,18 @@ export const BUNDLES: readonly BundleDescriptor[] = [
             {
                 kind: "compose/remotecompose",
                 label: "State + actions",
+                defaultOn: true,
+            },
+        ],
+    },
+    {
+        id: "lottie",
+        label: "Lottie",
+        icon: "play",
+        kinds: [
+            {
+                kind: "animation/lottie",
+                label: "Timeline",
                 defaultOn: true,
             },
         ],

@@ -127,16 +127,15 @@ interactive editing + a VS Code presenter.
    Compose, the override is a single scalar read at draw time rather than a bag of named values
    user code writes back. Follow-on: `marker` / `speed` fields, and a held-scene
    `interactive/setLottie` that scrubs via snapshot recomposition instead of a fresh render.
-2. **Data product + VS Code scrubber.** ✅ *Data product done.* The desktop daemon advertises an
+2. **Data product + VS Code scrubber.** ✅ *Done.* The desktop daemon advertises an
    `animation/lottie` metadata product (`LottieTimelineDataProductRegistry`) that reads a
    `kind=LOTTIE` preview's timeline straight from the asset — `totalFrames`, `frameRate`,
-   `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`), so a client can
-   fetch the slider range before the first frame lands. Remaining: the `lottieBundlePresenter.ts`
-   slider UI that fetches `animation/lottie` for its bounds and posts
-   `renderNow.overrides.lottie.progress` (the wire path from #1 already lands the frame), and
-   optionally markers + a held-scene `interactive/setLottie` that scrubs via snapshot recomposition
-   instead of a fresh render (mirrors `remoteComposeBundlePresenter.ts` +
-   `interactive/setRemoteCompose`).
+   `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`). The VS Code
+   panel ships a **Lottie** bundle (`lottieScrubberPresenter.ts`): a timeline slider that reads that
+   metadata for its range/labels and, on drag, posts `setLottieProgress` → the host re-renders via
+   `renderNow.overrides.lottie.progress` (the wire path from #1). Follow-on polish: markers, and a
+   held-scene `interactive/setLottie` that scrubs via snapshot recomposition instead of a fresh
+   render (mirrors `interactive/setRemoteCompose`).
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
 4. **Rive.** Tracked separately — Rive's Kotlin runtime is Android/JNI-only with **no** JVM/Desktop

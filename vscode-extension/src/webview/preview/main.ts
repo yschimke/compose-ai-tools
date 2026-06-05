@@ -112,6 +112,13 @@ import {
     type RemoteComposePayload,
 } from "./remoteComposeBundlePresenter";
 import {
+    buildLottieScrubberBody,
+    computeLottieScrubberData,
+    type LottieScrubberBody,
+    type LottieScrubberDetail,
+    type LottieTimelineMetadata,
+} from "./lottieScrubberPresenter";
+import {
     computeResourcesBundleData,
     resourcesTableColumns,
     type ResourceUsedRow,
@@ -1950,6 +1957,49 @@ export class PreviewApp extends LitElement {
             dataTabs.setTabBody("remotecompose", body.wrapper);
         };
 
+        // ---- Lottie timeline scrubber (animation/lottie) -------------------
+        // A single timeline slider rather than a table: dragging it bubbles a
+        // `lottie-progress-changed` CustomEvent that we forward as a
+        // `setLottieProgress` post-message; the host turns that into a fresh
+        // `renderNow.overrides.lottie.progress` so the held `kind=LOTTIE`
+        // preview re-renders at the scrubbed frame. The slider position is the
+        // panel's own UI state (the `animation/lottie` data product only
+        // carries the timeline shape), tracked per preview so it survives focus
+        // changes and metadata refreshes.
+        let lottieScrubberBody: LottieScrubberBody | null = null;
+        const lottieProgressByPreview = new Map<string, number>();
+        const lottieScrubberBodyBuilt = (): LottieScrubberBody => {
+            if (lottieScrubberBody) return lottieScrubberBody;
+            const b = buildLottieScrubberBody();
+            b.wrapper.addEventListener("lottie-progress-changed", (evt) => {
+                const det = (evt as CustomEvent<LottieScrubberDetail>).detail;
+                const target = currentBundleTarget();
+                if (!target) return;
+                lottieProgressByPreview.set(target, det.progress);
+                vscode.postMessage({
+                    command: "setLottieProgress",
+                    previewId: target,
+                    progress: det.progress,
+                });
+            });
+            lottieScrubberBody = b;
+            return b;
+        };
+        const refreshLottieBundle = (): void => {
+            const target = currentBundleTarget();
+            if (!target) return;
+            const byKind = dataProductsByPreview.get(target);
+            const metadata =
+                (byKind?.get("animation/lottie") as
+                    | LottieTimelineMetadata
+                    | undefined) ?? null;
+            const progress = lottieProgressByPreview.get(target) ?? 0;
+            const data = computeLottieScrubberData(metadata, progress);
+            const body = lottieScrubberBodyBuilt();
+            body.update(data);
+            dataTabs.setTabBody("lottie", body.wrapper);
+        };
+
         // Per-card ambient badge state — keyed on previewId so we can
         // clear or update it across focus changes without DOM churn.
         const ambientBadges = new Map<string, HTMLElement>();
@@ -2531,6 +2581,9 @@ export class PreviewApp extends LitElement {
             }
             if (s.activeBundles.includes("remotecompose")) {
                 refreshRemoteComposeBundle();
+            }
+            if (s.activeBundles.includes("lottie")) {
+                refreshLottieBundle();
             }
             // Drop legend slices for bundles that are no longer
             // active so re-pressing the chip starts from a clean
@@ -3366,6 +3419,13 @@ export class PreviewApp extends LitElement {
                     )
                 ) {
                     refreshRemoteComposeBundle();
+                }
+                if (
+                    matchesTarget &&
+                    activeBundles.includes("lottie") &&
+                    dataProducts.some((dp) => dp.kind === "animation/lottie")
+                ) {
+                    refreshLottieBundle();
                 }
                 // Re-emit the bundle-state snapshot if any refresh ran
                 // — same rationale as the `applyA11yUpdate` post above.
