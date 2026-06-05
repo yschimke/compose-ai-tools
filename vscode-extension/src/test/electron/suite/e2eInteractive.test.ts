@@ -32,23 +32,29 @@ import { RealGradleApi } from "../realGradleApi";
  *      must belong to the new module — no leftover stale previews from
  *      the cancelled refresh.
  *
+ *   E. Rename an existing `@Preview` (`RedBoxPreview` → `RedBoxPreviewRenamed`),
+ *      refresh. Asserts the old function-name id is gone from `setPreviews`,
+ *      the new one is present, the new render PNG is on disk and the old one
+ *      isn't, and a follow-up refresh + module round-trip never resurrects the
+ *      stale id (proving `previewModuleIndex` was pruned, not just hidden).
+ *
+ *   F. Drop the editor scope to nothing (the panel's sticky `.kt` is no longer
+ *      open) and confirm the panel resolves to its empty state — `clearAll`
+ *      plus the "Open a Kotlin source file…" message — rather than holding the
+ *      previous module's stale cards. Regression for #1566 ("after closing the
+ *      last editor, left seeing stale previews"). Driven through the
+ *      `triggerEditorScopeChange(null)` test hook, which runs the same
+ *      focus-lost teardown the production focus handlers do.
+ *
+ *   G. Compile-error path: introduce a deliberate Kotlin syntax error in
+ *      `Previews.kt`, refresh, expect the compile-error banner to populate
+ *      (`setCompileErrors`) AND the previous cards to survive (no `clearAll` —
+ *      they stay visible, just marked loading/stale). Then fix the error,
+ *      refresh, expect `clearCompileErrors` + a clean `setPreviews` back at the
+ *      pre-edit baseline with no stuck error overlay.
+ *
  * Follow-ups worth adding (need either small test-API extensions or extra
  * sample state):
- *
- *   E. Rename an existing `@Preview` (e.g. `RedBoxPreview` → `RedBoxPreviewRenamed`),
- *      refresh. Assert the old id is gone from `setPreviews` AND no stale
- *      `RedBoxPreview_Red_Box.png` survives on disk (the gradle-level repro
- *      confirmed the renderer cleans these up, but the panel layer can
- *      still surface a stale id if `previewModuleIndex` isn't pruned).
- *
- *   F. Close the file the panel was scoped to (editor focus → undefined)
- *      and confirm the panel resolves to empty state, not stale bytes.
- *      Regression for #1566 ("after closing last editor, left seeing stale previews").
- *
- *   G. Compile-error path: introduce a deliberate Kotlin syntax error,
- *      refresh, expect the errors panel to populate AND the previous
- *      `setPreviews` to remain visually marked as stale rather than wiped.
- *      Then fix the error, refresh, expect clean state.
  *
  *   H. Override merge (regression for closed #1441 (a)): seed a remote-compose
  *      override with two named values, edit one through the live panel,
@@ -656,5 +662,423 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
         );
 
         dumpTranscript(repoRoot, "scenario-D-switch-mid-flight", observations);
+    });
+
+    it("E. rename a @Preview function; old id + PNG drop, new id surfaces, index pruned", async function () {
+        api.resetMessages();
+        const observations: Record<string, unknown> = {};
+        const cmpNeedle = path.join("samples", "cmp");
+        // The id format is `<class>.<functionName>_<previewName>` (e.g.
+        // `com.example.samplecmp.PreviewsKt.RedBoxPreview_Red Box`). Anchoring
+        // on `.RedBoxPreview_` (function name + the `_` name separator) keeps
+        // the old matcher from also matching the renamed id, since the renamed
+        // id reads `…RedBoxPreviewRenamed_Red Box` — there's no `_` directly
+        // after `RedBoxPreview` there.
+        const OLD = /\.RedBoxPreview_/;
+        const NEW = /\.RedBoxPreviewRenamed_/;
+
+        // --- Baseline: the pre-rename manifest must contain RedBoxPreview ---
+        await api.triggerRefresh(cmpFile, true, "full");
+        const baseline = await waitFor(
+            "cmp baseline setPreviews (with RedBoxPreview)",
+            this.timeout(),
+            500,
+            () => {
+                const msgs = api.getPostedMessages();
+                return latestSetPreviewsMatching(msgs, (m) => {
+                    if (!m.moduleDir.includes(cmpNeedle)) return false;
+                    return m.previews.some((p) => OLD.test(p.id));
+                });
+            },
+        );
+        const baselineIds = baseline.previews.map((p) => p.id).sort();
+        observations.baselineIds = baselineIds;
+
+        // Stash the old preview's on-disk render path so we can assert it's
+        // gone after the rename. Resolve it the same way the panel does.
+        const oldPreview = baseline.previews.find((p) => OLD.test(p.id));
+        assert.ok(oldPreview, "baseline missing RedBoxPreview");
+        const oldRenderOutputs = (oldPreview.captures ?? []).map((c) =>
+            fullRenderPath(repoRoot, baseline.moduleDir, c.renderOutput),
+        );
+        observations.oldRenderOutputs = oldRenderOutputs;
+        for (const p of oldRenderOutputs) {
+            assert.ok(
+                fs.existsSync(p),
+                `baseline RedBoxPreview render PNG missing on disk at ${p}`,
+            );
+        }
+
+        const original = fs.readFileSync(cmpFile, "utf-8");
+        assert.ok(
+            original.includes("fun RedBoxPreview()"),
+            "fixture drift: expected `fun RedBoxPreview()` in Previews.kt",
+        );
+        const renamed = original.replace(
+            "fun RedBoxPreview()",
+            "fun RedBoxPreviewRenamed()",
+        );
+        fs.writeFileSync(cmpFile, renamed, "utf-8");
+
+        let renamePhaseError: Error | null = null;
+        try {
+            api.resetMessages();
+            await api.triggerRefresh(cmpFile, true, "full");
+            const afterRename = await waitFor(
+                "setPreviews after rename (new id present, old id gone)",
+                this.timeout(),
+                500,
+                () => {
+                    const msgs = api.getPostedMessages();
+                    return latestSetPreviewsMatching(msgs, (m) => {
+                        if (m.previews.length === 0) return false;
+                        if (!m.moduleDir.includes(cmpNeedle)) return false;
+                        return (
+                            m.previews.some((p) => NEW.test(p.id)) &&
+                            !m.previews.some((p) => OLD.test(p.id))
+                        );
+                    });
+                },
+            );
+            observations.afterRename = {
+                idsSorted: afterRename.previews.map((p) => p.id).sort(),
+            };
+
+            // Invariant E1: the renamed id is present, the old id is gone.
+            const renamedPreview = afterRename.previews.find((p) =>
+                NEW.test(p.id),
+            );
+            assert.ok(
+                renamedPreview,
+                "renamed preview id never appeared in setPreviews",
+            );
+            assert.deepStrictEqual(
+                afterRename.previews
+                    .filter((p) => OLD.test(p.id))
+                    .map((p) => p.id),
+                [],
+                "stale RedBoxPreview id survived the rename in setPreviews",
+            );
+
+            // Invariant E2: the new render PNG is on disk.
+            const newRenderOutputs = (renamedPreview.captures ?? []).map((c) =>
+                fullRenderPath(repoRoot, afterRename.moduleDir, c.renderOutput),
+            );
+            observations.newRenderOutputs = newRenderOutputs;
+            assert.ok(
+                newRenderOutputs.length > 0,
+                "renamed preview arrived with 0 captures",
+            );
+            for (const p of newRenderOutputs) {
+                assert.ok(
+                    fs.existsSync(p),
+                    `renamed preview render PNG missing on disk at ${p}`,
+                );
+            }
+
+            // Invariant E3: the stale PNG no longer exists on disk. The
+            // gradle-level repro proved the renderer sanitises these; this
+            // pins the behaviour at the panel-driven layer.
+            const survivingOld = oldRenderOutputs.filter((p) =>
+                fs.existsSync(p),
+            );
+            observations.survivingOldRenderOutputs = survivingOld;
+            assert.deepStrictEqual(
+                survivingOld,
+                [],
+                `stale RedBoxPreview PNG(s) survived on disk after rename: ${survivingOld.join(", ")}`,
+            );
+
+            // Invariant E4: the pruned id stays pruned. A second refresh plus a
+            // module round-trip must not resurrect RedBoxPreview from a stale
+            // `previewModuleIndex` entry.
+            api.resetMessages();
+            await api.triggerRefresh(cmpFile, true, "full");
+            const reRefreshed = await waitFor(
+                "second post-rename cmp setPreviews",
+                this.timeout(),
+                500,
+                () => {
+                    const msgs = api.getPostedMessages();
+                    return latestSetPreviewsMatching(
+                        msgs,
+                        nonEmptyForModule(cmpNeedle),
+                    );
+                },
+            );
+            assert.deepStrictEqual(
+                reRefreshed.previews
+                    .filter((p) => OLD.test(p.id))
+                    .map((p) => p.id),
+                [],
+                "RedBoxPreview resurfaced on a second refresh — previewModuleIndex not pruned",
+            );
+        } catch (err) {
+            renamePhaseError = err as Error;
+        } finally {
+            fs.writeFileSync(cmpFile, original, "utf-8");
+        }
+        if (renamePhaseError) throw renamePhaseError;
+
+        // --- Revert: the original RedBoxPreview must come back, renamed gone ---
+        api.resetMessages();
+        await api.triggerRefresh(cmpFile, true, "full");
+        const afterRevert = await waitFor(
+            "setPreviews after reverting the rename",
+            this.timeout(),
+            500,
+            () => {
+                const msgs = api.getPostedMessages();
+                return latestSetPreviewsMatching(msgs, (m) => {
+                    if (m.previews.length === 0) return false;
+                    if (!m.moduleDir.includes(cmpNeedle)) return false;
+                    return (
+                        m.previews.some((p) => OLD.test(p.id)) &&
+                        !m.previews.some((p) => NEW.test(p.id))
+                    );
+                });
+            },
+        );
+        observations.afterRevertIds = afterRevert.previews
+            .map((p) => p.id)
+            .sort();
+        assert.deepStrictEqual(
+            afterRevert.previews.map((p) => p.id).sort(),
+            baselineIds,
+            "id set after reverting the rename diverged from the pre-edit baseline",
+        );
+
+        dumpTranscript(repoRoot, "scenario-E-rename-preview", observations);
+    });
+
+    it("F. dropping the editor scope resolves to empty state, not stale cards (#1566)", async function () {
+        api.resetMessages();
+        const observations: Record<string, unknown> = {};
+        const cmpNeedle = path.join("samples", "cmp");
+
+        // Unlike the other scenarios, F drives `triggerEditorScopeChange(null)`,
+        // which routes through `refresh(false)` with NO caller file — so
+        // `resolveScopeFile()` falls back to `vscode.window.visibleTextEditors`.
+        // Earlier e2e suites (`e2eCachedPreloadOnSwitch`, which sorts before
+        // this file under the `e2e*.test.js` loader) open preview-source `.kt`
+        // editors via `showTextDocument` and never close them. A leftover
+        // visible editor would make `refresh(false)` re-scope to that file and
+        // render it instead of resolving to empty, so F would pass/fail on
+        // prior-suite state rather than on #1566. Close every editor and wait
+        // for the visible set to actually drain before we start.
+        await vscode.commands.executeCommand(
+            "workbench.action.closeAllEditors",
+        );
+        await waitFor(
+            "all text editors closed before dropping scope",
+            30_000,
+            100,
+            () =>
+                vscode.window.visibleTextEditors.length === 0
+                    ? true
+                    : undefined,
+        );
+
+        // Warm cmp so there are real cards on screen — the buggy behaviour is
+        // "stale cards stay after the last editor closes", so we have to start
+        // from a loaded panel for the assertion to mean anything. The caller
+        // path (`triggerRefresh(cmpFile, …)`) scopes by argument, not by a
+        // visible editor, so the warm stays deterministic without reopening one.
+        await api.triggerRefresh(cmpFile, true, "full");
+        const loaded = await waitFor(
+            "cmp setPreviews before dropping scope",
+            this.timeout(),
+            500,
+            () => {
+                const msgs = api.getPostedMessages();
+                return latestSetPreviewsMatching(
+                    msgs,
+                    nonEmptyForModule(cmpNeedle),
+                );
+            },
+        );
+        observations.loadedIds = loaded.previews.map((p) => p.id).sort();
+        assert.ok(
+            loaded.previews.length > 0,
+            "precondition: panel must have cards loaded before dropping scope",
+        );
+
+        // Drop the scope to nothing — the production "last preview editor
+        // closed / focus lost with no visible .kt" teardown.
+        api.resetMessages();
+        await api.triggerEditorScopeChange(null);
+
+        const EMPTY_TEXT = "Open a Kotlin source file with @Preview functions.";
+        await waitFor(
+            "empty-state showMessage after dropping scope",
+            this.timeout(),
+            200,
+            () => {
+                const msgs = api.getPostedMessages() as PostedMessage[];
+                return msgs.find(
+                    (m) => m.command === "showMessage" && m.text === EMPTY_TEXT,
+                );
+            },
+        );
+
+        const post = api.getPostedMessages() as PostedMessage[];
+        observations.postScopeChangeCommands = post.map((m) => m.command);
+
+        // Invariant F1: the panel was explicitly cleared.
+        assert.ok(
+            post.some((m) => m.command === "clearAll"),
+            "expected a clearAll when the scope dropped to nothing",
+        );
+
+        // Invariant F2: no stale cards were re-pushed — the panel must NOT
+        // receive a non-empty setPreviews after the scope went away. This is
+        // the exact #1566 failure: the panel kept showing the previous
+        // module's previews after its backing editor closed.
+        const stalePushes = post
+            .filter((m) => m.command === "setPreviews")
+            .filter((m) => {
+                const previews = m.previews as PreviewRecord[] | undefined;
+                return Array.isArray(previews) && previews.length > 0;
+            });
+        assert.deepStrictEqual(
+            stalePushes.map((m) => (m.previews as PreviewRecord[]).length),
+            [],
+            "stale non-empty setPreviews pushed after the editor scope was dropped",
+        );
+
+        dumpTranscript(
+            repoRoot,
+            "scenario-F-empty-on-scope-drop",
+            observations,
+        );
+
+        // Restore a real scope so a later test in the suite doesn't inherit
+        // the empty state.
+        await api.triggerRefresh(cmpFile, true, "full");
+    });
+
+    it("G. compile error surfaces a banner without wiping cards; fix clears it", async function () {
+        api.resetMessages();
+        const observations: Record<string, unknown> = {};
+        const cmpNeedle = path.join("samples", "cmp");
+
+        // --- Baseline: a clean render so there are cards to keep ---
+        await api.triggerRefresh(cmpFile, true, "full");
+        const baseline = await waitFor(
+            "cmp baseline setPreviews before injecting the error",
+            this.timeout(),
+            500,
+            () => {
+                const msgs = api.getPostedMessages();
+                return latestSetPreviewsMatching(
+                    msgs,
+                    nonEmptyForModule(cmpNeedle),
+                );
+            },
+        );
+        const baselineIds = baseline.previews.map((p) => p.id).sort();
+        observations.baselineIds = baselineIds;
+
+        const original = fs.readFileSync(cmpFile, "utf-8");
+        // Append a deliberately broken declaration. `val broken: Int =` with
+        // no right-hand side is a syntax error kotlinc reports as an
+        // `e: <file>:<line>:<col> Expecting an expression` line — exactly the
+        // shape KotlinCompileErrorDetector parses into the banner. Picking a
+        // *syntax* error (vs. an unresolved reference) keeps the failure from
+        // depending on classpath resolution order.
+        const broken =
+            `${original}\n\n@androidx.compose.runtime.Composable\n` +
+            `fun CompileErrorProbe() {\n    val broken: Int =\n}\n`;
+        fs.writeFileSync(cmpFile, broken, "utf-8");
+
+        let errorPhaseError: Error | null = null;
+        try {
+            api.resetMessages();
+            await api.triggerRefresh(cmpFile, true, "full");
+            const errBanner = await waitFor(
+                "setCompileErrors after introducing the syntax error",
+                this.timeout(),
+                500,
+                () => {
+                    const msgs = api.getPostedMessages() as PostedMessage[];
+                    return msgs.find((m) => {
+                        if (m.command !== "setCompileErrors") return false;
+                        const errors = m.errors as unknown[] | undefined;
+                        return Array.isArray(errors) && errors.length > 0;
+                    });
+                },
+            );
+            const errors = errBanner.errors as Array<Record<string, unknown>>;
+            observations.compileErrors = errors.map((e) => ({
+                file: e.file,
+                line: e.line,
+                message: e.message,
+            }));
+
+            // Invariant G1: the banner carries at least one structured error.
+            assert.ok(
+                errors.length > 0,
+                "setCompileErrors arrived with an empty errors array",
+            );
+
+            // Invariant G2: the previous cards were NOT wiped — the compile
+            // failure must not post `clearAll` for a same-module refresh.
+            // The cards stay visible (just marked loading/stale) so the user
+            // keeps a reference while fixing the error.
+            const errPhase = api.getPostedMessages() as PostedMessage[];
+            observations.errorPhaseCommands = errPhase.map((m) => m.command);
+            assert.ok(
+                !errPhase.some((m) => m.command === "clearAll"),
+                "compile error wiped the panel (clearAll) instead of keeping stale cards",
+            );
+        } catch (err) {
+            errorPhaseError = err as Error;
+        } finally {
+            fs.writeFileSync(cmpFile, original, "utf-8");
+        }
+        if (errorPhaseError) throw errorPhaseError;
+
+        // --- Fix: the banner clears and a clean manifest returns ---
+        api.resetMessages();
+        await api.triggerRefresh(cmpFile, true, "full");
+        const recovered = await waitFor(
+            "clean cmp setPreviews after fixing the error",
+            this.timeout(),
+            500,
+            () => {
+                const msgs = api.getPostedMessages();
+                return latestSetPreviewsMatching(
+                    msgs,
+                    nonEmptyForModule(cmpNeedle),
+                );
+            },
+        );
+        const recoverPhase = api.getPostedMessages() as PostedMessage[];
+        observations.recoverPhaseCommands = recoverPhase.map((m) => m.command);
+        observations.recoveredIds = recovered.previews.map((p) => p.id).sort();
+
+        // Invariant G3: the error banner was explicitly cleared on the way to
+        // the clean render — no stuck overlay.
+        assert.ok(
+            recoverPhase.some((m) => m.command === "clearCompileErrors"),
+            "expected clearCompileErrors on the recovery refresh",
+        );
+        // Invariant G4: no compile-error banner lingers after the clean render.
+        const lastCompileMsgIdx = recoverPhase
+            .map((m) => m.command)
+            .lastIndexOf("setCompileErrors");
+        assert.strictEqual(
+            lastCompileMsgIdx,
+            -1,
+            "a setCompileErrors banner re-appeared on the recovery refresh",
+        );
+        // Invariant G5: the recovered id set matches the pre-error baseline.
+        assert.deepStrictEqual(
+            recovered.previews.map((p) => p.id).sort(),
+            baselineIds,
+            "id set after fixing the error diverged from the pre-error baseline",
+        );
+
+        dumpTranscript(repoRoot, "scenario-G-compile-error", observations);
     });
 });
