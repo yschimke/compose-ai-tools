@@ -62,7 +62,7 @@ their directory added to the webview's `localResourceRoots`.
 ## Fixtures and dev preview
 
 - **Contract fixture:** [`preview-harness/fixtures/spatial-scene/`](../../../preview-harness/fixtures/spatial-scene) — the recovered `SpatialColumn` (owned by the contract).
-- **Rich fixture:** [`spatial-fixtures/spatial-rich/`](../../../spatial-fixtures) — angled panels + orbiters + environment, for exercising pose/orbiter handling. Regenerate with `node spatial-fixtures/spatial-rich.gen.mjs`.
+- **Rich fixture:** [`spatial-fixtures/spatial-rich/`](../../../spatial-fixtures) — angled panels + orbiters + environment (a small Compose "music app"), for exercising pose/orbiter handling and the wireframe overlay. Panels are rendered from real Compose + their semantics harvested; regenerate per [`spatial-fixtures/README.md`](../../../spatial-fixtures/README.md).
 - **In the panel:** run the `Compose Preview: Open 3D Spatial Fixture (dev)` command.
 - **Standalone:** `node spatial-fixtures/snapshot.mjs --fixture spatial-rich` (PNG → `spatial-fixtures/out/`), or serve the extension root and open `/spatial-fixtures/`.
 - **Panel visual record:** the `spatial-view` preview-harness fixture toggles to 3D; `npm run harness:snapshot -- --fixture spatial-view`.

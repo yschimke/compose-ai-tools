@@ -196,6 +196,20 @@ jobs:
           grep -q 'composite.png' "$base/previews.json" \
             || { echo "::error::previews.json has no composite capture"; exit 1; }
           echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
+      # Exercise the long-lived server path (--serve): initialize -> render -> xr/updatePanels over
+      # JSON-RPC stdio, asserting streamFrame notifications arrive and a per-frame panel update
+      # actually changes the rendered image. Reuses the dist/ binary + materials and the committed
+      # spatial-scene fixture.
+      - name: Smoke-test the render server (--serve)
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+        run: |
+          xvfb-run -a -s "-screen 0 2000x1400x24" \
+            python3 renderers/xr-composite/test/serve_smoke.py \
+              "$PWD/dist/xr-composite" "$PWD/dist/materials" \
+              "$PWD/vscode-extension/preview-harness/fixtures/spatial-scene"
       - name: Upload XR composite
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -203,6 +217,21 @@ jobs:
           name: xr-spatial-composite
           path: samples/xr-spatial/build/compose-previews/renders/**/composite.png
           if-no-files-found: warn
+
+  spatial-scene-codegen:
+    name: SpatialScene codegen up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+      # The Kotlin / TypeScript / C++ SpatialScene mirrors are generated from
+      # schema/spatial-scene.schema.json. Fail if a committed mirror drifts from the schema.
+      - name: Check generated mirrors match the schema
+        run: node scripts/codegen/gen-spatial-scene.mjs --check
 
   bundle-render:
     name: Bundle Render E2E
@@ -339,6 +368,8 @@ jobs:
         run: python3 .github/actions/lib/test_a11y_report.py -v
       - name: Run notification-previews tests
         run: python3 .github/actions/lib/test_notification_previews.py -v
+      - name: Run xr-gallery tests
+        run: python3 .github/actions/lib/test_xr_gallery.py -v
 
   # VS Code extension tests — both the existing in-process Mocha suite and
   # the @vscode/test-electron integration tests. The latter download a

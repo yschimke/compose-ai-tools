@@ -132,19 +132,31 @@ interactive editing + a VS Code presenter.
    the `RenderSpec` and add a `kind=LOTTIE` branch that inflates via `LottiePreview` — plus a
    `BundleIrReplayStore.FORMAT_LOTTIE` replay path for opening Lottie-IR bundles in the desktop
    daemon (today only the Android `RenderEngine` replays IR).
-1. **Interactive timeline (daemon).** Add a `lottie` field to `PreviewOverrides`
-   (`daemon/core/.../protocol/Messages.kt`) carrying `progress` (and later `marker`/`speed`), a
-   `LottieController` process-static holder + a `LottieOverrideExtension`
-   (`DataExtension<PreviewOverrides>`) mirroring `RemoteComposeController` /
-   `RemoteComposeOverrideExtension`, so `renderNow.overrides.lottie.progress` re-renders at a new
-   frame. `LottiePreview` reads the controller's progress when present, falling back to its param.
-2. **Data product + VS Code scrubber.** A `animation/lottie` `DataProductRegistry` surfacing the
-   composition's frame count / duration / markers, plus a `lottieBundlePresenter.ts` with a progress
-   slider that posts `interactive/setLottie` (mirrors `remoteComposeBundlePresenter.ts` +
-   `interactive/setRemoteCompose`). *Done as a first step:* the default animated capture (a looping
-   GIF spanning the intrinsic duration) is emitted by discovery and available live via
-   `renderMode="lottie-gif"` — the remaining work is the *interactive* scrubber (pick an arbitrary
-   frame), not a fixed-cadence sweep.
+1. **Interactive timeline (daemon).** ✅ *Done (progress scrub).* `PreviewOverrides` carries a
+   `lottie: LottieOverride(progress)` field (`daemon/core/.../protocol/Messages.kt`); the desktop
+   `RenderEngine` provides it as `LocalLottieProgress` around the rendered content, and
+   `LottiePreview` honours that override over its authored `progress` argument. So
+   `renderNow.overrides.lottie.progress = 0.42` re-renders the file-discovered Lottie (or any
+   `@Preview` calling `LottiePreview`) at frame 42% — no controller needed because, unlike Remote
+   Compose, the override is a single scalar read at draw time rather than a bag of named values
+   user code writes back. Follow-on: `marker` / `speed` fields, and a held-scene
+   `interactive/setLottie` that scrubs via snapshot recomposition instead of a fresh render.
+2. **Data product + VS Code scrubber.** ✅ *Done.* The desktop daemon advertises an
+   `animation/lottie` metadata product (`LottieTimelineDataProductRegistry`) that reads a
+   `kind=LOTTIE` preview's timeline straight from the asset — `totalFrames`, `frameRate`,
+   `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`). The VS Code
+   panel ships a **Lottie** bundle (`lottieScrubberPresenter.ts`): a timeline slider that reads that
+   metadata for its range/labels and, on drag, posts `setLottieProgress`. The scrub is **sticky per
+   preview**: `LottieProgressController` remembers the last position, and `RenderEngine` re-applies it
+   on any later render that carries no override (a save / warmup re-render), so the frame — and the
+   slider — stay pinned instead of snapping back to frame 0. When a **live session** is up for the
+   preview the panel prefers `interactive/setLottie` (the Lottie analogue of
+   `interactive/setRemoteCompose`): the daemon mutates the held scene's snapshot progress state and
+   the file-Lottie content reads it in its draw-time `progress` lambda, so a drag repaints the held
+   scene in place — no fresh `ImageComposeScene` per tick. The daemon coalesces rapid ticks to the
+   latest. Otherwise it falls back to `renderNow.overrides.lottie.progress` (the wire path from #1).
+   Follow-on polish: markers, and auto-starting a held session for the duration of a scrub so the
+   efficient path applies even without LIVE mode.
 3. **Android modules.** ✅ *Done — via the desktop renderer, no Android player.* An Android module's
    `src/main/resources/**.{json,lottie}` assets are discovered (`androidLottieResourceDirs`) and
    rendered by the JVM/Compottie `composePreviewRenderLottie` task (the Robolectric pass skips

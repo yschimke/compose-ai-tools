@@ -608,6 +608,34 @@ data class PreviewOverrides(
    * [resizeOrder] is the protocol hook for that orchestration.
    */
   val launcherWidget: LauncherWidgetOverride? = null,
+  /**
+   * Optional Lottie timeline override. A non-null [LottieOverride.progress] re-renders a
+   * `kind=LOTTIE` preview (or any `@Preview` calling `LottiePreview(...)`) at that timeline
+   * position — the interactive scrubbing path the VS Code slider drives via
+   * `renderNow.overrides.lottie`. Desktop-only today; the Android backend ignores it.
+   */
+  val lottie: LottieOverride? = null,
+)
+
+/**
+ * Optional Lottie timeline override. Drives the interactive "scrub the animation" path for
+ * `kind=LOTTIE` previews (and any `@Preview` that calls `LottiePreview(...)`): a non-null
+ * [progress] is provided as `LocalLottieProgress` around the rendered content, so the captured
+ * frame lands at that timeline position instead of the composable's authored `progress` argument.
+ * Sending a fresh `lottie` on a subsequent `renderNow` re-renders the held preview at the new frame
+ * — the VS Code timeline slider posts exactly this.
+ *
+ * Desktop today (the Lottie runtime is Compottie-desktop); the Android backend has no Lottie render
+ * path yet and ignores the field.
+ */
+@Serializable
+data class LottieOverride(
+  /**
+   * Timeline position in `0f..1f` (`0f` = first frame, `1f` = last). Coerced into range by the
+   * runtime. Null leaves the composable's authored `progress` untouched — so an override carrying
+   * no progress is a no-op, mirroring the other "all fields null does nothing" override shapes.
+   */
+  val progress: Float? = null
 )
 
 /**
@@ -1518,6 +1546,27 @@ data class InteractiveSetRemoteComposeParams(
   val frameStreamId: String,
   /** The edit to apply. Discriminated by [RemoteComposeChange.field]. */
   val change: RemoteComposeChange,
+)
+
+/**
+ * `interactive/setLottie` notification — push one Lottie timeline scrub into a held session so the
+ * scene recomposes to the new frame via snapshot state, no fresh `renderNow`. The Lottie analogue
+ * of [InteractiveSetRemoteComposeParams]: the panel's timeline slider sends this on every drag tick
+ * when a live session is up, and the daemon coalesces ticks to the latest before painting.
+ *
+ * Distinct from `renderNow.overrides.lottie.progress` (which still works and re-renders from a
+ * fresh scene): this is the snappy live-session path that scrubs the held scene in place. Backends
+ * without a live Lottie binding silently drop the notification and the panel falls back to
+ * `renderNow`.
+ */
+@Serializable
+data class InteractiveSetLottieParams(
+  /**
+   * Routing key — same `frameStreamId` `interactive/start` allocated and `interactive/input` uses.
+   */
+  val frameStreamId: String,
+  /** Timeline position in `0f..1f` (the daemon clamps). */
+  val progress: Float,
 )
 
 /**

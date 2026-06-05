@@ -177,3 +177,40 @@ runtime still loads and `Subspace` still composes before any projector feature r
   renderer behaviour (there's no spatial scene to drive offline), so it would be sugar over a shared
   `device =` string. Left out until there's behaviour to attach; the sample uses a shared
   `SPATIAL_PANEL_DEVICE` const instead.
+
+## Enabling XR previews in a consumer (zero-config)
+
+There is **no `composePreview { }` switch to flip** to turn the XR render path on. The plugin
+auto-enables it for any module that already declares an `androidx.xr.compose` dependency — the same
+declared-dependency signal it uses to auto-inject the Wear Tiles renderer
+([`AndroidPreviewSupport.moduleDeclaresXrCompose`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/AndroidPreviewSupport.kt)).
+Concretely, an XR module just needs:
+
+1. **`androidx.xr.compose`** on a declarable configuration (it's already there — it's what provides
+   `Subspace` / `SpatialPanel`). This both flips `enableXrPreviews` on *and* counts as a
+   preview-task registration signal in `hasPreviewDependency`, so a module that has **only**
+   `@XrSubspacePreview`s (no flat `@Preview` tooling) still gets `composePreviewRenderXr` registered.
+2. **`ee.schimke.composeai:preview-annotations`** on the compile classpath, for the
+   [`@XrSubspacePreview`](../../api/preview-annotations/src/main/kotlin/ee/schimke/composeai/preview/XrSubspacePreview.kt)
+   annotation that marks which subspace layouts to recover. The annotation is the per-preview signal;
+   the dependency is the per-module signal.
+
+Then `./gradlew :<module>:composePreviewRenderXr` (or `composePreviewRenderAll`) writes
+`build/compose-previews/renders/<preview>/scene.json` + one `<panelId>.png` texture per
+`SpatialPanel`.
+
+The legacy `composePreview { enableXrPreviews.set(true) }` flag still works and forces the path on —
+use it only for the rare module that pulls `androidx.xr.compose` in transitively rather than
+declaring it directly.
+
+> **SDK / JDK note.** `:samples:xr-spatial` pins `sdkVersion.set(35)` because the repo toolchain is
+> JDK 17 and Robolectric 4.16.1 needs JDK 21+ for an SDK-36 sandbox. A consumer normally needs no
+> such pin: the plugin auto-clamps the Robolectric sandbox from `compileSdk = 36` down to 35 on
+> JDK < 21 (and renders at 36 on JDK 21+) — see
+> [`GenerateRobolectricPropertiesTask.resolveSdk`](../../gradle-plugin/src/main/kotlin/ee/schimke/composeai/plugin/GenerateRobolectricPropertiesTask.kt).
+
+CI exercises this end-to-end with **zero consumer build edits beyond the `preview-annotations`
+dependency**: the `adaptive-apps-samples (AdaptiveJetStream — XR spatial Compose)` integration cell
+applies a `@XrSubspacePreview` overlay to JetStream (which already depends on `androidx.xr.compose`),
+runs `composePreviewRenderXr`, and folds the recovered `scene.json` + panel textures into the
+browsable `compose-preview/integration/jetstream-xr` gallery.

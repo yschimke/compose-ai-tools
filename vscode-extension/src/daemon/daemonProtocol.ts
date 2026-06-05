@@ -545,6 +545,33 @@ export interface PreviewOverrides {
      * "size: 4×2 (312×152 dp)" badge.
      */
     launcherWidget?: LauncherWidgetOverride;
+    /**
+     * Lottie timeline override. A non-null `progress` (0..1) re-renders a `kind=LOTTIE` preview at
+     * that timeline position — the interactive scrub the panel's Lottie slider drives. The desktop
+     * renderer provides it as `LocalLottieProgress`, winning over the composable's authored
+     * progress. Desktop-only; other backends ignore it.
+     */
+    lottie?: LottieOverride;
+}
+
+/** Lottie timeline override. See `PreviewOverrides.lottie`. */
+export interface LottieOverride {
+    /** Timeline position in `0..1` (`0` = first frame, `1` = last). */
+    progress?: number | null;
+}
+
+/**
+ * Wire shape of the `animation/lottie` data product (see
+ * `LottieTimelineDataProductRegistry`). Read off the asset with no render, so it's available
+ * before the first frame lands; the panel's scrubber uses it to label the slider (frame N / total)
+ * and size its range.
+ */
+export interface LottieTimelineMetadata {
+    totalFrames: number;
+    frameRate: number;
+    durationMillis: number;
+    width: number;
+    height: number;
 }
 
 /** Whole-cell size on a launcher's grid, expressed as integer cell counts. */
@@ -1014,6 +1041,20 @@ export interface InteractiveStopParams {
 export interface InteractiveSetRemoteComposeParams {
     frameStreamId: string;
     change: RemoteComposeChangeDetail;
+}
+
+/**
+ * `interactive/setLottie` notification params — scrub a held Lottie scene's timeline in place. The
+ * Lottie analogue of {@link InteractiveSetRemoteComposeParams}: the panel's timeline slider sends
+ * this on every drag tick when a live session is up, and the daemon coalesces ticks to the latest
+ * before recomposing the held scene to that frame — no fresh `renderNow.overrides.lottie.progress`
+ * round-trip. Hosts without a live Lottie binding silently drop it and the panel falls back to
+ * `renderNow`.
+ */
+export interface InteractiveSetLottieParams {
+    frameStreamId: string;
+    /** Timeline position in 0..1 (the daemon clamps). */
+    progress: number;
 }
 
 /**

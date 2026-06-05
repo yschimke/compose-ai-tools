@@ -33,6 +33,16 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
+// `xr/SpatialScene.kt` is generated from `schema/spatial-scene.schema.json` by
+// `scripts/codegen/gen-spatial-scene.mjs` and formatted by that generator (the single source of
+// truth), so it is excluded from the ktfmt gate. Drift is caught by the codegen `--check` CI job.
+// Only the per-source-set ktfmt tasks are `SourceTask`s; the umbrella `ktfmtCheck`/`ktfmtFormat`
+// lifecycle tasks are plain `DefaultTask`s, so filter by type rather than name.
+tasks
+  .withType<org.gradle.api.tasks.SourceTask>()
+  .matching { it.name.startsWith("ktfmt") }
+  .configureEach { exclude("**/xr/SpatialScene.kt") }
+
 composeAiMavenPublishing {
   coordinates(
     artifactId = "preview-data-api",

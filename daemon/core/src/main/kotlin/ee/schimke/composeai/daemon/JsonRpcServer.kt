@@ -425,6 +425,16 @@ class JsonRpcServer(
    */
   private val interactiveRenderInFlight = ConcurrentHashMap<String, Boolean>()
 
+  /**
+   * Latest pending Lottie scrub position per `frameStreamId`, set by `interactive/setLottie`.
+   * Unlike [pendingInteractiveInputs] this is a single value, not a queue: a slider drag fires many
+   * ticks but only the most recent one matters, so each tick overwrites the last. The in-flight
+   * render worker dispatches it into the held session right before rendering (and the `finally`
+   * re-claim treats a non-empty entry as pending work), so the final drag position always paints
+   * even if it arrived while an earlier tick's render was in flight.
+   */
+  private val pendingLottieScrub = ConcurrentHashMap<String, Float>()
+
   /** Per-held-session frame loops for live previews with time-based animations. */
   private val interactiveFrameLoops = ConcurrentHashMap<String, Thread>()
 
@@ -1019,11 +1029,16 @@ class JsonRpcServer(
           material3Theme = overrides.material3Theme,
           wallpaper = overrides.wallpaper,
           permissions = overrides.permissions,
+          // `lottie` rides the same bag so `renderNow.overrides.lottie.progress` reaches the
+          // desktop `RenderEngine`, which provides it as `LocalLottieProgress` — the interactive
+          // Lottie timeline scrub path. No new wire token needed.
+          lottie = overrides.lottie,
         )
       if (
         extensionBag.material3Theme != null ||
           extensionBag.wallpaper != null ||
-          extensionBag.permissions != null
+          extensionBag.permissions != null ||
+          extensionBag.lottie != null
       ) {
         if (isNotEmpty()) append(';')
         append("overrides=")
@@ -2422,6 +2437,7 @@ class JsonRpcServer(
   private fun cleanupClosedInteractiveSession(streamId: String) {
     interactiveSessions.remove(streamId)
     pendingInteractiveInputs.remove(streamId)
+    pendingLottieScrub.remove(streamId)
     interactiveRenderInFlight.remove(streamId)
     streamSessions.remove(streamId)
     streamRegistry.unregister(streamId)
@@ -2461,6 +2477,24 @@ class JsonRpcServer(
       )
       e.printStackTrace(System.err)
     }
+  }
+
+  /**
+   * `interactive/setLottie` — scrub the held Lottie scene's timeline in place. Records the latest
+   * progress for the stream (coalescing rapid drag ticks to the most recent) and requests a render
+   * through the held session; [submitInteractiveRenderAsync] dispatches the pending scrub into the
+   * session via [InteractiveSession.dispatchLottieProgress] right before painting. No held session
+   * for this stream → drop silently (the panel's `renderNow.overrides.lottie.progress` fallback is
+   * the canonical path, as with `interactive/setRemoteCompose`).
+   */
+  private fun handleInteractiveSetLottie(
+    params: ee.schimke.composeai.daemon.protocol.InteractiveSetLottieParams
+  ) {
+    if (classpathDirtyEmitted.get() || shutdownRequested.get()) return
+    val target = interactiveTargets[params.frameStreamId] ?: return
+    val session = interactiveSessions[params.frameStreamId] ?: return
+    pendingLottieScrub[params.frameStreamId] = params.progress
+    requestInteractiveRender(params.frameStreamId, target.previewId, session)
   }
 
   private fun handleInteractiveInput(
@@ -2531,6 +2565,11 @@ class JsonRpcServer(
               val next = queue.poll() ?: break
               session.dispatch(next)
             }
+            // Apply the latest pending Lottie scrub (if any) before rendering — coalesced to the
+            // most recent drag position. Mutates the held scene's snapshot state so the render
+            // below
+            // paints the scrubbed frame.
+            pendingLottieScrub.remove(streamId)?.let { session.dispatchLottieProgress(it) }
             val result = session.render(hostId)
             renderResultsQueue.put(result)
           } catch (e: Throwable) {
@@ -2566,11 +2605,10 @@ class JsonRpcServer(
               cleanupClosedInteractiveSession(streamId)
             } else {
               val pending = pendingInteractiveInputs[streamId]
-              if (
-                pending != null &&
-                  pending.isNotEmpty() &&
-                  interactiveRenderInFlight.putIfAbsent(streamId, true) == null
-              ) {
+              val hasPendingWork =
+                (pending != null && pending.isNotEmpty()) ||
+                  pendingLottieScrub.containsKey(streamId)
+              if (hasPendingWork && interactiveRenderInFlight.putIfAbsent(streamId, true) == null) {
                 val curSession = interactiveSessions[streamId]
                 val curTarget = interactiveTargets[streamId]
                 if (curSession != null && curTarget != null && !curSession.isClosed) {
@@ -2580,6 +2618,7 @@ class JsonRpcServer(
                   // the slot. Stale inputs against a stopped stream are dropped per the v1
                   // contract (handleInteractiveInput would also short-circuit on the next poll).
                   pendingInteractiveInputs.remove(streamId)
+                  pendingLottieScrub.remove(streamId)
                   interactiveRenderInFlight.remove(streamId)
                 }
               }
@@ -2968,6 +3007,10 @@ class JsonRpcServer(
           n,
         ) {
           handleInteractiveSetRemoteCompose(it)
+        }
+      "interactive/setLottie" ->
+        tryDecode(ee.schimke.composeai.daemon.protocol.InteractiveSetLottieParams.serializer(), n) {
+          handleInteractiveSetLottie(it)
         }
       "stream/stop" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.StreamStopParams.serializer(), n) {

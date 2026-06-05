@@ -2494,6 +2494,19 @@ bundle-chip-bar {
     flex-direction: column;
     gap: 6px;
 }
+
+/* Lottie timeline scrubber (animation/lottie bundle). */
+.lottie-scrubber-summary {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+}
+.lottie-scrubber-slider {
+    width: 100%;
+    accent-color: var(--vscode-progressBar-background, #0e70c0);
+}
+.lottie-scrubber-slider:disabled {
+    opacity: 0.5;
+}
 .bundle-expander {
     border-bottom: 1px solid var(--vscode-panel-border, transparent);
     padding-bottom: 4px;

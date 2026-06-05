@@ -1,0 +1,10 @@
+# Generated spatial-rich fixtures — rendered + harvested by
+# `daemon/desktop` `SpatialRichFixtureGeneratorTest` (panel PNGs, scene.json,
+# semantics-tree.json) and wrapped by `spatial-semantics.gen.mjs`. Mark them
+# generated so GitHub collapses them in pull-request diffs and excludes them
+# from language stats: review the generators (SpatialPanelFixtures.kt, the
+# *.gen.mjs scripts), not their output.
+vscode-extension/spatial-fixtures/spatial-rich/scene.json linguist-generated=true
+vscode-extension/spatial-fixtures/spatial-rich/semantics-tree.json linguist-generated=true
+vscode-extension/spatial-fixtures/spatial-rich/panels/*.png linguist-generated=true
+vscode-extension/preview-harness/fixtures/spatial-semantics.json linguist-generated=true

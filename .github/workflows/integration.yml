@@ -63,12 +63,17 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Publish plugin + renderer-android + data-* + daemon-* to mavenLocal
+      - name: Publish plugin + renderer-android + renderer-xr + data-* + daemon-* to mavenLocal
         # Both `gradle-plugin` and `renderer-android` are needed end-to-end:
         # the plugin resolves through the init script's buildscript classpath
         # injection from mavenLocal, and at render time it wires
         # `ee.schimke.composeai:renderer-android:<version>` into the consumer's
         # `composePreviewAndroidRenderer<Variant>` configuration.
+        # `renderer-xr` rides the same fan-out: the plugin wires it onto the
+        # same render configuration when it auto-enables the XR path for a
+        # consumer that depends on `androidx.xr.compose` (the jetstream-xr cell),
+        # so it must resolve from mavenLocal too — otherwise the XR render fails
+        # with `Could not find ee.schimke.composeai:renderer-xr`.
         # Publishing only the plugin here would mean the render path silently
         # falls back to whatever's on the consumer's remote repos (or fails
         # resolution) — exactly the kind of release-vs-source drift these tests
@@ -112,6 +117,10 @@ jobs:
           # baseline uses. The integration job has no checkout of this repo,
           # so these scripts ride in via the bundle like daemon-roundtrip.py.
           cp .github/actions/lib/compare-previews.py bundle/ci/
+          # Folds @XrSubspacePreview scene.json + panel textures into the staged
+          # gallery (the show-envelope carries no path for XR previews, so
+          # compare-previews.py can't reach them) — used by render_xr cells.
+          cp .github/actions/lib/xr-gallery.py bundle/ci/
           cp .github/actions/apply/lib/push-branch.sh bundle/ci/
           # Ship consumer patches (e.g. the adaptive-apps-samples XR
           # alpha14 upgrade) so the integration matrix can apply them to
@@ -924,6 +933,29 @@ jobs:
           echo "Update ${SLUG} integration previews from ${GITHUB_SHA::8}" \
             > "$GITHUB_WORKSPACE/_integration_baselines/_push_msg"
           echo "1" > "$GITHUB_WORKSPACE/_integration_baselines/_skip_if_unchanged"
+
+      - name: Fold XR scenes into the browsable gallery
+        # compare-previews.py builds the gallery from `compose-preview show
+        # --json`, whose envelope carries no path for an @XrSubspacePreview
+        # (kind XR_SUBSPACE renders a scene.json + panel textures, not a single
+        # preview-named PNG). Reach those files from disk and append an "XR
+        # spatial previews" section (panel textures + scene.json link) to the
+        # staged gallery README so the spatial previews are browsable on the
+        # published branch alongside the flat ones. No-op when the gallery
+        # wasn't staged (README absent) or no scene.json was produced.
+        if: matrix.render_xr && github.event_name != 'pull_request'
+        working-directory: external/${{ matrix.workdir }}
+        env:
+          GALLERY_DIR: ${{ github.workspace }}/_integration_baselines
+        run: |
+          set -euo pipefail
+          if [ ! -f "$GALLERY_DIR/README.md" ]; then
+            echo "::notice::no staged gallery (README.md absent) — skipping XR fold."
+            exit 0
+          fi
+          python3 "$GITHUB_WORKSPACE/bundle/ci/xr-gallery.py" fold \
+            --gallery-dir "$GALLERY_DIR" \
+            --search-root .
 
       - name: Upload browsable preview gallery payload
         if: matrix.render && github.event_name != 'pull_request' && hashFiles('_integration_baselines/baselines.json') != ''

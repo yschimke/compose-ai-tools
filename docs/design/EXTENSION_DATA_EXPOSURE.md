@@ -90,6 +90,16 @@ Decisions:
    turns the bundle off and returns the panel to the plain-preview
    default state. The chip + tab are two ends of the same toggle, not
    two independent controls.
+   - **Chips are gated to the focused preview.** A bundle can declare an
+     `appliesTo(previewContext)` predicate (`bundleRegistry.ts`); when it
+     returns false the chip is hidden in focus mode. So the **Lottie**
+     scrubber only shows for Lottie previews (`kind=LOTTIE` or an attached
+     `animation/lottie` product) and **Watch / ambient** only for Wear
+     previews (`isWearPreview`). Bundles without a predicate are universal.
+     `availableBundleIdsForPreview` intersects this with the early-features
+     gate; the tab row is filtered to the same set so an active-but-now-
+     inapplicable bundle's tab disappears with its chip (and returns,
+     still active, when the user navigates back).
 3. **Tabs are dismissible.** Every data tab has a close (`×`)
    affordance in the tab header. Closing the last data tab returns the
    panel to "no inspector" — the preview grid is visible

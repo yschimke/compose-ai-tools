@@ -3,8 +3,16 @@
 A small native (C++) tool that renders a **SpatialScene** — the `scene.json` +
 per-panel `<id>.png` textures emitted by `:renderer-xr` (see
 [`docs/design/SPATIAL_SCENE_CONTRACT.md`](../../docs/design/SPATIAL_SCENE_CONTRACT.md)) —
-into a single composite PNG: a baked still of the 3D spatial layout, the same
-scene the VS Code WebGL viewer shows interactively.
+into a composite PNG: a baked still of the 3D spatial layout, the same scene the
+VS Code WebGL viewer shows interactively.
+
+It runs two ways: **one-shot** (`--scene` → one PNG → exit) and a long-lived
+**server** (`--serve`) that speaks JSON-RPC over stdio, holds one Filament engine
+across frames, and streams rendered frames back as panels are updated per-frame —
+the first increment of the [renderer-service RFC](../../docs/design/xr-spatial/RENDERER_SERVICE.md).
+The `SpatialScene` types it parses are generated from
+[`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) (see
+[`spatial_scene.hpp`](src/spatial_scene.hpp)).
 
 It exists because the still has to be produced **headless, with no GPU**, on
 ordinary CI. It uses [Filament](https://github.com/google/filament)'s OpenGL
@@ -14,8 +22,10 @@ binary rather than via JNI.
 
 > **Status: prototype.** The renderer is proven end-to-end (parses a real
 > `scene.json`, places a textured quad per panel, orbit camera, reads pixels to
-> PNG — all GPU-free in ~1s). It is **not yet wired into the Gradle pipeline**,
-> and only the Linux build is exercised. See "Roadmap" below.
+> PNG — all GPU-free in ~1s), and `--serve` adds a working per-frame JSON-RPC
+> server (CI-smoked). **Not yet daemon-fronted** — the daemon spawning/proxying
+> this process (RENDERER_SERVICE RFC) is the next step — and only the Linux build
+> is runtime-exercised. See "Roadmap" below.
 
 ## Build
 
@@ -46,6 +56,33 @@ xvfb-run -a -s "-screen 0 2000x1400x24" \
 
 `--scene` points at the `scene.json`; panel `texture` paths are resolved
 relative to its directory. A panel whose texture is missing is skipped.
+
+## Server mode (`--serve`)
+
+`--serve` turns the tool into a long-lived JSON-RPC peer over stdio, framed with LSP-style
+`Content-Length` headers — the same framing the daemon's subprocess render-session backend speaks, so
+the daemon can front it (RENDERER_SERVICE RFC). One Filament engine/scene is held for the life of the
+process; panels can be mutated per-frame and each render is streamed back.
+
+```sh
+xvfb-run -a -s "-screen 0 2000x1400x24" \
+  env LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe \
+  ./build/xr-composite --serve --materials build/materials --width 1280 --height 800
+```
+
+Methods (all params are JSON):
+
+| method | params | effect |
+|--------|--------|--------|
+| `initialize` | `{frameStreamId?}` | returns `{serverInfo, capabilities}` (`render`/`updatePanels`/`streamFrame`, `spatialSceneVersion`, `dataProducts:["xr/composite"]`) |
+| `render` (alias `xr/render`) | `{scene: SpatialScene, sceneDir?, environment?, out?}` | (re)build the whole scene + camera, render; emits a `streamFrame`; `out` also writes a PNG file |
+| `xr/updatePanels` | `{panels: [{id, texture?, poseInRoot?, sizeDp?}], out?}` | mutate matching panels (or append a full new panel) and re-render; emits a `streamFrame` |
+| `shutdown` / `exit` | — | `shutdown` acks; `exit` ends the loop |
+
+Rendered frames are delivered as **`streamFrame` notifications** —
+`{encoding:"png", width, height, seq, data:<base64>, frameStreamId?}` — reusing the daemon's
+`composestream/1` shape (RFC decision #4: base64-over-JSON). The
+[`test/serve_smoke.py`](test/serve_smoke.py) harness drives this flow and is run in CI under Xvfb.
 
 ### Why Xvfb?
 
@@ -81,6 +118,7 @@ never fails and the interactive viewer + `scene.json` are unaffected.
 | `--materials <dir>` | directory with the compiled `.filamat` blobs | `.` |
 | `--width` / `--height` | output size in px | `1280` × `800` |
 | `--environment <preset\|color:#RRGGBB>` | backdrop override (see "Background"): a named preset, or `color:#RRGGBB` for a flat skybox. Overrides the scene's `environment`. | `warm-room` |
+| `--serve` | run as a long-lived JSON-RPC server over stdio instead of one-shot (see "Server mode"). `--scene`/`--out` are ignored. | off |
 
 ## Background (swappable presets)
 

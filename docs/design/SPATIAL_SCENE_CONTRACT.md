@@ -5,7 +5,7 @@ recovers a Compose-XR subspace layout and renders each panel's 2D content to a P
 **consumer** — the VS Code webview's WebGL 3D spatial-layout viewer. Both sides build to this shape so
 they can be developed in parallel and meet here.
 
-- **TypeScript source of truth:** [`vscode-extension/src/webview/shared/spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)
+- **Source of truth:** [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) — the Kotlin ([`SpatialScene.kt`](../../api/preview-data-api/src/main/kotlin/ee/schimke/composeai/xr/SpatialScene.kt)), TypeScript ([`spatialScene.ts`](../../vscode-extension/src/webview/shared/spatialScene.ts)), and native C++ ([`spatial_scene.hpp`](../../renderers/xr-composite/src/spatial_scene.hpp)) mirrors are **generated** from it by [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs) (CI gate: `--check`). Edit the schema, not the mirrors. Rationale: [`WIRE_IDL_CODEGEN.md`](WIRE_IDL_CODEGEN.md).
 - **Sample fixture:** [`vscode-extension/preview-harness/fixtures/spatial-scene/`](../../vscode-extension/preview-harness/fixtures/spatial-scene/) (`scene.json` + `top.png` / `bottom.png`)
 - **Background:** [`XR_SPATIAL_PREVIEW.md`](XR_SPATIAL_PREVIEW.md) (how poses are recovered offline)
 - **Still-image consumer:** [`xr-spatial/COMPOSITOR.md`](xr-spatial/COMPOSITOR.md) (the `xr-composite` native tool that bakes this scene to a composite PNG, headless/GPU-free)

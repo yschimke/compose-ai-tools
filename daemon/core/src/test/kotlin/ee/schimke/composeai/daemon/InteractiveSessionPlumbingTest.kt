@@ -156,6 +156,67 @@ class InteractiveSessionPlumbingTest {
   }
 
   @Test(timeout = 30_000)
+  fun setLottie_scrubs_held_session_and_renders() {
+    val tmp = Files.createTempDirectory("interactive-session-setlottie").toFile()
+    val pngFile = File(tmp, "lottie-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val host = SessionAwareFakeHost(pngFile)
+
+    val (_, serverThread, clientToServerOut, received, exitLatch) = bringUpServer(host)
+    resourcesToClose.add(AutoCloseable { runCatching { clientToServerOut.close() } })
+
+    handshake(clientToServerOut, received)
+
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","id":20,"method":"interactive/start","params":{"previewId":"lottie-A"}}""",
+    )
+    val startResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 20 }
+    val streamId =
+      startResp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+    val session = host.lastSession()!!
+
+    // interactive/setLottie — scrubs the held session's progress and paints a frame, without any
+    // interactive/input (no click dispatch).
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","method":"interactive/setLottie","params":{"frameStreamId":"$streamId","progress":0.42}}""",
+    )
+    val finished =
+      pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished" }
+    assertNotNull("interactive/setLottie must produce a renderFinished", finished)
+    assertEquals("lottie-A", finished!!["params"]!!.jsonObject["id"]?.jsonPrimitive?.contentOrNull)
+    assertEquals("scrub should dispatch progress once", 1, session.lottieDispatchCount.get())
+    assertEquals(0.42f, session.lastLottieProgress()!!, 1e-4f)
+    assertEquals(
+      "scrub must not go through the click dispatch path",
+      0,
+      session.dispatchCount.get(),
+    )
+    assertTrue("scrub should render through the held session", session.renderCount.get() >= 1)
+
+    // Stop, then a stale setLottie — must not dispatch or render.
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","method":"interactive/stop","params":{"frameStreamId":"$streamId"}}""",
+    )
+    Thread.sleep(50)
+    val rendersAfterStop = session.renderCount.get()
+    writeFrame(
+      clientToServerOut,
+      """{"jsonrpc":"2.0","method":"interactive/setLottie","params":{"frameStreamId":"$streamId","progress":0.9}}""",
+    )
+    val stale =
+      pollUntil(received, timeoutMs = 500) {
+        it["method"]?.jsonPrimitive?.contentOrNull == "renderFinished"
+      }
+    assertNull("stale interactive/setLottie must not produce a renderFinished", stale)
+    assertEquals("scrub must not dispatch after stop", 1, session.lottieDispatchCount.get())
+    assertEquals(rendersAfterStop, session.renderCount.get())
+
+    teardownServer(clientToServerOut, received, serverThread, exitLatch)
+  }
+
+  @Test(timeout = 30_000)
   fun start_with_live_frame_loop_renders_without_input() {
     val tmp = Files.createTempDirectory("interactive-session-live-loop").toFile()
     val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
@@ -627,12 +688,16 @@ private class RecordingSession(
   val dispatchCount = AtomicInteger(0)
   val renderCount = AtomicInteger(0)
   val closeCount = AtomicInteger(0)
+  val lottieDispatchCount = AtomicInteger(0)
 
   @Volatile private var lastClickX: Int? = null
   @Volatile private var lastClickY: Int? = null
+  @Volatile private var lastLottieProgress: Float? = null
   @Volatile private var closedFlag: Boolean = false
 
   fun lastClick(): Pair<Int, Int>? = lastClickX?.let { x -> lastClickY?.let { y -> x to y } }
+
+  fun lastLottieProgress(): Float? = lastLottieProgress
 
   /**
    * Flip the session into the closed state without going through [close] — models a host-internal
@@ -657,6 +722,13 @@ private class RecordingSession(
     dispatchCount.incrementAndGet()
     lastClickX = input.pixelX
     lastClickY = input.pixelY
+  }
+
+  override fun dispatchLottieProgress(progress: Float): Boolean {
+    if (closedFlag) return false
+    lottieDispatchCount.incrementAndGet()
+    lastLottieProgress = progress
+    return true
   }
 
   override fun render(requestId: Long, advanceTimeMs: Long?): RenderResult {
