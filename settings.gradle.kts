@@ -193,6 +193,12 @@ include(":renderer-xr")
 
 project(":renderer-xr").projectDir = file("renderers/xr")
 
+// JVM client for the native `xr-composite --serve` render server (RENDERER_SERVICE RFC). The
+// daemon's future XR RenderSession backend wraps this.
+include(":renderer-xr-client")
+
+project(":renderer-xr-client").projectDir = file("renderers/xr-client")
+
 include(":daemon:core")
 
 // Per-product data-product modules — each `data/<product>/` carries a `core` (generic Android /
