@@ -43,6 +43,12 @@ Android those renders land in a dir disjoint from `renders/` (`lottie-renders/`)
 tasks don't share an output directory — overlapping outputs would disable Gradle's build cache for
 both. Put your Lottie files under `src/main/resources/` in either module type.
 
+> **Android requirement.** The Android preview pipeline only registers for modules that depend on
+> Compose preview tooling (`androidx.compose.ui:ui-tooling-preview`) — the normal case for any module
+> showing previews. A *pure-asset* Android module with Lottie files but **no** Compose dependency at
+> all won't register the tasks (so its assets aren't discovered). Add the preview-tooling dependency
+> (or keep such assets in a module that already has Compose) to opt in.
+
 ## Animated capture — the looping GIF
 
 The animated companion sweeps the Lottie's **intrinsic timeline** — `durationFrames / frameRate`,
