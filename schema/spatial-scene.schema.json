@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/spatial-scene.schema.json",
+  "title": "SpatialScene",
+  "description": "The wire contract between the offline renderer (producer) and the webview's 3D spatial-layout viewer (consumer). All linear quantities are dp; axes are right-handed (+x right, +y up, +z toward the viewer); rotation is a unit quaternion. Prose spec: docs/design/SPATIAL_SCENE_CONTRACT.md.",
+  "x-codegen": {
+    "version-const": "SPATIAL_SCENE_VERSION",
+    "kotlin-package": "ee.schimke.composeai.xr",
+    "cpp-namespace": "xrcomposite",
+    "root": "SpatialScene"
+  },
+  "definitions": {
+    "Vec3": {
+      "type": "object",
+      "description": "A point or vector, in dp.",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "Quat": {
+      "type": "object",
+      "description": "A unit quaternion; identity is `(0, 0, 0, 1)`.",
+      "required": ["x", "y", "z", "w"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "w": { "type": "number" }
+      }
+    },
+    "SpatialPose": {
+      "type": "object",
+      "description": "A rigid transform in the subspace root's frame: `translation` in dp, `rotation` a unit\nquaternion.",
+      "required": ["translation", "rotation"],
+      "additionalProperties": false,
+      "properties": {
+        "translation": { "$ref": "#/definitions/Vec3" },
+        "rotation": { "$ref": "#/definitions/Quat" }
+      }
+    },
+    "SizeDp": {
+      "type": "object",
+      "description": "Panel extent in dp (the layout output, not the texture's pixel size).",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "SpatialPanel": {
+      "type": "object",
+      "description": "A spatial panel: a flat quad hosting 2D Compose content.",
+      "required": ["id", "poseInRoot", "sizeDp", "texture"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string", "description": "Human-readable label for overlays; not required for rendering." },
+        "poseInRoot": { "$ref": "#/definitions/SpatialPose" },
+        "sizeDp": { "$ref": "#/definitions/SizeDp" },
+        "texture": { "type": "string", "description": "Path to the panel's 2D-content PNG, relative to the scene file (or a resolvable URI)." },
+        "parentId": { "type": ["string", "null"], "description": "Id of the containing panel/group, or null/omitted for top-level panels." }
+      }
+    },
+    "OrbiterAffordance": {
+      "type": "object",
+      "description": "An Orbiter affordance — a control strip anchored to a panel edge. `edge` is\ntop/bottom/start/end.",
+      "required": ["id", "edge", "poseInRoot", "sizeDp", "texture"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "edge": { "type": "string", "enum": ["top", "bottom", "start", "end"] },
+        "poseInRoot": { "$ref": "#/definitions/SpatialPose" },
+        "sizeDp": { "$ref": "#/definitions/SizeDp" },
+        "texture": { "type": "string" }
+      }
+    },
+    "OrbitCamera": {
+      "type": "object",
+      "description": "Default viewing camera. Only `kind = \"orbit\"` is defined today.",
+      "required": ["target", "distance", "yawDeg", "pitchDeg"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["orbit"], "default": "orbit" },
+        "target": { "$ref": "#/definitions/Vec3", "description": "Look-at point in dp." },
+        "distance": { "type": "number", "description": "Camera distance from `target`, in dp." },
+        "yawDeg": { "type": "number" },
+        "pitchDeg": { "type": "number" }
+      }
+    },
+    "SpatialEnvironment": {
+      "type": "object",
+      "description": "Optional scene backdrop. `kind` is \"color\" (`#RRGGBB` in [color]) or \"skybox\" ([texture]).\n\nFor gradient backdrops (any `kind` other than \"color\"), the offline compositor supports **named\npresets** ([preset], e.g. `\"warm-room\"` — the default — or `\"studio-dark\"`) plus explicit\ngradient stops that **override** the chosen preset: [sky] (straight up), [horizon] (eye level),\nand [floor] (straight down; its presence turns the 2-stop gradient into a 3-stop, room-like one).\nThese knobs are optional; omit them to take the compositor's default `warm-room` backdrop. The\ncompositor's `--environment` CLI flag overrides whatever the scene specifies.",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["color", "skybox", "gradient"] },
+        "color": { "type": "string" },
+        "texture": { "type": "string" },
+        "preset": { "type": "string", "description": "Named gradient preset (e.g. `\"warm-room\"`, `\"studio-dark\"`); ignored when `kind == \"color\"`." },
+        "sky": { "type": "string", "description": "Gradient colour straight up (`#RRGGBB`); overrides the preset." },
+        "horizon": { "type": "string", "description": "Gradient colour at eye level (`#RRGGBB`); overrides the preset. Doubles as the clear colour." },
+        "floor": { "type": "string", "description": "Gradient colour straight down (`#RRGGBB`); overrides the preset and enables a 3-stop floor." },
+        "glow": { "type": "number", "description": "Gradient glow intensity; overrides the preset's glow. Consumed by the native compositor's room backdrop." }
+      }
+    },
+    "SpatialScene": {
+      "type": "object",
+      "description": "The full scene the 3D viewer renders. [version] must equal [SPATIAL_SCENE_VERSION].",
+      "required": ["camera", "panels"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "integer", "default": 1, "description": "Bumped on breaking changes. Producers stamp it into `SpatialScene.version`." },
+        "units": { "type": "string", "enum": ["dp"], "default": "dp", "description": "All linear quantities are dp." },
+        "previewId": { "type": "string", "description": "The preview this scene was projected from, if any." },
+        "camera": { "$ref": "#/definitions/OrbitCamera" },
+        "panels": { "type": "array", "items": { "$ref": "#/definitions/SpatialPanel" } },
+        "orbiters": { "type": "array", "items": { "$ref": "#/definitions/OrbiterAffordance" }, "default": [] },
+        "environment": { "oneOf": [ { "$ref": "#/definitions/SpatialEnvironment" }, { "type": "null" } ], "default": null }
+      }
+    }
+  },
+  "$ref": "#/definitions/SpatialScene"
+}

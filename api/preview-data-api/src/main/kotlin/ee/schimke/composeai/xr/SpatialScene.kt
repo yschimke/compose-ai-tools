@@ -1,53 +1,81 @@
+// GENERATED FILE — DO NOT EDIT.
+// Source of truth: schema/spatial-scene.schema.json
+// Regenerate: node scripts/codegen/gen-spatial-scene.mjs (CI checks with --check).
+
 package ee.schimke.composeai.xr
 
 import kotlinx.serialization.Serializable
 
 /**
- * Kotlin mirror of the `SpatialScene` wire contract — the format the offline renderer
- * (`:renderer-xr`, the producer) emits and the VS Code webview's 3D spatial-layout viewer (the
- * consumer) reads.
- *
- * The **authoritative** definition is the TypeScript source
- * (`vscode-extension/src/webview/shared/spatialScene.ts`) plus the prose spec
- * (`docs/design/SPATIAL_SCENE_CONTRACT.md`). These data classes must stay byte-compatible with it:
- * property names are the JSON keys, so they match the TS field names exactly. `SpatialSceneTest`
- * deserializes the committed fixture to keep the two languages locked together — if you change a
- * shape here, change it there too (and bump [SPATIAL_SCENE_VERSION]).
- *
- * Conventions (see the spec): all linear quantities are **dp**; axes are right-handed (+x right, +y
- * up, +z toward the viewer); `rotation` is a unit quaternion.
+ * The wire contract between the offline renderer (producer) and the webview's 3D spatial-layout viewer (consumer). All linear quantities are dp; axes are right-handed (+x right, +y up, +z toward the viewer); rotation is a unit quaternion. Prose spec: docs/design/SPATIAL_SCENE_CONTRACT.md.
  */
 public const val SPATIAL_SCENE_VERSION: Int = 1
 
-/** A point or vector, in dp. */
-@Serializable public data class Vec3(val x: Double, val y: Double, val z: Double)
+/**
+ * A point or vector, in dp.
+ */
+@Serializable
+public data class Vec3(
+  val x: Double,
+  val y: Double,
+  val z: Double,
+)
 
-/** A unit quaternion; identity is `(0, 0, 0, 1)`. */
-@Serializable public data class Quat(val x: Double, val y: Double, val z: Double, val w: Double)
+/**
+ * A unit quaternion; identity is `(0, 0, 0, 1)`.
+ */
+@Serializable
+public data class Quat(
+  val x: Double,
+  val y: Double,
+  val z: Double,
+  val w: Double,
+)
 
 /**
  * A rigid transform in the subspace root's frame: `translation` in dp, `rotation` a unit
  * quaternion.
  */
-@Serializable public data class SpatialPose(val translation: Vec3, val rotation: Quat)
+@Serializable
+public data class SpatialPose(
+  val translation: Vec3,
+  val rotation: Quat,
+)
 
-/** Panel extent in dp (the layout output, not the texture's pixel size). */
-@Serializable public data class SizeDp(val width: Int, val height: Int)
+/**
+ * Panel extent in dp (the layout output, not the texture's pixel size).
+ */
+@Serializable
+public data class SizeDp(
+  val width: Int,
+  val height: Int,
+)
 
-/** A spatial panel: a flat quad hosting 2D Compose content. */
+/**
+ * A spatial panel: a flat quad hosting 2D Compose content.
+ */
 @Serializable
 public data class SpatialPanel(
   val id: String,
+  /**
+   * Human-readable label for overlays; not required for rendering.
+   */
   val label: String? = null,
   val poseInRoot: SpatialPose,
   val sizeDp: SizeDp,
-  /** Path to the panel's 2D-content PNG, relative to the scene file (or a resolvable URI). */
+  /**
+   * Path to the panel's 2D-content PNG, relative to the scene file (or a resolvable URI).
+   */
   val texture: String,
+  /**
+   * Id of the containing panel/group, or null/omitted for top-level panels.
+   */
   val parentId: String? = null,
 )
 
 /**
- * An Orbiter affordance — a control strip anchored to a panel edge. `edge` is top/bottom/start/end.
+ * An Orbiter affordance — a control strip anchored to a panel edge. `edge` is
+ * top/bottom/start/end.
  */
 @Serializable
 public data class OrbiterAffordance(
@@ -59,11 +87,19 @@ public data class OrbiterAffordance(
   val texture: String,
 )
 
-/** Default viewing camera. Only `kind = "orbit"` is defined today. */
+/**
+ * Default viewing camera. Only `kind = "orbit"` is defined today.
+ */
 @Serializable
 public data class OrbitCamera(
   val kind: String = "orbit",
+  /**
+   * Look-at point in dp.
+   */
   val target: Vec3,
+  /**
+   * Camera distance from `target`, in dp.
+   */
   val distance: Double,
   val yawDeg: Double,
   val pitchDeg: Double,
@@ -88,21 +124,40 @@ public data class SpatialEnvironment(
    * Named gradient preset (e.g. `"warm-room"`, `"studio-dark"`); ignored when `kind == "color"`.
    */
   val preset: String? = null,
-  /** Gradient colour straight up (`#RRGGBB`); overrides the preset. */
+  /**
+   * Gradient colour straight up (`#RRGGBB`); overrides the preset.
+   */
   val sky: String? = null,
   /**
    * Gradient colour at eye level (`#RRGGBB`); overrides the preset. Doubles as the clear colour.
    */
   val horizon: String? = null,
-  /** Gradient colour straight down (`#RRGGBB`); overrides the preset and enables a 3-stop floor. */
+  /**
+   * Gradient colour straight down (`#RRGGBB`); overrides the preset and enables a 3-stop floor.
+   */
   val floor: String? = null,
+  /**
+   * Gradient glow intensity; overrides the preset's glow. Consumed by the native compositor's room backdrop.
+   */
+  val glow: Double? = null,
 )
 
-/** The full scene the 3D viewer renders. [version] must equal [SPATIAL_SCENE_VERSION]. */
+/**
+ * The full scene the 3D viewer renders. [version] must equal [SPATIAL_SCENE_VERSION].
+ */
 @Serializable
 public data class SpatialScene(
+  /**
+   * Bumped on breaking changes. Producers stamp it into `SpatialScene.version`.
+   */
   val version: Int = SPATIAL_SCENE_VERSION,
+  /**
+   * All linear quantities are dp.
+   */
   val units: String = "dp",
+  /**
+   * The preview this scene was projected from, if any.
+   */
   val previewId: String? = null,
   val camera: OrbitCamera,
   val panels: List<SpatialPanel>,

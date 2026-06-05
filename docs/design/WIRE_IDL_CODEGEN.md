@@ -1,11 +1,18 @@
 # Evaluation: single-source IDL + codegen for the cross-language wire types
 
-**Status: evaluated — recommendation accepted, not yet actioned.** Tracks
+**Status: evaluated; `SpatialScene` pilot landed.** Tracks
 [#1729](https://github.com/yschimke/compose-ai-tools/issues/1729), the follow-up from
 [RENDERER_SERVICE.md decision #5](xr-spatial/RENDERER_SERVICE.md#decisions). This document records the
-evaluation and the decision so it survives the issue. **No code change is implied by landing this
-doc** — the recommendation is to keep the current hand-mirror + fixture approach until the trigger
-condition below is met.
+evaluation and decision so it survives the issue.
+
+> **Update — `SpatialScene` is now generated.** The spike below was actioned for the one type that
+> is genuinely triplicated today: `SpatialScene` (Kotlin + TS + the native C++ one-shot compositor).
+> [`schema/spatial-scene.schema.json`](../../schema/spatial-scene.schema.json) is the single source
+> of truth; [`scripts/codegen/gen-spatial-scene.mjs`](../../scripts/codegen/gen-spatial-scene.mjs)
+> generates all three mirrors (the CI job `SpatialScene codegen up to date` runs it with `--check`).
+> A **bespoke** generator was chosen over a stock tool (quicktype) deliberately — see
+> [Pilot notes](#pilot-notes-spatialscene). The broader `Messages.kt` envelope stays hand-mirrored
+> until the native renderer *service* exists (the gate below).
 
 ## The problem this is about
 
@@ -113,6 +120,42 @@ A non-big-bang path that never breaks the fixture-locked Kotlin ↔ TS contract:
 4. Generation runs in the build; the generated sources are committed (so the repo stays readable and
    `grep`-able and the build doesn't hard-depend on a generator at every checkout) **or** generated
    at build time with a check task — decide at adoption time.
+
+## Pilot notes (`SpatialScene`)
+
+The migration sketch above was actioned for `SpatialScene`. Two things diverged from the naive plan
+and are worth recording:
+
+### Why a bespoke generator, not quicktype
+
+A spike ran quicktype (one tool, Kotlin + TS + C++ from one JSON Schema). Its output did **not** hold
+up as a drop-in for the existing published `preview-data-api` surface:
+
+- **Kotlin:** re-cased `previewId` → `previewID`, emitted `version: Long` (not `Int`), turned
+  `units`/`kind` into `enum class`es, dropped the `= emptyList()` / `= SPATIAL_SCENE_VERSION`
+  defaults the producer and `SpatialSceneTest` rely on, and alphabetised fields. A drop-in swap would
+  break the published API and its consumers.
+- **C++:** pulled in a **Boost.Optional** dependency + `shared_ptr` boilerplate in a `quicktype`
+  namespace — `xr-composite` is otherwise header-only (`json.hpp` + `stb`).
+- **TS:** added `[property: string]: any` index signatures and replaced the string-literal unions.
+
+So `scripts/codegen/gen-spatial-scene.mjs` is a ~300-line, dependency-free (Node stdlib) generator
+that templates the schema into the *existing* idiomatic shapes: kotlinx data classes with their
+defaults, TS string-literal unions + the hand `isSpatialScene` guard, and nlohmann `std::optional`
+structs. Result: the generated mirrors are byte-shape-identical to the old hand-written ones, so
+**zero consumer churn** and every fixture stayed green. The generated files are committed and
+excluded from ktfmt/prettier (the generator is their sole formatter); the `--check` CI job is the
+drift gate. The trade is maintaining a small bespoke generator vs. a stock tool's worse output — for
+this small, controlled schema that is the right call. If the schema set grows a lot, revisit whether
+a stock tool (with its churn) becomes worth it.
+
+### Drift the codegen immediately surfaced
+
+The C++ compositor was reading an `environment.glow` field that existed in **neither** the Kotlin nor
+the TypeScript contract — a latent third-mirror drift exactly of the kind this issue is about. It is
+now an additive optional field in the schema (hence in all three mirrors). This is the concrete
+payoff that justified doing the pilot now rather than waiting: the single source caught a real gap
+the moment it existed.
 
 ## Adjacent note (does not change this recommendation)
 

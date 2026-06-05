@@ -1,0 +1,4 @@
+# Generated from schema/spatial-scene.schema.json by scripts/codegen/gen-spatial-scene.mjs.
+# Formatted by that generator (the single source of truth); drift is caught by the codegen --check
+# CI job, so prettier must not reformat it.
+src/webview/shared/spatialScene.ts
