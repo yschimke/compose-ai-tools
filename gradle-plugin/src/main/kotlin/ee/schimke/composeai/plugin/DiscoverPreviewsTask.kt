@@ -75,6 +75,14 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
 
   @get:OutputFile abstract val outputFile: RegularFileProperty
 
+  /**
+   * Subdirectory for Lottie capture `renderOutput` paths (see
+   * [PreviewDiscovery.Input.lottieRenderSubdir]). Defaults to `"renders"`; the Android task sets a
+   * disjoint dir so its JVM Lottie render doesn't share the `renders/` output with the Robolectric
+   * render.
+   */
+  @get:Input abstract val lottieRenderSubdir: Property<String>
+
   private val json = Json {
     prettyPrint = true
     encodeDefaults = true
@@ -92,6 +100,7 @@ abstract class DiscoverPreviewsTask : DefaultTask() {
         projectDirectory = File(projectDirectory.get()),
         failOnEmpty = failOnEmpty.get(),
         resourceDirs = resourceDirs.files.toList(),
+        lottieRenderSubdir = lottieRenderSubdir.getOrElse("renders"),
       )
     when (val outcome = PreviewDiscovery.discover(input)) {
       is PreviewDiscovery.Outcome.Success -> {

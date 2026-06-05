@@ -40,6 +40,55 @@ internal object ComposePreviewTasks {
   private val DESKTOP_RESOURCE_TASK_CANDIDATES: List<String> =
     listOf("jvmProcessResources", "desktopProcessResources", "processResources")
 
+  /**
+   * Creates (or reuses) a resolvable configuration named [configName] populated with the
+   * `:renderer-desktop` JVM renderer — the in-tree project when this build contains it (so live
+   * renderer edits land without a publish), else the published
+   * `ee.schimke.composeai:renderer-desktop:<plugin-version>` JAR. Used both by the desktop render
+   * task and by the Android `composePreviewRenderLottie` task, which renders `kind=LOTTIE` assets
+   * through the JVM Compottie path (the asset is portable IR — no Android/Robolectric player). The
+   * default add is skipped when the consumer already populated [configName] themselves, so an
+   * explicit `dependencies { "<configName>"(files(...)) }` override still wins.
+   */
+  internal fun ensureRendererDesktopConfig(
+    project: Project,
+    configName: String,
+  ): org.gradle.api.artifacts.Configuration {
+    val rendererConfig = project.configurations.maybeCreate(configName)
+    rendererConfig.isCanBeResolved = true
+    rendererConfig.isCanBeConsumed = false
+    val rendererProjectDir = project.rootDir.resolve("renderers/desktop")
+    val useLocalRenderer =
+      rendererProjectDir.resolve("build.gradle.kts").exists() ||
+        rendererProjectDir.resolve("build.gradle").exists()
+    project.afterEvaluate {
+      if (rendererConfig.dependencies.isNotEmpty()) return@afterEvaluate
+      if (useLocalRenderer) {
+        try {
+          project.dependencies.add(
+            configName,
+            project.dependencies.project(mapOf("path" to ":renderer-desktop")),
+          )
+        } catch (e: org.gradle.api.UnknownProjectException) {
+          project.logger.debug(
+            "compose-ai-tools: :renderer-desktop project not found, falling back to Maven",
+            e,
+          )
+          project.dependencies.add(
+            configName,
+            "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
+          )
+        }
+      } else {
+        project.dependencies.add(
+          configName,
+          "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
+        )
+      }
+    }
+    return rendererConfig
+  }
+
   fun registerDesktopTasks(project: Project, extension: PreviewExtension) {
     val previewOutputDir = project.layout.buildDirectory.dir("compose-previews")
 
@@ -124,47 +173,7 @@ internal object ComposePreviewTasks {
       }
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
-    val rendererConfigName = "composePreviewRenderer"
-    val rendererConfig = project.configurations.maybeCreate(rendererConfigName)
-    rendererConfig.isCanBeResolved = true
-    rendererConfig.isCanBeConsumed = false
-
-    // Mirror of `AndroidPreviewSupport`'s renderer-resolution shape (the in-repo build uses the
-    // sibling project so live renderer edits land without a publish step; out-of-tree consumers
-    // fall through to the published `ee.schimke.composeai:renderer-desktop:<plugin-version>` JAR
-    // from Maven Central). The plugin's own version is baked into the jar at build time so the
-    // matching renderer artifact is selected automatically — see [PluginVersion]. The default
-    // add is skipped when the consumer has already populated `composePreviewRenderer` themselves,
-    // so `dependencies { "composePreviewRenderer"(files(...)) }` still works as an override.
-    val rendererProjectDir = project.rootDir.resolve("renderers/desktop")
-    val useLocalRenderer =
-      rendererProjectDir.resolve("build.gradle.kts").exists() ||
-        rendererProjectDir.resolve("build.gradle").exists()
-    project.afterEvaluate {
-      if (rendererConfig.dependencies.isNotEmpty()) return@afterEvaluate
-      if (useLocalRenderer) {
-        try {
-          project.dependencies.add(
-            rendererConfigName,
-            project.dependencies.project(mapOf("path" to ":renderer-desktop")),
-          )
-        } catch (e: org.gradle.api.UnknownProjectException) {
-          project.logger.debug(
-            "compose-ai-tools: :renderer-desktop project not found, falling back to Maven",
-            e,
-          )
-          project.dependencies.add(
-            rendererConfigName,
-            "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
-          )
-        }
-      } else {
-        project.dependencies.add(
-          rendererConfigName,
-          "ee.schimke.composeai:renderer-desktop:${PluginVersion.value}",
-        )
-      }
-    }
+    val rendererConfig = ensureRendererDesktopConfig(project, "composePreviewRenderer")
 
     val renderClasspathGuard =
       registerDesktopClasspathGuard(
@@ -962,6 +971,11 @@ internal object ComposePreviewTasks {
       moduleName.set(project.name)
       variantName.set(extension.variant)
       projectDirectory.set(project.layout.projectDirectory.asFile.absolutePath)
+      // Default Lottie captures into the shared `renders/` dir (desktop, where the desktop renderer
+      // is the only writer). The Android task overrides this in [configureDeps] to a disjoint dir
+      // so
+      // its JVM Lottie render doesn't share `renders/` with the Robolectric render.
+      lottieRenderSubdir.convention("renders")
       // `-PcomposePreview.failOnEmpty=true` wins over the extension, so
       // CI profiles and one-off triage runs can flip the gate without
       // touching build.gradle(.kts). Same pattern as

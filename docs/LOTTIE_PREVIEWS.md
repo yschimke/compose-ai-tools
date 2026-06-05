@@ -33,7 +33,21 @@ src/main/resources/lottie/loading.json   →   renders/lottie__lottie_loading.pn
                                           →   renders/lottie__lottie_loading.gif   (animated, intrinsic duration)
 ```
 
-Discovery is Desktop-only today (the Android discover task doesn't wire the resource scan).
+Works in **both desktop/JVM and Android modules.** In an Android module the asset is still rendered
+by the JVM/Compottie *desktop* renderer — the `.json`/`.lottie` is portable IR, so there is **no
+Android (Robolectric) Lottie player**. Discovery scans the Android module's Java-resource source dirs
+(`src/main/resources`, plus the KMP `src/commonMain/resources` / `src/androidMain/resources`), and a
+dedicated `composePreviewRenderLottie` task renders just the `kind=LOTTIE` entries through
+`DesktopRendererMain` on a `:renderer-desktop` classpath (the Robolectric pass skips them). On
+Android those renders land in a dir disjoint from `renders/` (`lottie-renders/`) so the two render
+tasks don't share an output directory — overlapping outputs would disable Gradle's build cache for
+both. Put your Lottie files under `src/main/resources/` in either module type.
+
+> **Android requirement.** The Android preview pipeline only registers for modules that depend on
+> Compose preview tooling (`androidx.compose.ui:ui-tooling-preview`) — the normal case for any module
+> showing previews. A *pure-asset* Android module with Lottie files but **no** Compose dependency at
+> all won't register the tasks (so its assets aren't discovered). Add the preview-tooling dependency
+> (or keep such assets in a module that already has Compose) to opt in.
 
 ## Animated capture — the looping GIF
 
@@ -89,7 +103,7 @@ multiple `@Preview`s at different `progress` values to review keyframes. Worked 
 
 | Stage | Mechanism |
 | --- | --- |
-| **Discovery (file path)** | `PreviewDiscovery` scans the resource dirs; a Lottie `.json` (sniffed by `v`+`layers`) or `.lottie` becomes a `kind=LOTTIE` `PreviewInfo` with the asset's resource-relative path on `PreviewParams.assetPath` and dimensions read from the document's `w`/`h`. Wired only on the Desktop discover task. |
+| **Discovery (file path)** | `PreviewDiscovery` scans the resource dirs; a Lottie `.json` (sniffed by `v`+`layers`) or `.lottie` becomes a `kind=LOTTIE` `PreviewInfo` with the asset's resource-relative path on `PreviewParams.assetPath` and dimensions read from the document's `w`/`h`. Wired on **both** the Desktop discover task (processed-resources dirs) and the Android discover task (`src/main/resources` source dirs — `androidLottieResourceDirs`). |
 | **Discovery (`@Preview` path)** | Standard `@Preview` discovery of a function calling `LottiePreview(asset, progress)`. |
 | **Render (still)** | Desktop renderer (`ImageComposeScene`). For `kind=LOTTIE`, `DesktopRendererMain` skips class reflection and renders the asset via `LottiePreview` directly. Compottie's `LottieComposition.parse(json)` is **synchronous**, so the composition is ready on the first composed frame — critical because the renderer captures after two `scene.render()` passes and does not pump coroutines, so the async `rememberLottieComposition` would render blank. |
 | **Render (animated)** | `renderer-desktop`'s `renderLottieGif` (selected by a `.gif` output extension in the CLI, or `renderMode="lottie-gif"` in the daemon). Holds one `ImageComposeScene`, sweeps a snapshot-backed `progress` state across the intrinsic-duration frame window, and encodes the frames via `ScrollGifEncoder`. |
@@ -143,8 +157,13 @@ interactive editing + a VS Code presenter.
    latest. Otherwise it falls back to `renderNow.overrides.lottie.progress` (the wire path from #1).
    Follow-on polish: markers, and auto-starting a held session for the duration of a scrub so the
    efficient path applies even without LIVE mode.
-3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
-   previews work in `:samples:android`, sibling to the Android-only runtime modules.
+3. **Android modules.** ✅ *Done — via the desktop renderer, no Android player.* An Android module's
+   `src/main/resources/**.{json,lottie}` assets are discovered (`androidLottieResourceDirs`) and
+   rendered by the JVM/Compottie `composePreviewRenderLottie` task (the Robolectric pass skips
+   `kind=LOTTIE`). Compottie has no Android variant and none is needed — the asset is portable IR.
+   Worked example: [`samples/android/src/main/resources/lottie/spin.json`](../samples/android/src/main/resources/lottie/spin.json).
+   (A true Robolectric Lottie *player* — rendering `@Preview { LottiePreview(...) }` inside an Android
+   composition — would still need a Compottie-Android artifact, which doesn't exist; that's not this.)
 4. **Rive.** Tracked separately — Rive's Kotlin runtime is Android/JNI-only with **no** JVM/Desktop
    renderer, so it needs a feasibility spike before a design (JNI under Robolectric, or Rive's newer
    Skia/WebGL path).

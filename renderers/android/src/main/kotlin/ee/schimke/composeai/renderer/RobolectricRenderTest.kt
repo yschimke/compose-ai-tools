@@ -117,10 +117,15 @@ object PreviewManifestLoader {
         // not JSON-representable.
         // XR_SUBSPACE previews are rendered by the separate `:renderer-xr` Robolectric task, not by
         // this Android image renderer (there's no `PreviewRenderStrategy` for them, by design).
-        // Drop them before any expansion so they never reach `strategyFor`.
+        // LOTTIE assets discovered in an Android module are rendered by the JVM desktop Compottie
+        // path (`composePreviewRenderLottie`), not Robolectric — there's no Android Lottie player
+        // and the asset is portable IR. Drop both before any expansion so they never reach
+        // `strategyFor`.
         val expanded =
             manifest.previews
-                .filter { it.params.kind != PreviewKind.XR_SUBSPACE }
+                .filter {
+                    it.params.kind != PreviewKind.XR_SUBSPACE && it.params.kind != PreviewKind.LOTTIE
+                }
                 .flatMap { expandParameterProvider(it) }
         // Tier filter (set by the plugin via TierSystemPropProvider). When
         // `fast`, drop heavyweight captures and annotation-sourced data

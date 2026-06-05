@@ -9,6 +9,10 @@ enum class PreviewKind {
     NOTIFICATION,
     GLANCE_APPWIDGET,
     XR_SUBSPACE,
+    // A Lottie asset discovered in this module. Carried so `previews.json` deserialises, but never
+    // rendered here — the JVM desktop Compottie path (`composePreviewRenderLottie`) owns it, and
+    // `RobolectricRenderTest` filters it out. There is no Android Lottie player.
+    LOTTIE,
 }
 
 /**

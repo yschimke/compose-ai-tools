@@ -28,6 +28,16 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Input abstract val renderBackend: Property<String>
 
   /**
+   * Restricts rendering to previews whose `params.kind.name` is in this set. Empty (the default)
+   * renders every kind — the historical behaviour. The Android path uses this to run a Lottie-only
+   * desktop-renderer pass (`composePreviewRenderLottie`) for `kind=LOTTIE` assets, which the
+   * Robolectric `composePreviewRender` deliberately skips (it can't inflate Compottie). Kept
+   * generic (a set of kind names) rather than a Lottie-specific flag so other JVM-renderable kinds
+   * can reuse it.
+   */
+  @get:Input abstract val includeKinds: org.gradle.api.provider.SetProperty<String>
+
+  /**
    * Render-tier filter. When `"fast"` the desktop path skips any preview whose representative
    * capture is heavier than [HEAVY_COST_THRESHOLD] (TOP / static stay in; LONG / GIF / animated
    * fall out). Default `"full"` keeps the historical behaviour (every preview rendered).
@@ -60,6 +70,11 @@ abstract class RenderPreviewsTask : DefaultTask() {
   @get:Inject abstract val execOperations: ExecOperations
 
   init {
+    // Explicit empty default so the desktop `composePreviewRender` registration (which never sets
+    // `includeKinds`) has a configured value for this non-optional `@Input` rather than relying on
+    // the managed-`SetProperty` implicit empty convention — keeps "render every kind" the default
+    // and self-documents it.
+    includeKinds.convention(emptySet())
     // Caching is intentionally gated on `tier=full`: a `tier=fast` run
     // only writes a subset of captures (fast ones), so a build-cache
     // restore from a fast snapshot would *wipe* the previous full run's
@@ -86,14 +101,21 @@ abstract class RenderPreviewsTask : DefaultTask() {
     // `cleanStaleRenders`) so VS Code can still display the stale image
     // with its badge.
     val isFastTier = tier.get().equals("fast", ignoreCase = true)
-    val previews =
+    val tierFiltered =
       if (!isFastTier) rawManifest.previews
       else
         rawManifest.previews.filter {
           val firstCost = it.captures.firstOrNull()?.cost ?: STATIC_COST
           !isHeavyCost(firstCost)
         }
-    val manifest = if (isFastTier) rawManifest.copy(previews = previews) else rawManifest
+    // Kind filter — when set, render only the named kinds (e.g. the Android Lottie-only pass).
+    // Empty
+    // keeps every kind.
+    val kinds = includeKinds.getOrElse(emptySet())
+    val previews =
+      if (kinds.isEmpty()) tierFiltered else tierFiltered.filter { it.params.kind.name in kinds }
+    val manifest =
+      if (isFastTier || kinds.isNotEmpty()) rawManifest.copy(previews = previews) else rawManifest
 
     if (manifest.previews.isEmpty()) {
       logger.lifecycle("No previews to render.")
@@ -147,11 +169,15 @@ abstract class RenderPreviewsTask : DefaultTask() {
       // produce N captures with different `renderOutput` paths. Skipping all but the first (the
       // old behaviour) silently dropped those extra files.
       for (capture in preview.captures) {
-        val relRender =
-          capture.renderOutput.substringAfter("renders/", missingDelimiterValue = "").ifEmpty {
-            "${preview.id}.png"
-          }
-        val outputFile = outDir.resolve(relRender)
+        // Resolve `renderOutput` (e.g. `renders/<id>.png`, or `lottie-renders/<id>.png` for the
+        // Android Lottie pass) relative to the compose-previews root — same convention the
+        // data-product outputs and the missing-render gate use. For the normal `renders/<id>.png`
+        // this is identical to the old `outDir.resolve(<id>.png)` (outDir == previewsRoot/renders),
+        // but it also lets a task whose `outputDir` is a disjoint sibling (lottie-renders/) write
+        // there without an output-dir overlap.
+        val outputFile =
+          if (capture.renderOutput.isNotEmpty()) previewsRoot.resolve(capture.renderOutput)
+          else outDir.resolve("${preview.id}.png")
         invokeRenderer(
           mainClass = mainClass,
           preview = preview,
