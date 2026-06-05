@@ -2488,15 +2488,29 @@ export class PreviewApp extends LitElement {
             // a focused preview when it is visible; a null preview (pre-init /
             // empty focus set) hides the preview-gated bundles.
             const pstate = previewStore.getState();
+            const focusedId = pstate.focusedPreviewId;
             const focusedPreview =
-                pstate.focusedPreviewId != null
-                    ? (pstate.allPreviews.find(
-                          (p) => p.id === pstate.focusedPreviewId,
-                      ) ?? null)
+                focusedId != null
+                    ? (pstate.allPreviews.find((p) => p.id === focusedId) ??
+                      null)
                     : null;
+            // Fold in products attached live after focus (the
+            // `updateDataProducts` cache) — `PreviewInfo.dataProducts` is the
+            // manifest-side field and isn't updated from that cache, so a
+            // COMPOSE preview that receives a live `animation/lottie` product
+            // would otherwise never surface the Lottie chip.
+            const liveProductKinds =
+                focusedId != null
+                    ? new Set<string>(
+                          dataProductsByPreview.get(focusedId)?.keys() ?? [],
+                      )
+                    : undefined;
             const availableBundles: BundleId[] = availableBundleIdsForPreview(
                 focusedPreview,
-                { earlyFeatures: earlyFeatures() },
+                {
+                    earlyFeatures: earlyFeatures(),
+                    dataProductKinds: liveProductKinds,
+                },
             );
             // Grey out inactive chips while the preview daemon is still
             // spawning. A click during that window queues subscriptions
@@ -2530,26 +2544,32 @@ export class PreviewApp extends LitElement {
                 availableBundles,
                 daemonReady,
             });
-            // An active bundle that no longer applies to the focused preview
-            // (e.g. Lottie was toggled on, then the user navigated to a
-            // non-Lottie preview) keeps its subscription but must not leave a
-            // stale tab behind — its chip is already hidden above. Filter the
-            // tab row to the available set so the tab disappears with the chip,
-            // and reappears (still active) when the user returns to a preview
-            // the bundle applies to. Non-destructive: the controller's active
-            // set is untouched.
             const availableSet = new Set<BundleId>(availableBundles);
+            // An active bundle that no longer applies to the focused preview
+            // (e.g. Lottie toggled on, then the user navigated to a non-Lottie
+            // preview) keeps its subscription but must not leave a stale tab —
+            // its chip is already hidden above. If the *active tab* is the one
+            // that became inapplicable, retarget the controller's active tab to
+            // a still-applicable active bundle (or null) BEFORE painting, so the
+            // tab row, legend, and inspector — all of which read the
+            // controller's `activeTab` — stay in lockstep with the filtered chip
+            // bar. `selectTab` fires `onChange`, which re-enters this function
+            // with the corrected tab, so return and let that pass paint. Bundles
+            // stay active (only their chip/tab hides), so navigating back to an
+            // applicable preview restores them.
+            if (s.activeTab !== null && !availableSet.has(s.activeTab)) {
+                bundleController.selectTab(
+                    s.activeBundles.find((id) => availableSet.has(id)) ?? null,
+                );
+                return;
+            }
             const visibleActiveBundles = s.activeBundles.filter((id) =>
                 availableSet.has(id),
             );
-            const visibleActiveTab =
-                s.activeTab && availableSet.has(s.activeTab)
-                    ? s.activeTab
-                    : (visibleActiveBundles[0] ?? null);
             dataTabs.setState({
                 bundles: s.bundles,
                 activeBundles: visibleActiveBundles,
-                activeTab: visibleActiveTab,
+                activeTab: s.activeTab,
             });
             if (s.activeBundles.includes("a11y")) {
                 refreshA11yBundle();
@@ -3356,6 +3376,17 @@ export class PreviewApp extends LitElement {
                 );
                 if (matches && focused) {
                     inspector.render(focused);
+                }
+                // A live `animation/lottie` attachment can make the Lottie
+                // bundle newly applicable to the focused preview — recompute
+                // chip availability so the chip/tab appears now rather than
+                // waiting for the next focus change (the gate otherwise only
+                // saw the manifest-side `PreviewInfo.dataProducts`).
+                if (
+                    matches &&
+                    dataProducts.some((dp) => dp.kind === "animation/lottie")
+                ) {
+                    reflectBundleState();
                 }
                 // Refresh bundle tab bodies that depend on this preview's
                 // data. Each bundle gates on its own active flag so a

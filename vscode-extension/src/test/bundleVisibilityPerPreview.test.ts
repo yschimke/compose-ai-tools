@@ -72,6 +72,16 @@ describe("availableBundleIdsForPreview (per-preview chip filtering)", () => {
         assert.ok(ids.includes("lottie"));
     });
 
+    it("shows the Lottie bundle from a live (post-focus) product kind, not just the manifest field", () => {
+        // COMPOSE preview with NO manifest dataProducts, but a live
+        // `animation/lottie` attachment threaded through `dataProductKinds`.
+        const ids = availableBundleIdsForPreview(preview({ kind: "COMPOSE" }), {
+            earlyFeatures: true,
+            dataProductKinds: new Set(["animation/lottie"]),
+        });
+        assert.ok(ids.includes("lottie"));
+    });
+
     it("shows the Watch bundle for a wear-device preview and hides Lottie", () => {
         const ids = availableBundleIdsForPreview(
             preview({ device: "wearos", kind: "COMPOSE" }),

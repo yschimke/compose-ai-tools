@@ -288,27 +288,47 @@ export function defaultOnKindsFor(bundleId: BundleId): readonly string[] {
     return b.kinds.filter((k) => k.defaultOn).map((k) => k.kind);
 }
 
-/** Build the {@link BundlePreviewContext} a bundle's `appliesTo` predicate reads from a preview. */
-export function previewBundleContext(p: PreviewInfo): BundlePreviewContext {
+/**
+ * Build the {@link BundlePreviewContext} a bundle's `appliesTo` predicate reads from a preview.
+ *
+ * [liveDataProductKinds] folds in products attached *after* focus via the webview's
+ * `updateDataProducts` cache — `PreviewInfo.dataProducts` is the manifest/annotation-side field and
+ * is never updated from that live cache, so without this a COMPOSE preview that receives a live
+ * `animation/lottie` attachment would never surface the Lottie chip.
+ */
+export function previewBundleContext(
+    p: PreviewInfo,
+    liveDataProductKinds?: ReadonlySet<string>,
+): BundlePreviewContext {
+    const dataProductKinds = new Set<string>(
+        (p.dataProducts ?? []).map((dp) => dp.kind),
+    );
+    if (liveDataProductKinds) {
+        for (const k of liveDataProductKinds) dataProductKinds.add(k);
+    }
     return {
         kind: p.params?.kind ?? null,
         isWear: isWearPreview(p),
-        dataProductKinds: new Set((p.dataProducts ?? []).map((dp) => dp.kind)),
+        dataProductKinds,
     };
 }
 
 /**
  * Whether [bundle] is relevant to [preview]. A bundle with no `appliesTo` predicate is universal.
  * A gated bundle (Lottie, Watch) needs a focused preview it can act on — `preview == null` (nothing
- * focused) therefore hides it.
+ * focused) therefore hides it. [liveDataProductKinds] threads the focused preview's live product
+ * cache through (see {@link previewBundleContext}).
  */
 export function bundleAppliesToPreview(
     bundle: BundleDescriptor,
     preview: PreviewInfo | null,
+    liveDataProductKinds?: ReadonlySet<string>,
 ): boolean {
     if (!bundle.appliesTo) return true;
     if (!preview) return false;
-    return bundle.appliesTo(previewBundleContext(preview));
+    return bundle.appliesTo(
+        previewBundleContext(preview, liveDataProductKinds),
+    );
 }
 
 /**
@@ -316,17 +336,22 @@ export function bundleAppliesToPreview(
  * early-features base set — every bundle when on, or just the graduated `a11y` when off — and drops
  * bundles that don't apply to the focused preview (so Lottie only shows for Lottie previews, Watch
  * only for Wear). Mirrors the existing `availableBundles` filtering the chip bar already honours.
+ *
+ * `opts.dataProductKinds` is the focused preview's live product-kind cache (from
+ * `updateDataProducts`), folded into the relevance check so live attachments count.
  */
 export function availableBundleIdsForPreview(
     preview: PreviewInfo | null,
-    opts: { earlyFeatures: boolean },
+    opts: { earlyFeatures: boolean; dataProductKinds?: ReadonlySet<string> },
 ): BundleId[] {
     const base: BundleId[] = opts.earlyFeatures
         ? BUNDLES.map((b) => b.id)
         : ["a11y"];
     return base.filter((id) => {
         const bundle = BY_ID.get(id);
-        return bundle ? bundleAppliesToPreview(bundle, preview) : false;
+        return bundle
+            ? bundleAppliesToPreview(bundle, preview, opts.dataProductKinds)
+            : false;
     });
 }
 
