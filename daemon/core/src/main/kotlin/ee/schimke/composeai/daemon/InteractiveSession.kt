@@ -85,6 +85,25 @@ interface InteractiveSession : AutoCloseable {
   fun dispatchRemoteComposeChange(change: RemoteComposeChange): Boolean = false
 
   /**
+   * Push one Lottie timeline scrub into the held composition without a fresh `renderNow`. The
+   * desktop session holds the progress in Compose snapshot state that `LocalLottieProgress` reads,
+   * so setting it recomposes the held scene to [progress]; the next [render] (the
+   * `interactive/setLottie` handler requests one) paints that frame. This is the live-scrub payoff:
+   * dragging the panel's timeline slider re-renders the same scene via recomposition instead of
+   * standing up a new scene per tick.
+   *
+   * Default returns `false` so hosts without a live Lottie binding (Android today — there is no
+   * Compottie Android render path; any host where the held scene carries no Lottie state) cleanly
+   * surface "no live scrub" and the caller's fallback re-issues a `renderNow` with
+   * `overrides.lottie.progress`. The desktop session mutates the scene's `lottieProgressState`,
+   * remembers it for cross-render stickiness, and returns `true`.
+   *
+   * @param progress timeline position in `0f..1f` (implementations clamp); mirrors the panel's
+   *   `setLottieProgress` value.
+   */
+  fun dispatchLottieProgress(progress: Float): Boolean = false
+
+  /**
    * Accessibility-driven dispatch: resolve a node by its visible content description and invoke the
    * named
    * [`SemanticsActions`](https://developer.android.com/reference/kotlin/androidx/compose/ui/semantics/SemanticsActions)

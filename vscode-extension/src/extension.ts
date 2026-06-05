@@ -6078,12 +6078,20 @@ async function handleSetRemoteComposeNamedValue(
 }
 
 /**
- * Apply one scrub from the panel's Lottie timeline slider. Unlike Remote Compose / permissions
- * there's no override bag to merge — the override is a single scalar — so we just dispatch a fresh
- * `renderNow.overrides.lottie.progress`. The desktop renderer provides it as `LocalLottieProgress`,
- * re-rendering the held `kind=LOTTIE` preview at that 0..1 position. (A held-session
- * `interactive/setLottie` for sub-frame scrubbing is a future optimisation; `renderNow` is the
- * canonical path today.)
+ * Apply one scrub from the panel's Lottie timeline slider.
+ *
+ * When a live session is up for the preview (LIVE mode), prefer the held-session path:
+ * `interactive/setLottie` mutates the held scene's snapshot progress and recomposes in place, so a
+ * slider drag paints sub-frame without standing up a fresh `ImageComposeScene` per tick — efficient
+ * live scrubbing. The daemon coalesces rapid ticks to the latest, and the held render persists the
+ * scrub via `LottieProgressController` so a later save/warmup render stays pinned. The bundled
+ * daemon ships `interactive/setLottie` alongside the live-stream surface, so a live streamId implies
+ * support — we don't also fire `renderNow` per tick (that would defeat the point).
+ *
+ * No live session → `renderNow.overrides.lottie.progress` re-renders the held `kind=LOTTIE` preview
+ * at that 0..1 position (itself sticky per preview via the controller). Auto-starting a session just
+ * for the duration of a scrub — so the efficient path applies even without LIVE mode — is a noted
+ * follow-on.
  */
 async function handleSetLottieProgress(
     previewId: string,
@@ -6097,6 +6105,27 @@ async function handleSetLottieProgress(
         return;
     }
     const clamped = Math.min(1, Math.max(0, progress));
+
+    const liveStreamId =
+        activeStreamFrameStreams.get(previewId) ??
+        activeInteractiveStreams.get(previewId);
+    if (liveStreamId && daemonGate) {
+        const client = await daemonGate.getOrSpawn(
+            moduleInfo,
+            daemonScheduler.daemonEvents(moduleInfo.modulePath),
+        );
+        if (client) {
+            logInfo(
+                `[panel] lottie progress=${clamped.toFixed(3)} for ${previewId} via live session ${liveStreamId}`,
+            );
+            client.interactiveSetLottie({
+                frameStreamId: liveStreamId,
+                progress: clamped,
+            });
+            return;
+        }
+    }
+
     logInfo(
         `[panel] lottie progress=${clamped.toFixed(3)} for ${previewId} via renderNow`,
     );

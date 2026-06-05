@@ -132,13 +132,17 @@ interactive editing + a VS Code presenter.
    `kind=LOTTIE` preview's timeline straight from the asset — `totalFrames`, `frameRate`,
    `durationMillis`, `width`, `height` — with no render (`requiresRerender = false`). The VS Code
    panel ships a **Lottie** bundle (`lottieScrubberPresenter.ts`): a timeline slider that reads that
-   metadata for its range/labels and, on drag, posts `setLottieProgress` → the host re-renders via
-   `renderNow.overrides.lottie.progress` (the wire path from #1). The scrub is **sticky per preview**:
-   `LottieProgressController` remembers the last position, and `RenderEngine` re-applies it on any
-   later render that carries no override (a save / warmup re-render), so the frame — and the slider —
-   stay pinned instead of snapping back to frame 0. Follow-on polish: markers, and a held-scene
-   `interactive/setLottie` for sub-frame scrubbing via snapshot recomposition instead of a fresh
-   render (mirrors `interactive/setRemoteCompose`).
+   metadata for its range/labels and, on drag, posts `setLottieProgress`. The scrub is **sticky per
+   preview**: `LottieProgressController` remembers the last position, and `RenderEngine` re-applies it
+   on any later render that carries no override (a save / warmup re-render), so the frame — and the
+   slider — stay pinned instead of snapping back to frame 0. When a **live session** is up for the
+   preview the panel prefers `interactive/setLottie` (the Lottie analogue of
+   `interactive/setRemoteCompose`): the daemon mutates the held scene's snapshot progress state and
+   the file-Lottie content reads it in its draw-time `progress` lambda, so a drag repaints the held
+   scene in place — no fresh `ImageComposeScene` per tick. The daemon coalesces rapid ticks to the
+   latest. Otherwise it falls back to `renderNow.overrides.lottie.progress` (the wire path from #1).
+   Follow-on polish: markers, and auto-starting a held session for the duration of a scrub so the
+   efficient path applies even without LIVE mode.
 3. **Android backend.** A Robolectric render path (Compottie has an Android variant) so Lottie
    previews work in `:samples:android`, sibling to the Android-only runtime modules.
 4. **Rive.** Tracked separately — Rive's Kotlin runtime is Android/JNI-only with **no** JVM/Desktop

@@ -69,6 +69,45 @@ class RenderEngineLottieScrubTest {
   }
 
   @Test
+  fun liveScrubRecomposesHeldSceneInPlace() {
+    // The held-session live-scrub path: set up the scene once, then mutate the snapshot progress
+    // state (exactly what DesktopInteractiveSession.dispatchLottieProgress does) and render again
+    // WITHOUT a fresh setUp. The second frame must differ — proof `LocalLottieProgress` reads the
+    // snapshot state reactively so the held scene recomposes to the new timeline position.
+    val engine = RenderEngine(outputDir = tempFolder.newFolder("held"))
+    val spec =
+      RenderSpec(
+        previewId = "lottie__held",
+        className = "",
+        functionName = "spin.json",
+        kind = "LOTTIE",
+        assetPath = "lottie/spin.json",
+        widthPx = 48,
+        heightPx = 48,
+        density = 1.0f,
+        showBackground = true,
+        outputBaseName = "spin",
+        overrides = null,
+      )
+    val state = engine.setUp(spec, classLoader = javaClass.classLoader, inspectionMode = false)
+    try {
+      engine.renderOnce(state, requestId = 1L)
+      val atZero = state.outputFile.readBytes()
+
+      state.lottieProgressState.value = 0.25f
+      engine.renderOnce(state, requestId = 2L)
+      val atQuarter = state.outputFile.readBytes()
+
+      assertFalse(
+        "mutating the held scene's progress state must recompose to a different frame",
+        atZero.contentEquals(atQuarter),
+      )
+    } finally {
+      engine.tearDown(state)
+    }
+  }
+
+  @Test
   fun scrubPersistsAcrossRenderWithoutOverride() {
     // Scrub to 0.25, then re-render the SAME preview with no override — the controller re-applies
     // the last scrub, so the frame stays at 0.25 rather than snapping back to frame 0.
