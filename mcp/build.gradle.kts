@@ -57,6 +57,8 @@ dependencies {
   // only and consumers resolving from POM metadata fail to compile against the MCP APIs.
   api(project(":daemon:core"))
   api(project(":render-session-api"))
+  // Semantics diff engine + payload model for the `diff_semantics` tool (issue #1785).
+  implementation(project(":data-layoutinspector-core"))
 
   testImplementation(libs.junit)
   testImplementation(libs.truth)
