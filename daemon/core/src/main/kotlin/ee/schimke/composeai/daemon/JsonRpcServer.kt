@@ -50,6 +50,7 @@ import ee.schimke.composeai.daemon.protocol.Orientation
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
 import ee.schimke.composeai.daemon.protocol.PruneReasonWire
 import ee.schimke.composeai.daemon.protocol.RejectedRender
+import ee.schimke.composeai.daemon.protocol.RenderError
 import ee.schimke.composeai.daemon.protocol.RenderFinishedParams
 import ee.schimke.composeai.daemon.protocol.RenderMetrics
 import ee.schimke.composeai.daemon.protocol.RenderNowParams
@@ -1621,16 +1622,18 @@ class JsonRpcServer(
       ?.complete(
         RerenderOutcome.Failed(failure.cause.message ?: failure.cause.javaClass.simpleName)
       )
-    // Minimal renderFailed; B1.4 widens this to the real RenderError shape.
+    // #1789 — classify the failure into a typed RenderErrorKind + a one-line fix hint for
+    // recognized skew signatures, instead of the old blanket kind = "internal".
+    val classification = RenderErrorClassifier.classify(failure.cause)
+    val renderError =
+      RenderError(
+        kind = classification.kind,
+        message = failure.cause.message ?: failure.cause.javaClass.name,
+        suggestion = classification.suggestion,
+      )
     val payload = buildJsonObject {
       put("id", JsonPrimitive(previewId))
-      put(
-        "error",
-        buildJsonObject {
-          put("kind", JsonPrimitive("internal"))
-          put("message", JsonPrimitive(failure.cause.message ?: failure.cause.javaClass.name))
-        },
-      )
+      put("error", json.encodeToJsonElement(RenderError.serializer(), renderError))
     }
     sendNotification("renderFailed", payload)
   }
