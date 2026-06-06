@@ -11,13 +11,18 @@ into a long-lived, extensible render service.
 >   held, mutable session — in prototype form). See
 >   [renderers/xr-composite/README.md → Server mode](../../../renderers/xr-composite/README.md#server-mode---serve).
 > - `:renderer-xr-client` — the JVM side: `XrServerClient` (the framed JSON-RPC transport),
->   `XrCompositeBinary` (binary/materials resolution), and `XrRenderServer` (resolve → spawn →
->   `initialize` → render/updatePanels → close), the single entry point the daemon backend will hold.
+>   `XrCompositeBinary` (binary/materials resolution), `XrRenderServer` (resolve → spawn →
+>   `initialize` → render/updatePanels → close), and `XrSessionManager` (one server per stream id).
 >   A real-binary integration test drives the loop end-to-end in the XR CI job.
+> - **Daemon `xr/*` surface** — `JsonRpcServer` now serves `xr/start` (request) / `xr/updatePanels`
+>   / `xr/stop` (notifications) behind an injected `XrRenderServerFactory`, advertising
+>   `capabilities.xr` and emitting frames as `streamFrame` notifications (the unchanged wire shape).
+>   Covered by in-process integration tests with a fake factory.
 >
-> **Still to do:** the daemon fronting `XrRenderServer` (a `RenderSession`-style backend + JSON-RPC
-> surface + frame proxying through `FrameStreamRegistry` — item #2), native multi-session
-> concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
+> **Still to do:** wire the production factory in `DaemonMain` (resolve the binary at startup so the
+> real daemon flips `capabilities.xr` on — best verified with the daemon harness), route XR frames
+> through `FrameStreamRegistry` for visibility/fps gating, native multi-session concurrency, and the
+> `xr/structure` / `xr/a11y-overlay` data-product kinds.
 
 ## Motivation
 

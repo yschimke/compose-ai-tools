@@ -27,6 +27,11 @@ dependencies {
   // public surface keeps its java.io.File signatures.
   implementation(project(":common-io"))
 
+  // JVM client for the native XR render server — the daemon fronts it for `xr/…`
+  // (RENDERER_SERVICE). `api`, not `implementation`: `JsonRpcServer`'s public constructor exposes
+  // `XrRenderServerFactory?`, so the type is part of this published module's compile ABI.
+  api(project(":renderer-xr-client"))
+
   // Protocol message types are @Serializable. Exposed as `api` so downstream
   // daemon modules (e.g. :daemon:android) get
   // kotlinx-serialization-json on their compile classpath without re-declaring
