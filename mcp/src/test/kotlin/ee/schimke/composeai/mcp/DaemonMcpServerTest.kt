@@ -801,6 +801,156 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_preview observe hash returns sha and dimensions without a base64 image`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // A 24-byte PNG with a valid IHDR (width=40, height=30) so dimensions parse from the header.
+    val pngBytes =
+      byteArrayOf(
+        0x89.toByte(),
+        0x50,
+        0x4e,
+        0x47,
+        0x0d,
+        0x0a,
+        0x1a,
+        0x0a, // signature
+        0x00,
+        0x00,
+        0x00,
+        0x0d,
+        0x49,
+        0x48,
+        0x44,
+        0x52, // IHDR length + "IHDR"
+        0x00,
+        0x00,
+        0x00,
+        0x28, // width = 40
+        0x00,
+        0x00,
+        0x00,
+        0x1e, // height = 30
+      )
+    val pngFile = tmp.newFile("observe-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("observe", "hash")
+        },
+        timeoutMs = 10_000,
+      )
+    val parsed = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(parsed["observe"]?.jsonPrimitive?.contentOrNull).isEqualTo("hash")
+    assertThat(parsed["widthPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("40")
+    assertThat(parsed["heightPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("30")
+    assertThat(parsed["sizeBytes"]?.jsonPrimitive?.contentOrNull).isEqualTo("24")
+    assertThat(parsed["sha256"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+    // The first (only) content block is text JSON — firstTextContent() above would have errored on
+    // an image block, so the token-frugal path returned no base64 PNG.
+    assertThat(resp.textContents()).hasSize(1)
+  }
+
+  @Test
+  fun `render_preview observe semantics embeds the compose semantics tree`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "compose/semantics",
+            schemaVersion = 2,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      d.dataFetchHandler = { _, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 2,
+          payload =
+            buildJsonObject {
+              putJsonObject("root") {
+                put("nodeId", "1")
+                put("boundsInRoot", "0,0,40,30")
+                put("testTag", "hero")
+              }
+            },
+        )
+      }
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+    val pngBytes =
+      byteArrayOf(
+        0x89.toByte(),
+        0x50,
+        0x4e,
+        0x47,
+        0x0d,
+        0x0a,
+        0x1a,
+        0x0a,
+        0x00,
+        0x00,
+        0x00,
+        0x0d,
+        0x49,
+        0x48,
+        0x44,
+        0x52,
+        0x00,
+        0x00,
+        0x00,
+        0x28,
+        0x00,
+        0x00,
+        0x00,
+        0x1e,
+      )
+    val pngFile = tmp.newFile("observe-semantics.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("observe", "semantics")
+        },
+        timeoutMs = 10_000,
+      )
+    val parsed = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(parsed["observe"]?.jsonPrimitive?.contentOrNull).isEqualTo("semantics")
+    val root = parsed["semantics"]!!.jsonObject["root"]!!.jsonObject
+    assertThat(root["testTag"]?.jsonPrimitive?.contentOrNull).isEqualTo("hero")
+    // ref assigned by SemanticsRefs on the producer side round-trips through.
+    assertThat(parsed["sha256"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+  }
+
+  @Test
   fun `render_preview rejects overrides the daemon does not support`() {
     // Daemon advertises supportedOverrides = ["widthPx", "uiMode"]; an agent passes localeTag
     // (which the backend would silently ignore today). MCP rejects with a diagnostic instead
