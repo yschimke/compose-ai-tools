@@ -42,13 +42,16 @@ public class XrServerException(message: String, cause: Throwable? = null) :
  * JSON-RPC framing the daemon's subprocess backend uses, demultiplexing id-matched responses from
  * `streamFrame` notifications on a background reader thread.
  *
- * This is the transport the daemon's future XR `RenderSession` backend wraps (RENDERER_SERVICE
- * RFC): the daemon owns/multiplexes one native process and proxies its frames to clients. The
- * client is constructed over raw streams so it is unit-testable without a real process; [spawn]
+ * **Multi-session:** one client drives one native process that fans many sessions over a single
+ * Filament engine. Every call carries a `sessionId`; the reader routes each `streamFrame` to a
+ * per-session queue so concurrent sessions don't cross frames. The daemon's XR backend holds one
+ * client and maps each `frameStreamId` to a session id.
+ *
+ * The client is constructed over raw streams so it is unit-testable without a real process; [spawn]
  * wires it to an actual `xr-composite --serve` child.
  *
- * Threading: safe for sequential calls from one caller thread. Each request blocks for its ack; the
- * matching `streamFrame` is collected from a queue the reader thread fills.
+ * Threading: safe for sequential calls per session from the caller; each request blocks for its
+ * ack, then collects the matching session's frame.
  */
 public class XrServerClient
 internal constructor(
@@ -60,7 +63,9 @@ internal constructor(
   private val json = Json { ignoreUnknownKeys = true }
   private val nextId = AtomicLong(1)
   private val responseSlots = ConcurrentHashMap<Long, LinkedBlockingQueue<JsonObject>>()
-  private val frames = LinkedBlockingQueue<StreamFrame>()
+  // One frame queue per sessionId — the reader routes `streamFrame` notifications here by
+  // sessionId.
+  private val frames = ConcurrentHashMap<String, LinkedBlockingQueue<StreamFrame>>()
   private val reader =
     Thread({ runReader(input) }, "xr-server-client-reader").apply {
       isDaemon = true
@@ -68,40 +73,66 @@ internal constructor(
     }
 
   /** Drives `initialize`; returns the server's `capabilities` object. */
-  public fun initialize(frameStreamId: String? = null, timeout: Duration = 60.seconds): JsonObject {
-    val params = buildJsonObject { frameStreamId?.let { put("frameStreamId", it) } }
-    val result = request("initialize", params, timeout)
+  public fun initialize(timeout: Duration = 60.seconds): JsonObject {
+    val result = request("initialize", buildJsonObject {}, timeout)
     return result["capabilities"]?.jsonObject
       ?: throw XrServerException("initialize: no capabilities in result ($result)")
   }
 
   /**
-   * Drives `render` with a full [scene] (a serialized `SpatialScene`). `sceneDir` resolves relative
-   * panel textures; `environment` overrides the backdrop. Returns the rendered [StreamFrame].
+   * Drives `render` for [sessionId] with a full [scene] (a serialized `SpatialScene`). `sceneDir`
+   * resolves relative panel textures; `environment` overrides the backdrop; `width`/`height` set
+   * the session viewport. Returns the rendered [StreamFrame].
    */
   public fun render(
+    sessionId: String,
     scene: JsonElement,
     sceneDir: String? = null,
     environment: String? = null,
+    width: Int? = null,
+    height: Int? = null,
     timeout: Duration = 60.seconds,
   ): StreamFrame {
     val params = buildJsonObject {
+      put("sessionId", sessionId)
       put("scene", scene)
       sceneDir?.let { put("sceneDir", it) }
       environment?.let { put("environment", it) }
+      width?.let { put("width", it) }
+      height?.let { put("height", it) }
     }
     request("render", params, timeout)
-    return awaitFrame(timeout)
+    return awaitFrame(sessionId, timeout)
   }
 
   /**
-   * Drives `xr/updatePanels` — each entry in [panels] is `{id, texture?, poseInRoot?, sizeDp?}`,
-   * mutating the held scene per-frame. Returns the freshly rendered [StreamFrame].
+   * Drives `xr/updatePanels` for [sessionId] — each entry in [panels] is `{id, texture?,
+   * poseInRoot?, sizeDp?}`, mutating that session's held scene. Returns the freshly rendered
+   * [StreamFrame].
    */
-  public fun updatePanels(panels: JsonArray, timeout: Duration = 60.seconds): StreamFrame {
-    val params = buildJsonObject { put("panels", panels) }
+  public fun updatePanels(
+    sessionId: String,
+    panels: JsonArray,
+    timeout: Duration = 60.seconds,
+  ): StreamFrame {
+    val params = buildJsonObject {
+      put("sessionId", sessionId)
+      put("panels", panels)
+    }
     request("xr/updatePanels", params, timeout)
-    return awaitFrame(timeout)
+    return awaitFrame(sessionId, timeout)
+  }
+
+  /** Sends `xr/stop` to tear down [sessionId] on the server (notification; no ack awaited). */
+  public fun stop(sessionId: String) {
+    sendFrame(
+      buildJsonObject {
+        put("jsonrpc", "2.0")
+        put("method", "xr/stop")
+        put("params", buildJsonObject { put("sessionId", sessionId) })
+      }
+    )
+    frames.remove(sessionId)
   }
 
   /** Sends `exit`; the server ends its loop and the process terminates. */
@@ -137,9 +168,12 @@ internal constructor(
 
   // ---- internals ----
 
-  private fun awaitFrame(timeout: Duration): StreamFrame =
-    frames.poll(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
-      ?: throw XrServerException("no streamFrame within $timeout")
+  private fun frameQueue(sessionId: String): LinkedBlockingQueue<StreamFrame> =
+    frames.computeIfAbsent(sessionId) { LinkedBlockingQueue() }
+
+  private fun awaitFrame(sessionId: String, timeout: Duration): StreamFrame =
+    frameQueue(sessionId).poll(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
+      ?: throw XrServerException("no streamFrame for session $sessionId within $timeout")
 
   private fun request(method: String, params: JsonObject, timeout: Duration): JsonObject {
     val id = nextId.getAndIncrement()
@@ -182,7 +216,10 @@ internal constructor(
         if (id != null) {
           responseSlots.computeIfAbsent(id) { LinkedBlockingQueue() }.put(obj)
         } else if (obj["method"]?.jsonPrimitive?.content == "streamFrame") {
-          obj["params"]?.jsonObject?.let { frames.put(parseFrame(it)) }
+          obj["params"]?.jsonObject?.let { p ->
+            val sid = p["sessionId"]?.jsonPrimitive?.content ?: "default"
+            frameQueue(sid).put(parseFrame(p))
+          }
         }
       }
     } catch (_: IOException) {

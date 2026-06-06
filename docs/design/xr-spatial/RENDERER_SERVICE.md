@@ -25,9 +25,12 @@ into a long-lived, extensible render service.
 > - **Frame gating** — XR streams register with `FrameStreamRegistry` and frames route through
 >   `consumeForStream` (per-stream fps cap via `xr/start.maxFps`, `stream/visibility` downshift,
 >   content dedup → `unchanged` heartbeats, keyframe-on-(re)show), the same gating `stream/start` gets.
+> - **Multi-session concurrency** — one shared Filament engine fans across sessions keyed by
+>   `sessionId`: the native `--serve` server holds per-session swapchain/scene/view (`xr/stop` tears a
+>   session down, engine kept), and `XrSessionManager` drives them all over a single child process,
+>   demuxing frames per `sessionId` in `XrServerClient` — replacing one-process-per-session.
 >
-> **Still to do:** native multi-session concurrency (one Filament engine fanned across sessions
-> rather than one child per session), and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
+> **Still to do:** the `xr/structure` / `xr/a11y-overlay` data-product kinds.
 
 ## Motivation
 

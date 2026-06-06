@@ -341,9 +341,7 @@ fun runDaemon(
   val xrMaterials = xrBinary?.let { XrCompositeBinary.resolveMaterials(it) }
   val xrServerFactory =
     if (xrBinary != null && xrMaterials != null) {
-      XrRenderServerFactory { width, height ->
-        XrRenderServer.start(xrBinary, xrMaterials, width, height)
-      }
+      XrRenderServerFactory { XrRenderServer.start(xrBinary, xrMaterials) }
     } else {
       null
     }

@@ -617,10 +617,11 @@ class StreamRpcIntegrationTest {
   }
 }
 
-/** Fake native XR render server — returns monotonically-sequenced frames, tracks close. */
+/** Fake native XR render server — returns monotonically-sequenced frames, tracks stop/close. */
 private class FakeXrHandle : XrRenderServerHandle {
   private val seq = AtomicInteger(0)
   @Volatile var closed = false
+  val stopped = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
   override val capabilities = buildJsonObject {}
 
   // Distinct payload per frame so the registry doesn't dedup them to heartbeats.
@@ -628,12 +629,19 @@ private class FakeXrHandle : XrRenderServerHandle {
     seq.incrementAndGet().let { n -> XrStreamFrame(n.toLong(), 64, 48, "png", "data-$n") }
 
   override fun render(
+    sessionId: String,
     scene: kotlinx.serialization.json.JsonElement,
     sceneDir: String?,
     environment: String?,
+    width: Int?,
+    height: Int?,
   ) = frame()
 
-  override fun updatePanels(panels: JsonArray) = frame()
+  override fun updatePanels(sessionId: String, panels: JsonArray) = frame()
+
+  override fun stop(sessionId: String) {
+    stopped.add(sessionId)
+  }
 
   override fun close() {
     closed = true
@@ -643,8 +651,7 @@ private class FakeXrHandle : XrRenderServerHandle {
 private class FakeXrFactory : XrRenderServerFactory {
   val created = mutableListOf<FakeXrHandle>()
 
-  override fun start(width: Int, height: Int): XrRenderServerHandle =
-    FakeXrHandle().also { created.add(it) }
+  override fun start(): XrRenderServerHandle = FakeXrHandle().also { created.add(it) }
 }
 
 /** Mirror of the test-only host in InteractiveRpcIntegrationTest. */
