@@ -86,6 +86,13 @@ public class XrSessionManager(
     if (srv == null || !openIds.contains(id)) {
       throw XrServerException("no XR session open for id=$id")
     }
+    // The shared child can die between frames on a live stream (no xr/start runs in that path), so
+    // check here too: drop the dead server and tell the caller the session is gone rather than
+    // hammering a dead handle. The client recovers by reopening with xr/start.
+    if (!srv.isAlive()) {
+      dropServer(srv)
+      throw XrServerException("XR server died; session $id lost — reopen with xr/start")
+    }
     val frame = srv.updatePanels(id, panels)
     // Keep the held structure (served via xr/structure) in step with the live scene: overlay each
     // delta onto the matching panel by id (appending unknown ids), mirroring the native server.
@@ -158,22 +165,29 @@ public class XrSessionManager(
   }
 
   private fun ensureServer(): XrRenderServerHandle? {
-    server?.let { if (it.isAlive()) return it }
+    server?.let { if (it.isAlive()) return it else dropServer(it) }
     synchronized(lock) {
-      val current = server
-      if (current != null) {
-        if (current.isAlive()) return current
-        // The shared child died: drop it and forget every session that lived on it (those native
-        // sessions are gone), then re-spawn so callers recover without a daemon restart. Stale ids
-        // surface as "no session open" on their next updatePanels, prompting a fresh open.
-        runCatching { current.close() }
-        server = null
-        openIds.clear()
-        scenes.clear()
-      }
+      // Another thread may have re-spawned while we were dropping the dead one.
+      server?.let { if (it.isAlive()) return it }
       val started = factory.start() ?: return null
       server = started
       return started
     }
+  }
+
+  /**
+   * Drop the dead [dead] server: forget every session that lived on it (those native sessions are
+   * gone with the process), then close it. Only clears state if [dead] is still the current server,
+   * so a concurrent re-spawn isn't wiped. [close] runs outside the lock (it can block on teardown).
+   */
+  private fun dropServer(dead: XrRenderServerHandle) {
+    synchronized(lock) {
+      if (server === dead) {
+        server = null
+        openIds.clear()
+        scenes.clear()
+      }
+    }
+    runCatching { dead.close() }
   }
 }

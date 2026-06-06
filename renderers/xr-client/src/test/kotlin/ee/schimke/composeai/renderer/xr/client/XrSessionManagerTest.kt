@@ -240,6 +240,19 @@ class XrSessionManagerTest {
   }
 
   @Test
+  fun updatePanelsOnDeadServerDropsSessionAndThrows() {
+    val server = FakeServer()
+    val manager = XrSessionManager(CountingFactory(server))
+    manager.open("s1", scene)
+
+    server.alive = false // child died between frames on a live stream
+
+    assertFailsWith<XrServerException> { manager.updatePanels("s1", buildJsonArray {}) }
+    assertFalse(manager.isOpen("s1"), "the dead session is forgotten")
+    assertTrue(server.closed, "the dead server is closed")
+  }
+
+  @Test
   fun closeClosesTheSharedServer() {
     val server = FakeServer()
     val manager = XrSessionManager(CountingFactory(server))
