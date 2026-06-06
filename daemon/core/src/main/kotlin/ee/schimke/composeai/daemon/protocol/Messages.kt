@@ -2211,3 +2211,12 @@ data class XrStartResult(
 
 /** `xr/stop` — close the held XR session for [frameStreamId]. */
 @Serializable data class XrStopParams(val frameStreamId: String)
+
+/** `xr/structure` — fetch the held scene's panel tree + poses for [frameStreamId]. */
+@Serializable data class XrStructureParams(val frameStreamId: String)
+
+/**
+ * `xr/structure` result — the `SpatialScene` structure (panel tree + poses) the session was opened
+ * with, inline as JSON (mirrors `a11y/hierarchy`).
+ */
+@Serializable data class XrStructureResult(val frameStreamId: String, val structure: JsonElement)

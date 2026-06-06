@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class XrSessionManagerTest {
 
@@ -133,6 +134,19 @@ class XrSessionManagerTest {
     assertEquals(0, manager.activeCount)
     // The native server may have allocated the session before the render failed; it's stopped.
     assertEquals(listOf("s1"), server.stopped)
+  }
+
+  @Test
+  fun retainsSceneAsStructureUntilClosed() {
+    val server = FakeServer()
+    val manager = XrSessionManager(CountingFactory(server))
+    val scene = buildJsonObject { put("units", "dp") }
+
+    manager.open("s1", scene)
+    assertEquals(scene, manager.structure("s1"))
+
+    manager.close("s1")
+    assertNull(manager.structure("s1"))
   }
 
   @Test

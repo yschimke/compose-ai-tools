@@ -85,6 +85,8 @@ Methods (all params are JSON):
 | `render` (alias `xr/render`) | `{scene: SpatialScene, sessionId?, sceneDir?, environment?, width?, height?, out?}` | open/replace the session's scene + camera, render; emits a `streamFrame`; `out` also writes a PNG |
 | `xr/updatePanels` | `{sessionId?, panels: [{id, texture?, poseInRoot?, sizeDp?}], out?}` | mutate matching panels (or append a full new panel) on the session and re-render; emits a `streamFrame` |
 | `xr/stop` | `{sessionId?}` | tear down the session's per-session Filament objects (engine kept for other sessions) |
+
+The daemon additionally serves **`xr/structure`** (`{frameStreamId}` → the held `SpatialScene` panel tree + poses as inline JSON, mirroring `a11y/hierarchy`) from its own copy of the scene — it doesn't round-trip to the native server. (`xr/a11y-overlay` is a planned kind, pending how XR a11y surfaces.)
 | `shutdown` / `exit` | — | `shutdown` acks; `exit` ends the loop |
 
 Rendered frames are delivered as **`streamFrame` notifications** —

@@ -30,7 +30,12 @@ into a long-lived, extensible render service.
 >   session down, engine kept), and `XrSessionManager` drives them all over a single child process,
 >   demuxing frames per `sessionId` in `XrServerClient` — replacing one-process-per-session.
 >
-> **Still to do:** the `xr/structure` / `xr/a11y-overlay` data-product kinds.
+> - **`xr/structure` data product** — the daemon serves the held session's `SpatialScene` (panel
+>   tree + poses) as inline JSON via the `xr/structure` request, from its own copy of the scene
+>   (no native round-trip), mirroring `a11y/hierarchy`.
+>
+> **Still to do:** the `xr/a11y-overlay` data-product kind — deferred until how XR a11y/TalkBack
+> surfaces is understood (it mirrors `a11y/overlay`, a rendered overlay PNG).
 
 ## Motivation
 
