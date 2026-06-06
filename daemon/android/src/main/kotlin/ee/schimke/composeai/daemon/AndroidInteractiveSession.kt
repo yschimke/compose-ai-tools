@@ -218,13 +218,21 @@ internal constructor(
     val isKey = input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP
     val px = input.pixelX
     val py = input.pixelY
+    val hasPixels = px != null && py != null
     // #1784 — a pointer event may carry a semantic target instead of pixels; the sandbox resolves
-    // it to the node centre. Only require pixels when neither pixels nor a target are present.
-    val target = input.target
-    val hasTarget =
-      target != null &&
-        (target.ref != null || target.testTag != null || target.role != null || target.text != null)
-    if (!isKey && (px == null || py == null) && !hasTarget) return
+    // it to the node centre. Explicit pixels win when both are present (the wire contract + desktop
+    // parity), so only forward the target when pixels are absent. Require pixels only when neither
+    // pixels nor a target are present.
+    val rawTarget = input.target
+    val rawHasTarget =
+      rawTarget != null &&
+        (rawTarget.ref != null ||
+          rawTarget.testTag != null ||
+          rawTarget.role != null ||
+          rawTarget.text != null)
+    if (!isKey && !hasPixels && !rawHasTarget) return
+    val target = if (hasPixels) null else rawTarget
+    val hasTarget = !hasPixels && rawHasTarget
     if (isKey && input.keyCode.isNullOrBlank()) return
     if (isKey) {
       // Mirror the keycode into the soft-keyboard band before the held-rule loop runs the actual
@@ -271,8 +279,9 @@ internal constructor(
     // dispatch leaves [replyMatched] null and is unaffected.
     if (hasTarget && replyMatched?.get() == false) {
       error(
-        "AndroidInteractiveSession.dispatch: target did not resolve to a node (ref=${target.ref}, " +
-          "testTag=${target.testTag}, role=${target.role}, text=${target.text})"
+        "AndroidInteractiveSession.dispatch: target did not resolve to a node " +
+          "(ref=${rawTarget?.ref}, testTag=${rawTarget?.testTag}, role=${rawTarget?.role}, " +
+          "text=${rawTarget?.text})"
       )
     }
   }
