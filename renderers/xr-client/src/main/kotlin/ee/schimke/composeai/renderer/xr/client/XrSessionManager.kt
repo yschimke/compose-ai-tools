@@ -51,7 +51,11 @@ public class XrSessionManager(
       try {
         srv.render(id, scene, sceneDir, environment, width, height)
       } catch (t: Throwable) {
-        close(id)
+        // The native server inserts the session before scene setup, so a failed first render can
+        // leave a session allocated. close(id) is a no-op here (id isn't registered yet), so stop
+        // it
+        // directly — best-effort, since on a transport failure the pipe may already be dead.
+        runCatching { srv.stop(id) }
         throw t
       }
     openIds.add(id)

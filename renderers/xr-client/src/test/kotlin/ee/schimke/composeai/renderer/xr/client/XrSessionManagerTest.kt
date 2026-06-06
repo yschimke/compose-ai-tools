@@ -20,6 +20,7 @@ class XrSessionManagerTest {
   private class FakeServer : XrRenderServerHandle {
     val seq = AtomicLong(0)
     var closed = false
+    var failNextRender = false
     val stopped = mutableListOf<String>()
     val renders = mutableListOf<RenderCall>()
     override val capabilities: JsonObject = buildJsonObject {}
@@ -35,6 +36,7 @@ class XrSessionManagerTest {
       height: Int?,
     ): StreamFrame {
       renders.add(RenderCall(sessionId, width, height))
+      if (failNextRender) throw XrServerException("render boom")
       return frame()
     }
 
@@ -118,6 +120,19 @@ class XrSessionManagerTest {
     val call = server.renders.single()
     assertEquals(640, call.width)
     assertEquals(400, call.height)
+  }
+
+  @Test
+  fun failedOpenStopsThePartialSession() {
+    val server = FakeServer().apply { failNextRender = true }
+    val manager = XrSessionManager(CountingFactory(server))
+
+    assertFailsWith<XrServerException> { manager.open("s1", scene) }
+
+    assertFalse(manager.isOpen("s1"))
+    assertEquals(0, manager.activeCount)
+    // The native server may have allocated the session before the render failed; it's stopped.
+    assertEquals(listOf("s1"), server.stopped)
   }
 
   @Test
