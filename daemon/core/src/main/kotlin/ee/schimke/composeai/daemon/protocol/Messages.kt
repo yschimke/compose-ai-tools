@@ -1361,6 +1361,13 @@ data class RenderError(
   val kind: RenderErrorKind,
   val message: String,
   val stackTrace: String? = null,
+  /**
+   * Optional one-line remediation for a recognized failure signature (issue #1789) — e.g. an
+   * AndroidX-Compose-on-desktop classpath skew or a Robolectric SDK mismatch. Additive and
+   * tolerant-decode-safe (unknown to old clients, which ignore it). Null when no specific fix is
+   * known; agents fall back to [message].
+   */
+  val suggestion: String? = null,
 )
 
 @Serializable
