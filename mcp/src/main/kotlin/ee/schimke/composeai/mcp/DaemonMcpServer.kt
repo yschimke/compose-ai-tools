@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.RecordingTestGenerator
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
@@ -1652,6 +1653,7 @@ class DaemonMcpServer(
                 "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
                 "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
                 "format":{"type":"string","enum":["apng","mp4","webm"],"description":"Encoded video format. Default 'apng' (always available, pure-JVM). 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
+                "emitTest":{"type":"boolean","description":"Default false. When true, also return a runnable Compose UI test generated from this interaction (issue #1786) as an extra text block — each event with a testTag/role/text target becomes an onNodeWith…().performClick() step; recording.probe markers become TODO-assertion stubs. Write it to src/test and fill in the probe assertions."},
                 "events":{
                   "type":"array",
                   "description":"Scripted timeline. Empty array records a single bootstrap frame.",
@@ -3316,9 +3318,66 @@ class DaemonMcpServer(
                 )
             )
           }
-        CallToolResult(content = listOf(mediaBlock, ContentBlock.Text(payload.toString())))
+        CallToolResult(
+          content =
+            buildList {
+              add(mediaBlock)
+              add(ContentBlock.Text(payload.toString()))
+              // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
+              // (the codegen analogue). Built from the recording's applied evidence so an
+              // unresolved target is a skipped-step comment, not a fabricated performClick.
+              if (args["emitTest"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true) {
+                add(
+                  ContentBlock.Text(
+                    generateRecordingTestSource(uri, events, stopResult.scriptEvents)
+                  )
+                )
+              }
+            }
+        )
       }
       .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). Scaffolds from
+   * the preview FQN (`<class>.<method>` → `setContent { <method>() }`; the generated header tells
+   * the author to confirm the call + add its import, since named/variant preview ids share their
+   * base function and the daemon doesn't expose the bare method name here). Steps are built from
+   * the recording's [evidence] so an `unsupported` event becomes a skipped-step comment rather than
+   * a fabricated step; when the evidence can't be aligned 1:1 we fall back to treating every event
+   * as applied.
+   */
+  private fun generateRecordingTestSource(
+    uri: PreviewUri,
+    events: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvent>,
+    evidence: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence>,
+  ): String {
+    val method = uri.previewFqn.substringAfterLast('.').ifBlank { "preview" }
+    val pascal = method.replaceFirstChar { it.uppercaseChar() }
+    val camel = method.replaceFirstChar { it.lowercaseChar() }
+    // The recording dispatches script events in tMs order and appends one evidence each, so a
+    // size-matched evidence list aligns by index with the tMs-sorted events.
+    val sorted = events.sortedBy { it.tMs }
+    val steps =
+      if (evidence.size == sorted.size) {
+        sorted.mapIndexed { i, event ->
+          RecordingTestGenerator.Step(
+            event,
+            applied = evidence[i].status == RecordingScriptEventStatus.APPLIED,
+          )
+        }
+      } else {
+        RecordingTestGenerator.stepsOf(sorted)
+      }
+    return RecordingTestGenerator.generate(
+      RecordingTestGenerator.Spec(
+        className = "Generated${pascal}Test",
+        methodName = "${camel}Interaction",
+        composableInvocation = "$method()",
+        steps = steps,
+      )
+    )
   }
 
   private data class RecordingFrameMetadata(

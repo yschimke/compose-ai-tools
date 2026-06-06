@@ -121,7 +121,7 @@ supervisor stops respawning.
 | `unsubscribe_preview_data(uri, kind)` | Drop a preview data-product subscription. |
 | `render_preview_overlay(uri, kind?, inline?, overrides?)` | Render a preview and return an annotated overlay image. |
 | `get_preview_extras(uri, kind)` | List non-JSON outputs produced alongside a data product. |
-| `record_preview(uri, fps?, scale?, format?, events, overrides?)` | Record a scripted preview interaction to APNG/MP4/WebM. |
+| `record_preview(uri, fps?, scale?, format?, events, overrides?, emitTest?)` | Record a scripted preview interaction to APNG/MP4/WebM. With `emitTest: true`, also returns a runnable Compose UI test generated from the interaction (issue #1786) — target-bearing events become `onNodeWith…().performClick()` steps, `recording.probe` markers become TODO-assertion stubs. |
 
 The daemon's render queue is single-priority FIFO today, so `setVisible` /
 `setFocus` traffic flows through the wire but doesn't yet reorder the queue.
