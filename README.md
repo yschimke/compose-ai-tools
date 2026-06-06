@@ -19,6 +19,42 @@ vector drawables, adaptive launcher icons, animated-vector drawables — and ind
 attributes in `AndroidManifest.xml` so tooling can link manifest lines to the same rendered PNG.
 Modules without any matching resources self-no-op, so this comes along for free with the plugin.
 
+## The agent loop
+
+These tools give AI coding agents a tight, token-frugal feedback loop over
+Compose UI — the way [Playwright](https://playwright.dev) gave web agents one
+over the DOM: act by a stable reference, observe structure rather than pixels,
+and turn exploration into durable tests. The capabilities below are exposed by
+the preview daemon's MCP server (and, where noted, the `compose-preview` CLI);
+see [`docs/daemon/MCP.md`](docs/daemon/MCP.md) for the full tool surface.
+
+- **Target by semantic ref, not pixels.** `interactive/input` and
+  `record_preview` accept a `target` (`testTag` / `role`+`text` / a stable
+  node `ref`) that the daemon resolves to the node's centre, so a click
+  survives layout changes instead of breaking on a coordinate. Works on
+  Android (Robolectric) and Desktop (Skiko).
+- **Token-frugal observation.** `render_preview observe=semantics|hash`
+  returns the `compose/semantics` tree + a hash + dimensions instead of a
+  base64 PNG — typically a few hundred tokens versus ~1.5k. Fetch pixels only
+  when you actually need to look.
+- **Semantics diff.** `diff_semantics` (MCP) and `compose-preview
+  diff-semantics` (CLI) diff two semantics trees and report what changed
+  *semantically* (text, label, role, testTag, overflow…), matched by stable
+  ref — a deterministic, pixel-free regression signal, the Compose analogue of
+  Playwright's aria-snapshot diff.
+- **Matrix render.** `render_matrix` renders one preview across a cross-product
+  of `device × locale × uiMode × fontScale` in a single call, returning a
+  per-cell hash and which cells changed — "does this survive small screen + RTL
+  + large font?" without N screenshots.
+- **Recording → test.** `record_preview emitTest=true` turns a scripted
+  interaction into a runnable Compose UI test (semantic targets become
+  `onNodeWithTag(...).performClick()` steps).
+- **Structured failures.** A failed render reports a typed `kind` plus a
+  one-line fix hint for recognized signatures (classpath skew, Robolectric SDK
+  mismatch, missing `@Composable`, …) instead of an opaque message.
+
+Cost budget for these in [`docs/TOKEN_USAGE.md`](docs/TOKEN_USAGE.md).
+
 ## What it ships
 
 - **Agent skills** — the `compose-preview` and `compose-preview-review`

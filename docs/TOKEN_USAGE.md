@@ -84,7 +84,11 @@ previews.
   is ~5–8 KB (~1.5–2.3 k tokens).
 - Visual regression scales linearly per changed preview (~3 k input
   tokens each, dominated by the two PNG reads). A UI PR with 10
-  changed previews is ~30 k input on top of baseline.
+  changed previews is ~30 k input on top of baseline. The pixel-free
+  alternative is `diff_semantics` (MCP) / `compose-preview
+  diff-semantics` (CLI): a semantics-tree diff is a few hundred tokens
+  per changed preview (no PNG reads) and reports *what* changed
+  semantically rather than *that* pixels moved (issue #1785).
 - `record_preview` response size scales with `fps × duration`: each
   captured frame adds a `frames[]` entry plus optional metadata. The
   APNG/MP4 capture path keeps per-frame JSON small; embedded-PNG debug
@@ -99,6 +103,12 @@ previews.
   iterating and only need to know *whether* / *what* changed; fetch
   `observe: "png"` when you actually need to look at pixels (issue
   #1787).
+- `render_matrix` returns one compact cell per axis combination
+  (`overrides` + sha256 + dimensions + a `changed` flag, no base64), so
+  a `device × locale × uiMode × fontScale` sweep costs roughly
+  `cellCount × ~40` tokens instead of `cellCount × ~1.5 k` PNG reads —
+  bounded at 24 cells (issue #1788). Pull a specific cell's pixels with
+  `render_preview` + those overrides when one looks off.
 - These numbers count tokens crossing the LLM/tool boundary, not
   Anthropic billing on cached prefixes. With prompt caching the
   ~13 k MCP baseline is paid once per session and replayed from cache
