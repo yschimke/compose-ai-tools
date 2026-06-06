@@ -3340,20 +3340,30 @@ class DaemonMcpServer(
   }
 
   /**
-   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). Scaffolds from
-   * the preview FQN (`<class>.<method>` → `setContent { <method>() }`; the generated header tells
-   * the author to confirm the call + add its import, since named/variant preview ids share their
-   * base function and the daemon doesn't expose the bare method name here). Steps are built from
-   * the recording's [evidence] so an `unsupported` event becomes a skipped-step comment rather than
-   * a fabricated step; when the evidence can't be aligned 1:1 we fall back to treating every event
-   * as applied.
+   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). The `setContent {
+   * <method>() }` call uses the preview's real `@Composable` method name resolved from the catalog
+   * ([PreviewEntry.functionName], sourced from the daemon's `discoveryUpdated` `functionName`
+   * field). That's load-bearing for named/variant previews (issue #1807): their id is a synthetic
+   * `…WeatherForecast_Light`, so the old `previewFqn.substringAfterLast('.')` heuristic emitted
+   * `WeatherForecast_Light()` — a call to a function that doesn't exist, yielding an uncompilable
+   * test. We only fall back to that heuristic when the catalog has no entry (e.g. a synthetic uri
+   * that never went through discovery). The generated header still tells the author to add the
+   * composable's import. Steps are built from the recording's [evidence] so an `unsupported` event
+   * becomes a skipped-step comment rather than a fabricated step; when the evidence can't be
+   * aligned 1:1 we fall back to treating every event as applied.
    */
   private fun generateRecordingTestSource(
     uri: PreviewUri,
     events: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvent>,
     evidence: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence>,
   ): String {
-    val method = uri.previewFqn.substringAfterLast('.').ifBlank { "preview" }
+    val resolvedFunctionName =
+      catalog[DaemonAddr(uri.workspaceId, uri.modulePath)]
+        ?.get(uri.previewFqn)
+        ?.functionName
+        ?.takeIf { it.isNotBlank() }
+    val method =
+      resolvedFunctionName ?: uri.previewFqn.substringAfterLast('.').ifBlank { "preview" }
     val pascal = method.replaceFirstChar { it.uppercaseChar() }
     val camel = method.replaceFirstChar { it.lowercaseChar() }
     // The recording dispatches script events in tMs order and appends one evidence each, so a
@@ -3766,6 +3776,7 @@ class DaemonMcpServer(
           displayName = entry["displayName"]?.jsonPrimitive?.contentOrNull,
           config = entry["config"]?.jsonPrimitive?.contentOrNull,
           sourceFile = sourceFile,
+          functionName = entry["functionName"]?.jsonPrimitive?.contentOrNull,
           sourceLastModifiedMs = sourceLastModifiedMs,
           sourceContentHash = sourceContentHash,
         )
@@ -4028,6 +4039,16 @@ class DaemonMcpServer(
     val displayName: String?,
     val config: String?,
     val sourceFile: String?,
+    /**
+     * Bare `@Composable` method name of the `@Preview` function (the wire field `functionName` on a
+     * `discoveryUpdated` entry — `PreviewInfoDto.methodName`). Distinct from [fqn]/[displayName]: a
+     * named or variant preview (`@Preview(name = "Light")`) carries a synthetic id like
+     * `…WeatherForecast_Light` while every variant of the same function shares this base method
+     * name. `null` for legacy entries / fakes that don't send the field. Used by
+     * [generateRecordingTestSource] to emit a `setContent { <functionName>() }` call that actually
+     * compiles. See issue #1807.
+     */
+    val functionName: String? = null,
     val sourceLastModifiedMs: Long? = null,
     /**
      * SHA-256 of the source file's bytes captured at discovery and refreshed on every

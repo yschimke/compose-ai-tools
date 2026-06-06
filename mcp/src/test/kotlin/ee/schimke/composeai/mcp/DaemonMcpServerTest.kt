@@ -1218,6 +1218,72 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `record_preview emitTest uses the preview's real composable name for a variant preview`() {
+    // Issue #1807: a named/variant `@Preview(name = "Light")` on `fun Forecast()` is catalogued
+    // under a synthetic id whose last segment is `Forecast_Light`, but the only callable that
+    // actually exists is the base `Forecast()`. The generated `setContent { … }` must call the real
+    // function (resolved from the catalog's `functionName`), not the id's last segment, or the test
+    // doesn't compile. Drive `record_preview` with `emitTest=true` and assert the emitted source.
+    val framesDir = tmp.newFolder("variant-frames")
+    writeSolidPng(framesDir.resolve("frame-00000.png"), 0xFF000000.toInt())
+    writeSolidPng(framesDir.resolve("frame-00001.png"), 0xFFFFFFFF.toInt())
+    val recordingsDir = tmp.newFolder("variant-recordings-out")
+    val cannedApngBytes = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02)
+    factory.daemonConfigurer = { d ->
+      d.recordingEncodedBytes = cannedApngBytes
+      d.recordingEncodeDir = recordingsDir
+      d.advertisedDataExtensions =
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors +
+          ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor
+      d.recordingStopResult =
+        ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+          frameCount = 2,
+          durationMs = 100L,
+          framesDir = framesDir.absolutePath,
+          frameWidthPx = 120,
+          frameHeightPx = 40,
+          scriptEvents = emptyList(),
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("variant-workspace")
+    tmp.newFolder("variant-workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    // Synthetic variant id (`…Forecast_Light`) whose base @Composable is `Forecast`.
+    val previewId = "com.example.ForecastKt.Forecast_Light"
+    daemon.emitDiscovery(previewId, functionName = "Forecast")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("emitTest", true)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "input.click")
+                put("pixelX", 60)
+                put("pixelY", 20)
+              }
+            )
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    assertThat(resp.isError()).isFalse()
+    val generated = resp.textContents().last()
+    assertThat(generated).contains("composeTestRule.setContent { Forecast() }")
+    // The id's last segment must NOT leak into the generated call — that's the #1807 bug.
+    assertThat(generated).doesNotContain("Forecast_Light()")
+  }
+
+  @Test
   fun `MCP exposes data slash navigation snapshot and dispatches navigation deepLink + back`() {
     // End-to-end exercise of the navigation surface from an MCP-tool perspective:
     //
@@ -2402,7 +2468,7 @@ class DaemonMcpServerTest {
       // Boot manifest — one entry. The supervisor's `synthesiseInitialDiscovery` reads it on
       // initialize, so the catalog already contains `Initial`.
       manifestFile.writeText(
-        """{"previews":[{"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"}]}"""
+        """{"previews":[{"id":"com.example.Initial","className":"com.example","functionName":"Initial","displayName":"Initial"}]}"""
       )
       val initialMtime = System.currentTimeMillis() - 60_000
       assertThat(manifestFile.setLastModified(initialMtime)).isTrue()
@@ -2449,8 +2515,8 @@ class DaemonMcpServerTest {
       manifestFile.writeText(
         """
         {"previews":[
-          {"id":"com.example.Initial","className":"com.example","methodName":"Initial","displayName":"Initial"},
-          {"id":"com.example.WeatherForecast_Light","className":"com.example","methodName":"WeatherForecast_Light","displayName":"WeatherForecast_Light"}
+          {"id":"com.example.Initial","className":"com.example","functionName":"Initial","displayName":"Initial"},
+          {"id":"com.example.WeatherForecast_Light","className":"com.example","functionName":"WeatherForecast","displayName":"WeatherForecast_Light"}
         ]}
         """
           .trimIndent()
