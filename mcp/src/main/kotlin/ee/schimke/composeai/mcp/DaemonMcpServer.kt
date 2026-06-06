@@ -1491,15 +1491,15 @@ class DaemonMcpServer(
       ToolDef(
         name = "diff_semantics",
         description =
-          "Diff the Compose semantics trees of two previews and report what changed semantically — the cheap, deterministic, pixel-free regression signal (the analogue of Playwright's aria-snapshot diff). Fetches compose/semantics for `baseUri` and `headUri` (auto-rendering each if needed), matches nodes by their stable `ref`, and returns added / removed / changed-field deltas as JSON plus a one-line summary. Use it to answer 'what changed?' between a baseline and a candidate without reading two PNGs: pass a compose-preview-history:// URI as base and a live compose-preview:// URI as head, or any two preview URIs. Text/label changes show up as field changes on the same ref (not remove+add); positional bounds churn is ignored (that's the pixel diff's job). Cheaper than reading screenshots — prefer it for copy/label/role/overflow regressions.",
+          "Diff the Compose semantics trees of two live previews and report what changed semantically — the cheap, deterministic, pixel-free regression signal (the analogue of Playwright's aria-snapshot diff). Fetches compose/semantics for `baseUri` and `headUri` (two compose-preview:// URIs, auto-rendering each if needed), matches nodes by their stable `ref`, and returns added / removed / changed-field deltas as JSON plus a one-line summary. Use it to answer 'what changed?' between two rendered previews without reading two PNGs — e.g. the same preview before and after an edit, or two related previews. Text/label changes show up as field changes on the same ref (not remove+add); positional bounds churn is ignored (that's the pixel diff's job). Cheaper than reading screenshots — prefer it for copy/label/role/overflow regressions. (Diffing against a compose-preview-history:// baseline needs the semantics payload persisted per history entry — tracked as a follow-up.)",
         inputSchema =
           parseSchema(
             """
             {
               "type":"object",
               "properties":{
-                "baseUri":{"type":"string","description":"Baseline preview URI (compose-preview:// or compose-preview-history://)."},
-                "headUri":{"type":"string","description":"Candidate preview URI to compare against the baseline."}
+                "baseUri":{"type":"string","description":"Baseline live preview URI (compose-preview://<workspace>/<module>/<fqn>)."},
+                "headUri":{"type":"string","description":"Candidate live preview URI (compose-preview://...) to compare against the baseline."}
               },
               "required":["baseUri","headUri"]
             }
@@ -3025,7 +3025,15 @@ class DaemonMcpServer(
     uriStr: String,
     side: String,
   ): Pair<ComposeSemanticsPayload?, String?> {
-    val uri = PreviewUri.parseOrNull(uriStr) ?: return null to "invalid $side uri: $uriStr"
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return null to
+          if (uriStr.startsWith("${HistoryUri.SCHEME}://")) {
+            "$side: history URIs aren't supported yet (compose/semantics isn't persisted per " +
+              "history entry); pass a live compose-preview:// URI"
+          } else {
+            "invalid $side uri: $uriStr"
+          }
     if (supervisor.project(uri.workspaceId) == null) {
       return null to "$side workspace '${uri.workspaceId.value}' not registered"
     }
