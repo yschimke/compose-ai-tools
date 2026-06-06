@@ -7,6 +7,7 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,14 @@ data class ServerCapabilities(
    * "recording unsupported by this backend" when the toggle is offered.
    */
   val recording: Boolean = false,
+  /**
+   * RENDERER_SERVICE.md — `true` when the daemon can front the native XR render server
+   * (`xr-composite --serve`): `xr/start` opens a held spatial-scene session, `xr/updatePanels`
+   * mutates it per-frame, and frames arrive as `streamFrame` notifications. `false` (the default
+   * for daemons without the native binary, or that pre-date the feature) means the `xr/…` methods
+   * reply `MethodNotFound`; clients fall back to the one-shot composite still.
+   */
+  val xr: Boolean = false,
   /**
    * Encoded video formats the daemon's host can produce — names match the wire spelling on
    * [RecordingFormat]. APNG is always present when [recording] is true (pure-JVM encoder, no native
@@ -2123,3 +2132,34 @@ data class StreamFrameParams(
    */
   val payloadBase64: String? = null,
 )
+
+// ---- XR render service (RENDERER_SERVICE.md) ----------------------------------------------------
+
+/**
+ * `xr/start` — open a held spatial-scene session backed by the native `xr-composite --serve`. The
+ * daemon mints a `frameStreamId`, renders [scene] (a serialized `SpatialScene`), and streams the
+ * first frame as a `streamFrame` notification.
+ */
+@Serializable
+data class XrStartParams(
+  val previewId: String,
+  val scene: JsonElement,
+  /** Directory the scene's relative panel textures resolve against. */
+  val sceneDir: String? = null,
+  /** Backdrop override (a preset name or `color:#RRGGBB`); see the compositor's `--environment`. */
+  val environment: String? = null,
+  val width: Int? = null,
+  val height: Int? = null,
+)
+
+/** `xr/start` result — the allocated stream id frames will arrive on. */
+@Serializable data class XrStartResult(val frameStreamId: String, val available: Boolean = true)
+
+/**
+ * `xr/updatePanels` — per-frame panel mutations; each entry is `{id, texture?, poseInRoot?,
+ * sizeDp?}`.
+ */
+@Serializable data class XrUpdatePanelsParams(val frameStreamId: String, val panels: JsonArray)
+
+/** `xr/stop` — close the held XR session for [frameStreamId]. */
+@Serializable data class XrStopParams(val frameStreamId: String)

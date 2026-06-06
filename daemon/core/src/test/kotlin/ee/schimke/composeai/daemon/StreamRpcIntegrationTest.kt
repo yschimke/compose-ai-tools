@@ -1,5 +1,8 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
+import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
+import ee.schimke.composeai.renderer.xr.client.XrRenderServerHandle
 import java.io.File
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
@@ -10,8 +13,10 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -444,7 +449,10 @@ class StreamRpcIntegrationTest {
     val exitLatch: CountDownLatch,
   )
 
-  private fun bringUpServer(host: RenderHost): ServerHarness {
+  private fun bringUpServer(
+    host: RenderHost,
+    xrServerFactory: XrRenderServerFactory? = null,
+  ): ServerHarness {
     val clientToServerOut = PipedOutputStream()
     val clientToServerIn = PipedInputStream(clientToServerOut, 64 * 1024)
     val serverToClientOut = PipedOutputStream()
@@ -459,6 +467,7 @@ class StreamRpcIntegrationTest {
         daemonVersion = "test",
         interactiveFrameIntervalMs = 0,
         onExit = { _ -> exitLatch.countDown() },
+        xrServerFactory = xrServerFactory,
       )
     val thread = Thread({ server.run() }, "stream-rpc-server").apply { isDaemon = true }
     thread.start()
@@ -530,11 +539,110 @@ class StreamRpcIntegrationTest {
     return null
   }
 
+  // ---- XR render service (xr/start, xr/updatePanels, xr/stop) -------------------------------
+
+  @Test(timeout = 30_000)
+  fun xrStart_then_updatePanels_emit_streamFrames_and_stop_closes() {
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    val factory = FakeXrFactory()
+    val (_, serverThread, out, received, exitLatch) =
+      bringUpServer(StreamRpcFakeHost(pngFile), factory)
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":20,"method":"xr/start","params":{
+            "previewId":"p","sceneDir":".",
+            "scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    val resp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 20 }
+    assertNotNull("xr/start must respond", resp)
+    val streamId = resp!!["result"]!!.jsonObject["frameStreamId"]!!.jsonPrimitive.contentOrNull!!
+
+    val f1 = pollUntil(received) { it["method"]?.jsonPrimitive?.contentOrNull == "streamFrame" }
+    assertNotNull("xr/start must push the first frame", f1)
+    assertEquals(
+      streamId,
+      f1!!["params"]!!.jsonObject["frameStreamId"]?.jsonPrimitive?.contentOrNull,
+    )
+    assertEquals(1L, f1["params"]!!.jsonObject["seq"]?.jsonPrimitive?.longOrNull)
+    assertNotNull(f1["params"]!!.jsonObject["payloadBase64"]?.jsonPrimitive?.contentOrNull)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"xr/updatePanels","params":{
+            "frameStreamId":"$streamId","panels":[{"id":"top"}]}}""",
+    )
+    val f2 =
+      pollUntil(received) {
+        it["method"]?.jsonPrimitive?.contentOrNull == "streamFrame" &&
+          it["params"]!!.jsonObject["seq"]?.jsonPrimitive?.longOrNull == 2L
+      }
+    assertNotNull("xr/updatePanels must push a fresh frame (seq=2)", f2)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","method":"xr/stop","params":{"frameStreamId":"$streamId"}}""",
+    )
+    teardownServer(out, received, serverThread, exitLatch)
+    assertTrue("the native session must be closed", factory.created.single().closed)
+  }
+
+  @Test(timeout = 30_000)
+  fun xrStart_replies_methodNotFound_when_xr_unavailable() {
+    val tmp = Files.createTempDirectory("xr-rpc-test").toFile()
+    val pngFile = File(tmp, "preview-A.png").apply { writeBytes(testPngBytes(seed = 0)) }
+    // No xrServerFactory → capability off, methods rejected.
+    val (_, serverThread, out, received, exitLatch) = bringUpServer(StreamRpcFakeHost(pngFile))
+    resourcesToClose.add(AutoCloseable { runCatching { out.close() } })
+    handshake(out, received)
+
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":21,"method":"xr/start","params":{
+            "previewId":"p","scene":{"version":1,"units":"dp","camera":{"kind":"orbit"},"panels":[]}}}""",
+    )
+    val resp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 21 }
+    assertNotNull("xr/start must respond", resp)
+    assertNotNull("xr/start must error when XR is unavailable", resp!!["error"])
+    teardownServer(out, received, serverThread, exitLatch)
+  }
+
   private fun testPngBytes(seed: Int): ByteArray {
     val sig = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
     val payload = ByteArray(16) { i -> ((i + seed * 13) and 0xFF).toByte() }
     return sig + payload
   }
+}
+
+/** Fake native XR render server — returns monotonically-sequenced frames, tracks close. */
+private class FakeXrHandle : XrRenderServerHandle {
+  private val seq = AtomicInteger(0)
+  @Volatile var closed = false
+  override val capabilities = buildJsonObject {}
+
+  private fun frame() = XrStreamFrame(seq.incrementAndGet().toLong(), 64, 48, "png", "ZGF0YQ==")
+
+  override fun render(
+    scene: kotlinx.serialization.json.JsonElement,
+    sceneDir: String?,
+    environment: String?,
+  ) = frame()
+
+  override fun updatePanels(panels: JsonArray) = frame()
+
+  override fun close() {
+    closed = true
+  }
+}
+
+private class FakeXrFactory : XrRenderServerFactory {
+  val created = mutableListOf<FakeXrHandle>()
+
+  override fun start(width: Int, height: Int): XrRenderServerHandle =
+    FakeXrHandle().also { created.add(it) }
 }
 
 /** Mirror of the test-only host in InteractiveRpcIntegrationTest. */

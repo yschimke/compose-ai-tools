@@ -62,7 +62,14 @@ import ee.schimke.composeai.daemon.protocol.StreamFrameParams
 import ee.schimke.composeai.daemon.protocol.StreamStartParams
 import ee.schimke.composeai.daemon.protocol.StreamStartResult
 import ee.schimke.composeai.daemon.protocol.UiMode
+import ee.schimke.composeai.daemon.protocol.XrStartParams
+import ee.schimke.composeai.daemon.protocol.XrStartResult
+import ee.schimke.composeai.daemon.protocol.XrStopParams
+import ee.schimke.composeai.daemon.protocol.XrUpdatePanelsParams
 import ee.schimke.composeai.io.SystemFileSystem
+import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
+import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
+import ee.schimke.composeai.renderer.xr.client.XrSessionManager
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.IOException
@@ -239,6 +246,14 @@ class JsonRpcServer(
   private val btaCompileService: ee.schimke.composeai.daemon.bta.BtaCompileService? = null,
   private val fileSystem: FileSystem = SystemFileSystem,
   private val onExit: (Int) -> Unit = { code -> System.exit(code) },
+  /**
+   * RENDERER_SERVICE.md — factory for the native XR render server. When non-null the daemon
+   * advertises `capabilities.xr` and serves `xr/start` / `xr/updatePanels` / `xr/stop`, spawning
+   * one `xr-composite --serve` child per session. When null (the in-process integration tests,
+   * fake-mode harness, daemons whose host has no XR binary) the `xr/…` methods reply
+   * `MethodNotFound` — the one-shot composite path is unaffected.
+   */
+  private val xrServerFactory: XrRenderServerFactory? = null,
 ) {
 
   private val json = Json {
@@ -461,6 +476,13 @@ class JsonRpcServer(
    */
   private val streamSessions = ConcurrentHashMap<String, InteractiveSession>()
 
+  /**
+   * RENDERER_SERVICE.md — held native XR render sessions, one per `frameStreamId`, present only
+   * when [xrServerFactory] was wired. The daemon's `xr/…` handlers drive it and feed each returned
+   * frame out as a `streamFrame` notification.
+   */
+  private val xrSessions: XrSessionManager? = xrServerFactory?.let { XrSessionManager(it) }
+
   // ----------------------------------------------------------------------
   // Recording (scripted screen-record) state — see docs/daemon/RECORDING.md.
   //
@@ -524,6 +546,7 @@ class JsonRpcServer(
       // [closeAllInteractiveSessions] is idempotent, so the second call inside [cleanShutdown]
       // is a safe no-op on this path.
       closeAllInteractiveSessions()
+      xrSessions?.close()
       // EOF without exit notification — PROTOCOL.md § 3 idle-timeout exit.
       if (!shutdownRequested.get()) {
         try {
@@ -670,6 +693,7 @@ class JsonRpcServer(
       "extensions/disable" -> handleExtensionsDisable(req)
       "interactive/start" -> handleInteractiveStart(req)
       "stream/start" -> handleStreamStart(req)
+      "xr/start" -> handleXrStart(req)
       "recording/start" -> handleRecordingStart(req)
       "recording/stop" -> handleRecordingStop(req)
       "recording/encode" -> handleRecordingEncode(req)
@@ -752,6 +776,9 @@ class JsonRpcServer(
             // held-scene recording driver (DesktopHost). `false` keeps `recording/start` behind a
             // `MethodNotFound` reply so clients can grey out the toggle.
             recording = host.supportsRecording,
+            // RENDERER_SERVICE.md — `true` when the daemon can front the native XR render server
+            // (the `xrServerFactory` was wired). Gates the `xr/…` methods.
+            xr = xrSessions != null,
             // RECORDING.md § "encoded formats" — list of wire format spellings the host can
             // produce (`"apng"`, `"mp4"`, `"webm"`). APNG is always present when recording is
             // enabled; MP4 / WEBM appear only when an `ffmpeg` binary was detected at host
@@ -2206,6 +2233,89 @@ class JsonRpcServer(
   // either map.
   // --------------------------------------------------------------------------
 
+  // --------------------------------------------------------------------------
+  // XR render service — `xr/start` (request) / `xr/updatePanels` + `xr/stop`
+  // (notifications). Fronts the native `xr-composite --serve` via [xrSessions].
+  // Frames flow out as `streamFrame` notifications, same wire shape as the
+  // interactive/stream surfaces. See docs/design/xr-spatial/RENDERER_SERVICE.md.
+  // --------------------------------------------------------------------------
+
+  private fun handleXrStart(req: JsonRpcRequest) {
+    val manager = xrSessions
+    if (manager == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_METHOD_NOT_FOUND,
+        message = "xr/start: XR rendering is not available on this daemon",
+      )
+      return
+    }
+    val params =
+      try {
+        decodeParams(req.params, XrStartParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(req.id, ERR_INVALID_PARAMS, "invalid xr/start params: ${e.message}")
+        return
+      }
+    val streamId = streamRegistry.mintStreamId()
+    val frame =
+      try {
+        manager.open(streamId, params.scene, params.sceneDir, params.environment)
+      } catch (t: Throwable) {
+        sendErrorResponse(
+          req.id,
+          ERR_INTERNAL,
+          "xr/start: render failed: ${t.javaClass.simpleName}: ${t.message}",
+        )
+        return
+      }
+    if (frame == null) {
+      sendErrorResponse(req.id, ERR_INTERNAL, "xr/start: native XR server unavailable")
+      return
+    }
+    sendResponse(
+      req.id,
+      encode(XrStartResult.serializer(), XrStartResult(frameStreamId = streamId, available = true)),
+    )
+    emitXrFrame(streamId, frame)
+  }
+
+  private fun handleXrUpdatePanels(params: XrUpdatePanelsParams) {
+    val manager = xrSessions ?: return
+    if (!manager.isOpen(params.frameStreamId)) return
+    val frame =
+      try {
+        manager.updatePanels(params.frameStreamId, params.panels)
+      } catch (t: Throwable) {
+        System.err.println(
+          "compose-ai-daemon: xr/updatePanels failed for ${params.frameStreamId}: " +
+            "${t.javaClass.simpleName}: ${t.message}"
+        )
+        return
+      }
+    emitXrFrame(params.frameStreamId, frame)
+  }
+
+  private fun handleXrStop(params: XrStopParams) {
+    xrSessions?.close(params.frameStreamId)
+  }
+
+  /** Emit one XR [frame] as a `streamFrame` notification (base64 PNG already in hand). */
+  private fun emitXrFrame(frameStreamId: String, frame: XrStreamFrame) {
+    val params =
+      StreamFrameParams(
+        frameStreamId = frameStreamId,
+        seq = frame.seq,
+        ptsMillis = System.currentTimeMillis(),
+        widthPx = frame.width,
+        heightPx = frame.height,
+        codec = ee.schimke.composeai.daemon.protocol.StreamCodec.PNG,
+        keyframe = frame.seq == 1L,
+        payloadBase64 = frame.dataBase64,
+      )
+    sendNotification("streamFrame", encode(StreamFrameParams.serializer(), params))
+  }
+
   private fun handleStreamStart(req: JsonRpcRequest) {
     val params =
       try {
@@ -3020,6 +3130,9 @@ class JsonRpcServer(
         tryDecode(ee.schimke.composeai.daemon.protocol.StreamVisibilityParams.serializer(), n) {
           handleStreamVisibility(it)
         }
+      "xr/updatePanels" ->
+        tryDecode(XrUpdatePanelsParams.serializer(), n) { handleXrUpdatePanels(it) }
+      "xr/stop" -> tryDecode(XrStopParams.serializer(), n) { handleXrStop(it) }
       "recording/script" ->
         tryDecode(ee.schimke.composeai.daemon.protocol.RecordingScriptParams.serializer(), n) {
           handleRecordingScript(it)
@@ -3281,6 +3394,7 @@ class JsonRpcServer(
     // safe no-op on this path.
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
+    xrSessions?.close()
     running.set(false)
     cleanShutdown()
     invokeExit(exitCode)
@@ -3439,6 +3553,7 @@ class JsonRpcServer(
     }
     closeAllInteractiveSessions()
     closeAllRecordingSessions()
+    xrSessions?.close()
     try {
       host.shutdown()
     } catch (e: Throwable) {
