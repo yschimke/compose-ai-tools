@@ -158,12 +158,18 @@ public class XrSessionManager(
   }
 
   private fun ensureServer(): XrRenderServerHandle? {
-    server?.let {
-      return it
-    }
+    server?.let { if (it.isAlive()) return it }
     synchronized(lock) {
-      server?.let {
-        return it
+      val current = server
+      if (current != null) {
+        if (current.isAlive()) return current
+        // The shared child died: drop it and forget every session that lived on it (those native
+        // sessions are gone), then re-spawn so callers recover without a daemon restart. Stale ids
+        // surface as "no session open" on their next updatePanels, prompting a fresh open.
+        runCatching { current.close() }
+        server = null
+        openIds.clear()
+        scenes.clear()
       }
       val started = factory.start() ?: return null
       server = started

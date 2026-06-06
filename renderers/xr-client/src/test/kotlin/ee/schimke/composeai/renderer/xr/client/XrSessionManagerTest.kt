@@ -28,9 +28,12 @@ class XrSessionManagerTest {
     val seq = AtomicLong(0)
     var closed = false
     var failNextRender = false
+    @Volatile var alive = true
     val stopped = mutableListOf<String>()
     val renders = mutableListOf<RenderCall>()
     override val capabilities: JsonObject = buildJsonObject {}
+
+    override fun isAlive(): Boolean = alive
 
     private fun frame() = StreamFrame(seq.incrementAndGet(), 64, 48, "png", "data")
 
@@ -58,13 +61,16 @@ class XrSessionManagerTest {
     }
   }
 
-  /** Factory that hands out one fixed server (or null) and counts how many times it was started. */
-  private class CountingFactory(private val server: XrRenderServerHandle?) : XrRenderServerFactory {
+  /** Factory backed by a supplier; counts how many times it was started. */
+  private class CountingFactory(private val supplier: () -> XrRenderServerHandle?) :
+    XrRenderServerFactory {
+    constructor(server: XrRenderServerHandle?) : this({ server })
+
     var starts = 0
 
     override fun start(): XrRenderServerHandle? {
       starts++
-      return server
+      return supplier()
     }
   }
 
@@ -208,6 +214,29 @@ class XrSessionManagerTest {
     assertEquals(120, byId["top"]!!.jsonObject["x"]?.jsonPrimitive?.int) // existing moved
     assertTrue(byId.containsKey("extra"), "complete new panel is appended")
     assertFalse(byId.containsKey("junk"), "partial new panel is dropped")
+  }
+
+  @Test
+  fun respawnsAfterTheSharedServerDies() {
+    val dead = FakeServer()
+    val fresh = FakeServer()
+    val queue = ArrayDeque(listOf<XrRenderServerHandle>(dead, fresh))
+    val factory = CountingFactory { queue.removeFirst() }
+    val manager = XrSessionManager(factory)
+
+    manager.open("a", scene)
+    assertEquals(1, factory.starts)
+    assertTrue(manager.isOpen("a"))
+
+    dead.alive = false // the shared child crashed
+
+    // The next open detects the dead process, drops it, and re-spawns a fresh one.
+    manager.open("b", scene)
+    assertEquals(2, factory.starts)
+    assertTrue(dead.closed, "the dead server is closed")
+    assertFalse(manager.isOpen("a"), "sessions on the dead process are forgotten")
+    assertTrue(manager.isOpen("b"))
+    assertNull(manager.structure("a"))
   }
 
   @Test

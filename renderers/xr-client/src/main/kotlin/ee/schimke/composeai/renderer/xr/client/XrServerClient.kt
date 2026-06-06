@@ -135,6 +135,9 @@ internal constructor(
     frames.remove(sessionId)
   }
 
+  /** Whether the spawned child is still alive (always true for the stream-backed test client). */
+  public fun isAlive(): Boolean = process?.isAlive ?: true
+
   /** Sends `exit`; the server ends its loop and the process terminates. */
   public fun exit() {
     sendFrame(
