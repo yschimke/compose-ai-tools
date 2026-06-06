@@ -654,8 +654,21 @@ internal object ComposePreviewTasks {
   ): TaskProvider<ValidateComposePreviewClasspathTask> =
     project.tasks.register(taskName, ValidateComposePreviewClasspathTask::class.java) {
       platform.set("desktop")
-      classpath.from(toolClasspath)
-      project.configurations.findByName(dependencyConfigName())?.let { classpath.from(it) }
+      // Feed the @Classpath FileCollection a lazily-resolved, content-keyed FileCollection
+      // (`incoming.artifactView { }.files`) instead of the raw `Configuration`.
+      // `classpath.from(config)`
+      // pins the live `Configuration` instance into the task's `__classpath__` backing field, and
+      // the
+      // configuration cache can't serialize it — the nested TestKit bundle builds (config cache on,
+      // `org.gradle.configuration-cache.problems=fail`) fail the store step with
+      // "field `__classpath__` … error writing value" and the bundle task exits 1 (issue #1796).
+      // The empty artifact view preserves the default resolution (same files as `from(config)`)
+      // while
+      // resolving lazily through a serializable view — mirrors `composePreviewDiscover` above.
+      classpath.from(toolClasspath.incoming.artifactView {}.files)
+      project.configurations.findByName(dependencyConfigName())?.let {
+        classpath.from(it.incoming.artifactView {}.files)
+      }
     }
 
   /**
