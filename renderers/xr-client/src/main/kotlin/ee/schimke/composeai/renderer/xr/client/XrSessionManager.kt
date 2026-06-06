@@ -19,8 +19,8 @@ import kotlinx.serialization.json.JsonElement
  */
 public class XrSessionManager(
   private val factory: XrRenderServerFactory = XrRenderServerFactory.Native,
-  private val width: Int = 1280,
-  private val height: Int = 800,
+  private val defaultWidth: Int = 1280,
+  private val defaultHeight: Int = 800,
 ) : AutoCloseable {
 
   private val sessions = ConcurrentHashMap<String, XrRenderServerHandle>()
@@ -34,17 +34,20 @@ public class XrSessionManager(
 
   /**
    * Open a session for [id] and render [scene], returning the first frame — or `null` when the
-   * native server isn't available (XR is best-effort, so the caller degrades gracefully). Closes
-   * any prior session held under the same [id] first.
+   * native server isn't available (XR is best-effort, so the caller degrades gracefully). [width] /
+   * [height] set the render viewport (falling back to the manager defaults). Closes any prior
+   * session held under the same [id] first.
    */
   public fun open(
     id: String,
     scene: JsonElement,
     sceneDir: String? = null,
     environment: String? = null,
+    width: Int? = null,
+    height: Int? = null,
   ): StreamFrame? {
     close(id)
-    val server = factory.start(width, height) ?: return null
+    val server = factory.start(width ?: defaultWidth, height ?: defaultHeight) ?: return null
     sessions[id] = server
     return try {
       server.render(scene, sceneDir, environment)

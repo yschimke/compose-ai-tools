@@ -2260,7 +2260,14 @@ class JsonRpcServer(
     val streamId = streamRegistry.mintStreamId()
     val frame =
       try {
-        manager.open(streamId, params.scene, params.sceneDir, params.environment)
+        manager.open(
+          streamId,
+          params.scene,
+          params.sceneDir,
+          params.environment,
+          params.width,
+          params.height,
+        )
       } catch (t: Throwable) {
         sendErrorResponse(
           req.id,

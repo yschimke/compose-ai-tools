@@ -80,6 +80,42 @@ class XrSessionManagerTest {
   }
 
   @Test
+  fun passesRequestedDimensionsToFactory() {
+    var seenW = 0
+    var seenH = 0
+    val manager =
+      XrSessionManager(
+        factory = { w, h ->
+          seenW = w
+          seenH = h
+          FakeServer()
+        }
+      )
+    manager.open("s1", scene, width = 640, height = 400)
+    assertEquals(640, seenW)
+    assertEquals(400, seenH)
+  }
+
+  @Test
+  fun fallsBackToDefaultDimensionsWhenUnset() {
+    var seenW = 0
+    var seenH = 0
+    val manager =
+      XrSessionManager(
+        factory = { w, h ->
+          seenW = w
+          seenH = h
+          FakeServer()
+        },
+        defaultWidth = 800,
+        defaultHeight = 600,
+      )
+    manager.open("s1", scene)
+    assertEquals(800, seenW)
+    assertEquals(600, seenH)
+  }
+
+  @Test
   fun closeAllClosesEveryLiveSession() {
     val servers = mutableListOf<FakeServer>()
     val manager = XrSessionManager(factory = { _, _ -> FakeServer().also { servers.add(it) } })
