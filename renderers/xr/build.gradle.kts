@@ -51,6 +51,12 @@ dependencies {
   // The SpatialScene wire DTO the recorder emits.
   api(project(":preview-data-api"))
 
+  // `XrSubspaceRenderer` projects each panel's semantics via the daemon-side connector's
+  // `ComposeSemanticsDataProducer.buildPayload` (single-sourcing the `compose/semantics`
+  // projection). `compileOnly` keeps it off this module's published POM — the plugin adds it to the
+  // XR render configuration at render time, mirroring the Robolectric/Roborazzi/XR-fakes model.
+  compileOnly(project(":data-layoutinspector-connector"))
+
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly(libs.compose.ui)
   compileOnly(libs.compose.foundation)

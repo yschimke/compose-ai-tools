@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.currentComposer
 import androidx.compose.runtime.reflect.getDeclaredComposableMethod
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import ee.schimke.composeai.daemon.ComposeSemanticsDataProducer
 import java.io.File
 
 /**
@@ -51,7 +52,29 @@ public object XrSubspaceRenderer {
 
     val recorded = SubspaceSceneRecorder.recordAllWithViews(rule, previewId = previewId)
     SubspaceSceneWriter.captureViewTextures(outputDir, recorded.scene.panels, recorded.panelViews)
-    return SubspaceSceneWriter.writeScene(outputDir, recorded.scene)
+    val sceneFile = SubspaceSceneWriter.writeScene(outputDir, recorded.scene)
+
+    // Unified 3D-over-2D semantics tree (`compose/spatial-semantics`): the real multi-panel layout
+    // with each panel carrying its 2D `ComposeSemanticsNode` tree, projected by the daemon-side
+    // connector (the same projection `compose/semantics` + the wireframe use, supplied here rather
+    // than imported so the projection stays single-sourced). Best-effort and isolated — a projection
+    // failure must never strand the `scene.json`/textures the compositor needs, so a panel whose
+    // semantics can't be read just lands with a null `panelContent`.
+    runCatching {
+        val tree =
+          SubspaceSceneRecorder.recordTree(rule, previewId = previewId) {
+            ComposeSemanticsDataProducer.buildPayload(it).root
+          }
+        SubspaceSceneWriter.writeSemanticsTree(outputDir, tree)
+      }
+      .onFailure {
+        System.err.println(
+          "XrSubspaceRenderer: spatial-semantics write failed for $previewId: " +
+            "${it.javaClass.simpleName}: ${it.message}"
+        )
+      }
+
+    return sceneFile
   }
 
   /**
