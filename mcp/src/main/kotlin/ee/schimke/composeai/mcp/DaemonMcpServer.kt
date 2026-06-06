@@ -2028,27 +2028,29 @@ class DaemonMcpServer(
       }
     }
 
-    // Validate the axis field names once against the daemon's supportedOverrides (same field set in
-    // every cell), so an unsupported field fails fast instead of after a render.
+    // Decode + validate EVERY cell before rendering — validateOverrides also checks the `device`
+    // catalog id, which varies per cell, so a typo in any cell (not just the first) must be caught.
     val daemon =
       runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
         .getOrElse {
           return errorCallToolResult("render_matrix: daemon spawn failed: ${it.message}")
         }
-    val validationOverrides =
-      runCatching { decodePreviewOverrides(cellOverrides.first()) }
-        .getOrElse {
-          return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
-        }
-    val violations = validateOverrides(validationOverrides, daemon)
+    val decodedCells = cellOverrides.map { cellJson ->
+      val overrides =
+        runCatching { decodePreviewOverrides(cellJson) }
+          .getOrElse {
+            return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
+          }
+      cellJson to overrides
+    }
+    val violations = decodedCells.flatMap { (_, overrides) -> validateOverrides(overrides, daemon) }
     if (violations.isNotEmpty()) {
-      return errorCallToolResult("render_matrix: ${violations.joinToString("; ")}")
+      return errorCallToolResult("render_matrix: ${violations.distinct().joinToString("; ")}")
     }
 
     return runCatching {
         var baselineSha: String? = null
-        val cells = cellOverrides.map { cellJson ->
-          val overrides = decodePreviewOverrides(cellJson)
+        val cells = decodedCells.map { (cellJson, overrides) ->
           val bytes = renderAndReadBytes(uri, overrides = overrides)
           val sha = sha256Hex(bytes)
           val dimensions = pngDimensions(bytes)

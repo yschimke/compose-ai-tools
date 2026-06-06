@@ -1076,6 +1076,47 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_matrix validates the device id in every cell not just the first`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    factory.daemonConfigurer = { d ->
+      d.advertisedSupportedOverrides = listOf("device")
+      d.advertisedKnownDevices =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.KnownDevice(
+            id = "id:pixel_5",
+            widthDp = 393,
+            heightDp = 851,
+            density = 2.75f,
+          )
+        )
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_matrix",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("axes") {
+            // First device is valid; the second is a typo — it must still be rejected.
+            putJsonArray("device") {
+              add(JsonPrimitive("id:pixel_5"))
+              add(JsonPrimitive("id:typo_phone"))
+            }
+          }
+        },
+        timeoutMs = 10_000,
+      )
+    assertThat(resp.firstTextContent()).contains("id:typo_phone")
+  }
+
+  @Test
   fun `render_preview rejects overrides the daemon does not support`() {
     // Daemon advertises supportedOverrides = ["widthPx", "uiMode"]; an agent passes localeTag
     // (which the backend would silently ignore today). MCP rejects with a diagnostic instead
