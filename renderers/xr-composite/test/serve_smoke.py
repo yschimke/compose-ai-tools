@@ -56,14 +56,16 @@ def main() -> int:
             if m.get("method") == "streamFrame":
                 p = m["params"]
                 assert p["encoding"] == "png" and p["data"], "streamFrame missing png data"
-                frames.append((p["seq"], p["data"]))
+                frames.append((p["seq"], p["data"], p.get("sessionId")))
             elif m.get("id") == want:
                 return m
 
     send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"frameStreamId": "fs1"}})
     caps = pump_until_id(1)["result"]["capabilities"]
     assert caps.get("render") and caps.get("updatePanels") and caps.get("streamFrame"), caps
+    assert caps.get("multiSession"), f"expected multiSession capability: {caps}"
 
+    # Default-session flow (back-compat: no sessionId).
     send({"jsonrpc": "2.0", "id": 2, "method": "render",
           "params": {"scene": scene, "sceneDir": scene_dir}})
     assert pump_until_id(2)["result"]["ok"], "render did not ack ok"
@@ -75,14 +77,29 @@ def main() -> int:
                               "rotation": {"x": 0, "y": 0, "z": 0, "w": 1}}}]}})
     assert pump_until_id(3)["result"]["ok"], "updatePanels did not ack ok"
 
+    # Multi-session: two named sessions sharing one process / engine.
+    send({"jsonrpc": "2.0", "id": 4, "method": "render",
+          "params": {"sessionId": "a", "scene": scene, "sceneDir": scene_dir}})
+    assert pump_until_id(4)["result"].get("sessionId") == "a", "session a render missing sessionId"
+    send({"jsonrpc": "2.0", "id": 5, "method": "render",
+          "params": {"sessionId": "b", "scene": scene, "sceneDir": scene_dir}})
+    assert pump_until_id(5)["result"].get("sessionId") == "b", "session b render missing sessionId"
+
+    send({"jsonrpc": "2.0", "id": 6, "method": "xr/stop", "params": {"sessionId": "a"}})
+    assert pump_until_id(6)["result"]["ok"], "xr/stop a did not ack"
+    send({"jsonrpc": "2.0", "id": 7, "method": "xr/stop", "params": {"sessionId": "b"}})
+    assert pump_until_id(7)["result"]["ok"], "xr/stop b did not ack"
+
     send({"jsonrpc": "2.0", "method": "exit"})
     proc.wait(timeout=15)
 
-    assert len(frames) >= 2, f"expected >=2 streamFrames, got {len(frames)}"
+    assert len(frames) >= 4, f"expected >=4 streamFrames, got {len(frames)}"
     assert frames[0][0] == 1 and frames[1][0] == 2, f"unexpected seq order: {[f[0] for f in frames]}"
     assert frames[0][1] != frames[1][1], "frame did not change after moving a panel"
+    sids = {f[2] for f in frames}
+    assert "a" in sids and "b" in sids, f"expected per-session frames, got sessionIds {sids}"
     assert proc.returncode == 0, f"server exit code {proc.returncode}"
-    print(f"OK: {len(frames)} streamFrames; per-frame update changed the image")
+    print(f"OK: {len(frames)} streamFrames across sessions {sids}; per-frame update changed image")
     return 0
 
 

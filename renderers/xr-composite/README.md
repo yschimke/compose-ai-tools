@@ -72,17 +72,26 @@ xvfb-run -a -s "-screen 0 2000x1400x24" \
 
 Methods (all params are JSON):
 
+The server is **multi-session**: one shared Filament engine (+ renderer + compiled materials) fans
+across many concurrent sessions, each keyed by `sessionId` (the daemon's `frameStreamId`); a session
+owns only its own swapchain/scene/view/panels. Omit `sessionId` to address the implicit `"default"`
+session (back-compat with single-session callers + the one-shot path).
+
+Methods (all params are JSON):
+
 | method | params | effect |
 |--------|--------|--------|
-| `initialize` | `{frameStreamId?}` | returns `{serverInfo, capabilities}` (`render`/`updatePanels`/`streamFrame`, `spatialSceneVersion`, `dataProducts:["xr/composite"]`) |
-| `render` (alias `xr/render`) | `{scene: SpatialScene, sceneDir?, environment?, out?}` | (re)build the whole scene + camera, render; emits a `streamFrame`; `out` also writes a PNG file |
-| `xr/updatePanels` | `{panels: [{id, texture?, poseInRoot?, sizeDp?}], out?}` | mutate matching panels (or append a full new panel) and re-render; emits a `streamFrame` |
+| `initialize` | `{frameStreamId?}` | returns `{serverInfo, capabilities}` (`render`/`updatePanels`/`streamFrame`/`multiSession`, `spatialSceneVersion`, `dataProducts:["xr/composite"]`) |
+| `render` (alias `xr/render`) | `{scene: SpatialScene, sessionId?, sceneDir?, environment?, width?, height?, out?}` | open/replace the session's scene + camera, render; emits a `streamFrame`; `out` also writes a PNG |
+| `xr/updatePanels` | `{sessionId?, panels: [{id, texture?, poseInRoot?, sizeDp?}], out?}` | mutate matching panels (or append a full new panel) on the session and re-render; emits a `streamFrame` |
+| `xr/stop` | `{sessionId?}` | tear down the session's per-session Filament objects (engine kept for other sessions) |
 | `shutdown` / `exit` | — | `shutdown` acks; `exit` ends the loop |
 
 Rendered frames are delivered as **`streamFrame` notifications** —
-`{encoding:"png", width, height, seq, data:<base64>, frameStreamId?}` — reusing the daemon's
-`composestream/1` shape (RFC decision #4: base64-over-JSON). The
-[`test/serve_smoke.py`](test/serve_smoke.py) harness drives this flow and is run in CI under Xvfb.
+`{encoding:"png", width, height, seq, data:<base64>, sessionId?, frameStreamId?}` — reusing the
+daemon's `composestream/1` shape (RFC decision #4: base64-over-JSON). The
+[`test/serve_smoke.py`](test/serve_smoke.py) harness drives this flow (incl. two concurrent
+sessions) and is run in CI under Xvfb.
 
 ### Why Xvfb?
 

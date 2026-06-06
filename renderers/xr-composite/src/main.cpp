@@ -56,6 +56,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -252,13 +253,38 @@ std::vector<uint8_t> encodePng(const std::vector<uint8_t>& rgba, uint32_t w, uin
   return bytes;
 }
 
-// Holds the Filament render state across frames. Built once; `setScene` (re)builds the whole scene,
-// `applyPanelUpdates` mutates panel poses/textures in place and rebuilds just the panels, and
-// `renderPixels` reads back one frame. The one-shot path uses it for a single render; the server
-// reuses one instance for the life of the process.
+// Shared GL/Filament context fanned across sessions: one Engine + Renderer + compiled materials for
+// the whole process. Each Compositor (session) owns only its own SwapChain/Scene/View/panels, so the
+// server can multiplex many sessions over a single engine instead of one child process per session.
+struct SharedGl {
+  Engine* engine = nullptr;
+  Renderer* renderer = nullptr;
+  Material* unlit = nullptr;
+  Material* shadow = nullptr;
+
+  bool create(const std::string& materialsDir) {
+    engine = Engine::Builder().backend(backend::Backend::OPENGL).build();
+    if (!engine) { fprintf(stderr, "engine create failed\n"); return false; }
+    renderer = engine->createRenderer();
+    const std::string dir = materialsDir.empty() ? "." : materialsDir;
+    auto unlitPkg = readFile(dir + "/unlit_texture.filamat");
+    unlit = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine);
+    // Soft contact shadow behind each panel — a separate transparent quad that feathers a
+    // rounded-rect silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we
+    // composite a baked soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
+    auto shadowPkg = readFile(dir + "/panel_shadow.filamat");
+    shadow = Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine);
+    return true;
+  }
+};
+
+// Holds one session's render state. `setScene` (re)builds the whole scene, `applyPanelUpdates`
+// mutates panel poses/textures in place and rebuilds just the panels, and `renderPixels` reads back
+// one frame. The Engine/Renderer/materials are shared (see [SharedGl]); each instance owns only its
+// own SwapChain/Scene/View/Camera/panels so the server can hold many concurrently.
 class Compositor {
  public:
-  bool init(uint32_t w, uint32_t h, const std::string& materialsDir);
+  bool init(SharedGl& gl, uint32_t w, uint32_t h);
   // Replace the whole scene (background + panels + camera). `envOverride` is the CLI `--environment`
   // value (empty = none).
   void setScene(const xrcomposite::SpatialScene& scene, const std::string& sceneDir,
@@ -268,6 +294,9 @@ class Compositor {
   void applyPanelUpdates(const json& panels);
   std::vector<uint8_t> renderPixels();
   bool writePng(const std::string& path);
+  // Destroy this session's per-session Filament objects (panels, skybox, view, scene, camera,
+  // swapchain) via the shared engine; the shared Engine/Renderer/materials are left intact.
+  void teardown();
   uint32_t width() const { return W_; }
   uint32_t height() const { return H_; }
 
@@ -290,7 +319,6 @@ class Compositor {
   Material* shadowMat_ = nullptr;
   Skybox* skybox_ = nullptr;
   uint32_t W_ = 0, H_ = 0;
-  std::string materialsDir_;
   std::string sceneDir_ = ".";
   float3 bg_ = {0.06f, 0.06f, 0.08f};
 
@@ -305,15 +333,17 @@ class Compositor {
   std::map<std::string, Texture*> texCache_;
 };
 
-bool Compositor::init(uint32_t w, uint32_t h, const std::string& materialsDir) {
+bool Compositor::init(SharedGl& gl, uint32_t w, uint32_t h) {
   W_ = w;
   H_ = h;
-  materialsDir_ = materialsDir.empty() ? "." : materialsDir;
+  // Engine / Renderer / materials are shared across sessions; this instance owns only the
+  // per-session SwapChain / Scene / View / Camera below.
+  engine_ = gl.engine;
+  renderer_ = gl.renderer;
+  unlit_ = gl.unlit;
+  shadowMat_ = gl.shadow;
 
-  engine_ = Engine::Builder().backend(backend::Backend::OPENGL).build();
-  if (!engine_) { fprintf(stderr, "engine create failed\n"); return false; }
   swapChain_ = engine_->createSwapChain(W_, H_);
-  renderer_ = engine_->createRenderer();
   scene_ = engine_->createScene();
   view_ = engine_->createView();
   camEntity_ = utils::EntityManager::get().create();
@@ -335,16 +365,25 @@ bool Compositor::init(uint32_t w, uint32_t h, const std::string& materialsDir) {
     view_->setMultiSampleAntiAliasingOptions(msaa);
     view_->setAntiAliasing(View::AntiAliasing::FXAA);
   }
-
-  auto unlitPkg = readFile(materialsDir_ + "/unlit_texture.filamat");
-  unlit_ = Material::Builder().package(unlitPkg.data(), unlitPkg.size()).build(*engine_);
-
-  // Soft contact shadow behind each panel — a separate transparent quad that feathers a rounded-rect
-  // silhouette. Real Filament shadows are unstable / expensive on llvmpipe, so we composite a baked
-  // soft shadow quad instead (deterministic, no shadow map, no GPU shadow pass).
-  auto shadowPkg = readFile(materialsDir_ + "/panel_shadow.filamat");
-  shadowMat_ = Material::Builder().package(shadowPkg.data(), shadowPkg.size()).build(*engine_);
   return true;
+}
+
+void Compositor::teardown() {
+  // No frame is in flight (renderPixels flushAndWait()s after each render), but flush defensively so
+  // the driver isn't reading these objects when we destroy them. Engine/Renderer/materials are
+  // shared — left for the next session / process exit.
+  engine_->flushAndWait();
+  clearPanels();
+  if (skybox_) {
+    scene_->setSkybox(nullptr);
+    engine_->destroy(skybox_);
+    skybox_ = nullptr;
+  }
+  engine_->destroy(view_);
+  engine_->destroy(scene_);
+  engine_->destroyCameraComponent(camEntity_);
+  utils::EntityManager::get().destroy(camEntity_);
+  engine_->destroy(swapChain_);
 }
 
 void Compositor::resolveBackground(const std::string& envOverride) {
@@ -722,7 +761,7 @@ void writeError(const json& id, int code, const std::string& message) {
 
 // Emit one rendered frame as a `streamFrame` notification (base64 PNG), reusing the daemon's
 // composestream/1 shape. `seq` is a monotonic frame counter.
-void emitStreamFrame(Compositor& comp, uint64_t seq, const std::string& frameStreamId) {
+void emitStreamFrame(Compositor& comp, uint64_t seq, const std::string& sessionId) {
   auto pixels = comp.renderPixels();
   auto png = encodePng(pixels, comp.width(), comp.height());
   json params = {
@@ -732,19 +771,31 @@ void emitStreamFrame(Compositor& comp, uint64_t seq, const std::string& frameStr
       {"seq", seq},
       {"data", base64Encode(png.data(), png.size())},
   };
-  if (!frameStreamId.empty()) params["frameStreamId"] = frameStreamId;
+  // The session this frame belongs to, so a multiplexing client can demux frames from the one
+  // shared process. Mirrored as `frameStreamId` for the daemon's existing stream-frame shape.
+  if (!sessionId.empty()) {
+    params["sessionId"] = sessionId;
+    params["frameStreamId"] = sessionId;
+  }
   writeMessage({{"jsonrpc", "2.0"}, {"method", "streamFrame"}, {"params", params}});
 }
 
 int runServer(const Args& args) {
-  Compositor comp;
-  if (!comp.init(args.width, args.height, args.materialsDir)) return 3;
-  fprintf(stderr, "xr-composite: serving on stdio (%ux%u)\n", args.width, args.height);
+  SharedGl gl;
+  if (!gl.create(args.materialsDir)) return 3;
+  fprintf(stderr, "xr-composite: serving on stdio (multi-session, one shared engine)\n");
 
-  bool haveScene = false;
+  // One session per `sessionId` (the daemon's frameStreamId), all sharing `gl`'s engine.
+  std::map<std::string, std::unique_ptr<Compositor>> sessions;
   uint64_t seq = 0;
-  std::string frameStreamId;
   std::string body;
+
+  // sessionId precedence: explicit `sessionId`, then `frameStreamId`, else the implicit "default"
+  // session (back-compat with single-session callers and the one-shot smoke).
+  auto sessionIdOf = [](const json& params) -> std::string {
+    return params.value("sessionId", params.value("frameStreamId", std::string("default")));
+  };
+
   while (readMessage(body)) {
     json msg;
     try {
@@ -758,44 +809,73 @@ int runServer(const Args& args) {
     const json& params = msg.contains("params") ? msg["params"] : json::object();
 
     if (method == "initialize") {
-      frameStreamId = params.value("frameStreamId", "");
       writeResult(id, {
           {"serverInfo", {{"name", "xr-composite"}, {"version", 1}}},
           {"capabilities", {
               {"render", true},
               {"updatePanels", true},
               {"streamFrame", true},
+              {"multiSession", true},
               {"spatialSceneVersion", xrcomposite::SPATIAL_SCENE_VERSION},
               {"dataProducts", json::array({"xr/composite"})},
           }},
       });
     } else if (method == "render" || method == "xr/render") {
       try {
+        const std::string sid = sessionIdOf(params);
         auto scene = params.at("scene").get<xrcomposite::SpatialScene>();
         std::string sceneDir = params.value("sceneDir", ".");
         std::string envOverride = params.value("environment", "");
+        uint32_t w = params.value("width", args.width);
+        uint32_t h = params.value("height", args.height);
+        // (Re)create the session if absent or if its viewport changed.
+        auto it = sessions.find(sid);
+        if (it != sessions.end() && (it->second->width() != w || it->second->height() != h)) {
+          it->second->teardown();
+          sessions.erase(it);
+          it = sessions.end();
+        }
+        if (it == sessions.end()) {
+          auto comp = std::make_unique<Compositor>();
+          if (!comp->init(gl, w, h)) {
+            if (!id.is_null()) writeError(id, -32603, "session init failed");
+            continue;
+          }
+          it = sessions.emplace(sid, std::move(comp)).first;
+        }
+        Compositor& comp = *it->second;
         comp.setScene(scene, sceneDir, envOverride);
-        haveScene = true;
         if (params.contains("out")) comp.writePng(params.at("out").get<std::string>());
-        emitStreamFrame(comp, ++seq, frameStreamId);
-        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq},
-                                            {"width", comp.width()}, {"height", comp.height()}});
+        emitStreamFrame(comp, ++seq, sid);
+        if (!id.is_null())
+          writeResult(id, {{"ok", true}, {"seq", seq}, {"sessionId", sid},
+                           {"width", comp.width()}, {"height", comp.height()}});
       } catch (const std::exception& e) {
         if (!id.is_null()) writeError(id, -32602, std::string("render failed: ") + e.what());
       }
     } else if (method == "xr/updatePanels") {
-      if (!haveScene) {
-        if (!id.is_null()) writeError(id, -32002, "no scene: call render first");
+      const std::string sid = sessionIdOf(params);
+      auto it = sessions.find(sid);
+      if (it == sessions.end()) {
+        if (!id.is_null()) writeError(id, -32002, "no scene: call render first for session " + sid);
         continue;
       }
       try {
-        if (params.contains("panels")) comp.applyPanelUpdates(params.at("panels"));
-        if (params.contains("out")) comp.writePng(params.at("out").get<std::string>());
-        emitStreamFrame(comp, ++seq, frameStreamId);
-        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq}});
+        if (params.contains("panels")) it->second->applyPanelUpdates(params.at("panels"));
+        if (params.contains("out")) it->second->writePng(params.at("out").get<std::string>());
+        emitStreamFrame(*it->second, ++seq, sid);
+        if (!id.is_null()) writeResult(id, {{"ok", true}, {"seq", seq}, {"sessionId", sid}});
       } catch (const std::exception& e) {
         if (!id.is_null()) writeError(id, -32602, std::string("updatePanels failed: ") + e.what());
       }
+    } else if (method == "xr/stop") {
+      const std::string sid = sessionIdOf(params);
+      auto it = sessions.find(sid);
+      if (it != sessions.end()) {
+        it->second->teardown();
+        sessions.erase(it);
+      }
+      if (!id.is_null()) writeResult(id, {{"ok", true}, {"sessionId", sid}});
     } else if (method == "shutdown") {
       if (!id.is_null()) writeResult(id, json::object());
     } else if (method == "exit") {
@@ -818,8 +898,10 @@ int runOneShot(const Args& args) {
     f >> raw;
     scene = raw.get<xrcomposite::SpatialScene>();
   }
+  SharedGl gl;
+  if (!gl.create(args.materialsDir)) return 3;
   Compositor comp;
-  if (!comp.init(args.width, args.height, args.materialsDir)) return 3;
+  if (!comp.init(gl, args.width, args.height)) return 3;
   comp.setScene(scene, dirOf(args.scenePath), args.environment);
   if (!comp.writePng(args.outPath)) return 4;
   fflush(stderr);
