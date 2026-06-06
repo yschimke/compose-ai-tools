@@ -275,4 +275,21 @@ class FrameStreamRegistryTest {
       registry.consumeForStream("xr1", "c", 64, 48)!!.keyframe,
     )
   }
+
+  @Test
+  fun consumeForStream_pending_keyframe_overrides_dedup_after_reshow() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = null)
+    registry.consumeForStream("xr1", "SAME", 64, 48) // establishes lastHash
+
+    registry.setVisibility("xr1", visible = false, fps = null)
+    registry.setVisibility("xr1", visible = true, fps = null)
+
+    // Identical payload after scroll-back must still deliver the keyframe anchor, not a heartbeat.
+    val f = registry.consumeForStream("xr1", "SAME", 64, 48)
+    assertNotNull(f)
+    assertTrue(f!!.keyframe)
+    assertEquals(StreamCodec.PNG, f.codec)
+    assertEquals("SAME", f.payloadBase64)
+  }
 }

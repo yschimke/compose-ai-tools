@@ -126,8 +126,10 @@ internal class FrameStreamRegistry(
       if (minIntervalMs > 0 && s.lastEmittedAtMs != Long.MIN_VALUE) {
         if (now - s.lastEmittedAtMs < minIntervalMs) continue
       }
-      val isUnchanged = pngHash != null && s.lastHash == pngHash
       val keyframe = s.keyframePending
+      // A pending keyframe (fresh stream or scroll-back-into-view) overrides dedup so the client
+      // always gets a real paint anchor, even when the pixels are byte-identical.
+      val isUnchanged = !keyframe && pngHash != null && s.lastHash == pngHash
       val seq = ++s.seq
       val params: StreamFrameParams =
         if (isUnchanged) {
@@ -226,8 +228,10 @@ internal class FrameStreamRegistry(
       if (now - s.lastEmittedAtMs < minIntervalMs) return null
     }
     val hash = payloadBase64?.let(::sha256)
-    val isUnchanged = hash != null && s.lastHash == hash
     val keyframe = s.keyframePending
+    // A pending keyframe (fresh stream or scroll-back-into-view) overrides dedup so the client
+    // always gets a real paint anchor, even when the payload is byte-identical.
+    val isUnchanged = !keyframe && hash != null && s.lastHash == hash
     val seq = ++s.seq
     val params =
       if (isUnchanged || payloadBase64 == null) {
