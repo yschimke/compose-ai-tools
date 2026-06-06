@@ -2147,7 +2147,11 @@ internal object AndroidPreviewSupport {
         tier.set(resolveTier(project))
         displayFilterFilters.set(resolveDisplayFilterFilters(project))
         includeKinds.add(PreviewKind.LOTTIE.name)
-        renderClasspath.from(lottieRendererConfig)
+        // Lazy artifact view (not the raw `Configuration`) so the @Classpath collection stays
+        // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
+        // `composePreviewLottieRenderer` is the JVM Compottie renderer (plain jars), so the default
+        // empty view resolves it exactly as `from(config)` did.
+        renderClasspath.from(lottieRendererConfig.incoming.artifactView {}.files)
         renderClasspath.from(androidLottieResourceDirs(project))
         // Disjoint output dir (matching the `lottieRenderSubdir` discovery stamps into each Lottie
         // capture's `renderOutput`) so this task and the Robolectric `composePreviewRender` never
