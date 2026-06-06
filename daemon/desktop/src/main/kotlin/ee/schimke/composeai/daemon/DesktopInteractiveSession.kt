@@ -16,7 +16,6 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
-import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
 import ee.schimke.composeai.data.layoutinspector.TargetResolution
@@ -308,35 +307,15 @@ class DesktopInteractiveSession(
     val explicitX = input.pixelX
     val explicitY = input.pixelY
     if (explicitX != null && explicitY != null) return explicitX to explicitY
-    val target = input.target?.toCoreTarget() ?: return null
-    val root = currentSemanticsRoot() ?: return logUnresolved(target, "no semantics root available")
+    val target = input.target?.toSemanticsTarget() ?: return null
+    val root =
+      state.scene.composeSemanticsRoot()
+        ?: return logUnresolved(target, "no semantics root available")
     return when (val res = SemanticsTargets.resolve(root, target)) {
       is TargetResolution.Resolved -> res.point.x to res.point.y
       TargetResolution.NotFound -> logUnresolved(target, "no node matched")
       is TargetResolution.Ambiguous ->
         logUnresolved(target, "${res.candidates.size} nodes matched; use a ref to disambiguate")
-    }
-  }
-
-  /**
-   * Project the held scene's unmerged semantics tree into the ref-bearing wire model — the same
-   * projection the `compose/semantics` data product uses ([ComposeSemanticsDataProducer]) — so
-   * target resolution sees identical refs / testTags / roles / bounds to what an agent fetched.
-   */
-  private fun currentSemanticsRoot(): ComposeSemanticsNode? {
-    val node = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
-    return ComposeSemanticsDataProducer.buildPayload(node).root
-  }
-
-  /** Map the wire target onto the core resolver's [SemanticsTarget]; null when no field is set. */
-  private fun SemanticsInputTarget.toCoreTarget(): SemanticsTarget? {
-    val r = ref
-    val tag = testTag
-    return when {
-      !r.isNullOrBlank() -> SemanticsTarget.Ref(r)
-      !tag.isNullOrBlank() -> SemanticsTarget.Tag(tag)
-      role != null || text != null -> SemanticsTarget.RoleText(role, text)
-      else -> null
     }
   }
 

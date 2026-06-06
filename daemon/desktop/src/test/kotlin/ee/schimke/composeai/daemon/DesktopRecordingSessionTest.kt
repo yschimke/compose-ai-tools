@@ -701,6 +701,84 @@ class DesktopRecordingSessionTest {
     }
   }
 
+  /**
+   * Issue #1784 — a scripted `input.click` carrying only a semantic `target` (testTag, no pixel
+   * coordinates) resolves to the target node's centre and dispatches there. The fixture
+   * ([TaggedClickTargetSquare]) flips green only when its off-centre `target-box` node is clicked,
+   * so a green frame proves resolution ran (a wrong/centre coordinate would miss). The event's
+   * script evidence must be `applied`.
+   */
+  @Test
+  fun scripted_click_resolves_testTag_target_to_node_centre() {
+    val outputDir = tempFolder.newFolder("target-recording-renders")
+    val recordingsRoot = tempFolder.newFolder("target-recordings-root")
+    savedRecordingsDir = System.getProperty(DesktopHost.RECORDINGS_DIR_PROP)
+    System.setProperty(DesktopHost.RECORDINGS_DIR_PROP, recordingsRoot.absolutePath)
+
+    val engine = RenderEngine(outputDir = outputDir)
+    val host =
+      DesktopHost(
+        engine = engine,
+        previewSpecResolver = { previewId ->
+          if (previewId == TAGGED_TARGET_PREVIEW_ID) {
+            RenderSpec(
+              className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+              functionName = "TaggedClickTargetSquare",
+              widthPx = 64,
+              heightPx = 64,
+              density = 1.0f,
+              outputBaseName = "tagged-click-target-square-rec",
+            )
+          } else null
+        },
+      )
+    host.start()
+    try {
+      val session =
+        host.acquireRecordingSession(
+          previewId = TAGGED_TARGET_PREVIEW_ID,
+          recordingId = "test-rec-target",
+          classLoader =
+            DesktopRecordingSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+          fps = FPS,
+          scale = 1.0f,
+          overrides = null,
+        )
+      try {
+        session.postScript(
+          listOf(
+            RecordingScriptEvent(
+              tMs = 0L,
+              kind = "input.click",
+              target =
+                ee.schimke.composeai.daemon.protocol.SemanticsInputTarget(testTag = "target-box"),
+            )
+          )
+        )
+        val result = session.stop()
+
+        val clickEvidence = result.scriptEvents.single { it.kind == "input.click" }
+        assertEquals(
+          "testTag-targeted click must resolve + dispatch (applied evidence); got ${clickEvidence.status} ${clickEvidence.message ?: ""}",
+          RecordingScriptEventStatus.APPLIED,
+          clickEvidence.status,
+        )
+        val frame0 = readPng(File(result.framesDir, "frame-00000.png"))
+        val green = pixelMatchPct(frame0, expectedRgb = 0x66BB6A, perChannelTolerance = 8)
+        assertTrue(
+          "frame 0 expected ≥ 95% green after testTag-targeted click; got ${"%.2f".format(green * 100)}% " +
+            "— load-bearing #1784 assertion (target resolved to the off-centre node's centre)",
+          green >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)
@@ -912,6 +990,7 @@ class DesktopRecordingSessionTest {
 
   companion object {
     private const val FIXTURE_PREVIEW_ID = "tristate-click-square"
+    private const val TAGGED_TARGET_PREVIEW_ID = "tagged-click-target-square"
     private const val FAILURE_PREVIEW_ID = "click-to-boom-square"
     private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
     // Component-preview-sized sandbox — a button-ish 120x60 surface, deliberately NOT phone-sized.

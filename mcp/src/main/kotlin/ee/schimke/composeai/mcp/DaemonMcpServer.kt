@@ -15,6 +15,7 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
@@ -3447,6 +3448,10 @@ class DaemonMcpServer(
         kind = kindStr,
         pixelX = obj["pixelX"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         pixelY = obj["pixelY"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        target =
+          (obj["target"] as? JsonObject)?.let {
+            json.decodeFromJsonElement(SemanticsInputTarget.serializer(), it)
+          },
         scrollDeltaY = obj["scrollDeltaY"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
         keyCode = obj["keyCode"]?.jsonPrimitive?.contentOrNull,
         label = obj["label"]?.jsonPrimitive?.contentOrNull,
