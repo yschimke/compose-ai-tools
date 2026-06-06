@@ -198,10 +198,15 @@ internal object ComposePreviewTasks {
         // Consumer's processed resources so previews can load classpath assets (Lottie `.json`,
         // fonts, images) at render time. Depend on the resource-processing task that stages them.
         renderClasspath.from(sourceResourceDirs)
+        // Feed configurations through a lazily-resolved `incoming.artifactView {}.files` view
+        // rather than the raw `Configuration`, so the @Classpath collection never pins a live
+        // `Configuration` into the task's config-cache `__classpath__` field (the serialization
+        // failure issue #1796 hit on the desktop validate guards). The empty view yields the same
+        // default resolution — module + file dependencies alike — just lazily and serializably.
         project.configurations.findByName(resolveDependencyConfigName())?.let {
-          renderClasspath.from(it)
+          renderClasspath.from(it.incoming.artifactView {}.files)
         }
-        renderClasspath.from(rendererConfig)
+        renderClasspath.from(rendererConfig.incoming.artifactView {}.files)
         group = "compose preview"
         description = "Render all previews to PNG"
         dependsOn(discoverTask)
@@ -546,8 +551,10 @@ internal object ComposePreviewTasks {
       // Daemon module's classes FIRST so [mainClass] resolves before anything in the
       // consumer's transitive graph shadows it. `:daemon:desktop` is a Kotlin-JVM module, so
       // the default `org.gradle.usage=java-runtime` / `artifactType=jar` resolves directly to
-      // the produced JAR — no AGP-style attribute filter needed.
-      classpath.from(daemonRendererConfig)
+      // the produced JAR — no AGP-style attribute filter needed. Resolved through a lazy
+      // `incoming.artifactView {}.files` view (not the raw `Configuration`) so the classpath stays
+      // config-cache serializable — see issue #1796 and the desktop validate guards.
+      classpath.from(daemonRendererConfig.incoming.artifactView {}.files)
       // User's compiled classes — keeps the Kotlin classloader's class-data-sharing intact for
       // the parent classloader before `UserClassLoaderHolder` constructs its child URL loader.
       classpath.from(sourceClassDirs)
@@ -557,7 +564,10 @@ internal object ComposePreviewTasks {
       // don't match the `build/classes/...` markers), so they stay parent-loaded, not child-first.
       classpath.from(sourceResourceDirs)
       // User's runtime classpath (Compose Multiplatform deps + transitive Kotlin libraries).
-      project.configurations.findByName(dependencyConfigName())?.let { classpath.from(it) }
+      // Lazy artifact view (not the raw `Configuration`) for config-cache serializability — #1796.
+      project.configurations.findByName(dependencyConfigName())?.let {
+        classpath.from(it.incoming.artifactView {}.files)
+      }
 
       // Desktop daemons don't run inside Robolectric, so the AGP-side `--add-opens` flags don't
       // apply here. `-Xmx` is the only essential JVM arg; B-desktop follow-ups can add Skia /
@@ -744,8 +754,11 @@ internal object ComposePreviewTasks {
       task = task,
       // CMP / Kotlin-JVM: the consumer's runtime classpath is the compile classpath. Empty
       // file collection when no runtime config was found (rare; the desktop task wiring
-      // would have logged that case).
-      userCompileClasspath = userRuntimeConfig ?: project.files(),
+      // would have logged that case). Resolved through a lazy `incoming.artifactView {}.files`
+      // view so the BTA compile classpath never pins the raw `Configuration` into the daemon
+      // bootstrap task's config-cache state — see issue #1796. (The Android caller already passes
+      // AGP's config-cache-safe `Test.classpath`, so only this desktop path needs the wrap.)
+      userCompileClasspath = userRuntimeConfig?.incoming?.artifactView {}?.files ?: project.files(),
       // MODULE_NAME mirrors KGP's default `compileKotlin` for non-multiplatform JVM modules
       // — `project.name`, no path-mangling. The bta-host-fixture spike confirmed Gradle
       // uses this exact spelling in `kotlin.Metadata.d2[]`.
@@ -789,8 +802,12 @@ internal object ComposePreviewTasks {
   ) {
     val btaImplConfig = project.configurations.getByName("composePreviewBtaImpl")
     val btaPluginConfig = project.configurations.getByName("composePreviewBtaPlugin")
-    task.btaImplClasspath.from(btaImplConfig)
-    task.btaCompilerPluginClasspath.from(btaPluginConfig)
+    // Lazy artifact views (not the raw `Configuration`s) so these input classpaths stay
+    // config-cache serializable — same rationale as the desktop validate guards (issue #1796).
+    // `userCompileClasspath` arrives already config-cache-clean from both callers (a lazy view on
+    // desktop, AGP's `Test.classpath` on Android), so it's added as-is.
+    task.btaImplClasspath.from(btaImplConfig.incoming.artifactView {}.files)
+    task.btaCompilerPluginClasspath.from(btaPluginConfig.incoming.artifactView {}.files)
     task.btaCompileClasspath.from(userCompileClasspath)
     task.btaModuleName.set(moduleName)
     task.btaOutputDir.set(outputDirProvider)
