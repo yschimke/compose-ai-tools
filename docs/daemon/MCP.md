@@ -106,6 +106,7 @@ supervisor stops respawning.
 | `list_projects()` | List registered projects. |
 | `list_devices()` | List the known `@Preview(device=...)` catalog with resolved geometry. |
 | `render_preview(uri, overrides?, observe?)` | Force-render a preview. `observe` defaults to `png` (base64 image); `semantics` returns the `compose/semantics` tree + sha256 + dimensions and `hash` returns just sha256 + dimensions — token-frugal responses with no base64 (issue #1787). |
+| `render_matrix(uri, axes)` | Render one preview across a cross-product of display axes (`device` × `locale` × `uiMode` × `fontScale`) and return a token-frugal per-cell summary (`overrides`, `sha256`, dimensions, `changed` vs the first cell). No base64; bounded at 24 cells (issue #1788). |
 | `watch(workspaceId, module?, fqnGlob?, awaitDiscovery?, awaitTimeoutMs?)` | Register an area of interest and keep matching previews warm. |
 | `unwatch(workspaceId?, module?, fqnGlob?)` | Drop matching watches. |
 | `list_watches()` | List watches registered by the current session. |
