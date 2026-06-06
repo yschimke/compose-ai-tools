@@ -450,6 +450,24 @@ sealed interface InteractiveCommand {
      * value is just a `java.lang.String` (do-not-acquire), so the bridge serialises trivially.
      */
     val keyCode: String? = null,
+    /**
+     * Issue #1784 — optional semantic target. When any of these is set the sandbox resolves it to
+     * the matched node's centre (via `ComposeSemanticsDataProducer.buildPayload` + `SemanticsTargets`)
+     * and dispatches there instead of using [pixelX]/[pixelY]. Passed as plain `java.lang.String`s
+     * (like [keyCode] / `DispatchUiAutomator.selectorJson`) so no Compose / domain type crosses the
+     * classloader boundary. Precedence sandbox-side: ref → testTag → role+text.
+     */
+    val targetRef: String? = null,
+    val targetTestTag: String? = null,
+    val targetRole: String? = null,
+    val targetText: String? = null,
+    /**
+     * Set by the sandbox when a target was provided: `true` if it resolved to exactly one node and
+     * dispatched, `false` if it matched no node (or was ambiguous). Null / unused for pixel
+     * dispatch. The host's `dispatch` throws when a target was given but `replyMatched` is `false`,
+     * so the recording path surfaces `unsupported` evidence and interactive input logs the miss.
+     */
+    val replyMatched: AtomicBoolean? = null,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
   ) : InteractiveCommand

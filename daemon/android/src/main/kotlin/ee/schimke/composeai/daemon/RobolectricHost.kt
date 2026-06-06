@@ -15,6 +15,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import com.github.takahirom.roborazzi.captureRoboImage
+import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
+import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
+import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
@@ -2154,16 +2157,25 @@ open class RobolectricHost(
               when (cmd) {
                 is InteractiveCommand.Dispatch -> {
                   try {
-                    val inputTrace =
-                      PerfettoTraceDataProducer.recorder(
-                        start.outputBaseName,
-                        backend = "android-live",
-                      )
-                    inputTrace.section("interactive:dispatch") { dispatchHeldMotion(rule, cmd) }
-                    inputTrace.section("compose:advanceClock") {
-                      rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                    // #1784 — a semantic target resolves to a node centre here, sandbox-side, where
+                    // the live semantics tree lives. Pixel/key dispatch resolves to the wire coords.
+                    // A null position means a target matched no node — replyMatched is already false
+                    // and we dispatch nothing.
+                    val position = resolveDispatchPosition(rule, cmd)
+                    if (position != null) {
+                      val inputTrace =
+                        PerfettoTraceDataProducer.recorder(
+                          start.outputBaseName,
+                          backend = "android-live",
+                        )
+                      inputTrace.section("interactive:dispatch") {
+                        dispatchHeldMotion(rule, cmd, position)
+                      }
+                      inputTrace.section("compose:advanceClock") {
+                        rule.mainClock.advanceTimeBy(POINTER_HOLD_MS)
+                      }
+                      dataDir?.let(inputTrace::write)
                     }
-                    dataDir?.let(inputTrace::write)
                   } catch (t: Throwable) {
                     cmd.replyError.set(t)
                   } finally {
@@ -2666,6 +2678,48 @@ open class RobolectricHost(
      * the wheel position, then sends a native SOURCE_ROTARY_ENCODER ACTION_SCROLL to the Compose
      * view, matching Wear's RSB route.
      */
+    /**
+     * Resolve where a [InteractiveCommand.Dispatch] lands. Pixel/key dispatch uses the wire coords;
+     * a semantic target (issue #1784) is resolved sandbox-side against the live semantics tree —
+     * the same `ComposeSemanticsDataProducer` projection an agent fetched via `compose/semantics`,
+     * matched by [SemanticsTargets] — to the matched node's centre. Sets [Dispatch.replyMatched] when
+     * a target was given (`true` resolved, `false` no/ambiguous match) and returns `null` on a
+     * target miss so the caller dispatches nothing.
+     */
+    private fun resolveDispatchPosition(
+      rule:
+        androidx.compose.ui.test.junit4.AndroidComposeTestRule<
+          *,
+          androidx.activity.ComponentActivity,
+        >,
+      cmd: InteractiveCommand.Dispatch,
+    ): Offset? {
+      val target =
+        semanticsTargetOf(cmd) ?: return Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
+      val root =
+        runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+      val resolved =
+        root?.let {
+          val payload = ComposeSemanticsDataProducer.buildPayload(it)
+          when (val res = SemanticsTargets.resolve(payload, target)) {
+            is TargetResolution.Resolved -> Offset(res.point.x.toFloat(), res.point.y.toFloat())
+            else -> null
+          }
+        }
+      cmd.replyMatched?.set(resolved != null)
+      return resolved
+    }
+
+    /** Build the core [SemanticsTarget] from the bridge command's string fields (ref → tag → role+text). */
+    private fun semanticsTargetOf(cmd: InteractiveCommand.Dispatch): SemanticsTarget? =
+      when {
+        !cmd.targetRef.isNullOrBlank() -> SemanticsTarget.Ref(cmd.targetRef)
+        !cmd.targetTestTag.isNullOrBlank() -> SemanticsTarget.Tag(cmd.targetTestTag)
+        cmd.targetRole != null || cmd.targetText != null ->
+          SemanticsTarget.RoleText(cmd.targetRole, cmd.targetText)
+        else -> null
+      }
+
     private fun dispatchHeldMotion(
       rule:
         androidx.compose.ui.test.junit4.AndroidComposeTestRule<
@@ -2673,8 +2727,8 @@ open class RobolectricHost(
           androidx.activity.ComponentActivity,
         >,
       cmd: InteractiveCommand.Dispatch,
+      position: Offset,
     ) {
-      val position = Offset(cmd.pixelX.toFloat(), cmd.pixelY.toFloat())
       when (cmd.kind) {
         "click" -> {
           if (!performClickActionAt(rule, position)) {

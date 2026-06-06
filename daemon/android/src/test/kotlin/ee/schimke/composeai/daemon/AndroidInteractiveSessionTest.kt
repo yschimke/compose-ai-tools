@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -877,6 +878,75 @@ class AndroidInteractiveSessionTest {
     )
   }
 
+  /**
+   * Issue #1784 — a click carrying only a semantic `target` (testTag, no pixel coordinates) is
+   * resolved sandbox-side (where the live semantics tree lives) to the target node's centre and
+   * dispatched there, flipping [TaggedClickTargetSquare] green. The negative control proves the
+   * resolution is real: the `target-box` node sits in the top-left corner, so a centre pixel click
+   * misses it and the card stays red — only the resolved centroid hits.
+   */
+  @Test
+  fun heldClickResolvesTestTagTargetToNodeCentre() {
+    System.setProperty(
+      RenderEngine.OUTPUT_DIR_PROP,
+      tempFolder.newFolder("interactive-target").absolutePath,
+    )
+    System.setProperty("roborazzi.test.record", "true")
+    val host = RobolectricHost(sandboxCount = 2, previewSpecResolver = previewSpecResolver())
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = TAGGED_TARGET_PREVIEW_ID,
+          classLoader = javaClass.classLoader!!,
+        )
+      try {
+        // Bootstrap render — red.
+        val before = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "tagged-target fixture should start red",
+          pixelMatchPct(before, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        // Negative control: a centre pixel click misses the top-left target → still red.
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.CLICK,
+            pixelX = INTERACTIVE_WIDTH_PX / 2,
+            pixelY = INTERACTIVE_HEIGHT_PX / 2,
+          )
+        )
+        val afterMiss = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        assertTrue(
+          "centre pixel click must miss the corner target-box; card should still be red",
+          pixelMatchPct(afterMiss, RED_RGB, perChannelTolerance = 8) >= 0.95,
+        )
+
+        // The payload: a CLICK with NO pixel coords, only a testTag target. Resolved sandbox-side to
+        // the corner node's centre → flips green.
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "irrelevant-on-host-side",
+            kind = InteractiveInputKind.CLICK,
+            target = SemanticsInputTarget(testTag = "target-box"),
+          )
+        )
+        val afterHit = decode(File(session.render(RenderHost.nextRequestId()).pngPath!!))
+        val green = pixelMatchPct(afterHit, GREEN_RGB, perChannelTolerance = 8)
+        assertTrue(
+          "testTag target must resolve sandbox-side to the corner node's centre and flip green; " +
+            "got ${"%.2f".format(green * 100)}% — load-bearing #1784 Android assertion",
+          green >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
   private fun previewSpecResolver(): (String) -> RenderSpec? = { previewId ->
     when (previewId) {
       INTERACTIVE_PREVIEW_ID ->
@@ -888,6 +958,16 @@ class AndroidInteractiveSessionTest {
           density = 1.0f,
           showBackground = true,
           outputBaseName = "interactive-clicktoggle",
+        )
+      TAGGED_TARGET_PREVIEW_ID ->
+        RenderSpec(
+          className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+          functionName = "TaggedClickTargetSquare",
+          widthPx = INTERACTIVE_WIDTH_PX,
+          heightPx = INTERACTIVE_HEIGHT_PX,
+          density = 1.0f,
+          showBackground = true,
+          outputBaseName = "interactive-tagged-target",
         )
       DARK_PREVIEW_ID ->
         RenderSpec(
@@ -994,6 +1074,7 @@ class AndroidInteractiveSessionTest {
 
   companion object {
     private const val INTERACTIVE_PREVIEW_ID = "interactive-clicktoggle"
+    private const val TAGGED_TARGET_PREVIEW_ID = "interactive-tagged-target"
     private const val DARK_PREVIEW_ID = "interactive-darkaware"
     private const val CLICKABLE_PREVIEW_ID = "interactive-clickable"
     private const val SCROLL_PREVIEW_ID = "interactive-scroll"
