@@ -97,6 +97,7 @@ class DaemonMcpServerTest {
         "list_projects",
         "list_devices",
         "render_preview",
+        "render_matrix",
         "watch",
         "unwatch",
         "list_watches",
@@ -948,6 +949,130 @@ class DaemonMcpServerTest {
     assertThat(root["testTag"]?.jsonPrimitive?.contentOrNull).isEqualTo("hero")
     // ref assigned by SemanticsRefs on the producer side round-trips through.
     assertThat(parsed["sha256"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+  }
+
+  @Test
+  fun `render_matrix renders one cell per axis combination with per-cell hashes`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+    val pngBytes =
+      byteArrayOf(
+        0x89.toByte(),
+        0x50,
+        0x4e,
+        0x47,
+        0x0d,
+        0x0a,
+        0x1a,
+        0x0a,
+        0x00,
+        0x00,
+        0x00,
+        0x0d,
+        0x49,
+        0x48,
+        0x44,
+        0x52,
+        0x00,
+        0x00,
+        0x00,
+        0x28,
+        0x00,
+        0x00,
+        0x00,
+        0x1e,
+      )
+    val pngFile = tmp.newFile("matrix-render.png")
+    Files.write(pngFile.toPath(), pngBytes)
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_matrix",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("axes") {
+            putJsonArray("uiMode") {
+              add(JsonPrimitive("light"))
+              add(JsonPrimitive("dark"))
+            }
+          }
+        },
+        timeoutMs = 10_000,
+      )
+    val parsed = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(parsed["schema"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("compose-preview-matrix/v1")
+    assertThat(parsed["cellCount"]?.jsonPrimitive?.content?.toInt()).isEqualTo(2)
+    val cells = parsed["cells"]!!.jsonArray
+    assertThat(cells).hasSize(2)
+    assertThat(
+        cells[0].jsonObject["overrides"]!!.jsonObject["uiMode"]?.jsonPrimitive?.contentOrNull
+      )
+      .isEqualTo("light")
+    assertThat(
+        cells[1].jsonObject["overrides"]!!.jsonObject["uiMode"]?.jsonPrimitive?.contentOrNull
+      )
+      .isEqualTo("dark")
+    assertThat(cells[0].jsonObject["sha256"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+    assertThat(cells[0].jsonObject["widthPx"]?.jsonPrimitive?.content?.toInt()).isEqualTo(40)
+    // First cell is the baseline, so it is never "changed".
+    assertThat(cells[0].jsonObject["changed"]?.jsonPrimitive?.content?.toBoolean()).isFalse()
+  }
+
+  @Test
+  fun `render_matrix rejects a cross-product over the cell cap`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    warmDaemonFor(workspaceId, ":module")
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    // 5 locales × 5 fontScales = 25 > cap of 24.
+    val resp =
+      client.callTool(
+        "render_matrix",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("axes") {
+            putJsonArray("locale") {
+              listOf("en", "fr", "de", "es", "ja").forEach { add(JsonPrimitive(it)) }
+            }
+            putJsonArray("fontScale") {
+              listOf(1.0, 1.3, 1.6, 2.0, 0.85).forEach { add(JsonPrimitive(it)) }
+            }
+          }
+        },
+        timeoutMs = 10_000,
+      )
+    assertThat(resp.firstTextContent()).contains("exceeds the cap")
+  }
+
+  @Test
+  fun `render_matrix requires at least one axis`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    warmDaemonFor(workspaceId, ":module")
+    val uri = PreviewUri(workspaceId, ":module", "com.example.Red").toUri()
+    val resp =
+      client.callTool(
+        "render_matrix",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("axes") {}
+        },
+        timeoutMs = 10_000,
+      )
+    assertThat(resp.firstTextContent()).contains("at least one of device")
   }
 
   @Test

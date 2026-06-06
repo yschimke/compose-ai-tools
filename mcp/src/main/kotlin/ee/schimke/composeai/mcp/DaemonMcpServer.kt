@@ -76,6 +76,9 @@ import okio.Path.Companion.toPath
  * `<className>.<methodName>` per `DiscoverPreviewsTask`), and the URI builder pairs them with the
  * (workspace, module) they came from.
  */
+/** Upper bound on `render_matrix` cells, so a careless cross-product can't fan out unboundedly. */
+private const val MATRIX_CELL_CAP = 24
+
 class DaemonMcpServer(
   private val supervisor: DaemonSupervisor,
   private val sessions: SessionRegistry = SessionRegistry(),
@@ -1514,6 +1517,34 @@ class DaemonMcpServer(
           ),
       ),
       ToolDef(
+        name = "render_matrix",
+        description =
+          "Render one preview across a cross-product of display axes in a single call and return a token-frugal per-cell summary — for 'does this survive small screen + RTL + large font?' without looping render_preview and reading N PNGs (issue #1788). `axes` sets any of device / locale / uiMode / fontScale (each a non-empty array); the result has one cell per combination with its `overrides`, `sha256`, `widthPx`/`heightPx`, and `changed` (sha differs from the first cell — the quick 'which configs render differently?' signal). No base64 images; fetch a specific cell's pixels with render_preview + those overrides when you need to look. Bounded at 24 cells; narrow the axes if you exceed it. Pairs with diff_semantics for per-cell structural diffs.",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>"},
+                "axes":{
+                  "type":"object",
+                  "description":"Cross-product axes; set at least one. Each is a non-empty array.",
+                  "properties":{
+                    "device":{"type":"array","items":{"type":"string"},"description":"@Preview(device=...) ids/specs, e.g. ['id:pixel_5','id:pixel_tablet']."},
+                    "locale":{"type":"array","items":{"type":"string"},"description":"BCP-47 locale tags, e.g. ['en','ar','ja-JP']."},
+                    "uiMode":{"type":"array","items":{"type":"string","enum":["light","dark"]}},
+                    "fontScale":{"type":"array","items":{"type":"number"},"description":"Font-scale multipliers, e.g. [1.0, 2.0]."}
+                  }
+                }
+              },
+              "required":["uri","axes"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
         name = "subscribe_preview_data",
         description =
           "Subscribe to a data-product kind for one preview. While subscribed, every renderFinished for the preview produces the kind alongside the PNG (subject to the daemon's producer wiring). Useful when the agent expects to ask repeatedly about the same preview — pre-computing on render avoids the get_preview_data re-render cost. Subscriptions are sticky-while-visible: the daemon drops them automatically when the preview leaves the most recent set_visible set, so re-subscribe when the preview returns to view. Idempotent. Errors: DataProductUnknown if the kind isn't advertised or isn't attachable. NOTE: today, MCP doesn't push the attached payload to clients automatically — agents still call get_preview_data to read it; the subscribe just primes the daemon-side cache.",
@@ -1721,6 +1752,7 @@ class DaemonMcpServer(
       "list_projects" -> toolListProjects()
       "list_devices" -> toolListDevices()
       "render_preview" -> toolRenderPreview(args)
+      "render_matrix" -> toolRenderMatrix(args)
       "watch" -> toolWatch(session, args)
       "unwatch" -> toolUnwatch(session, args)
       "list_watches" -> toolListWatches(session)
@@ -1932,6 +1964,114 @@ class DaemonMcpServer(
         }
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
+  }
+
+  /**
+   * `render_matrix` (issue #1788) — render one preview across a cross-product of display axes
+   * (device × locale × uiMode × fontScale) and return a token-frugal per-cell summary (overrides +
+   * sha256 + dimensions + `changed` vs the first cell). No base64 images; the agent fetches a
+   * specific cell's pixels with `render_preview` + those overrides when it needs to look. Bounded
+   * so a careless cross-product can't fan out unboundedly.
+   */
+  private fun toolRenderMatrix(args: JsonObject): CallToolResult {
+    val uriStr =
+      args["uri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("render_matrix: missing 'uri'")
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return errorCallToolResult("render_matrix: invalid uri: $uriStr")
+    val axes =
+      args["axes"] as? JsonObject
+        ?: return errorCallToolResult("render_matrix: missing 'axes' (object of arrays)")
+
+    fun stringAxis(key: String): List<String>? =
+      (axes[key] as? JsonArray)
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf { s -> s.isNotBlank() } }
+        ?.takeIf { it.isNotEmpty() }
+    fun floatAxis(key: String): List<Float>? =
+      (axes[key] as? JsonArray)
+        ?.mapNotNull { it.jsonPrimitive.contentOrNull?.toFloatOrNull() }
+        ?.takeIf { it.isNotEmpty() }
+
+    val devices = stringAxis("device")
+    val locales = stringAxis("locale")
+    val uiModes = stringAxis("uiMode")
+    val fontScales = floatAxis("fontScale")
+    if (devices == null && locales == null && uiModes == null && fontScales == null) {
+      return errorCallToolResult(
+        "render_matrix: 'axes' must set at least one of device | locale | uiMode | fontScale " +
+          "(each a non-empty array)"
+      )
+    }
+    val cellCount =
+      (devices?.size ?: 1) * (locales?.size ?: 1) * (uiModes?.size ?: 1) * (fontScales?.size ?: 1)
+    if (cellCount > MATRIX_CELL_CAP) {
+      return errorCallToolResult(
+        "render_matrix: $cellCount cells exceeds the cap of $MATRIX_CELL_CAP; narrow the axes"
+      )
+    }
+
+    // One overrides object per axis combination, preserving device → locale → uiMode → fontScale
+    // order so cell ordering is stable.
+    val cellOverrides: List<JsonObject> = buildList {
+      for (device in devices ?: listOf<String?>(null)) for (locale in
+        locales ?: listOf<String?>(null)) for (uiMode in
+        uiModes ?: listOf<String?>(null)) for (fontScale in fontScales ?: listOf<Float?>(null)) {
+        add(
+          buildJsonObject {
+            device?.let { put("device", it) }
+            locale?.let { put("localeTag", it) }
+            uiMode?.let { put("uiMode", it) }
+            fontScale?.let { put("fontScale", it) }
+          }
+        )
+      }
+    }
+
+    // Validate the axis field names once against the daemon's supportedOverrides (same field set in
+    // every cell), so an unsupported field fails fast instead of after a render.
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return errorCallToolResult("render_matrix: daemon spawn failed: ${it.message}")
+        }
+    val validationOverrides =
+      runCatching { decodePreviewOverrides(cellOverrides.first()) }
+        .getOrElse {
+          return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
+        }
+    val violations = validateOverrides(validationOverrides, daemon)
+    if (violations.isNotEmpty()) {
+      return errorCallToolResult("render_matrix: ${violations.joinToString("; ")}")
+    }
+
+    return runCatching {
+        var baselineSha: String? = null
+        val cells = cellOverrides.map { cellJson ->
+          val overrides = decodePreviewOverrides(cellJson)
+          val bytes = renderAndReadBytes(uri, overrides = overrides)
+          val sha = sha256Hex(bytes)
+          val dimensions = pngDimensions(bytes)
+          if (baselineSha == null) baselineSha = sha
+          buildJsonObject {
+            put("overrides", cellJson)
+            put("sha256", sha)
+            dimensions?.let {
+              put("widthPx", it.first)
+              put("heightPx", it.second)
+            }
+            put("changed", sha != baselineSha)
+          }
+        }
+        val payload = buildJsonObject {
+          put("schema", "compose-preview-matrix/v1")
+          put("uri", uri.toUri())
+          put("cellCount", cells.size)
+          putJsonArray("cells") { cells.forEach { add(it) } }
+        }
+        CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+      }
+      .getOrElse { errorCallToolResult("render_matrix failed: ${it.message}") }
   }
 
   /**
