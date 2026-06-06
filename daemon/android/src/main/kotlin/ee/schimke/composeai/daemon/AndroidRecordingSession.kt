@@ -348,16 +348,35 @@ class AndroidRecordingSession(
    */
   private fun interactiveDispatchHandler(kind: InteractiveInputKind): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, _ ->
-      interactive.dispatch(
-        InteractiveInputParams(
-          frameStreamId = "android-recording-internal",
-          kind = kind,
-          pixelX = event.pixelX,
-          pixelY = event.pixelY,
-          scrollDeltaY = event.scrollDeltaY,
-          keyCode = event.keyCode,
+      // #1784 — a pointer event may carry a semantic `target` (ref/testTag/role+text) resolved
+      // sandbox-side to the node centre. The host's dispatch throws when the target matches no node;
+      // surface that as `unsupported` evidence rather than failing the whole recording (mirrors the
+      // desktop recording path). Pixel events (no target) keep propagating real failures.
+      val target = event.target
+      val hasTarget =
+        target != null &&
+          (target.ref != null || target.testTag != null || target.role != null || target.text != null)
+      try {
+        interactive.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "android-recording-internal",
+            kind = kind,
+            pixelX = event.pixelX,
+            pixelY = event.pixelY,
+            target = target,
+            scrollDeltaY = event.scrollDeltaY,
+            keyCode = event.keyCode,
+          )
         )
-      )
+      } catch (t: Throwable) {
+        if (hasTarget) {
+          return@RecordingScriptEventHandler unsupportedEvidence(
+            event,
+            t.message ?: "target did not resolve to a node",
+          )
+        }
+        throw t
+      }
       appliedEvidence(event)
     }
 

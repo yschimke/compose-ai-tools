@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
@@ -223,6 +225,22 @@ fun ClickToggleSquare() {
         }
       }
   )
+}
+
+/**
+ * Issue #1784 fixture — proves an interaction can target a node by `testTag` (resolved sandbox-side
+ * to its centre) instead of pixel coordinates. The whole card starts red; only a click inside the
+ * small 24×24 `testTag("target-box")` clickable node pinned to the **top-left corner** flips it
+ * green. The node is deliberately off-centre so a naive centre click misses it — a green result is
+ * only reachable by resolving the testTag to the node's real centroid.
+ */
+@Composable
+fun TaggedClickTargetSquare() {
+  var clicked by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color)) {
+    Box(modifier = Modifier.size(24.dp).testTag("target-box").clickable { clicked = true })
+  }
 }
 
 @Composable

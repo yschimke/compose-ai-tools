@@ -218,7 +218,13 @@ internal constructor(
     val isKey = input.kind == InteractiveInputKind.KEY_DOWN || input.kind == InteractiveInputKind.KEY_UP
     val px = input.pixelX
     val py = input.pixelY
-    if (!isKey && (px == null || py == null)) return
+    // #1784 — a pointer event may carry a semantic target instead of pixels; the sandbox resolves
+    // it to the node centre. Only require pixels when neither pixels nor a target are present.
+    val target = input.target
+    val hasTarget =
+      target != null &&
+        (target.ref != null || target.testTag != null || target.role != null || target.text != null)
+    if (!isKey && (px == null || py == null) && !hasTarget) return
     if (isKey && input.keyCode.isNullOrBlank()) return
     if (isKey) {
       // Mirror the keycode into the soft-keyboard band before the held-rule loop runs the actual
@@ -234,6 +240,7 @@ internal constructor(
     lastUsedAtMs.set(System.currentTimeMillis())
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
+    val replyMatched = if (hasTarget) AtomicBoolean(false) else null
     slot.interactiveCommands.put(
       InteractiveCommand.Dispatch(
         streamId = streamId,
@@ -242,6 +249,11 @@ internal constructor(
         pixelY = py ?: 0,
         scrollDeltaY = input.scrollDeltaY,
         keyCode = input.keyCode,
+        targetRef = target?.ref,
+        targetTestTag = target?.testTag,
+        targetRole = target?.role,
+        targetText = target?.text,
+        replyMatched = replyMatched,
         replyLatch = replyLatch,
         replyError = replyError,
       )
@@ -254,6 +266,15 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
+    // A target that resolved to no node (or more than one) is reported as unmatched; throw so the
+    // recording path can record `unsupported` evidence and interactive input logs the miss. Pixel
+    // dispatch leaves [replyMatched] null and is unaffected.
+    if (hasTarget && replyMatched?.get() == false) {
+      error(
+        "AndroidInteractiveSession.dispatch: target did not resolve to a node (ref=${target.ref}, " +
+          "testTag=${target.testTag}, role=${target.role}, text=${target.text})"
+      )
+    }
   }
 
   /**
