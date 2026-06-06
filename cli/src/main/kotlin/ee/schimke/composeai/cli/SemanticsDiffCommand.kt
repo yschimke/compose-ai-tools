@@ -34,7 +34,7 @@ class SemanticsDiffCommand(
 ) {
   private val jsonOutput = "--json" in args
   private val failOnChange = "--fail-on-change" in args
-  private val positionals = args.filterNot { it.startsWith("-") }
+  private val positionals = collectOperands(args)
 
   fun run() {
     if ("--help" in args || "-h" in args) {
@@ -89,6 +89,32 @@ class SemanticsDiffCommand(
 /** Stable schema id for the JSON delta, re-exported for the usage text. */
 internal object ComposeSemanticsDiffSchema {
   val SCHEMA: String = SemanticsDelta().schema
+}
+
+/** This command's own boolean flags — everything else `--x` is treated as a valued option. */
+private val SEMANTICS_DIFF_BOOLEAN_FLAGS = setOf("--json", "--fail-on-change", "--help", "-h")
+
+/**
+ * Collect the two path operands, skipping the *value* of any valued option (e.g. a global `--module
+ * :app` that `Main` forwards) so it isn't mistaken for `<base>`/`<head>`. Tokens starting with `-`
+ * are flags: this command's own flags (and `--x=value` forms) consume one token, any other bare
+ * `--x` consumes its following value too.
+ */
+internal fun collectOperands(args: List<String>): List<String> {
+  val operands = mutableListOf<String>()
+  var i = 0
+  while (i < args.size) {
+    val arg = args[i]
+    when {
+      !arg.startsWith("-") -> {
+        operands.add(arg)
+        i++
+      }
+      arg in SEMANTICS_DIFF_BOOLEAN_FLAGS || arg.contains("=") -> i++
+      else -> i += 2 // valued option: skip the flag and its value
+    }
+  }
+  return operands
 }
 
 internal sealed interface SemanticsDiffOutcome {

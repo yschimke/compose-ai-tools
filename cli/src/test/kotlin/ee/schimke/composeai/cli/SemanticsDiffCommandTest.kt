@@ -68,6 +68,21 @@ class SemanticsDiffCommandTest {
   }
 
   @Test
+  fun collectOperandsSkipsValuedGlobalOptionValues() {
+    // `compose-preview --module :app diff-semantics base.json head.json --json` — Main strips the
+    // command token, so the command sees the global option + its value ahead of the two paths.
+    assertEquals(
+      listOf("base.json", "head.json"),
+      collectOperands(listOf("--module", ":app", "base.json", "head.json", "--json")),
+    )
+    // `--flag=value` form consumes one token; own boolean flags consume one; operands survive.
+    assertEquals(
+      listOf("a", "b"),
+      collectOperands(listOf("--variant=demoDebug", "a", "--fail-on-change", "b")),
+    )
+  }
+
+  @Test
   fun missingFileIsAnError() {
     val base = writeSemantics("base.json", "Hello")
     val outcome = computeSemanticsDiff(base, tmp.resolve("does-not-exist.json").absolutePath)
