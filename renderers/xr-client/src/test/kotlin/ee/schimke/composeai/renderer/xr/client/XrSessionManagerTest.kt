@@ -10,8 +10,13 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 class XrSessionManagerTest {
@@ -147,6 +152,50 @@ class XrSessionManagerTest {
 
     manager.close("s1")
     assertNull(manager.structure("s1"))
+  }
+
+  @Test
+  fun updatePanelsMergesDeltasIntoStructure() {
+    val manager = XrSessionManager(CountingFactory(FakeServer()))
+    val scene = buildJsonObject {
+      put("units", "dp")
+      put(
+        "panels",
+        buildJsonArray {
+          add(
+            buildJsonObject {
+              put("id", "top")
+              put("x", 0)
+            }
+          )
+        },
+      )
+    }
+    manager.open("s1", scene)
+
+    manager.updatePanels(
+      "s1",
+      buildJsonArray {
+        add(
+          buildJsonObject {
+            put("id", "top")
+            put("x", 120)
+          }
+        ) // move existing
+        add(
+          buildJsonObject {
+            put("id", "extra")
+            put("x", 5)
+          }
+        ) // append new
+      },
+    )
+
+    val panels = manager.structure("s1")!!.jsonObject["panels"]!!.jsonArray
+    assertEquals(2, panels.size)
+    val top = panels.first { it.jsonObject["id"]?.jsonPrimitive?.content == "top" }.jsonObject
+    assertEquals(120, top["x"]?.jsonPrimitive?.int)
+    assertTrue(panels.any { it.jsonObject["id"]?.jsonPrimitive?.content == "extra" })
   }
 
   @Test

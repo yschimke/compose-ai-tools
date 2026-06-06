@@ -3,6 +3,10 @@ package ee.schimke.composeai.renderer.xr.client
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Multiplexes XR render sessions over a single shared native process. The first [open] lazily
@@ -23,9 +27,9 @@ public class XrSessionManager(
   // The one shared native process, started on first open(); null until then / after close().
   @Volatile private var server: XrRenderServerHandle? = null
   private val openIds = ConcurrentHashMap.newKeySet<String>()
-  // The scene each session was opened with — the daemon's view of the layout, served as the
-  // `xr/structure` data product (panel tree + poses, mirrors a11y/hierarchy). Per-frame
-  // `updatePanels` deltas are not merged in yet; this is the declared layout from `open`.
+  // The current scene per session — the daemon's view of the layout, served as the `xr/structure`
+  // data product (panel tree + poses, mirrors a11y/hierarchy). Seeded from `open` and kept in step
+  // with `updatePanels` deltas so the structure reflects live poses.
   private val scenes = ConcurrentHashMap<String, JsonElement>()
   private val lock = Any()
 
@@ -82,7 +86,11 @@ public class XrSessionManager(
     if (srv == null || !openIds.contains(id)) {
       throw XrServerException("no XR session open for id=$id")
     }
-    return srv.updatePanels(id, panels)
+    val frame = srv.updatePanels(id, panels)
+    // Keep the held structure (served via xr/structure) in step with the live scene: overlay each
+    // delta onto the matching panel by id (appending unknown ids), mirroring the native server.
+    scenes[id]?.let { scenes[id] = mergePanels(it, panels) }
+    return frame
   }
 
   /** Close and drop the session for [id]; no-op if none is open. */
@@ -115,6 +123,33 @@ public class XrSessionManager(
           "XrSessionManager: server close threw ${t.javaClass.simpleName}: ${t.message}; continuing"
         )
       }
+    }
+  }
+
+  /**
+   * Overlay each panel delta (`{id, …}`) onto the matching panel in [scene] by id, appending
+   * unknown ids — the same merge the native server applies — so the held structure tracks live
+   * updates. Returns [scene] unchanged if it isn't a scene object with a `panels` array.
+   */
+  private fun mergePanels(scene: JsonElement, deltas: JsonArray): JsonElement {
+    val obj = scene as? JsonObject ?: return scene
+    val panels =
+      (obj["panels"] as? JsonArray)?.map { it as JsonObject }?.toMutableList() ?: return scene
+    for (delta in deltas) {
+      val d = delta as? JsonObject ?: continue
+      val id = d["id"]?.jsonPrimitive?.contentOrNull ?: continue
+      val idx = panels.indexOfFirst { it["id"]?.jsonPrimitive?.contentOrNull == id }
+      if (idx >= 0) {
+        panels[idx] = buildJsonObject {
+          panels[idx].forEach { (k, v) -> put(k, v) }
+          d.forEach { (k, v) -> put(k, v) } // delta fields win
+        }
+      } else {
+        panels.add(d)
+      }
+    }
+    return buildJsonObject {
+      obj.forEach { (k, v) -> if (k == "panels") put("panels", JsonArray(panels)) else put(k, v) }
     }
   }
 
