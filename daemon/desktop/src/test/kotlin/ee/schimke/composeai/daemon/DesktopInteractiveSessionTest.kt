@@ -2,6 +2,7 @@ package ee.schimke.composeai.daemon
 
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import java.io.ByteArrayInputStream
 import java.io.File
 import javax.imageio.ImageIO
@@ -226,6 +227,92 @@ class DesktopInteractiveSessionTest {
     }
   }
 
+  /**
+   * Issue #1784 — a click that carries only a semantic `target` (testTag, no pixel coordinates) is
+   * resolved server-side to the target node's centre and dispatched there, flipping the fixture
+   * green. The negative control proves the resolution is real: the `target-box` node sits in the
+   * top-left corner, so a plain centre click (32,32) misses it and the card stays red — only the
+   * resolved centroid (~10,10) hits.
+   */
+  @Test
+  fun target_testTag_click_resolves_to_node_centre_and_flips_state() {
+    val outputDir = tempFolder.newFolder("interactive-target-renders")
+    val host = taggedTargetHost(RenderEngine(outputDir = outputDir))
+    host.start()
+    try {
+      val session =
+        host.acquireInteractiveSession(
+          previewId = TAGGED_TARGET_PREVIEW_ID,
+          classLoader =
+            DesktopInteractiveSessionTest::class.java.classLoader
+              ?: ClassLoader.getSystemClassLoader(),
+        )
+      try {
+        // Bootstrap render — red.
+        val first = session.render(requestId = RenderHost.nextRequestId())
+        assertTrue(
+          "fixture must start red",
+          pixelMatchPct(readPng(File(first.pngPath!!)), 0xEF5350, 8) >= 0.95,
+        )
+
+        // Negative control: a bottom-right corner pixel click misses the top-left target → still
+        // red. (Coords stay clear of the target at any render density — the scene renders at ~2×,
+        // so the 20dp target spans roughly the top-left 40px; 62,62 is well outside it.)
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-target-corner-miss",
+            kind = InteractiveInputKind.CLICK,
+            pixelX = 62,
+            pixelY = 62,
+          )
+        )
+        val afterMiss = session.render(requestId = RenderHost.nextRequestId())
+        assertTrue(
+          "opposite-corner click must miss the top-left target-box; card should still be red",
+          pixelMatchPct(readPng(File(afterMiss.pngPath!!)), 0xEF5350, 8) >= 0.95,
+        )
+
+        // The payload: a CLICK with NO pixel coords, only a testTag target.
+        session.dispatch(
+          InteractiveInputParams(
+            frameStreamId = "test-target-tag-hit",
+            kind = InteractiveInputKind.CLICK,
+            target = SemanticsInputTarget(testTag = "target-box"),
+          )
+        )
+        val afterHit = session.render(requestId = RenderHost.nextRequestId())
+        val greenMatch = pixelMatchPct(readPng(File(afterHit.pngPath!!)), 0x66BB6A, 8)
+        assertTrue(
+          "testTag target must resolve to the corner node's centre and flip green; got " +
+            "${"%.2f".format(greenMatch * 100)}% — load-bearing #1784 assertion (resolution ran, " +
+            "not a whole-card click).",
+          greenMatch >= 0.95,
+        )
+      } finally {
+        session.close()
+      }
+    } finally {
+      host.shutdown()
+    }
+  }
+
+  private fun taggedTargetHost(engine: RenderEngine): DesktopHost =
+    DesktopHost(
+      engine = engine,
+      previewSpecResolver = { previewId ->
+        if (previewId == TAGGED_TARGET_PREVIEW_ID) {
+          RenderSpec(
+            className = "ee.schimke.composeai.daemon.RedFixturePreviewsKt",
+            functionName = "TaggedClickTargetSquare",
+            widthPx = 64,
+            heightPx = 64,
+            density = 1.0f,
+            outputBaseName = "tagged-click-target-square",
+          )
+        } else null
+      },
+    )
+
   private fun readPng(file: File): java.awt.image.BufferedImage {
     assertTrue("rendered PNG must exist on disk: ${file.absolutePath}", file.exists())
     assertTrue("rendered PNG must be non-empty", file.length() > 0)
@@ -427,5 +514,6 @@ class DesktopInteractiveSessionTest {
     private const val FIXTURE_PREVIEW_ID = "click-toggle-square"
     private const val FRAME_CLOCK_PREVIEW_ID = "frame-clock-square"
     private const val KEY_PRESS_PREVIEW_ID = "key-press-color-square"
+    private const val TAGGED_TARGET_PREVIEW_ID = "tagged-click-target-square"
   }
 }

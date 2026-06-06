@@ -16,6 +16,10 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.scene.ComposeScenePointer
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
+import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
+import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
+import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.RejectedExecutionException
@@ -113,8 +117,9 @@ class DesktopInteractiveSession(
   }
 
   private fun dispatchOnSceneThread(input: InteractiveInputParams) {
-    val px = input.pixelX
-    val py = input.pixelY
+    val resolved = resolvePointerPixels(input)
+    val px = resolved?.first
+    val py = resolved?.second
     when (input.kind) {
       InteractiveInputKind.CLICK -> {
         if (px == null || py == null) return
@@ -286,6 +291,61 @@ class DesktopInteractiveSession(
       Thread.currentThread().interrupt()
       throw e
     }
+  }
+
+  /**
+   * Resolve the image-natural pixel coordinates for [input]. Explicit
+   * [InteractiveInputParams.pixelX]/`pixelY` win; otherwise the [InteractiveInputParams.target]
+   * semantic handle is resolved against the held scene's live semantics tree (issue #1784) and the
+   * matched node's centre is used. Returns `null` — and the dispatch no-ops — when neither is
+   * available or the target doesn't resolve to exactly one node (interactive/input is
+   * fire-and-forget, so a miss is logged rather than reported on the wire).
+   *
+   * Runs on [sceneExecutor]'s thread (its only caller is [dispatchOnSceneThread]), so reaching into
+   * `state.scene` for the semantics root is safe.
+   */
+  private fun resolvePointerPixels(input: InteractiveInputParams): Pair<Int, Int>? {
+    val explicitX = input.pixelX
+    val explicitY = input.pixelY
+    if (explicitX != null && explicitY != null) return explicitX to explicitY
+    val target = input.target?.toCoreTarget() ?: return null
+    val root = currentSemanticsRoot() ?: return logUnresolved(target, "no semantics root available")
+    return when (val res = SemanticsTargets.resolve(root, target)) {
+      is TargetResolution.Resolved -> res.point.x to res.point.y
+      TargetResolution.NotFound -> logUnresolved(target, "no node matched")
+      is TargetResolution.Ambiguous ->
+        logUnresolved(target, "${res.candidates.size} nodes matched; use a ref to disambiguate")
+    }
+  }
+
+  /**
+   * Project the held scene's unmerged semantics tree into the ref-bearing wire model — the same
+   * projection the `compose/semantics` data product uses ([ComposeSemanticsDataProducer]) — so
+   * target resolution sees identical refs / testTags / roles / bounds to what an agent fetched.
+   */
+  private fun currentSemanticsRoot(): ComposeSemanticsNode? {
+    val node = state.scene.semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
+    return ComposeSemanticsDataProducer.buildPayload(node).root
+  }
+
+  /** Map the wire target onto the core resolver's [SemanticsTarget]; null when no field is set. */
+  private fun SemanticsInputTarget.toCoreTarget(): SemanticsTarget? {
+    val r = ref
+    val tag = testTag
+    return when {
+      !r.isNullOrBlank() -> SemanticsTarget.Ref(r)
+      !tag.isNullOrBlank() -> SemanticsTarget.Tag(tag)
+      role != null || text != null -> SemanticsTarget.RoleText(role, text)
+      else -> null
+    }
+  }
+
+  private fun logUnresolved(target: SemanticsTarget, reason: String): Pair<Int, Int>? {
+    System.err.println(
+      "compose-ai-daemon: DesktopInteractiveSession($previewId): target $target unresolved " +
+        "($reason); dropping input"
+    )
+    return null
   }
 
   /**

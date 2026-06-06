@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -24,6 +25,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 
 /**
  * Test fixtures for [RenderEngineTest] / [JsonRpcDesktopIntegrationTest]. Lives in the test source
@@ -136,6 +139,34 @@ fun ClickToggleSquare() {
         }
       }
   )
+}
+
+/**
+ * Issue #1784 fixture — proves an interaction can target a node by `testTag` (resolved to its
+ * centre point server-side) instead of pixel coordinates. The whole 64×64 card starts red; only a
+ * click inside the small 20×20 `testTag("target-box")` node pinned to the **top-left corner** flips
+ * it green.
+ *
+ * The target node is deliberately off-centre: a naive centre click (`32,32`) misses it, so a green
+ * result is only reachable by resolving the testTag to its real centroid (~`10,10`). That makes the
+ * green assertion load-bearing for `DesktopInteractiveSession`'s `target` → centroid resolution
+ * rather than something a whole-card click would also satisfy.
+ */
+@Composable
+fun TaggedClickTargetSquare() {
+  var clicked by remember { mutableStateOf(false) }
+  val color = if (clicked) Color(0xFF66BB6A) else Color(0xFFEF5350)
+  Box(modifier = Modifier.fillMaxSize().background(color)) {
+    Box(
+      modifier =
+        Modifier.size(20.dp).testTag("target-box").pointerInput(Unit) {
+          awaitPointerEventScope {
+            awaitFirstDown()
+            clicked = true
+          }
+        }
+    )
+  }
 }
 
 /**
