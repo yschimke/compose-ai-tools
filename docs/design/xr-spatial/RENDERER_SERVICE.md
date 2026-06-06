@@ -34,8 +34,10 @@ into a long-lived, extensible render service.
 >   tree + poses) as inline JSON via the `xr/structure` request, from its own copy of the scene
 >   (no native round-trip), mirroring `a11y/hierarchy`.
 >
-> **Still to do:** the `xr/a11y-overlay` data-product kind — deferred until how XR a11y/TalkBack
-> surfaces is understood (it mirrors `a11y/overlay`, a rendered overlay PNG).
+> **Still to do:** the XR a11y kinds (`xr/a11y` structure + `xr/a11y-overlay` PNG). The design is now
+> settled — a two-level model (spatial structure between panels + 2D Compose a11y within each panel),
+> with level 1 already shipped as `xr/structure`. See [XR_A11Y.md](XR_A11Y.md); the remaining work is
+> the producer capturing per-panel 2D semantics plus the `xr/a11y` / `xr/a11y-overlay` kinds.
 
 ## Motivation
 
@@ -122,9 +124,10 @@ CLI flag baked into a one-shot:
 
 - `xr/composite` — the baked still (the increment, promoted to a kind).
 - `xr/structure` — the spatial panel tree + poses + semantics as inline JSON (mirrors
-  `a11y/hierarchy`).
-- `xr/a11y-overlay` — a rendered overlay PNG for XR a11y/TalkBack affordances (mirrors
-  `a11y/overlay`), produced when we learn how XR a11y surfaces.
+  `a11y/hierarchy`); **shipped**, and doubles as level 1 of XR a11y (see [XR_A11Y.md](XR_A11Y.md)).
+- `xr/a11y` / `xr/a11y-overlay` — XR accessibility as a two-level model (spatial structure between
+  panels + 2D Compose a11y within each panel); structure JSON and a per-panel overlay PNG, mirroring
+  `a11y/hierarchy` + `a11y/overlay`. Design: [XR_A11Y.md](XR_A11Y.md).
 
 The C++ side mirrors the `DataProductRegistry` seam: a capabilities list + dispatch by kind, with
 **no `if (kind == …)`** scattered through the renderer — same rule the JVM side enforces.
