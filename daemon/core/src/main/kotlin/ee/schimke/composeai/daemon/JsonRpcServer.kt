@@ -65,6 +65,8 @@ import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.XrStartParams
 import ee.schimke.composeai.daemon.protocol.XrStartResult
 import ee.schimke.composeai.daemon.protocol.XrStopParams
+import ee.schimke.composeai.daemon.protocol.XrStructureParams
+import ee.schimke.composeai.daemon.protocol.XrStructureResult
 import ee.schimke.composeai.daemon.protocol.XrUpdatePanelsParams
 import ee.schimke.composeai.io.SystemFileSystem
 import ee.schimke.composeai.renderer.xr.client.StreamFrame as XrStreamFrame
@@ -694,6 +696,7 @@ class JsonRpcServer(
       "interactive/start" -> handleInteractiveStart(req)
       "stream/start" -> handleStreamStart(req)
       "xr/start" -> handleXrStart(req)
+      "xr/structure" -> handleXrStructure(req)
       "recording/start" -> handleRecordingStart(req)
       "recording/stop" -> handleRecordingStop(req)
       "recording/encode" -> handleRecordingEncode(req)
@@ -2315,6 +2318,41 @@ class JsonRpcServer(
         return
       }
     emitXrFrame(params.frameStreamId, frame)
+  }
+
+  private fun handleXrStructure(req: JsonRpcRequest) {
+    val manager = xrSessions
+    if (manager == null) {
+      sendErrorResponse(
+        id = req.id,
+        code = ERR_METHOD_NOT_FOUND,
+        message = "xr/structure: XR rendering is not available on this daemon",
+      )
+      return
+    }
+    val params =
+      try {
+        decodeParams(req.params, XrStructureParams.serializer())
+      } catch (e: Throwable) {
+        sendErrorResponse(req.id, ERR_INVALID_PARAMS, "invalid xr/structure params: ${e.message}")
+        return
+      }
+    val structure = manager.structure(params.frameStreamId)
+    if (structure == null) {
+      sendErrorResponse(
+        req.id,
+        ERR_INVALID_PARAMS,
+        "xr/structure: no session open for ${params.frameStreamId}",
+      )
+      return
+    }
+    sendResponse(
+      req.id,
+      encode(
+        XrStructureResult.serializer(),
+        XrStructureResult(frameStreamId = params.frameStreamId, structure = structure),
+      ),
+    )
   }
 
   private fun handleXrStop(params: XrStopParams) {

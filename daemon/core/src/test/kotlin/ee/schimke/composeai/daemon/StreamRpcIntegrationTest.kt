@@ -570,6 +570,17 @@ class StreamRpcIntegrationTest {
     assertEquals(1L, f1["params"]!!.jsonObject["seq"]?.jsonPrimitive?.longOrNull)
     assertNotNull(f1["params"]!!.jsonObject["payloadBase64"]?.jsonPrimitive?.contentOrNull)
 
+    // xr/structure returns the held scene (panel tree + poses), mirroring a11y/hierarchy.
+    writeFrame(
+      out,
+      """{"jsonrpc":"2.0","id":22,"method":"xr/structure","params":{"frameStreamId":"$streamId"}}""",
+    )
+    val structResp = pollUntil(received) { it["id"]?.jsonPrimitive?.intOrNull == 22 }
+    assertNotNull("xr/structure must respond", structResp)
+    val structure = structResp!!["result"]!!.jsonObject["structure"]!!.jsonObject
+    assertEquals("dp", structure["units"]?.jsonPrimitive?.contentOrNull)
+    assertEquals("orbit", structure["camera"]!!.jsonObject["kind"]?.jsonPrimitive?.contentOrNull)
+
     writeFrame(
       out,
       """{"jsonrpc":"2.0","method":"xr/updatePanels","params":{

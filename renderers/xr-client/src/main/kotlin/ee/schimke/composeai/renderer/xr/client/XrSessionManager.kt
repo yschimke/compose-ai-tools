@@ -23,6 +23,10 @@ public class XrSessionManager(
   // The one shared native process, started on first open(); null until then / after close().
   @Volatile private var server: XrRenderServerHandle? = null
   private val openIds = ConcurrentHashMap.newKeySet<String>()
+  // The scene each session was opened with — the daemon's view of the layout, served as the
+  // `xr/structure` data product (panel tree + poses, mirrors a11y/hierarchy). Per-frame
+  // `updatePanels` deltas are not merged in yet; this is the declared layout from `open`.
+  private val scenes = ConcurrentHashMap<String, JsonElement>()
   private val lock = Any()
 
   /** Number of live sessions — for diagnostics / tests. */
@@ -59,8 +63,15 @@ public class XrSessionManager(
         throw t
       }
     openIds.add(id)
+    scenes[id] = scene
     return frame
   }
+
+  /**
+   * The held scene for [id] — the `xr/structure` data product (panel tree + poses as inline JSON).
+   * `null` when no session is open for [id].
+   */
+  public fun structure(id: String): JsonElement? = scenes[id]
 
   /**
    * Push per-frame panel mutations into the session for [id], returning the fresh frame. Throws
@@ -76,6 +87,7 @@ public class XrSessionManager(
 
   /** Close and drop the session for [id]; no-op if none is open. */
   public fun close(id: String) {
+    scenes.remove(id)
     if (!openIds.remove(id)) return
     try {
       server?.stop(id)
@@ -94,6 +106,7 @@ public class XrSessionManager(
       server = null
     }
     openIds.clear()
+    scenes.clear()
     srv?.let {
       try {
         it.close()
