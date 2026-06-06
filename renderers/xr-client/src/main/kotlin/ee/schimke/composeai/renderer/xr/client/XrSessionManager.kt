@@ -5,38 +5,38 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Holds one native XR render server per live stream id (the daemon's `frameStreamId`), the
- * server-side analogue of the daemon's held interactive sessions: open a session for a scene, push
- * per-frame panel updates, and close it. Each session owns its own native process via the injected
- * [factory] (defaulting to the real `xr-composite --serve`); tests inject a fake.
+ * Multiplexes XR render sessions over a single shared native process. The first [open] lazily
+ * starts one [XrRenderServerHandle] via the injected [factory] (defaulting to the real
+ * `xr-composite --serve`); every session (the daemon's `frameStreamId`) is then driven on that one
+ * process/engine, keyed by `sessionId`. Tests inject a fake factory.
  *
- * The daemon's JSON-RPC layer (the next increment) wraps this: `xr/start` → [open],
- * `xr/updatePanels` → [updatePanels], `xr/stop` → [close], and feeds each returned [StreamFrame]
- * into its frame-stream registry. Keeping the lifecycle here keeps that wiring a thin adapter.
+ * The daemon's JSON-RPC layer wraps this: `xr/start` → [open], `xr/updatePanels` → [updatePanels],
+ * `xr/stop` → [close], and feeds each returned [StreamFrame] into its frame-stream registry.
  *
  * Threading: safe for concurrent calls on distinct ids; calls for one id are expected to be
  * serialised by the caller (the daemon dispatches per-stream from one thread).
  */
 public class XrSessionManager(
-  private val factory: XrRenderServerFactory = XrRenderServerFactory.Native,
-  private val defaultWidth: Int = 1280,
-  private val defaultHeight: Int = 800,
+  private val factory: XrRenderServerFactory = XrRenderServerFactory.Native
 ) : AutoCloseable {
 
-  private val sessions = ConcurrentHashMap<String, XrRenderServerHandle>()
+  // The one shared native process, started on first open(); null until then / after close().
+  @Volatile private var server: XrRenderServerHandle? = null
+  private val openIds = ConcurrentHashMap.newKeySet<String>()
+  private val lock = Any()
 
   /** Number of live sessions — for diagnostics / tests. */
   public val activeCount: Int
-    get() = sessions.size
+    get() = openIds.size
 
   /** True if a session is currently open for [id]. */
-  public fun isOpen(id: String): Boolean = sessions.containsKey(id)
+  public fun isOpen(id: String): Boolean = openIds.contains(id)
 
   /**
-   * Open a session for [id] and render [scene], returning the first frame — or `null` when the
-   * native server isn't available (XR is best-effort, so the caller degrades gracefully). [width] /
-   * [height] set the render viewport (falling back to the manager defaults). Closes any prior
-   * session held under the same [id] first.
+   * Open a session for [id] and render [scene] on the shared server, returning the first frame — or
+   * `null` when the native server isn't available (XR is best-effort, so the caller degrades
+   * gracefully). [width]/[height] set the session viewport. Re-opening an existing [id] replaces
+   * its scene.
    */
   public fun open(
     id: String,
@@ -46,15 +46,16 @@ public class XrSessionManager(
     width: Int? = null,
     height: Int? = null,
   ): StreamFrame? {
-    close(id)
-    val server = factory.start(width ?: defaultWidth, height ?: defaultHeight) ?: return null
-    sessions[id] = server
-    return try {
-      server.render(scene, sceneDir, environment)
-    } catch (t: Throwable) {
-      close(id)
-      throw t
-    }
+    val srv = ensureServer() ?: return null
+    val frame =
+      try {
+        srv.render(id, scene, sceneDir, environment, width, height)
+      } catch (t: Throwable) {
+        close(id)
+        throw t
+      }
+    openIds.add(id)
+    return frame
   }
 
   /**
@@ -62,25 +63,55 @@ public class XrSessionManager(
    * [XrServerException] if no session is open for [id].
    */
   public fun updatePanels(id: String, panels: JsonArray): StreamFrame {
-    val server = sessions[id] ?: throw XrServerException("no XR session open for id=$id")
-    return server.updatePanels(panels)
+    val srv = server
+    if (srv == null || !openIds.contains(id)) {
+      throw XrServerException("no XR session open for id=$id")
+    }
+    return srv.updatePanels(id, panels)
   }
 
   /** Close and drop the session for [id]; no-op if none is open. */
   public fun close(id: String) {
-    sessions.remove(id)?.let { server ->
+    if (!openIds.remove(id)) return
+    try {
+      server?.stop(id)
+    } catch (t: Throwable) {
+      System.err.println(
+        "XrSessionManager: stop($id) threw ${t.javaClass.simpleName}: ${t.message}; continuing"
+      )
+    }
+  }
+
+  /** Close every live session and the shared process — call on daemon shutdown. */
+  override fun close() {
+    val srv: XrRenderServerHandle?
+    synchronized(lock) {
+      srv = server
+      server = null
+    }
+    openIds.clear()
+    srv?.let {
       try {
-        server.close()
+        it.close()
       } catch (t: Throwable) {
         System.err.println(
-          "XrSessionManager: close($id) threw ${t.javaClass.simpleName}: ${t.message}; continuing"
+          "XrSessionManager: server close threw ${t.javaClass.simpleName}: ${t.message}; continuing"
         )
       }
     }
   }
 
-  /** Close every live session — call on daemon shutdown. */
-  override fun close() {
-    sessions.keys.toList().forEach(::close)
+  private fun ensureServer(): XrRenderServerHandle? {
+    server?.let {
+      return it
+    }
+    synchronized(lock) {
+      server?.let {
+        return it
+      }
+      val started = factory.start() ?: return null
+      server = started
+      return started
+    }
   }
 }

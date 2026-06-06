@@ -15,28 +15,56 @@ import kotlinx.serialization.json.buildJsonObject
 
 class XrSessionManagerTest {
 
+  private data class RenderCall(val sessionId: String, val width: Int?, val height: Int?)
+
   private class FakeServer : XrRenderServerHandle {
     val seq = AtomicLong(0)
     var closed = false
+    val stopped = mutableListOf<String>()
+    val renders = mutableListOf<RenderCall>()
     override val capabilities: JsonObject = buildJsonObject {}
 
     private fun frame() = StreamFrame(seq.incrementAndGet(), 64, 48, "png", "data")
 
-    override fun render(scene: JsonElement, sceneDir: String?, environment: String?) = frame()
+    override fun render(
+      sessionId: String,
+      scene: JsonElement,
+      sceneDir: String?,
+      environment: String?,
+      width: Int?,
+      height: Int?,
+    ): StreamFrame {
+      renders.add(RenderCall(sessionId, width, height))
+      return frame()
+    }
 
-    override fun updatePanels(panels: JsonArray) = frame()
+    override fun updatePanels(sessionId: String, panels: JsonArray) = frame()
+
+    override fun stop(sessionId: String) {
+      stopped.add(sessionId)
+    }
 
     override fun close() {
       closed = true
     }
   }
 
+  /** Factory that hands out one fixed server (or null) and counts how many times it was started. */
+  private class CountingFactory(private val server: XrRenderServerHandle?) : XrRenderServerFactory {
+    var starts = 0
+
+    override fun start(): XrRenderServerHandle? {
+      starts++
+      return server
+    }
+  }
+
   private val scene: JsonElement = buildJsonObject {}
 
   @Test
-  fun openRendersFirstFrameAndUpdatePanelsAdvances() {
+  fun openRendersFirstFrame_updatePanelsAdvances_closeStops() {
     val server = FakeServer()
-    val manager = XrSessionManager(factory = { _, _ -> server })
+    val manager = XrSessionManager(CountingFactory(server))
 
     val first = manager.open("s1", scene, sceneDir = ".")
     assertEquals(1L, first?.seq)
@@ -48,12 +76,29 @@ class XrSessionManagerTest {
 
     manager.close("s1")
     assertFalse(manager.isOpen("s1"))
-    assertTrue(server.closed)
+    assertEquals(0, manager.activeCount)
+    // close(id) stops the session on the shared server; it does NOT tear the process down.
+    assertEquals(listOf("s1"), server.stopped)
+    assertFalse(server.closed)
+  }
+
+  @Test
+  fun sessionsShareOneServerProcess() {
+    val server = FakeServer()
+    val factory = CountingFactory(server)
+    val manager = XrSessionManager(factory)
+
+    manager.open("a", scene)
+    manager.open("b", scene)
+
+    assertEquals(2, manager.activeCount)
+    assertEquals(1, factory.starts) // one shared native process for both sessions
+    assertEquals(setOf("a", "b"), server.renders.map { it.sessionId }.toSet())
   }
 
   @Test
   fun openReturnsNullWhenServerUnavailable() {
-    val manager = XrSessionManager(factory = { _, _ -> null })
+    val manager = XrSessionManager(CountingFactory(null))
     assertNull(manager.open("s1", scene))
     assertFalse(manager.isOpen("s1"))
     assertEquals(0, manager.activeCount)
@@ -61,70 +106,30 @@ class XrSessionManagerTest {
 
   @Test
   fun updatePanelsOnUnknownSessionThrows() {
-    val manager = XrSessionManager(factory = { _, _ -> FakeServer() })
+    val manager = XrSessionManager(CountingFactory(FakeServer()))
     assertFailsWith<XrServerException> { manager.updatePanels("missing", buildJsonArray {}) }
   }
 
   @Test
-  fun reopeningSameIdClosesThePriorSession() {
-    val first = FakeServer()
-    val second = FakeServer()
-    val servers = ArrayDeque(listOf(first, second))
-    val manager = XrSessionManager(factory = { _, _ -> servers.removeFirst() })
-
-    manager.open("s1", scene)
-    manager.open("s1", scene)
-    assertTrue(first.closed, "prior session should be closed on reopen")
-    assertFalse(second.closed)
-    assertEquals(1, manager.activeCount)
-  }
-
-  @Test
-  fun passesRequestedDimensionsToFactory() {
-    var seenW = 0
-    var seenH = 0
-    val manager =
-      XrSessionManager(
-        factory = { w, h ->
-          seenW = w
-          seenH = h
-          FakeServer()
-        }
-      )
+  fun passesRequestedDimensionsToRender() {
+    val server = FakeServer()
+    val manager = XrSessionManager(CountingFactory(server))
     manager.open("s1", scene, width = 640, height = 400)
-    assertEquals(640, seenW)
-    assertEquals(400, seenH)
+    val call = server.renders.single()
+    assertEquals(640, call.width)
+    assertEquals(400, call.height)
   }
 
   @Test
-  fun fallsBackToDefaultDimensionsWhenUnset() {
-    var seenW = 0
-    var seenH = 0
-    val manager =
-      XrSessionManager(
-        factory = { w, h ->
-          seenW = w
-          seenH = h
-          FakeServer()
-        },
-        defaultWidth = 800,
-        defaultHeight = 600,
-      )
-    manager.open("s1", scene)
-    assertEquals(800, seenW)
-    assertEquals(600, seenH)
-  }
-
-  @Test
-  fun closeAllClosesEveryLiveSession() {
-    val servers = mutableListOf<FakeServer>()
-    val manager = XrSessionManager(factory = { _, _ -> FakeServer().also { servers.add(it) } })
+  fun closeClosesTheSharedServer() {
+    val server = FakeServer()
+    val manager = XrSessionManager(CountingFactory(server))
     manager.open("a", scene)
     manager.open("b", scene)
     assertEquals(2, manager.activeCount)
 
     manager.close()
     assertEquals(0, manager.activeCount)
-    assertTrue(servers.all { it.closed })
+    assertTrue(server.closed)
   }
 }

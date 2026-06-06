@@ -68,8 +68,11 @@ class XrServerClientTest {
               "render",
               "xr/updatePanels" -> {
                 seq += 1
-                // Push the frame first (as the native server does), then the ack.
-                writeFrame(serverOut, streamFrame(seq, "frame-$seq"))
+                val sid =
+                  req["params"]?.jsonObject?.get("sessionId")?.jsonPrimitive?.content ?: "default"
+                // Push the frame first (as the native server does), tagged with the session, then
+                // ack.
+                writeFrame(serverOut, streamFrame(seq, "frame-$seq", sid))
                 writeFrame(
                   serverOut,
                   result(
@@ -111,13 +114,14 @@ class XrServerClientTest {
       put("camera", buildJsonObject { put("kind", "orbit") })
       put("panels", buildJsonArray {})
     }
-    val f1 = client.render(scene, sceneDir = ".")
+    val f1 = client.render("s1", scene, sceneDir = ".")
     assertEquals(1L, f1.seq)
     assertEquals("png", f1.encoding)
     assertEquals("frame-1", f1.dataBase64)
 
     val f2 =
       client.updatePanels(
+        "s1",
         buildJsonArray {
           add(
             buildJsonObject {
@@ -146,7 +150,7 @@ class XrServerClientTest {
               )
             }
           )
-        }
+        },
       )
     assertEquals(2L, f2.seq)
     assertEquals("frame-2", f2.dataBase64)
@@ -163,20 +167,22 @@ class XrServerClientTest {
     put("result", result)
   }
 
-  private fun streamFrame(seq: Long, data: String): JsonObject = buildJsonObject {
-    put("jsonrpc", "2.0")
-    put("method", "streamFrame")
-    put(
-      "params",
-      buildJsonObject {
-        put("encoding", "png")
-        put("width", 64)
-        put("height", 48)
-        put("seq", seq)
-        put("data", data)
-      },
-    )
-  }
+  private fun streamFrame(seq: Long, data: String, sessionId: String): JsonObject =
+    buildJsonObject {
+      put("jsonrpc", "2.0")
+      put("method", "streamFrame")
+      put(
+        "params",
+        buildJsonObject {
+          put("encoding", "png")
+          put("width", 64)
+          put("height", 48)
+          put("seq", seq)
+          put("sessionId", sessionId)
+          put("data", data)
+        },
+      )
+    }
 
   private fun writeFrame(out: OutputStream, message: JsonObject) {
     val payload = json.encodeToString(JsonObject.serializer(), message).toByteArray(Charsets.UTF_8)
