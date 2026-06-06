@@ -58,6 +58,24 @@ class RenderErrorClassifierTest {
   }
 
   @Test
+  fun barePackageParserErrorDoesNotGetTheSdkSuggestion() {
+    val c = RenderErrorClassifier.classify("PackageParser: Malformed AndroidManifest.xml")
+    assertNull(
+      "a non-SDK PackageParser error must not be masked with the compileSdk hint",
+      c.suggestion,
+    )
+    assertEquals(RenderErrorKind.RUNTIME, c.kind)
+  }
+
+  @Test
+  fun hostInfraFailureStaysInternal() {
+    val eof = RenderErrorClassifier.classify("java.io.EOFException: sandbox stdio closed")
+    assertEquals(RenderErrorKind.INTERNAL, eof.kind)
+    val ioClosed = RenderErrorClassifier.classify("java.io.IOException: Stream closed")
+    assertEquals(RenderErrorKind.INTERNAL, ioClosed.kind)
+  }
+
+  @Test
   fun timeoutIsTimeout() {
     val c = RenderErrorClassifier.classify("java.util.concurrent.TimeoutException: timed out")
     assertEquals(RenderErrorKind.TIMEOUT, c.kind)

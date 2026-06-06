@@ -45,7 +45,9 @@ object RenderErrorClassifier {
           "Desktop classpath contains AndroidX Compose UI artifacts; use the org.jetbrains.compose " +
             "UI artifacts for Compose Multiplatform desktop. See docs/RENDERER_COMPATIBILITY.md.",
         )
-      has("requires newer sdk version", "packageparser") ->
+      // Require the specific "newer sdk version" text — a bare PackageParser error (e.g. a
+      // malformed manifest) is a different failure and shouldn't get the compileSdk hint.
+      has("requires newer sdk version") || (has("packageparser") && has("newer sdk")) ->
         Classification(
           RenderErrorKind.RUNTIME,
           "Robolectric's SDK is below the consumer's compileSdk; set composePreview.sdkVersion " +
@@ -96,8 +98,20 @@ object RenderErrorClassifier {
           RenderErrorKind.COMPILE,
           "The module did not compile; fix the build error before rendering.",
         )
-      // Reached emitRenderFailed → the render ran the preview and threw; runtime is the accurate
-      // default (more useful than the old blanket `internal`).
+      // Host / sandbox infrastructure failure (e.g. host.submit throwing before the preview body
+      // ran — a crashed sandbox's EOF/broken pipe, a closed stdio stream). These aren't user
+      // runtime errors, so keep them `internal` rather than falling through to the runtime default.
+      has("eofexception") ||
+        has("broken pipe") ||
+        (has("ioexception") && has("closed", "pipe", "reset", "stream")) ||
+        (has("sandbox") && has("crash", "died", "exited", "terminated", "killed")) ->
+        Classification(
+          RenderErrorKind.INTERNAL,
+          "The render host or sandbox failed before/around running the preview (not a fault in the " +
+            "preview itself); check the daemon log.",
+        )
+      // Reached emitRenderFailed without an infra signature → the render ran the preview and threw;
+      // runtime is the accurate default (more useful than the old blanket `internal`).
       else -> Classification(RenderErrorKind.RUNTIME)
     }
   }
