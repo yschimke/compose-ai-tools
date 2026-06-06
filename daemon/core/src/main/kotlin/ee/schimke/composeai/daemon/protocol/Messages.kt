@@ -2189,10 +2189,19 @@ data class XrStartParams(
   val environment: String? = null,
   val width: Int? = null,
   val height: Int? = null,
+  /** Per-stream frame-rate cap; null = uncapped (visibility throttling still applies). */
+  val maxFps: Int? = null,
+  /** Requested frame codec; the daemon negotiates down to a supported one (PNG today). */
+  val codec: StreamCodec? = null,
 )
 
-/** `xr/start` result — the allocated stream id frames will arrive on. */
-@Serializable data class XrStartResult(val frameStreamId: String, val available: Boolean = true)
+/** `xr/start` result — the allocated stream id + negotiated codec frames will arrive on. */
+@Serializable
+data class XrStartResult(
+  val frameStreamId: String,
+  val codec: StreamCodec,
+  val available: Boolean = true,
+)
 
 /**
  * `xr/updatePanels` — per-frame panel mutations; each entry is `{id, texture?, poseInRoot?,

@@ -2258,6 +2258,15 @@ class JsonRpcServer(
         return
       }
     val streamId = streamRegistry.mintStreamId()
+    // Register with the frame-stream registry so XR frames get the same visibility / fps / dedup
+    // gating as `stream/start` (driven by `stream/visibility` + maxFps), keyed by this stream id.
+    val codec = streamRegistry.negotiateCodec(params.codec)
+    streamRegistry.register(
+      frameStreamId = streamId,
+      previewId = params.previewId,
+      codec = codec,
+      maxFps = params.maxFps,
+    )
     val frame =
       try {
         manager.open(
@@ -2269,6 +2278,7 @@ class JsonRpcServer(
           params.height,
         )
       } catch (t: Throwable) {
+        streamRegistry.unregister(streamId)
         sendErrorResponse(
           req.id,
           ERR_INTERNAL,
@@ -2277,12 +2287,16 @@ class JsonRpcServer(
         return
       }
     if (frame == null) {
+      streamRegistry.unregister(streamId)
       sendErrorResponse(req.id, ERR_INTERNAL, "xr/start: native XR server unavailable")
       return
     }
     sendResponse(
       req.id,
-      encode(XrStartResult.serializer(), XrStartResult(frameStreamId = streamId, available = true)),
+      encode(
+        XrStartResult.serializer(),
+        XrStartResult(frameStreamId = streamId, codec = codec, available = true),
+      ),
     )
     emitXrFrame(streamId, frame)
   }
@@ -2304,22 +2318,25 @@ class JsonRpcServer(
   }
 
   private fun handleXrStop(params: XrStopParams) {
+    // Emit a final marker (mirrors stream/stop) so the client releases decoder state, drop the
+    // registry state, then tear down the native session.
+    val finalFrame = streamRegistry.finalFrameOnStop(params.frameStreamId)
+    streamRegistry.unregister(params.frameStreamId)
     xrSessions?.close(params.frameStreamId)
+    if (finalFrame != null) {
+      sendNotification("streamFrame", encode(StreamFrameParams.serializer(), finalFrame))
+    }
   }
 
-  /** Emit one XR [frame] as a `streamFrame` notification (base64 PNG already in hand). */
+  /**
+   * Route one XR [frame] through the frame-stream registry (visibility / fps / dedup gating) and,
+   * if it survives the gate, send it as a `streamFrame` notification. The native server already
+   * base64-encodes the PNG, so the registry forwards the payload as-is.
+   */
   private fun emitXrFrame(frameStreamId: String, frame: XrStreamFrame) {
     val params =
-      StreamFrameParams(
-        frameStreamId = frameStreamId,
-        seq = frame.seq,
-        ptsMillis = System.currentTimeMillis(),
-        widthPx = frame.width,
-        heightPx = frame.height,
-        codec = ee.schimke.composeai.daemon.protocol.StreamCodec.PNG,
-        keyframe = frame.seq == 1L,
-        payloadBase64 = frame.dataBase64,
-      )
+      streamRegistry.consumeForStream(frameStreamId, frame.dataBase64, frame.width, frame.height)
+        ?: return
     sendNotification("streamFrame", encode(StreamFrameParams.serializer(), params))
   }
 

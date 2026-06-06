@@ -206,4 +206,90 @@ class FrameStreamRegistryTest {
     registry.unregister("s1")
     assertFalse(registry.hasStreamsFor("preview-A"))
   }
+
+  // ---- consumeForStream (XR render service: externally-produced base64 frames) ----
+
+  @Test
+  fun consumeForStream_first_frame_is_keyframe_with_payload() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = null)
+
+    val f = registry.consumeForStream("xr1", "AAAA", 64, 48)
+
+    assertNotNull(f)
+    assertEquals(1L, f!!.seq)
+    assertEquals(StreamCodec.PNG, f.codec)
+    assertTrue(f.keyframe)
+    assertEquals("AAAA", f.payloadBase64)
+  }
+
+  @Test
+  fun consumeForStream_dedups_identical_payload_to_heartbeat() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = null)
+
+    registry.consumeForStream("xr1", "SAME", 64, 48)
+    val second = registry.consumeForStream("xr1", "SAME", 64, 48)
+
+    assertNotNull(second)
+    assertEquals(2L, second!!.seq)
+    assertNull("identical payload must downgrade to a heartbeat", second.codec)
+    assertNull(second.payloadBase64)
+    assertFalse(second.keyframe)
+  }
+
+  @Test
+  fun consumeForStream_fps_gate_drops_frames_within_interval() {
+    var now = 0L
+    val registry = FrameStreamRegistry(clock = { now })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = 10) // 100ms min interval
+
+    assertNotNull(registry.consumeForStream("xr1", "f1", 64, 48))
+    now = 50 // < 100ms
+    assertNull(
+      "within the fps interval the frame is dropped",
+      registry.consumeForStream("xr1", "f2", 64, 48),
+    )
+    now = 150 // >= 100ms since the last emit
+    assertNotNull(registry.consumeForStream("xr1", "f3", 64, 48))
+  }
+
+  @Test
+  fun consumeForStream_unknown_stream_returns_null() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    assertNull(registry.consumeForStream("nope", "x", 64, 48))
+  }
+
+  @Test
+  fun consumeForStream_keyframe_again_after_visibility_flips_back() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = null)
+    assertTrue(registry.consumeForStream("xr1", "a", 64, 48)!!.keyframe)
+    // A changed frame mid-stream is not a keyframe.
+    assertFalse(registry.consumeForStream("xr1", "b", 64, 48)!!.keyframe)
+
+    registry.setVisibility("xr1", visible = false, fps = null)
+    registry.setVisibility("xr1", visible = true, fps = null)
+    assertTrue(
+      "first frame after re-show must be a keyframe",
+      registry.consumeForStream("xr1", "c", 64, 48)!!.keyframe,
+    )
+  }
+
+  @Test
+  fun consumeForStream_pending_keyframe_overrides_dedup_after_reshow() {
+    val registry = FrameStreamRegistry(clock = { 0L })
+    registry.register("xr1", "xr-A", StreamCodec.PNG, maxFps = null)
+    registry.consumeForStream("xr1", "SAME", 64, 48) // establishes lastHash
+
+    registry.setVisibility("xr1", visible = false, fps = null)
+    registry.setVisibility("xr1", visible = true, fps = null)
+
+    // Identical payload after scroll-back must still deliver the keyframe anchor, not a heartbeat.
+    val f = registry.consumeForStream("xr1", "SAME", 64, 48)
+    assertNotNull(f)
+    assertTrue(f!!.keyframe)
+    assertEquals(StreamCodec.PNG, f.codec)
+    assertEquals("SAME", f.payloadBase64)
+  }
 }

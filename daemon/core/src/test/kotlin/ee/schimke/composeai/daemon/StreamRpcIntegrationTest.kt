@@ -623,7 +623,9 @@ private class FakeXrHandle : XrRenderServerHandle {
   @Volatile var closed = false
   override val capabilities = buildJsonObject {}
 
-  private fun frame() = XrStreamFrame(seq.incrementAndGet().toLong(), 64, 48, "png", "ZGF0YQ==")
+  // Distinct payload per frame so the registry doesn't dedup them to heartbeats.
+  private fun frame() =
+    seq.incrementAndGet().let { n -> XrStreamFrame(n.toLong(), 64, 48, "png", "data-$n") }
 
   override fun render(
     scene: kotlinx.serialization.json.JsonElement,

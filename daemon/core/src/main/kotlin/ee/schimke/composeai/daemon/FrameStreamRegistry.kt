@@ -126,8 +126,10 @@ internal class FrameStreamRegistry(
       if (minIntervalMs > 0 && s.lastEmittedAtMs != Long.MIN_VALUE) {
         if (now - s.lastEmittedAtMs < minIntervalMs) continue
       }
-      val isUnchanged = pngHash != null && s.lastHash == pngHash
       val keyframe = s.keyframePending
+      // A pending keyframe (fresh stream or scroll-back-into-view) overrides dedup so the client
+      // always gets a real paint anchor, even when the pixels are byte-identical.
+      val isUnchanged = !keyframe && pngHash != null && s.lastHash == pngHash
       val seq = ++s.seq
       val params: StreamFrameParams =
         if (isUnchanged) {
@@ -201,6 +203,68 @@ internal class FrameStreamRegistry(
     )
   }
 
+  /**
+   * Per-stream variant of [consumeForPreview] for externally-produced frames (the XR render service
+   * — frames arrive from the native `xr-composite --serve` already base64-encoded, keyed by
+   * `frameStreamId` rather than a preview render). Applies the same gating to the one stream:
+   * 1. fps gate — returns null (drop the frame) when below the per-stream minimum interval.
+   * 2. dedup — emits an `unchanged` heartbeat (codec/payload null) when [payloadBase64] hashes to
+   *    the prior frame's content.
+   * 3. keyframe-pending — marks the first frame (or the first after a visibility flip) as a
+   *    keyframe.
+   *
+   * Returns null when the stream id is unknown or the fps gate dropped the frame.
+   */
+  fun consumeForStream(
+    frameStreamId: String,
+    payloadBase64: String?,
+    widthPx: Int,
+    heightPx: Int,
+  ): StreamFrameParams? {
+    val s = states[frameStreamId] ?: return null
+    val now = clock()
+    val minIntervalMs = effectiveMinIntervalMs(s)
+    if (minIntervalMs > 0 && s.lastEmittedAtMs != Long.MIN_VALUE) {
+      if (now - s.lastEmittedAtMs < minIntervalMs) return null
+    }
+    val hash = payloadBase64?.let(::sha256)
+    val keyframe = s.keyframePending
+    // A pending keyframe (fresh stream or scroll-back-into-view) overrides dedup so the client
+    // always gets a real paint anchor, even when the payload is byte-identical.
+    val isUnchanged = !keyframe && hash != null && s.lastHash == hash
+    val seq = ++s.seq
+    val params =
+      if (isUnchanged || payloadBase64 == null) {
+        StreamFrameParams(
+          frameStreamId = s.frameStreamId,
+          seq = seq,
+          ptsMillis = now,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          codec = null,
+          keyframe = false,
+          final = false,
+          payloadBase64 = null,
+        )
+      } else {
+        StreamFrameParams(
+          frameStreamId = s.frameStreamId,
+          seq = seq,
+          ptsMillis = now,
+          widthPx = widthPx,
+          heightPx = heightPx,
+          codec = s.codec,
+          keyframe = keyframe,
+          final = false,
+          payloadBase64 = payloadBase64,
+        )
+      }
+    s.lastEmittedAtMs = now
+    if (hash != null) s.lastHash = hash
+    if (params.codec != null) s.keyframePending = false
+    return params
+  }
+
   private fun effectiveMinIntervalMs(s: State): Long {
     val visibilityCap = if (!s.visible) (s.visibilityFps ?: 1) else null
     val cap =
@@ -232,5 +296,12 @@ internal class FrameStreamRegistry(
 
     private fun base64(bytes: ByteArray): String =
       java.util.Base64.getEncoder().encodeToString(bytes)
+
+    /** Content hash for dedup of already-encoded (e.g. XR) frame payloads. */
+    private fun sha256(s: String): String {
+      val digest = java.security.MessageDigest.getInstance("SHA-256")
+      return java.util.Base64.getEncoder()
+        .encodeToString(digest.digest(s.toByteArray(Charsets.UTF_8)))
+    }
   }
 }
