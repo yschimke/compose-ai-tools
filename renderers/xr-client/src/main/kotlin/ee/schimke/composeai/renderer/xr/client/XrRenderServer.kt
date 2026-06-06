@@ -6,6 +6,42 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
+ * Abstraction over a running XR render server, so callers (and the daemon's session manager) can be
+ * unit-tested against a fake without spawning the native process. [XrRenderServer] is the real,
+ * process-backed implementation.
+ */
+public interface XrRenderServerHandle : AutoCloseable {
+  /** The server's advertised `capabilities` from `initialize`. */
+  public val capabilities: JsonObject
+
+  /** Render a full [scene] (serialized `SpatialScene`); returns the streamed frame. */
+  public fun render(
+    scene: JsonElement,
+    sceneDir: String? = null,
+    environment: String? = null,
+  ): StreamFrame
+
+  /** Apply per-frame panel mutations and return the freshly streamed frame. */
+  public fun updatePanels(panels: JsonArray): StreamFrame
+}
+
+/**
+ * Spawns an [XrRenderServerHandle], or `null` when the native binary isn't available. Injected into
+ * the session manager so tests substitute a fake. The default implementation resolves + spawns the
+ * real `xr-composite --serve` via [XrRenderServer.startIfAvailable].
+ */
+public fun interface XrRenderServerFactory {
+  public fun start(width: Int, height: Int): XrRenderServerHandle?
+
+  public companion object {
+    /** The production factory: resolve + spawn the real native server. */
+    public val Native: XrRenderServerFactory = XrRenderServerFactory { w, h ->
+      XrRenderServer.startIfAvailable(width = w, height = h)
+    }
+  }
+}
+
+/**
  * A running native `xr-composite --serve` render server, driven over [XrServerClient]. This is the
  * single entry point the daemon's XR `RenderSession` backend holds: [start] resolves + spawns the
  * binary and performs the `initialize` handshake (so the returned instance is ready to render),
@@ -18,18 +54,18 @@ public class XrRenderServer
 private constructor(
   private val client: XrServerClient,
   /** The server's advertised `capabilities` from `initialize`. */
-  public val capabilities: JsonObject,
-) : AutoCloseable {
+  public override val capabilities: JsonObject,
+) : XrRenderServerHandle {
 
   /** Render a full [scene] (serialized `SpatialScene`); returns the streamed frame. */
-  public fun render(
+  public override fun render(
     scene: JsonElement,
-    sceneDir: String? = null,
-    environment: String? = null,
+    sceneDir: String?,
+    environment: String?,
   ): StreamFrame = client.render(scene, sceneDir, environment)
 
   /** Apply per-frame panel mutations and return the freshly streamed frame. */
-  public fun updatePanels(panels: JsonArray): StreamFrame = client.updatePanels(panels)
+  public override fun updatePanels(panels: JsonArray): StreamFrame = client.updatePanels(panels)
 
   override fun close(): Unit = client.close()
 
