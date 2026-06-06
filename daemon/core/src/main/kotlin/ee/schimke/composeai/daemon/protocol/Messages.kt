@@ -1601,6 +1601,16 @@ data class InteractiveInputParams(
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**
+   * Stable semantic handle for the node this input targets, resolved server-side against the held
+   * composition's live semantics tree (issue #1784) so agents act by ref / testTag / role+text
+   * instead of guessing pixel coordinates. The daemon resolves it to the node's centre point and
+   * dispatches there. When both [pixelX]/[pixelY] and [target] are set, explicit pixels win. A
+   * target matching no node — or, for testTag / role+text, more than one — drops the input
+   * (interactive/input is fire-and-forget); use [SemanticsInputTarget.ref] for an unambiguous
+   * handle.
+   */
+  val target: SemanticsInputTarget? = null,
+  /**
    * Per-pointer identifier for multi-touch dispatch (pinch-to-zoom, two-finger rotate, …). Defaults
    * to `0` for backwards compatibility; the daemon tracks active pointers by id across
    * `pointerDown` → `pointerMove`(s) → `pointerUp` so Compose's gesture pipeline groups them
@@ -1611,6 +1621,25 @@ data class InteractiveInputParams(
   val scrollDeltaY: Float? = null,
   /** For `keyDown` / `keyUp`. */
   val keyCode: String? = null,
+)
+
+/**
+ * A stable handle for the node an interaction targets, resolved server-side against the live
+ * semantics tree (issue #1784). Set exactly one of:
+ * - [ref] — the stable `ComposeSemanticsNode.ref` assigned by `SemanticsRefs` (the unambiguous
+ *   handle; survives content edits),
+ * - [testTag] — a `Modifier.testTag(...)` value,
+ * - [role] and/or [text] — match by accessibility role and/or visible text/label.
+ *
+ * Resolution returns the matched node's centre in image-natural pixel space. Zero matches or more
+ * than one (for testTag / role+text) is an unresolved target; refs are unique by construction.
+ */
+@Serializable
+data class SemanticsInputTarget(
+  val ref: String? = null,
+  val testTag: String? = null,
+  val role: String? = null,
+  val text: String? = null,
 )
 
 @Serializable
