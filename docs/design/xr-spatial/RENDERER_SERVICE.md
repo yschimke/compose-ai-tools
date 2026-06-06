@@ -22,9 +22,12 @@ into a long-lived, extensible render service.
 >   only when `XrCompositeBinary.resolve(...)` finds the binary, so the real (host) daemon flips
 >   `capabilities.xr` on when provisioned and stays `MethodNotFound` otherwise. XR is host-native, so
 >   it's wired on the desktop daemon only.
+> - **Frame gating** — XR streams register with `FrameStreamRegistry` and frames route through
+>   `consumeForStream` (per-stream fps cap via `xr/start.maxFps`, `stream/visibility` downshift,
+>   content dedup → `unchanged` heartbeats, keyframe-on-(re)show), the same gating `stream/start` gets.
 >
-> **Still to do:** route XR frames through `FrameStreamRegistry` for visibility/fps gating, native
-> multi-session concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
+> **Still to do:** native multi-session concurrency (one Filament engine fanned across sessions
+> rather than one child per session), and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
 
 ## Motivation
 
