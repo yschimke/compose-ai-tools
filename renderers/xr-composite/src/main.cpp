@@ -318,6 +318,7 @@ class Compositor {
   Material* unlit_ = nullptr;
   Material* shadowMat_ = nullptr;
   Skybox* skybox_ = nullptr;
+  ColorGrading* colorGrading_ = nullptr;
   uint32_t W_ = 0, H_ = 0;
   std::string sceneDir_ = ".";
   float3 bg_ = {0.06f, 0.06f, 0.08f};
@@ -355,8 +356,8 @@ bool Compositor::init(SharedGl& gl, uint32_t w, uint32_t h) {
 
   // faithful colors: linear tonemap (no filmic curve), keep post-processing for sRGB output + MSAA
   static LinearToneMapper toneMapper;
-  ColorGrading* colorGrading = ColorGrading::Builder().toneMapper(&toneMapper).build(*engine_);
-  view_->setColorGrading(colorGrading);
+  colorGrading_ = ColorGrading::Builder().toneMapper(&toneMapper).build(*engine_);
+  view_->setColorGrading(colorGrading_);
   view_->setPostProcessingEnabled(true);
   {
     MultiSampleAntiAliasingOptions msaa;
@@ -374,6 +375,10 @@ void Compositor::teardown() {
   // shared — left for the next session / process exit.
   engine_->flushAndWait();
   clearPanels();
+  // Panel textures are cached per resolved path for the session's lifetime; free them too (they live
+  // in the shared engine and would otherwise leak after this session is erased).
+  for (auto& [path, tex] : texCache_) engine_->destroy(tex);
+  texCache_.clear();
   if (skybox_) {
     scene_->setSkybox(nullptr);
     engine_->destroy(skybox_);
@@ -384,6 +389,10 @@ void Compositor::teardown() {
   engine_->destroyCameraComponent(camEntity_);
   utils::EntityManager::get().destroy(camEntity_);
   engine_->destroy(swapChain_);
+  if (colorGrading_) {
+    engine_->destroy(colorGrading_);
+    colorGrading_ = nullptr;
+  }
 }
 
 void Compositor::resolveBackground(const std::string& envOverride) {
@@ -789,11 +798,14 @@ int runServer(const Args& args) {
   std::map<std::string, std::unique_ptr<Compositor>> sessions;
   uint64_t seq = 0;
   std::string body;
+  // Single-session clients register a stream id once at `initialize` and then omit it on subsequent
+  // calls; remember it so their frames stay tagged with that id rather than the literal "default".
+  std::string defaultSessionId = "default";
 
-  // sessionId precedence: explicit `sessionId`, then `frameStreamId`, else the implicit "default"
-  // session (back-compat with single-session callers and the one-shot smoke).
-  auto sessionIdOf = [](const json& params) -> std::string {
-    return params.value("sessionId", params.value("frameStreamId", std::string("default")));
+  // sessionId precedence: explicit `sessionId`, then per-call `frameStreamId`, else the
+  // initialize-registered default (back-compat with single-session callers and the one-shot smoke).
+  auto sessionIdOf = [&](const json& params) -> std::string {
+    return params.value("sessionId", params.value("frameStreamId", defaultSessionId));
   };
 
   while (readMessage(body)) {
@@ -809,6 +821,7 @@ int runServer(const Args& args) {
     const json& params = msg.contains("params") ? msg["params"] : json::object();
 
     if (method == "initialize") {
+      defaultSessionId = params.value("frameStreamId", defaultSessionId);
       writeResult(id, {
           {"serverInfo", {{"name", "xr-composite"}, {"version", 1}}},
           {"capabilities", {

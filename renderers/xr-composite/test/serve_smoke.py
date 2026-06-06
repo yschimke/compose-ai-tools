@@ -96,6 +96,8 @@ def main() -> int:
     assert len(frames) >= 4, f"expected >=4 streamFrames, got {len(frames)}"
     assert frames[0][0] == 1 and frames[1][0] == 2, f"unexpected seq order: {[f[0] for f in frames]}"
     assert frames[0][1] != frames[1][1], "frame did not change after moving a panel"
+    # Default-session frames keep the id registered at initialize ("fs1"), not the literal "default".
+    assert frames[0][2] == "fs1", f"default frame should carry the initialized id, got {frames[0][2]}"
     sids = {f[2] for f in frames}
     assert "a" in sids and "b" in sids, f"expected per-session frames, got sessionIds {sids}"
     assert proc.returncode == 0, f"server exit code {proc.returncode}"
