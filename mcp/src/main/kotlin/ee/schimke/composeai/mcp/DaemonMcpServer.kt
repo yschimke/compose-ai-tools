@@ -17,6 +17,10 @@ import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
+import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
@@ -1485,6 +1489,25 @@ class DaemonMcpServer(
           ),
       ),
       ToolDef(
+        name = "diff_semantics",
+        description =
+          "Diff the Compose semantics trees of two live previews and report what changed semantically — the cheap, deterministic, pixel-free regression signal (the analogue of Playwright's aria-snapshot diff). Fetches compose/semantics for `baseUri` and `headUri` (two compose-preview:// URIs, auto-rendering each if needed), matches nodes by their stable `ref`, and returns added / removed / changed-field deltas as JSON plus a one-line summary. Use it to answer 'what changed?' between two rendered previews without reading two PNGs — e.g. the same preview before and after an edit, or two related previews. Text/label changes show up as field changes on the same ref (not remove+add); positional bounds churn is ignored (that's the pixel diff's job). Cheaper than reading screenshots — prefer it for copy/label/role/overflow regressions. (Diffing against a compose-preview-history:// baseline needs the semantics payload persisted per history entry — tracked as a follow-up.)",
+        inputSchema =
+          parseSchema(
+            """
+            {
+              "type":"object",
+              "properties":{
+                "baseUri":{"type":"string","description":"Baseline live preview URI (compose-preview://<workspace>/<module>/<fqn>)."},
+                "headUri":{"type":"string","description":"Candidate live preview URI (compose-preview://...) to compare against the baseline."}
+              },
+              "required":["baseUri","headUri"]
+            }
+            """
+              .trimIndent()
+          ),
+      ),
+      ToolDef(
         name = "subscribe_preview_data",
         description =
           "Subscribe to a data-product kind for one preview. While subscribed, every renderFinished for the preview produces the kind alongside the PNG (subject to the daemon's producer wiring). Useful when the agent expects to ask repeatedly about the same preview — pre-computing on render avoids the get_preview_data re-render cost. Subscriptions are sticky-while-visible: the daemon drops them automatically when the preview leaves the most recent set_visible set, so re-subscribe when the preview returns to view. Idempotent. Errors: DataProductUnknown if the kind isn't advertised or isn't attachable. NOTE: today, MCP doesn't push the attached payload to clients automatically — agents still call get_preview_data to read it; the subscribe just primes the daemon-side cache.",
@@ -1703,6 +1726,7 @@ class DaemonMcpServer(
       "list_extension_commands" -> toolListExtensionCommands(args)
       "run_extension_command" -> toolRunExtensionCommand(args)
       "get_preview_data" -> toolGetPreviewData(args)
+      "diff_semantics" -> toolDiffSemantics(args)
       "render_preview_overlay" -> toolRenderPreviewOverlay(args)
       "get_preview_extras" -> toolGetPreviewExtras(args)
       "subscribe_preview_data" -> toolDataSubOrUnsub(session, args, subscribe = true)
@@ -2963,6 +2987,124 @@ class DaemonMcpServer(
       }
     }
     return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * `diff_semantics` — fetch `compose/semantics` for two preview URIs and report the structural
+   * delta between their trees (issue #1785). The cheap, deterministic, pixel-free regression
+   * signal: nodes are matched by their stable `ref`, so a copy edit is a field change on the same
+   * ref rather than a remove + add. Returns `{ schema, summary, delta }` as a single text block.
+   */
+  private fun toolDiffSemantics(args: JsonObject): CallToolResult {
+    val baseUriStr =
+      args["baseUri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("diff_semantics: missing 'baseUri'")
+    val headUriStr =
+      args["headUri"]?.jsonPrimitive?.contentOrNull
+        ?: return errorCallToolResult("diff_semantics: missing 'headUri'")
+    val (base, baseErr) = fetchSemanticsPayload(baseUriStr, "base")
+    if (base == null) return errorCallToolResult("diff_semantics: $baseErr")
+    val (head, headErr) = fetchSemanticsPayload(headUriStr, "head")
+    if (head == null) return errorCallToolResult("diff_semantics: $headErr")
+    val delta = SemanticsDiff.diff(base, head)
+    val out = buildJsonObject {
+      put("schema", delta.schema)
+      put("summary", summarizeSemanticsDelta(delta))
+      put("delta", json.encodeToJsonElement(SemanticsDelta.serializer(), delta))
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(out.toString())))
+  }
+
+  /**
+   * Fetch and decode `compose/semantics` for one URI, auto-rendering once on the
+   * `DataProductNotAvailable` path (same fold as [toolGetPreviewData]). Returns `(payload, null)`
+   * on success or `(null, message)` with a [side]-prefixed diagnostic the caller wraps into a tool
+   * error.
+   */
+  private fun fetchSemanticsPayload(
+    uriStr: String,
+    side: String,
+  ): Pair<ComposeSemanticsPayload?, String?> {
+    val uri =
+      PreviewUri.parseOrNull(uriStr)
+        ?: return null to
+          if (uriStr.startsWith("${HistoryUri.SCHEME}://")) {
+            "$side: history URIs aren't supported yet (compose/semantics isn't persisted per " +
+              "history entry); pass a live compose-preview:// URI"
+          } else {
+            "invalid $side uri: $uriStr"
+          }
+    if (supervisor.project(uri.workspaceId) == null) {
+      return null to "$side workspace '${uri.workspaceId.value}' not registered"
+    }
+    val daemon =
+      runCatching { supervisor.daemonFor(uri.workspaceId, uri.modulePath) }
+        .getOrElse {
+          return null to "$side daemon spawn failed: ${it.message}"
+        }
+    val result =
+      runCatching {
+          try {
+            daemon.client.dataFetch(
+              uri.previewFqn,
+              ComposeSemanticsProduct.KIND,
+              null,
+              inline = true,
+            )
+          } catch (e: DataProductWireException) {
+            if (e.code != DataProductWireException.NOT_AVAILABLE) throw e
+            awaitNextRender(uri)
+            daemon.client.dataFetch(
+              uri.previewFqn,
+              ComposeSemanticsProduct.KIND,
+              null,
+              inline = true,
+            )
+          }
+        }
+        .getOrElse { e ->
+          return null to
+            when (e) {
+              is DataProductWireException -> "$side ${nameOf(e.code)}: ${e.wireMessage}"
+              else -> "$side fetch failed: ${e.message}"
+            }
+        }
+    return runCatching { decodeSemanticsPayload(result) }
+      .map { it to null }
+      .getOrElse { null to "$side: could not read compose/semantics (${it.message})" }
+  }
+
+  /**
+   * Decode a [DataFetchResult] into a [ComposeSemanticsPayload] from whichever transport it used.
+   */
+  private fun decodeSemanticsPayload(
+    result: ee.schimke.composeai.daemon.protocol.DataFetchResult
+  ): ComposeSemanticsPayload {
+    result.payload?.let {
+      return json.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), it)
+    }
+    result.bytes?.let {
+      val text = String(Base64.getDecoder().decode(it), Charsets.UTF_8)
+      return json.decodeFromString(ComposeSemanticsPayload.serializer(), text)
+    }
+    result.path?.let { path ->
+      val text = SystemFileSystem.read(path.toPath()) { readUtf8() }
+      return json.decodeFromString(ComposeSemanticsPayload.serializer(), text)
+    }
+    error("empty data/fetch result (no payload, bytes, or path)")
+  }
+
+  /** One-line human summary of a [SemanticsDelta] for the tool response. */
+  private fun summarizeSemanticsDelta(delta: SemanticsDelta): String {
+    if (delta.isEmpty) return "no semantic changes"
+    return buildString {
+      append("${delta.added.size} added, ${delta.removed.size} removed, ")
+      append("${delta.changed.size} changed")
+      delta.changed.take(3).forEach { change ->
+        val fields = change.changes.joinToString(", ") { it.field }
+        append("; ${change.anchor ?: change.ref}: $fields")
+      }
+    }
   }
 
   /**

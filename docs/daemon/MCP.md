@@ -116,6 +116,7 @@ supervisor stops respawning.
 | `history_diff(workspaceId, module, from, to)` | Diff two history entries in metadata mode. |
 | `list_data_products(workspaceId?, module?)` | List advertised data-product kinds per daemon. |
 | `get_preview_data(uri, kind, params?, inline?)` | Fetch one structured data product for a preview, auto-rendering when needed. |
+| `diff_semantics(baseUri, headUri)` | Diff the `compose/semantics` trees of two previews (matched by stable `ref`) and return added/removed/changed-field deltas + a one-line summary — a cheap, deterministic, pixel-free regression signal (aria-snapshot analogue). |
 | `subscribe_preview_data(uri, kind)` | Prime a data product on every render for one preview. |
 | `unsubscribe_preview_data(uri, kind)` | Drop a preview data-product subscription. |
 | `render_preview_overlay(uri, kind?, inline?, overrides?)` | Render a preview and return an annotated overlay image. |

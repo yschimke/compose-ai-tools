@@ -110,6 +110,7 @@ class DaemonMcpServerTest {
         "enable_extensions",
         "run_extension_command",
         "get_preview_data",
+        "diff_semantics",
         "subscribe_preview_data",
         "unsubscribe_preview_data",
         "render_preview_overlay",
@@ -2602,6 +2603,76 @@ class DaemonMcpServerTest {
     val nodes = payload["payload"]!!.jsonObject["nodes"]!!.jsonArray
     assertThat(nodes.single().jsonObject["label"]!!.jsonPrimitive.content)
       .isEqualTo("Hello $previewId")
+  }
+
+  @Test
+  fun `diff_semantics reports a text change on the same ref between two previews`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+
+    // A two-node tree: root + a testTag'd child whose text differs between the base and head
+    // previews. The differ should match by the stable ref and report a single `text` field change.
+    fun semanticsPayload(childText: String) = buildJsonObject {
+      putJsonObject("root") {
+        put("nodeId", "1")
+        put("boundsInRoot", "0,0,64,64")
+        putJsonArray("children") {
+          add(
+            buildJsonObject {
+              put("nodeId", "2")
+              put("boundsInRoot", "0,0,20,20")
+              put("testTag", "label")
+              put("text", childText)
+            }
+          )
+        }
+      }
+    }
+    factory.daemonConfigurer = { daemon ->
+      daemon.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "compose/semantics",
+            schemaVersion = 2,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      daemon.dataFetchHandler = { previewId, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 2,
+          payload = semanticsPayload(if (previewId.endsWith("Head")) "Goodbye" else "Hello"),
+        )
+      }
+    }
+    warmDaemonFor(workspaceId, ":module")
+
+    val baseUri = PreviewUri(workspaceId, ":module", "com.example.Base").toUri()
+    val headUri = PreviewUri(workspaceId, ":module", "com.example.Head").toUri()
+    val resp =
+      client.callTool(
+        "diff_semantics",
+        buildJsonObject {
+          put("baseUri", baseUri)
+          put("headUri", headUri)
+        },
+      )
+    val parsed = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(parsed["schema"]?.jsonPrimitive?.contentOrNull)
+      .isEqualTo("compose-semantics-diff/v1")
+    assertThat(parsed["summary"]?.jsonPrimitive?.contentOrNull).contains("changed")
+    val changed = parsed["delta"]!!.jsonObject["changed"]!!.jsonArray
+    val change = changed.single().jsonObject
+    assertThat(change["ref"]?.jsonPrimitive?.contentOrNull).isEqualTo("r/tag:label")
+    val fieldChange = change["changes"]!!.jsonArray.single().jsonObject
+    assertThat(fieldChange["field"]?.jsonPrimitive?.contentOrNull).isEqualTo("text")
+    assertThat(fieldChange["from"]?.jsonPrimitive?.contentOrNull).isEqualTo("Hello")
+    assertThat(fieldChange["to"]?.jsonPrimitive?.contentOrNull).isEqualTo("Goodbye")
   }
 
   @Test
