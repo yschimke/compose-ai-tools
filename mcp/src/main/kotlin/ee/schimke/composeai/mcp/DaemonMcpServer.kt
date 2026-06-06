@@ -3324,10 +3324,14 @@ class DaemonMcpServer(
               add(mediaBlock)
               add(ContentBlock.Text(payload.toString()))
               // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
-              // (the codegen analogue). Pure source generation from the events; the agent writes it
-              // to src/test and fills in the probe assertions.
+              // (the codegen analogue). Built from the recording's applied evidence so an
+              // unresolved target is a skipped-step comment, not a fabricated performClick.
               if (args["emitTest"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true) {
-                add(ContentBlock.Text(generateRecordingTestSource(uri, events)))
+                add(
+                  ContentBlock.Text(
+                    generateRecordingTestSource(uri, events, stopResult.scriptEvents)
+                  )
+                )
               }
             }
         )
@@ -3336,23 +3340,42 @@ class DaemonMcpServer(
   }
 
   /**
-   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). Derives the test
-   * scaffold from the preview FQN (`<class>.<method>` → `setContent { <method>() }`) and turns each
-   * script event into a step via [RecordingTestGenerator].
+   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). Scaffolds from
+   * the preview FQN (`<class>.<method>` → `setContent { <method>() }`; the generated header tells
+   * the author to confirm the call + add its import, since named/variant preview ids share their
+   * base function and the daemon doesn't expose the bare method name here). Steps are built from
+   * the recording's [evidence] so an `unsupported` event becomes a skipped-step comment rather than
+   * a fabricated step; when the evidence can't be aligned 1:1 we fall back to treating every event
+   * as applied.
    */
   private fun generateRecordingTestSource(
     uri: PreviewUri,
     events: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvent>,
+    evidence: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence>,
   ): String {
     val method = uri.previewFqn.substringAfterLast('.').ifBlank { "preview" }
     val pascal = method.replaceFirstChar { it.uppercaseChar() }
     val camel = method.replaceFirstChar { it.lowercaseChar() }
+    // The recording dispatches script events in tMs order and appends one evidence each, so a
+    // size-matched evidence list aligns by index with the tMs-sorted events.
+    val sorted = events.sortedBy { it.tMs }
+    val steps =
+      if (evidence.size == sorted.size) {
+        sorted.mapIndexed { i, event ->
+          RecordingTestGenerator.Step(
+            event,
+            applied = evidence[i].status == RecordingScriptEventStatus.APPLIED,
+          )
+        }
+      } else {
+        RecordingTestGenerator.stepsOf(sorted)
+      }
     return RecordingTestGenerator.generate(
       RecordingTestGenerator.Spec(
         className = "Generated${pascal}Test",
         methodName = "${camel}Interaction",
         composableInvocation = "$method()",
-        events = events,
+        steps = steps,
       )
     )
   }
