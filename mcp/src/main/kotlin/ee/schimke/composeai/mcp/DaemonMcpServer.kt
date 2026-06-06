@@ -959,6 +959,8 @@ class DaemonMcpServer(
         name = "render_preview",
         description =
           "Render a preview by URI, bypassing the in-memory render cache. Returns the PNG inline. " +
+            "Pass `observe=\"semantics\"` (or `\"hash\"`) for a token-frugal response — the " +
+            "compose/semantics snapshot + sha + dimensions instead of a base64 PNG (issue #1787). " +
             "Pass `force={reason}` only when the freshness probe missed a real edit (this should be rare); " +
             "report each use on https://github.com/yschimke/compose-ai-tools/issues/924. " +
             "Do NOT delete `build/classes/...` or run `./gradlew clean` to chase a stale render.",
@@ -969,6 +971,7 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level. Default 'png' (base64 image). 'semantics' returns the compose/semantics tree + sha256 + dimensions (no base64 — far cheaper for an agent loop); 'hash' returns just sha256 + dimensions."},
                 "overrides":{"type":"object","description":"Optional per-call display overrides."},
                 "force":{"type":"object","description":"Sanctioned escape hatch when the freshness probe missed an edit. Forwards fileChanged({kind:\"classpath\"}) before rendering, dropping the daemon's user classloader. Each use is logged + counted; please report on issue #924.","properties":{"reason":{"type":"string","description":"Human-readable reason for needing force (required)."}},"required":["reason"]}
               },
@@ -1106,6 +1109,7 @@ class DaemonMcpServer(
               "type":"object",
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
+                "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level (issue #1787). Default 'png' returns the base64 image. 'semantics' returns the compose/semantics tree + sha256 + width/height with NO base64 — a token-frugal default for a multi-step agent loop (fetch pixels only when you need them); 'hash' returns just sha256 + dimensions."},
                 "overrides":{
                   "type":"object",
                   "description":"Per-call display overrides. Each field is optional; nulls fall back to the discovery-time RenderSpec. Backends that don't model a field (e.g. desktop has no Android resource qualifier system) ignore it.",
@@ -1889,6 +1893,10 @@ class DaemonMcpServer(
       args["uri"]?.jsonPrimitive?.contentOrNull
         ?: return errorCallToolResult("render_preview: missing 'uri'")
     val uri = PreviewUri.parseOrNull(uriStr) ?: return errorCallToolResult("invalid uri: $uriStr")
+    val observe = args["observe"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: "png"
+    if (observe !in setOf("png", "semantics", "hash")) {
+      return errorCallToolResult("render_preview: 'observe' must be one of png | semantics | hash")
+    }
     val overrides =
       args["overrides"]?.let {
         runCatching { decodePreviewOverrides(it) }
@@ -1917,10 +1925,70 @@ class DaemonMcpServer(
     if (forceReason != null) invalidateClasspathForForce(uri, forceReason)
     return runCatching {
         val bytes = renderAndReadBytes(uri, overrides = overrides)
-        pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
+        if (observe == "png") {
+          pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
+        } else {
+          renderObservation(uri, bytes, includeSemantics = observe == "semantics")
+        }
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
   }
+
+  /**
+   * Token-frugal `render_preview` response (issue #1787): a structured observation — sha256 + pixel
+   * dimensions, and (for `observe="semantics"`) the compose/semantics tree — instead of a base64
+   * PNG. Mirrors Playwright's snapshot-default / screenshot-on-demand split; an agent loop reads
+   * pixels only when it actually needs them.
+   */
+  private fun renderObservation(
+    uri: PreviewUri,
+    pngBytes: ByteArray,
+    includeSemantics: Boolean,
+  ): CallToolResult {
+    val dimensions = pngDimensions(pngBytes)
+    val payload = buildJsonObject {
+      put("observe", if (includeSemantics) "semantics" else "hash")
+      put("uri", uri.toUri())
+      put("sha256", sha256Hex(pngBytes))
+      put("sizeBytes", pngBytes.size)
+      dimensions?.let {
+        put("widthPx", it.first)
+        put("heightPx", it.second)
+      }
+      if (includeSemantics) {
+        val (semantics, error) = fetchSemanticsPayload(uri.toUri(), "preview")
+        if (semantics != null) {
+          put(
+            "semantics",
+            json.encodeToJsonElement(ComposeSemanticsPayload.serializer(), semantics),
+          )
+        } else {
+          put("semanticsUnavailable", error ?: "compose/semantics not available for this preview")
+        }
+      }
+    }
+    return CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+  }
+
+  /**
+   * Parse a PNG's IHDR width/height (big-endian, at byte offsets 16/20) without decoding pixels.
+   */
+  private fun pngDimensions(bytes: ByteArray): Pair<Int, Int>? {
+    if (bytes.size < 24) return null
+    fun int32(offset: Int): Int =
+      ((bytes[offset].toInt() and 0xFF) shl 24) or
+        ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+        ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+        (bytes[offset + 3].toInt() and 0xFF)
+    val width = int32(16)
+    val height = int32(20)
+    return if (width in 1..100_000 && height in 1..100_000) width to height else null
+  }
+
+  private fun sha256Hex(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+      "%02x".format(it)
+    }
 
   /**
    * Sanctioned classpath invalidation for `render_preview.force`. Forwards a

@@ -89,6 +89,16 @@ previews.
   captured frame adds a `frames[]` entry plus optional metadata. The
   APNG/MP4 capture path keeps per-frame JSON small; embedded-PNG debug
   mode grows fast.
+- `render_preview` defaults to returning the base64 PNG (~1.5 k input
+  tokens per read at typical preview dimensions). For multi-step agent
+  loops, `observe: "semantics"` returns the `compose/semantics` tree +
+  sha256 + dimensions with **no base64** — typically a few hundred
+  tokens for a small preview (scaling with node count, like
+  `compose/semantics` elsewhere in this table), and `observe: "hash"`
+  is ~30 tokens (sha + dimensions only). Prefer these when you're
+  iterating and only need to know *whether* / *what* changed; fetch
+  `observe: "png"` when you actually need to look at pixels (issue
+  #1787).
 - These numbers count tokens crossing the LLM/tool boundary, not
   Anthropic billing on cached prefixes. With prompt caching the
   ~13 k MCP baseline is paid once per session and replayed from cache
