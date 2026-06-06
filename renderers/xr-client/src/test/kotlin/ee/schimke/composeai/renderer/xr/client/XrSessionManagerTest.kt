@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 class XrSessionManagerTest {
 
@@ -176,26 +177,37 @@ class XrSessionManagerTest {
     manager.updatePanels(
       "s1",
       buildJsonArray {
+        // Partial delta on an existing panel — overlays.
         add(
           buildJsonObject {
             put("id", "top")
             put("x", 120)
           }
-        ) // move existing
+        )
+        // Complete new panel — appended.
         add(
           buildJsonObject {
             put("id", "extra")
-            put("x", 5)
+            putJsonObject("poseInRoot") {}
+            putJsonObject("sizeDp") {}
+            put("texture", "extra.png")
           }
-        ) // append new
+        )
+        // Partial new panel — dropped (the native renderer would skip it).
+        add(
+          buildJsonObject {
+            put("id", "junk")
+            put("x", 9)
+          }
+        )
       },
     )
 
     val panels = manager.structure("s1")!!.jsonObject["panels"]!!.jsonArray
-    assertEquals(2, panels.size)
-    val top = panels.first { it.jsonObject["id"]?.jsonPrimitive?.content == "top" }.jsonObject
-    assertEquals(120, top["x"]?.jsonPrimitive?.int)
-    assertTrue(panels.any { it.jsonObject["id"]?.jsonPrimitive?.content == "extra" })
+    val byId = panels.associateBy { it.jsonObject["id"]?.jsonPrimitive?.content }
+    assertEquals(120, byId["top"]!!.jsonObject["x"]?.jsonPrimitive?.int) // existing moved
+    assertTrue(byId.containsKey("extra"), "complete new panel is appended")
+    assertFalse(byId.containsKey("junk"), "partial new panel is dropped")
   }
 
   @Test

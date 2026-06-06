@@ -144,7 +144,11 @@ public class XrSessionManager(
           panels[idx].forEach { (k, v) -> put(k, v) }
           d.forEach { (k, v) -> put(k, v) } // delta fields win
         }
-      } else {
+      } else if (
+        d.containsKey("poseInRoot") && d.containsKey("sizeDp") && d.containsKey("texture")
+      ) {
+        // The native server only appends an unknown id when it's a complete SpatialPanel; skip
+        // partial new-panel deltas so the structure can't report a panel the render dropped.
         panels.add(d)
       }
     }
