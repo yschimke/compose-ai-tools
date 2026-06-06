@@ -1,5 +1,6 @@
 package ee.schimke.composeai.mcp
 
+import ee.schimke.composeai.daemon.RecordingTestGenerator
 import ee.schimke.composeai.daemon.protocol.AmbientOverride
 import ee.schimke.composeai.daemon.protocol.ChangeType
 import ee.schimke.composeai.daemon.protocol.FileKind
@@ -1652,6 +1653,7 @@ class DaemonMcpServer(
                 "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
                 "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
                 "format":{"type":"string","enum":["apng","mp4","webm"],"description":"Encoded video format. Default 'apng' (always available, pure-JVM). 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
+                "emitTest":{"type":"boolean","description":"Default false. When true, also return a runnable Compose UI test generated from this interaction (issue #1786) as an extra text block — each event with a testTag/role/text target becomes an onNodeWith…().performClick() step; recording.probe markers become TODO-assertion stubs. Write it to src/test and fill in the probe assertions."},
                 "events":{
                   "type":"array",
                   "description":"Scripted timeline. Empty array records a single bootstrap frame.",
@@ -3316,9 +3318,43 @@ class DaemonMcpServer(
                 )
             )
           }
-        CallToolResult(content = listOf(mediaBlock, ContentBlock.Text(payload.toString())))
+        CallToolResult(
+          content =
+            buildList {
+              add(mediaBlock)
+              add(ContentBlock.Text(payload.toString()))
+              // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
+              // (the codegen analogue). Pure source generation from the events; the agent writes it
+              // to src/test and fills in the probe assertions.
+              if (args["emitTest"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() == true) {
+                add(ContentBlock.Text(generateRecordingTestSource(uri, events)))
+              }
+            }
+        )
       }
       .getOrElse { errorCallToolResult("record_preview failed: ${it.message}") }
+  }
+
+  /**
+   * Generate a Compose UI test from a `record_preview` interaction (issue #1786). Derives the test
+   * scaffold from the preview FQN (`<class>.<method>` → `setContent { <method>() }`) and turns each
+   * script event into a step via [RecordingTestGenerator].
+   */
+  private fun generateRecordingTestSource(
+    uri: PreviewUri,
+    events: List<ee.schimke.composeai.daemon.protocol.RecordingScriptEvent>,
+  ): String {
+    val method = uri.previewFqn.substringAfterLast('.').ifBlank { "preview" }
+    val pascal = method.replaceFirstChar { it.uppercaseChar() }
+    val camel = method.replaceFirstChar { it.lowercaseChar() }
+    return RecordingTestGenerator.generate(
+      RecordingTestGenerator.Spec(
+        className = "Generated${pascal}Test",
+        methodName = "${camel}Interaction",
+        composableInvocation = "$method()",
+        events = events,
+      )
+    )
   }
 
   private data class RecordingFrameMetadata(
