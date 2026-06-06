@@ -80,6 +80,11 @@ dependencies {
   testImplementation(libs.compose.ui)
   testImplementation(libs.compose.foundation)
   testImplementation(libs.activity.compose)
+  // `XrSubspaceRendererTest` drives `XrSubspaceRenderer.render` directly (not through the Gradle
+  // plugin that puts the connector on the render config), so the spatial-semantics projection needs
+  // the connector on the test runtime — otherwise the producer is silently skipped (its
+  // `NoClassDefFoundError` is caught) and never exercised.
+  testImplementation(project(":data-layoutinspector-connector"))
   testImplementation(libs.xr.compose)
   testImplementation(libs.xr.compose.testing)
   testImplementation("androidx.compose.ui:ui-test-junit4")
