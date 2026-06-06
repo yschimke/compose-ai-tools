@@ -72,6 +72,7 @@ fun main(args: Array<String>) {
     "list" -> ListCommand(allArgs).run()
     "render" -> RenderCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
+    "diff-semantics" -> SemanticsDiffCommand(allArgs).run()
     "extensions" -> ExtensionsCommand(allArgs).run()
     "profile" -> ProfileCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
@@ -111,6 +112,9 @@ private fun printUsage() {
                        portable PNG+ZIP bundle (off by default).
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
+      diff-semantics   Diff two compose/semantics trees (base vs head) and report what
+                       changed semantically — a cheap, pixel-free regression signal:
+                       `compose-preview diff-semantics <base> <head> [--json] [--fail-on-change]`
       extensions       Introspect registered data extensions (`extensions list`)
       profile          Run a saved JSON profile: `compose-preview profile <path.json>`. A
                        profile bundles `extensions`, `filter`, `failOn`, and a chosen `report`

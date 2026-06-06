@@ -129,6 +129,9 @@ dependencies {
 
   implementation(libs.kotlinx.serialization.json)
 
+  // Semantics text-diff engine + payload model for the `diff-semantics` command (issue #1785).
+  implementation(project(":data-layoutinspector-core"))
+
   // Ktor client (OkHttp engine) for downloading a bundle when the open arg is a URL. The explicit
   // okhttp dep pins the engine to OkHttp 5.x — ktor-client-okhttp 3.0.3 only declares a transitive
   // 4.12.0, so without this the catalog's okhttp 5 version is never selected.
