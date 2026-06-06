@@ -30,6 +30,12 @@ public interface XrRenderServerHandle : AutoCloseable {
 
   /** Tear down [sessionId] on the server (its per-session GL resources; the engine is kept). */
   public fun stop(sessionId: String)
+
+  /**
+   * Whether the underlying process is still usable. The session manager drops a handle that returns
+   * `false` and re-spawns on the next open. Default `true` keeps fakes simple.
+   */
+  public fun isAlive(): Boolean = true
 }
 
 /**
@@ -78,6 +84,8 @@ private constructor(
     client.updatePanels(sessionId, panels)
 
   public override fun stop(sessionId: String): Unit = client.stop(sessionId)
+
+  public override fun isAlive(): Boolean = client.isAlive()
 
   override fun close(): Unit = client.close()
 
