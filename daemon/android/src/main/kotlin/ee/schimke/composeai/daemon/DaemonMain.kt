@@ -482,6 +482,13 @@ fun main(args: Array<String>) {
               dataProductRegistry = ComposeSemanticsWireframeDataProductRegistry(rootDir = dataRoot),
             )
           }
+          tryAdd("compose/spatial-semantics") {
+            Extension(
+              id = "compose/spatial-semantics",
+              displayName = "Compose spatial semantics",
+              dataProductRegistry = SpatialSemanticsDataProductRegistry(rootDir = dataRoot),
+            )
+          }
           tryAdd("layout/inspector") {
             Extension(
               id = "layout/inspector",

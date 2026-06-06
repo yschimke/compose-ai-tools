@@ -490,6 +490,14 @@ class RenderEngine(
             destPng =
               dataDir.resolve(previewId).resolve(ComposeSemanticsWireframeDataProducer.FILE_PNG),
           )
+          // Unified spatial-semantics tree (`compose/spatial-semantics`) — the degenerate
+          // single-panel case for an ordinary preview: one `panel` at identity pose carrying this
+          // same 2D tree. The XR batch render writes the real multi-panel tree to the same file.
+          SpatialSemanticsDataProducer.writeSinglePanel(
+            rootDir = dataDir,
+            previewId = previewId,
+            payload = payload,
+          )
         }
       }
     } catch (t: Throwable) {

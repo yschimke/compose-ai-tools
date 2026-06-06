@@ -22,6 +22,7 @@ import ee.schimke.composeai.xr.SpatialScene
 import ee.schimke.composeai.xr.SpatialSemanticsKind
 import ee.schimke.composeai.xr.SpatialSemanticsNode
 import ee.schimke.composeai.xr.SpatialSemanticsTree
+import ee.schimke.composeai.xr.SpatialSemanticsTrees
 import ee.schimke.composeai.xr.Vec3
 
 /**
@@ -171,30 +172,19 @@ public object SubspaceSceneRecorder {
     sizeDp: Size3dDp,
     previewId: String? = null,
     panelId: String = "panel",
-  ): SpatialSemanticsTree {
-    val panel =
-      SpatialSemanticsNode(
-        id = panelId,
-        kind = SpatialSemanticsKind.PANEL,
-        poseInRoot = identityPose(),
-        sizeDp = sizeDp,
-        panelContent = content,
-      )
-    return SpatialSemanticsTree(previewId = previewId, root = subspaceRootOf(listOf(panel)))
-  }
+  ): SpatialSemanticsTree =
+    SpatialSemanticsTrees.singlePanel(
+      content = content,
+      sizeDp = sizeDp,
+      previewId = previewId,
+      panelId = panelId,
+    )
 
   /** Wraps [panelNodes] under a `subspaceRoot` at identity pose (poses on children are absolute). */
   private fun subspaceRootOf(panelNodes: List<SpatialSemanticsNode>): SpatialSemanticsNode =
-    SpatialSemanticsNode(
-      id = "subspaceRoot",
-      kind = SpatialSemanticsKind.SUBSPACE_ROOT,
-      poseInRoot = identityPose(),
-      sizeDp = Size3dDp(width = 0, height = 0),
-      children = panelNodes,
-    )
+    SpatialSemanticsTrees.subspaceRoot(panelNodes)
 
-  private fun identityPose(): SpatialPose =
-    SpatialPose(translation = Vec3(0.0, 0.0, 0.0), rotation = Quat(0.0, 0.0, 0.0, 1.0))
+  private fun identityPose(): SpatialPose = SpatialSemanticsTrees.identityPose()
 
   /** First [RootForTest] (the Compose `AndroidComposeView`) in this view's subtree, or null. */
   private fun View.findRootForTest(): RootForTest? {

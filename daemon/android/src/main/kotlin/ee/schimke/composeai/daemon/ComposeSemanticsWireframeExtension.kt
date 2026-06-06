@@ -41,6 +41,15 @@ class ComposeSemanticsWireframeExtension : PostCaptureProcessor {
       payload = payload,
       destPng = rootDir.resolve(previewId).resolve(ComposeSemanticsWireframeDataProducer.FILE_PNG),
     )
+    // Unified spatial-semantics tree (`compose/spatial-semantics`) — the degenerate single-panel
+    // case for an ordinary preview: one `panel` at identity pose carrying this same 2D tree. The XR
+    // batch render writes the real multi-panel tree to the same file. Derived from the same captured
+    // root so it stays in lock-step with the wireframe + the `compose/semantics` snapshot.
+    SpatialSemanticsDataProducer.writeSinglePanel(
+      rootDir = rootDir,
+      previewId = previewId,
+      payload = payload,
+    )
   }
 
   companion object {
