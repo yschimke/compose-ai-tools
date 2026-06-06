@@ -272,11 +272,19 @@ class FakeDaemon : DaemonSpawn {
     runCatching { daemonReadIn.close() }
   }
 
-  /** Pushes a `discoveryUpdated` notification with one preview added. Test helper. */
+  /**
+   * Pushes a `discoveryUpdated` notification with one preview added. Test helper.
+   *
+   * [functionName] is the bare `@Composable` method name; it defaults to the last id segment but
+   * can be set independently so a test can model a named/variant preview whose id (e.g.
+   * `…Forecast_Light`) differs from its base function (`Forecast`). Emitted under the wire key
+   * `functionName` to match the real daemon's `PreviewInfoDto` `@SerialName("functionName")`.
+   */
   fun emitDiscovery(
     previewId: String,
     displayName: String = previewId,
     sourceFile: String? = null,
+    functionName: String = previewId.substringAfterLast('.'),
   ) {
     val params = buildJsonObject {
       putJsonArray("added") {
@@ -284,7 +292,7 @@ class FakeDaemon : DaemonSpawn {
           buildJsonObject {
             put("id", previewId)
             put("className", previewId.substringBeforeLast('.'))
-            put("methodName", previewId.substringAfterLast('.'))
+            put("functionName", functionName)
             put("displayName", displayName)
             if (sourceFile != null) put("sourceFile", sourceFile)
           }
