@@ -18,6 +18,8 @@ import ee.schimke.composeai.daemon.protocol.RecordingFormat
 import ee.schimke.composeai.daemon.protocol.RecordingInputParams
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence
+import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
+import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.File
@@ -325,16 +327,51 @@ class DesktopRecordingSession(
 
   private fun pointerIdOrDefault(event: RecordingScriptEvent): Int = event.pointerId ?: 0
 
+  /**
+   * Resolved image-natural pixel coordinates for a pointer event, or a reason it couldn't resolve.
+   */
+  private sealed interface ResolvedPixels {
+    data class At(val px: Int, val py: Int) : ResolvedPixels
+
+    data class Unresolved(val reason: String) : ResolvedPixels
+  }
+
+  /**
+   * Resolve where a pointer event lands: explicit [RecordingScriptEvent.pixelX]/`pixelY` win;
+   * otherwise the [RecordingScriptEvent.target] semantic handle is resolved against the held
+   * scene's live semantics tree (issue #1784). Unlike `interactive/input`, recording reports the
+   * miss as `unsupported` script evidence, so the reason string is surfaced to the agent.
+   */
+  private fun resolveEventPixels(event: RecordingScriptEvent): ResolvedPixels {
+    val px = event.pixelX
+    val py = event.pixelY
+    if (px != null && py != null) return ResolvedPixels.At(px, py)
+    val target =
+      event.target?.toSemanticsTarget()
+        ?: return ResolvedPixels.Unresolved(
+          "${event.kind} requires pixelX/pixelY or a resolvable target"
+        )
+    val root =
+      state.scene.composeSemanticsRoot()
+        ?: return ResolvedPixels.Unresolved("no semantics root available for target $target")
+    return when (val res = SemanticsTargets.resolve(root, target)) {
+      is TargetResolution.Resolved -> ResolvedPixels.At(res.point.x, res.point.y)
+      TargetResolution.NotFound -> ResolvedPixels.Unresolved("target $target matched no node")
+      is TargetResolution.Ambiguous ->
+        ResolvedPixels.Unresolved(
+          "target $target matched ${res.candidates.size} nodes; use a ref to disambiguate"
+        )
+    }
+  }
+
   private fun clickHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
-      val px = event.pixelX
-      val py = event.pixelY
-      if (px == null || py == null) {
-        return@RecordingScriptEventHandler unsupportedEvidence(
-          event,
-          "${event.kind} requires both pixelX and pixelY",
-        )
-      }
+      val (px, py) =
+        when (val resolved = resolveEventPixels(event)) {
+          is ResolvedPixels.At -> resolved.px to resolved.py
+          is ResolvedPixels.Unresolved ->
+            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+        }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
       activePointers[id] = offset
@@ -363,14 +400,12 @@ class DesktopRecordingSession(
    */
   private fun pointerHandler(eventType: PointerEventType): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
-      val px = event.pixelX
-      val py = event.pixelY
-      if (px == null || py == null) {
-        return@RecordingScriptEventHandler unsupportedEvidence(
-          event,
-          "${event.kind} requires both pixelX and pixelY",
-        )
-      }
+      val (px, py) =
+        when (val resolved = resolveEventPixels(event)) {
+          is ResolvedPixels.At -> resolved.px to resolved.py
+          is ResolvedPixels.Unresolved ->
+            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+        }
       val id = pointerIdOrDefault(event)
       val offset = sceneOffset(px, py)
       val releasedPointer: Pair<Int, Offset>?
@@ -458,15 +493,13 @@ class DesktopRecordingSession(
    */
   private fun rotaryScrollHandler(): RecordingScriptEventHandler =
     RecordingScriptEventHandler { event, ctx ->
-      val px = event.pixelX
-      val py = event.pixelY
+      val (px, py) =
+        when (val resolved = resolveEventPixels(event)) {
+          is ResolvedPixels.At -> resolved.px to resolved.py
+          is ResolvedPixels.Unresolved ->
+            return@RecordingScriptEventHandler unsupportedEvidence(event, resolved.reason)
+        }
       val deltaY = event.scrollDeltaY
-      if (px == null || py == null) {
-        return@RecordingScriptEventHandler unsupportedEvidence(
-          event,
-          "${event.kind} requires both pixelX and pixelY",
-        )
-      }
       if (deltaY == null) {
         return@RecordingScriptEventHandler unsupportedEvidence(
           event,

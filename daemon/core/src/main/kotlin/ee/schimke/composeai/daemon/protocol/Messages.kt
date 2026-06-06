@@ -1857,6 +1857,16 @@ data class RecordingScriptEvent(
   val pixelX: Int? = null,
   val pixelY: Int? = null,
   /**
+   * Stable semantic handle for the node this event targets, resolved server-side against the held
+   * composition's live semantics tree (issue #1784) so scripts target by ref / testTag / role+text
+   * instead of pixel coordinates. Applies to the pointer events (`input.click`,
+   * `input.pointerDown/Move/Up`, `input.rotaryScroll`); the daemon resolves it to the node's
+   * centre. Explicit [pixelX]/[pixelY] win when both are present. Unlike `interactive/input`
+   * (fire-and- forget), an unresolved target on a recording event surfaces as `unsupported` script
+   * evidence.
+   */
+  val target: SemanticsInputTarget? = null,
+  /**
    * Per-pointer identifier for multi-touch dispatch — distinct pointers (e.g. a two-finger pinch)
    * share a single virtual `tMs` while carrying their own id. Defaults to `0` for backwards
    * compatibility, so existing single-pointer scripts (the vast majority) keep working unchanged.

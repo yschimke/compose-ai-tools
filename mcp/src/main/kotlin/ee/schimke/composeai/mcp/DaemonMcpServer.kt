@@ -15,6 +15,7 @@ import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus
 import ee.schimke.composeai.daemon.protocol.RemoteComposeOverride
 import ee.schimke.composeai.daemon.protocol.RenderTier
+import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
@@ -1661,6 +1662,7 @@ class DaemonMcpServer(
                       "kind":{"type":"string","description":"Namespaced script-event id from `list_data_products`. Every event — input (`input.click`, `input.pointerDown`, `input.rotaryScroll`, …), accessibility actions (`a11y.action.click`, …), lifecycle (`lifecycle.pause`/`resume`/`stop`), state (`state.recreate`/`save`/`restore`), `preview.reload`, `recording.probe` — is advertised in the daemon's `dataExtensions[].recordingScriptEvents[]`. Only entries with `supported = true` are accepted; `supported = false` entries are roadmap and rejected up front."},
                       "pixelX":{"type":"integer","description":"X coord in image-natural pixel space (the preview's own widthPx)."},
                       "pixelY":{"type":"integer","description":"Y coord in image-natural pixel space."},
+                      "target":{"type":"object","description":"For pointer events (`input.click`, `input.pointerDown`/`Move`/`Up`, `input.rotaryScroll`) — a stable semantic handle resolved server-side to the node's centre instead of pixel coordinates (issue #1784). Set exactly one of `ref` (the compose/semantics node ref), `testTag` (a Modifier.testTag value), or `role`/`text` (accessibility role and/or visible text). Explicit pixelX/pixelY win when both are present; an unresolved target surfaces as `unsupported` script evidence.","properties":{"ref":{"type":"string"},"testTag":{"type":"string"},"role":{"type":"string"},"text":{"type":"string"}}},
                       "scrollDeltaY":{"type":"number","description":"For 'rotaryScroll'."},
                       "keyCode":{"type":"string","description":"For 'keyDown'/'keyUp' (reserved; v1 dispatch is a no-op)."},
                       "label":{"type":"string","description":"Agent label copied into scriptEvents evidence for probes/checkpoints."},
@@ -3447,6 +3449,10 @@ class DaemonMcpServer(
         kind = kindStr,
         pixelX = obj["pixelX"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
         pixelY = obj["pixelY"]?.jsonPrimitive?.contentOrNull?.toIntOrNull(),
+        target =
+          (obj["target"] as? JsonObject)?.let {
+            json.decodeFromJsonElement(SemanticsInputTarget.serializer(), it)
+          },
         scrollDeltaY = obj["scrollDeltaY"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull(),
         keyCode = obj["keyCode"]?.jsonPrimitive?.contentOrNull,
         label = obj["label"]?.jsonPrimitive?.contentOrNull,
