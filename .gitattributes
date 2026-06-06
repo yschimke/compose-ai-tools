@@ -1,10 +1,15 @@
-# Generated spatial-rich fixtures — rendered + harvested by
-# `daemon/desktop` `SpatialRichFixtureGeneratorTest` (panel PNGs, scene.json,
-# semantics-tree.json) and wrapped by `spatial-semantics.gen.mjs`. Mark them
-# generated so GitHub collapses them in pull-request diffs and excludes them
-# from language stats: review the generators (SpatialPanelFixtures.kt, the
-# *.gen.mjs scripts), not their output.
+# Generated fixtures — output of in-repo generators, committed so the dev harness can replay them.
+# Mark them generated so GitHub collapses them in pull-request diffs and excludes them from language
+# stats: review the generators, not their output. (Files stay in the tree; "Load diff" still expands
+# them on demand.)
+
+# Spatial-rich: rendered + harvested by `daemon/desktop` `SpatialRichFixtureGeneratorTest` (panel
+# PNGs, scene.json, semantics-tree.json), then wrapped by `spatial-semantics.gen.mjs`.
 vscode-extension/spatial-fixtures/spatial-rich/scene.json linguist-generated=true
 vscode-extension/spatial-fixtures/spatial-rich/semantics-tree.json linguist-generated=true
 vscode-extension/spatial-fixtures/spatial-rich/panels/*.png linguist-generated=true
-vscode-extension/preview-harness/fixtures/spatial-semantics.json linguist-generated=true
+
+# Preview-harness scenario fixtures: each `<name>.json` is emitted by its `<name>.gen.mjs`. The lone
+# exception is `fonts-browser.json`, which is hand-authored — keep it reviewable.
+vscode-extension/preview-harness/fixtures/*.json linguist-generated=true
+vscode-extension/preview-harness/fixtures/fonts-browser.json linguist-generated=false
