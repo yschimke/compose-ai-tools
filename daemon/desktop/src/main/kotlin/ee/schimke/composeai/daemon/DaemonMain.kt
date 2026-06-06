@@ -9,6 +9,8 @@ import ee.schimke.composeai.daemon.history.HistoryPruneConfig
 import ee.schimke.composeai.data.render.RenderPreviewExtension
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
+import ee.schimke.composeai.renderer.xr.client.XrCompositeBinary
+import ee.schimke.composeai.renderer.xr.client.XrRenderServerFactory
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -326,6 +328,19 @@ fun runDaemon(
     )
   }
 
+  // RENDERER_SERVICE.md — front the native `xr-composite --serve` only when its binary actually
+  // resolves (env override or the shared provisioning cache for this daemon's version). Gating here
+  // keeps `capabilities.xr` honest: absent binary → null factory → the `xr/*` methods stay
+  // MethodNotFound and clients fall back to the one-shot composite. XR is host-native, so it's
+  // wired
+  // on the desktop (host) daemon only.
+  val xrServerFactory =
+    if (XrCompositeBinary.resolve(version = DaemonVersion.value) != null) {
+      XrRenderServerFactory.Native
+    } else {
+      null
+    }
+
   val server =
     JsonRpcServer(
       input = input,
@@ -339,6 +354,7 @@ fun runDaemon(
       extensions = extensions,
       btaCompileService = btaCompileService,
       onExit = onExit,
+      xrServerFactory = xrServerFactory,
     )
 
   if (installSigtermHook) {

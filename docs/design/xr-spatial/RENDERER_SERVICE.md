@@ -18,11 +18,13 @@ into a long-lived, extensible render service.
 >   / `xr/stop` (notifications) behind an injected `XrRenderServerFactory`, advertising
 >   `capabilities.xr` and emitting frames as `streamFrame` notifications (the unchanged wire shape).
 >   Covered by in-process integration tests with a fake factory.
+> - **Desktop daemon wiring** — `:daemon:desktop`'s `DaemonMain` passes `XrRenderServerFactory.Native`
+>   only when `XrCompositeBinary.resolve(...)` finds the binary, so the real (host) daemon flips
+>   `capabilities.xr` on when provisioned and stays `MethodNotFound` otherwise. XR is host-native, so
+>   it's wired on the desktop daemon only.
 >
-> **Still to do:** wire the production factory in `DaemonMain` (resolve the binary at startup so the
-> real daemon flips `capabilities.xr` on — best verified with the daemon harness), route XR frames
-> through `FrameStreamRegistry` for visibility/fps gating, native multi-session concurrency, and the
-> `xr/structure` / `xr/a11y-overlay` data-product kinds.
+> **Still to do:** route XR frames through `FrameStreamRegistry` for visibility/fps gating, native
+> multi-session concurrency, and the `xr/structure` / `xr/a11y-overlay` data-product kinds.
 
 ## Motivation
 
