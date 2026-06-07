@@ -39,9 +39,23 @@
             const theme = params.get("theme") ?? "dark";
             document.documentElement.dataset.vscodeTheme = theme;
 
+            // When Playwright drives the page (`?driver=playwright`) it
+            // boots the bundle here but replays the fixture's `actions`
+            // itself via locators (auto-waiting, better failures) and
+            // owns the screenshot/log read. The page stops at `booted`.
+            // Opened any other way — the manual `index.html` iframes, a
+            // hand-typed URL — the page runs the whole flow itself
+            // (actions + settle) so the static preview still shows the
+            // post-action state.
+            const pwDriven = params.get("driver") === "playwright";
+
             const harness = (window.__composePreviewHarness ??= {});
             harness.fixture = fixture;
+            harness.booted = false;
             harness.ready = false;
+            // Exposed so the Playwright drive can flush DOM between
+            // locator clicks without re-deriving the rAF/img settle.
+            harness.settle = settle;
 
             async function loadScript(src) {
                 return new Promise((res, rej) => {
@@ -138,22 +152,28 @@
                 }
                 await settle();
 
-                // After the manifest has rendered, replay user-style
-                // interactions — clicking a card's focus button, a
-                // bundle chip, a filter toolbar option, etc. Each
-                // action targets the panel's light DOM by CSS
-                // selector so fixtures don't have to know about the
-                // controller graph behind the elements.
+                // Bundle is up and the manifest has rendered. Under
+                // Playwright this is the handoff point — the spec replays
+                // `actions` via locators and captures from here.
+                harness.booted = true;
+                if (pwDriven) return;
+
+                // Manual / iframe view: replay user-style interactions
+                // ourselves — clicking a card's focus button, a bundle
+                // chip, a filter toolbar option, etc. Each action targets
+                // the panel's light DOM by CSS selector so fixtures don't
+                // have to know about the controller graph behind the
+                // elements.
                 for (const action of data.actions ?? []) {
                     await runAction(action);
                     await settle();
                 }
 
-                // Optional fixed settle for surfaces the rAF/img/animation
-                // settle can't observe — e.g. the 3D `<spatial-view>` loads
-                // its quad textures through three.js's own image loader, not
-                // `.preview-card img`, so a WebGL fixture sets `settleMs` to
-                // give those a beat to decode before the screenshot.
+                // Optional fixed settle for surfaces the rAF/img settle
+                // can't observe — e.g. the 3D `<spatial-view>` loads its
+                // quad textures through three.js's own image loader, not
+                // `.preview-card img`, so a WebGL fixture sets `settleMs`
+                // to give those a beat to decode before the screenshot.
                 if (data.settleMs) {
                     await new Promise((r) => setTimeout(r, data.settleMs));
                 }
@@ -192,22 +212,13 @@
                               }),
                     ),
                 );
-                // Wait for any in-flight CSS animations (the `fadeIn`
-                // on freshly-painted preview <img>s, chip / tab
-                // transitions, etc.) to settle so the screenshot
-                // isn't a mid-frame grab. Skip infinite animations
-                // (the skeleton shimmer on cards that haven't
-                // received an `updateImage` runs forever, and
-                // `.finished` would never resolve).
-                if (typeof document.getAnimations === "function") {
-                    const finite = document.getAnimations().filter((a) => {
-                        const t = a.effect?.getTiming?.();
-                        return t && t.iterations !== Infinity;
-                    });
-                    await Promise.all(
-                        finite.map((a) => a.finished.catch(() => {})),
-                    );
-                }
+                // CSS-animation settling used to live here (await every
+                // finite animation's `.finished`, skip infinite ones).
+                // The snapshot spec now captures with Playwright's
+                // `animations: "disabled"`, which freezes every animation
+                // — finite and infinite — at capture, so there's nothing
+                // left to wait on. The manual iframe view shows live
+                // animation, which is fine for a human eyeballing it.
             }
 
             async function runAction(action) {

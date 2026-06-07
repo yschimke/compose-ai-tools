@@ -8,7 +8,7 @@
 //   node vscode-extension/preview-harness/fixtures/notifications.gen.mjs
 //
 // The harness uses the resulting JSON to drive the real `<preview-app>` Lit element headlessly —
-// see `preview-harness/snapshot.mjs`. Add new entries here when you add a notification surface to
+// see `preview-harness/snapshot.spec.mjs`. Add new entries here when you add a notification surface to
 // the Android sample that you want covered by the panel's design contract.
 
 import { readFileSync, writeFileSync } from "node:fs";

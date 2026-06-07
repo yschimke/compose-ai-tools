@@ -1,6 +1,6 @@
 // Headless capture of the standalone spatial-viewer dev page
 // (`spatial-fixtures/index.html`). The 3D analogue of
-// `preview-harness/snapshot.mjs`: serves the extension root over http (so
+// `preview-harness/snapshot.spec.mjs`: serves the extension root over http (so
 // `fetch()` of scene.json + texture PNGs works — Chromium blocks it on
 // `file://`), renders a fixture with software WebGL, optionally focuses a
 // panel, and writes a PNG to `spatial-fixtures/out/` (gitignored).
@@ -15,12 +15,11 @@
 
 import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, relative, normalize } from "node:path";
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { createServer } from "node:http";
+import { dirname, resolve, relative } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { startServer, extensionRoot } from "../preview-harness/_server.mjs";
 
 const fixturesDir = dirname(fileURLToPath(import.meta.url));
-const extensionRoot = resolve(fixturesDir, "..");
 const outDir = resolve(fixturesDir, "out");
 
 const args = process.argv.slice(2);
@@ -31,52 +30,9 @@ function flag(name, fallback) {
 const fixture = flag("fixture", "spatial-rich");
 const focus = flag("focus", null);
 
-const mimeByExt = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".mjs": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".png": "image/png",
-    ".map": "application/json; charset=utf-8",
-};
-
-function startServer(root) {
-    return new Promise((resolveServer) => {
-        const server = createServer(async (req, res) => {
-            try {
-                const url = new URL(req.url, "http://localhost");
-                const rel = decodeURIComponent(url.pathname).replace(
-                    /^\/+/,
-                    "",
-                );
-                let target = normalize(resolve(root, rel));
-                if (relative(root, target).startsWith("..")) {
-                    res.writeHead(403);
-                    res.end("forbidden");
-                    return;
-                }
-                const s = await stat(target).catch(() => null);
-                if (s?.isDirectory()) target = resolve(target, "index.html");
-                const body = await readFile(target);
-                const ext = target.slice(target.lastIndexOf("."));
-                res.writeHead(200, {
-                    "Content-Type":
-                        mimeByExt[ext] ?? "application/octet-stream",
-                });
-                res.end(body);
-            } catch {
-                res.writeHead(404);
-                res.end("not found");
-            }
-        });
-        server.listen(0, "127.0.0.1", () =>
-            resolveServer({ server, port: server.address().port }),
-        );
-    });
-}
-
-const { server, port } = await startServer(extensionRoot);
+// Shared static server (`preview-harness/_server.mjs`) — same root, same
+// MIME map the preview-harness specs use.
+const { port, close } = await startServer(extensionRoot);
 const browser = await chromium.launch({
     args: ["--enable-unsafe-swiftshader", "--use-gl=angle"],
     executablePath: process.env.SPATIAL_CHROMIUM || chromium.executablePath(),
@@ -114,5 +70,5 @@ try {
     console.log(`wrote ${relative(extensionRoot, file)}`);
 } finally {
     await browser.close();
-    server.close();
+    await close();
 }
