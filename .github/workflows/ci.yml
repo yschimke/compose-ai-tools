@@ -205,6 +205,10 @@ jobs:
       # Best-effort: a missing scene or a webview hiccup never fails this job.
       - name: Capture spatial webview from the real XR render
         if: always()
+        # Inspection-only artifact: a flaky npm ci / Chromium / snapshot must
+        # never fail the XR composite gate. `if: always()` only controls whether
+        # the step runs — `continue-on-error` is what keeps its failure non-fatal.
+        continue-on-error: true
         shell: bash
         run: |
           set -uo pipefail
