@@ -103,6 +103,21 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         this.postSpatialScene();
     }
 
+    /**
+     * Drop the retained spatial scene and tell the webview to hide its 3D
+     * toggle. Called when a refresh lands on previews with no XR scene, so a
+     * previously-viewed XR scene doesn't linger (it would otherwise be re-posted
+     * on every `webviewReady`). No-ops when nothing is currently shown, keeping
+     * the common non-XR refresh path quiet.
+     */
+    clearSpatialScene(): void {
+        if (!this.currentSpatialScene) {
+            return;
+        }
+        this.currentSpatialScene = undefined;
+        this.view?.webview.postMessage({ command: "clearSpatialScene" });
+    }
+
     private postSpatialScene(): void {
         const webview = this.view?.webview;
         if (!webview || !this.currentSpatialScene) {

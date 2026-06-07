@@ -4677,6 +4677,9 @@ function feedSpatialPreview(
             return; // a single 3D scene — first XR preview wins
         }
     }
+    // No XR preview in this set — clear any scene retained from a prior one so a
+    // stale 3D view doesn't linger behind the toggle (no-ops if none was shown).
+    spatialPanel.clearSpatialScene();
 }
 
 async function refresh(

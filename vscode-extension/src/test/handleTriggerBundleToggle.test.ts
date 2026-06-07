@@ -64,6 +64,7 @@ function buildContextStub(): ContextWithSpy {
             calls.push(bundleId);
         },
         setSpatialScene: noop,
+        clearSpatialScene: noop,
     };
     return { ctx, toggleCalls: () => calls };
 }
