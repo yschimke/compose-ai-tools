@@ -4698,15 +4698,24 @@ function showOrClearSpatialScene(
 }
 
 /**
- * Seed the 3D spatial view after a render: show the first XR subspace preview's
- * real scene (the view holds a single scene), or clear it when the set has none.
- * Per-card focus (`previewScopeChanged`) then overrides this with the focused
- * preview's scene. Never steals focus; ordinary previews leave the view untouched.
+ * The preview set the spatial view was last seeded from, retained so leaving
+ * focus mode (`previewScopeChanged` with a null id) can re-seed the module-level
+ * scene (the first XR preview) rather than stranding a focused/cleared one.
+ */
+let lastSpatialSeedPreviews: readonly PreviewInfo[] = [];
+
+/**
+ * Seed the 3D spatial view after a render (or when focus clears): show the first
+ * XR subspace preview's real scene (the view holds a single scene), or clear it
+ * when the set has none. Per-card focus (`previewScopeChanged`) overrides this
+ * with the focused preview's scene. Never steals focus; ordinary previews leave
+ * the view untouched.
  */
 function feedSpatialPreview(
     previews: readonly PreviewInfo[],
     spatialPanel: PreviewPanel,
 ): void {
+    lastSpatialSeedPreviews = previews;
     for (const preview of previews) {
         const mod = previewModuleIndex.get(preview.id);
         if (!mod) continue;
@@ -5707,13 +5716,18 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             const requested = msg.previewId ?? undefined;
             // Per-card XR: track the focused preview in the 3D spatial view —
             // show its scene when it's an XR preview, clear it when focusing a
-            // non-XR card so a stale scene doesn't linger. Widening (null)
-            // leaves the post-render seed (first XR preview) in place.
-            if (panel && requested) {
-                showOrClearSpatialScene(
-                    panel,
-                    loadSpatialForPreviewId(requested),
-                );
+            // non-XR card so a stale scene doesn't linger. Leaving focus (null)
+            // re-seeds the module-level scene (first XR preview) so it doesn't
+            // strand a focused or cleared one.
+            if (panel) {
+                if (requested) {
+                    showOrClearSpatialScene(
+                        panel,
+                        loadSpatialForPreviewId(requested),
+                    );
+                } else {
+                    feedSpatialPreview(lastSpatialSeedPreviews, panel);
+                }
             }
             // Re-scope the History panel's previewId filter so it only lists
             // entries for the focused preview.
