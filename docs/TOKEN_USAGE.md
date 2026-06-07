@@ -103,6 +103,17 @@ previews.
   iterating and only need to know *whether* / *what* changed; fetch
   `observe: "png"` when you actually need to look at pixels (issue
   #1787).
+- `render_preview` with `crop` returns only one element's rectangle
+  instead of the full frame — a semantic target (`ref` / `testTag` /
+  `role`+`text`, resolved against `compose/semantics`) or explicit
+  `{left,top,right,bottom}` render pixels. An element crop is a small PNG
+  (typically a few hundred input tokens vs ~1.5 k for a full-frame read),
+  and it pairs with `diff_semantics`: the diff names the `ref` that
+  changed, the crop renders just that `ref` on base and head — turning a
+  "one label moved" review from a ~3 k-token full-frame PNG pair into a
+  few-hundred-token crop pair. `observe` still applies (`hash` /
+  `semantics` give the crop's sha + dimensions with no base64) (issue
+  #1817).
 - `render_matrix` returns one compact cell per axis combination
   (`overrides` + sha256 + dimensions + a `changed` flag, no base64), so
   a `device × locale × uiMode × fontScale` sweep costs roughly

@@ -19,10 +19,15 @@ import ee.schimke.composeai.daemon.protocol.RenderTier
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 import ee.schimke.composeai.daemon.protocol.UiMode
 import ee.schimke.composeai.daemon.protocol.WallpaperOverride
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
+import ee.schimke.composeai.data.layoutinspector.SemanticsBounds
 import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
+import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
+import ee.schimke.composeai.data.layoutinspector.SemanticsTargets
+import ee.schimke.composeai.data.layoutinspector.TargetResolution
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionCommandCatalog
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.io.SystemFileSystem
@@ -52,6 +57,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -457,6 +463,19 @@ class DaemonMcpServer(
     val file = File(outcome.pngPath)
     check(file.isFile) { "renderAndReadBytes: pngPath does not exist: ${outcome.pngPath}" }
     return applyImageSizeOverride(fileSystem.read(file.path.toPath()) { readByteArray() })
+  }
+
+  /**
+   * Like [renderAndReadBytes] but returns the rendered PNG at full resolution, **before** the host
+   * image-size cap ([applyImageSizeOverride]). The crop path needs the un-downscaled bytes so its
+   * pixel space matches `compose/semantics` `boundsInRoot`; it re-applies the cap to the small
+   * crop.
+   */
+  private fun renderAndReadRawBytes(uri: PreviewUri, overrides: PreviewOverrides?): ByteArray {
+    val outcome = awaitNextRender(uri, overrides = overrides)
+    val file = File(outcome.pngPath)
+    check(file.isFile) { "renderAndReadRawBytes: pngPath does not exist: ${outcome.pngPath}" }
+    return fileSystem.read(file.path.toPath()) { readByteArray() }
   }
 
   /**
@@ -975,6 +994,7 @@ class DaemonMcpServer(
               "properties":{
                 "uri":{"type":"string","description":"compose-preview://<workspace>/<module>/<fqn>?config=<qualifier>"},
                 "observe":{"type":"string","enum":["png","semantics","hash"],"description":"Observation level. Default 'png' (base64 image). 'semantics' returns the compose/semantics tree + sha256 + dimensions (no base64 — far cheaper for an agent loop); 'hash' returns just sha256 + dimensions."},
+                "crop":{"type":"object","description":"Return only ONE element's rectangle instead of the full frame (issue #1817) — far fewer tokens, and it focuses the view on the region you care about (the natural partner to diff_semantics: 'ref X changed' -> crop ref X). Set EITHER a semantic target (ref | testTag | role/text, resolved against compose/semantics) OR explicit render-pixel bounds {left,top,right,bottom}. Honours 'observe': png returns the cropped image (+ region metadata), hash/semantics return the crop's sha + dimensions only.","properties":{"ref":{"type":"string"},"testTag":{"type":"string"},"role":{"type":"string"},"text":{"type":"string"},"left":{"type":"integer"},"top":{"type":"integer"},"right":{"type":"integer"},"bottom":{"type":"integer"}}},
                 "overrides":{"type":"object","description":"Optional per-call display overrides."},
                 "force":{"type":"object","description":"Sanctioned escape hatch when the freshness probe missed an edit. Forwards fileChanged({kind:\"classpath\"}) before rendering, dropping the daemon's user classloader. Each use is logged + counted; please report on issue #924.","properties":{"reason":{"type":"string","description":"Human-readable reason for needing force (required)."}},"required":["reason"]}
               },
@@ -1218,6 +1238,20 @@ class DaemonMcpServer(
                     "reason":{"type":"string","description":"Human-readable reason for needing force (required). Stored in the recent-forces ring buffer for debugging."}
                   },
                   "required":["reason"]
+                },
+                "crop":{
+                  "type":"object",
+                  "description":"Return only ONE element's rectangle instead of the full-frame PNG (issue #1817). Far fewer tokens than a whole screenshot, and it focuses the view on the region you care about — the natural partner to diff_semantics: when the diff says ref X changed, crop just ref X to look. Set EITHER a semantic target (ref | testTag | role/text), resolved against the preview's compose/semantics tree in the same root-pixel space as the image, OR explicit render-pixel bounds {left,top,right,bottom}. Honours 'observe': png returns the cropped image plus a small metadata block (resolved region, ref, source dimensions, sha); hash/semantics return the crop's sha + dimensions only (a region-scoped change signal), and semantics also includes the matched node's semantics subtree.",
+                  "properties":{
+                    "ref":{"type":"string","description":"Stable ComposeSemanticsNode.ref (the unambiguous handle; survives content edits)."},
+                    "testTag":{"type":"string","description":"Modifier.testTag(...) value (must be unique)."},
+                    "role":{"type":"string","description":"Accessibility role to match, with or without text."},
+                    "text":{"type":"string","description":"Visible text/label to match, with or without role."},
+                    "left":{"type":"integer","description":"Explicit crop bounds in render pixels; set all four of left/top/right/bottom."},
+                    "top":{"type":"integer"},
+                    "right":{"type":"integer"},
+                    "bottom":{"type":"integer"}
+                  }
                 }
               },
               "required":["uri"]
@@ -1929,6 +1963,14 @@ class DaemonMcpServer(
     if (observe !in setOf("png", "semantics", "hash")) {
       return errorCallToolResult("render_preview: 'observe' must be one of png | semantics | hash")
     }
+    val cropArg =
+      args["crop"]?.let {
+        it as? JsonObject
+          ?: return errorCallToolResult(
+            "render_preview: 'crop' must be an object (a target {ref|testTag|role/text} or " +
+              "bounds {left,top,right,bottom})"
+          )
+      }
     val overrides =
       args["overrides"]?.let {
         runCatching { decodePreviewOverrides(it) }
@@ -1956,14 +1998,207 @@ class DaemonMcpServer(
     }
     if (forceReason != null) invalidateClasspathForForce(uri, forceReason)
     return runCatching {
-        val bytes = renderAndReadBytes(uri, overrides = overrides)
-        if (observe == "png") {
-          pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
+        if (cropArg != null) {
+          renderCropped(uri, overrides, cropArg, observe)
         } else {
-          renderObservation(uri, bytes, includeSemantics = observe == "semantics")
+          val bytes = renderAndReadBytes(uri, overrides = overrides)
+          if (observe == "png") {
+            pngCallToolResult(Base64.getEncoder().encodeToString(bytes))
+          } else {
+            renderObservation(uri, bytes, includeSemantics = observe == "semantics")
+          }
         }
       }
       .getOrElse { errorCallToolResult("render_preview failed: ${it.message}") }
+  }
+
+  /**
+   * `render_preview.crop` (issue #1817) — render the full preview, then return only the rectangle
+   * of a single element. The crop is resolved either from explicit `{left,top,right,bottom}` render
+   * pixels or from a semantic target (`ref` / `testTag` / `role`+`text`) resolved against the
+   * preview's `compose/semantics` tree — the same vocabulary as targeting and `diff_semantics`. Far
+   * fewer tokens than a full-frame PNG, and it focuses the agent's eyes on the region the semantics
+   * already flagged: the natural partner to `diff_semantics` ("ref X changed" → crop just ref X).
+   *
+   * Crop runs entirely in this agent-facing layer: it operates on the rendered PNG bytes plus the
+   * `compose/semantics` product (both backends already emit), so the daemon's cached full-frame
+   * artifact is untouched and Android/Desktop behave identically. Because `boundsInRoot` is in the
+   * same root-pixel space as the rendered image, the crop is applied to the **full-resolution**
+   * bytes *before* the host image-size cap, then the cap is re-applied to the (small) result.
+   */
+  private fun renderCropped(
+    uri: PreviewUri,
+    overrides: PreviewOverrides?,
+    crop: JsonObject,
+    observe: String,
+  ): CallToolResult {
+    val boundKeys = listOf("left", "top", "right", "bottom")
+    val presentBounds = boundKeys.filter { crop[it] != null }
+    val target = cropTargetOf(crop)
+    if (presentBounds.isEmpty() && target == null) {
+      return errorCallToolResult(
+        "render_preview: 'crop' must set a target (ref | testTag | role/text) or explicit bounds " +
+          "{left,top,right,bottom}"
+      )
+    }
+    if (presentBounds.isNotEmpty() && presentBounds.size != 4) {
+      return errorCallToolResult(
+        "render_preview: 'crop' bounds need all of left,top,right,bottom (got " +
+          "${presentBounds.joinToString(",")})"
+      )
+    }
+
+    val rawBytes = renderAndReadRawBytes(uri, overrides)
+    val dims =
+      pngDimensions(rawBytes)
+        ?: return errorCallToolResult("render_preview: could not read rendered PNG dimensions")
+    val (imgW, imgH) = dims
+
+    var node: ComposeSemanticsNode? = null
+    val bounds: SemanticsBounds
+    if (presentBounds.size == 4) {
+      val ints = boundKeys.map { key ->
+        crop[key]!!.jsonPrimitive.intOrNull
+          ?: return errorCallToolResult("render_preview: 'crop.$key' must be an integer")
+      }
+      bounds = SemanticsBounds(ints[0], ints[1], ints[2], ints[3])
+    } else {
+      val (payload, err) = fetchSemanticsPayload(uri.toUri(), "crop")
+      if (payload == null) {
+        return errorCallToolResult("render_preview: crop by target needs compose/semantics — $err")
+      }
+      when (val res = SemanticsTargets.resolve(payload.root, target!!)) {
+        is TargetResolution.Resolved -> {
+          node = res.node
+          bounds =
+            SemanticsBounds.parse(res.node.boundsInRoot)
+              ?: return errorCallToolResult(
+                "render_preview: matched node '${res.node.ref}' has unparseable bounds " +
+                  "'${res.node.boundsInRoot}'"
+              )
+        }
+        TargetResolution.NotFound ->
+          return errorCallToolResult(
+            "render_preview: crop target matched no node in compose/semantics"
+          )
+        is TargetResolution.Ambiguous ->
+          return errorCallToolResult(
+            "render_preview: crop target matched ${res.candidates.size} nodes — pass a unique " +
+              "'ref' to disambiguate (candidates: " +
+              res.candidates.take(6).joinToString(", ") { it.ref ?: it.nodeId } +
+              (if (res.candidates.size > 6) ", …" else "") +
+              ")"
+          )
+      }
+    }
+
+    // Clamp the (possibly off-frame) bounds to the rendered image and reject an empty region.
+    val left = bounds.left.coerceIn(0, imgW)
+    val top = bounds.top.coerceIn(0, imgH)
+    val right = bounds.right.coerceIn(left, imgW)
+    val bottom = bounds.bottom.coerceIn(top, imgH)
+    if (right - left <= 0 || bottom - top <= 0) {
+      return errorCallToolResult(
+        "render_preview: crop region ${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}" +
+          " is empty after clamping to ${imgW}x${imgH}"
+      )
+    }
+
+    val croppedRaw =
+      cropPng(rawBytes, left, top, right - left, bottom - top)
+        ?: return errorCallToolResult("render_preview: failed to crop the rendered PNG")
+    // Re-apply the host image-size cap to the (small) crop so the same downscale contract holds.
+    val cropped = applyImageSizeOverride(croppedRaw)
+
+    return cropResult(uri, cropped, observe, intArrayOf(left, top, right, bottom), imgW, imgH, node)
+  }
+
+  /** Map a `crop` JSON object onto a [SemanticsTarget]; null when no target field is set. */
+  private fun cropTargetOf(crop: JsonObject): SemanticsTarget? {
+    fun str(key: String) = crop[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    val ref = str("ref")
+    val tag = str("testTag")
+    val role = str("role")
+    val text = str("text")
+    return when {
+      ref != null -> SemanticsTarget.Ref(ref)
+      tag != null -> SemanticsTarget.Tag(tag)
+      role != null || text != null -> SemanticsTarget.RoleText(role, text)
+      else -> null
+    }
+  }
+
+  /**
+   * Crop a PNG to `(x, y, w, h)` (already clamped) and re-encode. `getSubimage` shares the parent
+   * raster, so the sub-image is copied into a standalone buffer before encoding.
+   */
+  private fun cropPng(bytes: ByteArray, x: Int, y: Int, w: Int, h: Int): ByteArray? {
+    val src = runCatching { ImageIO.read(bytes.inputStream()) }.getOrNull() ?: return null
+    val cx = x.coerceIn(0, maxOf(0, src.width - 1))
+    val cy = y.coerceIn(0, maxOf(0, src.height - 1))
+    val cw = w.coerceIn(1, src.width - cx)
+    val ch = h.coerceIn(1, src.height - cy)
+    val copy = java.awt.image.BufferedImage(cw, ch, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = copy.createGraphics()
+    try {
+      g.drawImage(src.getSubimage(cx, cy, cw, ch), 0, 0, null)
+    } finally {
+      g.dispose()
+    }
+    val out = java.io.ByteArrayOutputStream()
+    ImageIO.write(copy, "png", out)
+    return out.toByteArray()
+  }
+
+  /**
+   * Build the `crop` response. `observe="png"` returns the cropped image plus a small metadata
+   * block (resolved region, ref, source dimensions, sha); `observe="hash"`/`"semantics"` returns
+   * just the metadata (a region-scoped change signal, no base64), and `semantics` additionally
+   * carries the matched node's own semantics subtree when the crop resolved a target.
+   */
+  private fun cropResult(
+    uri: PreviewUri,
+    croppedBytes: ByteArray,
+    observe: String,
+    region: IntArray,
+    sourceWidthPx: Int,
+    sourceHeightPx: Int,
+    node: ComposeSemanticsNode?,
+  ): CallToolResult {
+    val dims = pngDimensions(croppedBytes)
+    val meta = buildJsonObject {
+      put("uri", uri.toUri())
+      putJsonObject("crop") {
+        put("left", region[0])
+        put("top", region[1])
+        put("right", region[2])
+        put("bottom", region[3])
+      }
+      node?.ref?.let { put("ref", it) }
+      put("sourceWidthPx", sourceWidthPx)
+      put("sourceHeightPx", sourceHeightPx)
+      put("sha256", sha256Hex(croppedBytes))
+      put("sizeBytes", croppedBytes.size)
+      dims?.let {
+        put("widthPx", it.first)
+        put("heightPx", it.second)
+      }
+      if (observe == "semantics" && node != null) {
+        put("semantics", json.encodeToJsonElement(ComposeSemanticsNode.serializer(), node))
+      }
+    }
+    val blocks = buildList {
+      if (observe == "png") {
+        add(
+          ContentBlock.Image(
+            data = Base64.getEncoder().encodeToString(croppedBytes),
+            mimeType = "image/png",
+          )
+        )
+      }
+      add(ContentBlock.Text(meta.toString()))
+    }
+    return CallToolResult(content = blocks)
   }
 
   /**
