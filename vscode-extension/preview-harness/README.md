@@ -75,6 +75,16 @@ A few specifics that come up:
   `HARNESS_CHROMIUM=<path-to-chrome>` when the default Playwright
   Chromium download isn't present (some sandboxes ship only the full
   build, not the headless shell).
+- **Live XR capture** (`spatial-xr-real`): the committed spatial fixtures wrap
+  the `spatial-rich` proxy (per-panel renders assembled offline). To diff the
+  *actual* `composePreviewRenderXr` output, the `render-xr-composite` CI job
+  generates a fixture from the real render dir with
+  [`fixtures/spatial-xr-real.gen.mjs`](fixtures/spatial-xr-real.gen.mjs)
+  (`--render-dir <renders/<id>> --texture-base /spatial-fixtures/spatial-xr-real/`),
+  snapshots it (`HARNESS_FIXTURE=spatial-xr-real`), and uploads the PNG as the
+  `spatial-xr-real-render` artifact. The fixture + staged textures are generated
+  in CI and git-ignored (never committed). The generator's shape is unit-tested
+  in `src/test/spatialXrRealGen.test.ts`.
 
 ## Run
 

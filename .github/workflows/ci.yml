@@ -196,6 +196,50 @@ jobs:
           grep -q 'composite.png' "$base/previews.json" \
             || { echo "::error::previews.json has no composite capture"; exit 1; }
           echo "OK: baked $png ($(du -h "$png" | cut -f1)), referenced in previews.json"
+      # Capture the 3D spatial webview fed by the REAL composePreviewRenderXr
+      # output (scene.json + harvested compose-spatial-semantics.json + panel
+      # textures) — the true end-to-end spatial-view capture, as opposed to the
+      # committed `spatial-rich` proxy the vscode-preview-comment bot diffs. The
+      # generator + its shape are unit-tested (spatialXrRealGen.test.ts); this
+      # step exercises the live path and uploads the rendered PNG for inspection.
+      # Best-effort: a missing scene or a webview hiccup never fails this job.
+      - name: Capture spatial webview from the real XR render
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          base=samples/xr-spatial/build/compose-previews/renders
+          scene="$(find "$base" -name scene.json -print -quit 2>/dev/null || true)"
+          if [ -z "$scene" ]; then
+            echo "no scene.json under $base — skipping spatial webview capture"
+            exit 0
+          fi
+          renderdir="$(dirname "$scene")"
+          echo "Capturing spatial webview from $renderdir"
+          # Stage the real render's scene + textures where the harness static
+          # server resolves them (rooted at the extension dir → /spatial-fixtures/).
+          dest=vscode-extension/spatial-fixtures/spatial-xr-real
+          rm -rf "$dest" && mkdir -p "$dest"
+          cp "$renderdir"/*.png "$dest"/ 2>/dev/null || true
+          cp "$renderdir"/scene.json "$dest"/ 2>/dev/null || true
+          cp "$renderdir"/compose-spatial-semantics.json "$dest"/ 2>/dev/null || true
+          # Generate the harness fixture from the real render dir.
+          node vscode-extension/preview-harness/fixtures/spatial-xr-real.gen.mjs \
+            --render-dir "$renderdir" \
+            --texture-base /spatial-fixtures/spatial-xr-real/ \
+            > vscode-extension/preview-harness/fixtures/spatial-xr-real.json
+          # Render just this fixture under Chromium → preview-harness/out/.
+          ( cd vscode-extension
+            npm ci
+            npx playwright install --with-deps chromium
+            HARNESS_FIXTURE=spatial-xr-real npm run harness:snapshot )
+      - name: Upload spatial webview render
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: spatial-xr-real-render
+          path: vscode-extension/preview-harness/out/spatial-xr-real.*.png
+          if-no-files-found: warn
       # Exercise the long-lived server path (--serve): initialize -> render -> xr/updatePanels over
       # JSON-RPC stdio, asserting streamFrame notifications arrive and a per-frame panel update
       # actually changes the rendered image. Reuses the dist/ binary + materials and the committed

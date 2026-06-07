@@ -40,6 +40,10 @@ vscode-extension/media/webview/
 vscode-extension/preview-harness/out/
 vscode-extension/spatial-fixtures/out/
 vscode-extension/preview-harness/test-results/
+# Live XR spatial capture — generated in CI (render-xr-composite) from the real
+# composePreviewRenderXr output; never committed (the committed proxy is spatial-rich).
+vscode-extension/preview-harness/fixtures/spatial-xr-real.json
+vscode-extension/spatial-fixtures/spatial-xr-real/
 vscode-extension/preview-harness/playwright-report/
 vscode-extension/preview-harness/.last-run.json
 vscode-extension/src/version.generated.ts
