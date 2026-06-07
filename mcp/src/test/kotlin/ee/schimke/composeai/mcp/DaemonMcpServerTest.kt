@@ -952,6 +952,226 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_preview crop by testTag returns just the element rectangle`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "compose/semantics",
+            schemaVersion = 2,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      d.dataFetchHandler = { _, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 2,
+          payload =
+            buildJsonObject {
+              putJsonObject("root") {
+                put("nodeId", "1")
+                put("boundsInRoot", "0,0,40,30")
+                putJsonArray("children") {
+                  add(
+                    buildJsonObject {
+                      put("nodeId", "2")
+                      put("boundsInRoot", "10,5,30,25")
+                      put("testTag", "hero")
+                    }
+                  )
+                }
+              }
+            },
+        )
+      }
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // A real 40×30 PNG (the fake header bytes other tests use can't be decoded by ImageIO, which
+    // the crop path needs). Paint the hero rectangle blue so we can confirm we cropped the element.
+    val pngFile = tmp.newFile("crop-render.png")
+    run {
+      val img = BufferedImage(40, 30, BufferedImage.TYPE_INT_ARGB)
+      val g = img.createGraphics()
+      g.color = java.awt.Color.RED
+      g.fillRect(0, 0, 40, 30)
+      g.color = java.awt.Color.BLUE
+      g.fillRect(10, 5, 20, 20)
+      g.dispose()
+      ImageIO.write(img, "png", pngFile)
+    }
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("crop") { put("testTag", "hero") }
+        },
+        timeoutMs = 10_000,
+      )
+
+    // observe defaults to png: one image block (the crop) + one metadata text block.
+    val (data, mime) = resp.firstImageContent()
+    assertThat(mime).isEqualTo("image/png")
+    val croppedBytes = Base64.getDecoder().decode(data)
+    val croppedImg = ImageIO.read(croppedBytes.inputStream())
+    assertThat(croppedImg.width).isEqualTo(20)
+    assertThat(croppedImg.height).isEqualTo(20)
+    // The whole crop is the blue hero rectangle.
+    assertThat(croppedImg.getRGB(0, 0)).isEqualTo(java.awt.Color.BLUE.rgb)
+    assertThat(croppedImg.getRGB(19, 19)).isEqualTo(java.awt.Color.BLUE.rgb)
+
+    val meta = json.parseToJsonElement(resp.textContents().first()).jsonObject
+    val crop = meta["crop"]!!.jsonObject
+    assertThat(crop["left"]?.jsonPrimitive?.contentOrNull).isEqualTo("10")
+    assertThat(crop["top"]?.jsonPrimitive?.contentOrNull).isEqualTo("5")
+    assertThat(crop["right"]?.jsonPrimitive?.contentOrNull).isEqualTo("30")
+    assertThat(crop["bottom"]?.jsonPrimitive?.contentOrNull).isEqualTo("25")
+    assertThat(meta["sourceWidthPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("40")
+    assertThat(meta["sourceHeightPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("30")
+    assertThat(meta["widthPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("20")
+    assertThat(meta["heightPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("20")
+    // ref assigned by SemanticsRefs (testTag-anchored) round-trips into the response.
+    assertThat(meta["ref"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+  }
+
+  @Test
+  fun `render_preview crop by explicit bounds with observe hash returns region dimensions only`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngFile = tmp.newFile("crop-bounds.png")
+    run {
+      val img = BufferedImage(40, 30, BufferedImage.TYPE_INT_ARGB)
+      val g = img.createGraphics()
+      g.color = java.awt.Color.GREEN
+      g.fillRect(0, 0, 40, 30)
+      g.dispose()
+      ImageIO.write(img, "png", pngFile)
+    }
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("observe", "hash")
+          putJsonObject("crop") {
+            put("left", 4)
+            put("top", 6)
+            put("right", 24)
+            put("bottom", 16)
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    // observe=hash: no image block, just the metadata text block.
+    assertThat(resp.textContents()).hasSize(1)
+    val meta = json.parseToJsonElement(resp.firstTextContent()).jsonObject
+    assertThat(meta["widthPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("20")
+    assertThat(meta["heightPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("10")
+    assertThat(meta["sourceWidthPx"]?.jsonPrimitive?.contentOrNull).isEqualTo("40")
+    assertThat(meta["sha256"]?.jsonPrimitive?.contentOrNull).isNotEmpty()
+    // Explicit-bounds crop resolves no node, so no ref.
+    assertThat(meta["ref"]).isNull()
+  }
+
+  @Test
+  fun `render_preview crop reports an ambiguous target instead of guessing`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    factory.daemonConfigurer = { d ->
+      d.advertisedDataProducts =
+        listOf(
+          ee.schimke.composeai.daemon.protocol.DataProductCapability(
+            kind = "compose/semantics",
+            schemaVersion = 2,
+            transport = ee.schimke.composeai.daemon.protocol.DataProductTransport.INLINE,
+            attachable = true,
+            fetchable = true,
+            requiresRerender = false,
+          )
+        )
+      d.dataFetchHandler = { _, kind, _, _ ->
+        FakeDaemon.DataFetchOutcome.Ok(
+          kind = kind,
+          schemaVersion = 2,
+          payload =
+            buildJsonObject {
+              putJsonObject("root") {
+                put("nodeId", "1")
+                put("boundsInRoot", "0,0,40,30")
+                putJsonArray("children") {
+                  add(
+                    buildJsonObject {
+                      put("nodeId", "2")
+                      put("boundsInRoot", "0,0,20,30")
+                      put("role", "Button")
+                    }
+                  )
+                  add(
+                    buildJsonObject {
+                      put("nodeId", "3")
+                      put("boundsInRoot", "20,0,40,30")
+                      put("role", "Button")
+                    }
+                  )
+                }
+              }
+            },
+        )
+      }
+    }
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val pngFile = tmp.newFile("crop-ambiguous.png")
+    run {
+      val img = BufferedImage(40, 30, BufferedImage.TYPE_INT_ARGB)
+      ImageIO.write(img, "png", pngFile)
+    }
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_preview",
+        buildJsonObject {
+          put("uri", uri)
+          putJsonObject("crop") { put("role", "Button") }
+        },
+        timeoutMs = 10_000,
+      )
+    assertThat(resp.firstTextContent()).contains("matched 2 nodes")
+  }
+
+  @Test
   fun `render_matrix renders one cell per axis combination with per-cell hashes`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")
