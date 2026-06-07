@@ -187,6 +187,24 @@
                 // dispatcher's downstream paths to land DOM.
                 await new Promise((r) => requestAnimationFrame(r));
                 await new Promise((r) => requestAnimationFrame(r));
+                // Wait for webfonts before the screenshot. The codicon
+                // icon font (tab-bar glyphs) and the font browser's
+                // per-family preview faces (e.g. Bebas Neue) load lazily —
+                // the browser only fetches them once layout first needs a
+                // glyph, which the rAFs above have now triggered. Until
+                // they land, glyphs measure at fallback width: the bottom
+                // tab strip's last tab (`Lottie`) wraps or not (±24px page
+                // height) and the font browser paints family names in a
+                // fallback face. Both flip non-deterministically between
+                // runs, so every snapshot of those fixtures churned the
+                // baseline on each push regardless of the PR's diff.
+                // `document.fonts.ready` resolves once all faces the layout
+                // has requested have finished loading; a follow-up rAF lets
+                // the reflow they trigger settle before we read the DOM.
+                if (document.fonts?.ready) {
+                    await document.fonts.ready;
+                    await new Promise((r) => requestAnimationFrame(r));
+                }
                 const imgs = Array.from(
                     document.querySelectorAll(".preview-card img"),
                 );
