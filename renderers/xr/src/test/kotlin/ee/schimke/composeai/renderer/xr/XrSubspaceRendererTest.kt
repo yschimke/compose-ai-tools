@@ -20,6 +20,8 @@ import androidx.xr.compose.subspace.layout.width
 import androidx.xr.compose.subspace.semantics.testTag
 import com.google.common.truth.Truth.assertThat
 import ee.schimke.composeai.xr.SpatialScene
+import ee.schimke.composeai.xr.SpatialSemanticsKind
+import ee.schimke.composeai.xr.SpatialSemanticsTree
 import java.io.File
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
@@ -108,6 +110,19 @@ class XrSubspaceRendererTest {
     assertThat(cb).isGreaterThan(180)
     assertThat(cr).isLessThan(80)
     assertThat(cg).isLessThan(80)
+
+    // The unified spatial-semantics tree (compose/spatial-semantics) is produced beside scene.json:
+    // a subspaceRoot over the two panels, each carrying its 2D semantics content.
+    val treeFile = File(outDir, "compose-spatial-semantics.json")
+    assertThat(treeFile.exists()).isTrue()
+    val tree =
+      Json { ignoreUnknownKeys = true }
+        .decodeFromString(SpatialSemanticsTree.serializer(), treeFile.readText())
+    assertThat(tree.version).isEqualTo(1)
+    assertThat(tree.previewId).isEqualTo("sample-preview")
+    assertThat(tree.root.kind).isEqualTo(SpatialSemanticsKind.SUBSPACE_ROOT)
+    val panelNodes = tree.root.children.filter { it.kind == SpatialSemanticsKind.PANEL }
+    assertThat(panelNodes.map { it.id }).containsExactly("now-playing", "controls")
   }
 
   private fun centrePixel(png: File): Triple<Int, Int, Int> {

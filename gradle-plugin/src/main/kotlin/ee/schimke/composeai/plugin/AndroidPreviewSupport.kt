@@ -1397,6 +1397,13 @@ internal object AndroidPreviewSupport {
             rendererConfig.name,
             project.dependencies.project(mapOf("path" to ":renderer-xr")),
           )
+          // `XrSubspaceRenderer` calls the connector's `ComposeSemanticsDataProducer.buildPayload`
+          // to project each panel's 2D semantics into the `compose/spatial-semantics` tree; it's
+          // `compileOnly` on `:renderer-xr`, so put it on the render runtime classpath here.
+          project.dependencies.add(
+            rendererConfig.name,
+            project.dependencies.project(mapOf("path" to ":data-layoutinspector-connector")),
+          )
         } catch (e: org.gradle.api.UnknownProjectException) {
           project.logger.debug("compose-ai-tools: :renderer-xr project not found, skipping", e)
         }
@@ -1404,6 +1411,10 @@ internal object AndroidPreviewSupport {
         project.dependencies.add(
           rendererConfig.name,
           "ee.schimke.composeai:renderer-xr:${PluginVersion.value}",
+        )
+        project.dependencies.add(
+          rendererConfig.name,
+          "ee.schimke.composeai:data-layoutinspector-connector:${PluginVersion.value}",
         )
       }
       project.dependencies.add(

@@ -71,3 +71,53 @@ public data class SpatialSemanticsTree(
   val previewId: String? = null,
   val root: SpatialSemanticsNode,
 )
+
+/** Pure constructors for [SpatialSemanticsTree] shared by every producer (XR + degenerate 2D). */
+public object SpatialSemanticsTrees {
+
+  /** The identity pose ([Vec3] 0 + unit [Quat]) shared by every container/degenerate node. */
+  public fun identityPose(): SpatialPose =
+    SpatialPose(translation = Vec3(0.0, 0.0, 0.0), rotation = Quat(0.0, 0.0, 0.0, 1.0))
+
+  /**
+   * Wraps [panelNodes] under a `subspaceRoot` at identity pose (poses on children are absolute).
+   */
+  public fun subspaceRoot(panelNodes: List<SpatialSemanticsNode>): SpatialSemanticsNode =
+    SpatialSemanticsNode(
+      id = "subspaceRoot",
+      kind = SpatialSemanticsKind.SUBSPACE_ROOT,
+      poseInRoot = identityPose(),
+      sizeDp = Size3dDp(width = 0, height = 0),
+      children = panelNodes,
+    )
+
+  /**
+   * The degenerate **non-XR** tree: a single `panel` node at identity pose whose [panelContent] is
+   * the whole 2D semantics tree, wrapped under a `subspaceRoot` so its shape matches the XR path
+   * (every tree's root is a `subspaceRoot`). This is what an ordinary `@Preview` projects to — the
+   * per-panel 2D wireframe is the leaf renderer for every preview, XR or not.
+   */
+  public fun singlePanel(
+    content: ComposeSemanticsNode,
+    sizeDp: Size3dDp,
+    previewId: String? = null,
+    panelId: String = "panel",
+    label: String? = null,
+  ): SpatialSemanticsTree =
+    SpatialSemanticsTree(
+      previewId = previewId,
+      root =
+        subspaceRoot(
+          listOf(
+            SpatialSemanticsNode(
+              id = panelId,
+              kind = SpatialSemanticsKind.PANEL,
+              label = label,
+              poseInRoot = identityPose(),
+              sizeDp = sizeDp,
+              panelContent = content,
+            )
+          )
+        ),
+    )
+}

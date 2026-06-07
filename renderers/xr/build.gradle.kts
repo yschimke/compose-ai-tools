@@ -51,6 +51,12 @@ dependencies {
   // The SpatialScene wire DTO the recorder emits.
   api(project(":preview-data-api"))
 
+  // `XrSubspaceRenderer` projects each panel's semantics via the daemon-side connector's
+  // `ComposeSemanticsDataProducer.buildPayload` (single-sourcing the `compose/semantics`
+  // projection). `compileOnly` keeps it off this module's published POM — the plugin adds it to the
+  // XR render configuration at render time, mirroring the Robolectric/Roborazzi/XR-fakes model.
+  compileOnly(project(":data-layoutinspector-connector"))
+
   compileOnly(platform(libs.compose.bom.stable))
   compileOnly(libs.compose.ui)
   compileOnly(libs.compose.foundation)
@@ -74,6 +80,11 @@ dependencies {
   testImplementation(libs.compose.ui)
   testImplementation(libs.compose.foundation)
   testImplementation(libs.activity.compose)
+  // `XrSubspaceRendererTest` drives `XrSubspaceRenderer.render` directly (not through the Gradle
+  // plugin that puts the connector on the render config), so the spatial-semantics projection needs
+  // the connector on the test runtime — otherwise the producer is silently skipped (its
+  // `NoClassDefFoundError` is caught) and never exercised.
+  testImplementation(project(":data-layoutinspector-connector"))
   testImplementation(libs.xr.compose)
   testImplementation(libs.xr.compose.testing)
   testImplementation("androidx.compose.ui:ui-test-junit4")

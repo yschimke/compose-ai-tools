@@ -13,6 +13,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.github.takahirom.roborazzi.captureRoboImage
 import ee.schimke.composeai.xr.SpatialPanel
 import ee.schimke.composeai.xr.SpatialScene
+import ee.schimke.composeai.xr.SpatialSemanticsTree
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
@@ -128,6 +129,29 @@ public object SubspaceSceneWriter {
     outDir.mkdirs()
     val file = File(outDir, "scene.json")
     file.writeText(json.encodeToString(SpatialScene.serializer(), scene))
+    return file
+  }
+
+  // `encodeDefaults = true` so `version` + `units` ride the wire (the consumer's
+  // `isSpatialSemanticsTree` guard requires both); `explicitNulls = false` keeps the optional
+  // 2D-node fields off the wire — matching the daemon-side `SpatialSemanticsDataProducer`, which
+  // writes the same `compose-spatial-semantics.json` for ordinary previews.
+  private val treeJson = Json {
+    prettyPrint = true
+    encodeDefaults = true
+    explicitNulls = false
+  }
+
+  /**
+   * Serialises the unified 3D-over-2D [SpatialSemanticsTree] to `compose-spatial-semantics.json`
+   * under [outDir] — the `compose/spatial-semantics` data product for an XR preview, carrying the
+   * real multi-panel layout with each panel's 2D semantics. Filename kept in sync with
+   * `SpatialSemanticsDataProducer.FILE`.
+   */
+  public fun writeSemanticsTree(outDir: File, tree: SpatialSemanticsTree): File {
+    outDir.mkdirs()
+    val file = File(outDir, "compose-spatial-semantics.json")
+    file.writeText(treeJson.encodeToString(SpatialSemanticsTree.serializer(), tree))
     return file
   }
 }

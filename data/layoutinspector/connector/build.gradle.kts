@@ -22,6 +22,8 @@ dependencies {
   api(project(":data-layoutinspector-core"))
   api(project(":data-render-compose"))
   api(project(":daemon:core"))
+  // The `compose/spatial-semantics` producer emits the `SpatialSemanticsTree` wire DTO.
+  api(project(":preview-data-api"))
   // Compose Multiplatform's `compose.ui` resolves to the AndroidX variant on Android consumers
   // and to the desktop/skiko variant on JVM consumers via Gradle variant attributes. `compileOnly`
   // keeps it out of the published POM — the consumer (`:daemon:android` / `:daemon:desktop`)

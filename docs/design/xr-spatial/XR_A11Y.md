@@ -41,33 +41,40 @@ The only new work is **scoping these per panel**: the XR producer (`:renderer-xr
 each panel's content to its own texture, so it can capture that subtree's `ComposeSemanticsNode`
 the same way the 2D path does and tag it with the panel id.
 
-## Composition — `xr/a11y` and `xr/a11y-overlay`
+## Composition — `compose/spatial-semantics` and `xr/a11y-overlay`
 
-- **`xr/a11y`** (structure kind, mirrors `a11y/hierarchy`) = the level-1 spatial structure where
-  each panel **carries (or references) its level-2 2D semantics tree**, keyed by panel id. A
-  consumer walks level 1 to pick a panel by spatial position, then reads level 2 within it.
+The two levels compose into **one data product**, the unified 3D-over-2D tree shipped as
+**`compose/spatial-semantics`** (the `SpatialSemanticsTree`; see
+[SPATIAL_SEMANTICS_TREE.md](../SPATIAL_SEMANTICS_TREE.md) and
+[DATA-PRODUCTS.md](../../daemon/DATA-PRODUCTS.md)): the level-1 spatial structure where each panel
+**carries its level-2 2D semantics tree** (`ComposeSemanticsNode`), keyed by panel id. A consumer
+walks level 1 to pick a panel by spatial position, then reads level 2 within it. **`xr/a11y` is the
+accessibility lens on this one product, not a separate kind** — the same tree a screen reader
+navigates spatially and reads per-panel.
+
+```
+compose/spatial-semantics (== the "xr/a11y" view)
+└─ root.children[]                       ← level 1 (pose, sizeDp, label) — mirrors xr/structure
+   └─ panelContent: ComposeSemanticsNode ← level 2 (per-panel 2D a11y, == compose/semantics)
+```
+
 - **`xr/a11y-overlay`** (overlay kind, mirrors `a11y/overlay`) = each panel's 2D a11y overlay PNG
   composited onto its quad at its 3D pose — the spatial equivalent of the flat overlay, produced by
   the native compositor (it already textures panels at their poses; this swaps the content texture
-  for the overlay texture).
-
-```
-xr/a11y
-└─ panels[]                     ← level 1 (xr/structure: pose, sizeDp, label, parentId)
-   └─ a11y: ComposeSemanticsNode tree   ← level 2 (per-panel 2D a11y, == a11y/hierarchy)
-```
+  for the overlay texture). This remains a distinct future kind.
 
 ## Build status / plan
 
 1. **Level 1 — done.** `xr/structure` is the spatial-a11y layer.
-2. **Level 2 capture (producer).** `:renderer-xr` captures each panel's `ComposeSemanticsNode`
-   subtree (reusing `data/a11y/hierarchy-android`) and attaches it to the panel — the substantive
-   remaining work, on the Android/Robolectric producer side.
-3. **`xr/a11y` data product (daemon).** A daemon kind that returns level-1 structure + per-panel
-   level-2 semantics (level 1 from the held scene; level 2 from the producer's per-panel capture).
+2. **Level 2 capture (producer) — done.** `:renderer-xr`'s `SubspaceSceneRecorder.recordTree`
+   captures each panel's `ComposeSemanticsNode` subtree (projected by the `compose/semantics`
+   connector) and attaches it to the panel; the batch render task writes the multi-panel tree.
+3. **`compose/spatial-semantics` data product — done.** Serves level-1 structure + per-panel
+   level-2 semantics. Ordinary previews emit the degenerate single-panel tree from the daemon render
+   engines; XR previews emit the real multi-panel tree from the batch render. (Both write the same
+   file; the XR batch → daemon serving bridge — surfacing the rendered file through the daemon's
+   data-product registry like the static composite — is the remaining wiring.)
 4. **`xr/a11y-overlay` (native).** The compositor renders per-panel overlay textures at their poses.
-
-Steps 2–4 are independently shippable; 1 is in `main`.
 
 ## Open questions
 
