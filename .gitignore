@@ -39,6 +39,9 @@ vscode-extension/.vscode-test/
 vscode-extension/media/webview/
 vscode-extension/preview-harness/out/
 vscode-extension/spatial-fixtures/out/
+vscode-extension/preview-harness/test-results/
+vscode-extension/preview-harness/playwright-report/
+vscode-extension/preview-harness/.last-run.json
 vscode-extension/src/version.generated.ts
 *.vsix
 

@@ -259,11 +259,12 @@
         "test:e2e-editloop": "npm run compile && COMPOSE_PREVIEW_E2E_EXTERNAL=1 COMPOSE_PREVIEW_E2E_EDITLOOP=1 COMPOSE_PREVIEW_INIT_USE_MAVEN_LOCAL=1 node ./out/test/electron/runTest.js",
         "lint": "eslint src --ext ts",
         "package": "npm run compile && vsce package --no-dependencies",
-        "harness:snapshot": "node esbuild.webview.mjs && node preview-harness/snapshot.mjs",
-        "harness:contract": "node esbuild.webview.mjs && node preview-harness/contract.mjs"
+        "harness:snapshot": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs snapshot",
+        "harness:contract": "node esbuild.webview.mjs && playwright test -c preview-harness/playwright.config.mjs contract"
     },
     "devDependencies": {
         "@happy-dom/global-registrator": "^20.9.0",
+        "@playwright/test": "~1.60.0",
         "@types/mocha": "^10.0.0",
         "@types/node": "^24.0.0",
         "@types/three": "^0.184.1",
