@@ -842,6 +842,21 @@ export class GradleService {
     }
 
     /**
+     * Absolute `<module>/build/compose-previews` directory — the base every
+     * render artifact (PNGs, `scene.json`, data products) is written under, and
+     * the root a capture's `renderOutput` path is relative to. Exposed so the
+     * spatial-view bridge can locate an XR preview's `renders/<id>/` output.
+     */
+    previewsBaseDir(module: ModuleInfo): string {
+        return path.join(
+            this.workspaceRoot,
+            module.projectDir,
+            "build",
+            "compose-previews",
+        );
+    }
+
+    /**
      * Read the per-preview runtime-error sidecar — written by the
      * renderer next to where the PNG would have gone, with `.error.json`
      * appended. Returns `null` when the file is absent (preview rendered

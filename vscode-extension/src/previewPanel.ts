@@ -44,7 +44,16 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this.extensionUri],
+            // The extension dir covers the bundled scripts + committed fixtures;
+            // the open workspace folders cover live render output (an XR
+            // preview's `renders/<id>/` scene + panel textures, fed via
+            // `showSpatialScene` and addressed through `asWebviewUri`). The
+            // carousel base64-inlines its PNGs, but the 3D viewer loads textures
+            // by URI, so those dirs must sit inside `localResourceRoots`.
+            localResourceRoots: [
+                this.extensionUri,
+                ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
+            ],
         };
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.webview.onDidReceiveMessage((msg: WebviewToExtension) => {
@@ -92,6 +101,21 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         // `setPreviews` et al.
         this.currentSpatialScene = { scene, sceneDir, semanticsTree };
         this.postSpatialScene();
+    }
+
+    /**
+     * Drop the retained spatial scene and tell the webview to hide its 3D
+     * toggle. Called when a refresh lands on previews with no XR scene, so a
+     * previously-viewed XR scene doesn't linger (it would otherwise be re-posted
+     * on every `webviewReady`). No-ops when nothing is currently shown, keeping
+     * the common non-XR refresh path quiet.
+     */
+    clearSpatialScene(): void {
+        if (!this.currentSpatialScene) {
+            return;
+        }
+        this.currentSpatialScene = undefined;
+        this.view?.webview.postMessage({ command: "clearSpatialScene" });
     }
 
     private postSpatialScene(): void {

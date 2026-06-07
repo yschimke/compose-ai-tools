@@ -125,6 +125,27 @@ export class SpatialToggleController {
         this.reflectButton();
     }
 
+    /**
+     * Drop any installed scene: fall back to 2D, clear the viewer, and re-hide
+     * the toggle. Used when a refresh moves to previews with no XR scene, so a
+     * stale scene from a previously-viewed XR preview doesn't linger behind the
+     * toggle.
+     */
+    async clearScene(): Promise<void> {
+        this.scene = null;
+        this.semanticsTree = null;
+        this.textureBaseUri = "";
+        if (this.mode === "3d") {
+            await this.setMode("2d");
+        }
+        if (this.view) {
+            this.view.scene = null;
+            this.view.semanticsTree = null;
+        }
+        this.deps.toggleButton.hidden = true;
+        this.reflectButton();
+    }
+
     /** Flip between 2D and 3D. */
     toggle(): Promise<void> {
         return this.setMode(this.mode === "2d" ? "3d" : "2d");

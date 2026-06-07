@@ -739,6 +739,14 @@ export type ExtensionToWebview =
            * matched to the scene by panel id. Omitted until a producer emits it.
            */
           semanticsTree?: SpatialSemanticsTree;
+      }
+    /**
+     * Drop any installed spatial scene — hide the 2D⇄3D toggle and fall back to
+     * 2D. Posted when a refresh moves to previews with no XR scene, so a stale
+     * scene from a previously-viewed XR preview doesn't linger behind the toggle.
+     */
+    | {
+          command: "clearSpatialScene";
       };
 
 /**

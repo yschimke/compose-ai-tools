@@ -15,6 +15,7 @@ import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import { PreviewPanel } from "./previewPanel";
 import { parseSpatialSceneJson } from "./webview/spatial/sceneLoader";
 import { parseSpatialSemanticsTreeJson } from "./webview/spatial/semanticsTreeLoader";
+import { loadSpatialRender } from "./spatialRenderLoader";
 import { BundleViewerPanel } from "./bundleViewerPanel";
 import { FontBrowserPanel } from "./fontBrowserPanel";
 import { isLikelyBundle } from "./bundleFormat";
@@ -4645,6 +4646,42 @@ async function renderWithDiskFallback(
     }
 }
 
+/**
+ * Production XR bridge: if the rendered set contains an XR subspace preview (one
+ * whose render subdir holds a `scene.json`), feed its real scene + per-panel 2D
+ * semantics into the 3D spatial view — the same seam the `openSpatialFixture`
+ * dev command drives, but from live `renders/<id>/` output instead of a committed
+ * fixture. Best-effort and non-intrusive: it only makes the 2D⇄3D toggle live for
+ * that preview (the first one found — the view holds a single scene); it never
+ * steals focus, and ordinary previews (no `scene.json`) leave the 3D view untouched.
+ */
+function feedSpatialPreview(
+    previews: readonly PreviewInfo[],
+    moduleIndex: PreviewModuleIndex,
+    gradle: GradleService,
+    spatialPanel: PreviewPanel,
+): void {
+    for (const preview of previews) {
+        const mod = moduleIndex.get(preview.id);
+        if (!mod) continue;
+        const baseDir = gradle.previewsBaseDir(mod);
+        for (const capture of preview.captures ?? []) {
+            if (!capture.renderOutput) continue;
+            const loaded = loadSpatialRender(baseDir, capture.renderOutput);
+            if (!loaded) continue;
+            spatialPanel.showSpatialScene(
+                loaded.scene,
+                vscode.Uri.file(loaded.sceneDir),
+                loaded.semanticsTree,
+            );
+            return; // a single 3D scene — first XR preview wins
+        }
+    }
+    // No XR preview in this set — clear any scene retained from a prior one so a
+    // stale 3D view doesn't linger behind the toggle (no-ops if none was shown).
+    spatialPanel.clearSpatialScene();
+}
+
 async function refresh(
     forceRender: boolean,
     forFilePath?: string,
@@ -5320,6 +5357,24 @@ async function refresh(
             // called finish().
             tracker.finish();
             writeCalibration(module, tracker.phaseDurations);
+        }
+
+        // Production XR bridge: surface a rendered XR subspace preview's real
+        // scene in the 3D spatial view. Best-effort — a malformed/absent scene
+        // just leaves the view as-is, never breaking the carousel refresh.
+        if (!abort.signal.aborted && panel && gradleService) {
+            try {
+                feedSpatialPreview(
+                    displayPreviews,
+                    previewModuleIndex,
+                    gradleService,
+                    panel,
+                );
+            } catch (err) {
+                logLine(
+                    `spatial view: skipped feeding scene — ${(err as Error).message}`,
+                );
+            }
         }
 
         // Compute `@ScrollingPreview(LONG/GIF)` image data products that no producer

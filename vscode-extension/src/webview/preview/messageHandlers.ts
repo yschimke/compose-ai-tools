@@ -175,6 +175,8 @@ export interface PreviewMessageContext {
         textureBaseUri: string,
         semanticsTree?: SpatialSemanticsTree,
     ): void;
+    /** Drop any installed spatial scene (hide the toggle, fall back to 2D). */
+    clearSpatialScene(): void;
 }
 
 /** Methods the dispatcher needs from `<filter-toolbar>`. The component
@@ -251,6 +253,9 @@ export function handleExtensionMessage(
                 msg.textureBaseUri,
                 msg.semanticsTree,
             );
+            return;
+        case "clearSpatialScene":
+            ctx.clearSpatialScene();
             return;
         case "triggerBundleToggle":
             ctx.toggleBundle(msg.bundleId);

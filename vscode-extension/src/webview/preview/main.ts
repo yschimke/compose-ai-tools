@@ -3550,6 +3550,7 @@ export class PreviewApp extends LitElement {
                 bundleController.toggleBundle(bundleId as BundleId),
             setSpatialScene: (scene, textureBaseUri, semanticsTree) =>
                 spatialToggle.setScene(scene, textureBaseUri, semanticsTree),
+            clearSpatialScene: () => void spatialToggle.clearScene(),
         };
         window.addEventListener("message", (event) => {
             handleExtensionMessage(event.data, messageContext);

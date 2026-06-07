@@ -148,6 +148,22 @@ describe("SpatialToggleController", () => {
         assert.strictEqual(h.button.getAttribute("aria-pressed"), "false");
     });
 
+    it("clearScene hides the toggle, falls back to 2D, and drops the view scene", async () => {
+        const h = makeHarness();
+        h.controller.setScene(scene(), "https://base/");
+        await h.controller.setMode("3d");
+        const view = h.mount.children[0] as HTMLElement & { scene?: unknown };
+        assert.ok(view.scene, "scene applied before clear");
+
+        await h.controller.clearScene();
+
+        assert.strictEqual(h.controller.hasScene, false);
+        assert.strictEqual(h.button.hidden, true, "toggle re-hidden");
+        assert.strictEqual(h.controller.currentMode, "2d", "fell back to 2D");
+        assert.strictEqual(h.twoDStage.hidden, false);
+        assert.strictEqual(view.scene, null, "view scene cleared");
+    });
+
     it("loads the bundle only once across multiple toggles", async () => {
         const h = makeHarness();
         h.controller.setScene(scene(), "https://base/");
