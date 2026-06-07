@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ExtensionToWebview, WebviewToExtension } from "./types";
 import type { SpatialScene } from "./webview/shared/spatialScene";
+import type { SpatialSemanticsTree } from "./webview/shared/spatialSemanticsTree";
 
 export class PreviewPanel implements vscode.WebviewViewProvider {
     public static readonly viewId = "composePreview.panel";
@@ -12,8 +13,14 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
     private minimalModeEnabled: () => boolean;
     private shouldRestoreVisibility: () => boolean;
     /** The scene last handed to {@link showSpatialScene}; re-posted on every
-     *  `webviewReady` so a late-resolving or reloaded webview still gets it. */
-    private currentSpatialScene?: { scene: SpatialScene; sceneDir: vscode.Uri };
+     *  `webviewReady` so a late-resolving or reloaded webview still gets it.
+     *  `semanticsTree` is the optional companion that overlays per-panel 2D
+     *  wireframes (matched to the scene by panel id). */
+    private currentSpatialScene?: {
+        scene: SpatialScene;
+        sceneDir: vscode.Uri;
+        semanticsTree?: SpatialSemanticsTree;
+    };
 
     constructor(
         extensionUri: vscode.Uri,
@@ -70,14 +77,20 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
      * the panel PNGs live); it is run through `asWebviewUri` so textures load
      * under the strict CSP, and must sit inside `localResourceRoots` (the
      * extension dir covers the committed fixtures). The producer (`:renderer-xr`)
-     * and the dev `openSpatialFixture` command both drive this.
+     * and the dev `openSpatialFixture` command both drive this. The optional
+     * `semanticsTree` companion overlays each panel's 2D wireframe boxes onto
+     * its screenshot face, matched to the scene by panel id.
      */
-    showSpatialScene(scene: SpatialScene, sceneDir: vscode.Uri): void {
+    showSpatialScene(
+        scene: SpatialScene,
+        sceneDir: vscode.Uri,
+        semanticsTree?: SpatialSemanticsTree,
+    ): void {
         // Retain as the current scene so it survives a not-yet-resolved view
         // and a webview reload (hidden → shown): `postSpatialScene` re-sends it
         // on every `webviewReady`, the same way the host republishes
         // `setPreviews` et al.
-        this.currentSpatialScene = { scene, sceneDir };
+        this.currentSpatialScene = { scene, sceneDir, semanticsTree };
         this.postSpatialScene();
     }
 
@@ -86,12 +99,13 @@ export class PreviewPanel implements vscode.WebviewViewProvider {
         if (!webview || !this.currentSpatialScene) {
             return;
         }
-        const { scene, sceneDir } = this.currentSpatialScene;
+        const { scene, sceneDir, semanticsTree } = this.currentSpatialScene;
         const textureBaseUri = `${webview.asWebviewUri(sceneDir)}/`;
         webview.postMessage({
             command: "setSpatialScene",
             scene,
             textureBaseUri,
+            ...(semanticsTree ? { semanticsTree } : {}),
         });
     }
 

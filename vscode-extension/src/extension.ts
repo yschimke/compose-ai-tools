@@ -14,6 +14,7 @@ import { ClassVersionError } from "./classVersionErrorDetector";
 import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import { PreviewPanel } from "./previewPanel";
 import { parseSpatialSceneJson } from "./webview/spatial/sceneLoader";
+import { parseSpatialSemanticsTreeJson } from "./webview/spatial/semanticsTreeLoader";
 import { BundleViewerPanel } from "./bundleViewerPanel";
 import { FontBrowserPanel } from "./fontBrowserPanel";
 import { isLikelyBundle } from "./bundleFormat";
@@ -1716,6 +1717,25 @@ export async function activate(
                 try {
                     const text = fs.readFileSync(sceneFile.fsPath, "utf8");
                     const scene = parseSpatialSceneJson(text);
+                    // Optional companion semantics tree — when the fixture
+                    // ships `compose-spatial-semantics.json` (the
+                    // `compose/spatial-semantics` data product), overlay each
+                    // panel's 2D wireframe onto its 3D face. Best-effort: a
+                    // missing/invalid tree just shows the plain screenshots.
+                    const treeFile = vscode.Uri.joinPath(
+                        fixtureDir,
+                        "compose-spatial-semantics.json",
+                    );
+                    let semanticsTree:
+                        | ReturnType<typeof parseSpatialSemanticsTreeJson>
+                        | undefined;
+                    try {
+                        semanticsTree = parseSpatialSemanticsTreeJson(
+                            fs.readFileSync(treeFile.fsPath, "utf8"),
+                        );
+                    } catch {
+                        semanticsTree = undefined;
+                    }
                     // Reveal/resolve the panel first; `showSpatialScene`
                     // retains the scene and re-posts it on `webviewReady`, so
                     // it lands even when the view is resolving for the first
@@ -1723,7 +1743,7 @@ export async function activate(
                     await vscode.commands.executeCommand(
                         `${PreviewPanel.viewId}.focus`,
                     );
-                    panel.showSpatialScene(scene, fixtureDir);
+                    panel.showSpatialScene(scene, fixtureDir, semanticsTree);
                 } catch (err) {
                     void vscode.window.showErrorMessage(
                         `Could not load spatial fixture: ${(err as Error).message}`,
