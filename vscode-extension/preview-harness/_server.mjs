@@ -72,8 +72,12 @@ export function startServer(root, port = 0) {
                 });
                 res.end(body);
             } catch (err) {
+                // Don't echo the error (stack trace / internal paths) back
+                // to the client — log it server-side and return a generic
+                // 500. (CodeQL: information exposure through a stack trace.)
+                console.error("[harness] request error:", err);
                 res.writeHead(500);
-                res.end(String(err));
+                res.end("internal server error");
             }
         });
         server.listen(port, "127.0.0.1", () => {
