@@ -2,7 +2,10 @@ import * as assert from "assert";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
-import { loadSpatialRender } from "../spatialRenderLoader";
+import {
+    loadSpatialFromCaptures,
+    loadSpatialRender,
+} from "../spatialRenderLoader";
 import { SPATIAL_SCENE_VERSION } from "../webview/shared/spatialScene";
 import { SPATIAL_SEMANTICS_TREE_VERSION } from "../webview/shared/spatialSemanticsTree";
 
@@ -111,5 +114,41 @@ describe("loadSpatialRender", () => {
         writeFileSync(path.join(renderDir(), "scene.json"), '{"version":999}');
 
         assert.throws(() => loadSpatialRender(baseDir, renderOutput));
+    });
+
+    describe("loadSpatialFromCaptures", () => {
+        it("returns null for an ordinary preview's captures (no scene)", () => {
+            assert.strictEqual(
+                loadSpatialFromCaptures(baseDir, [
+                    { renderOutput: "Preview.png" },
+                    { renderOutput: "Preview.dark.png" },
+                ]),
+                null,
+            );
+        });
+
+        it("returns null for empty / undefined captures", () => {
+            assert.strictEqual(loadSpatialFromCaptures(baseDir, []), null);
+            assert.strictEqual(
+                loadSpatialFromCaptures(baseDir, undefined),
+                null,
+            );
+        });
+
+        it("loads the first capture that has a scene", () => {
+            mkdirSync(renderDir(), { recursive: true });
+            writeFileSync(
+                path.join(renderDir(), "scene.json"),
+                sceneJson("Xr"),
+            );
+
+            // A non-XR capture precedes the XR composite; the XR one wins.
+            const loaded = loadSpatialFromCaptures(baseDir, [
+                { renderOutput: "Preview.png" },
+                { renderOutput },
+            ]);
+            assert.ok(loaded);
+            assert.strictEqual(loaded.scene.previewId, "Xr");
+        });
     });
 });

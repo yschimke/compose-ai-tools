@@ -15,7 +15,10 @@ import { KotlinCompileError } from "./kotlinCompileErrorDetector";
 import { PreviewPanel } from "./previewPanel";
 import { parseSpatialSceneJson } from "./webview/spatial/sceneLoader";
 import { parseSpatialSemanticsTreeJson } from "./webview/spatial/semanticsTreeLoader";
-import { loadSpatialRender } from "./spatialRenderLoader";
+import {
+    LoadedSpatialRender,
+    loadSpatialFromCaptures,
+} from "./spatialRenderLoader";
 import { BundleViewerPanel } from "./bundleViewerPanel";
 import { FontBrowserPanel } from "./fontBrowserPanel";
 import { isLikelyBundle } from "./bundleFormat";
@@ -4647,38 +4650,81 @@ async function renderWithDiskFallback(
 }
 
 /**
- * Production XR bridge: if the rendered set contains an XR subspace preview (one
- * whose render subdir holds a `scene.json`), feed its real scene + per-panel 2D
- * semantics into the 3D spatial view — the same seam the `openSpatialFixture`
- * dev command drives, but from live `renders/<id>/` output instead of a committed
- * fixture. Best-effort and non-intrusive: it only makes the 2D⇄3D toggle live for
- * that preview (the first one found — the view holds a single scene); it never
- * steals focus, and ordinary previews (no `scene.json`) leave the 3D view untouched.
+ * Production XR bridge: load an XR preview's real spatial render — its
+ * `renders/<id>/` `scene.json` (+ optional `compose-spatial-semantics.json`),
+ * via the first capture that has one. Returns null for ordinary previews (no
+ * `scene.json`). Shared by the post-render seed and the per-card focus seam.
+ */
+function loadSpatialForPreview(
+    info: PreviewInfo,
+    mod: ModuleInfo,
+): LoadedSpatialRender | null {
+    if (!gradleService) return null;
+    return loadSpatialFromCaptures(
+        gradleService.previewsBaseDir(mod),
+        info.captures,
+    );
+}
+
+/** Same, addressed by preview id (via the module manifest cache). */
+function loadSpatialForPreviewId(
+    previewId: string,
+): LoadedSpatialRender | null {
+    const mod = previewModuleIndex.get(previewId);
+    if (!mod) return null;
+    const info = moduleManifestCache
+        .get(mod.modulePath)
+        ?.find((p) => p.id === previewId);
+    if (!info) return null;
+    return loadSpatialForPreview(info, mod);
+}
+
+/** Post the loaded render to the 3D spatial view (or clear it if null). */
+function showOrClearSpatialScene(
+    spatialPanel: PreviewPanel,
+    loaded: LoadedSpatialRender | null,
+): void {
+    if (loaded) {
+        spatialPanel.showSpatialScene(
+            loaded.scene,
+            vscode.Uri.file(loaded.sceneDir),
+            loaded.semanticsTree,
+        );
+    } else {
+        // Clear any scene retained from a prior preview so a stale 3D view
+        // doesn't linger behind the toggle (no-ops if none was shown).
+        spatialPanel.clearSpatialScene();
+    }
+}
+
+/**
+ * The preview set the spatial view was last seeded from, retained so leaving
+ * focus mode (`previewScopeChanged` with a null id) can re-seed the module-level
+ * scene (the first XR preview) rather than stranding a focused/cleared one.
+ */
+let lastSpatialSeedPreviews: readonly PreviewInfo[] = [];
+
+/**
+ * Seed the 3D spatial view after a render (or when focus clears): show the first
+ * XR subspace preview's real scene (the view holds a single scene), or clear it
+ * when the set has none. Per-card focus (`previewScopeChanged`) overrides this
+ * with the focused preview's scene. Never steals focus; ordinary previews leave
+ * the view untouched.
  */
 function feedSpatialPreview(
     previews: readonly PreviewInfo[],
-    moduleIndex: PreviewModuleIndex,
-    gradle: GradleService,
     spatialPanel: PreviewPanel,
 ): void {
+    lastSpatialSeedPreviews = previews;
     for (const preview of previews) {
-        const mod = moduleIndex.get(preview.id);
+        const mod = previewModuleIndex.get(preview.id);
         if (!mod) continue;
-        const baseDir = gradle.previewsBaseDir(mod);
-        for (const capture of preview.captures ?? []) {
-            if (!capture.renderOutput) continue;
-            const loaded = loadSpatialRender(baseDir, capture.renderOutput);
-            if (!loaded) continue;
-            spatialPanel.showSpatialScene(
-                loaded.scene,
-                vscode.Uri.file(loaded.sceneDir),
-                loaded.semanticsTree,
-            );
+        const loaded = loadSpatialForPreview(preview, mod);
+        if (loaded) {
+            showOrClearSpatialScene(spatialPanel, loaded);
             return; // a single 3D scene — first XR preview wins
         }
     }
-    // No XR preview in this set — clear any scene retained from a prior one so a
-    // stale 3D view doesn't linger behind the toggle (no-ops if none was shown).
     spatialPanel.clearSpatialScene();
 }
 
@@ -5364,12 +5410,7 @@ async function refresh(
         // just leaves the view as-is, never breaking the carousel refresh.
         if (!abort.signal.aborted && panel && gradleService) {
             try {
-                feedSpatialPreview(
-                    displayPreviews,
-                    previewModuleIndex,
-                    gradleService,
-                    panel,
-                );
+                feedSpatialPreview(displayPreviews, panel);
             } catch (err) {
                 logLine(
                     `spatial view: skipped feeding scene — ${(err as Error).message}`,
@@ -5670,14 +5711,29 @@ function handleWebviewMessage(msg: WebviewToExtension) {
             break;
         case "previewScopeChanged": {
             // Live panel has narrowed to a single preview (focus mode, or
-            // filters reduced visible cards to one). Re-scope the History
-            // panel's previewId filter so it only lists entries for that
-            // preview. `previewId` null means widen the scope back to the
-            // module — the panel shows every preview's history.
+            // filters reduced visible cards to one). `previewId` null means
+            // widen the scope back to the module.
+            const requested = msg.previewId ?? undefined;
+            // Per-card XR: track the focused preview in the 3D spatial view —
+            // show its scene when it's an XR preview, clear it when focusing a
+            // non-XR card so a stale scene doesn't linger. Leaving focus (null)
+            // re-seeds the module-level scene (first XR preview) so it doesn't
+            // strand a focused or cleared one.
+            if (panel) {
+                if (requested) {
+                    showOrClearSpatialScene(
+                        panel,
+                        loadSpatialForPreviewId(requested),
+                    );
+                } else {
+                    feedSpatialPreview(lastSpatialSeedPreviews, panel);
+                }
+            }
+            // Re-scope the History panel's previewId filter so it only lists
+            // entries for the focused preview.
             if (!historyScopeRef.current) {
                 break;
             }
-            const requested = msg.previewId ?? undefined;
             const requestedLabel = requested
                 ? lookupPreviewLabel(requested)
                 : undefined;

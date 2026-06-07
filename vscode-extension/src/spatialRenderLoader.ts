@@ -59,3 +59,21 @@ export function loadSpatialRender(
 
     return { sceneDir, scene, semanticsTree };
 }
+
+/**
+ * Load the spatial render for the first of a preview's [captures] that has one
+ * (XR previews emit a single `renders/<id>/composite.png` capture, but a preview
+ * may carry several). Returns null when none is an XR render — i.e. an ordinary
+ * preview. `previewsBaseDir` is `<module>/build/compose-previews`.
+ */
+export function loadSpatialFromCaptures(
+    previewsBaseDir: string,
+    captures: readonly { readonly renderOutput?: string }[] | undefined,
+): LoadedSpatialRender | null {
+    for (const capture of captures ?? []) {
+        if (!capture.renderOutput) continue;
+        const loaded = loadSpatialRender(previewsBaseDir, capture.renderOutput);
+        if (loaded) return loaded;
+    }
+    return null;
+}
