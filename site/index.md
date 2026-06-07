@@ -24,6 +24,30 @@ reason about the UI, not just look at it.
 
 ---
 
+## The agent loop
+
+A tight, token-frugal feedback loop over Compose UI — the way Playwright gave
+web agents one over the DOM. Exposed by the preview daemon's MCP server (and
+the `compose-preview` CLI where noted):
+
+- **Target by semantic ref, not pixels** — drive a preview by `testTag` /
+  `role`+`text` / a stable node `ref`; the daemon resolves it to the node's
+  centre, so interactions survive layout changes (Android + Desktop).
+- **Token-frugal observation** — `render_preview observe=semantics|hash`
+  returns the semantics tree + hash + dimensions (a few hundred tokens)
+  instead of a base64 PNG; fetch pixels only when you need to look.
+- **Semantics diff** — `diff_semantics` / `compose-preview diff-semantics`
+  report what changed *semantically* between two renders, a deterministic
+  pixel-free regression signal (the aria-snapshot diff for Compose).
+- **Matrix render** — `render_matrix` covers `device × locale × uiMode ×
+  fontScale` in one call with per-cell hashes and a "which changed" flag.
+- **Recording → test** — `record_preview emitTest=true` emits a runnable
+  Compose UI test from a scripted interaction.
+- **Structured failures** — a failed render reports a typed kind + a one-line
+  fix hint instead of an opaque message.
+
+---
+
 ## Installation
 
 ### Gradle plugin
