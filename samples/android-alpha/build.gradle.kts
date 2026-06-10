@@ -52,7 +52,7 @@ dependencies {
   // material3 1.5.0-alphaNN's metadata pulls compose-foundation/runtime/ui
   // 1.12.0-alphaNN transitively, so no separate compose-bom application is
   // needed (and would only fight conflict resolution).
-  implementation("androidx.compose.material3:material3:1.5.0-alpha20")
+  implementation("androidx.compose.material3:material3:1.5.0-alpha21")
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.compose.foundation)

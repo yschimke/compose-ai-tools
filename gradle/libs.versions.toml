@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 # Kotlin language/api floor for published modules. Set lower than `kotlin`
 # so consumers on an older Kotlin can still link against our artifacts —
 # tapmoc enforces this and fails the build if a transitive API dep raises
@@ -48,7 +48,7 @@ compose-multiplatform-material3 = "1.9.0"
 # `compose-multiplatform = 1.10.3`); 2.2.x jumps to foundation 1.11.0, which would drag a
 # *newer* Compose onto the renderer classpath — the failure direction `docs/RENDERER_COMPATIBILITY.md`
 # warns about. Bump only in lockstep with `compose-multiplatform`.
-compottie = "2.1.0"
+compottie = "2.2.1"
 activity-compose = "1.13.0"
 # `androidx.navigation:navigation-compose` — used only by the
 # `:samples:android` NavHost preview that exercises the daemon's
@@ -71,7 +71,7 @@ wear-tooling-preview = "1.0.0"
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha13"
+xr-glimmer = "1.0.0-alpha14"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -110,8 +110,8 @@ horologist = "0.7.15"
 #    `wear-compose-remote alpha04` pair broke CI (Kotlin compile + daemon-
 #    harness render), so the pair is held at the last green pre-bump versions
 #    until a mutually-rebuilt pair is verified together.
-compose-remote = "1.0.0-alpha010"
-wear-compose-remote = "1.0.0-alpha03"
+compose-remote = "1.0.0-alpha12"
+wear-compose-remote = "1.0.0-alpha05"
 # Pre-release compose-ui artifacts used by `:samples:remotecompose`, which
 # deliberately diverges from `compose-bom-stable` (1.10.x) to track what
 # wear-compose-remote-material3 alpha pulls in transitively — compose 1.11.0+
@@ -120,7 +120,7 @@ wear-compose-remote = "1.0.0-alpha03"
 compose-ui-prerelease = "1.11.2"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.12.0"
+mcp-kotlin-sdk = "0.13.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -141,7 +141,7 @@ android-compose-screenshot = "0.0.1-alpha15"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.1.0"
+checker-qual = "4.2.0"
 # KMP port of Google's Material Color Utilities. Powers the wallpaper data
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
