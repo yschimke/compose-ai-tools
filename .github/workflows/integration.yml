@@ -57,7 +57,7 @@ jobs:
     name: Build plugin + CLI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -529,7 +529,7 @@ jobs:
           #   java_version: "21"
     steps:
       - name: Checkout ${{ matrix.repo }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ matrix.repo }}
           ref: ${{ matrix.ref }}
@@ -538,7 +538,7 @@ jobs:
 
       - name: Checkout ${{ matrix.secondary_repo }} (secondary)
         if: matrix.secondary_repo != ''
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: ${{ matrix.secondary_repo }}
           ref: ${{ matrix.secondary_ref }}
@@ -1133,7 +1133,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo (for the fixture)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
 
@@ -1399,7 +1399,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout this repo (for push-branch.sh)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # The push uses an explicit token in the remote URL (push-branch.sh),
           # so the default git credentials don't need persisting. (zizmor: artipacked)
