@@ -818,6 +818,27 @@
     "sha256": "70afa24f0e257bb7adddc922b875bbb4611e7ed07e6067a081ea62ceea643b2c",
     "sourceFile": "src/commonMain/kotlin/com/example/cmpshared/SharedPreviews.kt"
   },
+  "samples:cmp/com.example.samplecmp.FontScalePreviewsKt.FontScale100Preview_Font scale 1.0x": {
+    "captureLabel": "",
+    "functionName": "FontScale100Preview",
+    "renderBasename": "FontScale100Preview_Font_scale_1_0x.png",
+    "sha256": "7c683f4c814b16f9c6964eae34d0ce2daf16584680f2ff672013e3ef1e42432d",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.FontScalePreviewsKt.FontScale150Preview_Font scale 1.5x": {
+    "captureLabel": "",
+    "functionName": "FontScale150Preview",
+    "renderBasename": "FontScale150Preview_Font_scale_1_5x.png",
+    "sha256": "473480fc589756d8c7cdd3bfe75935b99a9a3c1e3625bdc3e332d131ef345d73",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt"
+  },
+  "samples:cmp/com.example.samplecmp.FontScalePreviewsKt.FontScale200Preview_Font scale 2.0x": {
+    "captureLabel": "",
+    "functionName": "FontScale200Preview",
+    "renderBasename": "FontScale200Preview_Font_scale_2_0x.png",
+    "sha256": "57a0775ae7ee07ef3e0d95c9ddb964a311c99769af512f7797bf26a3d797161f",
+    "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt"
+  },
   "samples:cmp/com.example.samplecmp.KeyboardDemoPreviewKt.KeyboardDemoPreview_Keyboard Demo": {
     "captureLabel": "",
     "functionName": "KeyboardDemoPreview",
@@ -1095,7 +1116,7 @@
     "captureLabel": "scroll long",
     "functionName": "ActivityListLongPreview",
     "renderBasename": "ActivityListLongPreview_Devices_Large_Round.png",
-    "sha256": "a7b684f8e20a39a9b44c0feb72a60c79c8254c5a7e578a5eeefd19ecad37a2c1",
+    "sha256": "01e9d8eeec6000fed1a2a0d75bbe503ccde7acf29cb86634836f143faa72115e",
     "sourceFile": "src/main/kotlin/com/example/samplewear/Previews.kt"
   },
   "samples:wear/com.example.samplewear.PreviewsKt.ActivityListPreview_Devices - Large Round": {
