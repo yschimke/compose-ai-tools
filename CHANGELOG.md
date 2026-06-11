@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/yschimke/compose-ai-tools/compare/v0.14.0...v0.14.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* honour @Preview(fontScale) on the Desktop/CMP pipeline ([#1830](https://github.com/yschimke/compose-ai-tools/issues/1830)) ([071a50e](https://github.com/yschimke/compose-ai-tools/commit/071a50e4976cb2df13765b5099d2260e37c8bf37))
+* **resources:** skip themed adaptive-icon captures when no `<monochrome>` layer ([#1829](https://github.com/yschimke/compose-ai-tools/issues/1829)) ([147bc36](https://github.com/yschimke/compose-ai-tools/commit/147bc3683b8de435be97a88bf45ff78cd02ab865))
+
 ## [0.14.0](https://github.com/yschimke/compose-ai-tools/compare/v0.13.4...v0.14.0) (2026-06-11)
 
 
