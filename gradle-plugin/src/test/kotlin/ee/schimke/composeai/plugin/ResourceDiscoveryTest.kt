@@ -85,7 +85,11 @@ class ResourceDiscoveryTest {
 
   @Test
   fun `adaptive icon fans out shape x style and emits a single LEGACY capture`() {
-    writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
+    writeXml(
+      "mipmap-anydpi-v26",
+      "ic_launcher.xml",
+      "<adaptive-icon><monochrome /></adaptive-icon>",
+    )
     val preview =
       discover(
           shapes = listOf(AdaptiveShape.CIRCLE),
@@ -124,7 +128,11 @@ class ResourceDiscoveryTest {
 
   @Test
   fun `themed styles produce themed-light and themed-dark filename suffixes`() {
-    writeXml("mipmap-anydpi-v26", "ic_launcher.xml", "<adaptive-icon />")
+    writeXml(
+      "mipmap-anydpi-v26",
+      "ic_launcher.xml",
+      "<adaptive-icon><monochrome /></adaptive-icon>",
+    )
     val preview =
       discover(
           shapes = listOf(AdaptiveShape.SQUIRCLE),
@@ -135,6 +143,60 @@ class ResourceDiscoveryTest {
       .containsExactly(
         "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-light.png",
         "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_squircle_themed-dark.png",
+      )
+      .inOrder()
+  }
+
+  @Test
+  fun `adaptive icon without monochrome layer omits themed captures`() {
+    // Plain background+foreground icon (the Android Studio template default) — no <monochrome>.
+    writeXml(
+      "mipmap-anydpi-v26",
+      "ic_launcher.xml",
+      "<adaptive-icon><background /><foreground /></adaptive-icon>",
+    )
+    val preview =
+      discover(
+          shapes = listOf(AdaptiveShape.CIRCLE),
+          styles =
+            listOf(
+              AdaptiveStyle.FULL_COLOR,
+              AdaptiveStyle.THEMED_LIGHT,
+              AdaptiveStyle.THEMED_DARK,
+              AdaptiveStyle.LEGACY,
+            ),
+        )
+        .single()
+    // Themed captures (which need a <monochrome> layer to render) are dropped; FULL_COLOR + LEGACY
+    // stay because they render from background/foreground alone.
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+        "renders/resources/mipmap/ic_launcher_xhdpi_LEGACY.png",
+      )
+      .inOrder()
+    assertThat(preview.captures.map { it.variant?.style })
+      .doesNotContain(AdaptiveStyle.THEMED_LIGHT)
+    assertThat(preview.captures.map { it.variant?.style }).doesNotContain(AdaptiveStyle.THEMED_DARK)
+  }
+
+  @Test
+  fun `adaptive icon with monochrome layer keeps themed captures`() {
+    writeXml(
+      "mipmap-anydpi-v26",
+      "ic_launcher.xml",
+      "<adaptive-icon><background /><foreground /><monochrome /></adaptive-icon>",
+    )
+    val preview =
+      discover(
+          shapes = listOf(AdaptiveShape.CIRCLE),
+          styles = listOf(AdaptiveStyle.FULL_COLOR, AdaptiveStyle.THEMED_LIGHT),
+        )
+        .single()
+    assertThat(preview.captures.map { it.renderOutput })
+      .containsExactly(
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle.png",
+        "renders/resources/mipmap/ic_launcher_xhdpi_SHAPE_circle_themed-light.png",
       )
       .inOrder()
   }

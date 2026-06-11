@@ -82,6 +82,15 @@ object ResourceDiscovery {
             }
           val id = "${parsed.base}/$resourceName"
           val builder = collected.getOrPut(id) { Builder(id = id, type = type) }
+          if (
+            type == ResourceType.ADAPTIVE_ICON && ResourceXmlClassifier.hasMonochromeLayer(file)
+          ) {
+            // Themed captures (THEMED_LIGHT / THEMED_DARK) require a <monochrome> layer; record its
+            // presence so the capture fan-out can skip themed styles for plain
+            // background+foreground
+            // icons rather than emit captures the renderer can't produce (counted as missing).
+            builder.hasMonochrome = true
+          }
           if (builder.type != type) {
             // Same logical id classifies as different ResourceTypes across qualifier dirs (e.g.
             // `drawable/ic_foo.xml` is a vector but `drawable-night/ic_foo.xml` is an
@@ -111,6 +120,7 @@ object ResourceDiscovery {
     stretches: List<NinePatchStretch> = DEFAULT_NINE_PATCH_STRETCHES,
     filmstrip: Boolean = true,
     filmstripFractions: List<Float> = DEFAULT_RESOURCE_FILMSTRIP_FRACTIONS,
+    hasMonochrome: Boolean = true,
   ): List<ResourceCapture> {
     val out = linkedSetOf<ResourceCapture>()
     val baseQualifierSets =
@@ -124,8 +134,14 @@ object ResourceDiscovery {
         when (type) {
           ResourceType.ADAPTIVE_ICON -> {
             // Two-axis fan-out: every (shape × non-LEGACY style) plus one bare LEGACY capture
-            // (mask-independent — pre-O fallback ignores the system mask).
-            val maskedStyles = styles.filter { it != AdaptiveStyle.LEGACY }
+            // (mask-independent — pre-O fallback ignores the system mask). Themed styles need a
+            // <monochrome> layer to render; drop them when the icon has none so a plain
+            // background+foreground icon doesn't emit captures that can't be produced.
+            val maskedStyles = styles.filter {
+              it != AdaptiveStyle.LEGACY &&
+                (hasMonochrome ||
+                  (it != AdaptiveStyle.THEMED_LIGHT && it != AdaptiveStyle.THEMED_DARK))
+            }
             for (shape in shapes) {
               for (style in maskedStyles) {
                 out +=
@@ -306,6 +322,12 @@ object ResourceDiscovery {
     val id: String,
     val type: ResourceType,
     val sourceFiles: LinkedHashMap<String, String> = linkedMapOf(),
+    /**
+     * `true` once any adaptive-icon source file for this resource declares a `<monochrome>` layer.
+     * Gates the THEMED_LIGHT / THEMED_DARK capture fan-out — see
+     * [ResourceXmlClassifier.hasMonochromeLayer].
+     */
+    var hasMonochrome: Boolean = false,
   ) {
     fun build(config: Config): ResourcePreview {
       val qualifierSuffixes: Set<String?> =
@@ -321,6 +343,7 @@ object ResourceDiscovery {
           stretches = config.stretches,
           filmstrip = config.filmstrip,
           filmstripFractions = config.filmstripFractions,
+          hasMonochrome = hasMonochrome,
         )
       return ResourcePreview(
         id = id,
