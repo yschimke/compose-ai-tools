@@ -71,7 +71,7 @@ wear-tooling-preview = "1.0.0"
 # glasses (`androidx.xr.glimmer`). Alpha10+ requires AGP 9.2+ and
 # `compileSdk = 37` (matched by `:samples:xr-glimmer`'s `compileSdk` and our
 # `agp = 9.2.x` toolchain). Alpha13 was published 2026-05-19.
-xr-glimmer = "1.0.0-alpha13"
+xr-glimmer = "1.0.0-alpha14"
 # Jetpack Compose for XR (`androidx.xr.compose`) — the spatial-UI toolkit
 # (`Subspace`, `SpatialPanel`, `Orbiter`, `SpatialElevation`, `SpatialDialog`).
 # AAR metadata declares `minCompileSdk = 36` / `minAgp = 8.9.1`, so it builds on
@@ -120,7 +120,7 @@ wear-compose-remote = "1.0.0-alpha03"
 compose-ui-prerelease = "1.11.2"
 kotlinx-coroutines = "1.11.0"
 kotlinx-serialization = "1.11.0"
-mcp-kotlin-sdk = "0.12.0"
+mcp-kotlin-sdk = "0.13.0"
 okio = "3.17.0"
 junit = "4.13.2"
 truth = "1.4.5"
@@ -141,7 +141,7 @@ android-compose-screenshot = "0.0.1-alpha15"
 # getter. Adding `compileOnly(libs.checker.qual)` is enough to silence the
 # warning without exporting the annotation to consumers (it's marker-only;
 # zero runtime impact).
-checker-qual = "4.1.0"
+checker-qual = "4.2.0"
 # KMP port of Google's Material Color Utilities. Powers the wallpaper data
 # extension's seed → ColorScheme derivation (HCT tonal palettes, palette
 # styles, contrast level) so the result matches what Android's wallpaper-
