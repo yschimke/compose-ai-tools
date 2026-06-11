@@ -1,6 +1,6 @@
 # Accessibility Report
 
-_Auto-generated from `compose-preview/a11y/main`. 120 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 17 info._
+_Auto-generated from `compose-preview/a11y/main`. 123 preview(s) across 14 module(s) · 9 error(s) · 3 warning(s) · 17 info._
 
 Browse inline; image URLs are pinned to the commit SHA on the baseline branch so links keep resolving after merge.
 
@@ -525,6 +525,24 @@ _No findings._
 ### `CmpPseudoDefault`
 
 <img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/CmpPseudoDefault_default.a11y.png" width="400" />
+
+_No findings._
+
+### `FontScale100Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/FontScale100Preview_Font_scale_1_0x.a11y.png" width="400" />
+
+_No findings._
+
+### `FontScale150Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/FontScale150Preview_Font_scale_1_5x.a11y.png" width="400" />
+
+_No findings._
+
+### `FontScale200Preview`
+
+<img src="https://raw.githubusercontent.com/yschimke/compose-ai-tools/compose-preview/a11y/main/renders/cmp/FontScale200Preview_Font_scale_2_0x.a11y.png" width="400" />
 
 _No findings._
 

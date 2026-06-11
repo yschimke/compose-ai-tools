@@ -997,6 +997,36 @@
       "variant": ""
     },
     {
+      "annotatedBasename": "FontScale100Preview_Font_scale_1_0x.a11y.png",
+      "cleanBasename": "FontScale100Preview_Font_scale_1_0x.png",
+      "findings": [],
+      "functionName": "FontScale100Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale100Preview_Font scale 1.0x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FontScale150Preview_Font_scale_1_5x.a11y.png",
+      "cleanBasename": "FontScale150Preview_Font_scale_1_5x.png",
+      "findings": [],
+      "functionName": "FontScale150Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale150Preview_Font scale 1.5x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
+      "annotatedBasename": "FontScale200Preview_Font_scale_2_0x.a11y.png",
+      "cleanBasename": "FontScale200Preview_Font_scale_2_0x.png",
+      "findings": [],
+      "functionName": "FontScale200Preview",
+      "module": "cmp",
+      "previewId": "com.example.samplecmp.FontScalePreviewsKt.FontScale200Preview_Font scale 2.0x",
+      "sourceFile": "src/main/kotlin/com/example/samplecmp/FontScalePreviews.kt",
+      "variant": ""
+    },
+    {
       "annotatedBasename": "KeyboardDemoPreview_Keyboard_Demo.a11y.png",
       "cleanBasename": "KeyboardDemoPreview_Keyboard_Demo.png",
       "findings": [],
