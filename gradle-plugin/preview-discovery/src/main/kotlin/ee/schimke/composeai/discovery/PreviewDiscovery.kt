@@ -1882,8 +1882,14 @@ object PreviewDiscovery {
   }
 
   // Strip characters that would break file paths or IDs. Spaces are left alone
-  // (they already appear in existing `_Red Box.png`-style outputs).
-  private fun sanitizeForPath(s: String): String = s.replace(Regex("""[/\\:*?"<>|]"""), "_")
+  // (they already appear in existing `_Red Box.png`-style outputs). Dots are
+  // replaced too: the id this suffix is appended to is dot-delimited (package /
+  // class / method), and `resolveRenderStems` splits the id on `.` to derive the
+  // on-disk stem — a name like `@Preview(name = "Font scale 1.5x")` would
+  // otherwise inject a spurious segment boundary ("1" | "5x"), and the
+  // shortest-unique-suffix walk could pick just "5x" as the whole filename.
+  private fun sanitizeForPath(s: String): String =
+    s.replace(Regex("""[/\\:*?"<>|.]"""), "_")
 
   private fun extractPreviewParams(
     ann: AnnotationInfo,

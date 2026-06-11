@@ -13,6 +13,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -35,7 +36,12 @@ import org.jetbrains.skia.EncodedImageFormat
  *
  * Args: className functionName widthPx heightPx density showBackground backgroundColor outputFile
  * [wrapperClassName] [wrapWidth] [wrapHeight] [previewParameterProviderFqn] [previewParameterLimit]
- * [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs]
+ * [localeTag] [scrollMode] [scrollAxis] [scrollMaxScrollPx] [scrollFrameIntervalMs] [previewKind]
+ * [assetPath] [fontScale]
+ *
+ * The optional 21st argument (`fontScale`) carries `@Preview(fontScale = ...)`. Compose Desktop has
+ * no resource-qualifier system, so it's threaded through `Density(density, fontScale)` (and
+ * re-provided as `LocalDensity`); omit or pass `1.0` for the no-op default.
  *
  * The optional 9th argument is the FQN of a `PreviewWrapperProvider` (Compose 1.11+); pass an empty
  * string or omit to skip wrapping.
@@ -126,6 +132,11 @@ fun main(args: Array<String>) {
   // function to reflect; inflate the asset (arg 20, a classpath-relative path) via Compottie and
   // capture a single frame. Short-circuits the whole `@PreviewParameter` / scroll machinery below.
   val previewKind = args.getOrNull(18)?.takeIf { it.isNotBlank() }?.uppercase() ?: "COMPOSE"
+  // `@Preview(fontScale = ...)`. Compose Desktop has no resource-qualifier system; the scale is
+  // carried on `Density.fontScale` (see [renderPreview] / [renderScrollPreview]). Missing / blank /
+  // unparseable falls back to 1.0f (no-op) so older callers and the LOTTIE path keep their
+  // behaviour.
+  val fontScale = args.getOrNull(20)?.toFloatOrNull()?.takeIf { it > 0f } ?: 1.0f
   if (previewKind == "LOTTIE") {
     val assetPath = args.getOrNull(19)?.takeIf { it.isNotBlank() }
     val sidecar = errorSidecarFor(outputFile)
@@ -243,6 +254,7 @@ fun main(args: Array<String>) {
             axis = scrollAxis,
             maxScrollPx = scrollMaxScrollPx,
             frameIntervalMs = scrollFrameIntervalMs,
+            fontScale = fontScale,
           )
         if (!didCapture) {
           renderPreview(
@@ -259,6 +271,7 @@ fun main(args: Array<String>) {
             wrapHeight,
             previewArgs,
             localeTag,
+            fontScale,
           )
         }
       } else {
@@ -276,6 +289,7 @@ fun main(args: Array<String>) {
           wrapHeight,
           previewArgs,
           localeTag,
+          fontScale,
         )
       }
       // Display filters — post-capture colour-matrix variants (grayscale / invert / daltonizer
@@ -493,6 +507,7 @@ private fun renderPreview(
   wrapHeight: Boolean,
   previewArgs: List<Any?>,
   localeTag: String?,
+  fontScale: Float = 1.0f,
   fileSystem: FileSystem = SystemFileSystem,
 ) {
   val clazz = Class.forName(className)
@@ -503,7 +518,13 @@ private fun renderPreview(
       findComposableMethodWithArgs(clazz, functionName, previewArgs)
     }
 
-  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = Density(density))
+  // `@Preview(fontScale = ...)` rides on `Density.fontScale`. Threading it through the scene's
+  // constructor makes the override visible to layout (sp → px) before the first measure pass; we
+  // also re-provide the same `Density` as `LocalDensity` below since some ui-text/text-foundation
+  // paths read it directly during composition rather than via the scene density. Mirrors the
+  // daemon's desktop RenderEngine (issue: @Preview(fontScale) was ignored on the CMP pipeline).
+  val sceneDensity = Density(density, fontScale)
+  val scene = ImageComposeScene(width = widthPx, height = heightPx, density = sceneDensity)
 
   // Measured content size in pixels, captured from the wrapping Box via
   // onGloballyPositioned. Only read when at least one axis wraps.
@@ -520,13 +541,19 @@ private fun renderPreview(
       if (pseudolocale?.isRtl == true) {
         CompositionLocalProvider(
           LocalInspectionMode provides true,
+          LocalDensity provides sceneDensity,
           androidx.compose.ui.platform.LocalLayoutDirection provides
             androidx.compose.ui.unit.LayoutDirection.Rtl,
         ) {
           inner()
         }
       } else {
-        CompositionLocalProvider(LocalInspectionMode provides true) { inner() }
+        CompositionLocalProvider(
+          LocalInspectionMode provides true,
+          LocalDensity provides sceneDensity,
+        ) {
+          inner()
+        }
       }
     }
     baseProviders {

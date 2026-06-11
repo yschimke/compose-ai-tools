@@ -274,6 +274,12 @@ abstract class RenderPreviewsTask : DefaultTask() {
           // reflect; the renderer inflates the asset at arg 20 via Compottie instead.
           preview.params.kind.name,
           preview.params.assetPath.orEmpty(),
+          // 21st — `@Preview(fontScale = ...)`. Compose Desktop has no resource-qualifier system,
+          // so the renderer threads this through `Density(density, fontScale)` (and re-provides it
+          // as `LocalDensity`) the same way the daemon's desktop RenderEngine does. `1.0` is the
+          // annotation default / no-op; omitting it keeps older callers at 1.0 on the renderer
+          // side.
+          preview.params.fontScale.toString(),
         )
     }
   }

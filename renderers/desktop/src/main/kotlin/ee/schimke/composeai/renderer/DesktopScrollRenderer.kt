@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.SemanticsActions
@@ -90,6 +91,12 @@ fun renderScrollPreview(
   maxScrollPx: Int,
   frameIntervalMs: Int,
   /**
+   * `@Preview(fontScale = ...)`. Carried on `Density.fontScale` — applied to the test scene density
+   * and re-provided as `LocalDensity` so scrolled text previews honour the scale, matching the
+   * single-frame [renderPreview] path. `1.0f` is the no-op default.
+   */
+  fontScale: Float = 1.0f,
+  /**
    * Classloader used to resolve [className] (and any `@PreviewWrapper` provider). B2.0 — the daemon
    * (`:daemon:desktop`'s `RenderEngine.runScrollScenario`) loads user previews from a disposable
    * child classloader (CLASSLOADER.md), not the app classpath, so a bare `Class.forName(className)`
@@ -111,9 +118,10 @@ fun renderScrollPreview(
   val pseudolocale = ee.schimke.composeai.data.pseudolocale.Pseudolocale.fromTag(localeTag)
   var captured = false
 
+  val sceneDensity = Density(density, fontScale)
   runSkikoComposeUiTest(
     size = Size(widthPx.toFloat(), heightPx.toFloat()),
-    density = Density(density),
+    density = sceneDensity,
   ) {
     // `runSkikoComposeUiTest` (vs. the parameterless `runComposeUiTest`) sizes the underlying
     // SkikoComposeUiTest scene to the requested viewport. Without this the scene defaults to
@@ -136,13 +144,19 @@ fun renderScrollPreview(
         if (pseudolocale?.isRtl == true) {
           CompositionLocalProvider(
             LocalInspectionMode provides true,
+            LocalDensity provides sceneDensity,
             androidx.compose.ui.platform.LocalLayoutDirection provides
               androidx.compose.ui.unit.LayoutDirection.Rtl,
           ) {
             inner()
           }
         } else {
-          CompositionLocalProvider(LocalInspectionMode provides true) { inner() }
+          CompositionLocalProvider(
+            LocalInspectionMode provides true,
+            LocalDensity provides sceneDensity,
+          ) {
+            inner()
+          }
         }
       }
       baseProviders {

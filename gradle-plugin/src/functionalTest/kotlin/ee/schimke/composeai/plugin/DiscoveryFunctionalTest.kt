@@ -502,6 +502,75 @@ class DiscoveryFunctionalTest {
   }
 
   @Test
+  fun `composePreviewDiscover keeps render stems intact when a preview name contains a dot`() {
+    // Regression: `@Preview(name = "...1.5x")` carries a dot, which was appended verbatim to the
+    // preview id. `resolveRenderStems` splits the id on `.` to derive the on-disk stem, so the
+    // fractional part became a spurious trailing segment ("1" | "5x") and the
+    // shortest-unique-suffix
+    // walk could collapse the whole filename down to just "5x". 1.0x / 2.0x happened to survive
+    // because their "0x" tails collided and forced a longer suffix; 1.5x's unique "5x" did not.
+    val projectDir = createCmpTestProject()
+
+    val srcFile = File(projectDir, "src/main/kotlin/test/Previews.kt")
+    srcFile.writeText(
+      """
+      package test
+
+      import androidx.compose.ui.tooling.preview.Preview
+      import androidx.compose.foundation.background
+      import androidx.compose.foundation.layout.Box
+      import androidx.compose.foundation.layout.size
+      import androidx.compose.runtime.Composable
+      import androidx.compose.ui.Modifier
+      import androidx.compose.ui.graphics.Color
+      import androidx.compose.ui.unit.dp
+
+      @Preview(name = "Font scale 1.0x", fontScale = 1.0f)
+      @Composable
+      fun FontScale100Preview() { Box(Modifier.size(50.dp).background(Color.Red)) }
+
+      @Preview(name = "Font scale 1.5x", fontScale = 1.5f)
+      @Composable
+      fun FontScale150Preview() { Box(Modifier.size(50.dp).background(Color.Red)) }
+
+      @Preview(name = "Font scale 2.0x", fontScale = 2.0f)
+      @Composable
+      fun FontScale200Preview() { Box(Modifier.size(50.dp).background(Color.Red)) }
+      """
+        .trimIndent()
+    )
+
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments("composePreviewDiscover", "--stacktrace")
+        .withPluginClasspath()
+        .build()
+
+    assertThat(result.task(":composePreviewDiscover")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val manifest =
+      json.decodeFromString<PreviewManifest>(
+        File(projectDir, "build/compose-previews/previews.json").readText()
+      )
+
+    // fontScale is captured per preview (the annotation knob the renderer honours via Density).
+    assertThat(manifest.previews.map { it.params.fontScale }.toSet())
+      .containsExactly(1.0f, 1.5f, 2.0f)
+
+    // Every renderOutput leaf must still carry its own function name — none collapsed to a bare
+    // fragment like `5x.png` — and all three stay distinct.
+    val leaves =
+      manifest.previews.associate {
+        it.functionName to it.captures.single().renderOutput.substringAfterLast('/')
+      }
+    assertThat(leaves["FontScale100Preview"]).startsWith("FontScale100Preview_")
+    assertThat(leaves["FontScale150Preview"]).startsWith("FontScale150Preview_")
+    assertThat(leaves["FontScale200Preview"]).startsWith("FontScale200Preview_")
+    assertThat(leaves.values.toSet()).hasSize(3)
+  }
+
+  @Test
   fun `composePreviewDiscover picks up @ScrollingPreview`() {
     val projectDir = createCmpTestProject()
 
