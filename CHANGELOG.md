@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.14.0](https://github.com/yschimke/compose-ai-tools/compare/v0.13.4...v0.14.0) (2026-06-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* bump to 0.14.0 ([#1822](https://github.com/yschimke/compose-ai-tools/issues/1822))
+
+### Features
+
+* 2D semantics wireframe data product + unified spatial-semantics-tree foundation ([#1755](https://github.com/yschimke/compose-ai-tools/issues/1755)) ([6f32748](https://github.com/yschimke/compose-ai-tools/commit/6f327481d2f6d4dc5678d9af932158ef65fe29c4))
+* bump to 0.14.0 ([#1822](https://github.com/yschimke/compose-ai-tools/issues/1822)) ([1baa880](https://github.com/yschimke/compose-ai-tools/commit/1baa880bf86edf4880f80f49fe014922020fb39c))
+* **ci:** capture the 3D spatial webview from the real XR render ([#1826](https://github.com/yschimke/compose-ai-tools/issues/1826)) ([4eef208](https://github.com/yschimke/compose-ai-tools/commit/4eef20814b417ba46c0c976ef690b8cd8c25784d))
+* **cli:** diff-semantics command — pixel-free semantics regression diff ([#1803](https://github.com/yschimke/compose-ai-tools/issues/1803)) ([bb2a9f8](https://github.com/yschimke/compose-ai-tools/commit/bb2a9f8c110a0dc4cc6e9754828e7d7ab89a4422))
+* compose/spatial-semantics data product (Level-2 XR a11y capture) ([#1816](https://github.com/yschimke/compose-ai-tools/issues/1816)) ([23ea818](https://github.com/yschimke/compose-ai-tools/commit/23ea8187fbc9b10c2253e5de618692238cba462f))
+* **daemon:** classify renderFailed into a typed kind + fix hint ([#1789](https://github.com/yschimke/compose-ai-tools/issues/1789)) ([#1809](https://github.com/yschimke/compose-ai-tools/issues/1809)) ([a8d35be](https://github.com/yschimke/compose-ai-tools/commit/a8d35bee81833c40fda518659bf23e6f718a62ea))
+* **daemon:** resolve interactive input targets by semantic ref (desktop) ([#1793](https://github.com/yschimke/compose-ai-tools/issues/1793)) ([0b4b19c](https://github.com/yschimke/compose-ai-tools/commit/0b4b19c90c9f4be861b128a58d7b0e1d4282b141))
+* **daemon:** sandbox-side semantic-target dispatch on Android ([#1784](https://github.com/yschimke/compose-ai-tools/issues/1784)) ([#1801](https://github.com/yschimke/compose-ai-tools/issues/1801)) ([fdf5fef](https://github.com/yschimke/compose-ai-tools/commit/fdf5fefa1614b9caf57a9d7bdd88906dbd00a538))
+* **daemon:** semantic-target dispatch for record_preview script events (desktop) ([#1798](https://github.com/yschimke/compose-ai-tools/issues/1798)) ([7ef2e44](https://github.com/yschimke/compose-ai-tools/commit/7ef2e44f993cbaa39358aa4b27ff2bb17ee5f2cc))
+* **lottie:** discover + render Android-module Lottie assets via the desktop path ([#1771](https://github.com/yschimke/compose-ai-tools/issues/1771)) ([80eea2f](https://github.com/yschimke/compose-ai-tools/commit/80eea2f917fa67a8b901ff700dd5220c39f903e2))
+* **lottie:** interactive timeline — progress scrub + animation/lottie metadata product ([#1769](https://github.com/yschimke/compose-ai-tools/issues/1769)) ([152fcfd](https://github.com/yschimke/compose-ai-tools/commit/152fcfdfb145ab27b59069890a36c353911bad1d))
+* **lottie:** live timeline scrub via held session (interactive/setLottie) ([#1781](https://github.com/yschimke/compose-ai-tools/issues/1781)) ([e297b09](https://github.com/yschimke/compose-ai-tools/commit/e297b09ceb83ce2ceaa1d3dd352bad8e10d66931))
+* **lottie:** render Lottie animation previews on the Desktop backend ([#1761](https://github.com/yschimke/compose-ai-tools/issues/1761)) ([8ab25d6](https://github.com/yschimke/compose-ai-tools/commit/8ab25d690e6845154da2e9f965aeea3f774f1d61))
+* **mcp:** crop render_preview to a single element by semantic ref ([#1819](https://github.com/yschimke/compose-ai-tools/issues/1819)) ([ba29080](https://github.com/yschimke/compose-ai-tools/commit/ba29080eb8f4604ccbf7b5bdbf1fa01afc7daf48))
+* **mcp:** diff_semantics tool — pixel-free semantics regression signal ([#1795](https://github.com/yschimke/compose-ai-tools/issues/1795)) ([1c25dda](https://github.com/yschimke/compose-ai-tools/commit/1c25dda348afb46207092e27d32904b7a90e6eeb))
+* **mcp:** emit a Compose UI test from a record_preview interaction ([#1786](https://github.com/yschimke/compose-ai-tools/issues/1786)) ([#1807](https://github.com/yschimke/compose-ai-tools/issues/1807)) ([5330637](https://github.com/yschimke/compose-ai-tools/commit/5330637a2fda1d7c05bd2713c95496fa90b29376))
+* **mcp:** render_matrix across device/locale/uiMode/fontScale ([#1788](https://github.com/yschimke/compose-ai-tools/issues/1788)) ([#1814](https://github.com/yschimke/compose-ai-tools/issues/1814)) ([bd7a556](https://github.com/yschimke/compose-ai-tools/commit/bd7a556578fe2896ce5da3421f4dcd80fd23fb41))
+* **mcp:** token-frugal render_preview observe modes ([#1787](https://github.com/yschimke/compose-ai-tools/issues/1787)) ([#1812](https://github.com/yschimke/compose-ai-tools/issues/1812)) ([6703836](https://github.com/yschimke/compose-ai-tools/commit/670383682a3468c172e05605b20cfff4fada7b81))
+* **panel:** gate bundle chips to the focused preview's type ([#1783](https://github.com/yschimke/compose-ai-tools/issues/1783)) ([e6de776](https://github.com/yschimke/compose-ai-tools/commit/e6de776e78375b0de27ad4283310f4ae0f913eb4))
+* render JetStream XR subspace previews in CI, auto-enabled from androidx.xr.compose ([#1766](https://github.com/yschimke/compose-ai-tools/issues/1766)) ([6a5f124](https://github.com/yschimke/compose-ai-tools/commit/6a5f124b42f5869832db59f821b286c0003556da))
+* **semantics:** stable node refs, target resolver, and tree diff engine ([#1790](https://github.com/yschimke/compose-ai-tools/issues/1790)) ([98feb25](https://github.com/yschimke/compose-ai-tools/commit/98feb259d78117233f21cc3f2941f61a8d8ff90a))
+* **vscode:** add Google Fonts browser with live customiser ([#1757](https://github.com/yschimke/compose-ai-tools/issues/1757)) ([50b1e83](https://github.com/yschimke/compose-ai-tools/commit/50b1e83c26f7098f99d714b6bfb4580e1453aaf6))
+* **vscode:** feed real XR renders into the 3D spatial view ([#1821](https://github.com/yschimke/compose-ai-tools/issues/1821)) ([9e0ae1c](https://github.com/yschimke/compose-ai-tools/commit/9e0ae1c06e62584ef7154f7c5eaf522abcac0053))
+* **vscode:** generate downloadable Google Fonts snippet with variations ([#1762](https://github.com/yschimke/compose-ai-tools/issues/1762)) ([d303156](https://github.com/yschimke/compose-ai-tools/commit/d303156b66bf9fc86c7843d7262ab8bbf8622d3f))
+* **vscode:** Lottie timeline scrubber slider in the preview panel ([#1778](https://github.com/yschimke/compose-ai-tools/issues/1778)) ([006dd98](https://github.com/yschimke/compose-ai-tools/commit/006dd98f357857e5920c8a7d3891cd4d9501c170))
+* **vscode:** overlay per-panel wireframes in the spatial view ([#1818](https://github.com/yschimke/compose-ai-tools/issues/1818)) ([1779f7d](https://github.com/yschimke/compose-ai-tools/commit/1779f7d3e6fa9fb9af323fe729f991e927e47643))
+* **vscode:** render wireframe-overlay panel faces from SpatialSemanticsTree ([#1763](https://github.com/yschimke/compose-ai-tools/issues/1763)) ([7d26db3](https://github.com/yschimke/compose-ai-tools/commit/7d26db339ac163781e47265d013a95e982377ee7))
+* **vscode:** track the focused preview in the 3D spatial view ([#1825](https://github.com/yschimke/compose-ai-tools/issues/1825)) ([c718929](https://github.com/yschimke/compose-ai-tools/commit/c718929443fdc8a33ef9cbc95434c3a3e3c092b6))
+* **xr:** daemon JSON-RPC surface for the XR render service ([#1792](https://github.com/yschimke/compose-ai-tools/issues/1792)) ([e10329c](https://github.com/yschimke/compose-ai-tools/commit/e10329cbdd0f4205898317cafc1775179ad29912))
+* **xr:** gate XR frames through FrameStreamRegistry (visibility/fps/dedup) ([#1800](https://github.com/yschimke/compose-ai-tools/issues/1800)) ([c6b3e0d](https://github.com/yschimke/compose-ai-tools/commit/c6b3e0d297c26369d9ec7e978a6f118a114f43ab))
+* **xr:** JVM client for the native XR render server (daemon-fronting groundwork) ([#1780](https://github.com/yschimke/compose-ai-tools/issues/1780)) ([026348d](https://github.com/yschimke/compose-ai-tools/commit/026348d48aa21768b27468e56d2ba8a4588491e4))
+* **xr:** keep xr/structure in step with updatePanels deltas ([#1808](https://github.com/yschimke/compose-ai-tools/issues/1808)) ([e85260d](https://github.com/yschimke/compose-ai-tools/commit/e85260d39f71293667c9de8f33d50d0d27127036))
+* **xr:** multi-session support in the native render server ([#1802](https://github.com/yschimke/compose-ai-tools/issues/1802)) ([7bb8be4](https://github.com/yschimke/compose-ai-tools/commit/7bb8be4a758f1c4f5fd8ebba744fce975f4ed766))
+* **xr:** multiplex XR sessions over one shared process (JVM side) ([#1805](https://github.com/yschimke/compose-ai-tools/issues/1805)) ([b51aefc](https://github.com/yschimke/compose-ai-tools/commit/b51aefcd1fce46fc97da3938edbfdf9533960cbb))
+* **xr:** re-spawn the shared XR process after it dies ([#1810](https://github.com/yschimke/compose-ai-tools/issues/1810)) ([51db6f1](https://github.com/yschimke/compose-ai-tools/commit/51db6f1133f7ac986e9d5526c96cfadce8700891))
+* **xr:** single-source SpatialScene codegen + a per-frame Filament render server ([#1779](https://github.com/yschimke/compose-ai-tools/issues/1779)) ([12cc6cc](https://github.com/yschimke/compose-ai-tools/commit/12cc6cc6320baeb71fdcc0e80993b93237f1c5c9))
+* **xr:** supervise + resolve the native XR render server from the JVM ([#1782](https://github.com/yschimke/compose-ai-tools/issues/1782)) ([a51156c](https://github.com/yschimke/compose-ai-tools/commit/a51156cf8bb97a5cfc6ea7376112c2ed34e35f78))
+* **xr:** wire the native XR render server into the desktop daemon ([#1797](https://github.com/yschimke/compose-ai-tools/issues/1797)) ([a992976](https://github.com/yschimke/compose-ai-tools/commit/a992976cba77687a03dc686c76bd7c3dbcc2fd41))
+* **xr:** XR session manager + fakeable render-server handle (daemon-fronting core) ([#1791](https://github.com/yschimke/compose-ai-tools/issues/1791)) ([4894855](https://github.com/yschimke/compose-ai-tools/commit/4894855ac1a74a52f2d908bbc15658e69cabf1e4))
+* **xr:** xr/structure data product (held panel tree + poses) ([#1806](https://github.com/yschimke/compose-ai-tools/issues/1806)) ([57bb87d](https://github.com/yschimke/compose-ai-tools/commit/57bb87df179e6fbde610e611c948a5b6298d5014))
+
+
+### Bug Fixes
+
+* **deps:** update gradle minor/patch ([#1827](https://github.com/yschimke/compose-ai-tools/issues/1827)) ([b9a143c](https://github.com/yschimke/compose-ai-tools/commit/b9a143c557f298e90370295c82ffbf7861deecb5))
+* **gradle-plugin:** make desktop classpath guard config-cache serializable ([#1799](https://github.com/yschimke/compose-ai-tools/issues/1799)) ([3e28510](https://github.com/yschimke/compose-ai-tools/commit/3e28510852125e65d7aa305a46799f68fc6742fa))
+* **integration:** drop duplicate java_version key on the jetstream-xr cell ([#1764](https://github.com/yschimke/compose-ai-tools/issues/1764)) ([5ea0f1f](https://github.com/yschimke/compose-ai-tools/commit/5ea0f1f09b5c5e0ddc590cac601d91277fecb1d6))
+* **mcp:** emit the real composable name in record_preview generated tests ([#1813](https://github.com/yschimke/compose-ai-tools/issues/1813)) ([4ebdb21](https://github.com/yschimke/compose-ai-tools/commit/4ebdb214db9e31c501d8ba1f59d31d82d9625e3b))
+* publish :renderer-xr so external consumers can resolve the XR render path ([#1768](https://github.com/yschimke/compose-ai-tools/issues/1768)) ([cf0201e](https://github.com/yschimke/compose-ai-tools/commit/cf0201e6c5251ef34d6d222331badbb37e1e1985))
+* **vscode-preview:** wait for webfonts before snapshotting ([#1824](https://github.com/yschimke/compose-ai-tools/issues/1824)) ([8e9f547](https://github.com/yschimke/compose-ai-tools/commit/8e9f547c932d601b07ac03b8ec87d7445d1ce80f))
+* **xr:** add renderer-xr-client to the bundle-render e2e publish set ([#1794](https://github.com/yschimke/compose-ai-tools/issues/1794)) ([1f60175](https://github.com/yschimke/compose-ai-tools/commit/1f60175bd21d7d545676bcd7549160126f16d66f))
+
 ## [0.13.4](https://github.com/yschimke/compose-ai-tools/compare/v0.13.3...v0.13.4) (2026-06-04)
 
 
