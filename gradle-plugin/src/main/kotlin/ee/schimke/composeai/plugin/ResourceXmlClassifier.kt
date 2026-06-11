@@ -27,6 +27,48 @@ object ResourceXmlClassifier {
 
   fun classify(file: File): ResourceType? = file.inputStream().use { classify(it) }
 
+  /**
+   * Returns `true` when [file] is an `<adaptive-icon>` that declares a `<monochrome>` child layer
+   * (the Android 13+ themed-icon source). Discovery uses this to gate the `THEMED_LIGHT` /
+   * `THEMED_DARK` capture fan-out: those captures can only be rendered from a `<monochrome>` layer,
+   * so a plain `<background>` + `<foreground>` icon would otherwise emit themed captures the
+   * renderer can't produce — counted as missing renders and hard-failing `missing-renders: fail`
+   * (issue: adaptive-icon themed captures with no `<monochrome>` produce no PNG). Returns `false`
+   * for non-adaptive-icon roots and for adaptive icons without a `<monochrome>` child.
+   */
+  fun hasMonochromeLayer(file: File): Boolean = file.inputStream().use { hasMonochromeLayer(it) }
+
+  fun hasMonochromeLayer(input: InputStream): Boolean {
+    val reader =
+      try {
+        factory.createXMLStreamReader(input)
+      } catch (_: XMLStreamException) {
+        return false
+      }
+    try {
+      var sawRoot = false
+      while (reader.hasNext()) {
+        val event = reader.next()
+        if (event != XMLStreamConstants.START_ELEMENT) continue
+        if (!sawRoot) {
+          sawRoot = true
+          if (reader.localName != "adaptive-icon") return false
+        } else if (reader.localName == "monochrome") {
+          return true
+        }
+      }
+      return false
+    } catch (_: XMLStreamException) {
+      return false
+    } finally {
+      try {
+        reader.close()
+      } catch (_: XMLStreamException) {
+        // already closed / never opened — ignore
+      }
+    }
+  }
+
   fun classify(input: InputStream): ResourceType? {
     val reader =
       try {

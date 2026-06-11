@@ -52,6 +52,45 @@ class ResourceXmlClassifierTest {
   }
 
   @Test
+  fun `adaptive-icon with monochrome layer is detected`() {
+    val xml =
+      """
+      <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+        <background android:drawable="@drawable/ic_launcher_background" />
+        <foreground android:drawable="@drawable/ic_launcher_foreground" />
+        <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+      </adaptive-icon>
+      """
+        .trimIndent()
+    assertThat(ResourceXmlClassifier.hasMonochromeLayer(xml.byteInputStream())).isTrue()
+  }
+
+  @Test
+  fun `adaptive-icon without monochrome layer is not detected`() {
+    val xml =
+      """
+      <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+        <background android:drawable="@drawable/ic_launcher_background" />
+        <foreground android:drawable="@drawable/ic_launcher_foreground" />
+      </adaptive-icon>
+      """
+        .trimIndent()
+    assertThat(ResourceXmlClassifier.hasMonochromeLayer(xml.byteInputStream())).isFalse()
+  }
+
+  @Test
+  fun `hasMonochromeLayer is false for non-adaptive-icon roots`() {
+    val xml = "<vector><monochrome /></vector>"
+    assertThat(ResourceXmlClassifier.hasMonochromeLayer(xml.byteInputStream())).isFalse()
+  }
+
+  @Test
+  fun `hasMonochromeLayer is false for malformed xml`() {
+    assertThat(ResourceXmlClassifier.hasMonochromeLayer("<adaptive-icon this is".byteInputStream()))
+      .isFalse()
+  }
+
+  @Test
   fun `unknown root tag returns null`() {
     val xml = """<shape xmlns:android="http://schemas.android.com/apk/res/android" />"""
     assertThat(ResourceXmlClassifier.classify(xml.byteInputStream())).isNull()
