@@ -727,6 +727,7 @@ class RenderEngine(
         axis = axis,
         maxScrollPx = scroll.maxScrollPx,
         frameIntervalMs = scroll.frameIntervalMs,
+        fontScale = spec.fontScale ?: 1.0f,
         classLoader = classLoader,
       )
     if (!handled) {

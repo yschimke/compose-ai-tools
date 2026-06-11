@@ -638,7 +638,7 @@ object PreviewDiscovery {
    */
   internal fun resolveRenderStems(previews: List<PreviewInfo>): List<String> {
     if (previews.isEmpty()) return emptyList()
-    val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it.id) }
+    val sanitisedSegmentsByPreview = previews.map { sanitiseSegments(it) }
     val stems = sanitisedSegmentsByPreview.mapIndexed { i, mySegs ->
       shortestUniqueSuffix(i, mySegs, sanitisedSegmentsByPreview)
     }
@@ -676,11 +676,28 @@ object PreviewDiscovery {
    * every run of non-alphanumeric characters within a segment to a single `_` and trims `_`/`-`
    * from the segment edges; the inter-segment `.` is preserved as the segment join.
    *
+   * Only the *structural* part of the id — the `className.functionName` FQN — is split on `.`. The
+   * trailing variant suffix (from `@Preview(name = ...)` / `group`) is folded into the
+   * function-name segment first, because a name like `"Font scale 1.5x"` carries dots that are NOT
+   * structural id separators: splitting the whole id would inject a spurious trailing segment ("1"
+   * | "5x") and the shortest-unique-suffix walk could collapse the entire stem down to it
+   * (`5x.png`). Keeping the id itself lossless preserves manifest dedup (`distinctBy { it.id }`);
+   * any stem collision two distinct ids still produce is handled by [disambiguateExactCollisions].
+   *
    * Empty segments (e.g. from a leading or trailing `.`, or from a segment that was all-punctuation
    * pre-sanitisation) are dropped so they don't introduce `..` in the resulting stem.
    */
-  private fun sanitiseSegments(id: String): List<String> =
-    id.split('.').map(::sanitiseSegment).filter { it.isNotEmpty() }
+  private fun sanitiseSegments(preview: PreviewInfo): List<String> {
+    val fqn = "${preview.className}.${preview.functionName}"
+    // Fall back to splitting the whole id when it isn't the expected `fqn + suffix` shape (e.g.
+    // synthetically-constructed ids) so behaviour is unchanged for those.
+    val suffix = if (preview.id.startsWith(fqn)) preview.id.substring(fqn.length) else null
+    val segments = (if (suffix != null) fqn else preview.id).split('.').toMutableList()
+    if (suffix != null && suffix.isNotEmpty() && segments.isNotEmpty()) {
+      segments[segments.lastIndex] = segments.last() + suffix
+    }
+    return segments.map(::sanitiseSegment).filter { it.isNotEmpty() }
+  }
 
   /**
    * Collapse every run of non-alphanumeric characters to a single `_`, then trim `_` and `-` from
@@ -1882,7 +1899,11 @@ object PreviewDiscovery {
   }
 
   // Strip characters that would break file paths or IDs. Spaces are left alone
-  // (they already appear in existing `_Red Box.png`-style outputs).
+  // (they already appear in existing `_Red Box.png`-style outputs). Dots are
+  // deliberately left intact here so the `id` stays lossless — two variants whose
+  // names differ only by `.` vs `_` must keep distinct ids (the manifest dedups by
+  // id). The render-stem derivation handles name-dots separately; see
+  // `sanitiseSegments`.
   private fun sanitizeForPath(s: String): String = s.replace(Regex("""[/\\:*?"<>|]"""), "_")
 
   private fun extractPreviewParams(

@@ -151,6 +151,59 @@ class PreviewDiscoveryRenderStemTest {
   }
 
   @Test
+  fun `a dot in the preview name does not truncate the stem to a trailing fragment`() {
+    // `@Preview(name = "Font scale 1.5x")` puts a dot in the variant suffix. The dot is NOT a
+    // structural id separator, so the stem must keep the full function-and-variant name rather than
+    // collapsing to the unique fractional tail (`5x`). A sibling at 1.0x guards against the suffix
+    // fold silently dropping segments.
+    val previews =
+      listOf(
+        PreviewInfo(
+          id = "com.example.PreviewsKt.FontScale150Preview_Font scale 1.5x",
+          functionName = "FontScale150Preview",
+          className = "com.example.PreviewsKt",
+        ),
+        PreviewInfo(
+          id = "com.example.PreviewsKt.FontScale100Preview_Font scale 1.0x",
+          functionName = "FontScale100Preview",
+          className = "com.example.PreviewsKt",
+        ),
+      )
+
+    val stems = PreviewDiscovery.resolveRenderStems(previews)
+
+    assertThat(stems)
+      .containsExactly("FontScale150Preview_Font_scale_1_5x", "FontScale100Preview_Font_scale_1_0x")
+      .inOrder()
+  }
+
+  @Test
+  fun `distinct ids differing only by dot-vs-underscore in the name still get distinct stems`() {
+    // Two variants on the same function whose names differ only by `.` vs `_` keep distinct ids
+    // (the manifest dedups by id, so collapsing them would silently drop one). They sanitise to the
+    // same stem form, so the numeric disambiguator must split them on disk.
+    val previews =
+      listOf(
+        PreviewInfo(
+          id = "com.example.PreviewsKt.Foo_State 1.5",
+          functionName = "Foo",
+          className = "com.example.PreviewsKt",
+        ),
+        PreviewInfo(
+          id = "com.example.PreviewsKt.Foo_State 1_5",
+          functionName = "Foo",
+          className = "com.example.PreviewsKt",
+        ),
+      )
+
+    val stems = PreviewDiscovery.resolveRenderStems(previews)
+
+    assertThat(stems.toSet()).hasSize(2)
+    assertThat(stems[0]).isEqualTo("Foo_State_1_5")
+    assertThat(stems[1]).isEqualTo("Foo_State_1_5_1")
+  }
+
+  @Test
   fun `empty input returns empty stems list`() {
     assertThat(PreviewDiscovery.resolveRenderStems(emptyList())).isEmpty()
   }
