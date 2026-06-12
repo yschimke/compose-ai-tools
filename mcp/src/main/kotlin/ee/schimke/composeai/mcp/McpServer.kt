@@ -3,7 +3,6 @@ package ee.schimke.composeai.mcp
 import ee.schimke.composeai.mcp.protocol.CallToolResult
 import ee.schimke.composeai.mcp.protocol.ContentBlock
 import ee.schimke.composeai.mcp.protocol.ToolDef
-import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.server.ServerSession
 import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport
@@ -38,6 +37,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.UnsubscribeRequest
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +81,8 @@ interface Session {
 
 /** SDK-backed stdio session with the same lifecycle shape the old hand-rolled session exposed. */
 class McpSession(
-  private val server: Server,
+  private val serverInfo: Implementation,
+  private val options: ServerOptions,
   private val input: InputStream,
   private val output: OutputStream,
   private val configure: (ServerSession) -> Unit,
@@ -94,16 +95,26 @@ class McpSession(
         {
           try {
             runBlocking(Dispatchers.IO) {
-              val session =
-                server.createSession(
-                  StdioServerTransport(input.asSource().buffered(), output.asSink().buffered())
-                )
+              // Build the session ourselves and install our request handlers BEFORE connecting the
+              // transport. `Server.createSession` connects the transport — and so starts draining
+              // client messages — *inside* the call, before it returns the session for us to
+              // configure. Installing handlers after that leaves a race window: an early
+              // `tools/call` (e.g. a client that pipelines initialize → initialized →
+              // register_project) can be answered by the SDK's default tools/call handler, which
+              // looks up an empty registry (we manage tools ourselves and never `addTool`) and
+              // replies "Tool <name> not found". Constructing the ServerSession directly lets us
+              // set every handler first, then connect, so no request is ever served by the SDK
+              // defaults. ServerSession's constructor wires up initialize/ping/logging itself.
+              val session = ServerSession(serverInfo, options, UUID.randomUUID().toString())
               sdkSession = session
               session.onClose {
                 closed.complete(Unit)
                 onClose()
               }
               configure(session)
+              session.connect(
+                StdioServerTransport(input.asSource().buffered(), output.asSink().buffered())
+              )
               while (!closed.isDone) {
                 delay(100)
               }
@@ -128,7 +139,7 @@ class McpSession(
   }
 
   override fun close() {
-    runBlocking { server.close() }
+    runBlocking { sdkSession?.close() }
     closed.complete(Unit)
     thread.join(2_000)
   }
@@ -193,7 +204,7 @@ class SessionRegistry {
   }
 }
 
-internal fun Server.installComposePreviewHandlers(
+internal fun installComposePreviewHandlers(
   sdkSession: ServerSession,
   session: Session,
   listTools: () -> List<ToolDef>,
@@ -230,17 +241,13 @@ internal fun Server.installComposePreviewHandlers(
   }
 }
 
-internal fun composePreviewSdkServer(serverInfo: Implementation): Server =
-  Server(
-    serverInfo = serverInfo,
-    options =
-      ServerOptions(
-        capabilities =
-          ServerCapabilities(
-            tools = ServerCapabilities.Tools(listChanged = true),
-            resources = ServerCapabilities.Resources(subscribe = true, listChanged = true),
-          )
-      ),
+internal fun composePreviewServerOptions(): ServerOptions =
+  ServerOptions(
+    capabilities =
+      ServerCapabilities(
+        tools = ServerCapabilities.Tools(listChanged = true),
+        resources = ServerCapabilities.Resources(subscribe = true, listChanged = true),
+      )
   )
 
 private fun ToolDef.toSdkTool(): Tool {
