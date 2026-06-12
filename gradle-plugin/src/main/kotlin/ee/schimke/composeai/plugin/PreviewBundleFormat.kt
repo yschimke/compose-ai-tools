@@ -173,14 +173,14 @@ data class BundleManifest(
    * preview**, the one shown as the leading PNG — so a detached reader can surface a11y findings /
    * theme tokens / drawn strings / … for the headline image without re-rendering. Empty unless the
    * producer was asked to include extension data (the opt-in `--include-data-extensions` /
-   * `-PbundleIncludeDataExtensions=true` pack) — the default pack stays small and carries no reports.
-   * Additive: the field defaults to empty and `ignoreUnknownKeys` readers skip the `extensions/`
-   * entries, so a pre-v7 reader opening a v7 bundle still works; only a reader that wants the carried
-   * data needs to be v7-aware. See [BundleDataExtension].
+   * `-PbundleIncludeDataExtensions=true` pack) — the default pack stays small and carries no
+   * reports. Additive: the field defaults to empty and `ignoreUnknownKeys` readers skip the
+   * `extensions/` entries, so a pre-v7 reader opening a v7 bundle still works; only a reader that
+   * wants the carried data needs to be v7-aware. See [BundleDataExtension].
    *
    * When this carriage is present the bundled `previews.json`'s `dataExtensionReports` map is
-   * realigned to the same in-bundle `extensions/<id>.json` paths, so the two pointers agree and both
-   * resolve inside the bundle (the producer's original module-relative report paths don't).
+   * realigned to the same in-bundle `extensions/<id>.json` paths, so the two pointers agree and
+   * both resolve inside the bundle (the producer's original module-relative report paths don't).
    */
   val dataExtensions: List<BundleDataExtension> = emptyList(),
 )
@@ -415,8 +415,8 @@ const val BUNDLE_EXTENSIONS_DIR: String = "extensions"
  *   still works; only protolayout IR replay on a detached Android daemon needs a v6-aware player.
  * - v7 — adds [BundleManifest.dataExtensions] and the `extensions/` directory: an opt-in pack
  *   (`--include-data-extensions`) carries the per-extension data reports (a11y findings, theme
- *   tokens, drawn strings, …) named by `previews.json`'s `dataExtensionReports`, sliced to the cover
- *   (default) preview, so a detached reader can surface the headline image's data without
+ *   tokens, drawn strings, …) named by `previews.json`'s `dataExtensionReports`, sliced to the
+ *   cover (default) preview, so a detached reader can surface the headline image's data without
  *   re-rendering. Additive — the field defaults to empty and `ignoreUnknownKeys` readers skip the
  *   `extensions/` entries, so a v6 reader opening a v7 bundle still works; only a reader that wants
  *   the carried data needs to be v7-aware.

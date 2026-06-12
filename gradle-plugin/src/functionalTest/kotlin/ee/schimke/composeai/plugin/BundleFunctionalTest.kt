@@ -302,11 +302,13 @@ class BundleFunctionalTest {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
 
-    // Discover so previews.json exists, then inject a dataExtensionReports pointer + drop the report
+    // Discover so previews.json exists, then inject a dataExtensionReports pointer + drop the
+    // report
     // sidecar it names — mimicking what a data extension's aggregate step would have produced after
     // discovery. (A real render isn't available here; this exercises the carriage path the same way
     // the PNG-baking test seeds fake renders.) The pack runs exclude `composePreviewDiscover`
-    // (`-x`): discover owns previews.json, so without the exclude Gradle would treat our hand-edit as
+    // (`-x`): discover owns previews.json, so without the exclude Gradle would treat our hand-edit
+    // as
     // a stale output and re-run discover, reverting the injected pointer to the empty default.
     GradleRunner.create()
       .withProjectDir(projectDir)
@@ -361,7 +363,8 @@ class BundleFunctionalTest {
 
     val bundle = File(previewOutputDir, "bundle.png")
     assertThat(listEntries(bundle)).contains("extensions/a11y.json")
-    // The carried report is sliced to the cover (red) preview: red's entry survives, blue's is gone,
+    // The carried report is sliced to the cover (red) preview: red's entry survives, blue's is
+    // gone,
     // and the top-level `module` field is preserved.
     val carriedReport =
       json
@@ -375,7 +378,8 @@ class BundleFunctionalTest {
     assertThat(carriedReport["module"]!!.jsonPrimitive.content).isEqualTo(":")
 
     val bundleManifest =
-      json.parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
         .jsonObject
     assertThat(bundleManifest["schemaVersion"]!!.jsonPrimitive.int).isEqualTo(BUNDLE_SCHEMA_VERSION)
     val carried = bundleManifest["dataExtensions"]!!.jsonArray

@@ -217,8 +217,8 @@ abstract class BundlePreviewTask : DefaultTask() {
   @get:Input @get:Optional abstract val includeDataExtensions: Property<Boolean>
 
   /**
-   * The data-extension report sidecars named by `previews.json`'s `dataExtensionReports`, tracked as
-   * a real input so the bundle re-packs (and its cache key changes) when a report's *content*
+   * The data-extension report sidecars named by `previews.json`'s `dataExtensionReports`, tracked
+   * as a real input so the bundle re-packs (and its cache key changes) when a report's *content*
    * changes, not just when the manifest pointer does. Wired to the top-level `*.json` files under
    * the preview output dir (where the render task writes the aggregated reports); the paths are
    * resolved from the manifest at pack time against [previewsJson]'s parent. `@Optional` because a
@@ -395,11 +395,13 @@ abstract class BundlePreviewTask : DefaultTask() {
 
     val filteredManifest =
       if (includeDataExtensions.getOrElse(false)) {
-        // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to the
+        // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
+        // the
         // in-bundle `extensions/<id>.json` paths (bundle-root-relative, the same convention the map
         // documents). Otherwise the bundled `previews.json` would still name the producer's
         // module-relative paths (e.g. `accessibility.json`) — pointers that don't resolve inside a
-        // detached bundle and disagree with `bundle.json`'s [BundleManifest.dataExtensions]. Reports
+        // detached bundle and disagree with `bundle.json`'s [BundleManifest.dataExtensions].
+        // Reports
         // that were skipped (source missing) drop out of the map so nothing dangles. Left untouched
         // in the default (non-carrying) pack, preserving the historical on-disk pointers.
         manifest.copy(
@@ -932,16 +934,16 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * Slice an aggregated per-extension report down to just the cover (default) preview — the one
-   * shown as the bundle's leading PNG — so the carried `extensions/<id>.json` describes the headline
-   * image and not every preview the module rendered.
+   * shown as the bundle's leading PNG — so the carried `extensions/<id>.json` describes the
+   * headline image and not every preview the module rendered.
    *
    * Applied uniformly to every report: any top-level array whose elements are all JSON objects
    * carrying a string `previewId` is filtered to the entries whose `previewId` equals [coverId];
-   * everything else in the document is left untouched. This keys on the common `entries[].previewId`
-   * convention (e.g. the a11y report's `entries`) as a generic structural transform — it is NOT
-   * per-extension logic, so a report that doesn't follow the convention is carried whole. Returns the
-   * input bytes unchanged on a parse failure, a non-object root, or when no array matched the shape
-   * (so a report with nothing to scope is byte-identical to the source).
+   * everything else in the document is left untouched. This keys on the common
+   * `entries[].previewId` convention (e.g. the a11y report's `entries`) as a generic structural
+   * transform — it is NOT per-extension logic, so a report that doesn't follow the convention is
+   * carried whole. Returns the input bytes unchanged on a parse failure, a non-object root, or when
+   * no array matched the shape (so a report with nothing to scope is byte-identical to the source).
    */
   private fun scopeReportToCoverPreview(reportBytes: ByteArray, coverId: String): ByteArray {
     val root =
@@ -952,21 +954,21 @@ abstract class BundlePreviewTask : DefaultTask() {
       }
     if (root !is JsonObject) return reportBytes
     var changed = false
-    val scoped =
-      root.mapValues { (_, value) ->
-        if (
-          value is JsonArray &&
-            value.isNotEmpty() &&
-            value.all { it is JsonObject && (it["previewId"] as? JsonPrimitive)?.isString == true }
-        ) {
-          val kept =
-            value.filter { (it as JsonObject)["previewId"]!!.jsonPrimitive.content == coverId }
-          if (kept.size != value.size) changed = true
-          JsonArray(kept)
-        } else {
-          value
+    val scoped = root.mapValues { (_, value) ->
+      if (
+        value is JsonArray &&
+          value.isNotEmpty() &&
+          value.all { it is JsonObject && (it["previewId"] as? JsonPrimitive)?.isString == true }
+      ) {
+        val kept = value.filter {
+          (it as JsonObject)["previewId"]!!.jsonPrimitive.content == coverId
         }
+        if (kept.size != value.size) changed = true
+        JsonArray(kept)
+      } else {
+        value
       }
+    }
     return if (changed) JsonObject(scoped).toString().toByteArray(Charsets.UTF_8) else reportBytes
   }
 
