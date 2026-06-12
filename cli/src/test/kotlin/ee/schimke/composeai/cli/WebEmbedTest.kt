@@ -49,7 +49,8 @@ class WebEmbedTest {
     assertTrue("\"cover\":true" in script)
 
     val index = out.files.getValue(WebEmbed.INDEX_NAME).toString(Charsets.UTF_8)
-    assertTrue("<compose-preview-gallery></compose-preview-gallery>" in index)
+    assertTrue("<compose-preview-gallery embed=" in index)
+    assertTrue("</compose-preview-gallery>" in index)
     assertTrue("<script src=\"${WebEmbed.SCRIPT_NAME}\">" in index)
     assertTrue("My Previews" in index)
   }
@@ -101,6 +102,57 @@ class WebEmbedTest {
       )
     val script = out.files.getValue(WebEmbed.SCRIPT_NAME).toString(Charsets.UTF_8)
     assertFalse("</script>" in script)
+  }
+
+  @Test
+  fun `external image urls are percent-encoded while files keep the raw id`() {
+    val bytes = png(2, 2)
+    val id = "Foo_#dark and?more"
+    val out =
+      WebEmbed.generate(
+        title = "t",
+        modulePath = ":m",
+        previews = listOf(WebEmbed.Preview(id, "Foo", bytes)),
+        mode = WebEmbed.InlineMode.EXTERNAL,
+      )
+
+    // The file on disk keeps the raw id (a single path segment); the URL is percent-encoded so the
+    // browser doesn't treat `#dark...` as a fragment or `?more` as a query.
+    assertTrue("previews/$id.png" in out.files.keys)
+    val script = out.files.getValue(WebEmbed.SCRIPT_NAME).toString(Charsets.UTF_8)
+    assertTrue("\"src\":\"previews/Foo_%23dark%20and%3Fmore.png\"" in script)
+    // The raw, unencoded URL must not appear.
+    assertFalse("\"src\":\"previews/Foo_#dark" in script)
+  }
+
+  @Test
+  fun `url encoding leaves unreserved characters untouched`() {
+    assertEquals("Abc-_.~09", WebEmbed.urlEncodeSegment("Abc-_.~09"))
+    assertEquals("a%20b", WebEmbed.urlEncodeSegment("a b"))
+    assertEquals("%23%2F%3F", WebEmbed.urlEncodeSegment("#/?"))
+  }
+
+  @Test
+  fun `two embeds get distinct keys and register into a shared registry`() {
+    val a = WebEmbed.generate("A", ":app-a", listOf(WebEmbed.Preview("x", "X", png(2, 2))))
+    val b = WebEmbed.generate("B", ":app-b", listOf(WebEmbed.Preview("y", "Y", png(2, 2))))
+
+    val keyA = WebEmbed.embedKey("A", ":app-a", listOf("x"))
+    val keyB = WebEmbed.embedKey("B", ":app-b", listOf("y"))
+    assertTrue(keyA != keyB)
+    // The key is stable across regenerations of the same bundle.
+    assertEquals(keyA, WebEmbed.embedKey("A", ":app-a", listOf("x")))
+
+    val scriptA = a.files.getValue(WebEmbed.SCRIPT_NAME).toString(Charsets.UTF_8)
+    val scriptB = b.files.getValue(WebEmbed.SCRIPT_NAME).toString(Charsets.UTF_8)
+    // Both scripts push into the same global registry rather than closing over a single constant.
+    assertTrue("window.__composePreviewEmbeds__" in scriptA)
+    assertTrue("\"key\":\"$keyA\"" in scriptA)
+    assertTrue("\"key\":\"$keyB\"" in scriptB)
+
+    // Each demo page targets its own embed by key, so combining them shows the right bundle each.
+    val indexA = a.files.getValue(WebEmbed.INDEX_NAME).toString(Charsets.UTF_8)
+    assertTrue("<compose-preview-gallery embed=\"$keyA\">" in indexA)
   }
 
   @Test

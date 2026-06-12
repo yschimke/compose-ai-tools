@@ -36,6 +36,10 @@ import kotlinx.serialization.json.Json
  * [shadow root](https://developer.mozilla.org/docs/Web/API/Web_components/Using_shadow_DOM) so the
  * host page's CSS can't leak in and the embed's styles can't leak out. An optional
  * `only="<id>,<id>"` attribute filters to a subset of previews (e.g. show just the cover).
+ *
+ * Multiple embeds (from different bundles) can coexist on one page: each script registers its data
+ * under a stable key, and a gallery selects its bundle with `embed="<key>"` — the generated
+ * `index.html` sets this. A single embed needs no attribute.
  */
 object WebEmbed {
 
@@ -83,18 +87,25 @@ object WebEmbed {
         when (mode) {
           InlineMode.INLINE ->
             "data:image/png;base64," + Base64.getEncoder().encodeToString(p.pngBytes)
-          InlineMode.EXTERNAL -> "previews/${p.id}.png"
+          // The file is written under the raw id (a single path segment — discovery strips `/`),
+          // but the URL must percent-encode it: an id can carry `#`, `?`, or spaces, and a raw `#`
+          // in `src` would be parsed as a URL fragment, leaving the image broken. The browser
+          // decodes the request back to the raw filename, so the static file still resolves.
+          InlineMode.EXTERNAL -> "previews/${urlEncodeSegment(p.id)}.png"
         }
       if (mode == InlineMode.EXTERNAL) files["previews/${p.id}.png"] = p.pngBytes
       val (w, h) = pngDimensions(p.pngBytes)
       EmbedItem(id = p.id, label = p.label, src = src, width = w, height = h, cover = p.isCover)
     }
 
-    val data = EmbedData(title = title, module = modulePath, previews = items)
+    // A stable per-bundle key so two embeds on one page stay isolated: each script registers its
+    // data under this key and a `<compose-preview-gallery embed="<key>">` element selects it.
+    val key = embedKey(title, modulePath, previews.map { it.id })
+    val data = EmbedData(key = key, title = title, module = modulePath, previews = items)
     val dataJson = JSON.encodeToString(EmbedData.serializer(), data)
 
     files[SCRIPT_NAME] = script(dataJson).toByteArray(Charsets.UTF_8)
-    files[INDEX_NAME] = indexHtml(title).toByteArray(Charsets.UTF_8)
+    files[INDEX_NAME] = indexHtml(title, key).toByteArray(Charsets.UTF_8)
     return Output(files = files, previewCount = previews.size)
   }
 
@@ -118,6 +129,8 @@ object WebEmbed {
   @Serializable
   private data class EmbedData(
     val schema: String = "compose-preview-web-embed/v1",
+    /** Stable id distinguishing this embed from others on the same page. */
+    val key: String,
     val title: String,
     val module: String,
     val previews: List<EmbedItem>,
@@ -137,10 +150,18 @@ object WebEmbed {
 
   /**
    * The web-component script. The `COMPOSE_PREVIEW_DATA` literal is the only generated part; the
-   * rest is static. Wrapped in an IIFE and guarded with `customElements.get` so loading it twice
-   * (or alongside another embed) is harmless. `</script>` can't appear in the JSON (kotlinx escapes
-   * `<`? — no; it does not, so we defensively split any `</` sequence) which keeps the script safe
-   * to also paste inline into a page.
+   * rest is static.
+   *
+   * Each script registers its data into a shared `window.__composePreviewEmbeds__` array keyed by
+   * the embed's `key`, rather than closing the element over a single module-level constant. The
+   * element class is defined once (guarded with `customElements.get`); a second script from a
+   * *different* bundle adds its own data to the registry and re-renders existing galleries, so a
+   * page can host multiple embeds without the first one's previews leaking into the others. A
+   * gallery picks its data via an optional `embed="<key>"` attribute (the generated `index.html`
+   * sets it); with a single embed on the page the attribute is unnecessary.
+   *
+   * `</script>` can't safely sit in an inline `<script>` block, so we defensively split any `</`
+   * sequence — keeping the script paste-safe inline as well as referenced as an external file.
    */
   private fun script(dataJson: String): String {
     // Defensive: if this script is ever pasted *inline* into an HTML <script> block, a literal
@@ -151,6 +172,8 @@ object WebEmbed {
       (function () {
         "use strict";
         const COMPOSE_PREVIEW_DATA = $safeJson;
+        const REGISTRY = (window.__composePreviewEmbeds__ = window.__composePreviewEmbeds__ || []);
+        if (!REGISTRY.some((d) => d.key === COMPOSE_PREVIEW_DATA.key)) REGISTRY.push(COMPOSE_PREVIEW_DATA);
 
         const STYLE = `
           :host { display: block; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1b1b1f; }
@@ -175,16 +198,35 @@ object WebEmbed {
           }
         `;
 
+        const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
         class ComposePreviewGallery extends HTMLElement {
-          static get observedAttributes() { return ["only"]; }
+          static get observedAttributes() { return ["only", "embed"]; }
           connectedCallback() { this.render(); }
           attributeChangedCallback() { if (this.shadowRoot) this.render(); }
+          // Resolve which embed's data this element shows: an explicit embed="<key>" wins; otherwise
+          // the sole registered embed. With several embeds and no key we render the first and warn,
+          // so a missing attribute degrades visibly rather than silently showing the wrong bundle.
+          dataFor() {
+            const key = this.getAttribute("embed");
+            if (key) return REGISTRY.find((d) => d.key === key) || null;
+            if (REGISTRY.length > 1) {
+              console.warn('compose-preview: ' + REGISTRY.length + ' embeds on this page; set embed="<key>" to pick one. Showing the first.');
+            }
+            return REGISTRY[0] || null;
+          }
           render() {
             const root = this.shadowRoot || this.attachShadow({ mode: "open" });
+            const data = this.dataFor();
+            if (!data) {
+              const key = this.getAttribute("embed");
+              root.innerHTML = '<style>' + STYLE + '</style><p class="cp-empty">No compose-preview embed' +
+                (key ? ' with key "' + esc(key) + '"' : '') + ' found on this page.</p>';
+              return;
+            }
             const only = (this.getAttribute("only") || "").split(",").map(s => s.trim()).filter(Boolean);
-            const all = (COMPOSE_PREVIEW_DATA.previews || []);
+            const all = (data.previews || []);
             const previews = only.length ? all.filter(p => only.includes(p.id)) : all;
-            const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
             const cards = previews.map(p => {
               const dim = (p.width > 0 && p.height > 0) ? ` width="${'$'}{p.width}" height="${'$'}{p.height}"` : "";
               const badge = p.cover ? '<span class="cp-badge">cover</span>' : "";
@@ -201,8 +243,8 @@ object WebEmbed {
             root.innerHTML =
               '<style>' + STYLE + '</style>' +
               '<header class="cp-header">' +
-                '<p class="cp-title">' + esc(COMPOSE_PREVIEW_DATA.title) + '</p>' +
-                (COMPOSE_PREVIEW_DATA.module ? '<p class="cp-module">' + esc(COMPOSE_PREVIEW_DATA.module) + '</p>' : '') +
+                '<p class="cp-title">' + esc(data.title) + '</p>' +
+                (data.module ? '<p class="cp-module">' + esc(data.module) + '</p>' : '') +
               '</header>' +
               body;
           }
@@ -211,14 +253,20 @@ object WebEmbed {
         if (typeof customElements !== "undefined" && !customElements.get("compose-preview-gallery")) {
           customElements.define("compose-preview-gallery", ComposePreviewGallery);
         }
-        if (typeof window !== "undefined") { window.composePreviewData = COMPOSE_PREVIEW_DATA; }
+        // A later script (a second bundle) registers its data after the element was already upgraded
+        // by the first script's define(), so re-render existing galleries now that this embed exists.
+        if (typeof document !== "undefined") {
+          document.querySelectorAll("compose-preview-gallery").forEach((el) => {
+            if (typeof el.render === "function") el.render();
+          });
+        }
       })();
       """
       .trimIndent() + "\n"
   }
 
   /** Minimal demo page that mounts the gallery from the sibling script. */
-  private fun indexHtml(title: String): String {
+  private fun indexHtml(title: String, key: String): String {
     val safeTitle = htmlEscape(title)
     return """
       <!doctype html>
@@ -233,12 +281,43 @@ object WebEmbed {
           </style>
         </head>
         <body>
-          <compose-preview-gallery></compose-preview-gallery>
+          <compose-preview-gallery embed="$key"></compose-preview-gallery>
           <script src="$SCRIPT_NAME"></script>
         </body>
       </html>
       """
       .trimIndent() + "\n"
+  }
+
+  /** Unreserved URL characters (RFC 3986 §2.3) — left as-is when encoding a path segment. */
+  private fun isUrlUnreserved(c: Char): Boolean =
+    c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_' || c == '.' || c == '~'
+
+  /**
+   * Percent-encode [s] for safe use as a single URL path segment (RFC 3986): every byte outside the
+   * unreserved set becomes `%XX`. Used for `--external-images` `src` URLs so a preview id
+   * containing `#`, `?`, `&`, or a space resolves to its `previews/<id>.png` file instead of being
+   * mangled by URL parsing.
+   */
+  internal fun urlEncodeSegment(s: String): String =
+    buildString(s.length) {
+      for (b in s.toByteArray(Charsets.UTF_8)) {
+        val c = (b.toInt() and 0xff)
+        if (isUrlUnreserved(c.toChar())) append(c.toChar())
+        else append('%').append("%02X".format(c))
+      }
+    }
+
+  /**
+   * A short, stable key distinguishing one embed from another on the same page. Derived from the
+   * title, module, and preview ids so two embeds built from different bundles get different keys
+   * (and re-generating the same bundle yields the same key). Hex, so it's safe in an HTML
+   * attribute.
+   */
+  internal fun embedKey(title: String, modulePath: String, previewIds: List<String>): String {
+    val material = (listOf(title, modulePath) + previewIds).joinToString(" ")
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(material.toByteArray())
+    return digest.take(6).joinToString("") { "%02x".format(it) }
   }
 
   private fun htmlEscape(s: String): String =
