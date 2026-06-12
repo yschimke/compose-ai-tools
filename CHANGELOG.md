@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.15.0](https://github.com/yschimke/compose-ai-tools/compare/v0.14.1...v0.15.0) (2026-06-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** unify share-gist + publish-images into share-preview ([#1833](https://github.com/yschimke/compose-ai-tools/issues/1833))
+
+### Features
+
+* **cli:** unify share-gist + publish-images into share-preview ([#1833](https://github.com/yschimke/compose-ai-tools/issues/1833)) ([0e440bb](https://github.com/yschimke/compose-ai-tools/commit/0e440bbce0ae9bf834fa1e1f12c561a6da88f071))
+
+
+### Bug Fixes
+
+* **ci:** rename reusable codex-review secret off the reserved GITHUB_ prefix ([#1832](https://github.com/yschimke/compose-ai-tools/issues/1832)) ([953e776](https://github.com/yschimke/compose-ai-tools/commit/953e776913014460ca35e2f64b0b2cd3cd11ddaf))
+* **mcp:** install request handlers before connecting the stdio transport ([#1834](https://github.com/yschimke/compose-ai-tools/issues/1834)) ([36659e3](https://github.com/yschimke/compose-ai-tools/commit/36659e30af1e0b8be4b4b4b35ee9ee81b71190ab))
+
 ## [0.14.1](https://github.com/yschimke/compose-ai-tools/compare/v0.14.0...v0.14.1) (2026-06-11)
 
 
