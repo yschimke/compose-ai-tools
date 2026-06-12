@@ -319,7 +319,13 @@ class BundleFunctionalTest {
     val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
     val withReports = manifest.copy(dataExtensionReports = mapOf("a11y" to "accessibility.json"))
     previewsJson.writeText(json.encodeToString(PreviewManifest.serializer(), withReports))
-    val reportBody = """{"findings":[{"node":"RedBox","level":"warning"}]}"""
+    // A module-wide report keyed by previewId — entries for the cover (red) AND a non-selected
+    // preview (blue). Carriage must slice it to the cover only.
+    val blueId = "test.BlueKt.BlueBoxPreview"
+    val reportBody =
+      """{"module":":","entries":[""" +
+        """{"previewId":"$redId","findings":[{"level":"warning"}]},""" +
+        """{"previewId":"$blueId","findings":[{"level":"error"}]}]}"""
     File(previewOutputDir, "accessibility.json").writeText(reportBody)
 
     // Off by default: a plain pack must NOT carry the report even though the manifest names it.
@@ -355,8 +361,18 @@ class BundleFunctionalTest {
 
     val bundle = File(previewOutputDir, "bundle.png")
     assertThat(listEntries(bundle)).contains("extensions/a11y.json")
-    assertThat(readZipEntry(bundle, "extensions/a11y.json")!!.toString(Charsets.UTF_8))
-      .isEqualTo(reportBody)
+    // The carried report is sliced to the cover (red) preview: red's entry survives, blue's is gone,
+    // and the top-level `module` field is preserved.
+    val carriedReport =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "extensions/a11y.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    val entryIds =
+      carriedReport["entries"]!!.jsonArray.map {
+        it.jsonObject["previewId"]!!.jsonPrimitive.content
+      }
+    assertThat(entryIds).containsExactly(redId)
+    assertThat(carriedReport["module"]!!.jsonPrimitive.content).isEqualTo(":")
 
     val bundleManifest =
       json.parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
@@ -367,6 +383,16 @@ class BundleFunctionalTest {
     assertThat(carried.first().jsonObject["extensionId"]!!.jsonPrimitive.content).isEqualTo("a11y")
     assertThat(carried.first().jsonObject["path"]!!.jsonPrimitive.content)
       .isEqualTo("extensions/a11y.json")
+
+    // The bundled previews.json's dataExtensionReports is rewritten to the in-bundle path, so both
+    // pointers agree and resolve to a real entry — no dangling reference to the producer's
+    // module-relative `accessibility.json`.
+    val bundledPreviews =
+      json.decodeFromString(
+        PreviewManifest.serializer(),
+        readZipEntry(bundle, "previews.json")!!.toString(Charsets.UTF_8),
+      )
+    assertThat(bundledPreviews.dataExtensionReports).containsExactly("a11y", "extensions/a11y.json")
   }
 
   @Test

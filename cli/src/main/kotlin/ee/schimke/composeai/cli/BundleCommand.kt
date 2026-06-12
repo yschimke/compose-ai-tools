@@ -86,9 +86,10 @@ class BundleCommand(args: List<String>) : Command(args) {
                             referencing Maven coordinates. Bigger file, but renders with no network
                             and no build system on the other end (resolution=embedded).
         --include-data-extensions
-                            Carry the aggregated per-extension data reports (a11y findings, theme
-                            tokens, drawn strings, …) under extensions/<id>.json so a reader can
-                            surface them without re-rendering. Off by default.
+                            Carry the per-extension data reports (a11y findings, theme tokens, drawn
+                            strings, …) under extensions/<id>.json, sliced to the cover (default)
+                            preview, so a reader can surface the headline image's data without
+                            re-rendering. Off by default.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
