@@ -326,7 +326,8 @@ private class EmbedSubcommand(
         mode = mode,
       )
 
-    if (inBundle) embedInBundle(file, out, outArg) else writeToDirectory(file, out, outArg)
+    if (inBundle) embedInBundle(file, out, outArg, BundleSource.looksLikeUrl(path))
+    else writeToDirectory(file, out, outArg)
   }
 
   /** Default mode: write the web embed as loose files under a directory. */
@@ -363,8 +364,25 @@ private class EmbedSubcommand(
    * still a valid polyglot *and* now carries a `web/index.html` someone can open straight out of
    * the unzipped bundle. Re-embedding replaces any prior `web/` entries (idempotent). Writes in
    * place by default; `-o <file.png>` writes an enriched copy instead.
+   *
+   * A URL input resolves to a delete-on-exit temp file, so rewriting it "in place" would vanish on
+   * exit — `-o` is required for downloaded bundles ([resolveInBundleTarget] returns null and we
+   * error rather than silently lose the result).
    */
-  private fun embedInBundle(file: File, out: WebEmbed.Output, outArg: String?) {
+  private fun embedInBundle(
+    file: File,
+    out: WebEmbed.Output,
+    outArg: String?,
+    sourceIsUrl: Boolean,
+  ) {
+    val targetArg = resolveInBundleTarget(outArg, file.absolutePath, sourceIsUrl)
+    if (targetArg == null) {
+      System.err.println(
+        "bundle embed --in-bundle: the input is a downloaded URL (a temporary file). " +
+          "Pass -o <file.png> so the enriched bundle is written somewhere durable."
+      )
+      exitProcess(64)
+    }
     val full = fileSystem.read(file.path.toPath()) { readByteArray() }
     val zip = BundleReader.extractZipBytes(file)
     // The appended zip is a suffix of the file; everything before it is the leading PNG cover.
@@ -372,7 +390,7 @@ private class EmbedSubcommand(
     val webFiles = out.files.mapKeys { (rel, _) -> "$BUNDLE_WEB_DIR/$rel" }
     val newZip = embedWebIntoZip(zip, webFiles)
 
-    val target = File(outArg ?: file.absolutePath).absoluteFile
+    val target = File(targetArg).absoluteFile
     target.parentFile?.mkdirs()
     // Write via a temp sibling + move so an in-place enrich never truncates the bundle on failure.
     val tmp = File(target.parentFile, "${target.name}.embed-tmp")
@@ -498,6 +516,24 @@ internal fun embedWebIntoZip(existingZip: ByteArray, webFiles: Map<String, ByteA
  */
 internal val ZIP_DOS_EPOCH_MS: Long =
   java.util.GregorianCalendar(1980, java.util.Calendar.JANUARY, 1, 0, 0, 0).timeInMillis
+
+/**
+ * The output path for `bundle embed --in-bundle`, or `null` when the caller must error and demand
+ * `-o`. An explicit [outArg] always wins. Otherwise we default to rewriting [inputPath] in place —
+ * but only for a *local* input: a URL input ([sourceIsUrl]) resolved to a delete-on-exit temp file,
+ * and rewriting that "in place" would lose the enriched bundle on exit, so we refuse and require an
+ * explicit output instead.
+ */
+internal fun resolveInBundleTarget(
+  outArg: String?,
+  inputPath: String,
+  sourceIsUrl: Boolean,
+): String? =
+  when {
+    outArg != null -> outArg
+    sourceIsUrl -> null
+    else -> inputPath
+  }
 
 /**
  * Extracts a zip safely — every entry's resolved target path is verified to live inside [target].

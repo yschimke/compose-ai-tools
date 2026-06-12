@@ -212,6 +212,17 @@ class BundleEmbedDataTest {
   }
 
   @Test
+  fun `in-bundle target requires an explicit output for downloaded url inputs`() {
+    // Explicit -o always wins, regardless of source.
+    assertEquals("/out.png", resolveInBundleTarget("/out.png", "/tmp/x.png", sourceIsUrl = true))
+    assertEquals("/out.png", resolveInBundleTarget("/out.png", "/tmp/x.png", sourceIsUrl = false))
+    // Local input with no -o rewrites in place.
+    assertEquals("/tmp/x.png", resolveInBundleTarget(null, "/tmp/x.png", sourceIsUrl = false))
+    // URL input with no -o resolves to a delete-on-exit temp; refuse so the result isn't lost.
+    assertEquals(null, resolveInBundleTarget(null, "/tmp/dl.png", sourceIsUrl = true))
+  }
+
+  @Test
   fun `in-bundle embed keeps the bundle a valid polyglot the reader can still parse`() {
     val coverPng = png(4, 8)
     val bundleJson =
