@@ -196,10 +196,7 @@ class SharePreviewCommand(
         }
       }
 
-    val (name, email) = readGitIdentity()
     val rawUrlBase = rawBaseOverride?.trimEnd('/') ?: githubRawUrlBase(remoteUrl)
-    val headSha = readHeadSha()
-    val message = customMessage ?: defaultMessage(prNumber, headSha)
 
     val tmp = TemporaryDirectory / "compose-preview-share-${UUID.randomUUID()}"
     fileSystem.createDirectories(tmp)
@@ -231,6 +228,9 @@ class SharePreviewCommand(
           }
         }
       if (relativePaths.isEmpty()) {
+        // Empty bulk batch is a successful no-op (matches the CI action). Crucially, don't require
+        // git identity here — a scratch checkout with no user.name/email shouldn't error on a batch
+        // that has nothing to commit.
         emit(
           SharePreviewResponse(
             mechanism = "branch",
@@ -241,6 +241,9 @@ class SharePreviewCommand(
         )
         return
       }
+
+      val (name, email) = readGitIdentity()
+      val message = customMessage ?: defaultMessage(prNumber, readHeadSha())
 
       runOrFail(listOf("git", "-C", staging.path, "init", "--quiet"), "git init failed")
       runOrFail(
