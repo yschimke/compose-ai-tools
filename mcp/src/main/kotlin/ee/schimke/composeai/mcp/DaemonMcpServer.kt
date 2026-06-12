@@ -344,14 +344,14 @@ class DaemonMcpServer(
 
   fun newSession(input: java.io.InputStream, output: java.io.OutputStream): McpSession {
     lateinit var session: McpSession
-    val sdkServer = composePreviewSdkServer(serverInfo)
     session =
       McpSession(
-        server = sdkServer,
+        serverInfo = serverInfo,
+        options = composePreviewServerOptions(),
         input = input,
         output = output,
         configure = { sdkSession ->
-          sdkServer.installComposePreviewHandlers(
+          installComposePreviewHandlers(
             sdkSession = sdkSession,
             session = session,
             listTools = { currentToolDefs(session) },
