@@ -38,6 +38,11 @@ import okio.source
  *   v1 is a stub: it extracts the bundle, prints the manifest + resolved classpath, and tells you
  *   what *would* render. Actual rendering (resolving Maven coords + spawning DesktopRendererMain)
  *   is the next milestone.
+ * - **`embed`** — convert a packed bundle into a **self-contained web embed** (the "js bundle"): a
+ *   `compose-preview-embed.js` web component plus an `index.html` demo page, with the baked
+ *   previews inlined as `data:` URIs. An app drops the one script into its site and adds
+ *   `<compose-preview-gallery>` to put the rendered previews on a web page — no build step, no
+ *   framework, no network. See [WebEmbed].
  */
 class BundleCommand(args: List<String>) : Command(args) {
 
@@ -47,6 +52,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       "pack" -> PackSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "inspect" -> InspectSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "extract" -> ExtractSubcommand(args.drop(args.indexOf(sub) + 1)).run()
+      "embed" -> EmbedSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "render" -> RenderSubcommand(args.drop(args.indexOf(sub) + 1)).run()
       "daemon" -> BundleDaemonCommand(args.drop(args.indexOf(sub) + 1)).run()
       null,
@@ -75,6 +81,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
+        compose-preview bundle embed   <bundle.png | URL> [-o <dir>] [--title T] [--external-images]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
         compose-preview bundle daemon  <bundle.png | URL> [-v]         (spawn the desktop daemon over stdio)
 
@@ -88,6 +95,12 @@ class BundleCommand(args: List<String>) : Command(args) {
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
+
+      Embed flags:
+        -o, --output <dir>  Directory to write the web embed into. Default: alongside the bundle.
+        --title <text>      Heading shown on the demo page / gallery. Default: the module path.
+        --external-images   Write previews as previews/<id>.png files instead of inlining them as
+                            data: URIs in the script (cacheable assets vs one self-contained .js).
       """
         .trimIndent()
     )
@@ -258,6 +271,73 @@ private class ExtractSubcommand(private val args: List<String>) {
     val zipBytes = BundleReader.extractZipBytes(file)
     safeExtractZip(zipBytes, target)
     println("extracted ${file.name} → ${target.path}")
+  }
+}
+
+private class EmbedSubcommand(
+  private val args: List<String>,
+  private val fileSystem: FileSystem = SystemFileSystem,
+) {
+  fun run() {
+    val path = args.firstOrNull { !it.startsWith("-") }
+    val outDir = args.flagValue("--output") ?: args.flagValue("-o")
+    val title = args.flagValue("--title")
+    val mode =
+      if ("--external-images" in args) WebEmbed.InlineMode.EXTERNAL else WebEmbed.InlineMode.INLINE
+    if (path == null) {
+      System.err.println(
+        "Usage: compose-preview bundle embed <bundle.png | URL> [-o <dir>] [--title T] [--external-images]"
+      )
+      exitProcess(64)
+    }
+    val file =
+      try {
+        BundleSource.resolveToFile(path)
+      } catch (e: IllegalArgumentException) {
+        System.err.println(e.message)
+        exitProcess(1)
+      }
+
+    val data = BundleReader.readWebEmbedData(file)
+    if (data.previews.isEmpty()) {
+      System.err.println(
+        "bundle embed: ${file.name} has no baked preview images — nothing to put on a page. " +
+          "Pack with a render (drop --no-render) so previews/<id>.png exist."
+      )
+      exitProcess(1)
+    }
+
+    val target =
+      File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-web"))
+        .absoluteFile
+    val out =
+      WebEmbed.generate(
+        title = title ?: data.manifest.modulePath,
+        modulePath = data.manifest.modulePath,
+        previews = data.previews,
+        mode = mode,
+      )
+
+    target.mkdirs()
+    val targetPath = target.canonicalFile.toPath()
+    for ((rel, bytes) in out.files) {
+      val resolved = targetPath.resolve(rel).normalize()
+      // Generated paths are all controlled (script / index / previews/<id>.png), but resolve+verify
+      // anyway so a stray id can never write outside the output dir.
+      if (!resolved.startsWith(targetPath)) {
+        System.err.println("bundle embed: refusing to write outside $target: $rel")
+        exitProcess(1)
+      }
+      val dest = resolved.toFile()
+      dest.parentFile?.mkdirs()
+      fileSystem.write(dest.path.toPath()) { write(bytes) }
+    }
+
+    println("wrote web embed for ${out.previewCount} preview(s) → ${target.path}")
+    println("  ${WebEmbed.INDEX_NAME}   open this to view the gallery")
+    println(
+      "  ${WebEmbed.SCRIPT_NAME}  add <script src> + <compose-preview-gallery> to embed in a page"
+    )
   }
 }
 
@@ -472,9 +552,77 @@ internal object BundleReader {
 
   data class Metadata(val manifest: Manifest, val report: Report?)
 
+  /**
+   * The previews needed to build a web embed, read out of a packed bundle in one pass: the manifest
+   * (for ordering + cover) plus each selected preview's baked PNG and a display label.
+   *
+   * Previews without a baked `previews/<id>.png` (e.g. a `--no-render` pack, or one that failed to
+   * render) are dropped — there's nothing to show on a web page. Returned in `previewIds` order
+   * with the cover first, matching how the polyglot lays them out.
+   */
+  data class WebEmbedData(val manifest: Manifest, val previews: List<WebEmbed.Preview>)
+
   private val json = Json {
     ignoreUnknownKeys = true
     classDiscriminator = "kind"
+  }
+
+  private val previewsJson = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+  }
+
+  /**
+   * Read everything a [WebEmbed] needs from a bundle file: the manifest, `previews.json` (for
+   * human-readable labels), and every baked `previews/<id>.png`. The PNGs are the single source of
+   * what's shown, so previews with no baked image are omitted.
+   */
+  fun readWebEmbedData(file: File): WebEmbedData {
+    val zipBytes = extractZipBytes(file)
+    var manifest: Manifest? = null
+    val labels = HashMap<String, String>()
+    val pngs = HashMap<String, ByteArray>()
+    ZipInputStream(ByteArrayInputStream(zipBytes)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        val name = entry.name
+        when {
+          name == "bundle.json" ->
+            manifest =
+              json.decodeFromString(Manifest.serializer(), zin.readBytes().toString(Charsets.UTF_8))
+          name == "previews.json" -> {
+            // Best-effort: labels are a nicety. A malformed/foreign previews.json must not sink the
+            // embed — we still have ids from bundle.json to fall back on.
+            runCatching {
+                previewsJson.decodeFromString(
+                  PreviewManifest.serializer(),
+                  zin.readBytes().toString(Charsets.UTF_8),
+                )
+              }
+              .getOrNull()
+              ?.previews
+              ?.forEach { labels[it.id] = it.functionName.ifBlank { it.id } }
+          }
+          name.startsWith("previews/") && name.endsWith(".png") -> {
+            val id = name.removePrefix("previews/").removeSuffix(".png")
+            pngs[id] = zin.readBytes()
+          }
+        }
+        zin.closeEntry()
+      }
+    }
+    val m = manifest ?: throw IllegalArgumentException("bundle.json missing in ${file.path}")
+    val previews =
+      m.previewIds.mapNotNull { id ->
+        val png = pngs[id] ?: return@mapNotNull null
+        WebEmbed.Preview(
+          id = id,
+          label = labels[id] ?: id,
+          pngBytes = png,
+          isCover = id == m.coverPreviewId,
+        )
+      }
+    return WebEmbedData(manifest = m, previews = previews)
   }
 
   fun readMetadata(file: File): Metadata {
