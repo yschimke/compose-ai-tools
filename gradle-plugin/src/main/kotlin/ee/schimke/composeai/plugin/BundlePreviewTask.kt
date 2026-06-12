@@ -202,6 +202,30 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val embedDeps: Property<Boolean>
 
+  /**
+   * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, schema-v7
+   * [BundleManifest.dataExtensions]). When true, the aggregated per-extension data reports named by
+   * `previews.json`'s `dataExtensionReports` (a11y findings, theme tokens, drawn strings, …) are
+   * packed verbatim under `extensions/<id>.json` so a detached reader can surface them without
+   * re-rendering. Defaults to false: the normal pack carries no reports and stays small. A no-op
+   * when the manifest has no `dataExtensionReports` (no extension produced a canned report).
+   */
+  @get:Input @get:Optional abstract val includeDataExtensions: Property<Boolean>
+
+  /**
+   * The data-extension report sidecars named by `previews.json`'s `dataExtensionReports`, tracked as
+   * a real input so the bundle re-packs (and its cache key changes) when a report's *content*
+   * changes, not just when the manifest pointer does. Wired to the top-level `*.json` files under
+   * the preview output dir (where the render task writes the aggregated reports); the paths are
+   * resolved from the manifest at pack time against [previewsJson]'s parent. `@Optional` because a
+   * pack with no extension reports — the common case — snapshots this as empty. Only read when
+   * [includeDataExtensions] is set.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val dataExtensionFiles: ConfigurableFileCollection
+
   /** Output `.png` polyglot file. */
   @get:OutputFile abstract val output: RegularFileProperty
 
@@ -313,6 +337,32 @@ abstract class BundlePreviewTask : DefaultTask() {
         resolveAndroidResources(irZipFiles)
       else null
 
+    // v7 optional data-extension carriage: when asked, pack the aggregated per-extension report
+    // sidecars (a11y findings, theme tokens, …) named by `previews.json`'s `dataExtensionReports` so
+    // a detached reader can surface that data without re-rendering. Paths are module-relative from
+    // the manifest's parent dir (where the render task writes the reports). Missing files warn and
+    // skip — the bundle is still well-formed without a report that didn't get written. Sorted by id
+    // for a deterministic (reproducible) zip order. No-op when the flag is off or the manifest has
+    // no reports.
+    val dataExtensionEntries = mutableListOf<BundleDataExtension>()
+    val dataExtensionZipFiles = LinkedHashMap<String, ByteArray>()
+    if (includeDataExtensions.getOrElse(false)) {
+      val reportBaseDir = manifestFile.parentFile
+      for ((id, relPath) in manifest.dataExtensionReports.toSortedMap()) {
+        val src = File(reportBaseDir, relPath)
+        if (!src.isFile) {
+          logger.warn(
+            "composePreviewBundle: data-extension '$id' report '$relPath' not found at " +
+              "${src.path} — skipping (the bundle omits this extension's data)."
+          )
+          continue
+        }
+        val zipPath = "$BUNDLE_EXTENSIONS_DIR/$id.json"
+        dataExtensionZipFiles[zipPath] = src.readBytes()
+        dataExtensionEntries += BundleDataExtension(extensionId = id, path = zipPath)
+      }
+    }
+
     val bundle =
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
@@ -326,6 +376,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         resolution = classpath.resolution,
         intermediateRepresentations = irEntries,
         androidResources = androidResources,
+        dataExtensions = dataExtensionEntries,
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -346,6 +397,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
         previewPngs = previewPngs,
         irFiles = irZipFiles,
+        dataExtensionFiles = dataExtensionZipFiles,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -364,6 +416,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  resolution:           ${classpath.resolution}\n" +
         "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
         "  IR-backed previews:   ${irEntries.size} (replayed from ir/, classes dropped)\n" +
+        "  data extensions:      ${dataExtensionEntries.size} (carried under extensions/)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
@@ -837,6 +890,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     report: String,
     previewPngs: Map<String, ByteArray>,
     irFiles: Map<String, ByteArray>,
+    dataExtensionFiles: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -846,6 +900,8 @@ abstract class BundlePreviewTask : DefaultTask() {
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Captured IR bytes (Remote Compose doc / protolayout proto) under `ir/`.
       irFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
+      // (v7) Optional per-extension data reports under `extensions/<id>.json`.
+      dataExtensionFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       zip.writeFile("classes/app.jar", appJar)
       inlinedProjectJars.forEach { (path, file) -> zip.writeFile(path, file.readBytes()) }
       zip.writeFile("report.json", report.toByteArray(Charsets.UTF_8))

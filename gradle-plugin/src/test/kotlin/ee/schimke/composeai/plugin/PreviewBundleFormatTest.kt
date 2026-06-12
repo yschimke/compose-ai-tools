@@ -23,8 +23,57 @@ class PreviewBundleFormatTest {
   }
 
   @Test
-  fun `current schema version is 6`() {
-    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(6)
+  fun `current schema version is 7`() {
+    assertThat(BUNDLE_SCHEMA_VERSION).isEqualTo(7)
+  }
+
+  @Test
+  fun `data extensions round-trip`() {
+    val original =
+      BundleManifest(
+        schemaVersion = BUNDLE_SCHEMA_VERSION,
+        backend = "desktop",
+        previewIds = listOf("pkg.Foo"),
+        coverPreviewId = "pkg.Foo",
+        classpath = listOf(ClasspathEntry.Module(path = "classes/app.jar")),
+        modulePath = ":sample",
+        producedBy = "test",
+        dataExtensions =
+          listOf(
+            BundleDataExtension(extensionId = "a11y", path = "extensions/a11y.json"),
+            BundleDataExtension(extensionId = "theme", path = "extensions/theme.json"),
+          ),
+      )
+
+    val decoded =
+      json.decodeFromString(
+        BundleManifest.serializer(),
+        json.encodeToString(BundleManifest.serializer(), original),
+      )
+
+    assertThat(decoded).isEqualTo(original)
+    assertThat(decoded.dataExtensions.map { it.extensionId }).containsExactly("a11y", "theme")
+  }
+
+  @Test
+  fun `v6 manifest without dataExtensions decodes with an empty list`() {
+    val v6 =
+      """
+      {
+        "schemaVersion": 6,
+        "backend": "desktop",
+        "previewIds": ["pkg.Foo"],
+        "coverPreviewId": "pkg.Foo",
+        "classpath": [ { "kind": "module", "path": "classes/app.jar" } ],
+        "modulePath": ":sample",
+        "producedBy": "test"
+      }
+      """
+        .trimIndent()
+
+    val decoded = json.decodeFromString(BundleManifest.serializer(), v6)
+
+    assertThat(decoded.dataExtensions).isEmpty()
   }
 
   @Test

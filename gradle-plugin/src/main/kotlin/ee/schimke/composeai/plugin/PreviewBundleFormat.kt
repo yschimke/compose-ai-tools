@@ -47,6 +47,14 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            runtime — it needs neither the consumer's `@Preview` bytecode nor the
  *                            full Compose graph that produced it. See [BundleIr] and
  *                            [BundleManifest.intermediateRepresentations].
+ * extensions/<id>.json     — (v7, optional) the aggregated sidecar JSON a data extension produced
+ *                            for this render (a11y findings, theme tokens, drawn strings, …),
+ *                            carried verbatim so a detached reader can surface the extension's data
+ *                            without re-rendering. `previews.json`'s `dataExtensionReports` already
+ *                            names these reports by extension id; this directory carries their
+ *                            *bytes* and [BundleManifest.dataExtensions] records the mapping. Present
+ *                            only for an opt-in `--include-data-extensions` pack. See
+ *                            [BundleDataExtension] and [BUNDLE_EXTENSIONS_DIR].
  * report.json              — [MinimizationReport]: which deps contributed reachable classes
  * ```
  *
@@ -156,6 +164,32 @@ data class BundleManifest(
    * none). Additive — a pre-v6 reader ignores the field and the `android/` entries.
    */
   val androidResources: BundleAndroidResources? = null,
+  /**
+   * (v7) Optional carriage of the per-extension data reports a render produced. Each entry names a
+   * data extension whose aggregated sidecar JSON (the file `previews.json`'s `dataExtensionReports`
+   * points at) is packed verbatim under `extensions/<id>.json` ([BUNDLE_EXTENSIONS_DIR]), so a
+   * detached reader can surface a11y findings / theme tokens / drawn strings / … without
+   * re-rendering. Empty unless the producer was asked to include extension data (the opt-in
+   * `--include-data-extensions` / `-PbundleIncludeDataExtensions=true` pack) — the default pack
+   * stays small and carries no reports. Additive: the field defaults to empty and `ignoreUnknownKeys`
+   * readers skip the `extensions/` entries, so a pre-v7 reader opening a v7 bundle still works; only
+   * a reader that wants the carried data needs to be v7-aware. See [BundleDataExtension].
+   */
+  val dataExtensions: List<BundleDataExtension> = emptyList(),
+)
+
+/**
+ * One data-extension report carried inside the bundle. The bytes live under `extensions/<id>.json`
+ * ([path]); a reader keys on [extensionId] to know which extension produced them and decodes the
+ * JSON against that extension's published DTOs (the same shape its live render result carries). The
+ * id matches the key in `previews.json`'s `dataExtensionReports` map (e.g. `"a11y"`).
+ */
+@Serializable
+data class BundleDataExtension(
+  /** Stable extension id, e.g. `"a11y"`. Matches the `dataExtensionReports` map key. */
+  val extensionId: String,
+  /** Posix zip path of the carried report bytes, e.g. `extensions/a11y.json`. */
+  val path: String,
 )
 
 /**
@@ -332,6 +366,13 @@ const val ANDROID_MERGED_MANIFEST_PATH: String = "android/AndroidManifest.xml"
 const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
 
 /**
+ * Well-known directory inside the bundle zip holding optional per-extension data reports
+ * (`extensions/<extensionId>.json`), one verbatim sidecar per [BundleManifest.dataExtensions] entry
+ * (v7).
+ */
+const val BUNDLE_EXTENSIONS_DIR: String = "extensions"
+
+/**
  * Schema version stamped into [BundleManifest.schemaVersion].
  * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
  *   polyglot's leading bytes only.
@@ -363,8 +404,14 @@ const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
  *   resource and link its `R$style` class on replay. Additive — the field defaults to null and
  *   `ignoreUnknownKeys` readers skip the `android/` entries, so a v5 reader opening a v6 bundle
  *   still works; only protolayout IR replay on a detached Android daemon needs a v6-aware player.
+ * - v7 — adds [BundleManifest.dataExtensions] and the `extensions/` directory: an opt-in pack
+ *   (`--include-data-extensions`) carries the aggregated per-extension data reports (a11y findings,
+ *   theme tokens, drawn strings, …) named by `previews.json`'s `dataExtensionReports` so a detached
+ *   reader can surface them without re-rendering. Additive — the field defaults to empty and
+ *   `ignoreUnknownKeys` readers skip the `extensions/` entries, so a v6 reader opening a v7 bundle
+ *   still works; only a reader that wants the carried data needs to be v7-aware.
  */
-const val BUNDLE_SCHEMA_VERSION: Int = 6
+const val BUNDLE_SCHEMA_VERSION: Int = 7
 
 /**
  * Well-known directory inside the bundle zip holding one rendered PNG per selected preview, keyed
