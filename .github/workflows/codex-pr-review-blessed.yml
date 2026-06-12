@@ -98,4 +98,4 @@ jobs:
       codex_api_key: ${{ secrets.CODEX_API_KEY }}
       claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
       gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-      github_token: ${{ secrets.GITHUB_TOKEN }}
+      gh_token: ${{ secrets.GITHUB_TOKEN }}

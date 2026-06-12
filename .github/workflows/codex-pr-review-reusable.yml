@@ -87,7 +87,7 @@ on:
       gemini_api_key:
         description: "Optional API key used by Gemini review tooling."
         required: false
-      github_token:
+      gh_token:
         description: "Token used to read artifacts and write PR comments/checks."
         required: true
 
@@ -315,7 +315,7 @@ jobs:
       - name: Optionally update PR branch with review artifacts
         if: ${{ inputs.update_pr_branch }}
         env:
-          GITHUB_TOKEN: ${{ secrets.github_token }}
+          GITHUB_TOKEN: ${{ secrets.gh_token }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
@@ -355,7 +355,7 @@ jobs:
         if: ${{ inputs.post_review_comment }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          github-token: ${{ secrets.github_token }}
+          github-token: ${{ secrets.gh_token }}
           script: |
             const fs = require('fs')
             const body = fs.readFileSync('review-output/codex-review.md', 'utf8')
