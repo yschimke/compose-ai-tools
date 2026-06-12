@@ -2,8 +2,11 @@ package ee.schimke.composeai.cli
 
 import ee.schimke.composeai.io.SystemFileSystem
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlin.system.exitProcess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -42,7 +45,9 @@ import okio.source
  *   `compose-preview-embed.js` web component plus an `index.html` demo page, with the baked
  *   previews inlined as `data:` URIs. An app drops the one script into its site and adds
  *   `<compose-preview-gallery>` to put the rendered previews on a web page — no build step, no
- *   framework, no network. See [WebEmbed].
+ *   framework, no network. By default the files land in a directory; `--in-bundle` instead writes
+ *   them into the bundle's own zip under `web/` (the `.png` stays a valid polyglot). See
+ *   [WebEmbed].
  */
 class BundleCommand(args: List<String>) : Command(args) {
 
@@ -81,7 +86,7 @@ class BundleCommand(args: List<String>) : Command(args) {
         compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
-        compose-preview bundle embed   <bundle.png | URL> [-o <dir>] [--title T] [--external-images]
+        compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
         compose-preview bundle render  <bundle.png | URL> [-o <dir>]   (v1: stub — prints what would render)
         compose-preview bundle daemon  <bundle.png | URL> [-v]         (spawn the desktop daemon over stdio)
 
@@ -97,10 +102,14 @@ class BundleCommand(args: List<String>) : Command(args) {
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
 
       Embed flags:
-        -o, --output <dir>  Directory to write the web embed into. Default: alongside the bundle.
+        -o, --output <path> Directory to write the web embed into (default: alongside the bundle),
+                            or, with --in-bundle, the output .png (default: rewrite in place).
         --title <text>      Heading shown on the demo page / gallery. Default: the module path.
         --external-images   Write previews as previews/<id>.png files instead of inlining them as
                             data: URIs in the script (cacheable assets vs one self-contained .js).
+        --in-bundle         Embed the web resources into the bundle's own zip under web/ instead of
+                            a loose directory — the .png stays a valid polyglot and now carries a
+                            web/index.html you can open after unzipping. Idempotent.
       """
         .trimIndent()
     )
@@ -280,13 +289,15 @@ private class EmbedSubcommand(
 ) {
   fun run() {
     val path = args.firstOrNull { !it.startsWith("-") }
-    val outDir = args.flagValue("--output") ?: args.flagValue("-o")
+    val outArg = args.flagValue("--output") ?: args.flagValue("-o")
     val title = args.flagValue("--title")
+    val inBundle = "--in-bundle" in args
     val mode =
       if ("--external-images" in args) WebEmbed.InlineMode.EXTERNAL else WebEmbed.InlineMode.INLINE
     if (path == null) {
       System.err.println(
-        "Usage: compose-preview bundle embed <bundle.png | URL> [-o <dir>] [--title T] [--external-images]"
+        "Usage: compose-preview bundle embed <bundle.png | URL> [-o <dir|file.png>] [--title T] " +
+          "[--external-images] [--in-bundle]"
       )
       exitProcess(64)
     }
@@ -307,9 +318,6 @@ private class EmbedSubcommand(
       exitProcess(1)
     }
 
-    val target =
-      File(outDir ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-web"))
-        .absoluteFile
     val out =
       WebEmbed.generate(
         title = title ?: data.manifest.modulePath,
@@ -318,6 +326,15 @@ private class EmbedSubcommand(
         mode = mode,
       )
 
+    if (inBundle) embedInBundle(file, out, outArg, BundleSource.looksLikeUrl(path))
+    else writeToDirectory(file, out, outArg)
+  }
+
+  /** Default mode: write the web embed as loose files under a directory. */
+  private fun writeToDirectory(file: File, out: WebEmbed.Output, outArg: String?) {
+    val target =
+      File(outArg ?: (file.absoluteFile.parent.toString() + "/${file.nameWithoutExtension}-web"))
+        .absoluteFile
     target.mkdirs()
     val targetPath = target.canonicalFile.toPath()
     for ((rel, bytes) in out.files) {
@@ -338,6 +355,56 @@ private class EmbedSubcommand(
     println(
       "  ${WebEmbed.SCRIPT_NAME}  add <script src> + <compose-preview-gallery> to embed in a page"
     )
+  }
+
+  /**
+   * `--in-bundle` mode: append the web embed's files into the bundle's own zip under
+   * [BUNDLE_WEB_DIR] (`web/`), leaving the leading PNG cover and every existing entry untouched.
+   * The directory is additive — an older reader / the renderer ignores it — so the same `.png` is
+   * still a valid polyglot *and* now carries a `web/index.html` someone can open straight out of
+   * the unzipped bundle. Re-embedding replaces any prior `web/` entries (idempotent). Writes in
+   * place by default; `-o <file.png>` writes an enriched copy instead.
+   *
+   * A URL input resolves to a delete-on-exit temp file, so rewriting it "in place" would vanish on
+   * exit — `-o` is required for downloaded bundles ([resolveInBundleTarget] returns null and we
+   * error rather than silently lose the result).
+   */
+  private fun embedInBundle(
+    file: File,
+    out: WebEmbed.Output,
+    outArg: String?,
+    sourceIsUrl: Boolean,
+  ) {
+    val targetArg = resolveInBundleTarget(outArg, file.absolutePath, sourceIsUrl)
+    if (targetArg == null) {
+      System.err.println(
+        "bundle embed --in-bundle: the input is a downloaded URL (a temporary file). " +
+          "Pass -o <file.png> so the enriched bundle is written somewhere durable."
+      )
+      exitProcess(64)
+    }
+    val full = fileSystem.read(file.path.toPath()) { readByteArray() }
+    val zip = BundleReader.extractZipBytes(file)
+    // The appended zip is a suffix of the file; everything before it is the leading PNG cover.
+    val prefix = full.copyOfRange(0, full.size - zip.size)
+    val webFiles = out.files.mapKeys { (rel, _) -> "$BUNDLE_WEB_DIR/$rel" }
+    val newZip = embedWebIntoZip(zip, webFiles)
+
+    val target = File(targetArg).absoluteFile
+    target.parentFile?.mkdirs()
+    // Write via a temp sibling + move so an in-place enrich never truncates the bundle on failure.
+    val tmp = File(target.parentFile, "${target.name}.embed-tmp")
+    fileSystem.write(tmp.path.toPath()) {
+      write(prefix)
+      write(newZip)
+    }
+    fileSystem.atomicMove(tmp.path.toPath(), target.path.toPath())
+
+    println(
+      "embedded web gallery (${out.previewCount} preview(s)) into ${target.path} " +
+        "under $BUNDLE_WEB_DIR/ (${target.length()} bytes)"
+    )
+    println("  unzip it and open $BUNDLE_WEB_DIR/${WebEmbed.INDEX_NAME}")
   }
 }
 
@@ -403,6 +470,69 @@ private fun encodePreviewId(id: String): String =
       if (c == '\\' || c == ',') append('\\')
       append(c)
     }
+  }
+
+/**
+ * Well-known directory inside a bundle zip holding an optional, self-contained web embed
+ * (`web/index.html` + `web/compose-preview-embed.js`, and `web/previews/<id>.png` in external-image
+ * mode). Written by `bundle embed --in-bundle`. Additive: an older reader, the renderer, and the
+ * daemon all ignore it, so a bundle carrying a `web/` directory is still a valid polyglot.
+ */
+internal const val BUNDLE_WEB_DIR: String = "web"
+
+/**
+ * Return a copy of [existingZip] with [webFiles] (path → bytes) added. Every original entry is
+ * preserved except ones already under `$BUNDLE_WEB_DIR/`, which are dropped first so re-embedding
+ * is idempotent (no duplicate `web/…` entries on a second run). New entries are pinned to the DOS
+ * epoch so the result is reproducible. Operates on raw zip bytes — the caller re-attaches the
+ * polyglot's leading PNG.
+ */
+internal fun embedWebIntoZip(existingZip: ByteArray, webFiles: Map<String, ByteArray>): ByteArray {
+  val baos = ByteArrayOutputStream()
+  ZipOutputStream(baos).use { zout ->
+    ZipInputStream(ByteArrayInputStream(existingZip)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        if (!entry.isDirectory && !entry.name.startsWith("$BUNDLE_WEB_DIR/")) {
+          zout.putNextEntry(ZipEntry(entry.name).apply { time = ZIP_DOS_EPOCH_MS })
+          zin.copyTo(zout)
+          zout.closeEntry()
+        }
+        zin.closeEntry()
+      }
+    }
+    for ((path, bytes) in webFiles) {
+      zout.putNextEntry(ZipEntry(path).apply { time = ZIP_DOS_EPOCH_MS })
+      zout.write(bytes)
+      zout.closeEntry()
+    }
+  }
+  return baos.toByteArray()
+}
+
+/**
+ * 1980-01-01 DOS-epoch floor stamped on entries written by [embedWebIntoZip], matching the plugin's
+ * reproducible-bundle writer so an enriched bundle stays byte-stable across runs.
+ */
+internal val ZIP_DOS_EPOCH_MS: Long =
+  java.util.GregorianCalendar(1980, java.util.Calendar.JANUARY, 1, 0, 0, 0).timeInMillis
+
+/**
+ * The output path for `bundle embed --in-bundle`, or `null` when the caller must error and demand
+ * `-o`. An explicit [outArg] always wins. Otherwise we default to rewriting [inputPath] in place —
+ * but only for a *local* input: a URL input ([sourceIsUrl]) resolved to a delete-on-exit temp file,
+ * and rewriting that "in place" would lose the enriched bundle on exit, so we refuse and require an
+ * explicit output instead.
+ */
+internal fun resolveInBundleTarget(
+  outArg: String?,
+  inputPath: String,
+  sourceIsUrl: Boolean,
+): String? =
+  when {
+    outArg != null -> outArg
+    sourceIsUrl -> null
+    else -> inputPath
   }
 
 /**

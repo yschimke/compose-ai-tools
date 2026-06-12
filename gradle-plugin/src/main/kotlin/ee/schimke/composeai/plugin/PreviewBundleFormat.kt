@@ -48,6 +48,12 @@ import kotlinx.serialization.json.JsonClassDiscriminator
  *                            full Compose graph that produced it. See [BundleIr] and
  *                            [BundleManifest.intermediateRepresentations].
  * report.json              — [MinimizationReport]: which deps contributed reachable classes
+ * web/                     — (optional) a self-contained web embed added after packing by
+ *                            `compose-preview bundle embed --in-bundle`: `web/index.html` +
+ *                            `web/compose-preview-embed.js` (a `<compose-preview-gallery>` web
+ *                            component with the baked previews inlined). Purely additive — the
+ *                            renderer / daemon never read it — so a bundle with a `web/` directory is
+ *                            still a valid polyglot. Not written by this task.
  * ```
  *
  * # Multiple previews, detached from a project

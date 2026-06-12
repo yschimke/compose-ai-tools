@@ -144,4 +144,123 @@ class BundleEmbedDataTest {
     assertTrue("compose-preview-gallery" in script)
     assertTrue("data:image/png;base64," in script)
   }
+
+  private fun entries(zip: ByteArray): Map<String, ByteArray> {
+    val out = LinkedHashMap<String, ByteArray>()
+    java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zip)).use { zin ->
+      while (true) {
+        val e = zin.nextEntry ?: break
+        if (!e.isDirectory) out[e.name] = zin.readBytes()
+        zin.closeEntry()
+      }
+    }
+    return out
+  }
+
+  @Test
+  fun `embedWebIntoZip adds web files and preserves existing entries`() {
+    val original =
+      ByteArrayOutputStream()
+        .also { baos ->
+          ZipOutputStream(baos).use { z ->
+            z.putNextEntry(ZipEntry("bundle.json"))
+            z.write("{}".toByteArray())
+            z.closeEntry()
+            z.putNextEntry(ZipEntry("previews/a.png"))
+            z.write(png())
+            z.closeEntry()
+          }
+        }
+        .toByteArray()
+
+    val web =
+      mapOf(
+        "web/index.html" to "<html></html>".toByteArray(),
+        "web/compose-preview-embed.js" to "// js".toByteArray(),
+      )
+    val result = entries(embedWebIntoZip(original, web))
+
+    // Originals survive untouched; the web files are added.
+    assertTrue("bundle.json" in result.keys)
+    assertTrue("previews/a.png" in result.keys)
+    assertEquals("<html></html>", result.getValue("web/index.html").toString(Charsets.UTF_8))
+    assertEquals("// js", result.getValue("web/compose-preview-embed.js").toString(Charsets.UTF_8))
+  }
+
+  @Test
+  fun `embedWebIntoZip is idempotent — re-embedding replaces stale web entries`() {
+    val withOldWeb =
+      ByteArrayOutputStream()
+        .also { baos ->
+          ZipOutputStream(baos).use { z ->
+            z.putNextEntry(ZipEntry("bundle.json"))
+            z.write("{}".toByteArray())
+            z.closeEntry()
+            z.putNextEntry(ZipEntry("web/index.html"))
+            z.write("OLD".toByteArray())
+            z.closeEntry()
+          }
+        }
+        .toByteArray()
+
+    val result =
+      entries(embedWebIntoZip(withOldWeb, mapOf("web/index.html" to "NEW".toByteArray())))
+
+    // Exactly one web/index.html (no duplicate), carrying the new bytes.
+    assertEquals(1, result.keys.count { it == "web/index.html" })
+    assertEquals("NEW", result.getValue("web/index.html").toString(Charsets.UTF_8))
+  }
+
+  @Test
+  fun `in-bundle target requires an explicit output for downloaded url inputs`() {
+    // Explicit -o always wins, regardless of source.
+    assertEquals("/out.png", resolveInBundleTarget("/out.png", "/tmp/x.png", sourceIsUrl = true))
+    assertEquals("/out.png", resolveInBundleTarget("/out.png", "/tmp/x.png", sourceIsUrl = false))
+    // Local input with no -o rewrites in place.
+    assertEquals("/tmp/x.png", resolveInBundleTarget(null, "/tmp/x.png", sourceIsUrl = false))
+    // URL input with no -o resolves to a delete-on-exit temp; refuse so the result isn't lost.
+    assertEquals(null, resolveInBundleTarget(null, "/tmp/dl.png", sourceIsUrl = true))
+  }
+
+  @Test
+  fun `in-bundle embed keeps the bundle a valid polyglot the reader can still parse`() {
+    val coverPng = png(4, 8)
+    val bundleJson =
+      """
+      {"schemaVersion":2,"backend":"desktop","previewIds":["a"],"coverPreviewId":"a",
+       "classpath":[{"kind":"module","path":"classes/app.jar"}],
+       "modulePath":":samples:cmp","producedBy":"test"}
+      """
+        .trimIndent()
+    val file =
+      polyglot(
+        coverPng,
+        linkedMapOf("bundle.json" to bundleJson.toByteArray(), "previews/a.png" to coverPng),
+      )
+    val originalPrefixLen = file.readBytes().size - BundleReader.extractZipBytes(file).size
+
+    // Mirror what `embed --in-bundle` does: regenerate the web embed and splice it into the zip,
+    // re-attaching the leading PNG prefix.
+    val full = file.readBytes()
+    val zip = BundleReader.extractZipBytes(file)
+    val prefix = full.copyOfRange(0, full.size - zip.size)
+    val data = BundleReader.readWebEmbedData(file)
+    val out = WebEmbed.generate("Demo", data.manifest.modulePath, data.previews)
+    val newZip = embedWebIntoZip(zip, out.files.mapKeys { (rel, _) -> "web/$rel" })
+    val enriched = File(workRoot, "enriched.png")
+    enriched.outputStream().use {
+      it.write(prefix)
+      it.write(newZip)
+    }
+
+    // The leading PNG cover is byte-identical, so it's still a polyglot readers detect as PNG.
+    assertEquals(originalPrefixLen, prefix.size)
+    assertEquals(coverPng.toList(), enriched.readBytes().copyOfRange(0, prefix.size).toList())
+    // The reader still parses it, and the new web/ entries are present alongside the originals.
+    val reread = BundleReader.readWebEmbedData(enriched)
+    assertEquals(listOf("a"), reread.previews.map { it.id })
+    val names = entries(BundleReader.extractZipBytes(enriched)).keys
+    assertTrue("bundle.json" in names && "previews/a.png" in names)
+    assertTrue("web/index.html" in names && "web/compose-preview-embed.js" in names)
+  }
 }
