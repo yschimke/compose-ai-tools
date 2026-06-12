@@ -769,12 +769,23 @@ describeE2E("Compose Preview interactive scenarios (real Gradle)", function () {
                 newRenderOutputs.length > 0,
                 "renamed preview arrived with 0 captures",
             );
-            for (const p of newRenderOutputs) {
-                assert.ok(
-                    fs.existsSync(p),
-                    `renamed preview render PNG missing on disk at ${p}`,
-                );
-            }
+            // E2 is the one disk check in this suite that races the render
+            // pipeline: the renamed preview is rendered fresh, so its
+            // `setPreviews` metadata (already carrying the capture's
+            // `renderOutput` path) can be published a beat before the PNG bytes
+            // are flushed to disk. Poll for the file rather than asserting once
+            // — every other PNG check here reads a pre-existing render, so only
+            // this freshly-rendered one needs the wait. A genuine "never
+            // written" regression still fails, just via waitFor's timeout.
+            await waitFor(
+                `renamed preview render PNG(s) on disk: ${newRenderOutputs.join(", ")}`,
+                this.timeout(),
+                500,
+                () =>
+                    newRenderOutputs.every((p) => fs.existsSync(p))
+                        ? true
+                        : undefined,
+            );
 
             // Invariant E3: the stale PNG no longer exists on disk. The
             // gradle-level repro proved the renderer sanitises these; this
