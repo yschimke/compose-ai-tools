@@ -500,7 +500,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_LEGACY.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "fee474d52c71bacfc95ea6a6a15892c0f02859830556dcdc2ff1111bf375274e",
+    "sha256": "aa55147722f8e519a5e48a878ea1424c96a1ac4b0e34c6248c9afa27febca82b",
     "shape": null
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_circle.png": {
@@ -572,7 +572,7 @@
     "renderBasename": "resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-dark.png",
     "resourceId": "mipmap/ic_launcher_round",
     "resourceType": "ADAPTIVE_ICON",
-    "sha256": "957517bab89105a84b5cd92f954dc639f0ee4287012ca24991c0a82da293d386",
+    "sha256": "1ae9fdfe1e41fecd0e715420447c75cddaa60b109f3deb20b8dfd746c5b6ad17",
     "shape": "SQUARE"
   },
   "samples/remotecompose::mipmap/ic_launcher_round::renders/resources/mipmap/ic_launcher_round_xhdpi_SHAPE_square_themed-light.png": {
