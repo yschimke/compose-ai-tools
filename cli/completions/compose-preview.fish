@@ -142,10 +142,8 @@ complete -c compose-preview -f -n __compose_preview_needs_command -a doctor \
     -d 'Verify Java 17 + Compose/AGP environment'
 complete -c compose-preview -f -n __compose_preview_needs_command -a devices \
     -d 'List known @Preview(device=...) ids'
-complete -c compose-preview -f -n __compose_preview_needs_command -a share-gist \
-    -d 'Create a gist from markdown + images'
-complete -c compose-preview -f -n __compose_preview_needs_command -a publish-images \
-    -d 'Push rendered PNGs to a shared branch'
+complete -c compose-preview -f -n __compose_preview_needs_command -a share-preview \
+    -d 'Share previews (markdown+images or a dir) as a gist or capture branch'
 complete -c compose-preview -f -n __compose_preview_needs_command -a bundle \
     -d 'Pack / inspect / render portable preview bundles (PNG+ZIP polyglot)'
 complete -c compose-preview -f -n __compose_preview_needs_command -a mcp \
@@ -246,30 +244,30 @@ complete -c compose-preview -f -n '__compose_preview_using_command devices' \
 complete -c compose-preview -f -n '__compose_preview_using_command devices' \
     -l help -s h -d 'Show devices help'
 
-# share-gist.
-complete -c compose-preview -f -n '__compose_preview_using_command share-gist' \
-    -l json -d 'Emit JSON envelope'
-complete -c compose-preview -f -n '__compose_preview_using_command share-gist' \
-    -l public -d 'Make the gist public'
-complete -c compose-preview -f -n '__compose_preview_using_command share-gist' \
-    -l secret -d 'Make the gist secret (default)'
-complete -c compose-preview -x -n '__compose_preview_using_command share-gist' \
-    -l desc -d 'Gist description'
-
-# publish-images.
-complete -c compose-preview -F -n '__compose_preview_using_command publish-images' \
-    -d 'Directory of rendered PNGs'
-complete -c compose-preview -x -n '__compose_preview_using_command publish-images' \
-    -l branch -d 'Target branch (default compose-preview/pr)'
-complete -c compose-preview -x -n '__compose_preview_using_command publish-images' \
-    -l remote -d 'Git remote (default origin)'
-complete -c compose-preview -x -n '__compose_preview_using_command publish-images' \
-    -l pr-number -d 'Pull request number for commit message'
-complete -c compose-preview -x -n '__compose_preview_using_command publish-images' \
-    -l message -d 'Custom commit message'
-complete -c compose-preview -f -n '__compose_preview_using_command publish-images' \
-    -l allow-non-preview-branch -d 'Allow pushing to non-compose-preview/ branches'
-complete -c compose-preview -f -n '__compose_preview_using_command publish-images' \
+# share-preview.
+complete -c compose-preview -F -n '__compose_preview_using_command share-preview' \
+    -d 'Markdown report + images, or a directory of PNGs'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l mechanism -a 'auto gist branch' -d 'Force the share mechanism (default auto)'
+complete -c compose-preview -f -n '__compose_preview_using_command share-preview' \
+    -l public -d 'Gist mechanism: make the gist public'
+complete -c compose-preview -f -n '__compose_preview_using_command share-preview' \
+    -l secret -d 'Gist mechanism: make the gist secret (default)'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l desc -d 'Gist mechanism: gist description'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l branch -d 'Branch mechanism: target capture branch (default compose-preview/share/<branch>)'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l remote -d 'Branch mechanism: git remote (default origin)'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l raw-base -d 'Branch mechanism: override the raw-asset URL prefix'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l pr-number -d 'Branch mechanism: pull request number for commit message'
+complete -c compose-preview -x -n '__compose_preview_using_command share-preview' \
+    -l message -d 'Branch mechanism: custom commit message'
+complete -c compose-preview -f -n '__compose_preview_using_command share-preview' \
+    -l allow-non-preview-branch -d 'Branch mechanism: allow non-compose-preview/ branches'
+complete -c compose-preview -f -n '__compose_preview_using_command share-preview' \
     -l json -d 'Emit JSON envelope'
 
 # bundle subcommands.
