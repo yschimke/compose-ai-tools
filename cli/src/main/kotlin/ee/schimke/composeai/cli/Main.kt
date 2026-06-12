@@ -28,10 +28,12 @@ fun main(args: Array<String>) {
       "--plugin-version",
       "--fail-on",
       "--desc",
+      "--mechanism",
       "--branch",
       "--remote",
       "--pr-number",
       "--message",
+      "--raw-base",
       "--with-extension",
       "--with",
       "--missing-renders",
@@ -77,8 +79,7 @@ fun main(args: Array<String>) {
     "profile" -> ProfileCommand(allArgs).run()
     "doctor" -> DoctorCommand(allArgs).run()
     "devices" -> DevicesCommand(allArgs).run()
-    "share-gist" -> ShareGistCommand(allArgs).run()
-    "publish-images" -> PublishImagesCommand(allArgs).run()
+    "share-preview" -> SharePreviewCommand(allArgs).run()
     "bundle" -> BundleCommand(allArgs).run()
     "mcp" -> McpCommand(allArgs).run()
     "update" -> UpdateCommand(allArgs).run()
@@ -122,8 +123,11 @@ private fun printUsage() {
                        `ReportCommand`; later flags override profile fields.
       doctor           Verify Java 17 + Compose/AGP environment before editing Gradle files
       devices          List known @Preview(device=...) ids and resolved geometry
-      share-gist       Create a gist from a markdown file plus image attachments
-      publish-images   Push a directory of rendered PNGs to a shared branch (default compose-preview/pr)
+      share-preview    Share rendered previews (a markdown report + images, or a directory of
+                       PNGs) somewhere openable. Picks the mechanism by what's available: a gist
+                       when the GitHub CLI is installed + authenticated, otherwise a push to a
+                       per-branch capture branch through the project remote (works in hosted
+                       sessions with no `gh`/token). `--mechanism` forces gist|branch.
       bundle           Pack selected previews + minimal classpath into a portable PNG+ZIP polyglot
       mcp              MCP server lifecycle: serve | install | doctor (see `mcp help`)
       update           Re-run the bootstrap installer to pull the latest release
