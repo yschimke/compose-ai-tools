@@ -48,6 +48,36 @@ The VS Code extension surfaces the same findings in the Problems panel (via
      `-android` coordinate; `compose-preview doctor` reports the same skew for
      the consumer's own test tasks.
 
+## Desktop (Compose Multiplatform) renderer
+
+The desktop backend has the mirror-image hazard. `renderer-desktop` (and
+`daemon-desktop`) bundle their own JetBrains Compose + Skiko, pinned to the
+repo's `compose-multiplatform` (currently 1.10.3). A consumer module tracks
+*its own* Compose Multiplatform version, which can be newer. The plugin builds
+the render subprocess classpath from two configurations — the renderer tool
+config (`composePreviewRenderer` / `composePreviewDesktopDaemon`) and the
+consumer's runtime classpath — so if those resolve as **separate** graphs, both
+Skikos land on the classpath. Skiko's Java bindings and its native library must
+be the same version; the newer bindings (e.g. CMP 1.11's
+`TextStyleKt._nSetFontEdging`) against the renderer's older native `.so` fail at
+render time with `UnsatisfiedLinkError`, not a clean resolution error (issue
+#1844).
+
+The mitigation mirrors Android's #2 above:
+`ComposePreviewTasks.alignDesktopToolWithConsumerGraph` makes the renderer tool
+config `extendsFrom` the consumer's runtime classpath and copies its
+JVM/Kotlin platform attributes, so the two resolve in **one** graph. Gradle's
+conflict resolution then picks a single coherent max version of Skiko (and the
+rest of the JetBrains Compose stack) — the consumer's, whose bindings and
+native library agree. The renderer's own code is compiled against the pinned
+floor (1.10.3) but runs against whatever coherent version the consumer pulls;
+because Skiko/Compose minor bumps are additive at the API surface the renderer
+uses, the consumer's newer stack satisfies it. This is scoped to genuinely
+JVM/desktop consumer classpaths — a pure-Android KMP fallback
+(`androidRuntimeClasspath`) is left alone (no `androidJvm` renderer variant
+exists, and that classpath can't feed the JVM renderer anyway). Covered by
+`DesktopRendererGraphAlignmentFunctionalTest`.
+
 ## Known findings that still warrant a note
 
 ### A library declares a higher minSdk than the module
