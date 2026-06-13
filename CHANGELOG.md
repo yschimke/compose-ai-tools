@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.1](https://github.com/yschimke/compose-ai-tools/compare/v0.15.0...v0.15.1) (2026-06-13)
+
+
+### Features
+
+* **bundle:** carry per-preview semantics blob via pack --with-semantics ([#1845](https://github.com/yschimke/compose-ai-tools/issues/1845)) ([6e9c4b9](https://github.com/yschimke/compose-ai-tools/commit/6e9c4b9e465d124bd95b51b0f2d61255560bdb66))
+* **bundle:** optionally carry cover-preview data-extension reports (schema v7) ([#1840](https://github.com/yschimke/compose-ai-tools/issues/1840)) ([f8d083d](https://github.com/yschimke/compose-ai-tools/commit/f8d083d8718a0b13da674e29be2d39382f5a1a1a))
+* **cli:** add bundle embed — web embed ("js bundle") from a preview bundle ([#1837](https://github.com/yschimke/compose-ai-tools/issues/1837)) ([a1f5c7f](https://github.com/yschimke/compose-ai-tools/commit/a1f5c7f48f15de664332f2899ee182cb3aaa943a))
+* **cli:** bundle embed --in-bundle — embed web resources into the bundle zip ([#1839](https://github.com/yschimke/compose-ai-tools/issues/1839)) ([50db98b](https://github.com/yschimke/compose-ai-tools/commit/50db98bc2c1537bc0098b29c8bb3691b5eb0f55b))
+
+
+### Bug Fixes
+
+* **desktop:** resolve renderer in the consumer's graph so Skiko stays coherent ([#1846](https://github.com/yschimke/compose-ai-tools/issues/1846)) ([f8c1264](https://github.com/yschimke/compose-ai-tools/commit/f8c12646772e7f41882e503d5a401b648f415093))
+
 ## [0.15.0](https://github.com/yschimke/compose-ai-tools/compare/v0.14.1...v0.15.0) (2026-06-12)
 
 
