@@ -97,6 +97,11 @@ class BundleCommand(args: List<String>) : Command(args) {
         --embed-deps        Carry reachable third-party jars inside the bundle (libs/) instead of
                             referencing Maven coordinates. Bigger file, but renders with no network
                             and no build system on the other end (resolution=embedded).
+        --include-data-extensions
+                            Carry the per-extension data reports (a11y findings, theme tokens, drawn
+                            strings, …) under extensions/<id>.json, sliced to the cover (default)
+                            preview, so a reader can surface the headline image's data without
+                            re-rendering. Off by default.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -121,6 +126,7 @@ private class PackSubcommand(private val args: List<String>) {
   private val output: String? = args.flagValue("--output") ?: args.flagValue("-o")
   private val noRender: Boolean = "--no-render" in args
   private val embedDeps: Boolean = "--embed-deps" in args
+  private val includeDataExtensions: Boolean = "--include-data-extensions" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val ids: List<String> =
     args
@@ -157,6 +163,7 @@ private class PackSubcommand(private val args: List<String>) {
               if (ids.isNotEmpty())
                 add("-PbundlePreviewIds=${ids.joinToString(",") { encodePreviewId(it) }}")
               if (embedDeps) add("-PbundleEmbedDeps=true")
+              if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
             }
             val tasks =
@@ -210,6 +217,12 @@ private class PackSubcommand(private val args: List<String>) {
       "  classpath:     ${meta.manifest.classpath.size} entries " +
         "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)"
     )
+    if (meta.manifest.dataExtensions.isNotEmpty()) {
+      println(
+        "  data exts:     ${meta.manifest.dataExtensions.size} " +
+          "(${meta.manifest.dataExtensions.joinToString(", ") { it.extensionId }})"
+      )
+    }
     val r = meta.report
     if (r != null) {
       println("  entry classes: ${r.entryClassFqns.size}")
@@ -602,7 +615,16 @@ internal object BundleReader {
      * bundles. See `BundleAndroidResources` in `PreviewBundleFormat.kt`.
      */
     val androidResources: AndroidResources? = null,
+    /**
+     * v7+: optional per-extension data reports carried under `extensions/<id>.json` (a11y findings,
+     * theme tokens, …). Empty unless the bundle was packed with `--include-data-extensions`. See
+     * `BundleDataExtension` in `PreviewBundleFormat.kt`.
+     */
+    val dataExtensions: List<DataExtension> = emptyList(),
   )
+
+  /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
+  @Serializable data class DataExtension(val extensionId: String, val path: String)
 
   /** v6+ mirror of `BundleAndroidResources` in `PreviewBundleFormat.kt`. */
   @Serializable

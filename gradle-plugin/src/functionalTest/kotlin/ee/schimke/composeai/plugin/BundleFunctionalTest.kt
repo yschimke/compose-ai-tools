@@ -298,6 +298,149 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `include-data-extensions carries the named report sidecars under extensions`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    // Discover so previews.json exists, then inject a dataExtensionReports pointer + drop the
+    // report
+    // sidecar it names — mimicking what a data extension's aggregate step would have produced after
+    // discovery. (A real render isn't available here; this exercises the carriage path the same way
+    // the PNG-baking test seeds fake renders.) The pack runs exclude `composePreviewDiscover`
+    // (`-x`): discover owns previews.json, so without the exclude Gradle would treat our hand-edit
+    // as
+    // a stale output and re-run discover, reverting the injected pointer to the empty default.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewOutputDir = File(projectDir, "build/compose-previews")
+    val previewsJson = File(previewOutputDir, "previews.json")
+    val manifest = json.decodeFromString(PreviewManifest.serializer(), previewsJson.readText())
+    val withReports = manifest.copy(dataExtensionReports = mapOf("a11y" to "accessibility.json"))
+    previewsJson.writeText(json.encodeToString(PreviewManifest.serializer(), withReports))
+    // A module-wide report keyed by previewId — entries for the cover (red) AND a non-selected
+    // preview (blue). Carriage must slice it to the cover only.
+    val blueId = "test.BlueKt.BlueBoxPreview"
+    val reportBody =
+      """{"module":":","entries":[""" +
+        """{"previewId":"$redId","findings":[{"level":"warning"}]},""" +
+        """{"previewId":"$blueId","findings":[{"level":"error"}]}]}"""
+    File(previewOutputDir, "accessibility.json").writeText(reportBody)
+
+    // Off by default: a plain pack must NOT carry the report even though the manifest names it.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments(
+        "composePreviewBundle",
+        "-PbundlePreviewIds=$redId",
+        "-x",
+        "composePreviewDiscover",
+        "--stacktrace",
+      )
+      .withPluginClasspath()
+      .build()
+    val plainBundle = File(previewOutputDir, "bundle.png")
+    assertThat(listEntries(plainBundle).none { it.startsWith("extensions/") }).isTrue()
+
+    // Opt-in: the report is carried under extensions/<id>.json and recorded in the manifest.
+    val result =
+      GradleRunner.create()
+        .withProjectDir(projectDir)
+        .withArguments(
+          "composePreviewBundle",
+          "-PbundlePreviewIds=$redId",
+          "-PbundleIncludeDataExtensions=true",
+          "-x",
+          "composePreviewDiscover",
+          "--stacktrace",
+        )
+        .withPluginClasspath()
+        .build()
+    assertThat(result.task(":composePreviewBundle")?.outcome).isEqualTo(TaskOutcome.SUCCESS)
+
+    val bundle = File(previewOutputDir, "bundle.png")
+    assertThat(listEntries(bundle)).contains("extensions/a11y.json")
+    // The carried report is sliced to the cover (red) preview: red's entry survives, blue's is
+    // gone,
+    // and the top-level `module` field is preserved.
+    val carriedReport =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "extensions/a11y.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    val entryIds =
+      carriedReport["entries"]!!.jsonArray.map {
+        it.jsonObject["previewId"]!!.jsonPrimitive.content
+      }
+    assertThat(entryIds).containsExactly(redId)
+    assertThat(carriedReport["module"]!!.jsonPrimitive.content).isEqualTo(":")
+
+    val bundleManifest =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject
+    assertThat(bundleManifest["schemaVersion"]!!.jsonPrimitive.int).isEqualTo(BUNDLE_SCHEMA_VERSION)
+    val carried = bundleManifest["dataExtensions"]!!.jsonArray
+    assertThat(carried).hasSize(1)
+    assertThat(carried.first().jsonObject["extensionId"]!!.jsonPrimitive.content).isEqualTo("a11y")
+    assertThat(carried.first().jsonObject["path"]!!.jsonPrimitive.content)
+      .isEqualTo("extensions/a11y.json")
+
+    // The bundled previews.json's dataExtensionReports is rewritten to the in-bundle path, so both
+    // pointers agree and resolve to a real entry — no dangling reference to the producer's
+    // module-relative `accessibility.json`.
+    val bundledPreviews =
+      json.decodeFromString(
+        PreviewManifest.serializer(),
+        readZipEntry(bundle, "previews.json")!!.toString(Charsets.UTF_8),
+      )
+    assertThat(bundledPreviews.dataExtensionReports).containsExactly("a11y", "extensions/a11y.json")
+  }
+
+  @Test
+  fun `include-data-extensions falls back to the conventional report path`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    // Discover writes previews.json with an EMPTY dataExtensionReports map (the standalone-plugin
+    // behaviour). The standard a11y flow drops build/compose-previews/accessibility.json without
+    // stamping a manifest pointer — so the pack must find it via the conventional-path fallback.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewOutputDir = File(projectDir, "build/compose-previews")
+    File(previewOutputDir, "accessibility.json")
+      .writeText("""{"module":":","entries":[{"previewId":"$redId","findings":[]}]}""")
+
+    // No previews.json edit, so composePreviewDiscover stays up to date — no `-x` needed.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments(
+        "composePreviewBundle",
+        "-PbundlePreviewIds=$redId",
+        "-PbundleIncludeDataExtensions=true",
+        "--stacktrace",
+      )
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(previewOutputDir, "bundle.png")
+    assertThat(listEntries(bundle)).contains("extensions/a11y.json")
+    val carried =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject["dataExtensions"]!!
+        .jsonArray
+        .map { it.jsonObject["extensionId"]!!.jsonPrimitive.content }
+    assertThat(carried).contains("a11y")
+  }
+
+  @Test
   fun `composePreviewBundle filters previews_json to selected ids`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"

@@ -293,6 +293,11 @@ internal object ComposePreviewTasks {
     // renders with no network / no consumer build system.
     val embedDepsProperty: Provider<Boolean> =
       project.providers.gradleProperty("bundleEmbedDeps").map { it.toBoolean() }
+    // `-PbundleIncludeDataExtensions=true` → schema-v7: carry the aggregated per-extension data
+    // reports (a11y findings, theme tokens, …) named by `previews.json`'s `dataExtensionReports`
+    // under `extensions/<id>.json` so a detached reader can surface them without re-rendering.
+    val includeDataExtensionsProperty: Provider<Boolean> =
+      project.providers.gradleProperty("bundleIncludeDataExtensions").map { it.toBoolean() }
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
@@ -409,6 +414,12 @@ internal object ComposePreviewTasks {
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
+      includeDataExtensions.set(includeDataExtensionsProperty.orElse(false))
+      // Track the aggregated extension report sidecars (the render task writes them as top-level
+      // `*.json` under the preview output dir) so a content change re-packs the bundle. The bundle
+      // output is a `.png`, so the `*.json` filter never captures it as a circular input. Paths are
+      // resolved from the manifest at pack time; this is just the up-to-date / cache-key signal.
+      dataExtensionFiles.from(previewOutputDir.map { it.asFileTree.matching { include("*.json") } })
       modulePath.set(project.path)
       // (v6 Android) base dir for resolving test_config.properties' module-relative apk/manifest
       // paths. Harmless on desktop. See [BundlePreviewTask.moduleProjectDir].

@@ -11,6 +11,10 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -202,6 +206,32 @@ abstract class BundlePreviewTask : DefaultTask() {
    */
   @get:Input @get:Optional abstract val embedDeps: Property<Boolean>
 
+  /**
+   * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, schema-v7
+   * [BundleManifest.dataExtensions]). When true, the per-extension data reports (a11y findings,
+   * theme tokens, drawn strings, …) — those named by `previews.json`'s `dataExtensionReports` plus
+   * a conventional-path fallback for registered extensions that write a report without stamping the
+   * manifest ([CONVENTIONAL_DATA_EXTENSION_REPORTS], e.g. a11y's `accessibility.json`) — are packed
+   * under `extensions/<id>.json`, sliced to the cover preview, so a detached reader can surface
+   * them without re-rendering. Defaults to false: the normal pack carries no reports and stays
+   * small. A no-op when no report is found on disk.
+   */
+  @get:Input @get:Optional abstract val includeDataExtensions: Property<Boolean>
+
+  /**
+   * The data-extension report sidecars named by `previews.json`'s `dataExtensionReports`, tracked
+   * as a real input so the bundle re-packs (and its cache key changes) when a report's *content*
+   * changes, not just when the manifest pointer does. Wired to the top-level `*.json` files under
+   * the preview output dir (where the render task writes the aggregated reports); the paths are
+   * resolved from the manifest at pack time against [previewsJson]'s parent. `@Optional` because a
+   * pack with no extension reports — the common case — snapshots this as empty. Only read when
+   * [includeDataExtensions] is set.
+   */
+  @get:InputFiles
+  @get:Optional
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val dataExtensionFiles: ConfigurableFileCollection
+
   /** Output `.png` polyglot file. */
   @get:OutputFile abstract val output: RegularFileProperty
 
@@ -313,6 +343,50 @@ abstract class BundlePreviewTask : DefaultTask() {
         resolveAndroidResources(irZipFiles)
       else null
 
+    // v7 optional data-extension carriage: when asked, pack the per-extension report sidecars (a11y
+    // findings, theme tokens, …) so a detached reader can surface that data without re-rendering.
+    // The
+    // report is sliced down to the COVER (default) preview — the one shown as the bundle's leading
+    // PNG — so the headline image carries its detailed results and the bundle doesn't drag along
+    // data
+    // for previews it doesn't even show (see [scopeReportToCoverPreview]). The set of reports is
+    // the
+    // manifest's `dataExtensionReports` pointers plus a conventional-path fallback for any
+    // registered
+    // extension the manifest names no report for ([CONVENTIONAL_DATA_EXTENSION_REPORTS]) — the
+    // standard a11y flow writes `accessibility.json` but leaves the manifest map empty, so without
+    // the fallback the flag would carry nothing. Paths are module-relative from the manifest's
+    // parent
+    // dir (where the render task writes the reports). A manifest-named report that's missing warns
+    // and
+    // skips; a fallback only contributes when its file actually exists. Sorted by id for a
+    // deterministic (reproducible) zip order. No-op when the flag is off or no report is found.
+    val dataExtensionEntries = mutableListOf<BundleDataExtension>()
+    val dataExtensionZipFiles = LinkedHashMap<String, ByteArray>()
+    if (includeDataExtensions.getOrElse(false)) {
+      val reportBaseDir = manifestFile.parentFile
+      val effectiveReports = LinkedHashMap<String, String>()
+      effectiveReports.putAll(manifest.dataExtensionReports)
+      for ((id, conventionalName) in CONVENTIONAL_DATA_EXTENSION_REPORTS) {
+        if (id !in effectiveReports && File(reportBaseDir, conventionalName).isFile) {
+          effectiveReports[id] = conventionalName
+        }
+      }
+      for ((id, relPath) in effectiveReports.toSortedMap()) {
+        val src = File(reportBaseDir, relPath)
+        if (!src.isFile) {
+          logger.warn(
+            "composePreviewBundle: data-extension '$id' report '$relPath' not found at " +
+              "${src.path} — skipping (the bundle omits this extension's data)."
+          )
+          continue
+        }
+        val zipPath = "$BUNDLE_EXTENSIONS_DIR/$id.json"
+        dataExtensionZipFiles[zipPath] = scopeReportToCoverPreview(src.readBytes(), coverId)
+        dataExtensionEntries += BundleDataExtension(extensionId = id, path = zipPath)
+      }
+    }
+
     val bundle =
       BundleManifest(
         schemaVersion = BUNDLE_SCHEMA_VERSION,
@@ -326,6 +400,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         resolution = classpath.resolution,
         intermediateRepresentations = irEntries,
         androidResources = androidResources,
+        dataExtensions = dataExtensionEntries,
       )
 
     // Bake one PNG per selected preview into `previews/<id>.png` so the bundle renders detached
@@ -336,7 +411,24 @@ abstract class BundlePreviewTask : DefaultTask() {
       resolvePreviewPng(preview)?.let { previewPngs[preview.id] = it }
     }
 
-    val filteredManifest = manifest.copy(previews = selected)
+    val filteredManifest =
+      if (includeDataExtensions.getOrElse(false)) {
+        // When carrying extension data, rewrite the bundled manifest's `dataExtensionReports` to
+        // the
+        // in-bundle `extensions/<id>.json` paths (bundle-root-relative, the same convention the map
+        // documents). Otherwise the bundled `previews.json` would still name the producer's
+        // module-relative paths (e.g. `accessibility.json`) — pointers that don't resolve inside a
+        // detached bundle and disagree with `bundle.json`'s [BundleManifest.dataExtensions].
+        // Reports
+        // that were skipped (source missing) drop out of the map so nothing dangles. Left untouched
+        // in the default (non-carrying) pack, preserving the historical on-disk pointers.
+        manifest.copy(
+          previews = selected,
+          dataExtensionReports = dataExtensionEntries.associate { it.extensionId to it.path },
+        )
+      } else {
+        manifest.copy(previews = selected)
+      }
     val zipBytes =
       buildZip(
         bundleJson = JSON.encodeToString(BundleManifest.serializer(), bundle),
@@ -346,6 +438,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         report = JSON.encodeToString(MinimizationReport.serializer(), report),
         previewPngs = previewPngs,
         irFiles = irZipFiles,
+        dataExtensionFiles = dataExtensionZipFiles,
       )
 
     // The cover (first selected preview) forms the polyglot's leading bytes. Reuse its baked PNG
@@ -364,6 +457,7 @@ abstract class BundlePreviewTask : DefaultTask() {
         "  resolution:           ${classpath.resolution}\n" +
         "  previews baked:       ${previewPngs.size} / ${selected.size} (cover=$coverId)\n" +
         "  IR-backed previews:   ${irEntries.size} (replayed from ir/, classes dropped)\n" +
+        "  data extensions:      ${dataExtensionEntries.size} (carried under extensions/)\n" +
         "  entry classes:        ${report.entryClassFqns.size}\n" +
         "  reachable classes:    ${report.reachableClassCount} / ${report.totalScannedClassCount}\n" +
         "  module classes kept:  ${report.moduleClasses.reachableClasses} / ${report.moduleClasses.totalClasses}\n" +
@@ -837,6 +931,7 @@ abstract class BundlePreviewTask : DefaultTask() {
     report: String,
     previewPngs: Map<String, ByteArray>,
     irFiles: Map<String, ByteArray>,
+    dataExtensionFiles: Map<String, ByteArray>,
   ): ByteArray {
     val baos = ByteArrayOutputStream()
     ZipOutputStream(baos).use { zip ->
@@ -846,11 +941,53 @@ abstract class BundlePreviewTask : DefaultTask() {
       previewPngs.forEach { (id, bytes) -> zip.writeFile("$BUNDLE_PREVIEWS_DIR/$id.png", bytes) }
       // Captured IR bytes (Remote Compose doc / protolayout proto) under `ir/`.
       irFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
+      // (v7) Optional per-extension data reports under `extensions/<id>.json`.
+      dataExtensionFiles.forEach { (path, bytes) -> zip.writeFile(path, bytes) }
       zip.writeFile("classes/app.jar", appJar)
       inlinedProjectJars.forEach { (path, file) -> zip.writeFile(path, file.readBytes()) }
       zip.writeFile("report.json", report.toByteArray(Charsets.UTF_8))
     }
     return baos.toByteArray()
+  }
+
+  /**
+   * Slice an aggregated per-extension report down to just the cover (default) preview — the one
+   * shown as the bundle's leading PNG — so the carried `extensions/<id>.json` describes the
+   * headline image and not every preview the module rendered.
+   *
+   * Applied uniformly to every report: any top-level array whose elements are all JSON objects
+   * carrying a string `previewId` is filtered to the entries whose `previewId` equals [coverId];
+   * everything else in the document is left untouched. This keys on the common
+   * `entries[].previewId` convention (e.g. the a11y report's `entries`) as a generic structural
+   * transform — it is NOT per-extension logic, so a report that doesn't follow the convention is
+   * carried whole. Returns the input bytes unchanged on a parse failure, a non-object root, or when
+   * no array matched the shape (so a report with nothing to scope is byte-identical to the source).
+   */
+  private fun scopeReportToCoverPreview(reportBytes: ByteArray, coverId: String): ByteArray {
+    val root =
+      try {
+        Json.parseToJsonElement(reportBytes.toString(Charsets.UTF_8))
+      } catch (_: Exception) {
+        return reportBytes
+      }
+    if (root !is JsonObject) return reportBytes
+    var changed = false
+    val scoped = root.mapValues { (_, value) ->
+      if (
+        value is JsonArray &&
+          value.isNotEmpty() &&
+          value.all { it is JsonObject && (it["previewId"] as? JsonPrimitive)?.isString == true }
+      ) {
+        val kept = value.filter {
+          (it as JsonObject)["previewId"]!!.jsonPrimitive.content == coverId
+        }
+        if (kept.size != value.size) changed = true
+        JsonArray(kept)
+      } else {
+        value
+      }
+    }
+    return if (changed) JsonObject(scoped).toString().toByteArray(Charsets.UTF_8) else reportBytes
   }
 
   private fun ZipOutputStream.writeFile(path: String, bytes: ByteArray) {

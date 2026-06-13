@@ -122,6 +122,7 @@ previews/<id>.png     # baked images — IDENTICAL across all build systems
 classes/app.jar       # module bytecode, minimized (ClassGraph closure is build-system-agnostic:
                       #   it walks whatever class dirs + jars it's given — Bazel/Amper outputs work)
 libs/<name>.jar       # inlined deps: today only project-style; in "embedded" mode, all reachable deps
+extensions/<id>.json  # (v7, opt-in) per-extension data reports, sliced to the cover preview — IDENTICAL across build systems
 report.json
 ```
 
