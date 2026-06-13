@@ -83,7 +83,7 @@ class BundleCommand(args: List<String>) : Command(args) {
       A <bundle> below is a local path OR an http(s)/file URL — URLs are downloaded first.
 
       Usage:
-        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render]
+        compose-preview bundle pack [--module <name>] [--id <preview>...] [-o <file.png>] [--no-render] [--with-semantics]
         compose-preview bundle inspect <bundle.png | URL>
         compose-preview bundle extract <bundle.png | URL> [-o <dir>]
         compose-preview bundle embed   <bundle.png | URL> [-o <dir|file.png>] [--title T] [--external-images] [--in-bundle]
@@ -97,6 +97,16 @@ class BundleCommand(args: List<String>) : Command(args) {
         --embed-deps        Carry reachable third-party jars inside the bundle (libs/) instead of
                             referencing Maven coordinates. Bigger file, but renders with no network
                             and no build system on the other end (resolution=embedded).
+        --include-data-extensions
+                            Carry the per-extension data reports (a11y findings, theme tokens, drawn
+                            strings, …) under extensions/<id>.json, sliced to the cover (default)
+                            preview, so a reader can surface the headline image's data without
+                            re-rendering. Off by default.
+        --with-semantics    Carry each preview's semantics tree (per-node bounds, label/text, and
+                            resolved foreground/background colours) as previews/<id>.semantics.json —
+                            the shape design-parity reads for contrast/a11y + token checks. Produced
+                            by a short-lived daemon render (no separate --with-extension pass needed).
+                            Off by default; ignored with --no-render.
 
       Inspect / extract / render flags:
         -o, --output <dir>  Directory to extract / render into. Default: alongside the bundle.
@@ -121,6 +131,8 @@ private class PackSubcommand(private val args: List<String>) {
   private val output: String? = args.flagValue("--output") ?: args.flagValue("-o")
   private val noRender: Boolean = "--no-render" in args
   private val embedDeps: Boolean = "--embed-deps" in args
+  private val includeDataExtensions: Boolean = "--include-data-extensions" in args
+  private val withSemantics: Boolean = "--with-semantics" in args
   private val verbose: Boolean = "--verbose" in args || "-v" in args
   private val ids: List<String> =
     args
@@ -157,12 +169,27 @@ private class PackSubcommand(private val args: List<String>) {
               if (ids.isNotEmpty())
                 add("-PbundlePreviewIds=${ids.joinToString(",") { encodePreviewId(it) }}")
               if (embedDeps) add("-PbundleEmbedDeps=true")
+              if (includeDataExtensions) add("-PbundleIncludeDataExtensions=true")
               add("-PbundleOutput=${resolvedOutput.absolutePath}")
+            }
+            // `--with-semantics` carries the per-preview semantics blob (issue #1843). The
+            // semantics tree is produced exclusively by the daemon (the standalone
+            // composePreviewRender task writes no semantics sidecars), so we also start the daemon
+            // in the same Gradle invocation — its launch descriptor is written fresh against the
+            // consumer's current classpath, then a short-lived render session reads the blobs back.
+            // Pointless without a render (the daemon needs something to capture), so skip when
+            // --no-render.
+            val packSemantics = withSemantics && !noRender
+            if (withSemantics && noRender) {
+              System.err.println(
+                "bundle pack: --with-semantics needs a render; ignoring it because --no-render was passed."
+              )
             }
             val tasks =
               buildList {
                   if (!noRender) add(":${target.gradlePath}:composePreviewRender")
                   add(":${target.gradlePath}:composePreviewBundle")
+                  if (packSemantics) add(":${target.gradlePath}:composePreviewDaemonStart")
                 }
                 .toTypedArray()
             val ok = runGradle(gradle, *tasks, arguments = gradleArgsWithForce(gradleArgs))
@@ -187,11 +214,72 @@ private class PackSubcommand(private val args: List<String>) {
                 )
                 exitProcess(1)
               }
+            // Inject semantics (if requested) before the summary so its byte count reflects the
+            // enriched bundle; the summary line for semantics is printed after the main summary.
+            val semanticsLine =
+              if (packSemantics) packSemanticsBlob(target, resolvedOutput, meta) else null
+
             printPackSummary(resolvedOutput, meta)
+            semanticsLine?.let { println(it) }
           }
         }
       }
       .run()
+  }
+
+  /**
+   * Carry the per-preview semantics blob inside [bundleFile] (issue #1843). Drives a short-lived
+   * daemon ([DaemonSemanticsFetcher]) to render the bundle's selected previews and read back each
+   * one's `compose/semantics` tree (with resolved foreground/background colours), then injects them
+   * as `previews/<id>.semantics.json` — the location + shape the design-parity static bundle reader
+   * expects.
+   *
+   * Best-effort: any failure (missing descriptor, daemon open/render error, an unsupported backend)
+   * warns to stderr and leaves the already-written bundle untouched rather than failing the pack —
+   * the cover PNG and every other entry are preserved and the polyglot stays valid. Returns the
+   * stdout summary line to print after the main pack summary, or null when nothing was carried.
+   */
+  private fun packSemanticsBlob(
+    target: PreviewModule,
+    bundleFile: File,
+    meta: BundleReader.Metadata,
+  ): String? {
+    val previewIds = meta.manifest.previewIds
+    if (previewIds.isEmpty()) return null
+    val fetcher = DaemonSemanticsFetcher(onLog = { System.err.println("[daemon semantics] $it") })
+    val outcome =
+      fetcher.fetch(
+        projectDir = target.projectDir,
+        moduleName = target.gradlePath,
+        previewIds = previewIds,
+      )
+    when (outcome) {
+      is DaemonSemanticsFetcher.Outcome.Ok -> {
+        if (outcome.semanticsById.isEmpty()) {
+          System.err.println(
+            "bundle pack: --with-semantics produced no semantics for ${target.gradlePath} " +
+              "(see daemon log above); bundle written without previews/<id>.semantics.json."
+          )
+          return null
+        }
+        val written = injectSemanticsIntoBundle(bundleFile, outcome.semanticsById)
+        val missing = previewIds.size - written
+        return "  semantics:     $written / ${previewIds.size} preview(s) carried as " +
+          "previews/<id>$BUNDLE_SEMANTICS_SUFFIX" +
+          if (missing > 0) " ($missing without a captured tree)" else ""
+      }
+      is DaemonSemanticsFetcher.Outcome.DescriptorMissing ->
+        System.err.println(
+          "bundle pack: --with-semantics could not find daemon-launch.json at " +
+            "${outcome.expected.path} — bundle written without semantics."
+        )
+      is DaemonSemanticsFetcher.Outcome.OpenFailed ->
+        System.err.println(
+          "bundle pack: --with-semantics could not open a render session (${outcome.reason}) — " +
+            "bundle written without semantics."
+        )
+    }
+    return null
   }
 
   private fun printPackSummary(file: File, meta: BundleReader.Metadata) {
@@ -210,6 +298,12 @@ private class PackSubcommand(private val args: List<String>) {
       "  classpath:     ${meta.manifest.classpath.size} entries " +
         "(Maven=$mavenCount, embedded=$embeddedCount, inlined=$projectCount)"
     )
+    if (meta.manifest.dataExtensions.isNotEmpty()) {
+      println(
+        "  data exts:     ${meta.manifest.dataExtensions.size} " +
+          "(${meta.manifest.dataExtensions.joinToString(", ") { it.extensionId }})"
+      )
+    }
     val r = meta.report
     if (r != null) {
       println("  entry classes: ${r.entryClassFqns.size}")
@@ -481,6 +575,87 @@ private fun encodePreviewId(id: String): String =
 internal const val BUNDLE_WEB_DIR: String = "web"
 
 /**
+ * Well-known directory inside a bundle zip holding the per-preview baked PNGs (`previews/<id>.png`)
+ * and, when packed with `--with-semantics`, each preview's semantics sidecar
+ * (`previews/<id>.semantics.json`). Mirrors `BUNDLE_PREVIEWS_DIR` in `:gradle-plugin`.
+ */
+internal const val BUNDLE_PREVIEWS_DIR: String = "previews"
+
+/**
+ * Suffix for the per-preview semantics blob carried beside `previews/<id>.png` (issue #1843). The
+ * payload is the `compose/semantics`
+ * [ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload] tree — per-node bounds,
+ * label/text, and resolved foreground/background colours — the shape the design-parity static
+ * bundle reader consumes as a sibling of the rendered PNG.
+ */
+internal const val BUNDLE_SEMANTICS_SUFFIX: String = ".semantics.json"
+
+/**
+ * Inject `previews/<id>.semantics.json` entries (id → `compose-semantics.json` bytes) into
+ * [bundleFile]'s zip portion **in place**, preserving the leading PNG cover and every existing
+ * entry. Re-injecting replaces any prior semantics entry for the same id, so a second
+ * `--with-semantics` pack is idempotent. New entries are pinned to the DOS epoch so the enriched
+ * bundle stays byte-stable. Written via a temp sibling + atomic move so a failure never truncates
+ * the bundle. Returns the number of entries written.
+ */
+internal fun injectSemanticsIntoBundle(
+  bundleFile: File,
+  semanticsById: Map<String, ByteArray>,
+  fileSystem: FileSystem = SystemFileSystem,
+): Int {
+  if (semanticsById.isEmpty()) return 0
+  val full = fileSystem.read(bundleFile.path.toPath()) { readByteArray() }
+  val zip = BundleReader.extractZipBytes(bundleFile)
+  // The appended zip is a suffix of the file; everything before it is the leading PNG cover.
+  val prefix = full.copyOfRange(0, full.size - zip.size)
+  val entries =
+    semanticsById.entries.associate { (id, bytes) ->
+      "$BUNDLE_PREVIEWS_DIR/$id$BUNDLE_SEMANTICS_SUFFIX" to bytes
+    }
+  val newZip = addOrReplaceZipEntries(zip, entries)
+
+  val tmp = File(bundleFile.parentFile, "${bundleFile.name}.semantics-tmp")
+  fileSystem.write(tmp.path.toPath()) {
+    write(prefix)
+    write(newZip)
+  }
+  fileSystem.atomicMove(tmp.path.toPath(), bundleFile.path.toPath())
+  return entries.size
+}
+
+/**
+ * Return a copy of [existingZip] with [newEntries] (path → bytes) added, replacing any existing
+ * entry with the same name (so the operation is idempotent). Every other original entry is
+ * preserved verbatim. New entries are pinned to [ZIP_DOS_EPOCH_MS] for reproducibility. Operates on
+ * raw zip bytes — the caller re-attaches the polyglot's leading PNG.
+ */
+internal fun addOrReplaceZipEntries(
+  existingZip: ByteArray,
+  newEntries: Map<String, ByteArray>,
+): ByteArray {
+  val baos = ByteArrayOutputStream()
+  ZipOutputStream(baos).use { zout ->
+    ZipInputStream(ByteArrayInputStream(existingZip)).use { zin ->
+      while (true) {
+        val entry = zin.nextEntry ?: break
+        if (!entry.isDirectory && entry.name !in newEntries) {
+          zout.putNextEntry(ZipEntry(entry.name).apply { time = ZIP_DOS_EPOCH_MS })
+          zin.copyTo(zout)
+          zout.closeEntry()
+        }
+        zin.closeEntry()
+      }
+    }
+    for ((path, bytes) in newEntries) {
+      zout.putNextEntry(ZipEntry(path).apply { time = ZIP_DOS_EPOCH_MS })
+      zout.write(bytes)
+      zout.closeEntry()
+    }
+  }
+  return baos.toByteArray()
+}
+
+/**
  * Return a copy of [existingZip] with [webFiles] (path → bytes) added. Every original entry is
  * preserved except ones already under `$BUNDLE_WEB_DIR/`, which are dropped first so re-embedding
  * is idempotent (no duplicate `web/…` entries on a second run). New entries are pinned to the DOS
@@ -602,7 +777,16 @@ internal object BundleReader {
      * bundles. See `BundleAndroidResources` in `PreviewBundleFormat.kt`.
      */
     val androidResources: AndroidResources? = null,
+    /**
+     * v7+: optional per-extension data reports carried under `extensions/<id>.json` (a11y findings,
+     * theme tokens, …). Empty unless the bundle was packed with `--include-data-extensions`. See
+     * `BundleDataExtension` in `PreviewBundleFormat.kt`.
+     */
+    val dataExtensions: List<DataExtension> = emptyList(),
   )
+
+  /** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
+  @Serializable data class DataExtension(val extensionId: String, val path: String)
 
   /** v6+ mirror of `BundleAndroidResources` in `PreviewBundleFormat.kt`. */
   @Serializable

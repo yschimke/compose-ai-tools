@@ -174,6 +174,9 @@ internal object ComposePreviewTasks {
     registerCompileOnlyTask(project, extension, DESKTOP_COMPILE_TASK_CANDIDATES)
 
     val rendererConfig = ensureRendererDesktopConfig(project, "composePreviewRenderer")
+    // Resolve the renderer in the consumer's dependency graph so a single coherent Skiko / Compose
+    // version wins (issue #1844). See [alignDesktopToolWithConsumerGraph].
+    alignDesktopToolWithConsumerGraph(project, rendererConfig, resolveDependencyConfigName)
 
     val renderClasspathGuard =
       registerDesktopClasspathGuard(
@@ -293,6 +296,11 @@ internal object ComposePreviewTasks {
     // renders with no network / no consumer build system.
     val embedDepsProperty: Provider<Boolean> =
       project.providers.gradleProperty("bundleEmbedDeps").map { it.toBoolean() }
+    // `-PbundleIncludeDataExtensions=true` → schema-v7: carry the aggregated per-extension data
+    // reports (a11y findings, theme tokens, …) named by `previews.json`'s `dataExtensionReports`
+    // under `extensions/<id>.json` so a detached reader can surface them without re-rendering.
+    val includeDataExtensionsProperty: Provider<Boolean> =
+      project.providers.gradleProperty("bundleIncludeDataExtensions").map { it.toBoolean() }
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
@@ -409,6 +417,12 @@ internal object ComposePreviewTasks {
       renderFiles.from(previewOutputDir.map { it.dir("renders") })
       previewIds.set(previewIdsProperty.orElse(emptyList()))
       embedDeps.set(embedDepsProperty.orElse(false))
+      includeDataExtensions.set(includeDataExtensionsProperty.orElse(false))
+      // Track the aggregated extension report sidecars (the render task writes them as top-level
+      // `*.json` under the preview output dir) so a content change re-packs the bundle. The bundle
+      // output is a `.png`, so the `*.json` filter never captures it as a circular input. Paths are
+      // resolved from the manifest at pack time; this is just the up-to-date / cache-key signal.
+      dataExtensionFiles.from(previewOutputDir.map { it.asFileTree.matching { include("*.json") } })
       modulePath.set(project.path)
       // (v6 Android) base dir for resolving test_config.properties' module-relative apk/manifest
       // paths. Harmless on desktop. See [BundlePreviewTask.moduleProjectDir].
@@ -463,6 +477,10 @@ internal object ComposePreviewTasks {
         isCanBeResolved = true
         isCanBeConsumed = false
       }
+    // The daemon JVM puts the consumer's full runtime classpath on its parent `-cp` (below), so it
+    // hits the same Skiko skew as the one-shot render path — resolve it in the consumer's graph too
+    // (issue #1844). See [alignDesktopToolWithConsumerGraph].
+    alignDesktopToolWithConsumerGraph(project, daemonRendererConfig, dependencyConfigName)
     if (useLocalDaemon) {
       try {
         project.dependencies.add(
@@ -653,6 +671,78 @@ internal object ComposePreviewTasks {
       group = "compose preview"
       description =
         "Emit build/compose-previews/daemon-launch.json so VS Code can spawn the desktop preview daemon JVM"
+    }
+  }
+
+  /**
+   * Folds the desktop renderer / daemon tool configuration [toolConfig] into the SAME dependency
+   * graph as the consumer's runtime classpath, so Gradle's conflict resolution picks one coherent
+   * max-version of every shared module instead of leaving the renderer's pinned versions and the
+   * consumer's newer versions side by side on the classpath as separate JARs.
+   *
+   * Issue #1844: a consumer on Compose Multiplatform 1.11 resolves a newer Skiko whose Java
+   * bindings call `org.jetbrains.skia.paragraph.TextStyleKt._nSetFontEdging`. The renderer bundles
+   * an older Skiko (pinned to CMP 1.10.3) whose native library doesn't export that symbol; merging
+   * the two configurations as raw `FileCollection`s does no cross-graph conflict resolution, so
+   * both Skikos land on the render classpath and the older native library + newer Java bindings
+   * collide at runtime with `UnsatisfiedLinkError`. `extendsFrom` makes the tool config resolve in
+   * one graph with the consumer's deps, so the higher Skiko (the consumer's) wins for both the Java
+   * bindings and the native library — and because both configs then resolve the same artifact file,
+   * the `FileCollection` (a `Set<File>`) carries it exactly once. Mirrors the Android renderer's
+   * `extendsFrom(testConfig)` (docs/RENDERER_COMPATIBILITY.md mitigation #2); [copyAttributes]
+   * hands Gradle the consumer's JVM/Kotlin platform attributes so it selects the matching variant
+   * of each KMP-published module (Skiko, the JetBrains Compose runtime) without us declaring them
+   * by hand.
+   *
+   * Scoped to genuinely JVM/desktop consumer classpaths. The pure-Android KMP fallback
+   * (`androidRuntimeClasspath`, `platform.type=androidJvm`) is left untouched: the desktop renderer
+   * has no `androidJvm` variant, so extending it would fail resolution outright — and that
+   * classpath can't feed the JVM renderer anyway ([ValidateComposePreviewClasspathTask] already
+   * rejects its AndroidX Compose artifacts). Wired in `afterEvaluate` because the KMP
+   * `jvm`/`desktop` runtime classpaths the consumer resolves against may not exist yet when
+   * [registerDesktopTasks] runs (the `kotlin { jvm("desktop") }` block can configure after
+   * `pluginManager.withPlugin` fires).
+   */
+  private fun alignDesktopToolWithConsumerGraph(
+    project: Project,
+    toolConfig: org.gradle.api.artifacts.Configuration,
+    dependencyConfigName: () -> String,
+  ) {
+    project.afterEvaluate {
+      val depName = dependencyConfigName()
+      // androidJvm classpath: the desktop renderer has no matching variant — leave it alone.
+      if (depName == "androidRuntimeClasspath") return@afterEvaluate
+      val depConfig = project.configurations.findByName(depName) ?: return@afterEvaluate
+      copyAttributes(toolConfig.attributes, depConfig.attributes)
+      toolConfig.extendsFrom(depConfig)
+    }
+  }
+
+  /**
+   * Copies attributes from [source] onto [target] for variant selection, EXCEPT the consumer's
+   * bytecode-target attribute (`org.gradle.jvm.version`). AGP-free mirror of the identically named
+   * helper in [AndroidPreviewSupport] — kept here so the desktop wiring doesn't pull AGP onto its
+   * classpath. Used by [alignDesktopToolWithConsumerGraph] to give the renderer tool config the
+   * consumer classpath's JVM/Kotlin platform attributes before extending it.
+   *
+   * `org.gradle.jvm.version` is deliberately skipped: the renderer / daemon tool modules are built
+   * at the repo's Java 17 convention, so inheriting a consumer that targets a lower bytecode level
+   * (e.g. a project on a JVM 11 toolchain, whose `runtimeClasspath` carries
+   * `org.gradle.jvm.version=11`) would make Gradle demand a Java-11-compatible variant of
+   * `renderer-desktop` / `daemon-desktop` that doesn't exist and reject the dependency before
+   * rendering. The platform-type / usage attributes we DO need for KMP variant selection are
+   * copied.
+   */
+  private fun copyAttributes(
+    target: org.gradle.api.attributes.AttributeContainer,
+    source: org.gradle.api.attributes.AttributeContainer,
+  ) {
+    val targetJvmVersion =
+      org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE.name
+    source.keySet().forEach { key ->
+      if (key.name == targetJvmVersion) return@forEach
+      @Suppress("UNCHECKED_CAST") val attr = key as Attribute<Any>
+      source.getAttribute(attr)?.let { target.attribute(attr, it) }
     }
   }
 

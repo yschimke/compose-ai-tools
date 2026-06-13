@@ -33,7 +33,15 @@ data class BundleManifest(
    * by re-running their consumer bytecode. Empty for a classic all-classes bundle.
    */
   val intermediateRepresentations: List<BundleIr> = emptyList(),
+  /**
+   * v7+: optional per-extension data reports carried under `extensions/<id>.json`. Empty unless the
+   * bundle was packed with `--include-data-extensions`.
+   */
+  val dataExtensions: List<BundleDataExtension> = emptyList(),
 )
+
+/** v7+ mirror of `BundleDataExtension` in `PreviewBundleFormat.kt`. */
+@Serializable data class BundleDataExtension(val extensionId: String, val path: String)
 
 /** v5+ mirror of `BundleIr` in `PreviewBundleFormat.kt`. */
 @Serializable

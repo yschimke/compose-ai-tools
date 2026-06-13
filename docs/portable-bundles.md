@@ -68,10 +68,17 @@ Schema v2 bakes a PNG per preview. Reading them needs **none** of the classpath
 machinery — just:
 
 ```
-bundle.json          → schemaVersion, previewIds, coverPreviewId (unknown keys ignored)
-previews.json        → preview metadata (names, dimensions)
-previews/<id>.png    → one rendered image per preview
+bundle.json                  → schemaVersion, previewIds, coverPreviewId (unknown keys ignored)
+previews.json                → preview metadata (names, dimensions)
+previews/<id>.png            → one rendered image per preview
+previews/<id>.semantics.json → (opt-in, `pack --with-semantics`) per-preview compose/semantics tree
 ```
+
+The `previews/<id>.semantics.json` sidecar carries the `compose/semantics` tree (per-node
+bounds, label/text, and resolved foreground/background colours) beside each rendered image —
+the shape design-parity reads for contrast/a11y and design-token checks. It's produced by a
+short-lived daemon render at pack time (the standalone render writes no semantics), so it's
+opt-in behind `compose-preview bundle pack --with-semantics`.
 
 Players on this read path:
 - Any **PNG viewer** — the polyglot's leading bytes are the cover. Finder,
@@ -118,10 +125,12 @@ expression of `classpath[]` changes:
 ```
 bundle.json          # manifest; classpath[] differs per producer/mode
 previews.json
-previews/<id>.png     # baked images — IDENTICAL across all build systems
+previews/<id>.png            # baked images — IDENTICAL across all build systems
+previews/<id>.semantics.json # (opt-in) per-preview compose/semantics tree (resolved fg/bg colours)
 classes/app.jar       # module bytecode, minimized (ClassGraph closure is build-system-agnostic:
                       #   it walks whatever class dirs + jars it's given — Bazel/Amper outputs work)
 libs/<name>.jar       # inlined deps: today only project-style; in "embedded" mode, all reachable deps
+extensions/<id>.json  # (v7, opt-in) per-extension data reports, sliced to the cover preview — IDENTICAL across build systems
 report.json
 ```
 
