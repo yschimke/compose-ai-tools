@@ -34,6 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.put
 
 /**
  * Contract for [DaemonSemanticsFetcher]: with a fake [RenderSessionFactory] whose `renderNow`
@@ -109,6 +110,31 @@ class DaemonSemanticsFetcherTest {
   }
 
   @Test
+  fun `clears a stale sidecar so a render that produces nothing carries no cross-run data`() {
+    val projectDir = newTempFolder("semantics-stale")
+    writeDescriptor(projectDir)
+    // A stale sidecar from a previous run that this render does NOT reproduce (no canned content).
+    val staleDir = File(projectDir, "build/compose-previews/data/BetaPreview").also { it.mkdirs() }
+    File(staleDir, "compose-semantics.json")
+      .writeText("""{"root":{"nodeId":"STALE","boundsInRoot":"0,0,1,1"}}""")
+
+    val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
+    val outcome =
+      fetcher.fetch(
+        projectDir = projectDir,
+        moduleName = "sample",
+        previewIds = listOf("BetaPreview"),
+      )
+
+    assertTrue(outcome is DaemonSemanticsFetcher.Outcome.Ok, "expected Ok, got $outcome")
+    assertTrue(outcome.semanticsById.isEmpty(), "stale sidecar must not be carried")
+    assertTrue(
+      !File(staleDir, "compose-semantics.json").exists(),
+      "stale sidecar should have been deleted before the render",
+    )
+  }
+
+  @Test
   fun `missing descriptor returns DescriptorMissing`() {
     val projectDir = newTempFolder("semantics-no-descriptor")
     val fetcher = DaemonSemanticsFetcher(factory = FakeFactory(emptyMap()))
@@ -165,15 +191,18 @@ class DaemonSemanticsFetcherTest {
   }
 
   /**
-   * Minimal [RenderSession] whose [renderNow] writes the daemon's always-on
-   * `compose-semantics.json` sidecar for every preview it has canned content for — the same on-disk
-   * location the production daemon writes. Every other method throws.
+   * Minimal [RenderSession] modelling the real daemon's async render: [renderNow] writes the
+   * always-on `compose-semantics.json` sidecar for every preview it has canned content for, then
+   * emits a `renderFinished` notification per requested id (the signal the fetcher waits on before
+   * reading the files). Every other method throws.
    */
   private class FakeSession(
     override val workspaceRoot: String,
     private val produced: Map<String, String>,
     private val dataRoot: File,
   ) : RenderSession {
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<NotificationListener>()
+
     override val modulePath: String = ":sample"
     override val initializeResult: InitializeResult =
       InitializeResult(
@@ -205,9 +234,18 @@ class DaemonSemanticsFetcherTest {
       timeout: kotlin.time.Duration,
     ): RenderNowResult {
       for (id in previewIds) {
-        val content = produced[id] ?: continue
-        val dir = File(dataRoot, id).also { it.mkdirs() }
-        File(dir, "compose-semantics.json").writeText(content)
+        produced[id]?.let { content ->
+          val dir = File(dataRoot, id).also { it.mkdirs() }
+          File(dir, "compose-semantics.json").writeText(content)
+        }
+        // Emit renderFinished for *every* requested id — including ones that wrote no sidecar — so
+        // the fetcher's wait completes (a failed render still finishes) rather than timing out.
+        val params =
+          kotlinx.serialization.json.buildJsonObject {
+            put("id", id)
+            put("pngPath", "$id.png")
+          }
+        listeners.forEach { it.onNotification("renderFinished", params) }
       }
       return RenderNowResult(queued = previewIds, rejected = emptyList())
     }
@@ -286,7 +324,10 @@ class DaemonSemanticsFetcherTest {
       timeout: kotlin.time.Duration,
     ): RecordingEncodeResult = error("unused")
 
-    override fun onNotification(listener: NotificationListener): AutoCloseable = AutoCloseable {}
+    override fun onNotification(listener: NotificationListener): AutoCloseable {
+      listeners.add(listener)
+      return AutoCloseable { listeners.remove(listener) }
+    }
 
     override fun close() = Unit
   }

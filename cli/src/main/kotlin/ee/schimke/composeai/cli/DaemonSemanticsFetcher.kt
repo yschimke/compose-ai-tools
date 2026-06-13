@@ -8,7 +8,12 @@ import ee.schimke.composeai.render.session.RenderSessionException
 import ee.schimke.composeai.render.session.RenderSessionFactory
 import ee.schimke.composeai.render.session.subprocess.SubprocessRenderSessions
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import okio.FileSystem
 import okio.Path.Companion.toPath
 
@@ -71,18 +76,54 @@ internal class DaemonSemanticsFetcher(
       }
 
     return session.use { live ->
-      // Render so the always-on ComposeSemanticsExtension writes each preview's sidecar. A failure
-      // here is non-fatal — some previews may still have rendered, so we fall through to the disk
-      // read and carry whatever materialised.
-      try {
-        live.renderNow(
-          previewIds = previewIds,
-          reason = "bundle pack semantics",
-          timeout = SEMANTICS_RENDER_TIMEOUT,
-        )
-      } catch (e: RenderSessionException) {
-        onLog("renderNow for semantics failed: ${e.message}")
-      }
+      // `renderNow` only *queues* the renders and acks immediately (`RenderNowResult.queued`) — the
+      // daemon's always-on ComposeSemanticsExtension writes each sidecar later, signalled by a
+      // `renderFinished` notification per preview. Reading the files right after the ack would race
+      // the render and inject nothing (or a stale sidecar from a prior run), so we wait for the
+      // notifications before reading. Mirrors `render-session/cli`'s RenderCli wait loop.
+      //
+      // Clear any stale sidecars first so a render that doesn't fire (rejected / failed) can't
+      // leave
+      // us reading cross-run data. Safe because `bundle pack` spawns a fresh, cold daemon that
+      // always renders (no warm cache to serve "unchanged").
+      for (previewId in previewIds) sidecarFile(projectDir, previewId).delete()
+
+      val pending = ConcurrentHashMap.newKeySet<String>().apply { addAll(previewIds) }
+      val latch = CountDownLatch(previewIds.size)
+      live
+        .onNotification { method, params ->
+          if (method != "renderFinished" || params == null) return@onNotification
+          val id = params["id"]?.jsonPrimitive?.contentOrNull ?: return@onNotification
+          // Count down on any finish for a pending id, regardless of pngPath — a failed render
+          // emits renderFinished without one, and we must not block forever waiting on it. Whether
+          // a sidecar actually materialised is decided by the disk read below.
+          if (pending.remove(id)) latch.countDown()
+        }
+        .use {
+          val ack =
+            try {
+              live.renderNow(
+                previewIds = previewIds,
+                reason = "bundle pack semantics",
+                timeout = RENDER_ACK_TIMEOUT,
+              )
+            } catch (e: RenderSessionException) {
+              onLog("renderNow for semantics failed: ${e.message}")
+              null
+            }
+          // Rejected ids will never emit renderFinished — stop waiting on them.
+          ack?.rejected?.forEach { rejected ->
+            onLog("render rejected for '${rejected.id}': ${rejected.reason}")
+            if (pending.remove(rejected.id)) latch.countDown()
+          }
+          val finished = latch.await(SEMANTICS_RENDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+          if (!finished) {
+            onLog(
+              "timed out after ${SEMANTICS_RENDER_TIMEOUT_SECONDS}s waiting for renders: " +
+                pending.joinToString(",")
+            )
+          }
+        }
 
       val byId = LinkedHashMap<String, ByteArray>()
       for (previewId in previewIds) {
@@ -113,10 +154,13 @@ internal class DaemonSemanticsFetcher(
   }
 
   private companion object {
+    /** RPC ack budget for the (fast, queue-only) `renderNow` call itself. */
+    val RENDER_ACK_TIMEOUT = 60.seconds
+
     /**
-     * Generous per-`renderNow` budget — the daemon renders every selected preview in one call, and
-     * the first render also pays the sandbox cold-start.
+     * Generous budget for every queued render to emit `renderFinished` — the daemon renders the
+     * selected previews in sequence and the first also pays the sandbox cold-start.
      */
-    val SEMANTICS_RENDER_TIMEOUT = 180.seconds
+    const val SEMANTICS_RENDER_TIMEOUT_SECONDS = 180L
   }
 }
