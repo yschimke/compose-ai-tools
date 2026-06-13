@@ -26,6 +26,7 @@ import ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
 import ee.schimke.composeai.data.theme.ResolvedThemeTokens
+import ee.schimke.composeai.data.theme.ThemeConsumer
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.data.theme.TypographyToken
 import ee.schimke.composeai.daemon.bridge.DaemonHostBridge
@@ -890,6 +891,8 @@ open class RobolectricHost(
     @Suppress("UNCHECKED_CAST")
     val typographyRaw = tokenCls.getMethod("getTypography").invoke(tokens) as Map<String, Any>
     val typography = typographyRaw.mapValues { (_, token) -> copyTypographyTokenAcrossClassloaders(token) }
+    @Suppress("UNCHECKED_CAST")
+    val consumersRaw = raw.javaClass.getMethod("getConsumers").invoke(raw) as List<Any>
     return ThemePayload(
       resolvedTokens =
         ResolvedThemeTokens(
@@ -897,7 +900,19 @@ open class RobolectricHost(
           typography = LinkedHashMap(typography),
           shapes = LinkedHashMap(shapes),
         ),
-      consumers = emptyList(),
+      // Copy the attributed consumers (#1847) too — they're built inside the sandbox classloader,
+      // so dropping them here would leave `data/fetch` returning an empty list on Android.
+      consumers = consumersRaw.map(::copyThemeConsumerAcrossClassloaders),
+    )
+  }
+
+  private fun copyThemeConsumerAcrossClassloaders(raw: Any): ThemeConsumer {
+    val cls = raw.javaClass
+    @Suppress("UNCHECKED_CAST")
+    val tokens = cls.getMethod("getTokens").invoke(raw) as List<String>
+    return ThemeConsumer(
+      nodeId = cls.getMethod("getNodeId").invoke(raw) as String,
+      tokens = ArrayList(tokens),
     )
   }
 
