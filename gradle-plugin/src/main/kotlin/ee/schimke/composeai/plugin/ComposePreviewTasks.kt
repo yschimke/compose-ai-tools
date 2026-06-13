@@ -719,16 +719,28 @@ internal object ComposePreviewTasks {
   }
 
   /**
-   * Copies every attribute from [source] onto [target]. AGP-free mirror of the identically named
+   * Copies attributes from [source] onto [target] for variant selection, EXCEPT the consumer's
+   * bytecode-target attribute (`org.gradle.jvm.version`). AGP-free mirror of the identically named
    * helper in [AndroidPreviewSupport] — kept here so the desktop wiring doesn't pull AGP onto its
    * classpath. Used by [alignDesktopToolWithConsumerGraph] to give the renderer tool config the
    * consumer classpath's JVM/Kotlin platform attributes before extending it.
+   *
+   * `org.gradle.jvm.version` is deliberately skipped: the renderer / daemon tool modules are built
+   * at the repo's Java 17 convention, so inheriting a consumer that targets a lower bytecode level
+   * (e.g. a project on a JVM 11 toolchain, whose `runtimeClasspath` carries
+   * `org.gradle.jvm.version=11`) would make Gradle demand a Java-11-compatible variant of
+   * `renderer-desktop` / `daemon-desktop` that doesn't exist and reject the dependency before
+   * rendering. The platform-type / usage attributes we DO need for KMP variant selection are
+   * copied.
    */
   private fun copyAttributes(
     target: org.gradle.api.attributes.AttributeContainer,
     source: org.gradle.api.attributes.AttributeContainer,
   ) {
+    val targetJvmVersion =
+      org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE.name
     source.keySet().forEach { key ->
+      if (key.name == targetJvmVersion) return@forEach
       @Suppress("UNCHECKED_CAST") val attr = key as Attribute<Any>
       source.getAttribute(attr)?.let { target.attribute(attr, it) }
     }
