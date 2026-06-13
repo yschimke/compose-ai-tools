@@ -382,6 +382,19 @@ const val ANDROID_R_CLASSES_JAR_PATH: String = "android/r-classes.jar"
 const val BUNDLE_EXTENSIONS_DIR: String = "extensions"
 
 /**
+ * Conventional on-disk report filenames (relative to the preview output dir, i.e. `previews.json`'s
+ * parent) for built-in data extensions that write their aggregated report **without** stamping
+ * `previews.json`'s `dataExtensionReports` pointer. An `--include-data-extensions` pack probes
+ * these for any registered extension the manifest names no report for, so a report produced by the
+ * standard flow is still carried — the daemon / `compose-preview a11y` writes `accessibility.json`
+ * but the standalone plugin leaves the manifest map empty (`ComposePreviewTasks` discovery). A
+ * manifest pointer, when present, always wins over the conventional fallback. Keyed by the same
+ * extension id as `dataExtensionReports` / [BundleDataExtension.extensionId]; mirrors the
+ * conventional fallback in `:cli`'s `A11yReportRenderer`.
+ */
+val CONVENTIONAL_DATA_EXTENSION_REPORTS: Map<String, String> = mapOf("a11y" to "accessibility.json")
+
+/**
  * Schema version stamped into [BundleManifest.schemaVersion].
  * - v1 — `bundle.json` + `previews.json` + `classes/app.jar` + `report.json`, cover PNG as the
  *   polyglot's leading bytes only.

@@ -208,11 +208,13 @@ abstract class BundlePreviewTask : DefaultTask() {
 
   /**
    * Include-data-extensions mode (`-PbundleIncludeDataExtensions=true`, schema-v7
-   * [BundleManifest.dataExtensions]). When true, the aggregated per-extension data reports named by
-   * `previews.json`'s `dataExtensionReports` (a11y findings, theme tokens, drawn strings, …) are
-   * packed verbatim under `extensions/<id>.json` so a detached reader can surface them without
-   * re-rendering. Defaults to false: the normal pack carries no reports and stays small. A no-op
-   * when the manifest has no `dataExtensionReports` (no extension produced a canned report).
+   * [BundleManifest.dataExtensions]). When true, the per-extension data reports (a11y findings,
+   * theme tokens, drawn strings, …) — those named by `previews.json`'s `dataExtensionReports` plus
+   * a conventional-path fallback for registered extensions that write a report without stamping the
+   * manifest ([CONVENTIONAL_DATA_EXTENSION_REPORTS], e.g. a11y's `accessibility.json`) — are packed
+   * under `extensions/<id>.json`, sliced to the cover preview, so a detached reader can surface
+   * them without re-rendering. Defaults to false: the normal pack carries no reports and stays
+   * small. A no-op when no report is found on disk.
    */
   @get:Input @get:Optional abstract val includeDataExtensions: Property<Boolean>
 
@@ -342,19 +344,35 @@ abstract class BundlePreviewTask : DefaultTask() {
       else null
 
     // v7 optional data-extension carriage: when asked, pack the per-extension report sidecars (a11y
-    // findings, theme tokens, …) named by `previews.json`'s `dataExtensionReports` so a detached
-    // reader can surface that data without re-rendering. The report is sliced down to the COVER
-    // (default) preview — the one shown as the bundle's leading PNG — so the headline image carries
-    // its detailed results and the bundle doesn't drag along data for previews it doesn't even show
-    // (see [scopeReportToCoverPreview]). Paths are module-relative from the manifest's parent dir
-    // (where the render task writes the reports). Missing files warn and skip — the bundle is still
-    // well-formed without a report that didn't get written. Sorted by id for a deterministic
-    // (reproducible) zip order. No-op when the flag is off or the manifest has no reports.
+    // findings, theme tokens, …) so a detached reader can surface that data without re-rendering.
+    // The
+    // report is sliced down to the COVER (default) preview — the one shown as the bundle's leading
+    // PNG — so the headline image carries its detailed results and the bundle doesn't drag along
+    // data
+    // for previews it doesn't even show (see [scopeReportToCoverPreview]). The set of reports is
+    // the
+    // manifest's `dataExtensionReports` pointers plus a conventional-path fallback for any
+    // registered
+    // extension the manifest names no report for ([CONVENTIONAL_DATA_EXTENSION_REPORTS]) — the
+    // standard a11y flow writes `accessibility.json` but leaves the manifest map empty, so without
+    // the fallback the flag would carry nothing. Paths are module-relative from the manifest's
+    // parent
+    // dir (where the render task writes the reports). A manifest-named report that's missing warns
+    // and
+    // skips; a fallback only contributes when its file actually exists. Sorted by id for a
+    // deterministic (reproducible) zip order. No-op when the flag is off or no report is found.
     val dataExtensionEntries = mutableListOf<BundleDataExtension>()
     val dataExtensionZipFiles = LinkedHashMap<String, ByteArray>()
     if (includeDataExtensions.getOrElse(false)) {
       val reportBaseDir = manifestFile.parentFile
-      for ((id, relPath) in manifest.dataExtensionReports.toSortedMap()) {
+      val effectiveReports = LinkedHashMap<String, String>()
+      effectiveReports.putAll(manifest.dataExtensionReports)
+      for ((id, conventionalName) in CONVENTIONAL_DATA_EXTENSION_REPORTS) {
+        if (id !in effectiveReports && File(reportBaseDir, conventionalName).isFile) {
+          effectiveReports[id] = conventionalName
+        }
+      }
+      for ((id, relPath) in effectiveReports.toSortedMap()) {
         val src = File(reportBaseDir, relPath)
         if (!src.isFile) {
           logger.warn(

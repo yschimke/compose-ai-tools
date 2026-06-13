@@ -400,6 +400,47 @@ class BundleFunctionalTest {
   }
 
   @Test
+  fun `include-data-extensions falls back to the conventional report path`() {
+    val projectDir = createTestProject()
+    val redId = "test.RedKt.RedBoxPreview"
+
+    // Discover writes previews.json with an EMPTY dataExtensionReports map (the standalone-plugin
+    // behaviour). The standard a11y flow drops build/compose-previews/accessibility.json without
+    // stamping a manifest pointer — so the pack must find it via the conventional-path fallback.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments("composePreviewDiscover")
+      .withPluginClasspath()
+      .build()
+
+    val previewOutputDir = File(projectDir, "build/compose-previews")
+    File(previewOutputDir, "accessibility.json")
+      .writeText("""{"module":":","entries":[{"previewId":"$redId","findings":[]}]}""")
+
+    // No previews.json edit, so composePreviewDiscover stays up to date — no `-x` needed.
+    GradleRunner.create()
+      .withProjectDir(projectDir)
+      .withArguments(
+        "composePreviewBundle",
+        "-PbundlePreviewIds=$redId",
+        "-PbundleIncludeDataExtensions=true",
+        "--stacktrace",
+      )
+      .withPluginClasspath()
+      .build()
+
+    val bundle = File(previewOutputDir, "bundle.png")
+    assertThat(listEntries(bundle)).contains("extensions/a11y.json")
+    val carried =
+      json
+        .parseToJsonElement(readZipEntry(bundle, "bundle.json")!!.toString(Charsets.UTF_8))
+        .jsonObject["dataExtensions"]!!
+        .jsonArray
+        .map { it.jsonObject["extensionId"]!!.jsonPrimitive.content }
+    assertThat(carried).contains("a11y")
+  }
+
+  @Test
   fun `composePreviewBundle filters previews_json to selected ids`() {
     val projectDir = createTestProject()
     val redId = "test.RedKt.RedBoxPreview"
