@@ -32,6 +32,8 @@ import ee.schimke.composeai.data.render.PreviewContext
 import ee.schimke.composeai.data.render.PreviewDeviceSpec
 import ee.schimke.composeai.data.render.extensions.compose.ComposeDataExtensionPipeline
 import ee.schimke.composeai.data.render.extensions.compose.RecordingExtensionCompositionSink
+import ee.schimke.composeai.data.theme.NodeThemeFacts
+import ee.schimke.composeai.data.theme.ThemeConsumerAttribution
 import ee.schimke.composeai.data.theme.ThemePayload
 import ee.schimke.composeai.daemon.devices.DeviceDimensions
 import ee.schimke.composeai.daemon.protocol.PreviewOverrides
@@ -320,6 +322,10 @@ class RenderEngine(
     // the floor moves up.
     @Suppress("DEPRECATION")
     val rule = createAndroidComposeRule<ComponentActivity>()
+    // Per-node theme facts pulled from the semantics tree during the rule statement (the rule tears
+    // the composition down once `evaluate()` returns) so theme consumer attribution (#1847) can run
+    // against them afterwards, once the resolved tokens are assembled.
+    var capturedThemeFacts: List<NodeThemeFacts> = emptyList()
     val description =
       org.junit.runner.Description.createTestDescription(
         RenderEngine::class.java,
@@ -484,6 +490,13 @@ class RenderEngine(
             System.err.println(
               "compose-ai-daemon: [render] phase=captureRoboImage.done outputBaseName=${spec.outputBaseName}"
             )
+
+            // Pull per-node theme facts while the composition is still alive so theme consumer
+            // attribution (#1847) can run after the rule tears the scene down.
+            capturedThemeFacts =
+              ThemeConsumerCapture.extractFacts(
+                runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }.getOrNull()
+              )
 
             // Always-on data-artifact extensions (fonts, resources, semantics, layout-inspector,
             // i18n, etc). Each extension owns its own recorder lifecycle (installed during
@@ -760,12 +773,20 @@ class RenderEngine(
         .parameterInformationCollected()
         .addSlotTables(slotTables)
         .build()
-    val materialThemePayload =
+    val baseThemePayload =
       themePayloadFromPreviewContext(
         context = rawPreviewContext,
         fallbackTypography = themeFallbackCapture.typography,
         fallbackShapes = themeFallbackCapture.shapes,
       ) ?: themeFallbackCapture.payload
+    // Attribute consumers (#1847) against the facts captured while the scene was alive, keyed by
+    // SemanticsNode id (matching `compose/semantics`) against the reported tokens.
+    val materialThemePayload =
+      baseThemePayload?.let { payload ->
+        val consumers =
+          ThemeConsumerAttribution.attribute(capturedThemeFacts, payload.resolvedTokens)
+        if (consumers.isEmpty()) payload else payload.copy(consumers = consumers)
+      }
     val previewContextBuilder =
       PreviewContext.Builder(
           previewId = spec.previewId,

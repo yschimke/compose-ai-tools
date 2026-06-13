@@ -15,7 +15,7 @@ plus a back-pointer to which nodes consumed each token.
 | | |
 |---|---|
 | Kind | `compose/theme` |
-| Schema version | 1 |
+| Schema version | 2 |
 | Modules | `:data-theme-core` (published) · `:data-theme-connector` |
 | Render mode | default |
 | Cost | medium |
@@ -63,7 +63,7 @@ plus a back-pointer to which nodes consumed each token.
       "fontWeight": 400, "fontSize": 32, "lineHeight": 40 }
   ],
   "consumers": [
-    { "token": "primary", "nodeIds": [12, 14] }
+    { "nodeId": "12", "tokens": ["onSurface", "bodyLarge"] }
   ]
 }
 ```

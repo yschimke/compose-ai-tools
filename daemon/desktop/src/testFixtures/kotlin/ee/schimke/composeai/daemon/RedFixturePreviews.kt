@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +65,23 @@ private fun PrivateRedSquare() {
 fun ThemedPrimarySquare() {
   MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF123456))) {
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary))
+  }
+}
+
+/**
+ * Themed-text fixture for `compose/theme` consumer attribution (#1847). The `Text` reads two tokens
+ * off the active Material theme — the `error` colour role and the `titleMedium` typography style —
+ * so the theme producer should attribute this node to {`error`, `titleMedium`}. Both are chosen
+ * because each resolves to a value no other M3 role/style shares, keeping the assertion exact.
+ */
+@Composable
+fun ThemedAttributionText() {
+  Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Text(
+      text = "Hi",
+      color = MaterialTheme.colorScheme.error,
+      style = MaterialTheme.typography.titleMedium,
+    )
   }
 }
 
