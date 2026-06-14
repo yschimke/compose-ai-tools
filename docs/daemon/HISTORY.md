@@ -71,7 +71,14 @@ renders inside the same second.
   "previousId": "20260430-101207-9f8e7d6c",
   "deltaFromPrevious": { "pngHashChanged": true, "diffPx": 142, "ssim": null },
 
-  "semantics": { "root": { "nodeId": "1", "ref": "r", ... } }  // compose/semantics, frozen at render time (#1785)
+  "semantics": { "root": { "nodeId": "1", "ref": "r", ... } },  // compose/semantics, frozen at render time (#1785)
+
+  // Per-render data-product snapshots, frozen at render time (#1869). Each is null when the
+  // producer didn't compute that kind for this render.
+  "a11yAtf":          { "findings": [ ... ] },   // a11y/atf
+  "a11yHierarchy":    { "nodes": [ ... ] },       // a11y/hierarchy
+  "a11yTouchTargets": { "targets": [ ... ] },     // a11y/touchTargets
+  "theme":            { "resolvedTokens": { ... } } // compose/theme
 }
 ```
 
@@ -79,10 +86,15 @@ The entry shape is published as a JSON schema —
 [`schema/history-entry.schema.json`](../../schema/history-entry.schema.json) —
 and the per-render data products archived alongside it (a11y, semantics,
 theme, …) have their own schemas under [`schema/`](../../schema/README.md).
+The reporting branch (#1870) projects these inline snapshots into the
+per-product files (`a11y.json`, `theme.json`, …) described in
+[`REPORTING-BRANCH.md`](REPORTING-BRANCH.md).
 
-`index.jsonl` carries the same fields minus the two heavy snapshots,
-`previewMetadata` and `semantics` — readers fetch the full sidecar via
-`history/read` (metadata) or `history/diff mode=semantics` (the tree).
+`index.jsonl` carries the same fields minus the heavy snapshots —
+`previewMetadata`, `semantics`, and the data-product snapshots
+(`a11yAtf` / `a11yHierarchy` / `a11yTouchTargets` / `theme`) — readers fetch
+the full sidecar via `history/read` (metadata) or `history/diff mode=semantics`
+(the tree).
 Opened in `O_APPEND` mode — each line is under POSIX `PIPE_BUF` so writes
 are atomic.
 

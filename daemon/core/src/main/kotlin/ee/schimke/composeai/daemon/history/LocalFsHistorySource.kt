@@ -126,11 +126,19 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     sidecarFile.writeText(sidecarText, StandardCharsets.UTF_8)
 
     // index.jsonl append. Build a "lite" form by encoding the same entry minus the heavy
-    // previewMetadata + semantics snapshots — readers fetch the full sidecar via `history/read`
-    // (metadata) or `history/diff mode=SEMANTICS` (the tree). HISTORY.md § "index.jsonl" says:
-    // "same fields as the sidecar minus `previewMetadata`"; the semantics tree is kept out for the
-    // same reason — it would bloat every listing line.
-    val indexEntry = canonicalEntry.copy(previewMetadata = null, semantics = null)
+    // previewMetadata + semantics + data-product (a11y / theme) snapshots. Readers fetch the full
+    // sidecar via `history/read` (metadata) or a data diff (the payloads). Per HISTORY.md §
+    // "index.jsonl" the index keeps the same fields as the sidecar minus previewMetadata; the
+    // captured payloads are kept out for the same reason — they would bloat every listing line.
+    val indexEntry =
+      canonicalEntry.copy(
+        previewMetadata = null,
+        semantics = null,
+        a11yAtf = null,
+        a11yHierarchy = null,
+        a11yTouchTargets = null,
+        theme = null,
+      )
     val indexLine = JSON.encodeToString(HistoryEntry.serializer(), indexEntry) + "\n"
     val indexFile = historyDir.resolve(INDEX_FILENAME)
     Files.write(
