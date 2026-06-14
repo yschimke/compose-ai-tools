@@ -254,10 +254,10 @@ fun main(args: Array<String>) {
       IncrementalDiscovery(classpath = classpath)
     } else null
 
-  // History feature gated to 1.1 (see [HistoryFeature]). When disabled — the 1.0 cut —
-  // `historyManager` stays null and every history wireup (sysprop reads, git-ref sources, prune
-  // budgets) compiles out. Mirrors the desktop daemon's gate; HISTORY.md describes the original
-  // H1+H2 wiring this block preserves verbatim for the 1.1 re-enable.
+  // History recording is on by default (see [HistoryFeature]); with
+  // `-Dcomposeai.history.enabled=false` `historyManager` stays null and every history wireup
+  // (sysprop reads, git-ref sources, prune budgets) elides. Mirrors the desktop daemon's gate;
+  // HISTORY.md describes the H1+H2 wiring this block sets up.
   val historyManager: HistoryManager? =
     if (HistoryFeature.ENABLED) {
       val historyDirProp = System.getProperty(HISTORY_DIR_PROP)

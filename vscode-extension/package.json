@@ -211,7 +211,7 @@
                 "composePreview.earlyFeatures.enabled": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Enable early, unstable preview features in the VS Code panel, including focus-mode diffs, focus inspector extension layers, a11y overlay controls, recording, and diff-all commands. Focus mode and live interactive previews remain available when this is off."
+                    "description": "Enable early, unstable preview features in the VS Code panel, including focus-mode diffs, focus inspector extension layers, a11y overlay controls, recording, diff-all commands, and the render-history timeline. Focus mode and live interactive previews remain available when this is off."
                 },
                 "composePreview.bundleCliPath": {
                     "type": "string",
