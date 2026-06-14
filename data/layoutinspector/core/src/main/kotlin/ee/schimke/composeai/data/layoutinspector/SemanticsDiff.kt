@@ -1,5 +1,7 @@
 package ee.schimke.composeai.data.layoutinspector
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 object SemanticsDiffProduct {
@@ -112,9 +114,14 @@ data class SemanticsNodeSummary(
   val label: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class SemanticsDelta(
-  val schema: String = SemanticsDiffProduct.SCHEMA,
+  // `@EncodeDefault` so the versioned schema rides every wire surface — including JSON encoders
+  // configured with `encodeDefaults = false` (the daemon's `history/diff mode=SEMANTICS` result and
+  // the MCP `diff_semantics` payload). Without it an empty-or-default delta would serialize without
+  // its `schema`, defeating the "versioned JSON delta" contract (issue #1785).
+  @EncodeDefault val schema: String = SemanticsDiffProduct.SCHEMA,
   val added: List<SemanticsNodeSummary> = emptyList(),
   val removed: List<SemanticsNodeSummary> = emptyList(),
   val changed: List<SemanticsNodeChange> = emptyList(),

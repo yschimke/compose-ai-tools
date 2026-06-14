@@ -111,9 +111,11 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     sidecarFile.writeText(sidecarText, StandardCharsets.UTF_8)
 
     // index.jsonl append. Build a "lite" form by encoding the same entry minus the heavy
-    // previewMetadata snapshot — readers fetch the full sidecar via `history/read`. HISTORY.md
-    // § "index.jsonl" says: "same fields as the sidecar minus `previewMetadata`".
-    val indexEntry = canonicalEntry.copy(previewMetadata = null)
+    // previewMetadata + semantics snapshots — readers fetch the full sidecar via `history/read`
+    // (metadata) or `history/diff mode=SEMANTICS` (the tree). HISTORY.md § "index.jsonl" says:
+    // "same fields as the sidecar minus `previewMetadata`"; the semantics tree is kept out for the
+    // same reason — it would bloat every listing line.
+    val indexEntry = canonicalEntry.copy(previewMetadata = null, semantics = null)
     val indexLine = JSON.encodeToString(HistoryEntry.serializer(), indexEntry) + "\n"
     val indexFile = historyDir.resolve(INDEX_FILENAME)
     Files.write(
@@ -329,8 +331,9 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       val sb = StringBuilder()
       // index.jsonl is append-order = oldest first. survivors is newest-first; reverse for write.
       for (entry in survivors.asReversed()) {
-        // Match the live append shape: same fields as the sidecar, minus previewMetadata.
-        val indexEntry = entry.copy(previewMetadata = null)
+        // Match the live append shape: same fields as the sidecar, minus previewMetadata + the
+        // heavy semantics snapshot.
+        val indexEntry = entry.copy(previewMetadata = null, semantics = null)
         sb.append(JSON.encodeToString(HistoryEntry.serializer(), indexEntry))
         sb.append('\n')
       }

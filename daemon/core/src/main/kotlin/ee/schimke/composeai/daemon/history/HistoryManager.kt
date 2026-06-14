@@ -95,6 +95,7 @@ class HistoryManager(
     renderTookMs: Long,
     metrics: RenderMetrics? = null,
     previewMetadata: PreviewMetadataSnapshot? = null,
+    semantics: JsonElement? = null,
     timestamp: Instant = Instant.now(),
   ): HistoryEntry? {
     if (!isEnabled) return null
@@ -144,6 +145,7 @@ class HistoryManager(
         previewMetadata = previewMetadata,
         previousId = previousId,
         deltaFromPrevious = delta,
+        semantics = semantics,
       )
 
     var anyWritten = false

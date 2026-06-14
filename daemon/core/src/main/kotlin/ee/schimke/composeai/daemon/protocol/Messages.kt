@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon.protocol
 
+import ee.schimke.composeai.data.layoutinspector.SemanticsDelta
 import ee.schimke.composeai.data.render.extensions.DataExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.PreviewExtensionDescriptor
 import ee.schimke.composeai.data.render.pipeline.SamplingPolicy
@@ -1683,6 +1684,10 @@ enum class InteractiveInputKind {
 enum class HistoryDiffMode {
   @SerialName("metadata") METADATA,
   @SerialName("pixel") PIXEL,
+  // Structural text diff of the two entries' `compose/semantics` trees (issue #1785) — the cheap,
+  // pixel-free regression signal. Populates `semanticsDelta`; requires both entries to carry a
+  // captured semantics snapshot (else `ERR_HISTORY_SEMANTICS_NOT_CAPTURED`).
+  @SerialName("semantics") SEMANTICS,
 }
 
 @Serializable
@@ -1701,6 +1706,9 @@ data class HistoryDiffResult(
   val diffPx: Long? = null,
   val ssim: Double? = null,
   val diffPngPath: String? = null,
+  // Semantics-mode field (issue #1785) — the typed structural delta of the two entries'
+  // `compose/semantics` trees. Null in METADATA / PIXEL modes by design.
+  val semanticsDelta: SemanticsDelta? = null,
 )
 
 // ---------------------------------------------------------------------------
