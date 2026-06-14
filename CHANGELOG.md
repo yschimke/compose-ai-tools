@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.5](https://github.com/yschimke/compose-ai-tools/compare/v0.15.4...v0.15.5) (2026-06-14)
+
+
+### Features
+
+* **daemon:** archive a11y + theme data products with each history entry ([#1876](https://github.com/yschimke/compose-ai-tools/issues/1876)) ([a96c05a](https://github.com/yschimke/compose-ai-tools/commit/a96c05afb04ea05c31cfef39a836bf8199bb0417))
+* **schema:** publish versioned report schemas + reporting-branch contract ([#1874](https://github.com/yschimke/compose-ai-tools/issues/1874)) ([55c6924](https://github.com/yschimke/compose-ai-tools/commit/55c6924c47042a7ab99b7b082f4f55ef06e6f410))
+
+
+### Bug Fixes
+
+* **cli:** don't inject the plugin classpath into ancestors of a pre-applied module ([#1855](https://github.com/yschimke/compose-ai-tools/issues/1855)) ([#1877](https://github.com/yschimke/compose-ai-tools/issues/1877)) ([71cdba3](https://github.com/yschimke/compose-ai-tools/commit/71cdba3544806f7fe0f9f31e3f380538b2a9122e))
+
 ## [0.15.4](https://github.com/yschimke/compose-ai-tools/compare/v0.15.3...v0.15.4) (2026-06-14)
 
 
