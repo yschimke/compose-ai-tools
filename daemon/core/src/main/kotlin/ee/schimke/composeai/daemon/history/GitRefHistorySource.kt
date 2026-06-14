@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -212,17 +214,33 @@ class GitRefHistorySource(
   }
 
   /**
-   * True when [candidate] adds no new render content over the branch's [current] entry — same
-   * pixels and the same captured data-product snapshots. Deliberately ignores id / timestamp /
-   * provenance churn so an unchanged re-render produces no commit.
+   * True when [candidate] adds no new render content over the branch's [current] entry. Uses the
+   * **same** criteria as `LocalFsHistorySource`'s tier-1 dedup — same pixels and a structurally
+   * unchanged `compose/semantics` tree — deliberately and explicitly NOT the a11y/theme snapshots.
+   *
+   * Matching LocalFs is the point: if the two writable sources disagreed on what counts as a
+   * duplicate (e.g. GitRef wrote a same-pixel render because a11y changed while LocalFs skipped
+   * it), `HistoryManager.list` would de-dup the pair by `(previewId, pngHash)`, keep the older
+   * LocalFs entry, and the git-only entry would vanish from the default listing. Keeping the
+   * predicates aligned means both sources make the same skip decision, so no entry is silently
+   * hidden. Comparison ignores id / timestamp / provenance churn so an unchanged re-render makes no
+   * commit.
    */
   private fun renderContentUnchanged(current: HistoryEntry, candidate: HistoryEntry): Boolean =
     current.pngHash == candidate.pngHash &&
-      current.semantics == candidate.semantics &&
-      current.a11yHierarchy == candidate.a11yHierarchy &&
-      current.a11yAtf == candidate.a11yAtf &&
-      current.a11yTouchTargets == candidate.a11yTouchTargets &&
-      current.theme == candidate.theme
+      !semanticsChanged(current.semantics, candidate.semantics)
+
+  /** Mirrors `LocalFsHistorySource.semanticsChanged`: structural (SemanticsDiff), null-tolerant. */
+  private fun semanticsChanged(old: JsonElement?, new: JsonElement?): Boolean {
+    if (old == null || new == null) return false
+    return try {
+      val base = JSON.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), old)
+      val head = JSON.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), new)
+      !SemanticsDiff.diff(base, head).isEmpty
+    } catch (_: Throwable) {
+      false
+    }
+  }
 
   /**
    * Reads the prior manifest off [parent] (when present), upserts this preview, returns the bytes.
@@ -285,7 +303,10 @@ class GitRefHistorySource(
     val match = listEntries(refCommit).firstOrNull { it.id == entryId } ?: return null
     val full = rewriteSource(match, refCommit)
     val dir = PreviewIdSanitiser.sanitise(match.previewId)
-    val pngFile = extractBlobToCache(refCommit, "$dir/$RENDER_FILENAME") ?: return null
+    // New layout stores the PNG at <dir>/render.png; the legacy format at <dir>/<entryId>.png. The
+    // entry's own pngPath carries whichever was written, so resolve relative to it.
+    val pngRel = match.pngPath.takeIf { it.isNotBlank() } ?: RENDER_FILENAME
+    val pngFile = extractBlobToCache(refCommit, "$dir/$pngRel") ?: return null
     val bytes = if (includeBytes) Files.readAllBytes(pngFile) else null
     return HistoryReadResult(
       entry = full,
@@ -361,8 +382,32 @@ class GitRefHistorySource(
           }
         }
         .sortedByDescending { it.timestamp }
-    cachedEntries.set(CachedEntries(refCommit, entries))
-    return entries
+    // Backward compatibility: a ref written under the legacy read-only format (an aggregate
+    // `_index.jsonl` + `<entryId>.{png,json}` per preview dir, the layout the old read-only
+    // GitRefHistorySource documented) has no `entry.json` files, so the scan above is empty.
+    // Fall back to parsing `_index.jsonl` so existing preview/* refs keep reading.
+    val resolved = entries.ifEmpty { readLegacyIndex(refCommit) }
+    cachedEntries.set(CachedEntries(refCommit, resolved))
+    return resolved
+  }
+
+  /**
+   * Legacy reader: parse the aggregate `_index.jsonl`, tolerating truncated lines; newest-first.
+   */
+  private fun readLegacyIndex(refCommit: String): List<HistoryEntry> {
+    val text = catFile(refCommit, LEGACY_INDEX_FILENAME) ?: return emptyList()
+    val parsed =
+      text.split('\n').mapNotNull { line ->
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) return@mapNotNull null
+        try {
+          JSON.decodeFromString(HistoryEntry.serializer(), trimmed)
+        } catch (_: Throwable) {
+          null // truncated / malformed line — skip
+        }
+      }
+    // _index.jsonl is append-order (oldest first); reverse for newest-first listing.
+    return parsed.asReversed()
   }
 
   private fun catFile(refCommit: String, path: String): String? = runGit("show", "$refCommit:$path")
@@ -484,6 +529,9 @@ class GitRefHistorySource(
 
     /** Current-state pointer at the ref root. docs/daemon/REPORTING-BRANCH.md § manifest.json. */
     const val MANIFEST_FILENAME: String = "manifest.json"
+
+    /** Aggregate index of the legacy read-only format; read as a fallback for old refs. */
+    const val LEGACY_INDEX_FILENAME: String = "_index.jsonl"
 
     /** Bumped on incompatible reporting-branch layout changes. */
     const val REPORTING_BRANCH_FORMAT_VERSION: Int = 1

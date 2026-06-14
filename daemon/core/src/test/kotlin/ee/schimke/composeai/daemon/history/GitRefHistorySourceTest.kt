@@ -251,6 +251,44 @@ class GitRefHistorySourceTest {
     }
   }
 
+  @Test
+  fun reads_legacy_index_format_as_fallback() {
+    // A ref written under the legacy read-only format (`_index.jsonl` + `<id>.{png,json}`) must
+    // keep reading via the fallback, even though the writer now emits the git-as-the-log layout.
+    val e =
+      entry(
+        id = "20260430-100000-aaaaaaaa",
+        previewId = "com.example.Legacy",
+        bytes = "x".toByteArray(),
+      )
+    val dir = "com.example.Legacy"
+    val pngSha = hashObject("x".toByteArray())
+    val sidecarSha =
+      hashObject(
+        json.encodeToString(HistoryEntry.serializer(), e).toByteArray(StandardCharsets.UTF_8)
+      )
+    val sub = mktree("100644 blob $pngSha\t${e.id}.png\n100644 blob $sidecarSha\t${e.id}.json\n")
+    val indexSha =
+      hashObject(
+        (json.encodeToString(HistoryEntry.serializer(), e) + "\n").toByteArray(
+          StandardCharsets.UTF_8
+        )
+      )
+    val root = mktree("040000 tree $sub\t$dir\n100644 blob $indexSha\t_index.jsonl\n")
+    val commit = commitTree(root, parent = null, message = "legacy")
+    runOk("git", "-C", repoRoot.toString(), "update-ref", ref, commit)
+
+    val src = source(SyncModeOf.READ_ONLY)
+    val page = src.list(HistoryFilter())
+    assertEquals(1, page.totalCount)
+    assertEquals(e.id, page.entries[0].id)
+    assertEquals("git", page.entries[0].source.kind)
+
+    val read = src.read(e.id, includeBytes = true)
+    assertNotNull(read)
+    assertEquals("x", String(read!!.pngBytes!!))
+  }
+
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
@@ -309,6 +347,17 @@ class GitRefHistorySourceTest {
     pb.outputStream.use { it.write(input.toByteArray(StandardCharsets.UTF_8)) }
     require(pb.waitFor(15, TimeUnit.SECONDS)) { "mktree timed out" }
     require(pb.exitValue() == 0) { "mktree failed" }
+    return pb.inputStream.bufferedReader().readText().trim()
+  }
+
+  private fun hashObject(bytes: ByteArray): String {
+    val pb =
+      ProcessBuilder(listOf("git", "-C", repoRoot.toString(), "hash-object", "-w", "--stdin"))
+        .redirectErrorStream(false)
+        .start()
+    pb.outputStream.use { it.write(bytes) }
+    require(pb.waitFor(15, TimeUnit.SECONDS)) { "hash-object timed out" }
+    require(pb.exitValue() == 0) { "hash-object failed" }
     return pb.inputStream.bufferedReader().readText().trim()
   }
 

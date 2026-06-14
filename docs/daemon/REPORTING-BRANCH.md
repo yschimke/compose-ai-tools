@@ -146,7 +146,10 @@ git-as-the-log layout above via git plumbing (a throwaway index +
 `update-ref`, never touching the working tree), commits one change per render
 with content-based skip-if-no-diff, and reads back the **current** branch state
 (one entry per preview). Enable it with `composeai.daemon.gitRefHistorySyncMode=WRITE_LOCAL`
-alongside `composeai.daemon.gitRefHistory=<ref>`.
+alongside `composeai.daemon.gitRefHistory=<ref>`. The skip-if-no-diff predicate matches
+`LocalFsHistorySource`'s (pixels + structural semantics) so the two writable sources never
+disagree on what counts as a duplicate. The reader also falls back to the legacy read-only
+format (`_index.jsonl` + `<entryId>.{png,json}`) for refs that predate this layout.
 
 Still to land (follow-ups):
 
