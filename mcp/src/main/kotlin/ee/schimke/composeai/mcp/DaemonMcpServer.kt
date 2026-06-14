@@ -1701,11 +1701,16 @@ class DaemonMcpServer(
       ToolDef(
         name = "record_preview",
         description =
-          "Record a scripted screen-recording of an interactive preview and return the encoded " +
-            "video bytes. Drives the daemon's recording surface (RECORDING.md) end-to-end: open a " +
+          "Record a scripted screen-recording of an interactive preview. Drives the daemon's " +
+            "recording surface (RECORDING.md) end-to-end: open a " +
             "held-scene session at the requested fps + scale, post the script of `(tMs, kind, " +
-            "pixelX, pixelY)` events, play back the timeline at virtual frame time, encode to APNG " +
-            "and return the bytes inline as a base64 image content block. " +
+            "pixelX, pixelY)` events, play back the timeline at virtual frame time, and encode to " +
+            "APNG/MP4/WebM on disk. " +
+            "**Token-frugal default (issue #1860).** `observe` defaults to `frames`: the result is " +
+            "the structured per-frame observation (hashes + changed-frame indices + on-disk paths), " +
+            "NOT the inline media — a recording's base64 bytes scale with fps × duration and can " +
+            "dwarf a single PNG. Pass `observe=\"media\"` to also get the encoded bytes inline (the " +
+            "pre-#1860 behaviour); the artifact is always on disk at `videoPath` either way. " +
             "**Why virtual time matters.** Pointer events and `scene.render` both key off the " +
             "session's virtual nanoTime, so a script of `(tMs=0, click) + (tMs=500, click)` always " +
             "produces 500ms of inter-click animation in the output regardless of how long the " +
@@ -1734,6 +1739,7 @@ class DaemonMcpServer(
                 "fps":{"type":"integer","description":"Frames per second of the virtual clock. Default 30; range [1, 120]."},
                 "scale":{"type":"number","description":"Output-frame size multiplier. Default 1.0; range (0, 8]. Pointer coords stay in image-natural pixel space."},
                 "format":{"type":"string","enum":["apng","mp4","webm"],"description":"Encoded video format. Default 'apng' (always available, pure-JVM). 'mp4' and 'webm' require an ffmpeg binary on the daemon's PATH; check ServerCapabilities.recordingFormats first or expect a clean rejection if unavailable."},
+                "observe":{"type":"string","enum":["frames","media"],"description":"Observation level (issue #1860). Default 'frames' returns the structured per-frame observation — per-frame sha256 + changed-pixel counts, changedFrameCount, and the on-disk frame/video paths — with NO inline media (token-frugal; recording bytes scale with fps × duration). 'media' also returns the encoded APNG/MP4/WebM bytes inline (APNG as an image block, mp4/webm as an embedded resource). The artifact is on disk at 'videoPath' regardless of this flag."},
                 "emitTest":{"type":"boolean","description":"Default false. When true, also return a runnable Compose UI test generated from this interaction (issue #1786) as an extra text block — each event with a testTag/role/text target becomes an onNodeWith…().performClick() step, and each recording.probe is diffed against the previous probe's captured semantics into assertExists()/assertDoesNotExist() assertions (a TODO stub when nothing assertable was captured). Write it to src/test and review the inferred probe assertions."},
                 "events":{
                   "type":"array",
@@ -3628,6 +3634,14 @@ class DaemonMcpServer(
             "record_preview: unsupported 'format' '$formatStr' — supported: apng, mp4, webm"
           )
       }
+    // Issue #1860: token-frugal default. `frames` returns the structured per-frame observation
+    // (hashes + changed-frame indices + the on-disk paths) with NO inline media; `media` opts into
+    // the encoded APNG/MP4/WebM bytes inline (the pre-#1860 behaviour). Mirrors render_preview's
+    // observe split: a recording's inline bytes scale with fps × duration and can dwarf a PNG.
+    val observe = args["observe"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: "frames"
+    if (observe !in setOf("frames", "media")) {
+      return errorCallToolResult("record_preview: 'observe' must be one of frames | media")
+    }
     val overrides =
       args["overrides"]?.let {
         runCatching { decodePreviewOverrides(it) }
@@ -3696,8 +3710,18 @@ class DaemonMcpServer(
         val stopResult = daemon.client.recordingStop(recordingId)
         val frameMetadata = inspectRecordingFrames(File(stopResult.framesDir))
         val encoded = daemon.client.recordingEncode(recordingId, format)
-        val videoBytes = fileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
+        // Only read the encoded bytes when the caller opted into inline media (observe="media");
+        // the default frames observation never touches them (issue #1860).
+        val videoBytes by lazy {
+          fileSystem.read(File(encoded.videoPath).path.toPath()) { readByteArray() }
+        }
         val payload = buildJsonObject {
+          put("observe", observe)
+          if (observe == "frames") {
+            // The encoded artifact still exists on disk at `videoPath`; re-call with
+            // observe="media" to get the bytes inline.
+            put("mediaInline", false)
+          }
           put("recordingId", recordingId)
           put("videoPath", encoded.videoPath)
           put("mimeType", encoded.mimeType)
@@ -3761,24 +3785,30 @@ class DaemonMcpServer(
         // strict clients reject mismatches. APNG (`image/apng`) round-trips as an image; mp4 /
         // webm route through `EmbeddedResource` wrapping a `Blob` so a client that already
         // understands `resources/read` reads them via the same code path.
-        val base64 = Base64.getEncoder().encodeToString(videoBytes)
-        val mediaBlock: ContentBlock =
-          if (encoded.mimeType.startsWith("image/")) {
-            ContentBlock.Image(data = base64, mimeType = encoded.mimeType)
+        val mediaBlock: ContentBlock? =
+          if (observe != "media") {
+            null
+          } else if (encoded.mimeType.startsWith("image/")) {
+            ContentBlock.Image(
+              data = Base64.getEncoder().encodeToString(videoBytes),
+              mimeType = encoded.mimeType,
+            )
           } else {
             ContentBlock.EmbeddedResource(
               resource =
                 ResourceContents.Blob(
                   uri = "compose-preview-recording://$recordingId",
                   mimeType = encoded.mimeType,
-                  blob = base64,
+                  blob = Base64.getEncoder().encodeToString(videoBytes),
                 )
             )
           }
         CallToolResult(
           content =
             buildList {
-              add(mediaBlock)
+              // observe="media" (opt-in): the inline APNG/MP4/WebM bytes lead the result, as
+              // before. observe="frames" (default): structured per-frame observation only.
+              mediaBlock?.let { add(it) }
               add(ContentBlock.Text(payload.toString()))
               // #1786 — opt-in: turn the recorded interaction into a runnable Compose UI test
               // (the codegen analogue). Built from the recording's applied evidence so an

@@ -122,7 +122,7 @@ supervisor stops respawning.
 | `unsubscribe_preview_data(uri, kind)` | Drop a preview data-product subscription. |
 | `render_preview_overlay(uri, kind?, inline?, overrides?)` | Render a preview and return an annotated overlay image. |
 | `get_preview_extras(uri, kind)` | List non-JSON outputs produced alongside a data product. |
-| `record_preview(uri, fps?, scale?, format?, events, overrides?, emitTest?)` | Record a scripted preview interaction to APNG/MP4/WebM. With `emitTest: true`, also returns a runnable Compose UI test generated from the interaction (issue #1786) — target-bearing events become `onNodeWith…().performClick()` steps, and each `recording.probe` is diffed against the previous probe's captured semantics into `assertExists()` / `assertDoesNotExist()` assertions (falling back to a TODO stub when nothing assertable was captured). |
+| `record_preview(uri, fps?, scale?, format?, observe?, events, overrides?, emitTest?)` | Record a scripted preview interaction to APNG/MP4/WebM. `observe` defaults to `frames` — the structured per-frame observation (per-frame sha256 + changed-pixel counts, `changedFrameCount`, on-disk paths) with no inline media; `media` also returns the encoded bytes inline (the artifact is on disk at `videoPath` either way). Token-frugal default since recording bytes scale with fps × duration (issue #1860). With `emitTest: true`, also returns a runnable Compose UI test generated from the interaction (issue #1786) — target-bearing events become `onNodeWith…().performClick()` steps, and each `recording.probe` is diffed against the previous probe's captured semantics into `assertExists()` / `assertDoesNotExist()` assertions (falling back to a TODO stub when nothing assertable was captured). |
 
 The daemon's render queue is single-priority FIFO today, so `setVisible` /
 `setFocus` traffic flows through the wire but doesn't yet reorder the queue.
@@ -192,12 +192,21 @@ interactive-session payload variants and are **not** valid `record_preview`
 event ids — agents that send `{ "kind": "click" }` get rejected with
 `kind 'click' is not advertised by this daemon`. Prefix with `input.` instead.
 
-On success the tool returns an inline media block plus a JSON metadata text
-block containing `recordingId`, `videoPath`, `mimeType`, `sizeBytes`,
-`frameCount`, `durationMs`, `framesDir`, `frameWidthPx`, and
-`frameHeightPx`. It also includes `scriptEvents[]`, a per-event evidence list
-with `applied` or `unsupported` status. Raw PNG frames live at
-`<framesDir>/frame-00000.png`, `<framesDir>/frame-00001.png`, etc.
+On success the tool returns a JSON metadata text block containing `observe`,
+`recordingId`, `videoPath`, `mimeType`, `sizeBytes`, `frameCount`,
+`durationMs`, `framesDir`, `frameWidthPx`, and `frameHeightPx`, plus the
+`frames[]` per-frame observation (sha256 + changed-pixel counts) and
+`changedFrameCount` / first-last changed-frame paths. It also includes
+`scriptEvents[]`, a per-event evidence list with `applied` or `unsupported`
+status. Raw PNG frames live at `<framesDir>/frame-00000.png`,
+`<framesDir>/frame-00001.png`, etc.
+
+By default (`observe="frames"`) that text block is the whole result — no
+inline media, since a recording's base64 bytes scale with fps × duration and
+can dwarf a single PNG (issue #1860). Pass `observe="media"` to lead the
+result with the encoded bytes inline (APNG as an `image` block, mp4/webm as an
+`EmbeddedResource` blob); the encoded artifact is on disk at `videoPath` either
+way.
 
 Sandbox note: Android recordings run through Robolectric. Restricted agent
 sandboxes must allow Robolectric to create its host cache/lock files,

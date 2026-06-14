@@ -89,10 +89,18 @@ previews.
   diff-semantics` (CLI): a semantics-tree diff is a few hundred tokens
   per changed preview (no PNG reads) and reports *what* changed
   semantically rather than *that* pixels moved (issue #1785).
-- `record_preview` response size scales with `fps × duration`: each
-  captured frame adds a `frames[]` entry plus optional metadata. The
-  APNG/MP4 capture path keeps per-frame JSON small; embedded-PNG debug
-  mode grows fast.
+- `record_preview` **defaults to `observe: "frames"`** (issue #1860): the
+  structured per-frame observation only — `frames[]` (per-frame sha256 +
+  changed-pixel counts), `changedFrameCount`, and the on-disk frame/video
+  paths — with **no inline media**. The inline encoded bytes are what scale
+  with `fps × duration` and can dwarf a single PNG (an APNG of a 2 s / 12 fps
+  interaction is ~24 frames of base64 — easily 30–60 k tokens); the default
+  drops them entirely, leaving a few-hundred-token JSON observation regardless
+  of clip length. Pass `observe: "media"` only when you actually need the
+  pixels inline; the artifact is on disk at `videoPath` either way, so a local
+  agent can read it without re-recording. The per-frame `changed` /
+  `changedPixelsFromPrevious` signal is usually enough to assert "the click
+  changed the UI" without any pixels.
 - `render_preview` **defaults to `observe: "semantics"`** (issue #1787):
   the `compose/semantics` tree + sha256 + dimensions with **no base64** —
   typically a few hundred tokens for a small preview (scaling with node
