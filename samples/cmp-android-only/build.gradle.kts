@@ -34,6 +34,11 @@ kotlin {
     compileSdk = 36
     minSdk = 24
 
+    // The KMP-Android library plugin keeps android resource processing OFF by default. Material3
+    // / the downloadable-fonts provider reference the Google-Fonts certificate `R.array`, so the
+    // module won't compile without resources enabled.
+    androidResources.enable = true
+
     compilations.configureEach {
       compileTaskProvider.configure {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
