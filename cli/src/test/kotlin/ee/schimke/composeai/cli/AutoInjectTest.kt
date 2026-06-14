@@ -802,7 +802,7 @@ class AutoInjectTest {
     )
     assertTrue(
       script.contains(
-        "if (composeAiPreviewSkipExclusiveContentClasspathDep &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
+        "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
       ),
       "expected the apply hooks to short-circuit for skipped modules (otherwise " +
         "pluginManager.apply would fail with 'Plugin with id ... not found')",
@@ -810,6 +810,37 @@ class AutoInjectTest {
     assertFalse(
       script.contains("[compose-preview] settings.gradle.kts declares exclusiveContent in"),
       "init script should not emit lifecycle logs nudging the user to apply the plugin",
+    )
+  }
+
+  @Test
+  fun `init script skips classpath injection for ancestors of a pre-applied module`() {
+    // Regression for #1855 (the auto-inject half): Gradle inherits a project's buildscript
+    // classpath into its subprojects' `plugins {}` resolution, so injecting the plugin onto the
+    // root (or any ancestor) of a module that applies it via the versioned plugins DSL
+    // (`id("...") version "..."` / `alias(libs.plugins.<x>)`) makes that subproject fail with
+    // "the plugin is already on the classpath with an unknown version". That sinks the subproject's
+    // configuration and makes the CLI's per-project model query return zero modules. The init
+    // script must skip injection for any project that has a pre-applied descendant, and skip its
+    // apply hooks too.
+    val script = renderInitScript("0.15.5")
+    assertTrue(
+      script.contains(
+        "val composeAiPreviewHasPreAppliedDescendant =\n        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }"
+      ),
+      "expected the pre-applied-descendant scan in allprojects",
+    )
+    assertTrue(
+      script.contains(
+        "if (!composeAiPreviewSkipExclusiveContentClasspathDep &&\n        !composeAiPreviewHasPreAppliedDescendant &&\n        projectDir !in composeAiPreviewPreAppliedDirs) {"
+      ),
+      "expected the buildscript classpath injection to also be gated on the descendant flag",
+    )
+    assertTrue(
+      script.contains(
+        "if ((composeAiPreviewSkipExclusiveContentClasspathDep ||\n        composeAiPreviewHasPreAppliedDescendant) &&\n        projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects"
+      ),
+      "expected the apply hooks to short-circuit for ancestors of pre-applied modules too",
     )
   }
 

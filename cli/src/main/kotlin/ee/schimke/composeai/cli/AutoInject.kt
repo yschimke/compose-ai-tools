@@ -415,7 +415,22 @@ allprojects {
         composeAiPreviewSettingsHasExclusiveContent &&
             projectDir !in composeAiPreviewProjectsWithOwnBuildscriptRepos
 
+    // Gradle inherits a project's buildscript classpath into its subprojects' `plugins { }`
+    // resolution. So injecting the plugin onto an ANCESTOR of a module that applies the plugin
+    // via the versioned plugins DSL (`id("...") version "..."` or `alias(libs.plugins.<x>)`)
+    // makes that subproject's declaration fail with "the plugin is already on the classpath with
+    // an unknown version, so compatibility cannot be checked" — which fails the subproject's
+    // configuration and makes the CLI's per-project Tooling API model query return zero modules
+    // (issue #1855: a single pre-applied module like `:meshcore-components` sinks discovery of the
+    // whole build). The pre-applied scan already skips the module's OWN injection; also skip every
+    // ancestor — the root project especially — because the ancestor's classpath is the one that
+    // actually leaks into the subproject's resolution. Auto-injected leaf modules still get the dep
+    // on their own buildscript, so the withPlugin hooks can resolve the plugin there.
+    val composeAiPreviewHasPreAppliedDescendant =
+        subprojects.any { it.projectDir in composeAiPreviewPreAppliedDirs }
+
     if (!composeAiPreviewSkipExclusiveContentClasspathDep &&
+        !composeAiPreviewHasPreAppliedDescendant &&
         projectDir !in composeAiPreviewPreAppliedDirs) {
         buildscript {
             // When the settings file declares `exclusiveContent { ... }` in `pluginManagement {
@@ -445,8 +460,11 @@ allprojects {
     // No buildscript classpath dep was injected and the project doesn't pre-apply, so
     // `pluginManager.apply(...)` from the withPlugin hooks would fail with "Plugin with id
     // ... not found." Skipping the hooks keeps the failure mode quiet — non-preview
-    // projects (e.g. Confetti's :backend) configure cleanly with no diagnostic noise.
-    if (composeAiPreviewSkipExclusiveContentClasspathDep &&
+    // projects (e.g. Confetti's :backend) configure cleanly with no diagnostic noise. The
+    // ancestor-of-pre-applied case (above) is gated the same way: its injection was skipped, so
+    // its hooks must be too.
+    if ((composeAiPreviewSkipExclusiveContentClasspathDep ||
+        composeAiPreviewHasPreAppliedDescendant) &&
         projectDir !in composeAiPreviewPreAppliedDirs) return@allprojects
 
     fun applyComposeAiPreview() {
