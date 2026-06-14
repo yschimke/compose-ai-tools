@@ -128,7 +128,9 @@ previews.
   a `device × locale × uiMode × fontScale` sweep costs roughly
   `cellCount × ~40` tokens instead of `cellCount × ~1.5 k` PNG reads —
   bounded at 24 cells (issue #1788). Pull a specific cell's pixels with
-  `render_preview` + those overrides when one looks off.
+  `render_preview` + those overrides when one looks off — or pass
+  `contactSheet:true` for one stitched grid image of every cell (opt-in, so
+  the default stays token-frugal).
 - These numbers count tokens crossing the LLM/tool boundary, not
   Anthropic billing on cached prefixes. With prompt caching the
   ~13 k MCP baseline is paid once per session and replayed from cache

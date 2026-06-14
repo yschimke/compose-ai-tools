@@ -1335,6 +1335,58 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `render_matrix with contactSheet returns a stitched grid image`() {
+    client.initialize()
+    val projectDir = tmp.newFolder("workspace")
+    tmp.newFolder("workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.Red"
+    daemon.emitDiscovery(previewId)
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    // A real, decodable PNG so the contact sheet can stitch actual pixels.
+    val img = BufferedImage(40, 30, BufferedImage.TYPE_INT_ARGB)
+    img.createGraphics().apply {
+      color = java.awt.Color.RED
+      fillRect(0, 0, 40, 30)
+      dispose()
+    }
+    val pngFile = tmp.newFile("matrix-contact.png")
+    val baos = java.io.ByteArrayOutputStream()
+    ImageIO.write(img, "png", baos)
+    Files.write(pngFile.toPath(), baos.toByteArray())
+    daemon.autoRenderPngPath = { id -> if (id == previewId) pngFile.absolutePath else null }
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "render_matrix",
+        buildJsonObject {
+          put("uri", uri)
+          put("contactSheet", JsonPrimitive(true))
+          putJsonObject("axes") {
+            putJsonArray("uiMode") {
+              add(JsonPrimitive("light"))
+              add(JsonPrimitive("dark"))
+            }
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    // The image block leads, so read the summary from the text block regardless of position.
+    val parsed = json.parseToJsonElement(resp.textContents().first()).jsonObject
+    assertThat(parsed["contactSheet"]?.jsonPrimitive?.content?.toBoolean()).isTrue()
+    // One stitched contact-sheet image block accompanies the summary.
+    val (data, mime) = resp.firstImageContent()
+    assertThat(mime).isEqualTo("image/png")
+    val sheet = ImageIO.read(Base64.getDecoder().decode(data).inputStream())
+    assertThat(sheet).isNotNull()
+    assertThat(sheet.width).isGreaterThan(40)
+  }
+
+  @Test
   fun `render_matrix rejects a cross-product over the cell cap`() {
     client.initialize()
     val projectDir = tmp.newFolder("workspace")

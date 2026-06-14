@@ -39,8 +39,9 @@ the `compose-preview` CLI where noted):
 - **Semantics diff** — `diff_semantics` / `compose-preview diff-semantics`
   report what changed *semantically* between two renders, a deterministic
   pixel-free regression signal (the aria-snapshot diff for Compose).
-- **Matrix render** — `render_matrix` covers `device × locale × uiMode ×
-  fontScale` in one call with per-cell hashes and a "which changed" flag.
+- **Matrix render** — `render_matrix` (and the `compose-preview render-matrix`
+  CLI) covers `device × locale × uiMode × fontScale` in one call with per-cell
+  hashes, a "which changed" flag, and an optional stitched contact-sheet image.
 - **Recording → test** — `record_preview emitTest=true` emits a runnable
   Compose UI test from a scripted interaction, inferring assertions at each
   `recording.probe` from the captured semantics.
