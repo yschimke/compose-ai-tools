@@ -585,6 +585,25 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
+   * Snapshot the held composition's live semantics for a `recording.probe` marker (issue #1786).
+   * The sandbox-side handler fetches the unmerged semantics root and projects it into the compact
+   * [RecordingProbeNode][ee.schimke.composeai.daemon.protocol.RecordingProbeNode] list via
+   * `ComposeSemanticsDataProducer.probeNodes(...)`, handing it back through [replyNodes].
+   *
+   * Read-only against the held composition — the handler walks but never dispatches, so it doesn't
+   * compete with renders. Throwables from the walk ride [replyError]; the host's
+   * `captureProbeSemantics` rethrows on the caller thread. The projected node list is a daemon
+   * protocol type, so it crosses the bridge the same way [FindUiAutomatorEvidence]'s reason does.
+   */
+  data class CaptureProbeSemantics(
+    override val streamId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyNodes:
+      AtomicReference<List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>?>,
+  ) : InteractiveCommand
+
+  /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
    * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
    * events to drive `onPause` / `onResume` / `onStop` on the held composition.

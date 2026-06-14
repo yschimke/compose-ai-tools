@@ -1,5 +1,6 @@
 package ee.schimke.composeai.daemon
 
+import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.daemon.protocol.RecordingScriptEvent
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
 
@@ -8,20 +9,34 @@ import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
  * Compose analogue of Playwright's `codegen`. The recorded exploration becomes durable regression
  * coverage: each pointer event that carried a semantic target (issue #1784) emits a stable
  * `onNodeWith…().performClick()` step rather than a pixel coordinate, and each `recording.probe`
- * marker becomes a labelled assertion stub the author fills in.
+ * marker becomes an assertion.
+ *
+ * **Probe assertions.** When a probe carried a [RecordingProbeNode] snapshot of the live semantics
+ * (captured host-side from the same tree target resolution walks), the generator diffs it against
+ * the previous probe's snapshot and emits the strongest stable assertion it can: a node that
+ * appeared since the last probe becomes `assertExists()`, one that disappeared becomes
+ * `assertDoesNotExist()`, and the anchors present at the first probe are asserted to exist. Probes
+ * without a snapshot (older daemons, or a probe that captured nothing assertable) fall back to a
+ * labelled `// TODO assert state` stub so the spot is still marked.
  *
  * Steps are built from what the recording **actually did**: a [Step] whose `applied` is false (the
  * daemon reported `unsupported` script evidence — e.g. a target that matched no node) is emitted as
  * a skipped-step comment, never a `performClick`, so the generated test reflects the captured flow.
  *
- * Pure string generation — no Compose / daemon runtime — so it is golden-testable in isolation. The
- * "infer the assertion at each probe from the captured semantics" half of #1786 is intentionally a
- * follow-up; the probe stubs mark exactly where those assertions go.
+ * Pure string generation — no Compose / daemon runtime — so it is golden-testable in isolation.
  */
 object RecordingTestGenerator {
 
-  /** One recorded event plus whether the recording reported it as applied (vs `unsupported`). */
-  data class Step(val event: RecordingScriptEvent, val applied: Boolean = true)
+  /**
+   * One recorded event plus whether the recording reported it as applied (vs `unsupported`).
+   * [probeSemantics] is the host-captured semantics snapshot for a `recording.probe` event (null
+   * for every other kind, and for probes from daemons that predate the capture).
+   */
+  data class Step(
+    val event: RecordingScriptEvent,
+    val applied: Boolean = true,
+    val probeSemantics: List<RecordingProbeNode>? = null,
+  )
 
   /** Inputs for one generated test. */
   data class Spec(
@@ -40,8 +55,19 @@ object RecordingTestGenerator {
   fun stepsOf(events: List<RecordingScriptEvent>): List<Step> = events.map { Step(it) }
 
   fun generate(spec: Spec): String = buildString {
+    val sortedSteps = spec.steps.sortedBy { it.event.tMs }
+    // Probe snapshots opt the assertion finders/imports in; without any, the output stays
+    // byte-identical to the pre-#1786-assertions stub form so older recordings are unaffected.
+    val hasProbeAssertions = sortedSteps.any {
+      it.event.kind == "recording.probe" && it.probeSemantics != null
+    }
     spec.packageName?.takeIf { it.isNotBlank() }?.let { appendLine("package $it").appendLine() }
     appendLine("import androidx.compose.ui.test.junit4.createComposeRule")
+    if (hasProbeAssertions) {
+      appendLine("import androidx.compose.ui.test.assertDoesNotExist")
+      appendLine("import androidx.compose.ui.test.assertExists")
+      appendLine("import androidx.compose.ui.test.onNodeWithContentDescription")
+    }
     appendLine("import androidx.compose.ui.test.onNodeWithTag")
     appendLine("import androidx.compose.ui.test.onNodeWithText")
     appendLine("import androidx.compose.ui.test.performClick")
@@ -53,7 +79,11 @@ object RecordingTestGenerator {
       "// Confirm the setContent call below and add the composable's import before running"
     )
     appendLine("// (named/variant previews share their base @Composable function).")
-    appendLine("// Fill in the assertions marked TODO at each recording.probe marker.")
+    if (hasProbeAssertions) {
+      appendLine("// Probe assertions are inferred from the captured semantics — review them.")
+    } else {
+      appendLine("// Fill in the assertions marked TODO at each recording.probe marker.")
+    }
     appendLine("class ${spec.className} {")
     appendLine()
     appendLine("  @get:Rule val composeTestRule = createComposeRule()")
@@ -61,13 +91,21 @@ object RecordingTestGenerator {
     appendLine("  @Test")
     appendLine("  fun ${spec.methodName}() {")
     appendLine("    composeTestRule.setContent { ${spec.composableInvocation} }")
-    spec.steps.sortedBy { it.event.tMs }.forEach { step -> appendStep(step) }
+    // The previous probe's snapshot — diffed against the next probe to detect appeared/disappeared
+    // nodes. Null until the first probe with a snapshot is seen.
+    var previousProbe: List<RecordingProbeNode>? = null
+    sortedSteps.forEach { step ->
+      appendStep(step, previousProbe)
+      if (step.event.kind == "recording.probe" && step.probeSemantics != null) {
+        previousProbe = step.probeSemantics
+      }
+    }
     appendLine("  }")
     append("}")
     appendLine()
   }
 
-  private fun StringBuilder.appendStep(step: Step) {
+  private fun StringBuilder.appendStep(step: Step, previousProbe: List<RecordingProbeNode>?) {
     val event = step.event
     when {
       event.kind == "input.click" && !step.applied ->
@@ -76,7 +114,7 @@ object RecordingTestGenerator {
             "step skipped"
         )
       event.kind == "input.click" -> appendLine("    ${clickStep(event)}")
-      event.kind == "recording.probe" -> appendLine("    ${probeStep(event)}")
+      event.kind == "recording.probe" -> appendProbe(step, previousProbe)
       else ->
         appendLine(
           "    // ${event.kind}${event.label?.let { " \"$it\"" } ?: ""} — not yet generated; " +
@@ -127,9 +165,70 @@ object RecordingTestGenerator {
       .ifBlank { "(no target)" }
   }
 
-  private fun probeStep(event: RecordingScriptEvent): String {
-    val label = event.label?.takeIf { it.isNotBlank() }
-    return "// TODO assert state${label?.let { " at probe \"$it\"" } ?: ""}"
+  /**
+   * Emit the assertion block for one `recording.probe`. With a semantics snapshot, diff it against
+   * [previousProbe] and emit `assertExists()` for nodes that appeared (or, at the first probe, the
+   * anchors present) and `assertDoesNotExist()` for nodes that disappeared. Without a snapshot — or
+   * when the diff yields nothing assertable — fall back to the `// TODO assert state` stub so the
+   * probe is still visible in the generated test.
+   */
+  private fun StringBuilder.appendProbe(step: Step, previousProbe: List<RecordingProbeNode>?) {
+    val label = step.event.label?.takeIf { it.isNotBlank() }
+    val labelSuffix = label?.let { " at probe \"$it\"" } ?: ""
+    val snapshot = step.probeSemantics
+    if (snapshot == null) {
+      appendLine("    // TODO assert state$labelSuffix")
+      return
+    }
+    val current = snapshot.mapNotNull { node -> nodeFinder(node)?.let { it to node } }
+    val assertions =
+      buildList {
+          if (previousProbe == null) {
+            // First probe: no prior snapshot to diff against, so assert that the interaction
+            // anchors
+            // (test-tagged or clickable nodes) are present — the stable handles worth pinning.
+            current
+              .filter { (_, node) -> node.testTag != null || node.clickable }
+              .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
+          } else {
+            val before = previousProbe.mapNotNull(::nodeFinder).toSet()
+            val after = current.map { it.first }.toSet()
+            current
+              .filter { (finder, _) -> finder !in before }
+              .forEach { (finder, _) -> add("composeTestRule.$finder.assertExists()") }
+            (before - after).forEach { finder ->
+              add("composeTestRule.$finder.assertDoesNotExist()")
+            }
+          }
+        }
+        .distinct()
+    if (assertions.isEmpty()) {
+      appendLine("    // TODO assert state$labelSuffix")
+      return
+    }
+    val probeName = label?.let { "probe \"$it\"" } ?: "probe"
+    appendLine("    // $probeName — assertions inferred from captured semantics")
+    assertions.forEach { appendLine("    $it") }
+  }
+
+  /** Strongest stable Compose-test finder for a captured probe node, or null when it has none. */
+  private fun nodeFinder(node: RecordingProbeNode): String? {
+    node.testTag
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return "onNodeWithTag(${it.quote()})"
+      }
+    node.text
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return "onNodeWithText(${it.quote()})"
+      }
+    node.contentDescription
+      ?.takeIf { it.isNotBlank() }
+      ?.let {
+        return "onNodeWithContentDescription(${it.quote()})"
+      }
+    return null
   }
 
   private fun String.quote(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""

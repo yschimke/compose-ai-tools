@@ -1961,6 +1961,29 @@ data class RecordingScriptParams(val recordingId: String, val events: List<Recor
 
 @Serializable data class RecordingStopParams(val recordingId: String)
 
+/**
+ * Compact semantics snapshot of one node, captured at a `recording.probe` marker (issue #1786).
+ *
+ * Projected from the same live semantics tree target resolution walks (issue #1784), narrowed to
+ * the fields that map onto a Compose-test finder: [testTag] → `onNodeWithTag`, [text] →
+ * `onNodeWithText`, [contentDescription] → `onNodeWithContentDescription`. [role] and [clickable]
+ * ride along only to make the generated comment readable. Hosts drop nodes that carry none of
+ * testTag/text/ contentDescription at capture time — without one of those there is no stable finder
+ * to assert on.
+ *
+ * [RecordingTestGenerator] diffs a probe's node list against the previous probe's to turn each
+ * `recording.probe` into the strongest stable assertion (a node appeared, a node disappeared, text
+ * became present) instead of a hand-filled TODO stub.
+ */
+@Serializable
+data class RecordingProbeNode(
+  val testTag: String? = null,
+  val text: String? = null,
+  val contentDescription: String? = null,
+  val role: String? = null,
+  val clickable: Boolean = false,
+)
+
 @Serializable
 data class RecordingScriptEvidence(
   val tMs: Long,
@@ -1978,6 +2001,13 @@ data class RecordingScriptEvidence(
    * pre-date this field keep reading [message] and ignore [unsupportedReason].
    */
   val unsupportedReason: UiAutomatorUnsupportedReason? = null,
+  /**
+   * For `recording.probe` events: a compact snapshot of the held composition's semantics at the
+   * instant the probe fired (issue #1786). Null for non-probe events and for hosts/recordings that
+   * predate probe-semantics capture, so older daemons keep producing TODO-stub probes.
+   * [RecordingTestGenerator] consumes it to emit inferred assertions at each probe.
+   */
+  val probeSemantics: List<RecordingProbeNode>? = null,
 )
 
 /**

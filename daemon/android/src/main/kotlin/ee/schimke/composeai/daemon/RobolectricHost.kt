@@ -2282,6 +2282,21 @@ open class RobolectricHost(
                     cmd.replyLatch.countDown()
                   }
                 }
+                is InteractiveCommand.CaptureProbeSemantics -> {
+                  try {
+                    // Read-only snapshot of the live semantics for a recording.probe (#1786) —
+                    // same unmerged-tree fetch + projection target resolution uses, flattened to
+                    // the compact probe-node list the codegen path diffs into assertions.
+                    val root =
+                      runCatching { rule.onRoot(useUnmergedTree = true).fetchSemanticsNode() }
+                        .getOrNull()
+                    cmd.replyNodes.set(root?.let { ComposeSemanticsDataProducer.probeNodes(it) })
+                  } catch (t: Throwable) {
+                    cmd.replyError.set(t)
+                  } finally {
+                    cmd.replyLatch.countDown()
+                  }
+                }
                 is InteractiveCommand.DispatchLifecycle -> {
                   try {
                     val applied = performLifecycleTransition(rule, cmd)

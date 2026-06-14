@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.TextUnitType
 import ee.schimke.composeai.daemon.protocol.DataProductCapability
 import ee.schimke.composeai.daemon.protocol.DataProductFacet
 import ee.schimke.composeai.daemon.protocol.DataProductTransport
+import ee.schimke.composeai.daemon.protocol.RecordingProbeNode
 import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsProduct
 import ee.schimke.composeai.data.layoutinspector.LayoutInspectorProduct
 import ee.schimke.composeai.data.layoutinspector.SemanticsRefs
@@ -64,6 +65,19 @@ object ComposeSemanticsDataProducer {
    */
   fun buildPayload(root: SemanticsNode): ComposeSemanticsPayload =
     SemanticsRefs.assign(ComposeSemanticsPayload(root = root.toWireNode()))
+
+  /**
+   * Flatten a captured semantics [root] into the compact probe-node list `record_preview` attaches
+   * to a `recording.probe`'s evidence (issue #1786). Reuses [buildPayload] so the testTag / text /
+   * role / clickable projection matches the `compose/semantics` data product and target resolution
+   * (issue #1784) exactly.
+   * [RecordingTestGenerator][ee.schimke.composeai.daemon.RecordingTestGenerator] diffs consecutive
+   * probe snapshots into assertions, so only nodes carrying a stable finder (testTag, rendered
+   * text, or content description) are kept — everything else is dropped here rather than leaking a
+   * finder-less node the generator can't assert on.
+   */
+  fun probeNodes(root: SemanticsNode): List<RecordingProbeNode> =
+    buildPayload(root).root.toProbeNodes()
 
   private fun SemanticsNode.toWireNode(): ComposeSemanticsNode {
     val cfg = config
@@ -200,6 +214,34 @@ object ComposeSemanticsDataProducer {
 
   private fun androidx.compose.ui.geometry.Rect.toWireBounds(): String =
     "${left.toInt()},${top.toInt()},${right.toInt()},${bottom.toInt()}"
+}
+
+/**
+ * Flatten a projected semantics tree into the compact [RecordingProbeNode] list (issue #1786),
+ * keeping only nodes with a stable Compose-test finder. `contentDescription` is recovered from
+ * [ComposeSemanticsNode.label] when it carries something other than the rendered [text] — the
+ * projection collapses content-description-or-text into `label`, so a label that isn't just echoing
+ * `text` is the node's content description.
+ */
+fun ComposeSemanticsNode.toProbeNodes(): List<RecordingProbeNode> = buildList {
+  fun visit(node: ComposeSemanticsNode) {
+    val testTag = node.testTag?.takeIf { it.isNotBlank() }
+    val text = node.text?.takeIf { it.isNotBlank() }
+    val contentDescription = node.label?.takeIf { it.isNotBlank() && it != text }
+    if (testTag != null || text != null || contentDescription != null) {
+      add(
+        RecordingProbeNode(
+          testTag = testTag,
+          text = text,
+          contentDescription = contentDescription,
+          role = node.role?.takeIf { it.isNotBlank() },
+          clickable = node.clickable,
+        )
+      )
+    }
+    node.children.forEach(::visit)
+  }
+  visit(this@toProbeNodes)
 }
 
 typealias ComposeSemanticsPayload =
