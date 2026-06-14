@@ -451,7 +451,18 @@ internal object ComposePreviewTasks {
       }
 
     project.tasks.register("composePreviewBundle", BundlePreviewTask::class.java) {
-      onlyIf { extension.enabled.get() }
+      // Skip bundling a non-renderable pure-KMP-Android module: it discovers 0 previews, and
+      // BundlePreviewTask hard-fails on an empty manifest, so a build-wide `render --bundle` (which
+      // appends `:<module>:composePreviewBundle` for every detected module) would fail on it even
+      // though composePreviewRender itself no-ops (Codex review on #1863). Computed lazily at task
+      // realization (so a cmp-shared module whose `jvm("desktop")` target configures after
+      // registerDesktopTasks isn't mis-skipped) and captured as a Boolean so `onlyIf` doesn't pin
+      // `project` into the configuration cache. `isDesktopRenderableConfig` only trips on the
+      // literal
+      // `androidRuntimeClasspath` fallback, so this is a no-op on the Android bundle path and on
+      // real desktop modules.
+      val bundleRenderable = isDesktopRenderableConfig(resolveDependencyConfigName())
+      onlyIf { extension.enabled.get() && bundleRenderable }
       previewsJson.set(previewOutputDir.map { it.file("previews.json") })
       moduleClassDirs.from(sourceClassDirs)
       moduleResourcesDir.set(moduleResourcesDirProvider)
@@ -601,8 +612,10 @@ internal object ComposePreviewTasks {
       // A pure-KMP-Android module (only `androidRuntimeClasspath`, no `jvm("desktop")`) can't be
       // driven by the desktop daemon — skip emitting its launch descriptor (issue #1852). This task
       // is never realized by the Tooling-API model builder, so gating it can't affect CLI detection
-      // (unlike the reverted #1853 gating on discover/render — issue #1855).
-      onlyIf { isDesktopRenderableConfig(dependencyConfigName()) }
+      // (unlike the reverted #1853 gating on discover/render — issue #1855). Capture a config-time
+      // Boolean so `onlyIf` doesn't pin `project` into the configuration-cache entry.
+      val renderable = isDesktopRenderableConfig(dependencyConfigName())
+      onlyIf { renderable }
       modulePath.set(project.path)
       // Desktop daemons have no AGP variant. The string is surfaced in `daemon-launch.json`'s
       // `variant` field for debug/log purposes only — VS Code's `daemonProcess.ts` doesn't key
@@ -822,8 +835,10 @@ internal object ComposePreviewTasks {
       // pipeline on a module that has nothing for the desktop renderer (issue #1852). This task is
       // never realized by the Tooling-API model builder, so the skip can't affect CLI detection
       // (issue #1855). A preview-less module like the consumer's `:meshcore-mobile` then renders 0
-      // previews and no-ops cleanly.
-      onlyIf { isDesktopRenderableConfig(dependencyConfigName()) }
+      // previews and no-ops cleanly. Compute renderability at config time and capture a Boolean so
+      // `onlyIf` doesn't pin `project` into the configuration-cache entry.
+      val renderable = isDesktopRenderableConfig(dependencyConfigName())
+      onlyIf { renderable }
       platform.set("desktop")
       // Feed the @Classpath FileCollection a lazily-resolved, content-keyed FileCollection
       // (`incoming.artifactView { }.files`) instead of the raw `Configuration`.
