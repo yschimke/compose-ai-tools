@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.15.4](https://github.com/yschimke/compose-ai-tools/compare/v0.15.3...v0.15.4) (2026-06-14)
+
+
+### Features
+
+* **daemon:** a11y/hierarchy refs + structured target-resolution diagnostics ([#1784](https://github.com/yschimke/compose-ai-tools/issues/1784)) ([#1861](https://github.com/yschimke/compose-ai-tools/issues/1861)) ([f262fd3](https://github.com/yschimke/compose-ai-tools/commit/f262fd334fd03b18f2a4973587054d0ffe3149c4))
+* **daemon:** classify renderFailed into a fine-grained error taxonomy ([#1856](https://github.com/yschimke/compose-ai-tools/issues/1856)) ([2ba930d](https://github.com/yschimke/compose-ai-tools/commit/2ba930db4eb14bbf75f78f0ca5941e254ea413e9))
+* **daemon:** history/diff mode=SEMANTICS — pixel-free semantics regression diff ([#1785](https://github.com/yschimke/compose-ai-tools/issues/1785)) ([#1862](https://github.com/yschimke/compose-ai-tools/issues/1862)) ([43ce04f](https://github.com/yschimke/compose-ai-tools/commit/43ce04f2ae28f0e892b4c7fe7a90dba0c535e180))
+* **mcp:** default record_preview to the frames observation ([#1865](https://github.com/yschimke/compose-ai-tools/issues/1865)) ([d1c4c5a](https://github.com/yschimke/compose-ai-tools/commit/d1c4c5a23ce6b73156e578889cbb9d2dfffc5fba))
+* **mcp:** default render_preview to the structured-first observation ([#1857](https://github.com/yschimke/compose-ai-tools/issues/1857)) ([287e0e3](https://github.com/yschimke/compose-ai-tools/commit/287e0e35ba585c83001a1f12c6123a7fde24ce9d))
+* **mcp:** infer probe assertions in record_preview emitTest codegen ([#1858](https://github.com/yschimke/compose-ai-tools/issues/1858)) ([a6e2686](https://github.com/yschimke/compose-ai-tools/commit/a6e2686df261f58b275779a4ac23338da94028ca))
+* render-matrix CLI command + render_matrix contact sheet ([#1788](https://github.com/yschimke/compose-ai-tools/issues/1788)) ([#1864](https://github.com/yschimke/compose-ai-tools/issues/1864)) ([58742a9](https://github.com/yschimke/compose-ai-tools/commit/58742a945d4b16205731937cec7896c0abe07b63))
+
+
+### Bug Fixes
+
+* **plugin:** keep CLI detection working when a non-renderable KMP-Android module is present ([#1855](https://github.com/yschimke/compose-ai-tools/issues/1855)) ([#1863](https://github.com/yschimke/compose-ai-tools/issues/1863)) ([1c113d6](https://github.com/yschimke/compose-ai-tools/commit/1c113d6638a9b3afcc66e18d44483765d2448c11))
+
 ## [0.15.3](https://github.com/yschimke/compose-ai-tools/compare/v0.15.2...v0.15.3) (2026-06-14)
 
 

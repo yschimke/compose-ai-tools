@@ -135,8 +135,7 @@ class KmpAndroidDesktopRoutingTest {
   @Test
   fun `isDesktopRenderableConfig is false only for the androidRuntimeClasspath fallback`() {
     // Issue #1852: a pure KMP-Android module whose only runtime config is androidRuntimeClasspath
-    // can't be rendered by the JVM desktop renderer. Every JVM/desktop-flavoured config stays
-    // renderable.
+    // can't be rendered by the JVM desktop renderer.
     assertThat(ComposePreviewTasks.isDesktopRenderableConfig("androidRuntimeClasspath")).isFalse()
     assertThat(ComposePreviewTasks.isDesktopRenderableConfig("jvmRuntimeClasspath")).isTrue()
     assertThat(ComposePreviewTasks.isDesktopRenderableConfig("desktopRuntimeClasspath")).isTrue()
@@ -144,10 +143,12 @@ class KmpAndroidDesktopRoutingTest {
   }
 
   @Test
-  fun `pure KMP-Android module with only androidRuntimeClasspath skips render and guard`() {
-    // Issue #1852: when the desktop fallback lands on androidRuntimeClasspath (no jvm("desktop")
-    // target), the render task and its classpath guard must skip via onlyIf instead of resolving
-    // the ambiguous config and hard-failing the whole pipeline. discover/daemon/bundle skip too.
+  fun `non-renderable module skips only the guard and daemon, never discover or render`() {
+    // Issue #1855: the desktop-render classpath guard and the daemon-start task are skipped for a
+    // pure KMP-Android module (they'd otherwise hard-fail on its androidRuntimeClasspath), but
+    // composePreviewDiscover and composePreviewRender must NOT be gated — the Tooling-API model
+    // builder realizes those during CLI detection, and gating them is what regressed 0.15.3 to
+    // "detect nothing". They run as in 0.15.2; the module simply discovers 0 previews.
     val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
     val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
     project.configurations.create("androidRuntimeClasspath") {
@@ -157,71 +158,39 @@ class KmpAndroidDesktopRoutingTest {
 
     ComposePreviewTasks.registerDesktopTasks(project, extension)
 
+    // Skipped (detection-safe — never realized by the model builder):
     for (taskName in
-      listOf(
-        "composePreviewRender",
-        "validateComposePreviewDesktopRenderClasspath",
-        "composePreviewDiscover",
-        "composePreviewDaemonStart",
-        "composePreviewBundle",
-      )) {
+      listOf("validateComposePreviewDesktopRenderClasspath", "composePreviewDaemonStart")) {
       val task = project.tasks.getByName(taskName) as TaskInternal
       assertThat(task.onlyIf.isSatisfiedBy(task)).isFalse()
     }
-  }
-
-  @Test
-  fun `KMP-Android module with a desktop target stays renderable`() {
-    // The canonical cmp-shared layout (androidRuntimeClasspath + desktopRuntimeClasspath) must NOT
-    // be skipped — desktopRuntimeClasspath wins the fallback and the render task stays enabled.
-    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
-    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
-    project.configurations.create("desktopRuntimeClasspath") {
-      isCanBeResolved = true
-      isCanBeConsumed = false
-    }
-    project.configurations.create("androidRuntimeClasspath") {
-      isCanBeResolved = true
-      isCanBeConsumed = false
-    }
-
-    ComposePreviewTasks.registerDesktopTasks(project, extension)
-
-    val render = project.tasks.getByName("composePreviewRender") as TaskInternal
-    assertThat(render.onlyIf.isSatisfiedBy(render)).isTrue()
-    val guard =
-      project.tasks.getByName("validateComposePreviewDesktopRenderClasspath") as TaskInternal
-    assertThat(guard.onlyIf.isSatisfiedBy(guard)).isTrue()
-  }
-
-  @Test
-  fun `renderability is computed lazily so a desktop target added after registration is not skipped`() {
-    // Codex review on #1853: registerDesktopTasks runs at withPlugin time, BEFORE the consumer's
-    // `kotlin { jvm("desktop") }` block creates desktopRuntimeClasspath. Renderability must be
-    // resolved at task realization, not snapshotted eagerly — otherwise a cmp-shared module whose
-    // desktop config appears later is permanently treated as non-renderable and its render/bundle
-    // are wrongly skipped.
-    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
-    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
-    // Pre-`jvm("desktop")` state: only the androidRuntimeClasspath fallback is visible.
-    project.configurations.create("androidRuntimeClasspath") {
-      isCanBeResolved = true
-      isCanBeConsumed = false
-    }
-
-    ComposePreviewTasks.registerDesktopTasks(project, extension)
-
-    // `jvm("desktop")` configures afterwards, creating the desktop runtime classpath.
-    project.configurations.create("desktopRuntimeClasspath") {
-      isCanBeResolved = true
-      isCanBeConsumed = false
-    }
-
-    // Realized now (after the desktop config exists): render AND bundle must observe it and stay
-    // renderable. A regression to an eager snapshot would skip them.
-    for (taskName in listOf("composePreviewRender", "composePreviewBundle")) {
+    // NOT skipped (these are realized during CLI detection — must behave as 0.15.2):
+    for (taskName in listOf("composePreviewDiscover", "composePreviewRender")) {
       val task = project.tasks.getByName(taskName) as TaskInternal
       assertThat(task.onlyIf.isSatisfiedBy(task)).isTrue()
     }
+  }
+
+  @Test
+  fun `renderable desktop module keeps the guard and daemon enabled`() {
+    // The canonical cmp-shared layout (desktopRuntimeClasspath present) must NOT skip anything.
+    val project = ProjectBuilder.builder().withProjectDir(tmp.root).build()
+    val extension = project.extensions.create("composePreview", PreviewExtension::class.java)
+    project.configurations.create("desktopRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+    project.configurations.create("androidRuntimeClasspath") {
+      isCanBeResolved = true
+      isCanBeConsumed = false
+    }
+
+    ComposePreviewTasks.registerDesktopTasks(project, extension)
+
+    val guard =
+      project.tasks.getByName("validateComposePreviewDesktopRenderClasspath") as TaskInternal
+    assertThat(guard.onlyIf.isSatisfiedBy(guard)).isTrue()
+    val daemon = project.tasks.getByName("composePreviewDaemonStart") as TaskInternal
+    assertThat(daemon.onlyIf.isSatisfiedBy(daemon)).isTrue()
   }
 }
