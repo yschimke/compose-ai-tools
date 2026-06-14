@@ -243,6 +243,21 @@ sidecar.pngHash`. Mismatch → entry is treated as corrupted and dropped
 from listings. Self-heals on next prune. Truncated index lines are
 skipped; missing sidecars drop the entry. Symlinks are followed once.
 
+### Provenance cost + caching
+
+`git.*` provenance (branch / commit / dirty) is resolved per render by
+`GitProvenance.snapshot()` — three `git` spawns, of which `git status
+--porcelain` scales with working-tree size (tens of ms on a large repo).
+Since recording is on by default, a discovery pass re-rendering many
+previews would otherwise pay that cost N times back-to-back. So
+`snapshot()` caches the resolved pair for a short TTL
+(`composeai.history.gitProvenanceTtlMs`, default `1000`): a render
+**burst** collapses to a single git fetch, while an interactive edit-loop
+(renders spaced wider than the TTL) still gets fresh provenance. branch /
+commit only change on checkout/commit; `dirty` may lag by at most the TTL,
+acceptable for best-effort metadata. Set the sysprop to `0` to disable
+caching (tests run with `0` for deterministic per-call provenance).
+
 ## Pruning policy
 
 Defaults read from sysprops on the spawned daemon JVM:

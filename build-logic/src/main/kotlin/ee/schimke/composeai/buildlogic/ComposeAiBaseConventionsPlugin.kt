@@ -23,12 +23,13 @@ class ComposeAiBaseConventionsPlugin : Plugin<Project> {
     project.pluginManager.apply("com.ncorti.ktfmt.gradle")
     project.extensions.configure<KtfmtExtension>("ktfmt") { googleStyle() }
 
-    // History feature gate (`HistoryFeature.ENABLED`, post-1.0). Test JVMs run with the gate
-    // flipped on so the history implementation stays green and unbroken for the 1.1 re-enable —
-    // production daemons leave the property unset and the const-default `false` keeps the wire-up
-    // dead. Re-evaluate (and drop) when the 1.1 cut flips the default to `true`.
+    // History recording is on by default in the daemon (`HistoryFeature.ENABLED`); tests set it
+    // explicitly so they stay pinned if that default ever changes. Git-provenance caching is
+    // disabled in tests (`gitProvenanceTtlMs=0`) so per-render provenance stays fresh and
+    // deterministic — production uses the default TTL to collapse render-burst git fetches.
     project.tasks.withType<Test>().configureEach {
       systemProperty("composeai.history.enabled", "true")
+      systemProperty("composeai.history.gitProvenanceTtlMs", "0")
     }
   }
 }
