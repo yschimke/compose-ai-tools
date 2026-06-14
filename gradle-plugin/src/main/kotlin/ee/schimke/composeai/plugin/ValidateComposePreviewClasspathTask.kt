@@ -63,7 +63,8 @@ abstract class ValidateComposePreviewClasspathTask : DefaultTask() {
         if (offenders.size > 8) appendLine(" - (+${offenders.size - 8} more)")
         // The most common way `*-android` Compose artifacts reach the desktop renderer is a
         // `com.android.kotlin.multiplatform.library` (`:shared`-style) module with no
-        // `jvm("desktop")` target: the desktop pipeline then falls back to `androidRuntimeClasspath`
+        // `jvm("desktop")` target: the desktop pipeline then falls back to
+        // `androidRuntimeClasspath`
         // and surfaces the `*-android` AARs (which reference `android.os.Parcelable`) to the host
         // JVM. The fix is to give the module a JVM-flavoured runtime classpath.
         appendLine()

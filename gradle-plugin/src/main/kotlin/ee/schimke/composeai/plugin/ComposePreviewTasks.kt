@@ -160,8 +160,9 @@ internal object ComposePreviewTasks {
         extension,
         // Desktop fallback can resolve a KMP-Android module's androidRuntimeClasspath, whose
         // single AGP variant trips AmbiguousArtifactsFailure under a forced artifactType view —
-        // keep discovery lenient so `compose-preview list` never aborts on such a module.
-        lenientDependencyJars = true,
+        // allow discovery to go lenient *for that config only* so `compose-preview list` never
+        // aborts on such a module. JVM/desktop configs stay strict.
+        lenientWhenAndroidOnlyFallback = true,
       ) {
         onlyIf { extension.enabled.get() }
         // `compileAndroidMain` is the lifecycle task for the KMP-Android target's `main`
@@ -308,7 +309,15 @@ internal object ComposePreviewTasks {
     val pluginVersionProperty = PluginVersion.value
 
     val artifactTypeAttr = Attribute.of("artifactType", String::class.java)
-    val depConfig = project.configurations.findByName(resolveDependencyConfigName())
+    val depConfigName = resolveDependencyConfigName()
+    val depConfig = project.configurations.findByName(depConfigName)
+    // Only the KMP-Android fallback (`androidRuntimeClasspath`, a `:shared` module with no
+    // `jvm("desktop")` target) needs a lenient artifact view — its single AGP `android` variant
+    // can't satisfy a forced `artifactType=jar` selection and would otherwise raise
+    // `AmbiguousArtifactsFailure` and sink the whole bundle. Normal JVM/desktop classpaths stay
+    // STRICT so an unresolved/unselectable runtime dep fails the task loudly instead of silently
+    // dropping out of the bundle's closure + coordinate map (Codex review on #1850).
+    val depViewLenient = depConfigName == "androidRuntimeClasspath"
     // `artifactType=jar` view: AAR consumers transform to extracted classes.jar; pure JVM consumers
     // pass through. Either way we get real jars on the closure walk. The coordinate map below MUST
     // be built from THIS SAME view's resolvedArtifacts, not the configuration's untransformed
@@ -320,12 +329,9 @@ internal object ComposePreviewTasks {
     // unchanged; on Android it's what makes coordinate-mode bundles stay small + re-resolvable.
     val depJarView =
       depConfig?.incoming?.artifactView {
-        // `lenient(true)` for the same reason as the sibling `typeByComponent` view below: when the
-        // resolved config is a KMP-Android module's `androidRuntimeClasspath` (no `jvm("desktop")`
-        // target), its single AGP `android` variant can't satisfy a forced `artifactType=jar`
-        // selection and would otherwise raise `AmbiguousArtifactsFailure` and sink the whole
-        // bundle. Lenient skips the unselectable dep; on clean JVM/desktop configs it's a no-op.
-        lenient(true)
+        // Lenient ONLY for the androidRuntimeClasspath fallback (see [depViewLenient]); strict for
+        // normal JVM/desktop classpaths so a broken dep surfaces here instead of in the player.
+        if (depViewLenient) lenient(true)
         attributes.attribute(artifactTypeAttr, "jar")
       }
     val depJarFiles = depJarView?.files
@@ -1078,13 +1084,14 @@ internal object ComposePreviewTasks {
     // Desktop callers pass `true`: the desktop runtime-config fallback can land on a
     // KMP-Android module's `androidRuntimeClasspath` (a `:shared` module with no
     // `jvm("desktop")` target), whose single AGP `android` variant trips an
-    // `AmbiguousArtifactsFailure` when an `artifactType=jar` view is forced on it. Discovery's
-    // dependency jars are a best-effort ClassGraph scan classpath, so `lenient(true)` skips the
-    // unselectable dep instead of aborting the whole `compose-preview list` Tooling-API query —
-    // the desktop render guard still emits an actionable error if the user actually renders that
-    // module. The Android path keeps the default (`false`) so a genuinely unresolvable AAR there
-    // still surfaces loudly.
-    lenientDependencyJars: Boolean = false,
+    // `AmbiguousArtifactsFailure` when an `artifactType=jar` view is forced on it. When this is
+    // set AND the resolved config is exactly `androidRuntimeClasspath`, discovery's dependency
+    // jars resolve leniently so the unselectable dep is skipped instead of aborting the whole
+    // `compose-preview list` Tooling-API query — the desktop render guard still emits an
+    // actionable error if the user actually renders that module. Normal JVM/desktop classpaths
+    // (and the entire Android path, which passes `false`) stay STRICT so a genuinely unresolvable
+    // dependency still surfaces loudly.
+    lenientWhenAndroidOnlyFallback: Boolean = false,
     configureDeps: DiscoverPreviewsTask.() -> Unit,
   ): TaskProvider<DiscoverPreviewsTask> {
     val artifactType = Attribute.of("artifactType", String::class.java)
@@ -1097,14 +1104,18 @@ internal object ComposePreviewTasks {
           include("**/*.java")
         }
       )
-      project.configurations.findByName(dependencyConfigName())?.let { config ->
+      val configName = dependencyConfigName()
+      project.configurations.findByName(configName)?.let { config ->
+        // Lenient only for the androidRuntimeClasspath KMP-Android fallback; strict everywhere
+        // else so a real resolution failure isn't masked from the discovery classpath.
+        val useLenient = lenientWhenAndroidOnlyFallback && configName == "androidRuntimeClasspath"
         // For Android projects, dependencies resolve as AARs. Use artifact view
         // filtering to request the extracted classes.jar (AGP registers the
         // transform). Desktop/JVM projects already return JARs so this is a no-op.
         dependencyJars.from(
           config.incoming
             .artifactView {
-              if (lenientDependencyJars) lenient(true)
+              if (useLenient) lenient(true)
               attributes.attribute(artifactType, "jar")
             }
             .files
@@ -1112,7 +1123,7 @@ internal object ComposePreviewTasks {
         dependencyJars.from(
           config.incoming
             .artifactView {
-              if (lenientDependencyJars) lenient(true)
+              if (useLenient) lenient(true)
               attributes.attribute(artifactType, "android-classes")
             }
             .files
