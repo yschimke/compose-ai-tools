@@ -1,0 +1,20 @@
+{
+  "targets": [
+    {
+      "nodeId": "n2",
+      "boundsInScreen": "40,560,320,624",
+      "widthDp": 140.0,
+      "heightDp": 32.0,
+      "findings": ["belowMinimumSize"],
+      "overlappingNodeIds": null
+    },
+    {
+      "nodeId": "n3",
+      "boundsInScreen": "24,460,200,508",
+      "widthDp": 88.0,
+      "heightDp": 24.0,
+      "findings": ["belowMinimumSize", "overlapsNeighbour"],
+      "overlappingNodeIds": ["n4"]
+    }
+  ]
+}

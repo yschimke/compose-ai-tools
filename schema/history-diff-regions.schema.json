@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/history-diff-regions.schema.json",
+  "title": "HistoryDiffPayload",
+  "description": "Payload for the `history/diff/regions` data product: the connected changed-pixel regions of the latest render versus a baseline. Kotlin source of truth: HistoryDiffPayload / HistoryDiffRegion in :data-history-core.",
+  "x-composeai": {
+    "kind": "history/diff/regions",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.data.history.HistoryDiffPayload",
+    "kotlinConst": "HistoryDiffRegionsProduct.SCHEMA_VERSION",
+    "fixture": "vscode-extension/preview-harness/fixtures/history-diff.json"
+  },
+  "definitions": {
+    "HistoryDiffAverageDelta": {
+      "type": "object",
+      "required": ["r", "g", "b", "a"],
+      "properties": {
+        "r": { "type": "number" },
+        "g": { "type": "number" },
+        "b": { "type": "number" },
+        "a": { "type": "number" }
+      }
+    },
+    "HistoryDiffRegion": {
+      "type": "object",
+      "required": ["bounds", "pixelCount", "avgDelta"],
+      "properties": {
+        "bounds": { "type": "string", "description": "`minX,minY,maxX,maxY`." },
+        "pixelCount": { "type": "integer" },
+        "avgDelta": { "$ref": "#/definitions/HistoryDiffAverageDelta" }
+      }
+    },
+    "HistoryDiffPayload": {
+      "type": "object",
+      "required": ["baselineHistoryId", "totalPixelsChanged", "changedFraction", "regions"],
+      "properties": {
+        "baselineHistoryId": { "type": "string" },
+        "totalPixelsChanged": { "type": "integer" },
+        "changedFraction": { "type": "number" },
+        "regions": { "type": "array", "items": { "$ref": "#/definitions/HistoryDiffRegion" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/HistoryDiffPayload"
+}

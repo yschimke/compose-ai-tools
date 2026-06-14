@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/a11y-atf.schema.json",
+  "title": "AccessibilityFindingsPayload",
+  "description": "Payload for the `a11y/atf` data product: Accessibility Test Framework findings for a render. Kotlin source of truth: AccessibilityFindingsPayload / AccessibilityFinding in :data-a11y-core. Forward-compatible: additive fields do not bump schemaVersion.",
+  "x-composeai": {
+    "kind": "a11y/atf",
+    "schemaVersion": 1,
+    "kotlinType": "ee.schimke.composeai.renderer.AccessibilityFindingsPayload",
+    "kotlinConst": "AccessibilityDataProducts.SCHEMA_VERSION",
+    "example": "schema/examples/a11y-atf.json"
+  },
+  "definitions": {
+    "AccessibilityFinding": {
+      "type": "object",
+      "required": ["level", "type", "message"],
+      "properties": {
+        "level": { "type": "string", "enum": ["ERROR", "WARNING", "INFO", "NOT_RUN"] },
+        "type": { "type": "string", "description": "ATF check class simple name." },
+        "message": { "type": "string" },
+        "viewDescription": { "type": ["string", "null"] },
+        "boundsInScreen": { "type": ["string", "null"], "description": "`left,top,right,bottom` in pixels." }
+      }
+    },
+    "AccessibilityFindingsPayload": {
+      "type": "object",
+      "required": ["findings"],
+      "properties": {
+        "findings": { "type": "array", "items": { "$ref": "#/definitions/AccessibilityFinding" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/AccessibilityFindingsPayload"
+}

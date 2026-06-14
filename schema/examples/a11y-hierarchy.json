@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "label": "Welcome",
+      "ref": "n1",
+      "role": "Heading",
+      "states": [],
+      "merged": true,
+      "boundsInScreen": "24,80,336,140"
+    },
+    {
+      "label": "Sign in to continue",
+      "ref": "n2",
+      "role": "Button",
+      "states": ["clickable"],
+      "merged": true,
+      "boundsInScreen": "40,560,320,624"
+    },
+    {
+      "label": "Remember me",
+      "ref": "n3",
+      "role": "CheckBox",
+      "states": ["clickable", "checked"],
+      "boundsInScreen": "24,460,200,508"
+    }
+  ]
+}

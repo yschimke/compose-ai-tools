@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schimke.ee/composeai/compose-theme.schema.json",
+  "title": "ThemePayload",
+  "description": "Payload for the `compose/theme` data product: resolved Material 3 design tokens for a render plus the nodes that consume them. Kotlin source of truth: ThemePayload / ResolvedThemeTokens in :data-theme-core.",
+  "x-composeai": {
+    "kind": "compose/theme",
+    "schemaVersion": 2,
+    "kotlinType": "ee.schimke.composeai.data.theme.ThemePayload",
+    "kotlinConst": "Material3ThemeProduct.SCHEMA_VERSION",
+    "fixture": "vscode-extension/preview-harness/fixtures/theming.json"
+  },
+  "definitions": {
+    "TypographyToken": {
+      "type": "object",
+      "properties": {
+        "fontFamily": { "type": ["string", "null"] },
+        "fontSize": { "type": ["number", "null"] },
+        "fontSizeUnit": { "type": ["string", "null"] },
+        "fontWeight": { "type": ["string", "null"] },
+        "fontStyle": { "type": ["string", "null"] },
+        "lineHeight": { "type": ["number", "null"] },
+        "lineHeightUnit": { "type": ["string", "null"] },
+        "letterSpacing": { "type": ["number", "null"] },
+        "letterSpacingUnit": { "type": ["string", "null"] }
+      }
+    },
+    "ResolvedThemeTokens": {
+      "type": "object",
+      "required": ["colorScheme", "typography", "shapes"],
+      "properties": {
+        "colorScheme": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Material 3 role -> colour string." },
+        "typography": { "type": "object", "additionalProperties": { "$ref": "#/definitions/TypographyToken" }, "description": "Type-scale role -> token." },
+        "shapes": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Shape role -> value." }
+      }
+    },
+    "ThemeConsumer": {
+      "type": "object",
+      "required": ["nodeId", "tokens"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "tokens": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "ThemePayload": {
+      "type": "object",
+      "required": ["resolvedTokens"],
+      "properties": {
+        "resolvedTokens": { "$ref": "#/definitions/ResolvedThemeTokens" },
+        "consumers": { "type": "array", "items": { "$ref": "#/definitions/ThemeConsumer" }, "description": "Omitted when empty." }
+      }
+    }
+  },
+  "$ref": "#/definitions/ThemePayload"
+}

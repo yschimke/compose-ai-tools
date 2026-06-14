@@ -1,0 +1,19 @@
+{
+  "schema": "compose-semantics-diff/v1",
+  "added": [
+    { "ref": "n7", "role": "Button", "testTag": "retry", "text": "Retry", "label": "Retry" }
+  ],
+  "removed": [
+    { "ref": "n4", "role": "ProgressBar", "testTag": null, "text": null, "label": "Loading" }
+  ],
+  "changed": [
+    {
+      "ref": "n2",
+      "anchor": "Button:submit",
+      "changes": [
+        { "field": "text", "from": "Sign in", "to": "Sign in to continue" },
+        { "field": "clickable", "from": "false", "to": "true" }
+      ]
+    }
+  ]
+}
