@@ -177,6 +177,11 @@ include(":samples:cmp")
 
 include(":samples:cmp-shared")
 
+// Non-renderable KMP-Android library (no `jvm("desktop")` target) — regression fixture for
+// #1852 / #1855. See its build.gradle.kts. Must coexist in the build without breaking CLI
+// discovery of the other sample modules.
+include(":samples:cmp-android-only")
+
 include(":samples:desktop-daemon-bench")
 
 include(":samples:remotecompose")
