@@ -1,5 +1,7 @@
 package ee.schimke.composeai.daemon.history
 
+import ee.schimke.composeai.data.layoutinspector.ComposeSemanticsPayload
+import ee.schimke.composeai.data.layoutinspector.SemanticsDiff
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,6 +18,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Filesystem-backed [HistorySource] — the H1 default. Writes PNGs + sidecar JSON files plus an
@@ -77,11 +80,23 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
     Files.createDirectories(previewDir)
 
     // Tier 1 — skip-on-most-recent-match. If the absolute newest sidecar for this preview already
-    // has the same hash, this render is redundant from the consumer's perspective; skip everything.
-    // Different from tier 2 below: rule is "most recent", not "any match" — A → B → A keeps three
-    // entries (the third is a meaningful "we went back to A" event), but A → A → A keeps one.
-    val mostRecentHash = findMostRecentEntryHash(previewDir, exclude = entry.id)
-    if (mostRecentHash != null && mostRecentHash == entry.pngHash) {
+    // has the same hash AND the same semantics tree, this render is redundant from the consumer's
+    // perspective; skip everything. Different from tier 2 below: rule is "most recent", not "any
+    // match" — A → B → A keeps three entries (the third is a meaningful "we went back to A" event),
+    // but A → A → A keeps one.
+    //
+    // The semantics check (issue #1785) is what keeps a *semantics-only* change recordable: a
+    // render that drops a `contentDescription` / `role` / `testTag` produces byte-identical pixels
+    // but a changed `compose/semantics` tree, and that's exactly what `history/diff mode=semantics`
+    // exists to catch — so it must NOT be deduped away here. Comparison is structural (via
+    // [SemanticsDiff]), so the volatile per-render `nodeId` and positional bounds don't register as
+    // a change and a truly-identical re-render still dedups.
+    val mostRecent = findMostRecentEntry(previewDir, exclude = entry.id)
+    if (
+      mostRecent != null &&
+        mostRecent.pngHash == entry.pngHash &&
+        !semanticsChanged(mostRecent.semantics, entry.semantics)
+    ) {
       return WriteResult.SKIPPED_DUPLICATE
     }
 
@@ -129,13 +144,14 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
   }
 
   /**
-   * Returns the [HistoryEntry.pngHash] of the absolute newest sidecar in [previewDir], or null when
-   * the dir is empty or all sidecars are unreadable. Used by tier 1 of the dedup ladder.
+   * Returns the absolute newest sidecar's [HistoryEntry] in [previewDir], or null when the dir is
+   * empty or all sidecars are unreadable. Used by tier 1 of the dedup ladder (which compares both
+   * its `pngHash` and its captured `semantics` snapshot against the incoming entry).
    *
    * Sidecar filenames lead with a UTC timestamp in `yyyyMMdd-HHmmss-<hash>` shape, so reverse lex
    * sort = newest first. We don't need to parse the timestamp — string compare is enough.
    */
-  private fun findMostRecentEntryHash(previewDir: Path, exclude: String): String? {
+  private fun findMostRecentEntry(previewDir: Path, exclude: String): HistoryEntry? {
     if (!Files.exists(previewDir)) return null
     val newest =
       try {
@@ -155,13 +171,30 @@ class LocalFsHistorySource(private val historyDir: Path) : HistorySource {
       } catch (_: Throwable) {
         return null
       }
-    val parsed =
-      try {
-        JSON.decodeFromString(HistoryEntry.serializer(), text)
-      } catch (_: Throwable) {
-        return null
-      }
-    return parsed.pngHash
+    return try {
+      JSON.decodeFromString(HistoryEntry.serializer(), text)
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  /**
+   * True when both [old] and [new] carry a captured `compose/semantics` snapshot and their trees
+   * differ semantically (issue #1785). Returns false when either side has no snapshot — semantics
+   * dedup only applies when there's something to compare on both sides, so toggling capture on/off
+   * never forces a spurious entry. Comparison is via [SemanticsDiff] (not a raw byte hash) so the
+   * volatile per-render `nodeId` and positional bounds don't count as a change. A malformed
+   * snapshot can't be diffed, so it conservatively reports "unchanged" (preserve pixel dedup).
+   */
+  private fun semanticsChanged(old: JsonElement?, new: JsonElement?): Boolean {
+    if (old == null || new == null) return false
+    return try {
+      val base = JSON.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), old)
+      val head = JSON.decodeFromJsonElement(ComposeSemanticsPayload.serializer(), new)
+      !SemanticsDiff.diff(base, head).isEmpty
+    } catch (_: Throwable) {
+      false
+    }
   }
 
   override fun list(filter: HistoryFilter): HistoryListPage {

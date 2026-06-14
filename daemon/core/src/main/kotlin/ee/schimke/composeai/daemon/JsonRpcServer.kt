@@ -1206,12 +1206,14 @@ class JsonRpcServer(
     // history write failure never blocks the renderFinished wire-format. The render's notification
     // has already been sent above; history is observation, not state.
     //
-    // Skip history when the frame is byte-identical to the prior one for this preview — there's
-    // nothing new to archive, and a duplicate sidecar would inflate `history/list` results
-    // without changing what the user sees on disk.
-    if (!isUnchanged) {
-      recordHistoryForRender(previewId = previewId, result = result, finished = finished)
-    }
+    // Dedup is the history source's job, not this gate's: a byte-identical frame may still carry a
+    // changed `compose/semantics` tree (a dropped contentDescription leaves pixels untouched), and
+    // that's exactly what `history/diff mode=semantics` exists to catch (issue #1785). So we record
+    // regardless of the pixel-only `isUnchanged` flag and let `LocalFsHistorySource` skip only when
+    // BOTH the bytes and the semantics tree are unchanged — `recordHistoryForRender` returns null
+    // on
+    // that skip, so a truly-redundant frame still emits no `historyAdded` and adds no sidecar.
+    recordHistoryForRender(previewId = previewId, result = result, finished = finished)
     inFlightRenders.remove(result.id)
     previewIdsWithOverridesInFlight.remove(previewId)
     // D3 — wake any `data/fetch` waiter that queued this render. The waiter re-invokes

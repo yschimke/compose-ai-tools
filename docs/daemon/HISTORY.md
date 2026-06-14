@@ -91,9 +91,19 @@ trees structurally without reading PNGs.
 Two-tier ladder:
 
 1. **Skip-on-most-recent-match.** If the absolute newest existing entry
-   for this `previewId` has the same `pngHash`, the writer returns
-   `WriteResult.SKIPPED_DUPLICATE` and writes nothing. No PNG, no
-   sidecar, no index line, no `historyAdded` notification.
+   for this `previewId` has the same `pngHash` **and the same semantics
+   tree**, the writer returns `WriteResult.SKIPPED_DUPLICATE` and writes
+   nothing. No PNG, no sidecar, no index line, no `historyAdded`
+   notification. The semantics check (issue #1785) is what keeps a
+   *semantics-only* change recordable: a render that drops a
+   `contentDescription` / `role` / `testTag` produces byte-identical
+   pixels but a changed `compose/semantics` tree, and that's exactly the
+   regression `history/diff mode=semantics` exists to catch — so it must
+   land, not dedup away. The comparison is structural (via `SemanticsDiff`,
+   the same differ the diff uses), so the volatile per-render `nodeId` and
+   positional bounds don't count as a change and a truly-identical
+   re-render still dedups. When either side has no captured snapshot the
+   check falls back to pure `pngHash` dedup.
 2. **Pointer-on-any-match.** If the new bytes match an earlier entry
    (but not the most recent), the new sidecar's `pngPath` points at
    the older PNG and the bytes aren't re-written. Sidecar + index line
