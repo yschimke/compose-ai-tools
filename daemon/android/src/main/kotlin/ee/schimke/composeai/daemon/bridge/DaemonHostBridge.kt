@@ -595,6 +595,28 @@ sealed interface InteractiveCommand {
   ) : InteractiveCommand
 
   /**
+   * Snapshot the held composition's live semantics for a `recording.probe` marker (issue #1786).
+   * The sandbox-side handler fetches the unmerged semantics root and projects it into the compact
+   * probe-node list, handing it back through [replyNodesJson] as a JSON string.
+   *
+   * The payload is a `java.lang.String` (do-not-acquire) rather than a typed
+   * `List<RecordingProbeNode>` on purpose: the nodes are built under Robolectric's instrumenting
+   * classloader, so a typed list would arrive host-side as sandbox-loaded objects that fail the
+   * host `RecordingProbeNode` cast / JSON serialization (same boundary `RenderResult` is copied
+   * across). Serialising sandbox-side and re-parsing host-side keeps only a String on the wire.
+   *
+   * Read-only against the held composition — the handler walks but never dispatches, so it doesn't
+   * compete with renders. Throwables from the walk ride [replyError]; the host's
+   * `captureProbeSemantics` rethrows on the caller thread.
+   */
+  data class CaptureProbeSemantics(
+    override val streamId: String,
+    val replyLatch: CountDownLatch,
+    val replyError: AtomicReference<Throwable?>,
+    val replyNodesJson: AtomicReference<String?>,
+  ) : InteractiveCommand
+
+  /**
    * Lifecycle dispatch: move the held activity to the named lifecycle state via
    * `ActivityScenario.moveToState(...)`. Used by `record_preview`'s `lifecycle.event` script
    * events to drive `onPause` / `onResume` / `onStop` on the held composition.

@@ -180,6 +180,19 @@ interface InteractiveSession : AutoCloseable {
   ): ee.schimke.composeai.daemon.protocol.UiAutomatorUnsupportedReason? = null
 
   /**
+   * Capture a compact snapshot of the held composition's live semantics for a `recording.probe`
+   * marker (issue #1786). Backends that hold a composition project the unmerged semantics tree into
+   * [RecordingProbeNode][ee.schimke.composeai.daemon.protocol.RecordingProbeNode]s — the same
+   * testTag / text / role projection target resolution (issue #1784) walks — so
+   * [RecordingTestGenerator] can diff consecutive probes into `onNodeWith…().assertExists()` /
+   * `assertDoesNotExist()` assertions instead of TODO stubs.
+   *
+   * Default returns `null` so hosts that can't reach the live tree (or predate probe capture) leave
+   * the probe assertion-less and the generator falls back to a stub.
+   */
+  fun captureProbeSemantics(): List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? = null
+
+  /**
    * Lifecycle dispatch: move the held activity (or per-host equivalent) to the named lifecycle
    * state, exercising `onPause` / `onResume` / `onStop` etc. on the way. Used by `record_preview`'s
    * `lifecycle.event` script events to verify that a preview survives a pause-resume cycle or a

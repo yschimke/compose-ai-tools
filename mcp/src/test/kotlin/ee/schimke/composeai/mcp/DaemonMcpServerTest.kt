@@ -1907,6 +1907,96 @@ class DaemonMcpServerTest {
   }
 
   @Test
+  fun `record_preview emitTest turns probe semantics into inferred assertions`() {
+    // Issue #1786: a recording.probe carries a host-captured semantics snapshot in its script
+    // evidence. The MCP server threads that into RecordingTestGenerator, which turns the probe into
+    // an `onNodeWith…().assertExists()` assertion instead of a TODO stub. Drive `record_preview`
+    // with a click + probe whose evidence carries a test-tagged node and assert the emitted source.
+    val framesDir = tmp.newFolder("probe-frames")
+    writeSolidPng(framesDir.resolve("frame-00000.png"), 0xFF000000.toInt())
+    writeSolidPng(framesDir.resolve("frame-00001.png"), 0xFFFFFFFF.toInt())
+    val recordingsDir = tmp.newFolder("probe-recordings-out")
+    factory.daemonConfigurer = { d ->
+      d.recordingEncodedBytes = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10, 0x01, 0x02)
+      d.recordingEncodeDir = recordingsDir
+      d.advertisedDataExtensions =
+        ee.schimke.composeai.data.render.extensions.RecordingScriptDataExtensions.descriptors +
+          ee.schimke.composeai.daemon.InputTouchRecordingScriptEvents.descriptor
+      d.recordingStopResult =
+        ee.schimke.composeai.daemon.protocol.RecordingStopResult(
+          frameCount = 2,
+          durationMs = 100L,
+          framesDir = framesDir.absolutePath,
+          frameWidthPx = 120,
+          frameHeightPx = 40,
+          scriptEvents =
+            listOf(
+              ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence(
+                tMs = 0L,
+                kind = "input.click",
+                status = ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+              ),
+              ee.schimke.composeai.daemon.protocol.RecordingScriptEvidence(
+                tMs = 100L,
+                kind = "recording.probe",
+                status = ee.schimke.composeai.daemon.protocol.RecordingScriptEventStatus.APPLIED,
+                label = "after-add",
+                probeSemantics =
+                  listOf(
+                    ee.schimke.composeai.daemon.protocol.RecordingProbeNode(
+                      testTag = "cart",
+                      clickable = true,
+                    )
+                  ),
+              ),
+            ),
+        )
+    }
+    client.initialize()
+    val projectDir = tmp.newFolder("probe-workspace")
+    tmp.newFolder("probe-workspace", "module")
+    val workspaceId = registerWorkspace(projectDir, "demo")
+    val daemon = warmDaemonFor(workspaceId, ":module")
+    val previewId = "com.example.CartKt.CartPreview"
+    daemon.emitDiscovery(previewId, functionName = "CartPreview")
+    client.expectNotification("notifications/resources/list_changed", 2_000)
+
+    val uri = PreviewUri(workspaceId, ":module", previewId).toUri()
+    val resp =
+      client.callTool(
+        "record_preview",
+        buildJsonObject {
+          put("uri", uri)
+          put("emitTest", true)
+          putJsonArray("events") {
+            add(
+              buildJsonObject {
+                put("tMs", 0)
+                put("kind", "input.click")
+                put("pixelX", 60)
+                put("pixelY", 20)
+              }
+            )
+            add(
+              buildJsonObject {
+                put("tMs", 100)
+                put("kind", "recording.probe")
+                put("label", "after-add")
+              }
+            )
+          }
+        },
+        timeoutMs = 10_000,
+      )
+
+    assertThat(resp.isError()).isFalse()
+    val generated = resp.textContents().last()
+    // The probe became a real assertion on the captured test-tagged node — not a TODO stub.
+    assertThat(generated).contains("composeTestRule.onNodeWithTag(\"cart\").assertExists()")
+    assertThat(generated).doesNotContain("// TODO assert state")
+  }
+
+  @Test
   fun `MCP exposes data slash navigation snapshot and dispatches navigation deepLink + back`() {
     // End-to-end exercise of the navigation surface from an MCP-tool perspective:
     //

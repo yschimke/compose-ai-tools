@@ -48,7 +48,9 @@ see [`docs/daemon/MCP.md`](docs/daemon/MCP.md) for the full tool surface.
   + large font?" without N screenshots.
 - **Recording → test.** `record_preview emitTest=true` turns a scripted
   interaction into a runnable Compose UI test (semantic targets become
-  `onNodeWithTag(...).performClick()` steps).
+  `onNodeWithTag(...).performClick()` steps; each `recording.probe` is diffed
+  against the previous probe's captured semantics into `assertExists()` /
+  `assertDoesNotExist()` assertions).
 - **Structured failures.** A failed render reports a typed `kind` plus a
   one-line fix hint for recognized signatures (classpath skew, Robolectric SDK
   mismatch, missing `@Composable`, …) instead of an opaque message.

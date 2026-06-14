@@ -287,7 +287,11 @@ class AndroidRecordingSession(
           interactiveDispatchHandler(InteractiveInputKind.KEY_UP),
         )
         put(RecordingScriptDataExtensions.PROBE_EVENT, RecordingScriptEventHandler { e, _ ->
-          appliedEvidence(e, "probe marker reached")
+          // Snapshot the live semantics at the probe (issue #1786) so the codegen path can diff
+          // consecutive probes into assertions. The capture is read-only against the held rule;
+          // a null result (nothing rendered / capture unsupported) leaves the probe a TODO stub.
+          val probeNodes = interactive.captureProbeSemantics()
+          appliedEvidence(e, "probe marker reached", probeSemantics = probeNodes)
         })
         // Accessibility-driven dispatch — every `a11y.action.<name>` id with a clean Compose
         // SemanticsActions equivalent registers here. Each handler shares the same shape:

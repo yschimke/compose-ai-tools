@@ -457,6 +457,39 @@ internal constructor(
   }
 
   /**
+   * Override of [InteractiveSession.captureProbeSemantics] (#1786). Enqueues an
+   * [InteractiveCommand.CaptureProbeSemantics] envelope; the sandbox-side loop projects the held
+   * composition's unmerged semantics tree into the compact probe-node list and hands it back through
+   * [InteractiveCommand.CaptureProbeSemantics.replyNodesJson] as JSON. Read-only — no dispatch, no
+   * settle tick.
+   */
+  override fun captureProbeSemantics():
+    List<ee.schimke.composeai.daemon.protocol.RecordingProbeNode>? {
+    if (closed) return null
+    lastUsedAtMs.set(System.currentTimeMillis())
+    val replyLatch = CountDownLatch(1)
+    val replyError = AtomicReference<Throwable?>(null)
+    val replyNodesJson = AtomicReference<String?>(null)
+    slot.interactiveCommands.put(
+      InteractiveCommand.CaptureProbeSemantics(
+        streamId = streamId,
+        replyLatch = replyLatch,
+        replyError = replyError,
+        replyNodesJson = replyNodesJson,
+      )
+    )
+    if (!replyLatch.await(DISPATCH_TIMEOUT_SEC, TimeUnit.SECONDS)) {
+      error(
+        "AndroidInteractiveSession.captureProbeSemantics timed out after " +
+          "${DISPATCH_TIMEOUT_SEC}s for stream '$streamId'. Held-rule loop may be stuck."
+      )
+    }
+    replyError.get()?.let { throw it }
+    // The sandbox returns the snapshot as a JSON string (do-not-acquire); re-parse into host DTOs.
+    return replyNodesJson.get()?.let { ComposeSemanticsDataProducer.decodeProbeNodes(it) }
+  }
+
+  /**
    * Override of [InteractiveSession.dispatchLifecycle]. Enqueues a
    * [InteractiveCommand.DispatchLifecycle] envelope through the bridge; the sandbox-side loop in
    * [RobolectricHost.SandboxRunner.runHeldInteractiveSession] resolves the wire-name string to a
