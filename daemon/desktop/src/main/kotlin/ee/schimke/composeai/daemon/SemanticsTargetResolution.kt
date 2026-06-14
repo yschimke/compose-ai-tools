@@ -7,6 +7,9 @@ package ee.schimke.composeai.daemon
 
 import androidx.compose.ui.ImageComposeScene
 import ee.schimke.composeai.daemon.protocol.SemanticsInputTarget
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetCandidate
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedCode
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import ee.schimke.composeai.data.layoutinspector.SemanticsTarget
 
 /**
@@ -38,3 +41,34 @@ internal fun ImageComposeScene.composeSemanticsRoot(): ComposeSemanticsNode? {
   val node = semanticsOwners.firstOrNull()?.unmergedRootSemanticsNode ?: return null
   return ComposeSemanticsDataProducer.buildPayload(node).root
 }
+
+/** Project a resolved/candidate node onto the slim wire candidate shape (issue #1784). */
+internal fun ComposeSemanticsNode.toTargetCandidate(): SemanticsTargetCandidate =
+  SemanticsTargetCandidate(
+    ref = ref,
+    testTag = testTag,
+    role = role,
+    text = text,
+    label = label,
+    boundsInRoot = boundsInRoot,
+  )
+
+/**
+ * Build the structured [SemanticsTargetUnresolvedReason] (issue #1784) for a target that didn't
+ * resolve to exactly one node. [matchCount] + [candidates] tell the agent whether to narrow (≥ 2
+ * matched) or widen (0 matched, candidates list what exists) the target. Shared by the desktop
+ * interactive + recording sessions so both report misses identically; the Android backend builds
+ * the same shape sandbox-side.
+ */
+internal fun semanticsTargetUnresolvedReason(
+  code: SemanticsTargetUnresolvedCode,
+  target: SemanticsInputTarget,
+  matchCount: Int,
+  candidates: List<ComposeSemanticsNode>,
+): SemanticsTargetUnresolvedReason =
+  SemanticsTargetUnresolvedReason(
+    code = code,
+    target = target,
+    matchCount = matchCount,
+    candidates = candidates.map { it.toTargetCandidate() },
+  )

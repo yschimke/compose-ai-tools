@@ -272,7 +272,7 @@ A `data/fetch` that needs a re-render:
 | Kind | Mode | Cost | Notes |
 |---|---|---|---|
 | `a11y/atf` | a11y | low | `AccessibilityFinding[]` from ATF. Overlay PNG as extra. |
-| `a11y/hierarchy` | a11y | low | `AccessibilityNode[]` (label, role, states, bounds). |
+| `a11y/hierarchy` | a11y | low | `AccessibilityNode[]` (label, role, states, bounds). Each node also carries a stable, content-independent `ref` (assigned by `AccessibilityRefs` — role-anchored, disambiguated by occurrence index), the a11y analogue of `compose/semantics`' `ref` (#1784). Additive — `schemaVersion` stays 1; older `accessibility.json` parses with `ref = null`. |
 | `a11y/overlay` | a11y | low | Path to annotated PNG. Pure-image. |
 | `a11y/touchTargets` | a11y | low | 48dp + overlap detection. |
 | `layout/inspector` | default | low | Compose layout/component hierarchy with bounds, constraints, modifiers, source refs. |
@@ -335,6 +335,7 @@ The first kind to ship; mirrors the renderer-side type:
 {
   nodes: {
     label: string;
+    ref: string | null;         // stable handle, e.g. 'a/role:Button[0]' (#1784)
     role: string | null;
     states: string[];
     merged: boolean;

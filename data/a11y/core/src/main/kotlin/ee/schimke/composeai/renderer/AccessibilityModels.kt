@@ -71,6 +71,15 @@ data class AccessibilityNode(
     /** Visible text or contentDescription. Always non-empty for emitted nodes. */
     val label: String,
     /**
+     * Stable, content-independent handle assigned by [AccessibilityRefs] (issue #1784) — the a11y
+     * analogue of `ComposeSemanticsNode.ref`. Anchors on the node's `role` (or a generic token when
+     * roleless) disambiguated by occurrence index, so a copy edit (label / state text) keeps the
+     * same `ref` while a structural change (a node added / removed / its role changing) moves it.
+     * `null` only on hand-built nodes that skipped ref assignment; every emitted `a11y/hierarchy`
+     * node carries one. Additive — older `accessibility.json` files parse with `ref = null`.
+     */
+    val ref: String? = null,
+    /**
      * TalkBack's class announcement (`Button`, `Image`, `TextView`, …). `null` for plain
      * Views that only carry a label, so the legend can skip the role chip and avoid the
      * noisy `View` everyone gets.

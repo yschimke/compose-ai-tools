@@ -6,6 +6,7 @@ import ee.schimke.composeai.daemon.bridge.SandboxSlot
 import ee.schimke.composeai.daemon.protocol.InteractiveInputKind
 import ee.schimke.composeai.daemon.protocol.InteractiveInputParams
 import ee.schimke.composeai.daemon.protocol.RemoteComposeChange
+import ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -14,6 +15,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.serialization.json.Json
 
 /**
  * Android (Robolectric) [InteractiveSession]. Mirrors `:daemon:desktop`'s
@@ -249,6 +251,7 @@ internal constructor(
     val replyLatch = CountDownLatch(1)
     val replyError = AtomicReference<Throwable?>(null)
     val replyMatched = if (hasTarget) AtomicBoolean(false) else null
+    val replyUnresolvedReasonJson = if (hasTarget) AtomicReference<String?>(null) else null
     slot.interactiveCommands.put(
       InteractiveCommand.Dispatch(
         streamId = streamId,
@@ -262,6 +265,7 @@ internal constructor(
         targetRole = target?.role,
         targetText = target?.text,
         replyMatched = replyMatched,
+        replyUnresolvedReasonJson = replyUnresolvedReasonJson,
         replyLatch = replyLatch,
         replyError = replyError,
       )
@@ -274,15 +278,27 @@ internal constructor(
       )
     }
     replyError.get()?.let { throw it }
-    // A target that resolved to no node (or more than one) is reported as unmatched; throw so the
-    // recording path can record `unsupported` evidence and interactive input logs the miss. Pixel
-    // dispatch leaves [replyMatched] null and is unaffected.
+    // A target that resolved to no node (or more than one) is reported as unmatched; throw a typed
+    // [SemanticsTargetUnresolvedException] carrying the structured reason (issue #1784) so the
+    // recording path can surface `targetUnresolvedReason` evidence with candidate nodes and
+    // interactive input logs the miss. The sandbox encoded the reason to JSON and passed it back over
+    // the bridge; decode it host-side. Pixel dispatch leaves [replyMatched] null and is unaffected.
     if (hasTarget && replyMatched?.get() == false) {
-      error(
+      val message =
         "AndroidInteractiveSession.dispatch: target did not resolve to a node " +
           "(ref=${rawTarget?.ref}, testTag=${rawTarget?.testTag}, role=${rawTarget?.role}, " +
           "text=${rawTarget?.text})"
-      )
+      val reason =
+        replyUnresolvedReasonJson?.get()?.let { json ->
+          runCatching {
+              UNRESOLVED_REASON_JSON.decodeFromString(
+                SemanticsTargetUnresolvedReason.serializer(),
+                json,
+              )
+            }
+            .getOrNull()
+        }
+      if (reason != null) throw SemanticsTargetUnresolvedException(reason, message) else error(message)
     }
   }
 
@@ -751,6 +767,13 @@ internal constructor(
      * back. 30 s is generous; in practice well under 100 ms post-cold-boot.
      */
     private const val DISPATCH_TIMEOUT_SEC: Long = 30L
+
+    /**
+     * JSON used to decode the [SemanticsTargetUnresolvedReason] the sandbox passed back over the
+     * bridge as a string (issue #1784). `ignoreUnknownKeys` keeps host/sandbox forward-compatible if
+     * the reason shape gains fields on one side first.
+     */
+    private val UNRESOLVED_REASON_JSON: Json = Json { ignoreUnknownKeys = true }
 
     /**
      * Upper bound on a single capture — Roborazzi's `captureRoboImage` plus the disk write.

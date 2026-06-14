@@ -2034,6 +2034,14 @@ data class RecordingScriptEvidence(
    * pre-date this field keep reading [message] and ignore [unsupportedReason].
    */
   val unsupportedReason: UiAutomatorUnsupportedReason? = null,
+  /**
+   * Typed companion to [message] for unsupported portable semantic-target dispatches (issue #1784)
+   * — a pointer event whose `{ ref | testTag | role+text }` target matched no node or more than
+   * one. Carries the structured cause + candidate nodes so agents can disambiguate without
+   * re-rendering. `null` for pixel-targeted events, applied events, and the `uia.*` path (which
+   * uses [unsupportedReason]).
+   */
+  val targetUnresolvedReason: SemanticsTargetUnresolvedReason? = null,
 )
 
 /**

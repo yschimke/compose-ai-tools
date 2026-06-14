@@ -3752,6 +3752,18 @@ class DaemonMcpServer(
                     putJsonArray("tags") { for (tag in event.tags) add(JsonPrimitive(tag)) }
                   }
                   event.message?.let { put("message", it) }
+                  // #1784 — structured semantic-target miss: code + matchCount + candidate nodes so
+                  // the agent disambiguates (picks a candidate `ref`) without re-rendering.
+                  event.targetUnresolvedReason?.let {
+                    put(
+                      "targetUnresolvedReason",
+                      json.encodeToJsonElement(
+                        ee.schimke.composeai.daemon.protocol.SemanticsTargetUnresolvedReason
+                          .serializer(),
+                        it,
+                      ),
+                    )
+                  }
                 }
               )
             }

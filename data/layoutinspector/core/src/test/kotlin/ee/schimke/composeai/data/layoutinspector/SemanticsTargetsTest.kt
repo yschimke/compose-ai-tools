@@ -77,4 +77,29 @@ class SemanticsTargetsTest {
     val res = SemanticsTargets.resolve(root, SemanticsTarget.RoleText(text = "add to cart"))
     assertTrue(res is TargetResolution.Resolved)
   }
+
+  @Test
+  fun targetableNodesListsHandleBearingNodesWithRefs() {
+    val root =
+      node(
+        children =
+          listOf(
+            node(testTag = "submit", role = "Button", text = "Submit"),
+            node(role = "Button", text = "Cancel"),
+            node(), // bare container — no testTag/role/text/label, not clickable
+          )
+      )
+    val candidates = SemanticsTargets.targetableNodes(root)
+    // The bare container drops out; the two buttons stay, each carrying an assigned ref.
+    assertEquals(2, candidates.size)
+    assertTrue(candidates.all { it.ref != null })
+    // testTag-bearing nodes sort first so the agent sees the strongest handle up top.
+    assertEquals("submit", candidates.first().testTag)
+  }
+
+  @Test
+  fun targetableNodesRespectsLimit() {
+    val root = node(children = (1..10).map { node(role = "Button", text = "B$it") })
+    assertEquals(3, SemanticsTargets.targetableNodes(root, limit = 3).size)
+  }
 }

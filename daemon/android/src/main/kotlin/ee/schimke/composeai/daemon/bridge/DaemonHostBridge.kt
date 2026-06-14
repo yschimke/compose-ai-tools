@@ -468,6 +468,16 @@ sealed interface InteractiveCommand {
      * so the recording path surfaces `unsupported` evidence and interactive input logs the miss.
      */
     val replyMatched: AtomicBoolean? = null,
+    /**
+     * Issue #1784 — set by the sandbox when a semantic target failed to resolve to exactly one node
+     * (no match / ambiguous / no semantics tree yet): a JSON-encoded
+     * `SemanticsTargetUnresolvedReason` carrying the structured cause + candidate nodes. Travels as a
+     * plain `java.lang.String` (do-not-acquire) so no domain type crosses the classloader boundary;
+     * the host decodes it and rethrows as a `SemanticsTargetUnresolvedException` so the recording
+     * path can surface `targetUnresolvedReason` evidence. Null for a clean resolve and for pixel
+     * dispatch.
+     */
+    val replyUnresolvedReasonJson: AtomicReference<String?>? = null,
     val replyLatch: CountDownLatch,
     val replyError: AtomicReference<Throwable?>,
   ) : InteractiveCommand
