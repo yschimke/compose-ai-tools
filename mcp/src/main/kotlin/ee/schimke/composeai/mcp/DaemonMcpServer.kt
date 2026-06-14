@@ -82,9 +82,6 @@ import okio.Path.Companion.toPath
  * `<className>.<methodName>` per `DiscoverPreviewsTask`), and the URI builder pairs them with the
  * (workspace, module) they came from.
  */
-/** Upper bound on `render_matrix` cells, so a careless cross-product can't fan out unboundedly. */
-private const val MATRIX_CELL_CAP = 24
-
 class DaemonMcpServer(
   private val supervisor: DaemonSupervisor,
   private val sessions: SessionRegistry = SessionRegistry(),
@@ -1565,7 +1562,7 @@ class DaemonMcpServer(
       ToolDef(
         name = "render_matrix",
         description =
-          "Render one preview across a cross-product of display axes in a single call and return a token-frugal per-cell summary — for 'does this survive small screen + RTL + large font?' without looping render_preview and reading N PNGs (issue #1788). `axes` sets any of device / locale / uiMode / fontScale (each a non-empty array); the result has one cell per combination with its `overrides`, `sha256`, `widthPx`/`heightPx`, and `changed` (sha differs from the first cell — the quick 'which configs render differently?' signal). No base64 images; fetch a specific cell's pixels with render_preview + those overrides when you need to look. Bounded at 24 cells; narrow the axes if you exceed it. Pairs with diff_semantics for per-cell structural diffs.",
+          "Render one preview across a cross-product of display axes in a single call and return a token-frugal per-cell summary — for 'does this survive small screen + RTL + large font?' without looping render_preview and reading N PNGs (issue #1788). `axes` sets any of device / locale / uiMode / fontScale (each a non-empty array); the result has one cell per combination with its `overrides`, `label`, `sha256`, `widthPx`/`heightPx`, and `changed` (sha differs from the first cell — the quick 'which configs render differently?' signal). No base64 by default; fetch a specific cell's pixels with render_preview + those overrides when you need to look, or set `contactSheet:true` to also get one stitched grid image of every cell. Bounded at 24 cells; narrow the axes if you exceed it. Pairs with diff_semantics for per-cell structural diffs.",
         inputSchema =
           parseSchema(
             """
@@ -1582,7 +1579,8 @@ class DaemonMcpServer(
                     "uiMode":{"type":"array","items":{"type":"string","enum":["light","dark"]}},
                     "fontScale":{"type":"array","items":{"type":"number"},"description":"Font-scale multipliers, e.g. [1.0, 2.0]."}
                   }
-                }
+                },
+                "contactSheet":{"type":"boolean","description":"When true, also return a single stitched contact-sheet PNG (one labelled tile per cell) alongside the per-cell summary. Default false (token-frugal: hashes only)."}
               },
               "required":["uri","axes"]
             }
@@ -2216,9 +2214,10 @@ class DaemonMcpServer(
   /**
    * `render_matrix` (issue #1788) — render one preview across a cross-product of display axes
    * (device × locale × uiMode × fontScale) and return a token-frugal per-cell summary (overrides +
-   * sha256 + dimensions + `changed` vs the first cell). No base64 images; the agent fetches a
-   * specific cell's pixels with `render_preview` + those overrides when it needs to look. Bounded
-   * so a careless cross-product can't fan out unboundedly.
+   * label + sha256 + dimensions + `changed` vs the first cell). No base64 by default; the agent
+   * fetches a specific cell's pixels with `render_preview` + those overrides when it needs to look,
+   * or passes `contactSheet:true` to also receive one stitched grid image of every cell. Bounded so
+   * a careless cross-product can't fan out unboundedly.
    */
   private fun toolRenderMatrix(args: JsonObject): CallToolResult {
     val uriStr =
@@ -2230,6 +2229,8 @@ class DaemonMcpServer(
     val axes =
       args["axes"] as? JsonObject
         ?: return errorCallToolResult("render_matrix: missing 'axes' (object of arrays)")
+    val contactSheet =
+      args["contactSheet"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
 
     fun stringAxis(key: String): List<String>? =
       (axes[key] as? JsonArray)
@@ -2250,30 +2251,15 @@ class DaemonMcpServer(
           "(each a non-empty array)"
       )
     }
-    val cellCount =
-      (devices?.size ?: 1) * (locales?.size ?: 1) * (uiModes?.size ?: 1) * (fontScales?.size ?: 1)
-    if (cellCount > MATRIX_CELL_CAP) {
+    val cellCount = MatrixAxes.cellCount(devices, locales, uiModes, fontScales)
+    if (cellCount > MatrixAxes.CELL_CAP) {
       return errorCallToolResult(
-        "render_matrix: $cellCount cells exceeds the cap of $MATRIX_CELL_CAP; narrow the axes"
+        "render_matrix: $cellCount cells exceeds the cap of ${MatrixAxes.CELL_CAP}; narrow the axes"
       )
     }
 
-    // One overrides object per axis combination, preserving device → locale → uiMode → fontScale
-    // order so cell ordering is stable.
-    val cellOverrides: List<JsonObject> = buildList {
-      for (device in devices ?: listOf<String?>(null)) for (locale in
-        locales ?: listOf<String?>(null)) for (uiMode in
-        uiModes ?: listOf<String?>(null)) for (fontScale in fontScales ?: listOf<Float?>(null)) {
-        add(
-          buildJsonObject {
-            device?.let { put("device", it) }
-            locale?.let { put("localeTag", it) }
-            uiMode?.let { put("uiMode", it) }
-            fontScale?.let { put("fontScale", it) }
-          }
-        )
-      }
-    }
+    // One cell per axis combination, in stable device → locale → uiMode → fontScale order.
+    val matrixCells = MatrixAxes.expand(devices, locales, uiModes, fontScales)
 
     // Decode + validate EVERY cell before rendering — validateOverrides also checks the `device`
     // catalog id, which varies per cell, so a typo in any cell (not just the first) must be caught.
@@ -2282,13 +2268,13 @@ class DaemonMcpServer(
         .getOrElse {
           return errorCallToolResult("render_matrix: daemon spawn failed: ${it.message}")
         }
-    val decodedCells = cellOverrides.map { cellJson ->
+    val decodedCells = matrixCells.map { cell ->
       val overrides =
-        runCatching { decodePreviewOverrides(cellJson) }
+        runCatching { cell.toOverrides() }
           .getOrElse {
             return errorCallToolResult("render_matrix: invalid axis values: ${it.message}")
           }
-      cellJson to overrides
+      cell to overrides
     }
     val violations = decodedCells.flatMap { (_, overrides) -> validateOverrides(overrides, daemon) }
     if (violations.isNotEmpty()) {
@@ -2297,31 +2283,59 @@ class DaemonMcpServer(
 
     return runCatching {
         var baselineSha: String? = null
-        val cells = decodedCells.map { (cellJson, overrides) ->
+        // Render every cell, keeping the bytes around so an optional contact sheet can stitch them.
+        val rendered = decodedCells.map { (cell, overrides) ->
           val bytes = renderAndReadBytes(uri, overrides = overrides)
           val sha = sha256Hex(bytes)
-          val dimensions = pngDimensions(bytes)
           if (baselineSha == null) baselineSha = sha
+          RenderedCell(cell, bytes, sha, pngDimensions(bytes))
+        }
+        val cells = rendered.map { rc ->
           buildJsonObject {
-            put("overrides", cellJson)
-            put("sha256", sha)
-            dimensions?.let {
+            put("overrides", rc.cell.overridesJson())
+            put("label", rc.cell.label)
+            put("sha256", rc.sha)
+            rc.dimensions?.let {
               put("widthPx", it.first)
               put("heightPx", it.second)
             }
-            put("changed", sha != baselineSha)
+            put("changed", rc.sha != baselineSha)
           }
         }
         val payload = buildJsonObject {
           put("schema", "compose-preview-matrix/v1")
           put("uri", uri.toUri())
           put("cellCount", cells.size)
+          if (contactSheet) put("contactSheet", true)
           putJsonArray("cells") { cells.forEach { add(it) } }
         }
-        CallToolResult(content = listOf(ContentBlock.Text(payload.toString())))
+        val blocks = buildList {
+          if (contactSheet) {
+            val sheet =
+              ContactSheet.stitch(rendered.map { ContactSheet.Cell(it.cell.label, it.bytes) })
+            if (sheet != null) {
+              add(
+                ContentBlock.Image(
+                  data = Base64.getEncoder().encodeToString(sheet),
+                  mimeType = "image/png",
+                )
+              )
+            }
+          }
+          add(ContentBlock.Text(payload.toString()))
+        }
+        CallToolResult(content = blocks)
       }
       .getOrElse { errorCallToolResult("render_matrix failed: ${it.message}") }
   }
+
+  /** A rendered matrix cell held in memory so the optional contact sheet can stitch the bytes. */
+  private class RenderedCell(
+    val cell: MatrixCell,
+    val bytes: ByteArray,
+    val sha: String,
+    val dimensions: Pair<Int, Int>?,
+  )
 
   /**
    * Token-frugal `render_preview` response (issue #1787): a structured observation — sha256 + pixel

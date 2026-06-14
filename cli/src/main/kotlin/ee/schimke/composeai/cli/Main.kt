@@ -73,6 +73,7 @@ fun main(args: Array<String>) {
     "show-resources" -> ShowResourcesCommand(allArgs).run()
     "list" -> ListCommand(allArgs).run()
     "render" -> RenderCommand(allArgs).run()
+    "render-matrix" -> RenderMatrixCommand(allArgs).run()
     "a11y" -> A11yCommand(allArgs).run()
     "diff-semantics" -> SemanticsDiffCommand(allArgs).run()
     "extensions" -> ExtensionsCommand(allArgs).run()
@@ -111,6 +112,9 @@ private fun printUsage() {
       render           Render previews; with --output copies a single match to disk.
                        --bundle additionally packs each module's previews into a
                        portable PNG+ZIP bundle (off by default).
+      render-matrix    Render one preview across a cross-product of display axes
+                       (--device/--locale/--ui-mode/--font-scale); per-cell hashes +
+                       optional --contact-sheet grid PNG.
       a11y             Render previews with the a11y data extension on and
                        print ATF findings (thin wrapper over `--with-extension a11y`)
       diff-semantics   Diff two compose/semantics trees (base vs head) and report what

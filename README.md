@@ -42,10 +42,12 @@ see [`docs/daemon/MCP.md`](docs/daemon/MCP.md) for the full tool surface.
   *semantically* (text, label, role, testTag, overflow…), matched by stable
   ref — a deterministic, pixel-free regression signal, the Compose analogue of
   Playwright's aria-snapshot diff.
-- **Matrix render.** `render_matrix` renders one preview across a cross-product
-  of `device × locale × uiMode × fontScale` in a single call, returning a
-  per-cell hash and which cells changed — "does this survive small screen + RTL
-  + large font?" without N screenshots.
+- **Matrix render.** `render_matrix` (and the `compose-preview render-matrix`
+  CLI) renders one preview across a cross-product of
+  `device × locale × uiMode × fontScale` in a single call, returning a per-cell
+  hash and which cells changed — "does this survive small screen + RTL + large
+  font?" without N screenshots. Opt into a stitched contact-sheet image when you
+  want to eyeball every cell at once.
 - **Recording → test.** `record_preview emitTest=true` turns a scripted
   interaction into a runnable Compose UI test (semantic targets become
   `onNodeWithTag(...).performClick()` steps; each `recording.probe` is diffed
@@ -106,6 +108,8 @@ You can apply the plugin dynamically without modifying the project's source code
 ```sh
 compose-preview list                # scan @Preview annotations
 compose-preview render              # render every @Preview to PNG
+compose-preview render-matrix --id com.example.MyPreview --ui-mode light,dark --font-scale 1.0,2.0
+                                    # one preview across a device × locale × uiMode × fontScale grid
 ```
 
 For direct `./gradlew` use (e.g., a CI step that needs extra Gradle flags), materialise the same init script once and thread its path through each invocation:
